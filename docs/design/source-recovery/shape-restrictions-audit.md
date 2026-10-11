@@ -1,5 +1,20 @@
 # 按用户要求进行的恢复条件审计
 
+规则294：已验证的CellId保留原始AllocatedCell/IncomingCell、源码binding、
+scope和声明位置；operand验证一次发表读取/写入的发生位置。共同模型先
+完成当前绑定生命期、名字与presence，再按发生位置、方向和binding建立
+原始单元引用。分配单元须保持已验证scope的当前单元，外层单元须保持
+enclosing生命期；这是referent身份义务，不能由值相等、同块或邻接替代。
+原先词法写入只消费write occurrence便发表动作的路径，在此范围改为
+同时消费共同单元事实；词法读取也进入同一Before/Commit动作索引。
+字面量/其他binding替换撤回物理动作及原始效果上界，但不删除值证明。
+身份不等于初始化或不可观察性；kRead仍由共同初始化分析决定TDZ完成。
+当前/候选共享生产者；索引成本为O(expressions+references+operations)，
+原始附加表仅在存在cells时保留，暂存与持有容量均计入现有预算。
+此对应不把NEWLEXENV、源码scope进入、let初始化合为一个事件。原始环境
+分配动作，以及投射后不同单元的动态对应仍是模型缺口；保留原表示，
+不增加循环或声明形状的特判，也不据此关闭完整原始语义/绑定主干。
+
 规则293：原始阶段表区分物理FlowPoint与带OpId的纯控制阶段。后者从当前
 输入区间及已验证PureTruthTest解析，保留evaluated/true/false域；共享
 input.normal不能冒充无条件执行点。效果为空且不抛出的原始合同证明

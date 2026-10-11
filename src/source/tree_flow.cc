@@ -39,7 +39,10 @@ class FlowCheck {
     budget.Array(flow_.definitions, tree.expressions.size());
     budget.Array(flow_.declarations, tree.statements.size());
     budget.Array(flow_.receivers, graph.ops.size());
-    if (evaluation.cells) budget.Array(flow_.cells, evaluation.cells->cells.cells.size());
+    if (evaluation.cells) {
+      budget.Array(flow_.cells, evaluation.cells->cells.cells.size());
+      budget.Array(flow_.cell_bindings, evaluation.cells->cells.cells.size());
+    }
     budget.Array(assigned_, tree.symbols.size());
     budget.Array(declared_, tree.symbols.size());
     budget.Array(written_, tree.symbols.size());
@@ -915,6 +918,7 @@ class FlowCheck {
             binding.declaration == DeclarationKind::kLet && !binding.temporary && !declared_[symbol.value], Error::kPlacement);
         declared_[symbol.value] = 1;
         flow_.cells[i] = symbol;
+        flow_.cell_bindings[i]={cells[i].storage,symbol,binding.scope,{}};
       }
     }
     Require(next == tree_.captures.size(), Error::kPlacement);
@@ -943,7 +947,8 @@ class FlowCheck {
       const auto* local = std::get_if<AllocatedCell>(&cell->storage);
       if (!local || local->allocation != allocation) break;
       Require(child < block.child_count, Error::kSequence);
-      const auto& statement = tree_.statements[sequences_.Child(block.first_child + child++).value];
+      const auto site=sequences_.Child(block.first_child + child++);
+      const auto& statement = tree_.statements[site.value];
       const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
       Require(declaration && !declaration->initializer &&
           statement.origin.value == graph_.ops[allocation.value].origin.value, Error::kPlacement);
@@ -956,6 +961,7 @@ class FlowCheck {
       auto& actual = flow_.cells[static_cast<std::size_t>(cell - cells.begin())];
       Require(!actual, Error::kPlacement);
       actual = symbol;
+      flow_.cell_bindings[static_cast<std::size_t>(cell-cells.begin())]={cell->storage,symbol,binding.scope,site};
     }
   }
   void ExpressionScopes() {

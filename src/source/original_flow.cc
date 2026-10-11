@@ -41,6 +41,10 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
   // Transfer the verified table; its allocation was already admitted with TreeFlow.
   result->definitions=std::move(flow.definitions);
   result->declarations=std::move(flow.declarations);
+  if(!flow.cell_bindings.empty()) {
+    result->cells.emplace();result->cells->bindings=std::move(flow.cell_bindings);
+    budget.Array(result->cells->references,graph.ops.size());
+  }
   if(!flow.catch_parameters.empty()) {
     RequireTree(flow.catch_parameters.size()==graph.values.size(),TreeStructureError::kOwnership);
     budget.Array(result->catches,tree.symbols.size());
@@ -107,6 +111,7 @@ void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
       (original.definitions.empty()||original.definitions.size()==tree.expressions.size())&&
       (original.declarations.empty()||original.declarations.size()==tree.statements.size())&&
       (original.catches.empty()||original.catches.size()==tree.symbols.size())&&
+      (!original.cells||original.cells->references.size()==original.operations.size())&&
       (original.edge_controls.empty()||original.edge_controls.size()==original.edges.size())&&
       original.statements==tree.statements.size()&&original.bindings==tree.symbols.size(),TreeStructureError::kOwnership);
 }

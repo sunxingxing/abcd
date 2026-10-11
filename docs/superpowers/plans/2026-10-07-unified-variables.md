@@ -19,6 +19,17 @@
 - Existing byte/work budget covers retained graph, sparse facts and temporary growth.
 - Every verified coherent commit refreshes status.md; whole milestone is not complete until old decisions exit.
 
+2026-10-11 continuation, rules294: retain verified raw cell allocation/incoming
+identity, source unit scope and declaration separately; join lexical references
+to current common reference/lifetime facts after those facts are finalized.
+Physical lexical reads and writes use the shared phase/action bridge. Candidate
+value substitution withdraws physical reference/effect evidence; initialization
+remains an independent obligation. This supplies the reference half of the
+lexical-allocation obligation, not the NEWLEXENV action itself. Remaining Task 1
+work includes actual environment allocation, controls without equations and
+protocol/suspension correspondence. Projected-unit dynamic identity remains
+Task 2 work; neither mainline is closed by this change.
+
 2026-10-11 continuation, rules293: represent qualified pure control phases in
 the shared phase table and require their current Commit at phased incoming
 contributions. Physical writes and pure tests retain distinct obligations.

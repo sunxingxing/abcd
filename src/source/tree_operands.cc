@@ -324,11 +324,12 @@ class OperandCheck {
           // same expression; combined-origin checking covers both original PCs.
           RequireMeaning(evaluation_.operations[i].kind == EvaluationKind::kModuleGuard, Error::kUnsupportedOperation);
         } else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>) {
-          RequireMeaning(Node<SymbolExpr>(expression).symbol == CellSymbol(), Error::kOperand);
+          RequireMeaning(Node<SymbolExpr>(expression).symbol == CellSymbol(expression,CellAccessKind::kLoad), Error::kOperand);
+          original_.operations[i].intrinsic_expression=expression;
         } else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) {
           const auto& assignment = Node<AssignmentExpr>(expression);
           const auto* target = std::get_if<SymbolTarget>(&assignment.target);
-          RequireMeaning(target && target->symbol == CellSymbol(), Error::kOperand);
+          RequireMeaning(target && target->symbol == CellSymbol(expression,CellAccessKind::kStore), Error::kOperand);
           InputAt(0, assignment.value);
           Store(expression,target->symbol,assignment.value,input(0));
         } else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) {
@@ -617,10 +618,14 @@ class OperandCheck {
   }
 
  private:
-  SymbolId CellSymbol() const {
+  SymbolId CellSymbol(ExprId expression,CellAccessKind kind) {
     RequireMeaning(evaluation_.cells.has_value(), Error::kOperand);
     const auto cell = evaluation_.cells->cells.operations[current_.value];
     RequireMeaning(cell && cell->value < flow_.cells.size() && flow_.cells[cell->value], Error::kOperand);
+    RequireMeaning(original_.cells&&cell->value<original_.cells->bindings.size()&&
+        original_.cells->bindings[cell->value].binding==*flow_.cells[cell->value]&&
+        !original_.cells->references[current_.value],Error::kOperand);
+    original_.cells->references[current_.value]=OriginalCellReference{*cell,kind,expression};
     return *flow_.cells[cell->value];
   }
   void CopyInputs() {

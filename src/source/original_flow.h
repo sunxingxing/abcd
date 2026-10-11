@@ -3,9 +3,24 @@
 #include "tree_checks.h"
 #include "abcd/analysis/value_ir.h"
 #include "truth_domains.h"
+#include "cell_plan.h"
 #include <memory>
 namespace abcd::source {
 struct TreeFlow;
+// Allocation sites identify dynamic cell families, not one scalar value or
+// one invocation's unit. The verified declaration and source scope are kept
+// separate: scope entry allocates a source unit, declaration initializes it.
+struct OriginalCellBinding {
+  CellStorage storage;
+  SymbolId binding;
+  ScopeId scope;
+  std::optional<StmtId> declaration;
+};
+struct OriginalCellReference {CellId cell;CellAccessKind kind;ExprId expression;};
+struct OriginalCells {
+  std::vector<OriginalCellBinding> bindings; // CellId indexed.
+  std::vector<std::optional<OriginalCellReference>> references; // OpId indexed.
+};
 struct OriginalResultDefinition {analysis::OpId operation;analysis::ValueId value;};
 struct OriginalPhiDefinition {analysis::ValueId value;analysis::IncomingKey incoming;};
 struct OriginalSavedDefinition {
@@ -96,6 +111,7 @@ struct OriginalFlow {
   // captured input, not the declarative write or its binding activation.
   std::vector<std::optional<OriginalSourceDefinition>> declarations; // StmtId indexed.
   std::vector<std::optional<OriginalCatchBinding>> catches; // SymbolId indexed.
+  std::optional<OriginalCells> cells;
 };
 [[nodiscard]] std::shared_ptr<OriginalFlow> RetainOriginalFlow(
     const analysis::ValueProgram&,const FunctionTree&,TreeFlow&,TreeCheckBudget&);

@@ -72,6 +72,7 @@ struct TreeFlow {
   // Indexed by CellId; recovered from actual allocation-site declarations.
   // These mutable storage identities are not SSA read snapshots.
   std::vector<std::optional<SymbolId>> cells;
+  std::vector<OriginalCellBinding> cell_bindings; // Same verified CellId order.
   // Actual assignment targets, not regenerated BindingPlan identities.
   std::vector<std::optional<SymbolId>> phis;
   // Indexed by the freshly checked PhiCopies bundle ordinal.

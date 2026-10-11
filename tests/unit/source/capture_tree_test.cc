@@ -3,6 +3,8 @@
 #include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/tree_structure.h"
 #include "../../../src/source/function_abi.h"
+#include "../../../src/source/source_variables.h"
+#include "../../../src/source/recovery_flow.h"
 #include "analysis/ssa_fixture.h"
 
 namespace {
@@ -86,11 +88,32 @@ void Cells(std::uint8_t count, CallableKind kind) {
     local_declarations += binding == BindingKind::kLocal;
   }
   test::Check(local_declarations == 1);
+  const auto semantics=std::get<TreeSemantics>(VerifyTreeSemantics(fixture.graph,fixture.control,
+      fixture.evaluation,tree,fixture.Constants()));
+  const auto& original=*semantics.flow.original;test::Check(original.cells.has_value());
+  const auto recovered=std::get<SourceVariables>(PrepareSourceVariables(tree,{},&original));
+  const auto& p=recovered.bindings;
+  LegacyFlowProjection projection{p.aliases,p.literals,p.replacements,p.omitted,p.evaluations,p.normal_stores,
+      p.statements,{},p.storage,p.undefined_stores,p.declaration_values,p.declaration_completions};
+  projection.original=&original;
+  const auto current=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
   for (std::size_t i = 0; i < tree.captures.size(); ++i) {
     const auto& capture = tree.captures[i];
     test::Check(capture.target == CapturedSymbol{kParent, SymbolId{static_cast<std::uint32_t>(i)}});
     test::Check(flow.cells[i + 1] == capture.symbol && tree.symbols[capture.symbol.value].scope == tree.capture_scope);
+    const auto& cell=original.cells->bindings[i+1];
+    test::Check(std::holds_alternative<IncomingCell>(cell.storage)&&cell.binding==capture.symbol&&!cell.declaration);
+    test::Check(cell.scope==tree.symbols[capture.symbol.value].scope);
   }
+  unsigned incoming_references=0;
+  for(unsigned i=0;i<original.cells->references.size();++i) {
+    const auto& raw=original.cells->references[i];if(!raw)continue;
+    if(!std::holds_alternative<IncomingCell>(original.cells->bindings[raw->cell.value].storage))continue;
+    const auto* reference=FindFlowOriginalCellReference(current,OpId{i});test::Check(reference);
+    test::Check(std::holds_alternative<EnclosingBindingLifetime>(current.bindings[reference->binding.value].lifetime));
+    ++incoming_references;
+  }
+  test::Check(incoming_references==2U*count);
   if (count == 0) return;
   test::Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
   auto evaluation = fixture.evaluation;

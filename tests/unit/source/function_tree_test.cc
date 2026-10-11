@@ -302,6 +302,17 @@ FlowConstructionCost OriginalStorePhases(abc::ProfileId profile,bool lexical,uns
   };
   for(const auto store:stores) {
     Check(original.operations[store.value].write.has_value());
+    if(lexical) {
+      Check(original.cells.has_value());
+      const auto& raw=original.cells->references[store.value];Check(raw.has_value());
+      Check(raw->kind==CellAccessKind::kStore);
+      const auto& cell=original.cells->bindings[raw->cell.value];
+      Check(std::holds_alternative<AllocatedCell>(cell.storage)&&cell.declaration.has_value());
+      Check(std::get<DeclarationStmt>(tree.statements[cell.declaration->value].statement).symbol==cell.binding);
+      Check(tree.symbols[cell.binding.value].scope==cell.scope);
+      const auto* reference=FindFlowOriginalCellReference(flow,store);Check(reference);
+      Check(reference->binding==cell.binding&&reference->kind==FlowReferenceKind::kWrite);
+    } else Check(!original.cells);
     const auto& action=flow.original_actions[store.value];Check(action.has_value());
     const auto before=FindOriginalPhase(flow,graph.ops[store.value].block,ExceptionPhase::kBefore,store);Check(before.has_value());
     Check(before==action->before);
@@ -332,6 +343,7 @@ FlowConstructionCost OriginalStorePhases(abc::ProfileId profile,bool lexical,uns
     auto plain=projection;plain.original=nullptr;
     const auto reused=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,plain,{},flow));
     Check(reused.original_actions.empty()&&reused.original_actions.capacity()==0);
+    Check(reused.original_cell_references.empty()&&reused.original_cell_references.capacity()==0);
   }
   if(count>=200)std::cout<<"store phases count="<<count<<" lexical="<<lexical<<" reverse="<<reverse
       <<" operations="<<graph.ops.size()<<" phases="<<original.phases.size()<<" events="<<flow.events.size()
@@ -412,6 +424,29 @@ void OriginalStoreCalls(abc::ProfileId profile,bool reverse,bool split,bool real
     Check(flow.original_exceptions[i]->thrown==action->exceptions.thrown);
   }
   Check(calls==1);
+  Check(original.cells.has_value());
+  unsigned loads=0,physical_loads=0;
+  for(unsigned i=0;i<original.cells->references.size();++i) {
+    const auto& raw=original.cells->references[i];if(!raw||raw->kind!=CellAccessKind::kLoad)continue;
+    ++loads;const OpId operation{i};
+    Check(original.operations[i].intrinsic_expression==raw->expression);
+    const auto* reference=FindFlowOriginalCellReference(flow,operation);
+    if(!reference){Check(!flow.original_actions[i]);continue;}
+    ++physical_loads;const auto& action=flow.original_actions[i];Check(action.has_value());
+    Check(action->before==reference->point);
+    Check(FindOriginalPhase(flow,graph.ops[i].block,ExceptionPhase::kBefore,operation)==action->before);
+    bool committed=false;
+    for(unsigned j=0;j<original.phases.size();++j)if(original.phases[j].operation==operation&&original.phases[j].phase==ExceptionPhase::kCommit) {
+      Check(FindOriginalPhase(flow,WorkBlockId{j},ExceptionPhase::kCommit,operation)==action->normal);committed=true;
+    }
+    Check(committed);
+    auto missing=flow;missing.original_cell_references[i].reset();Check(!FindFlowOriginalCellReference(missing,operation));
+    missing=flow;missing.bindings[reference->binding.value].lifetime=UnmodeledBindingLifetime{};
+    Check(!FindFlowOriginalCellReference(missing,operation));
+    missing=flow;missing.references[missing.original_cell_references[i]->value].kind=FlowReferenceKind::kWrite;
+    Check(!FindFlowOriginalCellReference(missing,operation));
+  }
+  Check(loads==2&&physical_loads>0);
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"profile",static_cast<unsigned>(profile)},{"reverse",reverse},{"split",split},{"reallocated",reallocated}}<<'\n';
 }

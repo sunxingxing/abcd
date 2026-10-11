@@ -585,6 +585,66 @@ void CandidatePlan(bool reverse) {
   Check(!trial.initialized_reads[f.reads[0].value]);
   Check(trial.expressions.evaluations[f.reads[0].value]==ExpressionEvaluation::kRequired);
 }
+// Reference identity is independent of value replacement and InitializeBinding.
+// The same producer must rebuild these facts for a candidate even when its
+// legacy adapter still describes the committed plan.
+void OriginalCellReferences(bool reverse) {
+  Fixture f(1,reverse);const auto read=f.reads[0];const analysis::OpId operation{0};
+  OriginalOperation raw{};raw.life=analysis::ValueLife::kLive;
+  raw.normal=raw.before_throw=analysis::LanguageEffect::kNone;
+  raw.exceptional=analysis::ExceptionalCompletion::kImpossible;
+  raw.expression=raw.intrinsic_expression=read;
+  f.original.operations.push_back(raw);
+  f.original.phases={{{0},{0},analysis::ExceptionPhase::kBefore,operation},
+      {{1},{0},analysis::ExceptionPhase::kCommit,operation}};
+  f.original.cells.emplace();
+  f.original.cells->bindings.push_back({AllocatedCell{{0},{0}},SymbolId{1},ScopeId{1},f.declarations[0]});
+  f.original.cells->references.push_back(OriginalCellReference{{0},CellAccessKind::kLoad,read});
+  const auto projection=f.Projection();
+  const auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  const auto* reference=FindFlowOriginalCellReference(current.flow,operation);Check(reference);
+  Check(current.flow.original_actions[0]&&current.flow.original_actions[0]->before==reference->point);
+  Check(current.initialized_reads[read.value]);
+  // A literal is a value, not an access to the original unit. A candidate
+  // must withdraw the physical proof and effect cap.
+  f.plan.read_literals[read.value]=PrimitiveId{1};
+  const auto literal=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(!FindFlowOriginalCellReference(literal.flow,operation));
+  Check(!literal.flow.original_actions[0]&&!literal.flow.original_effects[read.value]);
+  const auto phases=f.original.phases;f.original.phases.clear();
+  const auto normal_literal=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(normal_literal.flow.original_actions.empty());
+  Check(!FindFlowOriginalCellReference(normal_literal.flow,operation)&&!normal_literal.flow.original_effects[read.value]);
+  f.original.phases=phases;
+  f.plan.read_literals[read.value].reset();
+  f.plan.read_bindings[1]=SymbolId{0};
+  const auto alias=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(!FindFlowOriginalCellReference(alias.flow,operation));
+  Check(!alias.flow.original_actions[0]&&!alias.flow.original_effects[read.value]);
+  f.plan.read_bindings[1].reset();
+  // Omitting initialization preserves the referent, but makes GetValue throw.
+  // Raw LDLEXVAR's no-throw fact cannot erase the source lexical obligation.
+  f.plan.omitted[f.declarations[0].value]=1;
+  const auto uninitialized=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));
+  Check(FindFlowOriginalCellReference(uninitialized.flow,operation));
+  Check(!uninitialized.initialized_reads[read.value]);
+  Check(uninitialized.expressions.evaluations[read.value]==ExpressionEvaluation::kRequired);
+  auto missing=current.flow;missing.bindings[1].lifetime=CompletionOnlyLifetime{};
+  Check(!FindFlowOriginalCellReference(missing,operation));
+  missing=current.flow;missing.scopes.reset();
+  Check(!FindFlowOriginalCellReference(missing,operation));
+  missing=current.flow;std::get<ScopeBindingLifetime>(missing.bindings[1].lifetime).scope=ScopeId{0};
+  Check(!FindFlowOriginalCellReference(missing,operation));
+  missing=current.flow;missing.references[missing.original_cell_references[0]->value].binding=SymbolId{0};
+  Check(!FindFlowOriginalCellReference(missing,operation));
+  missing=current.flow;missing.references[missing.original_cell_references[0]->value].site=f.values[0];
+  Check(!FindFlowOriginalCellReference(missing,operation));
+  // Missing raw ownership is released even when a previous owner had cells.
+  auto plain=projection;plain.original=nullptr;
+  plain.evaluations=current.expressions.evaluations;plain.normal_stores=current.expressions.normal_stores;
+  const auto reused=std::get<RecoveryFlow>(BuildRecoveryFlow(f.tree,plain,{},current.flow));
+  Check(reused.original_cell_references.empty()&&reused.original_cell_references.capacity()==0);
+}
 // Each candidate facet replaces a different semantic action. The old adapter
 // deliberately retains the committed arrays; expectations come from lexical
 // InitializeBinding versus ordinary PutValue and from actual retained calls.
@@ -2213,6 +2273,8 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
+  OriginalCellReferences(false);OriginalCellReferences(true);
+  if(argc==2&&std::string_view(argv[1])=="--cell-references")return 0;
   if(argc==2&&std::string_view(argv[1])=="--control-phases") {
     Check(PureControlPhases(false)==PureControlPhases(true));return 0;
   }

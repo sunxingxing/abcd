@@ -187,6 +187,149 @@ class FlowBuilder {
       }
     }
     copy(result.statements,statements_);copy(result.expressions,expressions_);
+    const auto& scopes=projection_.source_scopes;
+    RequireTree(scopes.occurrences.empty() || scopes.occurrences.size()==tree_.statements.size(),Error::kOwnership);
+    RequireTree(scopes.bindings.empty() || scopes.bindings.size()==tree_.symbols.size(),Error::kOwnership);
+    RequireTree(scopes.allocations.empty() || scopes.allocations.size()==scopes.regions.size(),Error::kOwnership);
+    RequireTree(scopes.unique_spellings.empty() || scopes.unique_spellings.size()==tree_.symbols.size(),Error::kOwnership);
+    RequireTree(scopes.spellings.empty()||scopes.spellings.size()==tree_.symbols.size(),Error::kOwnership);
+    RequireTree(scopes.names.empty()||scopes.names.size()==tree_.names.size(),Error::kOwnership);
+    Resize(result.source_regions,scopes.regions.size());std::copy(scopes.regions.begin(),scopes.regions.end(),result.source_regions.begin());
+    Resize(result.source_occurrences,scopes.occurrences.size());std::copy(scopes.occurrences.begin(),scopes.occurrences.end(),result.source_occurrences.begin());
+    copy(result.source_spellings,scopes.spellings);copy(result.source_name_spellings,scopes.names);
+    Resize(result.bindings,tree_.symbols.size());
+    for(std::size_t i=0;i<tree_.symbols.size();++i) {
+      budget_.Step();result.bindings[i]={tree_.symbols[i].kind,
+          !projection_.private_bindings.empty() && projection_.private_bindings[i]
+              ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
+      const auto scope=tree_.symbols[i].scope;
+      if(scope_lifetimes_[scope.value]) {
+        result.bindings[i].lifetime=*scope_lifetimes_[scope.value];
+        result.bindings[i].allocation=scope_lifetimes_[scope.value]->enter;
+      }
+      else switch(tree_.symbols[i].kind) {
+        case BindingKind::kParameter:case BindingKind::kFunctionSelf:
+        case BindingKind::kCapture:case BindingKind::kModule:
+          result.bindings[i].lifetime=EnclosingBindingLifetime{};break;
+        case BindingKind::kLocal:case BindingKind::kCompilerTemporary:
+        case BindingKind::kCatchParameter:
+          result.bindings[i].lifetime=UnmodeledBindingLifetime{};break;
+      }
+      if(!projection_.stable_entries.empty())result.bindings[i].stable_entry=projection_.stable_entries[i]!=0;
+      if(!scopes.unique_spellings.empty())result.bindings[i].unique_spelling=scopes.unique_spellings[i]!=0;
+      if(!scopes.bindings.empty()) {
+        result.bindings[i].scope=scopes.bindings[i];
+        if(const auto region_id=result.BindingRegion(SymbolId{static_cast<std::uint32_t>(i)})) {
+          RequireTree(region_id->value<result.source_regions.size(),Error::kOwnership);
+          const auto& region=result.source_regions[region_id->value];
+          RequireTree(!scopes.occurrences.empty()&&region.first<region.last,Error::kOwnership);
+          if(std::holds_alternative<ProjectedBindingScope>(result.bindings[i].scope)) {
+            // Current source ownership replaces the original allocation site.
+            // Lexical containment alone cannot certify a projected unit.
+            result.bindings[i].lifetime=UnmodeledBindingLifetime{};result.bindings[i].allocation.reset();
+            if(!scopes.allocations.empty())std::visit([&](const auto& allocation) {
+              using T=std::decay_t<decltype(allocation)>;
+              if constexpr(std::is_same_v<T,ScopeId>) {
+                RequireTree(allocation.value<scope_lifetimes_.size(),Error::kOwnership);
+                if(scope_lifetimes_[allocation.value]) {
+                  result.bindings[i].lifetime=*scope_lifetimes_[allocation.value];
+                  result.bindings[i].allocation=scope_lifetimes_[allocation.value]->enter;
+                }
+              } else if constexpr(std::is_same_v<T,LegacyLoopAllocation>)
+                result.bindings[i].lifetime=CompletionOnlyLifetime{};
+              else {static_assert(std::is_same_v<T,UnmodeledSourceAllocation>);}
+            },scopes.allocations[region_id->value]);
+          }
+        }
+      }
+      if(const auto& native=native_bindings_[i]) {
+        const auto point=statements_[native->entry.value];
+        RequireTree(result.events[point.value].kind==FlowEventKind::kEnterLoopEnvironment && result.events[point.value].loop_environment==native->loop,Error::kOwnership);
+        result.bindings[i].allocation=point;
+        if(native_scopes_&&result.loops[native->loop.value]&&result.loops[native->loop.value]->entry_allocation)
+          result.bindings[i].lifetime=LoopBindingLifetime{native->loop};
+        else result.bindings[i].lifetime=CompletionOnlyLifetime{};
+      }
+    }
+    // Storage composes identities; immutable read aliases do not manufacture
+    // closed-cell proofs. Any externally reachable canonical member taints its
+    // resolved slot. The canonical producer is shared by current/trial owners.
+    for(std::size_t i=0;i<result.bindings.size();++i){budget_.Step();result.bindings[i].cell_access=projection_.cells->access[i];}
+    for(std::size_t i=0;i<result.bindings.size();++i){
+      budget_.Step();const auto root=Resolve(SymbolId{static_cast<std::uint32_t>(i)});
+      RequireTree(root.value<result.bindings.size(),Error::kBinding);
+      auto& access=result.bindings[root.value].cell_access;
+      access=JoinCellVisibility(*access,projection_.cells->access[i]);
+    }
+    for(auto& binding:result.bindings){budget_.Step();if(binding.MayBeChangedByUserCode())binding.stable_entry=false;}
+    for(const auto& definition:result.definitions) {
+      budget_.Step();auto& binding=result.bindings[definition.binding.value];
+      if(definition.kind==FlowDefinitionKind::kInitializer ||
+          (definition.kind==FlowDefinitionKind::kUndefined && !binding.declaration))
+        {binding.declaration=definition.declaration;binding.initialization=definition.kind;}
+    }
+    // Supplied native declarations supersede original empty placeholders even
+    // after dead-value removal changes Initialize(value) to Initialize(undefined).
+    // Declaration ownership comes from the plan, never definition arena order.
+    for(const auto& definition:result.definitions) {
+      budget_.Step();if(!definition.declaration)continue;
+      const auto statement=definition.declaration->value;
+      const bool native=!projection_.initializers.empty() && projection_.initializers[statement].has_value();
+      const bool outlined=!projection_.declaration_completions.empty() &&
+          projection_.declaration_completions[statement] &&
+          projection_.declaration_completions[statement]->kind==DeclarationCompletionKind::kInitialize;
+      if((native||outlined) && (definition.kind==FlowDefinitionKind::kInitializer || definition.kind==FlowDefinitionKind::kUndefined)) {
+        auto& binding=result.bindings[definition.binding.value];
+        binding.declaration=definition.declaration;binding.initialization=definition.kind;
+        if(native&&scopes.bindings.empty())binding.scope=UnmodeledBindingScope{};
+      }
+    }
+    auto analyzed_names=AnalyzeFlowBindingNames(result,scopes.shadows,budget_.Remaining());
+    if(const auto* error=std::get_if<TreeStructureError>(&analyzed_names))throw *error;
+    auto names=std::get<FlowBindingNames>(std::move(analyzed_names));
+    budget_.Admit(names.allocated_bytes,1);budget_.Step(names.work);
+    result.source_shadows=std::move(names.shadows);result.binding_presence=std::move(names.presence);
+    result.source_names=std::move(names.index);
+    ProjectOriginal();
+    result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return std::move(result);
+  }
+ private:
+  void ProjectOriginalCells() {
+    auto& result=result_;
+    if(!result.original||!result.original->cells) {
+      decltype(result.original_cell_references){}.swap(result.original_cell_references);return;
+    }
+    const auto& cells=*result.original->cells;
+    Resize(result.original_cell_references,cells.references.size());
+    for(auto& reference:result.original_cell_references){budget_.Step();reference.reset();}
+    struct ReferenceSlot {std::optional<SymbolId> binding;std::optional<FlowReferenceId> current;};
+    std::pmr::vector<ReferenceSlot> reads(&memory_),writes(&memory_);
+    reads.resize(tree_.expressions.size());writes.resize(tree_.expressions.size());
+    for(const auto& reference:cells.references) {
+      budget_.Step();if(!reference)continue;
+      RequireTree(reference->cell.value<cells.bindings.size()&&reference->expression.value<reads.size(),Error::kOwnership);
+      auto& slot=reference->kind==CellAccessKind::kLoad?reads[reference->expression.value]:writes[reference->expression.value];
+      const auto binding=cells.bindings[reference->cell.value].binding;
+      RequireTree(!slot.binding||slot.binding==binding,Error::kOwnership);slot.binding=binding;
+    }
+    for(std::size_t i=0;i<result.references.size();++i) {
+      budget_.Step();const auto& reference=result.references[i];const auto* site=std::get_if<ExprId>(&reference.site);
+      if(!site)continue;
+      RequireTree(i<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
+      auto& slot=reference.kind==FlowReferenceKind::kRead?reads[site->value]:writes[site->value];
+      if(slot.binding!=reference.binding)continue;
+      RequireTree(!slot.current,Error::kOwnership);slot.current=FlowReferenceId{static_cast<std::uint32_t>(i)};
+    }
+    for(std::size_t i=0;i<cells.references.size();++i) {
+      budget_.Step();const auto& reference=cells.references[i];if(!reference)continue;
+      auto& current=result.original_cell_references[i];
+      current=(reference->kind==CellAccessKind::kLoad?reads[reference->expression.value]:writes[reference->expression.value]).current;
+      if(!FindFlowOriginalCellReference(result,analysis::OpId{static_cast<std::uint32_t>(i)}))current.reset();
+    }
+  }
+  void ProjectOriginal() {
+    auto& result=result_;
+    ProjectOriginalCells();
     bool controls=false;
     if(result.original)for(const auto& operation:result.original->operations) {
       budget_.Step();if(operation.life==analysis::ValueLife::kLive&&operation.control){controls=true;break;}
@@ -208,6 +351,13 @@ class FlowBuilder {
       budget_.Step();const auto& operation=result.original->operations[i];
       if(operation.life!=analysis::ValueLife::kLive)continue;
       auto& current=result.original_actions[i];
+      if(result.original->cells&&result.original->cells->references[i]&&
+          !FindFlowOriginalCellReference(result,analysis::OpId{static_cast<std::uint32_t>(i)})) {
+        // A known value can replace a read without executing that cell access.
+        // Keep value provenance separate; it cannot lend a physical Before or
+        // exception route to a different unit, literal or omitted write.
+        current.reset();continue;
+      }
       if(operation.abrupt&&operation.statement) {
         RequireTree(operation.statement->value<abrupt_actions_.size(),Error::kOwnership);
         if(const auto& action=abrupt_actions_[operation.statement->value];action&&
@@ -313,6 +463,8 @@ class FlowBuilder {
     if(result.original)for(std::size_t i=0;i<result.original->operations.size();++i) {
       const auto& operation=result.original->operations[i];
       budget_.Step();if(operation.life!=analysis::ValueLife::kLive||!operation.intrinsic_expression)continue;
+      if(result.original->cells&&result.original->cells->references[i]&&
+          !FindFlowOriginalCellReference(result,analysis::OpId{static_cast<std::uint32_t>(i)}))continue;
       // An imported phased action must have its own Before correspondence.
       // Ordinary SSA has no phase table. This obligation excludes borrowing
       // a result/control anchor to suppress a native intrinsic's effects.
@@ -323,112 +475,7 @@ class FlowBuilder {
       const SourceEffects proof{operation.normal,operation.before_throw,operation.exceptional};
       effects=effects?IntersectSourceEffects(*effects,proof):proof;
     }
-    const auto& scopes=projection_.source_scopes;
-    RequireTree(scopes.occurrences.empty() || scopes.occurrences.size()==tree_.statements.size(),Error::kOwnership);
-    RequireTree(scopes.bindings.empty() || scopes.bindings.size()==tree_.symbols.size(),Error::kOwnership);
-    RequireTree(scopes.allocations.empty() || scopes.allocations.size()==scopes.regions.size(),Error::kOwnership);
-    RequireTree(scopes.unique_spellings.empty() || scopes.unique_spellings.size()==tree_.symbols.size(),Error::kOwnership);
-    RequireTree(scopes.spellings.empty()||scopes.spellings.size()==tree_.symbols.size(),Error::kOwnership);
-    RequireTree(scopes.names.empty()||scopes.names.size()==tree_.names.size(),Error::kOwnership);
-    Resize(result.source_regions,scopes.regions.size());std::copy(scopes.regions.begin(),scopes.regions.end(),result.source_regions.begin());
-    Resize(result.source_occurrences,scopes.occurrences.size());std::copy(scopes.occurrences.begin(),scopes.occurrences.end(),result.source_occurrences.begin());
-    copy(result.source_spellings,scopes.spellings);copy(result.source_name_spellings,scopes.names);
-    Resize(result.bindings,tree_.symbols.size());
-    for(std::size_t i=0;i<tree_.symbols.size();++i) {
-      budget_.Step();result.bindings[i]={tree_.symbols[i].kind,
-          !projection_.private_bindings.empty() && projection_.private_bindings[i]
-              ? FlowBindingExposure::kPrivate : FlowBindingExposure::kObservable};
-      const auto scope=tree_.symbols[i].scope;
-      if(scope_lifetimes_[scope.value]) {
-        result.bindings[i].lifetime=*scope_lifetimes_[scope.value];
-        result.bindings[i].allocation=scope_lifetimes_[scope.value]->enter;
-      }
-      else switch(tree_.symbols[i].kind) {
-        case BindingKind::kParameter:case BindingKind::kFunctionSelf:
-        case BindingKind::kCapture:case BindingKind::kModule:
-          result.bindings[i].lifetime=EnclosingBindingLifetime{};break;
-        case BindingKind::kLocal:case BindingKind::kCompilerTemporary:
-        case BindingKind::kCatchParameter:
-          result.bindings[i].lifetime=UnmodeledBindingLifetime{};break;
-      }
-      if(!projection_.stable_entries.empty())result.bindings[i].stable_entry=projection_.stable_entries[i]!=0;
-      if(!scopes.unique_spellings.empty())result.bindings[i].unique_spelling=scopes.unique_spellings[i]!=0;
-      if(!scopes.bindings.empty()) {
-        result.bindings[i].scope=scopes.bindings[i];
-        if(const auto region_id=result.BindingRegion(SymbolId{static_cast<std::uint32_t>(i)})) {
-          RequireTree(region_id->value<result.source_regions.size(),Error::kOwnership);
-          const auto& region=result.source_regions[region_id->value];
-          RequireTree(!scopes.occurrences.empty()&&region.first<region.last,Error::kOwnership);
-          if(std::holds_alternative<ProjectedBindingScope>(result.bindings[i].scope)) {
-            // Current source ownership replaces the original allocation site.
-            // Lexical containment alone cannot certify a projected unit.
-            result.bindings[i].lifetime=UnmodeledBindingLifetime{};result.bindings[i].allocation.reset();
-            if(!scopes.allocations.empty())std::visit([&](const auto& allocation) {
-              using T=std::decay_t<decltype(allocation)>;
-              if constexpr(std::is_same_v<T,ScopeId>) {
-                RequireTree(allocation.value<scope_lifetimes_.size(),Error::kOwnership);
-                if(scope_lifetimes_[allocation.value]) {
-                  result.bindings[i].lifetime=*scope_lifetimes_[allocation.value];
-                  result.bindings[i].allocation=scope_lifetimes_[allocation.value]->enter;
-                }
-              } else if constexpr(std::is_same_v<T,LegacyLoopAllocation>)
-                result.bindings[i].lifetime=CompletionOnlyLifetime{};
-              else {static_assert(std::is_same_v<T,UnmodeledSourceAllocation>);}
-            },scopes.allocations[region_id->value]);
-          }
-        }
-      }
-      if(const auto& native=native_bindings_[i]) {
-        const auto point=statements_[native->entry.value];
-        RequireTree(result.events[point.value].kind==FlowEventKind::kEnterLoopEnvironment && result.events[point.value].loop_environment==native->loop,Error::kOwnership);
-        result.bindings[i].allocation=point;
-        if(native_scopes_&&result.loops[native->loop.value]&&result.loops[native->loop.value]->entry_allocation)
-          result.bindings[i].lifetime=LoopBindingLifetime{native->loop};
-        else result.bindings[i].lifetime=CompletionOnlyLifetime{};
-      }
-    }
-    // Storage composes identities; immutable read aliases do not manufacture
-    // closed-cell proofs. Any externally reachable canonical member taints its
-    // resolved slot. The canonical producer is shared by current/trial owners.
-    for(std::size_t i=0;i<result.bindings.size();++i){budget_.Step();result.bindings[i].cell_access=projection_.cells->access[i];}
-    for(std::size_t i=0;i<result.bindings.size();++i){
-      budget_.Step();const auto root=Resolve(SymbolId{static_cast<std::uint32_t>(i)});
-      RequireTree(root.value<result.bindings.size(),Error::kBinding);
-      auto& access=result.bindings[root.value].cell_access;
-      access=JoinCellVisibility(*access,projection_.cells->access[i]);
-    }
-    for(auto& binding:result.bindings){budget_.Step();if(binding.MayBeChangedByUserCode())binding.stable_entry=false;}
-    for(const auto& definition:result.definitions) {
-      budget_.Step();auto& binding=result.bindings[definition.binding.value];
-      if(definition.kind==FlowDefinitionKind::kInitializer ||
-          (definition.kind==FlowDefinitionKind::kUndefined && !binding.declaration))
-        {binding.declaration=definition.declaration;binding.initialization=definition.kind;}
-    }
-    // Supplied native declarations supersede original empty placeholders even
-    // after dead-value removal changes Initialize(value) to Initialize(undefined).
-    // Declaration ownership comes from the plan, never definition arena order.
-    for(const auto& definition:result.definitions) {
-      budget_.Step();if(!definition.declaration)continue;
-      const auto statement=definition.declaration->value;
-      const bool native=!projection_.initializers.empty() && projection_.initializers[statement].has_value();
-      const bool outlined=!projection_.declaration_completions.empty() &&
-          projection_.declaration_completions[statement] &&
-          projection_.declaration_completions[statement]->kind==DeclarationCompletionKind::kInitialize;
-      if((native||outlined) && (definition.kind==FlowDefinitionKind::kInitializer || definition.kind==FlowDefinitionKind::kUndefined)) {
-        auto& binding=result.bindings[definition.binding.value];
-        binding.declaration=definition.declaration;binding.initialization=definition.kind;
-        if(native&&scopes.bindings.empty())binding.scope=UnmodeledBindingScope{};
-      }
-    }
-    auto analyzed_names=AnalyzeFlowBindingNames(result,scopes.shadows,budget_.Remaining());
-    if(const auto* error=std::get_if<TreeStructureError>(&analyzed_names))throw *error;
-    auto names=std::get<FlowBindingNames>(std::move(analyzed_names));
-    budget_.Admit(names.allocated_bytes,1);budget_.Step(names.work);
-    result.source_shadows=std::move(names.shadows);result.binding_presence=std::move(names.presence);
-    result.source_names=std::move(names.index);
-    result.allocated_bytes=budget_.Bytes();result.work=budget_.Work();return std::move(result);
   }
- private:
   template<class T> void Resize(std::vector<T>& values,std::size_t count) {
     if(count>values.capacity()) {
       budget_.Admit(count,sizeof(T));values.reserve(count);
@@ -1007,6 +1054,25 @@ class FlowBuilder {
   Point entry_{},terminal_{},dispatch_{};
   RecoveryFlow result_;
 };
+}
+const FlowReference* FindFlowOriginalCellReference(const RecoveryFlow& flow,analysis::OpId operation) {
+  if(!flow.original||!flow.original->cells||operation.value>=flow.original_cell_references.size())return nullptr;
+  const auto& cells=*flow.original->cells;
+  if(operation.value>=cells.references.size()||!cells.references[operation.value])return nullptr;
+  const auto& original=*cells.references[operation.value];const auto current=flow.original_cell_references[operation.value];
+  if(!current||current->value>=flow.references.size()||original.cell.value>=cells.bindings.size())return nullptr;
+  const auto& cell=cells.bindings[original.cell.value];const auto& reference=flow.references[current->value];
+  if(cell.binding.value>=flow.bindings.size()||reference.binding!=cell.binding||reference.site!=FlowReferenceSite{original.expression}||
+      reference.kind!=(original.kind==CellAccessKind::kLoad?FlowReferenceKind::kRead:FlowReferenceKind::kWrite))return nullptr;
+  // Identity is separate from initialized value and external visibility. A
+  // projected unit needs its own correspondence; a value alias cannot borrow
+  // the original cell's read/write effects or exception location.
+  const auto& lifetime=flow.bindings[cell.binding.value].lifetime;
+  if(std::holds_alternative<AllocatedCell>(cell.storage)) {
+    const auto* scope=std::get_if<ScopeBindingLifetime>(&lifetime);
+    if(!scope||scope->scope!=cell.scope)return nullptr;
+  } else if(!std::holds_alternative<EnclosingBindingLifetime>(lifetime))return nullptr;
+  return flow.BindingPresence(cell.binding,reference.point,FlowScopePhase::kBefore)==FlowUnitPresence::kActive?&reference:nullptr;
 }
 std::optional<FlowPoint> FindOriginalPhase(const RecoveryFlow& flow,analysis::WorkBlockId block,
     analysis::ExceptionPhase phase,std::optional<analysis::OpId> operation) {

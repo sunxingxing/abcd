@@ -173,6 +173,7 @@ struct FlowReference {
   // Original operand occurrences, distinct from current projected binding.
   std::optional<OriginalInputRange> original;
 };
+struct FlowReferenceId {std::uint32_t value;};
 struct FlowPropertyId {std::uint32_t value=0;auto operator<=>(const FlowPropertyId&)const=default;};
 enum class FlowPropertyPhase : std::uint8_t {kAcquisition,kReceiver,kKey,kAccess};
 struct FlowPropertySite {FlowPropertyId reference;FlowPropertyPhase phase;auto operator<=>(const FlowPropertySite&)const=default;};
@@ -474,6 +475,9 @@ struct RecoveryFlow {
   std::vector<FlowOriginalRouteCoverage> original_handlers; // WorkBlockId indexed.
   std::vector<std::optional<FlowOriginalResult>> original_results; // OpId indexed.
   std::vector<std::optional<FlowOriginalControl>> original_controls; // OpId indexed.
+  // Current physical references to verified cells, allocated only for owners
+  // with raw cell correspondence. Value aliases do not grant unit identity.
+  std::vector<std::optional<FlowReferenceId>> original_cell_references; // OpId indexed.
   std::vector<std::optional<SourceEffects>> original_effects; // ExprId indexed, intrinsic only.
   RouteInputIdentity identity;
   analysis::IrRevision value_revision;
@@ -538,6 +542,7 @@ struct RecoveryFlow {
     analysis::WorkBlockId,analysis::ExceptionPhase,analysis::OpId);
 [[nodiscard]] std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow&,analysis::OpId);
 [[nodiscard]] std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow&,analysis::OpId);
+[[nodiscard]] const FlowReference* FindFlowOriginalCellReference(const RecoveryFlow&,analysis::OpId);
 // Qualified virtual facts for pure raw components. Input completion belongs
 // to the captured source occurrence; domains carry each component's path.
 // Boolean results remain distinct from the native selection result/action.
