@@ -216,7 +216,8 @@ class AliasBinder {
       Require(store && store->slot == write->slot && origin.pc == original.pc &&
           origin.original == original.origin && origin.disposition == analysis::OriginDisposition::kRetained &&
           op.normal == original.effects.normal && op.before_throw == original.effects.before_throw &&
-          op.exceptional == original.effects.exceptional, Error::kCoverage);
+          op.exceptional == original.effects.exceptional &&
+          op.exception_cause == original.effects.exception_cause, Error::kCoverage);
       const auto& use = graph.uses[op.first_use.value];
       const analysis::OpId id{static_cast<std::uint32_t>(i)};
       const auto* owner = std::get_if<analysis::OpId>(&use.owner);

@@ -22,6 +22,7 @@
 #include "../../../src/source/flow_kinds.h"
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/analysis/phased_value_import.h"
+#include "../../../src/analysis/value_rewrite.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
 #include "abcd/analysis/exception_locals.h"
@@ -179,6 +180,38 @@ class Fixture {
   analysis::ValueProgram graph;
   std::vector<ExpressionConstant> constants;
 };
+// Cause evidence must survive both importers and the independent rewrite
+// checker. Dead input slots retain no executable resource-failure assertion.
+void ResourceCauseImports(abc::ProfileId profile,bool unreachable,std::initializer_list<std::uint8_t> allocation) {
+  using namespace analysis;
+  const auto op=[](abc::Opcode code){return static_cast<std::uint8_t>(code);};
+  std::vector<std::uint8_t> bytes;
+  if(unreachable)bytes.push_back(op(abc::Opcode::kRETURNUNDEFINED));
+  bytes.insert(bytes.end(),allocation);
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDTRUE),
+      op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),0,op(abc::Opcode::kPOPLEXENV),op(abc::Opcode::kRETURNUNDEFINED)});
+  const auto body=test::Body(bytes);
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(1,1,{}));
+  const auto semantic=std::get<SemanticMethod>(BuildSemanticMethod(body,profile,frame.registers));
+  const auto proof=std::get<SemanticProof>(VerifySemanticSource(body,semantic,frame.registers,frame.first_parameter.value));
+  const auto graph=std::get<ValueProgram>(ImportNormalValues(body,semantic,proof,frame));
+  Check(!VerifyImportedValues(graph,semantic,proof,frame));
+  std::vector<ValueId> identities;for(unsigned i=0;i<graph.values.size();++i)identities.push_back({i});
+  Check(std::holds_alternative<ValueRewriteProof>(VerifyValueRewrite(graph,graph,identities)));
+  unsigned allocations=0;
+  for(unsigned i=0;i<semantic.instructions.size();++i) {
+    const auto& instruction=semantic.instructions[i];
+    if(!std::holds_alternative<PushEnvironment>(instruction.operation))continue;
+    ++allocations;Check(instruction.effects.exception_cause==ExceptionCause::kResourceExhaustion);
+    const auto site=*graph.input.sites[i];
+    const auto expected=unreachable?ExceptionCause::kUnclassified:ExceptionCause::kResourceExhaustion;
+    Check(graph.ops[site.value].exception_cause==expected);
+    auto changed=graph;changed.ops[site.value].exception_cause=unreachable?ExceptionCause::kResourceExhaustion:ExceptionCause::kUnclassified;
+    Check(VerifyImportedValues(changed,semantic,proof,frame).has_value());
+    Check(std::get<ValueRewriteError>(VerifyValueRewrite(graph,changed,identities))==ValueRewriteError::kEffect);
+  }
+  Check(allocations==1);
+}
 // Decoded stores verify the declaration/assignment publication boundary. Their
 // source commit identity must survive register copies and independent arenas.
 void OriginalBindingStores(abc::ProfileId profile,unsigned count,unsigned copies,bool reverse,bool lexical) {
@@ -420,8 +453,9 @@ void OriginalStoreCalls(abc::ProfileId profile,bool reverse,bool split,bool real
     if(!std::holds_alternative<ValueInvoke>(graph.ops[exit.op.value].operation))continue;
     ++calls;
     Check(action&&flow.original_exceptions[i]);
-    Check(flow.original_exceptions[i]->before==action->before);
-    Check(flow.original_exceptions[i]->thrown==action->exceptions.thrown);
+    const auto& route=std::get<FlowOriginalException>(*flow.original_exceptions[i]);
+    Check(route.before==action->before);
+    Check(route.thrown==action->exceptions.thrown);
   }
   Check(calls==1);
   Check(original.cells.has_value());
@@ -447,6 +481,79 @@ void OriginalStoreCalls(abc::ProfileId profile,bool reverse,bool split,bool real
     Check(!FindFlowOriginalCellReference(missing,operation));
   }
   Check(loads==2&&physical_loads>0);
+  std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
+  if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"profile",static_cast<unsigned>(profile)},{"reverse",reverse},{"split",split},{"reallocated",reallocated}}<<'\n';
+}
+// The raw allocation can fail only outside the excluded-resource contract.
+// Its source scope/initialization is not asserted to be the VM allocation site.
+void OriginalEnvironmentFailures(abc::ProfileId profile,bool reverse,bool split,bool reallocated,bool emit) {
+  using namespace analysis;
+  const auto op=[](abc::Opcode code){return static_cast<std::uint8_t>(code);};
+  const std::uint8_t locals=reallocated?2:1;
+  std::vector<std::uint8_t> bytes{op(abc::Opcode::kNEWLEXENV_IMM8),1,op(abc::Opcode::kLDTRUE),
+      op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),0,op(abc::Opcode::kPOPLEXENV)};
+  if(split) {constexpr std::uint8_t kJumpWidth=2;bytes.insert(bytes.end(),{op(abc::Opcode::kJMP_IMM8),kJumpWidth});}
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDA_V8),locals,op(abc::Opcode::kCALLARG0_IMM8),0});
+  const auto end=static_cast<unsigned>(bytes.size());bytes.push_back(op(abc::Opcode::kRETURN));
+  const auto handler=static_cast<unsigned>(bytes.size());
+  bytes.insert(bytes.end(),{op(abc::Opcode::kLDAI_IMM32),7,0,0,0,op(abc::Opcode::kRETURN)});
+  auto body=test::Body(bytes);abc::TryRegion region;region.offset={0};region.length=end;region.handler_count=1;
+  body.tries.push_back(region);abc::CatchHandler caught;caught.offset={handler};caught.length=bytes.size()-handler;body.handlers.push_back(caught);
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals,1,{}));
+  const auto raw=std::get<ExceptionFlow>(BuildExceptionFlow(body,profile,frame.registers));
+  IdfQuota ssa_work{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(raw,frame.registers,ssa_work));
+  const auto env=std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(raw));
+  const auto lexical=std::get<ExceptionLocals>(ProveExceptionLocals(raw,env));
+  std::vector<EntryValueFact> entries;
+  for(unsigned i=0;i<ssa.Values().size();++i)if(std::holds_alternative<MethodEntry>(ssa.Values()[i].origin))entries.push_back({{i},ValueKinds::Language()});
+  IdfQuota value_work{kDefaultSemanticWork};
+  const auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(raw,ssa,entries,value_work,{},
+      PendingExceptionValues::kLanguage,lexical.loads,{},CallResultValues::kLanguage));
+  const auto proof=std::get<ExceptionInputProof>(VerifyExceptionInputs(raw,ssa,env,values));
+  const PhasedValueInput input{raw,ssa,env,values,proof,frame};const auto graph=std::get<ValueProgram>(ImportPhasedValues(input));
+  const auto evaluation=std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+  const auto regions=std::get<ExceptionPlan>(BuildExceptionPlan(body,graph,input));
+  const auto control=std::get<ExceptionControl>(BuildExceptionControl(body,graph,input,regions));const ExceptionTreeInput context{body,input,regions,control};
+  FunctionSyntax syntax{};syntax.identity.profile=profile;syntax.owner={3};syntax.callable=CallableKind::kFunction;
+  syntax.strictness=Strictness::kStrict;syntax.parameters.resize(1);std::vector<ExpressionConstant> constants(graph.ops.size());
+  auto draft=std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(graph,context,evaluation,syntax,{constants,0}));
+  if(reverse) {
+    Fixture::ReverseSyntax(draft.tree);auto checked=VerifyExceptionTreeSemantics(graph,context,evaluation,draft.tree,{constants,0});
+    Check(std::holds_alternative<TreeSemantics>(checked));draft.flow=std::get<TreeSemantics>(std::move(checked)).flow;
+  }
+  const auto& tree=draft.tree;const auto& original=*draft.flow->original;
+  const auto recovered=std::get<SourceVariables>(PrepareSourceVariables(tree,{},&original));const auto& p=recovered.bindings;
+  LegacyFlowProjection projection{p.aliases,p.literals,p.replacements,p.omitted,p.evaluations,p.normal_stores,p.statements,{},p.storage,p.undefined_stores,p.declaration_values,p.declaration_completions};
+  projection.original=&original;const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));
+  unsigned resources=0,language=0;
+  Check(original.exception_causes.size()==original.exceptional_exits.size());
+  for(unsigned i=0;i<original.exceptional_exits.size();++i) {
+    const auto& exit=original.exceptional_exits[i];const auto& operation=graph.ops[exit.op.value];
+    Check(original.exception_causes[i]==operation.exception_cause);
+    Check(exit.handler&&flow.original_handlers[exit.handler->entry.value]==FlowOriginalRouteCoverage::kComplete);
+    if(std::holds_alternative<ValueEnvironmentPush>(operation.operation)) {
+      ++resources;Check(operation.exception_cause==ExceptionCause::kResourceExhaustion);
+      Check(flow.original_exceptions[i]&&std::holds_alternative<FlowExcludedResourceFailure>(*flow.original_exceptions[i]));
+      Check(!flow.original_actions[exit.op.value]);
+      Check(!FindOriginalPhase(flow,operation.block,ExceptionPhase::kBefore,exit.op));
+      auto wrong=graph;wrong.ops[exit.op.value].exception_cause=ExceptionCause::kUnclassified;
+      Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(wrong,input)));
+      auto absent=original;absent.exception_causes.clear();auto candidate=projection;candidate.original=&absent;
+      const auto gap=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,candidate));
+      Check(!gap.original_exceptions[i]);
+      Check(gap.original_handlers[exit.handler->entry.value]==FlowOriginalRouteCoverage::kUnmodeled);
+    } else {
+      ++language;Check(operation.exception_cause==ExceptionCause::kUnclassified);
+      Check(flow.original_exceptions[i]&&std::holds_alternative<FlowOriginalException>(*flow.original_exceptions[i]));
+      auto wrong=graph;wrong.ops[exit.op.value].exception_cause=ExceptionCause::kResourceExhaustion;
+      Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(wrong,input)));
+    }
+  }
+  Check(resources==1&&language==1);
+  const auto exact=SemanticBudget{flow.allocated_bytes,flow.work};
+  Check(std::holds_alternative<RecoveryFlow>(BuildRecoveryFlow(tree,projection,exact)));
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{exact.bytes-1,exact.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{exact.bytes,exact.work-1}))==TreeStructureError::kWorkLimit);
   std::ostringstream output;Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree,output,{}, {},nullptr,&original)));
   if(emit)std::cout<<nlohmann::json{{"source",output.str()},{"profile",static_cast<unsigned>(profile)},{"reverse",reverse},{"split",split},{"reallocated",reallocated}}<<'\n';
 }
@@ -962,8 +1069,9 @@ void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool 
     // coverage of its raw expression does not manufacture a current action.
     if(!before) {Check(!m.flow.original_exceptions[i]);continue;}
     const auto& route=m.flow.original_exceptions[i];Check(route.has_value());
-    Check(route->before==before);
-    Check(route->thrown==(exit.handler?FindOriginalPhase(m.flow,exit.handler->entry,ExceptionPhase::kCatch):std::optional{m.flow.terminal}));
+    const auto& mapped=std::get<FlowOriginalException>(*route);
+    Check(mapped.before==before);
+    Check(mapped.thrown==(exit.handler?FindOriginalPhase(m.flow,exit.handler->entry,ExceptionPhase::kCatch):std::optional{m.flow.terminal}));
   }
   bool original_catch=false;
   for(const auto& d:m.flow.definitions)if(d.kind==FlowDefinitionKind::kCatch) {
@@ -2055,6 +2163,19 @@ void RetainedReceiverTrees() {
 }
 }  // namespace
 int main(int argc,char** argv) {
+  for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+    // Four pinned lexical allocation encodings, including named metadata and
+    // wide operands. The production classifier consumes their typed meaning.
+    for(const auto allocation:{std::initializer_list<std::uint8_t>{0x09,1},
+        {0xfd,2,1,0},{0xb6,1,0,0},{0xfd,3,1,0,0,0}})
+      for(bool unreachable:{false,true})ResourceCauseImports(profile,unreachable,allocation);
+  if(argc==2&&std::string_view(argv[1])=="--environment-failures") {
+    for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+      for(bool reverse:{false,true})for(bool split:{false,true})for(bool reallocated:{false,true})OriginalEnvironmentFailures(profile,reverse,split,reallocated,true);
+    return 0;
+  }
+  if(argc==1)for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
+    for(bool reverse:{false,true})for(bool split:{false,true})for(bool reallocated:{false,true})OriginalEnvironmentFailures(profile,reverse,split,reallocated,false);
   if(argc==2&&std::string_view(argv[1])=="--store-calls") {
     for(const auto profile:{abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
       for(bool reverse:{false,true})for(bool split:{false,true})for(bool reallocated:{false,true})OriginalStoreCalls(profile,reverse,split,reallocated,true);

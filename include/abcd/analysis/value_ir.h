@@ -295,6 +295,7 @@ struct ValueOp {
   ExceptionalCompletion exceptional;
   OriginId origin;
   ValueLife life = ValueLife::kLive;
+  ExceptionCause exception_cause = ExceptionCause::kUnclassified;
 };
 struct WorkEdge {
   WorkBlockId source;

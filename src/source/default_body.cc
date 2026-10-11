@@ -89,6 +89,7 @@ template<class Proof> class Projection {
         // their values/occurrences are marked removed below, never evaluated.
         op.normal = LanguageEffect::kNone; op.before_throw = LanguageEffect::kNone;
         op.exceptional = ExceptionalCompletion::kImpossible;
+        op.exception_cause = ExceptionCause::kUnclassified;
       }
       // Origins are not relabeled ElidedPure: the signature still owns these
       // PCs, including branch and refined numeric-conversion operations.

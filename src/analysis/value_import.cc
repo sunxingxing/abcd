@@ -349,7 +349,8 @@ std::variant<ValueProgram, ValueImportFailure> ImportNormalValues(
             reachable ? instruction.effects.normal : LanguageEffect::kNone,
             reachable ? instruction.effects.before_throw : LanguageEffect::kNone,
             reachable ? instruction.effects.exceptional : ExceptionalCompletion::kImpossible, {index},
-            reachable ? ValueLife::kLive : ValueLife::kRemoved});
+            reachable ? ValueLife::kLive : ValueLife::kRemoved,
+            reachable ? instruction.effects.exception_cause : ExceptionCause::kUnclassified});
         if (proof.environments.before[index] && instruction.effects.exceptional != ExceptionalCompletion::kImpossible)
           graph.exceptional_exits.push_back({{index}, {index}, instruction.effects.before_throw});
       }

@@ -172,7 +172,7 @@ std::variant<ValueRewriteProof, ValueRewriteError> VerifyValueRewrite(
       Require(a.operation == b.operation && a.block == b.block && a.order == b.order &&
           a.first_use == b.first_use && a.use_count == b.use_count && a.result == b.result &&
           a.normal == b.normal && a.before_throw == b.before_throw &&
-          a.exceptional == b.exceptional && a.origin == b.origin, Error::kEffect);
+          a.exceptional == b.exceptional && a.exception_cause == b.exception_cause && a.origin == b.origin, Error::kEffect);
       Require(a.life != ValueLife::kRemoved || b.life == ValueLife::kRemoved, Error::kEffect);
       if (a.life == ValueLife::kLive && b.life == ValueLife::kRemoved)
         Require(CanErasePureOp(a), Error::kEffect);

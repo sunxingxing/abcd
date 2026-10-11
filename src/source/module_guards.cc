@@ -37,7 +37,8 @@ class Correspondence {
     Require(origin.site.value == site.value && origin.pc == original.pc &&
         origin.original == original.origin && origin.disposition == analysis::OriginDisposition::kRetained, Error::kOrigin);
     Require(op.normal == original.effects.normal && op.before_throw == original.effects.before_throw &&
-        op.exceptional == original.effects.exceptional, Error::kEffects);
+        op.exceptional == original.effects.exceptional &&
+          op.exception_cause == original.effects.exception_cause, Error::kEffects);
     return id;
   }
   ModuleReadSite Pair(const analysis::ModuleReadFact& fact) {

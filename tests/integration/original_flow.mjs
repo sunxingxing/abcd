@@ -123,6 +123,28 @@ for(const row of stored) {
 }
 assert.equal(stored.length,24);
 console.log(`${stored.length} decoded store sources / ${stored.length*storeFactories.length} independent execution comparisons / ${storeMutants} adverse mutants`);
+const environments=execFileSync(process.argv[2],['--environment-failures'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
+function environmentEquivalent(source) {
+  const generated=Function('return ('+source+')')();
+  const reference=function(invoke){try{return invoke();}catch(error){return 7;}};
+  for(const factory of storeFactories)assert.deepEqual(storeOutcome(generated,factory),storeOutcome(reference,factory));
+}
+let environmentMutants=0;
+for(const row of environments) {
+  environmentEquivalent(row.source);
+  if(!row.reverse&&!row.split&&!row.reallocated) {
+    const wrapped='('+row.source+')',all=nodes(parseJavaScript(wrapped));
+    const call=all.find(node=>node.type==='CallExpression');
+    const caught=all.find(node=>node.type==='CatchClause');
+    const returned=nodes(caught.body).find(node=>node.type==='ReturnStatement');
+    assert.ok(call&&returned?.argument);
+    const bypass=wrapped.slice(0,call.start)+'7'+wrapped.slice(call.end);
+    const changed=wrapped.slice(0,returned.argument.start)+'8'+wrapped.slice(returned.argument.end);
+    assert.throws(()=>environmentEquivalent(bypass));assert.throws(()=>environmentEquivalent(changed));environmentMutants+=2;
+  }
+}
+assert.equal(environments.length,24);
+console.log(`${environments.length} decoded environment-failure sources / ${environments.length*storeFactories.length} independent execution comparisons / ${environmentMutants} adverse mutants`);
 const controls=execFileSync(process.argv[3],['--control-paths'],{encoding:'utf8',maxBuffer:16_000_000}).trim().split('\n').map(JSON.parse);
 const controlReferences=[
   function(input){let saved;if(false)saved=input();else saved=7;return saved;},

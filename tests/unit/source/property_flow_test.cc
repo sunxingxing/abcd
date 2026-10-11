@@ -119,7 +119,8 @@ void PropertyState(bool emit,bool computed,bool read,bool reverse) {
   Check(FindOriginalPhase(phased,{0},analysis::ExceptionPhase::kBefore,analysis::OpId{0})==native.before);
   Check(FindOriginalPhase(phased,{1},analysis::ExceptionPhase::kCommit,analysis::OpId{0})==native.normal);
   Check(phased.original_exceptions.size()==1&&phased.original_exceptions[0]);
-  Check(phased.original_exceptions[0]->before==reference.receiver&&phased.original_exceptions[0]->thrown==reference.exceptions.thrown);
+  const auto& route=std::get<FlowOriginalException>(*phased.original_exceptions[0]);
+  Check(route.before==reference.receiver&&route.thrown==reference.exceptions.thrown);
   auto escaping=raw;escaping.exceptional_exits[0].handler.reset();
   auto escaping_projection=projection;escaping_projection.original=&escaping;
   const auto mismatch=std::get<RecoveryFlow>(BuildRecoveryFlow(f.tree,escaping_projection));

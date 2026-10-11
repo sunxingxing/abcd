@@ -156,6 +156,11 @@ struct FlowOriginalAction {FlowPoint before;std::optional<FlowPoint> normal;Flow
 // normal value result; its destination retains the current cleanup route.
 struct FlowAbruptAction {FlowPoint point,destination;FlowCompletion completion;FlowExceptionContext exceptions;};
 struct FlowOriginalException {FlowPoint before,thrown;};
+// A contract-excluded failure has no physical source throw point. Keeping it
+// distinct from both a mapped route and missing evidence prevents borrowing
+// a declaration/scope entry as the VM allocation action.
+struct FlowExcludedResourceFailure {};
+using FlowOriginalFailure=std::variant<FlowOriginalException,FlowExcludedResourceFailure>;
 enum class FlowOriginalRouteCoverage : std::uint8_t {kUnmodeled,kComplete};
 struct FlowReference {
   FlowPoint point;
@@ -471,7 +476,7 @@ struct RecoveryFlow {
   // Exit and handler facts are produced once from checked raw identities and
   // native completion contexts. Catch caps consume this closure in O(1), not
   // a per-definition walk through the original graph or a layout predicate.
-  std::vector<std::optional<FlowOriginalException>> original_exceptions; // Exceptional exit indexed.
+  std::vector<std::optional<FlowOriginalFailure>> original_exceptions; // Exceptional exit indexed.
   std::vector<FlowOriginalRouteCoverage> original_handlers; // WorkBlockId indexed.
   std::vector<std::optional<FlowOriginalResult>> original_results; // OpId indexed.
   std::vector<std::optional<FlowOriginalControl>> original_controls; // OpId indexed.

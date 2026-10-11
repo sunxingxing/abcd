@@ -310,6 +310,11 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.normal = effects.before_throw |
                            LanguageEffect::kEnvironmentWrite;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+          // RuntimeNewLexicalEnv allocates internal Hole-filled storage; it
+          // invokes no language conversion, property access or user callback.
+          // This does not make allocation, environment commit or cell initial-
+          // ization one action. Resource policy is applied by the source owner.
+          effects.exception_cause = ExceptionCause::kResourceExhaustion;
         } else if constexpr (std::is_same_v<T, PopEnvironment>) {
           effects.normal = LanguageEffect::kEnvironmentRead |
                            LanguageEffect::kEnvironmentWrite;

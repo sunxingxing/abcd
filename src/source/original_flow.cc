@@ -38,6 +38,19 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
   copy(result->blocks,graph.blocks);copy(result->edges,graph.edges);
   result->edge_controls=std::move(flow.edge_controls);
   copy(result->exceptional_exits,graph.exceptional_exits);copy(result->phases,graph.phases);copy(result->origins,graph.origins);
+  bool causes=false;
+  for(const auto& exit:graph.exceptional_exits) {
+    budget.Step();RequireTree(exit.op.value<graph.ops.size(),TreeStructureError::kOwnership);
+    if(graph.ops[exit.op.value].exception_cause!=analysis::ExceptionCause::kUnclassified){causes=true;break;}
+  }
+  if(causes) {
+    budget.Array(result->exception_causes,graph.exceptional_exits.size());
+    for(std::size_t i=0;i<graph.exceptional_exits.size();++i) {
+      budget.Step();const auto op=graph.exceptional_exits[i].op;
+      RequireTree(op.value<graph.ops.size(),TreeStructureError::kOwnership);
+      result->exception_causes[i]=graph.ops[op.value].exception_cause;
+    }
+  }
   // Transfer the verified table; its allocation was already admitted with TreeFlow.
   result->definitions=std::move(flow.definitions);
   result->declarations=std::move(flow.declarations);
@@ -111,6 +124,7 @@ void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
       (original.definitions.empty()||original.definitions.size()==tree.expressions.size())&&
       (original.declarations.empty()||original.declarations.size()==tree.statements.size())&&
       (original.catches.empty()||original.catches.size()==tree.symbols.size())&&
+      (original.exception_causes.empty()||original.exception_causes.size()==original.exceptional_exits.size())&&
       (!original.cells||original.cells->references.size()==original.operations.size())&&
       (original.edge_controls.empty()||original.edge_controls.size()==original.edges.size())&&
       original.statements==tree.statements.size()&&original.bindings==tree.symbols.size(),TreeStructureError::kOwnership);

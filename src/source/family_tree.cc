@@ -435,7 +435,8 @@ class FamilyTrees {
       Require(original_check && original_check->kind == check->kind && origin.pc == original.pc &&
           origin.original == original.origin && origin.disposition == analysis::OriginDisposition::kRetained &&
           op.normal == original.effects.normal && op.before_throw == original.effects.before_throw &&
-          op.exceptional == original.effects.exceptional, FamilyTreeError::kContext);
+          op.exceptional == original.effects.exceptional &&
+          op.exception_cause == original.effects.exception_cause, FamilyTreeError::kContext);
       guards.push_back({static_cast<std::uint32_t>(i)});
     }
     return guards;

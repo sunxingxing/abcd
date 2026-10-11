@@ -669,7 +669,7 @@ class CompletionBuilder {
         std::holds_alternative<ValueThrow>(left.operation)) : CleanupOperation(left.operation);
     if (!supported || !SameCleanupOperation(left.operation, right.operation) ||
         left.normal != right.normal || left.before_throw != right.before_throw ||
-        left.exceptional != right.exceptional || left.use_count != right.use_count ||
+        left.exceptional != right.exceptional || left.exception_cause != right.exception_cause || left.use_count != right.use_count ||
         left.result.has_value() != right.result.has_value() || exits_[a.value].has_value() != exits_[b.value].has_value()) return false;
     if (exits_[a.value]) {
       const auto& x = graph_.exceptional_exits[*exits_[a.value]];

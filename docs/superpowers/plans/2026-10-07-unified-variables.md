@@ -19,6 +19,17 @@
 - Existing byte/work budget covers retained graph, sparse facts and temporary growth.
 - Every verified coherent commit refreshes status.md; whole milestone is not complete until old decisions exit.
 
+2026-10-11 continuation, rules295: propagate typed failure cause from the pinned
+semantic adapter through normal/phased import, independent correspondence and
+rewrite checks, and source exception coverage. A source contract can exclude a
+proved resource failure without inventing a physical source allocation point.
+The ordinary environment allocation's failure-cause obligation is discharged in
+that contract; its successful state transition, source unit/lifetime mapping,
+remaining controls and protocol/suspension correspondence remain Task 1 work.
+Current/trial projection uses one provider and still withdraws catch facts when
+new source failures or changed paths invalidate their premises. No new mainline
+delivery is closed by this failure-cause integration.
+
 2026-10-11 continuation, rules294: retain verified raw cell allocation/incoming
 identity, source unit scope and declaration separately; join lexical references
 to current common reference/lifetime facts after those facts are finalized.

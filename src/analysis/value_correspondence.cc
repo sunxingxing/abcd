@@ -176,7 +176,8 @@ std::optional<ValueImportFailure> VerifyImportedValues(
         op.life != (reachable ? ValueLife::kLive : ValueLife::kRemoved) ||
         op.normal != (reachable ? input.effects.normal : LanguageEffect::kNone) ||
         op.before_throw != (reachable ? input.effects.before_throw : LanguageEffect::kNone) ||
-        op.exceptional != (reachable ? input.effects.exceptional : ExceptionalCompletion::kImpossible) || op.first_use.value != use_index)
+        op.exceptional != (reachable ? input.effects.exceptional : ExceptionalCompletion::kImpossible) ||
+        op.exception_cause != (reachable ? input.effects.exception_cause : ExceptionCause::kUnclassified) || op.first_use.value != use_index)
       return fail(Error::kInputMismatch, input.pc);
     if (op.block.value >= graph.blocks.size()) return fail(Error::kInvalidGraph, input.pc);
     const auto& block = graph.blocks[op.block.value];

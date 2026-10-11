@@ -1739,7 +1739,7 @@ std::pair<std::uint64_t,std::size_t> ProjectionClosure(unsigned depth,bool known
 // statement in that returning arm is omitted. Impossible failures must not
 // permanently invalidate the proof published for the reachable handler.
 enum class RawClosureEdit {kNone,kUnknownRead,kChangedThrowPath};
-std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosureEdit edit=RawClosureEdit::kNone,bool reverse=false,unsigned copies=1) {
+std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosureEdit edit=RawClosureEdit::kNone,bool reverse=false,unsigned copies=1,bool resource=false) {
   Fixture f(0,false);auto& t=f.tree;
   const auto expr=[&](TreeExpression v,FlowValueEquation q=UnknownFlowValue{}){ExprId x{static_cast<unsigned>(t.expressions.size())};t.expressions.push_back({v,{0}});f.equations.push_back(q);f.order.push_back(x);return x;};
   const auto stmt=[&](TreeStatement v){StmtId x{static_cast<unsigned>(t.statements.size())};t.statements.push_back({v,{0}});return x;};
@@ -1807,6 +1807,17 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
     f.original.operations[1].expression=map(*f.original.operations[1].expression);
   }
   std::vector<std::uint8_t> stable{1,0,0};auto projection=f.Projection();projection.stable_entries=stable;
+  if(resource) {
+    OriginalOperation allocation{};allocation.block={5};allocation.life=analysis::ValueLife::kLive;
+    allocation.normal=allocation.before_throw=analysis::LanguageEffect::kAllocation;
+    allocation.exceptional=analysis::ExceptionalCompletion::kMayThrow;
+    f.original.operations.push_back(allocation);
+    f.original.phases.push_back({{5},{2},analysis::ExceptionPhase::kBefore,analysis::OpId{2}});
+    f.original.phases.push_back({{6},{2},analysis::ExceptionPhase::kCommit,analysis::OpId{2}});
+    f.original.exceptional_exits.push_back({analysis::OpId{2},{0},analysis::LanguageEffect::kAllocation,
+        analysis::ValueHandler{{{0},{0},{0}},{2}}});
+    f.original.exception_causes={analysis::ExceptionCause::kUnclassified,analysis::ExceptionCause::kResourceExhaustion};
+  }
   Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(t)));
   const auto model=std::get<RecoveryProjection>(PrepareRecoveryProjection(t,projection,f.Input()));
   const auto live=std::get<FlowLiveness>(AnalyzeFlowLiveness(model.flow));
@@ -1814,8 +1825,24 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
   Check(final.expressions[result.value].IsFiniteNumber()==(edit==RawClosureEdit::kNone));
   Check(final.expressions[caught_read.value].IsFiniteNumber()==(edit==RawClosureEdit::kNone));
   Check(model.expressions.kinds==final.expressions);
+  if(resource) {
+    Check(model.flow.original_exceptions.back()&&std::holds_alternative<FlowExcludedResourceFailure>(*model.flow.original_exceptions.back()));
+    Check(!model.flow.original_actions.back());
+    Check(!FindOriginalPhase(model.flow,{5},analysis::ExceptionPhase::kBefore,analysis::OpId{2}));
+    auto observed_tree=t;observed_tree.identity.contract=SourceContract::kLanguageAndHostV1;
+    auto observed_original=f.original;observed_original.identity=observed_tree.identity;
+    auto observed_input=f.Input();observed_input.original=&observed_original;
+    const auto observed=std::get<RecoveryProjection>(PrepareRecoveryProjection(observed_tree,projection,observed_input));
+    Check(!observed.flow.original_exceptions.back());
+    Check(OriginalCatchKinds(observed.flow,*observed_original.catches[2]).IsEmpty());
+    auto unclassified=f.original;unclassified.exception_causes.clear();
+    auto unknown_input=f.Input();unknown_input.original=&unclassified;
+    const auto unknown=std::get<RecoveryProjection>(PrepareRecoveryProjection(t,projection,unknown_input));
+    Check(!unknown.flow.original_exceptions.back());
+    Check(OriginalCatchKinds(unknown.flow,*unclassified.catches[2]).IsEmpty());
+  }
   if(edit==RawClosureEdit::kNone&&copies==1) {
-    Check(model.flow.original_exceptions.size()==1&&model.flow.original_exceptions[0]);
+    Check(model.flow.original_exceptions.size()==(resource?2:1)&&model.flow.original_exceptions[0]);
     auto gap=f.original;gap.operations[1].abrupt.reset();
     const RecoveryExpressionInput incomplete{f.plan,f.equations,f.order,&gap};
     const auto unknown=std::get<RecoveryProjection>(PrepareRecoveryProjection(t,projection,incomplete));
@@ -2273,6 +2300,9 @@ void ActivationSource(unsigned copies,bool split,bool emit) {
 
 }
 int main(int argc,char** argv) {
+  for(bool reverse:{false,true})for(bool changed:{false,true})for(auto edit:{RawClosureEdit::kNone,RawClosureEdit::kUnknownRead,RawClosureEdit::kChangedThrowPath})
+    RawProjectionClosure(changed,edit,reverse,1,true);
+  if(argc==2&&std::string_view(argv[1])=="--resource-failures")return 0;
   OriginalCellReferences(false);OriginalCellReferences(true);
   if(argc==2&&std::string_view(argv[1])=="--cell-references")return 0;
   if(argc==2&&std::string_view(argv[1])=="--control-phases") {

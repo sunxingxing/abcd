@@ -7,15 +7,15 @@ load. It does not emit closure source or traverse runtime environment objects.
 
 Pinned `ecmascript/interpreter/interpreter-inl.cpp` reference behavior:
 
-- NEWLEXENV and named variants near 4583-4639 allocate a child environment,
+- NEWLEXENV and named variants allocate a child environment,
   install it as current and write its internal identity to the accumulator.
   Named variants retain a literal-array pool slot, not a direct entity offset.
 - Deprecated LDLEXENV loads current environment identity into the accumulator.
-- POPLEXENV variants near 4648-4660 install the parent without changing acc.
-- LDLEXVAR near 6067-6116 follows exactly `level` parents, then loads `slot` to
+- POPLEXENV variants install the parent without changing acc.
+- LDLEXVAR follows exactly `level` parents, then loads `slot` to
   acc. Level zero selects the current environment.
-- Modern STLEXVAR near 6118-6170 writes acc into the addressed slot and leaves
-  acc unchanged. Deprecated variants near 6172-6231 use an explicit register
+- Modern STLEXVAR writes acc into the addressed slot and leaves
+  acc unchanged. Deprecated variants use an explicit register
   as the value source, also preserving acc.
 
 `FastRuntimeStub::NewLexicalEnv` connects the parent and global environment.
@@ -38,6 +38,32 @@ Do not expand a 65,535-depth address by walking a chain per use: environment
 resolution needs indexed ancestry or another bounded scalable representation.
 This lifting primitive itself is constant time/storage independent of depth,
 slot count and method size.
+
+## Failure cause in the common semantic model
+
+`SemanticEffects::exception_cause` records a separately proved cause; an
+allocation-effect bit alone never proves that all failures are resource failures.
+The pinned adapter classifies ordinary `PushEnvironment` as resource exhaustion.
+Other operations remain unclassified until their own semantic contract supplies
+the fact. The claim assumes the existing validated bytecode/metadata and ordinary
+environment contract, not malformed metadata or observable VM/debugger internals.
+
+Evidence at the locked ets_runtime commit:
+[interpreter handlers](https://github.com/openharmony/arkcompiler_ets_runtime/blob/f04900cf951c66c2ea18b2bab5b591d5336c34b9/ecmascript/interpreter/interpreter-inl.cpp),
+[runtime allocation helpers](https://github.com/openharmony/arkcompiler_ets_runtime/blob/f04900cf951c66c2ea18b2bab5b591d5336c34b9/ecmascript/stubs/runtime_stubs-inl.h), and
+[scope metadata extraction](https://github.com/openharmony/arkcompiler_ets_runtime/blob/f04900cf951c66c2ea18b2bab5b591d5336c34b9/ecmascript/jspandafile/scope_info_extractor.cpp).
+The call chain allocates internal storage, links its environment, and for named
+forms reads scope metadata. It does not perform a language conversion, property
+getter or user call. This is the basis for the failure classification; the
+interpreter still installs the new environment only after success.
+
+Normal/phased import, independent correspondence and rewrite checks preserve the
+cause. Recovery distinguishes a mapped throw, a contract-excluded resource
+failure, and missing correspondence. Exclusion requires the explicit existing
+source resource policy and grants no physical allocation point, normal result,
+source initialization or binding-lifetime proof. The current and trial owners
+consume the same failure product. This completes the failure-cause path only;
+the raw allocation action's source/lifetime correspondence remains separate.
 
 Tests decode every supported encoding, distinguish modern/deprecated sources,
 check packed-nibble ordering, optional scope references, register bounds,

@@ -102,6 +102,10 @@ struct OriginalFlow {
   // branch successors belong to Commit, not to the operation's Before block.
   std::vector<std::optional<analysis::OpId>> edge_controls; // EdgeId indexed.
   std::vector<analysis::ValueExceptionalExit> exceptional_exits;
+  // Indexed by exceptional exit, absent when all causes are unclassified.
+  // This is imported semantic evidence, never inferred from printed source
+  // or from an allocation-effect bit which may also accompany user callbacks.
+  std::vector<analysis::ExceptionCause> exception_causes;
   std::vector<analysis::ValuePhaseSite> phases;
   std::vector<analysis::ValueOrigin> origins;
   std::vector<OriginalInput> inputs;

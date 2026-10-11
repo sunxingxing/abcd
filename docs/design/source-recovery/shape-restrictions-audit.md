@@ -1,5 +1,19 @@
 # 按用户要求进行的恢复条件审计
 
+规则295：异常原因成为语义IR事实。固定adapter为普通环境分配发表资源
+失败原因；不是看见Allocation效果就排除异常，其他尚未证明的操作仍为
+Unclassified。normal/phased导入、独立对应和重写校验、派生/模块/family
+原始效果边界均保留此事实；签名迁移留下的非执行tombstone清除原因。
+共同异常对应区分物理抛出路径、合同排除的资源失败、尚无对应。资源失败
+只有在既定SourceContract排除资源失败时才能退出catch覆盖缺口；此处
+原先无条件要求每个raw异常出口都有物理source Before的判断退出。
+没有提供Scope/let冒充的分配点，没有改变normal/exceptional效果与成功
+提交顺序，没有根据样本、同块、邻接、名称或opcode序列选择恢复路径。
+当前/候选共享同一生产者；新增source异常或原始抛出路径失效仍撤回catch
+值证明。异常原因表按出口数线性保留，仅有已分类原因的owner分配。
+本次完成异常原因从IR到catch恢复的贯通；原始分配成功动作和动态单元
+对应仍未关闭，不能以资源失败的合同排除替代这些义务。
+
 规则294：已验证的CellId保留原始AllocatedCell/IncomingCell、源码binding、
 scope和声明位置；operand验证一次发表读取/写入的发生位置。共同模型先
 完成当前绑定生命期、名字与presence，再按发生位置、方向和binding建立

@@ -62,11 +62,16 @@ constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
 enum class ExceptionalCompletion : std::uint8_t {
   kImpossible, kMayThrow, kAlwaysThrow
 };
+// The pinned adapter owns the cause, independently of whether an operation
+// throws. Unclassified includes language exceptions and must never be treated
+// as resource-only merely because the operation also allocates.
+enum class ExceptionCause : std::uint8_t { kUnclassified, kResourceExhaustion };
 struct SemanticEffects {
   RegisterEffect normal_registers;
   LanguageEffect normal = LanguageEffect::kNone;
   LanguageEffect before_throw = LanguageEffect::kNone;
   ExceptionalCompletion exceptional = ExceptionalCompletion::kImpossible;
+  ExceptionCause exception_cause = ExceptionCause::kUnclassified;
 };
 struct BranchOperation {
   UnaryExpression predicate;

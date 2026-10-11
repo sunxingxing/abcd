@@ -85,7 +85,7 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
       graph.origins.push_back({{op.value}, instruction.pc, instruction.origin});
       graph.ops.push_back({ImportValueOperation(instruction.operation), block, 0, {}, 0, {},
           instruction.effects.normal, instruction.effects.before_throw,
-          instruction.effects.exceptional, {op.value}});
+          instruction.effects.exceptional, {op.value}, ValueLife::kLive, instruction.effects.exception_cause});
       if (node.exception) {
         std::optional<ValueHandler> handler;
         if (node.exception->target) {

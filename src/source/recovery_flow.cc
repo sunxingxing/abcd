@@ -434,6 +434,14 @@ class FlowBuilder {
       RequireTree(exit.op.value<result.original->operations.size(),Error::kOwnership);
       const auto& operation=result.original->operations[exit.op.value];
       if(operation.life!=analysis::ValueLife::kLive)continue;
+      if(!result.original->exception_causes.empty()&&
+          result.original->exception_causes[i]==analysis::ExceptionCause::kResourceExhaustion&&
+          ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kExcluded) {
+        // The input adapter proves the cause; the explicit source contract
+        // excludes this completion. No current physical action is asserted,
+        // and all ordinary source failures still need their own correspondence.
+        route=FlowExcludedResourceFailure{};continue;
+      }
       const auto& action=result.original_actions[exit.op.value];
       const auto before=FindOriginalPhase(result,operation.block,analysis::ExceptionPhase::kBefore,exit.op);
       const auto target=exit.handler?FindOriginalPhase(result,exit.handler->entry,analysis::ExceptionPhase::kCatch):std::optional{result.terminal};

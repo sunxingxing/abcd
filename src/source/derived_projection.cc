@@ -191,7 +191,8 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
       const auto& origin = graph.origins[op.origin.value];
       Require(origin.site.value == i && origin.pc == original.pc && origin.original == original.origin &&
           origin.disposition == OriginDisposition::kRetained && op.normal == original.effects.normal &&
-          op.before_throw == original.effects.before_throw && op.exceptional == original.effects.exceptional,
+          op.before_throw == original.effects.before_throw && op.exceptional == original.effects.exceptional &&
+          op.exception_cause == original.effects.exception_cause,
           Error::kOrigin);
       if (frame_call) {
         const auto* current = std::get_if<ValueSuperCall>(&op.operation);

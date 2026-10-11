@@ -141,7 +141,7 @@ void CheckOperands(const ValueProgram& graph, const PhasedValueInput& input, Pha
         origin.disposition == OriginDisposition::kRetained && op.origin.value == i &&
         op.operation == ImportValueOperation(instruction.operation) &&
         op.normal == instruction.effects.normal && op.before_throw == instruction.effects.before_throw &&
-        op.exceptional == instruction.effects.exceptional && op.first_use.value == uses,
+        op.exceptional == instruction.effects.exceptional && op.exception_cause == instruction.effects.exception_cause && op.first_use.value == uses,
         Error::kInputMismatch, instruction.pc);
     const auto operands = PhaseOperands(instruction, quota);
     RequirePhase(operands.Write().has_value() == op.result.has_value(), Error::kInputMismatch);
