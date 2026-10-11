@@ -1,6 +1,7 @@
 #include "../../src/source/family_emission.h"
 #include "../../tools/tree_position_json.h"
 #include "analysis/ssa_fixture.h"
+#include "source/input_actions.h"
 
 #include <unistd.h>
 
@@ -203,6 +204,8 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
   const auto& receipt = emission.Receipts().front();
   test::Check(receipt.stage == SourceStage::kPrinted && receipt.coverage == Coverage::kComplete);
   const auto& member = emission.Family().Family().members.front();
+  test::Check(member.flow.original!=nullptr);
+  test::CheckInputActions(member.tree,*member.flow.original);
   test::Check(member.sources && !member.sources->occurrences.empty());
   const auto& mapping = member.sources->occurrences[(overwrite_abi ? 2 : 0) + (global_lookup ? 1 : 0)];
   if (std::holds_alternative<ElidedInstruction>(mapping.target)) {

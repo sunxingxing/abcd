@@ -1306,3 +1306,16 @@ module initialization and phased callbacks/throws/reentry are exercised through
 actual-original printing and independent ESM execution. The remaining R4 entry
 and argument boundaries stay explicitly listed; B/C/D are still open. No fixed65,
 record or paused validation scope is restarted for this constituent obligation.
+
+Rules304 completes the listed native-input boundary obligation inside R4, not
+package B. Verified this/self/realm/Symbol/snapshot occurrences join the existing
+native action projection, along with GlobalRead. Current, literal-replacement,
+recycled-restoration and phased exception/result facts are tested against an
+inventory independent of the action markers. Actual-original generated source
+executes identity, callback/getter failure, reentry and snapshot ABI comparisons.
+Host/ABI premises and common provenance remain separate; a raw action marker is
+not a stable-entry proof. RestArguments remains explicit: invocation binding
+creates its array before a later source read, which cannot impersonate the raw
+allocation boundary. This is R4's existing entry obligation, not a new delivery
+or permission to defer it. B/C/D stay open; fixed65 and record are not repeated
+for this constituent verification. No recovery pass or publication gate changed.

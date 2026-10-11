@@ -227,15 +227,22 @@ class OperandCheck {
       };
       std::visit([&](const auto& operation) {
         using T = std::decay_t<decltype(operation)>;
+        // Verified input reads own native evaluation boundaries. The common
+        // projection withdraws them when replaced; ABI/host identity premises
+        // and provenance remain independent. Rest allocation instead belongs
+        // to invocation binding, never to a later SymbolExpr read.
         if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) {
+          original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage() && tree_.self &&
               Node<SymbolExpr>(expression).symbol == tree_.self, Error::kOperand);
         } else if constexpr (std::is_same_v<T, analysis::ValueGlobalObject>) {
+          original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(op.use_count == 0 && op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           (void)Node<RealmObjectExpr>(expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueSymbolConstructor>) {
+          original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(op.use_count == 0 && op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           (void)Node<SymbolConstructorExpr>(expression);
@@ -246,12 +253,14 @@ class OperandCheck {
               tree_.parameters[operation.first_argument].rest &&
               Node<SymbolExpr>(expression).symbol == tree_.parameters[operation.first_argument].symbol, Error::kOperand);
         } else if constexpr (std::is_same_v<T, analysis::ValueArgumentSnapshot>) {
+          original_.operations[i].intrinsic_expression=expression;
           const auto& snapshot = Node<ArgumentSnapshotExpr>(expression);
           RequireMeaning(graph_.arguments && evaluation_.arguments == graph_.arguments &&
               snapshot.owner == tree_.owner && operation.slots == graph_.arguments->frame.parameters,
               Error::kOperand);
           Arguments(op, snapshot.slots, 0, operation.slots);
         } else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) {
+          original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(op.result && op.result->value < graph_.values.size() &&
               graph_.values[op.result->value].domain.IsLanguage(), Error::kOperand);
           RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);

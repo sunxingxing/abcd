@@ -15,6 +15,7 @@
 #include "abcd/source/class_method.h"
 #include "analysis/ssa_fixture.h"
 #include "source/native_actions.h"
+#include "source/input_actions.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
 
@@ -315,6 +316,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
             roles, sites, range.first, identity, destination);
         test::Check(std::holds_alternative<PreparedFamily>(complete));
         const auto& ready = std::get<PreparedFamily>(complete);
+        test::CheckInputActions(ready.Family().members[0].tree,*ready.Family().members[0].flow.original);
         if (context.Callable() == CallableKind::kArrow) {
           const auto& tree = ready.Family().members[0].tree;
           globals.callable_text = CallableTextPolicy::kUnspecified;

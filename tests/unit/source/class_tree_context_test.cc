@@ -18,6 +18,7 @@
 #include "../../support/phased_file_checks.h"
 #include "../../support/phased_family_emission.h"
 #include "../../support/source/allocation_actions.h"
+#include "../../support/source/input_actions.h"
 #include "../../../tools/tree_position_json.h"
 #include <nlohmann/json.hpp>
 
@@ -947,6 +948,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     const auto& root = ready.Family().members.front();
     Check(root.tree.parameters.size() == 1 && root.tree.parameters[0].initializer.has_value() == defaults);
     Check(root.abi && root.abi->length == encoded_length && root.sources);
+    Check(root.flow.original!=nullptr);test::CheckInputActions(root.tree,*root.flow.original);
     std::ostringstream denied;
     Check(std::holds_alternative<FamilyPrepareFailure>(ready.PrintDraft(
         {Strictness::kStrict, nullptr, FunctionFragment::kClassMember}, denied)) && denied.str().empty());

@@ -1372,6 +1372,10 @@ if(BUILD_TESTING)
     tools/tree_position_json.cc)
   target_include_directories(constant_group_fixture PRIVATE tests/support)
   target_link_libraries(constant_group_fixture PRIVATE abcd_source abcd_json)
+  add_executable(phased_input_actions_test tests/unit/source/phased_input_actions_test.cc)
+  target_include_directories(phased_input_actions_test PRIVATE tests/support)
+  target_link_libraries(phased_input_actions_test PRIVATE abcd_source abcd_json)
+  add_test(NAME phased_input_actions_test COMMAND phased_input_actions_test)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME selection_module_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_module.mjs $<TARGET_FILE:selection_module_test>)
@@ -2015,6 +2019,8 @@ if(BUILD_TESTING)
     add_test(NAME phased_method_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_method.mjs
       $<TARGET_FILE:class_tree_context_test>)
+    add_test(NAME phased_input_actions_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_input_actions.mjs $<TARGET_FILE:phased_input_actions_test>)
     add_test(NAME argument_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/argument_snapshot.mjs
       $<TARGET_FILE:creation_tree_context_test> $<TARGET_FILE:class_tree_context_test>)

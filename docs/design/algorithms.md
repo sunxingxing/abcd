@@ -4651,3 +4651,21 @@ wrong-unit redirection, restore into reused graph storage and exact/one-short
 budgets. Their independent ESM execution covers initial export TDZ, successive
 stores, callback failure, identity and reentry. Counters describe one common graph,
 not whole-pass convergence cost or process RSS.
+
+Verified native input actions (rules304) reuse OriginalOperation.intrinsic_expression
+and RecoveryFlow's existing action/phase/result/effect projection. The adapter
+publishes this/self/realm/Symbol/snapshot correspondence while checking typed
+operands; it neither dispatches on layout nor creates a new optimization pass.
+Constant work/space per raw operation, no new table or dependency; existing
+host/ABI and provenance contracts remain independently required. Replacing a
+native occurrence withdraws its physical certificate. Rest creation belongs to
+invocation binding and is deliberately not relabeled as a SymbolExpr action;
+its current/candidate entry mapping remains an explicit R4 obligation.
+Decoded phase tests cover six input categories, three profiles, copy counts
+0/2/200/201/400/800, graph reuse and exact/one-short budgets. Snapshot copy-chain
+work at the last four sizes is 8811/8841/14811/26811; owned bytes
+64452/64592/92452/148452. This measures single graph construction, not whole
+optimization or RSS. Independent source execution covers 36 outputs/798 checks;
+removing the production correspondences fails an inventory based on checked
+result expressions rather than the raw marker list. Existing pinned ABI and
+repository implementation remain the provenance; no external dependency added.
