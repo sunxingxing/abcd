@@ -38,6 +38,41 @@
 这五项是主干交付闭环，不以局部规则或单项测试代替；第3项的关闭依据见下，
 其余四项不随之关闭。下一主干是完整原始IR/SSA语义接入，既定暂停事项保持。
 
+### 2026-10-11：先降低验收重复成本，再按有限交付纠偏
+
+- 当前决策入口新增[有限交付清单](unified-variable-deliveries.md)：覆盖当前46个
+  ValueOperation alternatives及入口/合流/源声明事件；明确贯通、保留义务、
+  后续精度。保留也要验收，不把复杂协议内部恢复作为普通变量的无限前置。
+- 工作按A原始/普通单元、B其余原始对应与保留、C全过程Pass收敛、D终验连续
+  推进。子证明可分提交，但不再每次重跑整包并将子证明当下一轮终点。
+- [Pass收敛合同](unified-variable-pass-convergence.md)单列变更集、失效/队列、
+  顺序、终止见证、全程成本与独立验收。现有literal/read目标可再次变化、
+  coalescing可改声明种类，是终止证明的具体阻塞；未用固定轮数掩盖。
+- 10组C++/源码测试改用CTest fixture共享本轮生成：C++全部断言与JS独立执行
+  保留；scale/chains/units额外模式仍执行。无Node时原C++入口保持。
+  每轮重建，绑定二进制/参数/内容摘要，原子发表；失败撤销旧产物。
+  新合同测试覆盖缺失、损坏、旧binary、超限、超时、失败，以及source-only
+  选择自动重跑producer、失败时consumer Not Run；独立1/1通过（1.11s）。
+- 原32目标构建0（83.46s）、固定record0（2.99s）、**原65/65名单通过**。
+  相同Debug与-j2，固定验收由1190.97s降至678.53s，减少512.45s
+  （19分51秒→11分19秒）。最慢binding initializer源执行由397.58s降至
+  2.80s，其C++完整生成仍397.42s；收益来自消除重复，未声称引擎加速。
+- 十组源执行summary与规则296完全相同；包括binding initializer的2004份
+  源码、482752次比较、370个变异，binding interference的1289份源码、
+  200156次case、158个变异。snapshot/nullish两组原始输出另逐字节一致。
+  冻结代码/测试、输入及名单hash未变；65项无遗漏/重复。
+- 固定pasteboard仍19 records、10 complete/9 no-module，10份源码syntax0，
+  与规则296逐字节一致，无新增恢复覆盖。原合同、64MiB预算与deadline保持。
+  证据build/stage-one/shared-fixtures-final（latency-comparison.json、
+  final-result.json、final-junit.xml、fixture-contract.log），输出
+  build/stage-one/shared-fixtures-verified。全量/RSS/扩展语料/DFX/agents未恢复。
+- 未验收的动态单元WIP已保存于build/stage-one/unit-correspondence-wip，
+  含patch、7份完整文件、SHA256和恢复说明；本轮生产引擎保持规则296。
+  下一完整交付包A必须包含raw/source activation前提与local/catch候选身份，
+  不能仅恢复这份WIP就宣布主干关闭。
+- **主干没有新增关闭**。仅第3项在现有模型能力内关闭，另外4项开放。
+  报告交付清单与确定阻塞的变化，不报告没有估算依据的百分比或完成时间。
+
 ### 2026-10-11：原始环境成功状态与共享身份接入（规则296）
 
 - 普通/分阶段环境分析发表normal_after；分配和pop只在成功状态中

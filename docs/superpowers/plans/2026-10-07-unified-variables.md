@@ -19,6 +19,22 @@
 - Existing byte/work budget covers retained graph, sparse facts and temporary growth.
 - Every verified coherent commit refreshes status.md; whole milestone is not complete until old decisions exit.
 
+2026-10-11 delivery correction: the authoritative finite obligation inventory is
+[unified-variable-deliveries](../../design/source-recovery/unified-variable-deliveries.md).
+It classifies all 46 current ValueOperation alternatives plus entry/merge/source
+lifetime events into required correspondence, preservation obligations and later
+precision. Preservation still needs adverse-case acceptance; it is not blanket
+permission to ignore protocol/suspension effects. Work is organized as whole
+packages A (raw/ordinary units), B (remaining raw categories and preservation),
+C (whole-pass convergence), D (milestone acceptance). Historical rule entries
+below are evidence, not independent work endpoints or a completion percentage.
+The separate [pass convergence contract](../../design/source-recovery/unified-variable-pass-convergence.md)
+specifies change sets, invalidation, queues, order, termination witnesses and
+whole-process cost/acceptance. It remains unimplemented; no new mainline closes.
+Run targeted gates while developing one package, then the frozen fixed gate once
+when that package is ready. CTest fixture sharing removes repeated generation
+without dropping C++ assertions, JS execution, scaling cases or negative tests.
+
 2026-10-11 continuation, rules296: retain the independently checked successful
 environment state alongside Before/exception state. CellEvaluation, phased
 lifetime checking, and OriginalFlow share one immutable topology; cell

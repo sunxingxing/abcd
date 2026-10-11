@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
+import {generatedSource as execFileSync} from '../support/source/generated_fixture.mjs';
 import {parseJavaScript} from './class_reference.mjs';
 const rows=execFileSync(process.argv[2],['--emit'],{encoding:'utf8',maxBuffer:32_000_000}).trim().split('\n').map(JSON.parse);
 const token={},resumed={},failure=Symbol('original failure');

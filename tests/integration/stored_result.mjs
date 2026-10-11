@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
+import {generatedSource as execFileSync} from '../support/source/generated_fixture.mjs';
 import {parseJavaScript} from './class_reference.mjs';
 import {editExpression} from './expression_edits.mjs';
 

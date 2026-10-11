@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
+import {generatedSource as execFileSync} from '../support/source/generated_fixture.mjs';
 import vm from 'node:vm';
 const reports = execFileSync(process.argv[2], [], {encoding: 'utf8', maxBuffer: 16 * 1024 * 1024})
   .trim().split('\n').map(line => JSON.parse(line));
