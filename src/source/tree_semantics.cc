@@ -31,6 +31,13 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     checked.Admit(flow->allocated_bytes, 1);
     checked.Step(flow->work);
     auto original=RetainOriginalFlow(graph,tree,*flow,checked);
+    if (evaluation.cells) {
+      original->environments=evaluation.cells->environments;
+      RequireTree(original->environments!=nullptr,TreeStructureError::kOwnership);
+      // The source result can outlive EvaluationPlan. Admit retained topology
+      // once here; current/trial flow borrows the same immutable owner.
+      checked.Admit(original->environments->allocated_bytes,1);
+    }
     CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked,*original);
     CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked);
     IndexOriginalInputs(*original,checked);

@@ -598,7 +598,7 @@ void OriginalCellReferences(bool reverse) {
   f.original.phases={{{0},{0},analysis::ExceptionPhase::kBefore,operation},
       {{1},{0},analysis::ExceptionPhase::kCommit,operation}};
   f.original.cells.emplace();
-  f.original.cells->bindings.push_back({AllocatedCell{{0},{0}},SymbolId{1},ScopeId{1},f.declarations[0]});
+  f.original.cells->bindings.push_back({{analysis::EnvironmentId{0},{0}},SymbolId{1},ScopeId{1},f.declarations[0]});
   f.original.cells->references.push_back(OriginalCellReference{{0},CellAccessKind::kLoad,read});
   const auto projection=f.Projection();
   const auto current=std::get<RecoveryProjection>(PrepareRecoveryProjection(f.tree,projection,f.Input()));

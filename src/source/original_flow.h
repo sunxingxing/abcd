@@ -11,7 +11,9 @@ struct TreeFlow;
 // one invocation's unit. The verified declaration and source scope are kept
 // separate: scope entry allocates a source unit, declaration initializes it.
 struct OriginalCellBinding {
-  CellStorage storage;
+  // Resolved in environments, after the allocation's successful transition.
+  // Consumers no longer reconstruct an EnvironmentId from an allocation OpId.
+  analysis::LexicalBinding storage;
   SymbolId binding;
   ScopeId scope;
   std::optional<StmtId> declaration;
@@ -116,6 +118,10 @@ struct OriginalFlow {
   std::vector<std::optional<OriginalSourceDefinition>> declarations; // StmtId indexed.
   std::vector<std::optional<OriginalCatchBinding>> catches; // SymbolId indexed.
   std::optional<OriginalCells> cells;
+  // The exact independently verified CellEvaluation topology. EnvironmentIds
+  // stay in this immutable owner; normal_after is never a source allocation
+  // point or a proof that a projected binding keeps its dynamic identity.
+  std::shared_ptr<const analysis::ValueEnvironments> environments;
 };
 [[nodiscard]] std::shared_ptr<OriginalFlow> RetainOriginalFlow(
     const analysis::ValueProgram&,const FunctionTree&,TreeFlow&,TreeCheckBudget&);

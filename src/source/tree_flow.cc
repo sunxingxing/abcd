@@ -918,7 +918,7 @@ class FlowCheck {
             binding.declaration == DeclarationKind::kLet && !binding.temporary && !declared_[symbol.value], Error::kPlacement);
         declared_[symbol.value] = 1;
         flow_.cells[i] = symbol;
-        flow_.cell_bindings[i]={cells[i].storage,symbol,binding.scope,{}};
+        flow_.cell_bindings[i]={CellStorageIdentity(cells[i].storage),symbol,binding.scope,{}};
       }
     }
     Require(next == tree_.captures.size(), Error::kPlacement);
@@ -931,6 +931,17 @@ class FlowCheck {
           tree_.symbols[alias.symbol.value].scope == (alias.local ? tree_.body_scope : *tree_.module_scope), Error::kPlacement);
       if (!alias.local) declared_[alias.symbol.value] = 1;
     }
+  }
+  analysis::LexicalBinding CellStorageIdentity(const CellStorage& storage) {
+    if (const auto* incoming = std::get_if<IncomingCell>(&storage))return {incoming->depth,incoming->slot};
+    const auto& local = std::get<AllocatedCell>(storage);
+    Require(evaluation_.cells && evaluation_.cells->environments,Error::kEvaluation);
+    const auto& states = *evaluation_.cells->environments;
+    Require(local.allocation.value < states.normal_after.size() &&
+        states.normal_after[local.allocation.value].has_value(),Error::kEvaluation);
+    // CellPlan proves the allocation/slot; this source binding consumes the
+    // common success transition, never a guessed scope-entry allocation.
+    return {*states.normal_after[local.allocation.value],local.slot};
   }
   void CellDeclarations(analysis::OpId allocation, const BlockStmt& block, std::uint32_t& child) {
     Require(evaluation_.cells.has_value(), Error::kEvaluation);
@@ -961,7 +972,7 @@ class FlowCheck {
       auto& actual = flow_.cells[static_cast<std::size_t>(cell - cells.begin())];
       Require(!actual, Error::kPlacement);
       actual = symbol;
-      flow_.cell_bindings[static_cast<std::size_t>(cell-cells.begin())]={cell->storage,symbol,binding.scope,site};
+      flow_.cell_bindings[static_cast<std::size_t>(cell-cells.begin())]={CellStorageIdentity(cell->storage),symbol,binding.scope,site};
     }
   }
   void ExpressionScopes() {

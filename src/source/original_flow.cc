@@ -126,6 +126,10 @@ void CheckOriginalFlow(const FunctionTree& tree,const OriginalFlow& original) {
       (original.catches.empty()||original.catches.size()==tree.symbols.size())&&
       (original.exception_causes.empty()||original.exception_causes.size()==original.exceptional_exits.size())&&
       (!original.cells||original.cells->references.size()==original.operations.size())&&
+      (!original.environments||(original.environments->revision==original.value_revision&&
+        original.environments->cfg_revision==original.cfg_revision&&
+        original.environments->flow.before.size()==original.operations.size()&&
+        original.environments->normal_after.size()==original.operations.size()))&&
       (original.edge_controls.empty()||original.edge_controls.size()==original.edges.size())&&
       original.statements==tree.statements.size()&&original.bindings==tree.symbols.size(),TreeStructureError::kOwnership);
 }

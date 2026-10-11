@@ -274,14 +274,8 @@ class TreeBuilder {
     Admit(std::get<TreeStorage>(labels).bytes, 1); Step(std::get<TreeStorage>(labels).work);
   }
   void CheckCellLifetimes() {
-    auto environments = analysis::BuildPhasedValueEnvironments(graph_, {bytes_, work_});
-    if (const auto* error = std::get_if<analysis::ValueEnvironmentError>(&environments)) {
-      if (*error == analysis::ValueEnvironmentError::kResourceLimit) throw Error::kResourceLimit;
-      if (*error == analysis::ValueEnvironmentError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kBinding;
-    }
-    const auto& states = std::get<analysis::ValueEnvironments>(environments);
-    Admit(states.allocated_bytes, 1); Step(states.work);
+    Require(evaluation_.cells && evaluation_.cells->environments, Error::kBinding);
+    const auto& states = *evaluation_.cells->environments;
     const auto lifetimes = BuildPhasedCellLifetimes(graph_, states, evaluation_.cells->cells,
         *exceptions_, {bytes_, work_});
     if (const auto* error = std::get_if<CellLifetimeError>(&lifetimes)) {

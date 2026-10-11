@@ -102,13 +102,13 @@ void Cells(std::uint8_t count, CallableKind kind) {
     test::Check(capture.target == CapturedSymbol{kParent, SymbolId{static_cast<std::uint32_t>(i)}});
     test::Check(flow.cells[i + 1] == capture.symbol && tree.symbols[capture.symbol.value].scope == tree.capture_scope);
     const auto& cell=original.cells->bindings[i+1];
-    test::Check(std::holds_alternative<IncomingCell>(cell.storage)&&cell.binding==capture.symbol&&!cell.declaration);
+    test::Check(std::holds_alternative<CapturedDepth>(cell.storage.environment)&&cell.binding==capture.symbol&&!cell.declaration);
     test::Check(cell.scope==tree.symbols[capture.symbol.value].scope);
   }
   unsigned incoming_references=0;
   for(unsigned i=0;i<original.cells->references.size();++i) {
     const auto& raw=original.cells->references[i];if(!raw)continue;
-    if(!std::holds_alternative<IncomingCell>(original.cells->bindings[raw->cell.value].storage))continue;
+    if(!std::holds_alternative<CapturedDepth>(original.cells->bindings[raw->cell.value].storage.environment))continue;
     const auto* reference=FindFlowOriginalCellReference(current,OpId{i});test::Check(reference);
     test::Check(std::holds_alternative<EnclosingBindingLifetime>(current.bindings[reference->binding.value].lifetime));
     ++incoming_references;

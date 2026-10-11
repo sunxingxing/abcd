@@ -1076,7 +1076,7 @@ const FlowReference* FindFlowOriginalCellReference(const RecoveryFlow& flow,anal
   // projected unit needs its own correspondence; a value alias cannot borrow
   // the original cell's read/write effects or exception location.
   const auto& lifetime=flow.bindings[cell.binding.value].lifetime;
-  if(std::holds_alternative<AllocatedCell>(cell.storage)) {
+  if(std::holds_alternative<analysis::EnvironmentId>(cell.storage.environment)) {
     const auto* scope=std::get_if<ScopeBindingLifetime>(&lifetime);
     if(!scope||scope->scope!=cell.scope)return nullptr;
   } else if(!std::holds_alternative<EnclosingBindingLifetime>(lifetime))return nullptr;

@@ -17,6 +17,10 @@ struct ValueEnvironments {
   // Present only for phased graphs: entry state of every work block, including
   // empty Commit/Catch blocks. Operation views above retain OpId coordinates.
   std::vector<std::optional<EnvironmentRef>> phase_entries;
+  // Successful completion state, OpId indexed. Before/exception paths keep
+  // flow.before; allocation/pop never change that state prematurely. Absence
+  // denotes unreachable execution or an operation with no normal completion.
+  std::vector<std::optional<EnvironmentRef>> normal_after;
 };
 enum class ValueEnvironmentError : std::uint8_t {
   kRevision, kFlow, kOrigin, kState, kAllocation, kBinding, kResourceLimit, kWorkLimit

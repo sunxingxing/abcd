@@ -11,6 +11,10 @@ struct CellEvaluation {
   IncomingCells incoming = IncomingCells::kReject;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // One immutable working-IR topology, including success-only transitions.
+  // Verification checks this instance; downstream lifetime/source owners share
+  // it rather than rebuilding a second set of EnvironmentIds.
+  std::shared_ptr<const analysis::ValueEnvironments> environments;
 };
 enum class CellEvaluationError : std::uint8_t {
   kEnvironment, kCells, kInitialization, kInternalIdentity, kResourceLimit, kWorkLimit

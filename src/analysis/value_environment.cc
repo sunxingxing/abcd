@@ -81,7 +81,8 @@ std::variant<std::uint64_t, ValueEnvironmentError> VerifyEnvironments(
     Require(environments.revision == graph.revision && environments.cfg_revision == graph.cfg_revision, Error::kRevision);
     Flow(graph, quota, kind);
     const auto& flow = environments.flow;
-    Require(flow.before.size() == graph.ops.size(), Error::kState);
+    Require(flow.before.size() == graph.ops.size() &&
+        environments.normal_after.size() == graph.ops.size(), Error::kState);
     Require(flow.allocations.size() == flow.environments.Size(), Error::kAllocation);
     std::vector<std::optional<EnvironmentId>> allocations;
     std::vector<std::uint8_t> seen;
@@ -145,10 +146,23 @@ std::variant<std::uint64_t, ValueEnvironmentError> VerifyEnvironments(
       for (std::uint32_t order = 0; order < block.op_count; ++order) {
         quota.Step(); const auto id = block.first_op.value + order;
         Require(flow.before[id] == current, Error::kState);
-        if (kind == EnvironmentGraph::kNormal) apply(id, Operation(graph.ops[id]), current);
+        if (kind == EnvironmentGraph::kNormal) {
+          apply(id, Operation(graph.ops[id]), current);
+          const auto expected = graph.ops[id].life != ValueLife::kLive ||
+              graph.ops[id].exceptional == ExceptionalCompletion::kAlwaysThrow
+              ? std::optional<EnvironmentRef>{} : std::optional{current};
+          Require(environments.normal_after[id] == expected, Error::kState);
+        }
       }
       if (kind == EnvironmentGraph::kPhased && graph.phases[b].operation)
         apply(graph.phases[b].operation->value, PhaseOperation(graph, graph.phases[b]), current);
+      if (kind == EnvironmentGraph::kPhased && graph.phases[b].phase == ExceptionPhase::kCommit &&
+          graph.phases[b].operation) {
+        const auto id = graph.phases[b].operation->value;
+        const auto expected = graph.ops[id].life == ValueLife::kLive
+            ? std::optional{current} : std::optional<EnvironmentRef>{};
+        Require(environments.normal_after[id] == expected, Error::kState);
+      }
       for (std::uint8_t e = 0; e < block.edge_count; ++e) {
         quota.Step();
         const auto target = graph.edges[block.first_edge.value + e].target;
@@ -156,6 +170,12 @@ std::variant<std::uint64_t, ValueEnvironmentError> VerifyEnvironments(
             flow.before[graph.blocks[target.value].first_op.value];
         Require(incoming == current, Error::kState);
       }
+    }
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      quota.Step();
+      if (!flow.before[i] || graph.ops[i].life != ValueLife::kLive ||
+          graph.ops[i].exceptional == ExceptionalCompletion::kAlwaysThrow)
+        Require(!environments.normal_after[i], Error::kState);
     }
     Require(next_binding == flow.bindings.size(), Error::kBinding);
     return quota.Work();
@@ -238,11 +258,31 @@ std::variant<ValueEnvironments, ValueEnvironmentError> BuildEnvironments(
         allocation.instruction = phase.operation->value;
       }
     }
+    // Publish once from the verified ancestry topology. Consumers use this
+    // success state instead of interpreting Push/Pop or walking CFG successors.
+    quota.Size(result.normal_after, graph.ops.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      quota.Step();
+      if (!result.flow.before[i] || graph.ops[i].life != ValueLife::kLive ||
+          graph.ops[i].exceptional == ExceptionalCompletion::kAlwaysThrow) continue;
+      result.normal_after[i] = result.flow.before[i];
+      if (std::holds_alternative<PopEnvironment>(Operation(graph.ops[i]))) {
+        quota.Step(kAncestrySteps);
+        const auto parent = result.flow.environments.Ancestor(*result.flow.before[i], LexicalDepth{1});
+        const auto* state = std::get_if<EnvironmentRef>(&parent);
+        Require(state, Error::kState); result.normal_after[i] = *state;
+      }
+    }
+    for (const auto& allocation : result.flow.allocations) {
+      quota.Step(); Require(allocation.instruction < result.normal_after.size(), Error::kAllocation);
+      result.normal_after[allocation.instruction] = allocation.environment;
+    }
     const auto checked = VerifyEnvironments(graph, result, quota.Remaining(), kind);
     if (const auto* error = std::get_if<Error>(&checked)) return *error;
     quota.Step(std::get<std::uint64_t>(checked));
     // Upstream charge includes scratch; retaining it is conservative, not RSS.
     result.allocated_bytes = sizeof(result) + result.flow.allocated_bytes;
+    result.allocated_bytes += result.normal_after.capacity() * sizeof(result.normal_after[0]);
     if (kind == EnvironmentGraph::kPhased)
       result.allocated_bytes += result.flow.before.capacity() * sizeof(result.flow.before[0]);
     result.work = quota.Work();

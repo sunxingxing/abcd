@@ -196,6 +196,10 @@ void ResourceCauseImports(abc::ProfileId profile,bool unreachable,std::initializ
   const auto proof=std::get<SemanticProof>(VerifySemanticSource(body,semantic,frame.registers,frame.first_parameter.value));
   const auto graph=std::get<ValueProgram>(ImportNormalValues(body,semantic,proof,frame));
   Check(!VerifyImportedValues(graph,semantic,proof,frame));
+  const auto cells=std::get<CellEvaluation>(BuildCellEvaluation(graph));
+  Check(cells.environments!=nullptr);
+  const auto& environment=*cells.environments;
+  Check(environment.normal_after.size()==graph.ops.size());
   std::vector<ValueId> identities;for(unsigned i=0;i<graph.values.size();++i)identities.push_back({i});
   Check(std::holds_alternative<ValueRewriteProof>(VerifyValueRewrite(graph,graph,identities)));
   unsigned allocations=0;
@@ -209,7 +213,27 @@ void ResourceCauseImports(abc::ProfileId profile,bool unreachable,std::initializ
     auto changed=graph;changed.ops[site.value].exception_cause=unreachable?ExceptionCause::kResourceExhaustion:ExceptionCause::kUnclassified;
     Check(VerifyImportedValues(changed,semantic,proof,frame).has_value());
     Check(std::get<ValueRewriteError>(VerifyValueRewrite(graph,changed,identities))==ValueRewriteError::kEffect);
+    Check(environment.normal_after[site.value].has_value()!=unreachable);
+    if(!unreachable) {
+      Check(environment.normal_after[site.value]!=environment.flow.before[site.value]);
+      const auto allocated=std::get<EnvironmentId>(*environment.normal_after[site.value]);
+      Check(environment.flow.environments.Find(allocated)->parent==*environment.flow.before[site.value]);
+      auto wrong=std::get<ValueEnvironments>(BuildValueEnvironments(graph));
+      wrong.normal_after[site.value]=wrong.flow.before[site.value];
+      auto stale=cells;stale.environments=std::make_shared<ValueEnvironments>(std::move(wrong));
+      Check(std::holds_alternative<CellEvaluationError>(VerifyCellEvaluation(graph,stale)));
+    }
   }
+  for(unsigned i=0;i<graph.ops.size();++i)if(std::holds_alternative<ValueEnvironmentPop>(graph.ops[i].operation)) {
+    Check(environment.normal_after[i]==std::optional<EnvironmentRef>{CapturedDepth{0}});
+    Check(environment.normal_after[i]!=environment.flow.before[i]);
+    auto wrong=std::get<ValueEnvironments>(BuildValueEnvironments(graph));
+    wrong.normal_after[i]=wrong.flow.before[i];
+    auto stale=cells;stale.environments=std::make_shared<ValueEnvironments>(std::move(wrong));
+    Check(std::holds_alternative<CellEvaluationError>(VerifyCellEvaluation(graph,stale)));
+  }
+  auto missing=cells;missing.environments.reset();
+  Check(std::get<CellEvaluationError>(VerifyCellEvaluation(graph,missing))==CellEvaluationError::kEnvironment);
   Check(allocations==1);
 }
 // Decoded stores verify the declaration/assignment publication boundary. Their
@@ -340,7 +364,7 @@ FlowConstructionCost OriginalStorePhases(abc::ProfileId profile,bool lexical,uns
       const auto& raw=original.cells->references[store.value];Check(raw.has_value());
       Check(raw->kind==CellAccessKind::kStore);
       const auto& cell=original.cells->bindings[raw->cell.value];
-      Check(std::holds_alternative<AllocatedCell>(cell.storage)&&cell.declaration.has_value());
+      Check(std::holds_alternative<EnvironmentId>(cell.storage.environment)&&cell.declaration.has_value());
       Check(std::get<DeclarationStmt>(tree.statements[cell.declaration->value].statement).symbol==cell.binding);
       Check(tree.symbols[cell.binding.value].scope==cell.scope);
       const auto* reference=FindFlowOriginalCellReference(flow,store);Check(reference);
@@ -522,6 +546,28 @@ void OriginalEnvironmentFailures(abc::ProfileId profile,bool reverse,bool split,
     Check(std::holds_alternative<TreeSemantics>(checked));draft.flow=std::get<TreeSemantics>(std::move(checked)).flow;
   }
   const auto& tree=draft.tree;const auto& original=*draft.flow->original;
+  Check(original.environments==evaluation.cells->environments);
+  const auto& environment=*original.environments;
+  Check(std::holds_alternative<std::uint64_t>(VerifyPhasedCellEvaluation(graph,*evaluation.cells)));
+  for(unsigned i=0;i<graph.ops.size();++i) {
+    const auto& operation=graph.ops[i];
+    if(std::holds_alternative<ValueEnvironmentPop>(operation.operation)) {
+      Check(environment.normal_after[i]==std::optional<EnvironmentRef>{CapturedDepth{0}});
+      Check(environment.flow.before[i]!=environment.normal_after[i]);
+    }
+    if(!std::holds_alternative<ValueEnvironmentPush>(operation.operation))continue;
+    Check(environment.flow.before[i]!=environment.normal_after[i]);
+    auto wrong=std::get<ValueEnvironments>(BuildPhasedValueEnvironments(graph));
+    wrong.normal_after[i]=wrong.flow.before[i];
+    auto stale=*evaluation.cells;stale.environments=std::make_shared<ValueEnvironments>(std::move(wrong));
+    Check(std::holds_alternative<CellEvaluationError>(VerifyPhasedCellEvaluation(graph,stale)));
+    wrong=std::get<ValueEnvironments>(BuildPhasedValueEnvironments(graph));
+    wrong.flow.before[i]=wrong.normal_after[i];
+    stale.environments=std::make_shared<ValueEnvironments>(std::move(wrong));
+    Check(std::holds_alternative<CellEvaluationError>(VerifyPhasedCellEvaluation(graph,stale)));
+    for(unsigned p=0;p<graph.phases.size();++p)if(graph.phases[p].operation==OpId{i})
+      Check(environment.phase_entries[p]==environment.flow.before[i]);
+  }
   const auto recovered=std::get<SourceVariables>(PrepareSourceVariables(tree,{},&original));const auto& p=recovered.bindings;
   LegacyFlowProjection projection{p.aliases,p.literals,p.replacements,p.omitted,p.evaluations,p.normal_stores,p.statements,{},p.storage,p.undefined_stores,p.declaration_values,p.declaration_completions};
   projection.original=&original;const auto flow=std::get<RecoveryFlow>(BuildRecoveryFlow(tree,projection));

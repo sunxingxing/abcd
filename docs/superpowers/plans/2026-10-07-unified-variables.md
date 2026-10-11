@@ -19,6 +19,16 @@
 - Existing byte/work budget covers retained graph, sparse facts and temporary growth.
 - Every verified coherent commit refreshes status.md; whole milestone is not complete until old decisions exit.
 
+2026-10-11 continuation, rules296: retain the independently checked successful
+environment state alongside Before/exception state. CellEvaluation, phased
+lifetime checking, and OriginalFlow share one immutable topology; cell
+verification no longer replans it. Source cell identities consume the checked
+successful EnvironmentId/slot instead of carrying allocation OpIds into recovery.
+This connects raw allocation/pop state to common binding facts. The remaining
+obligation is correspondence between dynamic raw units and projected source
+activations, followed by the remaining control/protocol/suspension cases. No
+whole mainline delivery is closed by retaining and consuming these transitions.
+
 2026-10-11 continuation, rules295: propagate typed failure cause from the pinned
 semantic adapter through normal/phased import, independent correspondence and
 rewrite checks, and source exception coverage. A source contract can exclude a

@@ -1,4 +1,5 @@
 #include "cell_evaluation.h"
+#include "recovery_scratch.h"
 
 #include <new>
 #include <stdexcept>
@@ -83,10 +84,10 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyEvaluation(
     CellFlow flow) {
   try {
     Quota quota(budget);
-    const auto build_environments = flow == CellFlow::kPhased
-        ? analysis::BuildPhasedValueEnvironments : analysis::BuildValueEnvironments;
-    auto environments = Take(build_environments(graph, quota.Remaining()), Error::kEnvironment);
-    quota.Admit(environments.allocated_bytes); quota.Step(environments.work);
+    if (!plan.environments) throw Error::kEnvironment;
+    const auto& environments = *plan.environments;
+    // VerifyCellInitializations checks CellPlan and its supplied environment
+    // transitions independently. Rebuilding here would hide stale plan facts.
     const auto verify_initialization = flow == CellFlow::kPhased
         ? VerifyPhasedCellInitializations : VerifyCellInitializations;
     quota.Step(Take(verify_initialization(graph, environments, plan.cells,
@@ -117,9 +118,18 @@ std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
         writes, quota.Remaining()), Error::kInitialization);
     quota.Admit(initialization.allocated_bytes); quota.Step(initialization.work);
     Identities(graph, cells, incoming, quota);
-    const auto retained = sizeof(CellEvaluation) + cells.allocated_bytes + initialization.allocated_bytes;
-    return CellEvaluation{std::move(cells), std::move(initialization), incoming, retained, quota.Work()};
+    TreeCheckBudget ownership(quota.Remaining());
+    const auto topology_bytes = environments.allocated_bytes;
+    auto topology = std::allocate_shared<analysis::ValueEnvironments>(
+        RecoveryAllocator<analysis::ValueEnvironments>{ownership}, std::move(environments));
+    quota.Admit(ownership.Bytes());
+    topology->allocated_bytes += ownership.Bytes();
+    const auto retained = sizeof(CellEvaluation) + cells.allocated_bytes + initialization.allocated_bytes +
+        topology_bytes + ownership.Bytes();
+    return CellEvaluation{std::move(cells), std::move(initialization), incoming, retained, quota.Work(), std::move(topology)};
   } catch (Error error) { return error;
+  } catch (TreeStructureError error) {
+    return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }

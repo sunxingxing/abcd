@@ -41,6 +41,21 @@ slot count and method size.
 
 ## Failure cause in the common semantic model
 
+The checked working-IR topology publishes `normal_after` for each live
+operation with successful completion. Allocation selects the fresh environment;
+pop selects its parent. Before and exceptional paths retain the old state.
+Removed slots can have a topology position but have no successful execution.
+Normal and phased verifiers check these states independently against ancestry,
+phase timing and successor agreement. The additional table costs O(operations)
+space and work, with parent queries bounded by the existing ancestry index.
+
+`CellEvaluation`, source lifetime checks and retained `OriginalFlow` share this
+immutable topology. Cell verification checks the supplied instance instead of
+replanning it and thereby overlooking stale facts. Local source-cell identity
+uses the allocation's checked successful EnvironmentId and slot; incoming
+cells use captured depth and slot. These are environment families in one owner,
+not proof of equal dynamic allocation counts or source scope entry timing.
+
 `SemanticEffects::exception_cause` records a separately proved cause; an
 allocation-effect bit alone never proves that all failures are resource failures.
 The pinned adapter classifies ordinary `PushEnvironment` as resource exhaustion.
