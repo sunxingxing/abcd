@@ -46,28 +46,35 @@ void Identities(const analysis::ValueProgram& graph, const CellPlan& cells, Inco
   }
 }
 }  // namespace
-bool IsInitializedCellGuard(const analysis::ValueProgram& graph, const CellEvaluation& cells, analysis::OpId id) {
+std::optional<analysis::ValueId> InitializedCellGuardInput(const analysis::ValueProgram& graph, const CellEvaluation& cells, analysis::OpId id) {
   if (id.value >= graph.ops.size() || cells.initialization.revision != graph.revision ||
-      cells.initialization.cfg_revision != graph.cfg_revision) return false;
+      cells.initialization.cfg_revision != graph.cfg_revision) return {};
   const auto& guard = graph.ops[id.value];
   if (guard.life != analysis::ValueLife::kLive || !std::holds_alternative<analysis::ValueGuard>(guard.operation) ||
-      guard.result || guard.use_count != 1 || guard.first_use.value >= graph.uses.size()) return false;
+      guard.result || guard.use_count != 1 || guard.first_use.value >= graph.uses.size()) return {};
   const auto& use = graph.uses[guard.first_use.value];
   const auto* owner = std::get_if<analysis::OpId>(&use.owner);
   const auto* value = std::get_if<analysis::ValueId>(&use.operand);
   if (!owner || *owner != id || use.life != analysis::ValueLife::kLive ||
       use.role != analysis::OperandRole::kGuardValue || use.purpose != analysis::ReadPurpose::kOperand ||
-      !value || value->value >= graph.values.size()) return false;
-  const auto& definition = graph.values[value->value];
+      !value || value->value >= graph.values.size()||cells.identities.canonical.size()!=graph.values.size()) return {};
+  const auto root=cells.identities.canonical[value->value];
+  if(root.value>=graph.values.size()||graph.values[value->value].life!=analysis::ValueLife::kLive||
+      !graph.values[value->value].domain.IsLanguage())return {};
+  const auto& definition = graph.values[root.value];
   const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
   if (!result || definition.life != analysis::ValueLife::kLive || !definition.domain.IsLanguage() ||
-      result->op.value >= graph.ops.size() || result->op.value >= cells.initialization.reads.size()) return false;
+      result->op.value >= graph.ops.size() || result->op.value >= cells.initialization.reads.size()) return {};
   const auto& load = graph.ops[result->op.value];
-  if (load.life != analysis::ValueLife::kLive || load.result != *value ||
-      !std::holds_alternative<analysis::ValueLexicalLoad>(load.operation)) return false;
+  if (load.life != analysis::ValueLife::kLive || load.result != root ||
+      !std::holds_alternative<analysis::ValueLexicalLoad>(load.operation)) return {};
   const auto& witness = cells.initialization.reads[result->op.value];
-  return std::holds_alternative<StoredInitialization>(witness) ||
-      (cells.incoming == IncomingCells::kConditional && std::holds_alternative<IncomingInitialization>(witness));
+  if(std::holds_alternative<StoredInitialization>(witness) ||
+      (cells.incoming == IncomingCells::kConditional && std::holds_alternative<IncomingInitialization>(witness)))return root;
+  return {};
+}
+bool IsInitializedCellGuard(const analysis::ValueProgram& graph, const CellEvaluation& cells, analysis::OpId id) {
+  return InitializedCellGuardInput(graph,cells,id).has_value();
 }
 bool IsEnvironmentState(const analysis::ValueOperation& operation) {
   return std::holds_alternative<analysis::ValueEnvironmentPush>(operation) ||
@@ -93,6 +100,9 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyEvaluation(
     quota.Step(Take(verify_initialization(graph, environments, plan.cells,
         plan.initialization.closure_writes, plan.initialization, quota.Remaining()), Error::kInitialization));
     Identities(graph, plan.cells, plan.incoming, quota);
+    const auto identities=Take(analysis::AnalyzeValueIdentities(graph,quota.Remaining()),Error::kInternalIdentity);
+    quota.Admit(identities.allocated_bytes);quota.Step(identities.work);
+    if(plan.identities.canonical!=identities.canonical)throw Error::kInternalIdentity;
     return quota.Work();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
@@ -118,6 +128,8 @@ std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
         writes, quota.Remaining()), Error::kInitialization);
     quota.Admit(initialization.allocated_bytes); quota.Step(initialization.work);
     Identities(graph, cells, incoming, quota);
+    auto identities=Take(analysis::AnalyzeValueIdentities(graph,quota.Remaining()),Error::kInternalIdentity);
+    quota.Admit(identities.allocated_bytes);quota.Step(identities.work);
     TreeCheckBudget ownership(quota.Remaining());
     const auto topology_bytes = environments.allocated_bytes;
     auto topology = std::allocate_shared<analysis::ValueEnvironments>(
@@ -125,8 +137,8 @@ std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
     quota.Admit(ownership.Bytes());
     topology->allocated_bytes += ownership.Bytes();
     const auto retained = sizeof(CellEvaluation) + cells.allocated_bytes + initialization.allocated_bytes +
-        topology_bytes + ownership.Bytes();
-    return CellEvaluation{std::move(cells), std::move(initialization), incoming, retained, quota.Work(), std::move(topology)};
+        topology_bytes + ownership.Bytes()+identities.allocated_bytes;
+    return CellEvaluation{std::move(cells), std::move(initialization), incoming, retained, quota.Work(), std::move(topology),std::move(identities)};
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;

@@ -55,6 +55,9 @@ enum class OriginalControlKind : std::uint8_t {kPredicate,kTruthSelection,kNulli
 // operation on the enclosing expression. Folded pure tests keep this semantic
 // relation without lending their Boolean domains to the selection's result.
 struct OriginalControlInput {ExprId expression;OriginalControlKind kind;std::optional<PureTruthTest> test;};
+// The verified initialization proof excludes Hole in this captured load value.
+// This guard has no native action; later reads of the same cell are not its input.
+struct OriginalInitializedGuard {analysis::OpId load;analysis::ValueId value;};
 struct OriginalActionRegionId {
   std::uint32_t value;
   auto operator<=>(const OriginalActionRegionId&)const=default;
@@ -107,6 +110,7 @@ struct OriginalOperation {
   // its completion payload. This is not the returned/thrown value's action.
   std::optional<OriginalStatementKind> statement_kind;
   std::optional<OriginalControlInput> control;
+  std::optional<OriginalInitializedGuard> initialized_guard;
   // Physical binding write verified at this source commit. A numeric staging
   // save has a definition correspondence but is not the conversion's write.
   std::optional<OriginalWriteSite> write;

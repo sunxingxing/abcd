@@ -104,7 +104,10 @@ std::variant<EvaluationAliasCost, EvaluationError> BuildEvaluationAliases(
         plan.operations[i].kind = EvaluationKind::kAlias;
       }
     }
-    const auto identities = IdentityFacts(graph, quota);
+    ValueIdentities computed;
+    if(!plan.cells)computed=IdentityFacts(graph,quota);
+    const auto& identities=plan.cells?plan.cells->identities:computed;
+    Require(identities.canonical.size()==graph.values.size(),Error::kOwnership);
     for (std::size_t i=0;i<graph.values.size();++i) {
       quota.Step(); const ValueId value{static_cast<std::uint32_t>(i)};
       if (const auto root = SourcePhiAlias(graph, identities.canonical, value)) {

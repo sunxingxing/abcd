@@ -210,8 +210,10 @@ void Run(abc::ProfileId profile, StoreOrder order, std::size_t count = 1,
     test::Check(std::holds_alternative<CellEvaluation>(evaluated));
     test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedCellEvaluation(
         graph, std::get<CellEvaluation>(evaluated))));
+    // The shared initialization verifier now owns environment validation;
+    // the CellEvaluation boundary reports its nested failure as initialization.
     test::Check(std::get<CellEvaluationError>(VerifyCellEvaluation(
-        graph, std::get<CellEvaluation>(evaluated))) == CellEvaluationError::kEnvironment);
+        graph, std::get<CellEvaluation>(evaluated))) == CellEvaluationError::kInitialization);
     const auto evaluation = BuildPhasedEvaluationPlan(graph);
     test::Check(std::holds_alternative<EvaluationPlan>(evaluation));
     test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(

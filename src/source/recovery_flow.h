@@ -31,7 +31,10 @@ struct FlowRegionPhase {OriginalActionRegionId region;};
 // Hoisted invocation creation has a value relationship, not a physical raw
 // control point. Its source initialization remains outside body handlers.
 struct FlowInvocationPhase {ParameterId parameter;};
-using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase>;
+// An erased initialized guard qualifies a captured value. Its VM location is
+// not the load's physical action or a later expression's completion.
+struct FlowGuardPhase {analysis::OpId operation;};
+using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase,FlowGuardPhase>;
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
 struct FlowInputId { std::uint32_t value = 0; auto operator<=>(const FlowInputId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
@@ -193,7 +196,11 @@ struct FlowOriginalException {FlowPoint before,thrown;};
 // distinct from both a mapped route and missing evidence prevents borrowing
 // a declaration/scope entry as the VM allocation action.
 struct FlowExcludedResourceFailure {};
-using FlowOriginalFailure=std::variant<FlowOriginalException,FlowExcludedResourceFailure>;
+// This exclusion is conditional on the current input's provenance. The joint
+// solver carries both its value and completion dependencies into the handler;
+// changing initialization, occurrence or cell identity withdraws raw catch caps.
+struct FlowExcludedGuardFailure {ExprId value;FlowPoint input,target;};
+using FlowOriginalFailure=std::variant<FlowOriginalException,FlowExcludedResourceFailure,FlowExcludedGuardFailure>;
 enum class FlowOriginalRouteCoverage : std::uint8_t {kUnmodeled,kComplete};
 struct FlowReference {
   FlowPoint point;
@@ -592,6 +599,7 @@ struct RecoveryFlow {
 [[nodiscard]] std::optional<OriginalResult> FindFlowOriginalResult(const RecoveryFlow&,analysis::OpId);
 [[nodiscard]] std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow&,analysis::OpId);
 [[nodiscard]] const FlowReference* FindFlowOriginalCellReference(const RecoveryFlow&,analysis::OpId);
+[[nodiscard]] std::optional<FlowOriginalResult> FindFlowOriginalGuard(const RecoveryFlow&,analysis::OpId);
 // Qualified virtual facts for pure raw components. Input completion belongs
 // to the captured source occurrence; domains carry each component's path.
 // Boolean results remain distinct from the native selection result/action.

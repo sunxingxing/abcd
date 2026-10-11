@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CELL_EVALUATION_H_
 
 #include "cell_initialization.h"
+#include "../analysis/value_phi.h"
 
 namespace abcd::source {
 enum class IncomingCells : std::uint8_t { kReject, kConditional };
@@ -15,6 +16,9 @@ struct CellEvaluation {
   // Verification checks this instance; downstream lifetime/source owners share
   // it rather than rebuilding a second set of EnvironmentIds.
   std::shared_ptr<const analysis::ValueEnvironments> environments;
+  // Shared SSA copy/phi identity equations. Initialization and source alias
+  // consumers use this same index; no per-guard copy-chain walk or layout test.
+  analysis::ValueIdentities identities;
 };
 enum class CellEvaluationError : std::uint8_t {
   kEnvironment, kCells, kInitialization, kInternalIdentity, kResourceLimit, kWorkLimit
@@ -22,6 +26,7 @@ enum class CellEvaluationError : std::uint8_t {
 // O(1) after fresh CellEvaluation verification. Incoming witnesses retain the
 // existing enclosing-owner obligation; they never authorize standalone output.
 [[nodiscard]] bool IsInitializedCellGuard(const analysis::ValueProgram&, const CellEvaluation&, analysis::OpId);
+[[nodiscard]] std::optional<analysis::ValueId> InitializedCellGuardInput(const analysis::ValueProgram&, const CellEvaluation&, analysis::OpId);
 [[nodiscard]] bool IsEnvironmentState(const analysis::ValueOperation& operation);
 [[nodiscard]] bool NeedsCellEvaluation(const analysis::ValueOperation& operation);
 // Incoming cells default to rejection. Conditional mode retains their owner

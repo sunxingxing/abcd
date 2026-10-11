@@ -1334,3 +1334,18 @@ signature transformation. Thirty complete caught-method sources execute under
 five layout variants/three profiles/two class placements. R4's listed boundaries
 now have evidence; package B's remaining consumers/control/preservation ledger
 and C/D remain open. No fixed65/record or paused validation scope resumed.
+
+
+Rules306 discharges the initialized lexical-guard portion of R7, including a
+previously exposed layout dependence. Cell evaluation and source aliases share
+AnalyzeValueIdentities copy/phi equations; the guard no longer requires a direct
+load producer. The verifier publishes the captured canonical value once. Current
+and trial projection require the common dynamic-cell correspondence, represent
+raw guard phases virtually, and qualify exception exclusion by the same joint
+provenance graph. Missing/replaced/wrong-unit inputs withdraw evidence. A changed
+input on a returning arm must still invalidate its dependent catch cap; physical
+CFG reachability alone cannot express that obligation. Tests exercise actual
+phased recovery and source execution, plus same-input/certificate mutations.
+R7 still owns value-less control and receiver/protocol preservation boundaries;
+R1-R3/R5 and R9/R10 consumer/preservation acceptance remain in package B. No new
+mainline delivery is closed, no fixed65/record rerun or paused scope resumed.

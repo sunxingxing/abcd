@@ -1,5 +1,6 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
+#include "source/initialized_guards.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/value_simplify.h"
 #include "analysis/ssa_fixture.h"
@@ -29,8 +30,9 @@ struct Fixture {
     syntax.strictness = Strictness::kStrict;
     syntax.texts = {u"number"};
     syntax.parameters.resize(frame.parameters);
-    tree = std::get<ConstructedFunction>(BuildFunctionTree(
-        graph, control, evaluation, std::move(syntax), {constants, 0, 1, TextId{0}})).tree;
+    auto constructed = std::get<ConstructedFunction>(BuildFunctionTree(
+        graph, control, evaluation, std::move(syntax), {constants, 0, 1, TextId{0}}));
+    original=constructed.flow->original;tree=std::move(constructed.tree);
   }
   bool Valid(const FunctionTree& candidate) const {
     return std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(
@@ -41,6 +43,7 @@ struct Fixture {
   EvaluationPlan evaluation;
   std::vector<ExpressionConstant> constants;
   FunctionTree tree;
+  std::shared_ptr<const OriginalFlow> original;
 };
 
 void AllocationSites(std::uint32_t count) {
@@ -116,9 +119,14 @@ void InitializedGuards() {
         forged.cells->initialization.reads[load.value] = NotCellRead{};
         test::Check(!IsInitializedCellGuard(fixture.graph, *forged.cells, OpId{static_cast<std::uint32_t>(i)}));
         test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+        forged=fixture.evaluation;
+        forged.cells->identities.canonical[std::get<ValueId>(use.operand).value]=ValueId{static_cast<unsigned>(fixture.graph.values.size())};
+        test::Check(std::get<CellEvaluationError>(VerifyCellEvaluation(fixture.graph,*forged.cells))==CellEvaluationError::kInternalIdentity);
+        test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph,forged)));
       }
     }
     test::Check(guards == count);
+    test::CheckInitializedGuards(fixture.tree,*fixture.original,guards);
   }
 }
 

@@ -516,6 +516,11 @@ class FlowBuilder {
       const auto& operation=result.original->operations[phase.operation->value];
       if(operation.life!=analysis::ValueLife::kLive)continue;
       const auto& action=result.original_actions[phase.operation->value];
+      if(operation.initialized_guard) {
+        if(phase.phase!=analysis::ExceptionPhase::kCatch&&FindFlowOriginalGuard(result,*phase.operation))
+          point=FlowGuardPhase{*phase.operation};
+        continue;
+      }
       if(operation.completion==OriginalCompletionBoundary::kInvocationBinding) {
         if(phase.phase!=analysis::ExceptionPhase::kCatch&&!result.original_invocations.empty())
           if(const auto parameter=result.original_invocations[phase.operation->value])point=FlowInvocationPhase{*parameter};
@@ -593,6 +598,9 @@ class FlowBuilder {
         }
       }
       const auto target=exit.handler?FindOriginalPhase(result,exit.handler->entry,analysis::ExceptionPhase::kCatch):std::optional{result.terminal};
+      if(target)if(const auto input=FindFlowOriginalGuard(result,exit.op)) {
+        route=FlowExcludedGuardFailure{input->expression,input->entry,*target};continue;
+      }
       // Same selected handler and completion context are semantic obligations.
       // An imported region has no finally: a newly projected cleanup cannot
       // borrow its pending-exception proof. Missing correspondence is a gap.
@@ -1395,6 +1403,18 @@ bool OriginalHandlerAvailable(const RecoveryFlow& flow,analysis::WorkBlockId han
   return FindOriginalPhase(flow,handler,analysis::ExceptionPhase::kCatch)&&handler.value<flow.original_handlers.size()&&
       flow.original_handlers[handler.value]==FlowOriginalRouteCoverage::kComplete;
 }
+}
+std::optional<FlowOriginalResult> FindFlowOriginalGuard(const RecoveryFlow& flow,analysis::OpId id) {
+  if(!flow.original||id.value>=flow.original->operations.size())return {};
+  const auto& operation=flow.original->operations[id.value];
+  if(operation.life!=analysis::ValueLife::kLive||!operation.initialized_guard)return {};
+  const auto& guard=*operation.initialized_guard;
+  const auto result=FindOriginalResult(*flow.original,guard.load);
+  if(!result||result->value!=guard.value||!FindFlowOriginalCellReference(flow,guard.load)||
+      guard.load.value>=flow.original_actions.size())return {};
+  const auto& action=flow.original_actions[guard.load.value];
+  if(!action||!action->normal)return {};
+  return FlowOriginalResult{result->expression,action->before,*action->normal};
 }
 std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow& flow,analysis::OpId id) {
   if(!flow.original||id.value>=flow.original->operations.size()||id.value>=flow.original_controls.size())return {};

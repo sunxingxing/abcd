@@ -182,6 +182,9 @@ class OperandCheck {
       if (evaluation_.operations[i].kind == EvaluationKind::kCellGuard) {
         RequireMeaning(evaluation_.cells && IsInitializedCellGuard(graph_, *evaluation_.cells, current_) &&
             !flow_.expressions[i], Error::kOperand);
+        const auto value=*InitializedCellGuardInput(graph_,*evaluation_.cells,current_);
+        const auto load=std::get<analysis::OpResult>(graph_.values[value.value].origin).op;
+        original_.operations[i].initialized_guard=OriginalInitializedGuard{load,value};
         continue;
       }
       if (IsReceiverGuard(tree_, current_)) {

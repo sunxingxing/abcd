@@ -4694,3 +4694,31 @@ No per-parameter graph traversal. At 200/201/400/800 parameters, measured common
 flow work is 4715/4738/9315/18515 and owned bytes 164477/164559/328333/656045,
 unchanged after reversing SymbolIds. Exact/one-short budgets and graph reuse are
 checked. These are local construction figures, not whole-pass or process costs.
+
+
+### Initialized guard identity and conditional exclusion (rules306)
+
+CellEvaluation retains the existing AnalyzeValueIdentities copy/phi SCC index;
+BuildEvaluationAliases consumes that same index when cells are present. Fresh
+verification recomputes the equations and rejects a forged canonical root. A
+canonical initialized load supplies the held value of a Hole guard independently
+of register copies, block splits or instruction layout. Original operand checking
+publishes this correspondence; optimizers do not rediscover it from syntax.
+FlowGuardPhase is virtual. It never equates the guard's raw Before/Commit with
+the load's physical action. Current projection resolves the held load via the
+common dynamic-cell reference proof. A proved impossible guard failure has two
+sparse provenance dependencies (value and completion) into its selected handler.
+The joint value/completion solver withdraws catch caps when either changes,
+even if that input's source path does not itself reach catch. Missing current
+references/certificates retain an explicit unmodeled route, not a borrowed proof.
+
+No new algorithm/dependency/license: existing pinned Hole semantics, SSA identity
+SCC analysis and monotone sparse provenance worklist. Additional costs are one
+retained value-identity index O(V), O(G) adapter lookups and at most two dependency
+edges per guard failure. There is no copy-chain walk per guard or scan per handler.
+Decoded guard counts 200/201/400/800 produce common graph nodes
+1637/1645/3237/6437 and edges 2042/2052/4042/8042; construction work
+276617/277987/557796/1132039, charged bytes
+1783739/1983867/3552699/7090619. Allocation capacities step at 201; work and graph
+size do not. Exact and one-short budgets pass. These are local graph construction
+measurements, not whole optimizer costs or process RSS; C/P5 remains open.

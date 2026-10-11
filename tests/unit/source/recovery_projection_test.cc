@@ -1959,6 +1959,22 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
     const auto withdrawn=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(t,changed_commit,live,f.Input()));
     Check(withdrawn.expressions[caught_read.value].IsNumber());
     Check(!withdrawn.expressions[caught_read.value].IsFiniteNumber());
+    // A qualified erased-guard input need not be on the source throw path.
+    // Its completion provenance still owns the original exception exclusion.
+    // Use the returning arm to distinguish this dependency from ordinary CFG
+    // propagation; the held value's domain and catch payload remain unchanged.
+    auto guarded=model.flow;
+    const auto held=std::get<ExpressionStmt>(t.statements[unused.value].statement).expression;
+    const auto input_point=guarded.expressions[held.value];
+    guarded.events[input_point.value].provenance=FlowProvenance::kChanged;
+    const auto unrelated=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(t,guarded,live,f.Input()));
+    Check(unrelated.expressions[caught_read.value].IsFiniteNumber());
+    const auto handler_point=FindOriginalPhase(guarded,{2},analysis::ExceptionPhase::kCatch);
+    Check(handler_point.has_value());
+    guarded.original_exceptions.push_back(FlowExcludedGuardFailure{held,input_point,*handler_point});
+    const auto invalid_guard=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(t,guarded,live,f.Input()));
+    Check(invalid_guard.expressions[caught_read.value].IsNumber());
+    Check(!invalid_guard.expressions[caught_read.value].IsFiniteNumber());
   }
   return {model.work,model.allocated_bytes};
 }

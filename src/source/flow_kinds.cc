@@ -171,6 +171,17 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
           guard={};
         }
       }
+      // An erased raw guard contributes no source throw edge. Its exclusion
+      // still depends on the held read's value and execution context. Publish
+      // sparse provenance edges once, not a per-handler/per-guard graph walk.
+      if(provenance_required)for(const auto& route:flow.original_exceptions) {
+        budget.Step();if(!route)continue;
+        if(const auto* excluded=std::get_if<FlowExcludedGuardFailure>(&*route)) {
+          RequireTree(excluded->value.value<expressions,Error::kOwnership);
+          dependency(NodeId{excluded->value.value},event_node(excluded->target),DependencyKind::kProvenance,nullptr);
+          dependency(event_node(excluded->input),event_node(excluded->target),DependencyKind::kProvenance,nullptr);
+        }
+      }
       // Captured operands can widen without changing a numeric result kind.
       // Wake the SAME effect equation directly; result dependencies alone
       // would keep a stale no-callback/no-throw conclusion. One sparse edge

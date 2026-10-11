@@ -3751,3 +3751,13 @@ ArrayArguments的私有参数载体属于typed源码形式：按既有打印语�
 替代；legacy/构造器专用模板的历史边界未据此宣布全部关闭。五种布局的30份异常
 方法完整输出并独立执行；normal/phased循环反例、缺入口证书、错误Commit和两个
 生产变异分别验证对应义务。R4本表列出的边界证据齐备，B其余合同仍需整包验收。
+
+
+规则306：R7已初始化词法guard不再要求输入直接由ValueLexicalLoad定义；CellEvaluation
+与源码alias共同消费已有SSA copy/phi SCC身份索引，初始化证明仍独立负责排除Hole。
+已捕获的canonical值不等于guard位置的当前绑定值。共同投射使用动态单元引用证明；
+FlowGuardPhase为虚拟相位，不能将原始Before/Commit借给load或后续表达式。
+异常排除依赖输入值与完成provenance；联合求解器沿稀疏依赖撤回catch值域，不新增
+局部pass、same-block、邻接或复制次数准入。复制+拆块+寄存器变换的phased输入实际
+恢复源码并执行；缺证、错值、错单元、删除读取以及离开throw路径的输入变化均验证
+撤证。无值跳转和receiver/protocol保留边界仍属B，未把子证明当成主干交付关闭。
