@@ -2,6 +2,7 @@
 #include "abcd/abc/profile_capabilities.h"
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <limits>
 
@@ -157,27 +158,49 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   for (std::size_t i = prefix_begin; i < enter; ++i)
     if (TouchesRegister(sites[i], promise, frame.registers)) return FunctionEmitError::kKind;
   // Normalization erases ASYNCFUNCTIONENTER's accumulator definition (the
-  // async object) with its `sta promise`. After that store the original acc
-  // still holds the async object while the normalized body would see the
-  // prefix's last acc value. So, on the straight-line path from there, acc
-  // must be (re)defined before any read and before any control transfer or
-  // join. The erased promise register is checked separately for the body.
+  // async object) with its `sta promise`. In the original, acc still holds
+  // that object after the store; the normalized body would instead see the
+  // prefix's last acc value. Prove on the normal CFG that this definition
+  // reaches no read: propagate it from the instruction after the store along
+  // fallthrough/jump/branch successors, stopping where acc is definitely
+  // redefined. Exception edges are not followed: handler entry defines acc as
+  // the caught value. A suspension or an unresolved target refuses. Each
+  // instruction is visited once; targets are found by binary search.
   {  // Scratch released before the normalization allocations below.
-    std::vector<abc::CodeOffset> targets;
-    if (sites.size() > bytes / sizeof(abc::CodeOffset)) return FunctionEmitError::kResourceLimit;
-    targets.reserve(sites.size());
-    for (const auto& site : sites) if (site.branch_target) targets.push_back(*site.branch_target);
-    std::sort(targets.begin(), targets.end());
-    for (std::size_t i = enter + 2;; ++i) {
-      if (i >= sites.size() || abc::GetControlTransfer(sites[i].decoded.opcode) != abc::ControlTransfer::kFallthrough ||
-          std::binary_search(targets.begin(), targets.end(), sites[i].offset))
-        return FunctionEmitError::kKind;
+    if (sites.size() > bytes / (sizeof(std::uint8_t) + sizeof(std::size_t))) return FunctionEmitError::kResourceLimit;
+    std::vector<std::uint8_t> visited(sites.size());
+    std::vector<std::size_t> pending;
+    pending.reserve(sites.size());
+    const auto index_of = [&](abc::CodeOffset target) -> std::optional<std::size_t> {
+      const auto found = std::lower_bound(sites.begin(), sites.end(), target,
+          [](const auto& site, auto pc) { return site.offset < pc; });
+      if (found == sites.end() || found->offset != target) return std::nullopt;
+      return static_cast<std::size_t>(found - sites.begin());
+    };
+    if (enter + 2 >= sites.size()) return FunctionEmitError::kKind;
+    pending.push_back(enter + 2); visited[enter + 2] = 1;
+    while (!pending.empty()) {
+      const auto i = pending.back(); pending.pop_back();
       const auto effect = analysis::LiftRegisterEffect(sites[i].decoded, frame.registers);
       const auto* registers = std::get_if<analysis::RegisterEffect>(&effect);
       if (!registers) return FunctionEmitError::kKind;
       for (std::uint8_t r = 0; r < registers->read_count; ++r)
         if (std::holds_alternative<analysis::Accumulator>(registers->reads[r])) return FunctionEmitError::kKind;
-      if (registers->write && std::holds_alternative<analysis::Accumulator>(*registers->write)) break;
+      if (registers->write && std::holds_alternative<analysis::Accumulator>(*registers->write)) continue;
+      const auto control = abc::GetControlTransfer(sites[i].decoded.opcode);
+      if (!control || *control == abc::ControlTransfer::kSuspend) return FunctionEmitError::kKind;
+      std::array<std::optional<std::size_t>, 2> next{};
+      if (*control == abc::ControlTransfer::kFallthrough || *control == abc::ControlTransfer::kBranch) {
+        if (i + 1 >= sites.size()) return FunctionEmitError::kKind;
+        next[0] = i + 1;
+      }
+      if (*control == abc::ControlTransfer::kJump || *control == abc::ControlTransfer::kBranch) {
+        if (!sites[i].branch_target) return FunctionEmitError::kKind;
+        next[1] = index_of(*sites[i].branch_target);
+        if (!next[1]) return FunctionEmitError::kKind;
+      }
+      for (const auto successor : next)
+        if (successor && !visited[*successor]) { visited[*successor] = 1; pending.push_back(*successor); }
     }
   }
   const auto handler = sites.size() - 3;

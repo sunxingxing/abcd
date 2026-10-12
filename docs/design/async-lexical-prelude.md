@@ -96,16 +96,23 @@ preserved scope across await and handlers, original-PC propagation and budgets.
 原来的 `mov` 模板（只允许参数复制到局部寄存器）随之移除。寄存器复制、插入 NOP、先复制再写入
 等等价变体都自然准入，无需再加局部模式。
 
-**被删除的协议定义**：从被删除的 `sta vPromise` 的下一条指令起，沿直线路径用
-`LiftRegisterEffect` 检查每条指令：在出现控制转移或汇合点（任何分支目标）之前，累加器必须先被
-写入，此前不得读取。否则被删除的 async 对象就会变得可观察。promise 寄存器在正文中的使用仍由
-原有检查约束。这一项同时补上了原有 `newlexenv` 前缀的同类缺口（它也会写 acc）。
+**被删除的协议定义**（按 Codex 第十六轮修订）：被删除的 `ASYNCFUNCTIONENTER` acc 定义必须
+到达不了任何读取。证明方法是在 normal CFG 上做有界数据流：
+- 从被删除的 `sta vPromise` 的下一条指令起，沿 fallthrough/jump/branch 后继传播；
+- 在 `LiftRegisterEffect` 确定写入 acc 的地方停止传播；
+- 任何一条可达路径上的读取都导致拒绝；
+- 不沿异常边传播，因为 handler 入口会把 acc 定义为捕获的异常值；
+- 遇到挂起，或分支目标无法解析，也拒绝。
+
+每条指令只访问一次，分支目标用二分查找定位，scratch 计入预算并在随后的分配之前释放。这样，
+无条件跳转、位于分支目标上的覆盖写入，以及等价的块拆分都能正确准入。promise 寄存器在正文中的
+使用仍由原有检查约束。这一证明同时补上了原有 `newlexenv` 前缀的同类缺口（它也会写 acc）。
 
 **证据**：
-- `control_composition_test` 的 `AsyncPrefixes` 共 9 种情形：
-  - 准入：捕获的参数、先复制再写入、中间插入 NOP；
+- `control_composition_test` 的 `AsyncPrefixes` 共 11 种情形：
+  - 准入：捕获的参数、先复制再写入、中间插入 NOP、跳转后在目标处覆盖；
   - 拒绝：外层 depth、没有新环境、可观察的前缀效果、入口后读取被删除的 acc、先复制 acc、
-    重新定义 acc 之前就有分支。
+    条件分支读取了被删除的 acc、跳转后先读取。
 - 原有的 `AwaitCompletion` 仍然通过。
 - 固定 65 项全部通过；定向测试只有基线原有失败。
 - 探索集 455 → **461/620**，无回退，原有输出文本不变；新完整的 6 个 record 都通过

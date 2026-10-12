@@ -780,6 +780,7 @@ void AsyncPrefixes(abc::ProfileId profile) {
   const Bytes reload = lda(3);
   const Bytes sta1{op(abc::Opcode::kSTA_V8), 1};
   const Bytes branch{op(abc::Opcode::kJEQZ_IMM8), 2};
+  const Bytes jump{op(abc::Opcode::kJMP_IMM8), 2};  // to the next instruction
   struct Case { std::vector<Bytes> prefix; std::vector<Bytes> start; bool admitted; };
   const auto concat = [](std::initializer_list<Bytes> parts) { Bytes out; for (const auto& p : parts) out.insert(out.end(), p.begin(), p.end()); return out; };
   const std::vector<Case> cases{
@@ -791,7 +792,9 @@ void AsyncPrefixes(abc::ProfileId profile) {
       {{env, heap}, {reload}, false},                             // observable prefix effect
       {{env, lda(3), store(0)}, {nop}, false},                    // erased acc read by resolve
       {{env, lda(3), store(0)}, {sta1, reload}, false},           // erased acc copied first
-      {{env, lda(3), store(0)}, {branch, reload}, false}};        // transfer before redefinition
+      {{env, lda(3), store(0)}, {branch, reload}, false},         // branch reads the erased acc
+      {{env, lda(3), store(0)}, {jump, reload}, true},            // jump, then redefinition at its target
+      {{env, lda(3), store(0)}, {jump, sta1, reload}, false}};    // the jump reaches a read first
   for (const auto& c : cases) {
     Bytes bytes;
     for (const auto& part : c.prefix) bytes.insert(bytes.end(), part.begin(), part.end());
