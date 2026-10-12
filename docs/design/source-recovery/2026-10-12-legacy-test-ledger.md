@@ -1,7 +1,8 @@
 # 旧路线删除：测试迁移台账（2026-10-12）
 
 背景：用户要求删除 legacy/shared 旧方案，只保留 pass 通用贯通的 value-tree 路线。
-生产代码的删除已完成，共删除 96 个目标文件，范围按符号级 `-dead_strip` 可达性确定。
+生产代码的删除先在文件级完成：共删除 96 个目标文件，范围按符号级 `-dead_strip` 可达性确定。
+之后按 Codex 第三轮审查清除了声明与分支级残留，详见 [status.md](status.md)。
 删除前后，新旧二进制对固定五份 ABC 的 value-tree 产物逐字节一致，唯一差异是删除了
 `legacy_writer_used` 字段。
 
@@ -64,3 +65,14 @@
 
 执行后的结果：全量构建 0 错误；固定 65 项 65/65 通过；212 项定向验证中，剩余失败均在
 `f0028f54` 基线上以相同原因失败，详见 [status.md](status.md)。
+
+## Codex 第三轮审查后的追加改动
+
+- `module_exports_test`：保留槽位分组、重复导出、预算和 profile 断言，删除已删 writer
+  `WriteAliases`/`WriteStore` 及其初始化状态的断言和 `--emit` JS 测试（`module_exports.mjs`）。
+- `source_route_cli.cmake`：record 6897 改为明确的完整恢复正例；新增 record 4767 负例，
+  断言为不完整、不可执行，并带有类型化的 `INCOMPLETE`/`UNRECOVERED` 标记。
+- `historical_record_source.cmake`：删除“12.0.2 一律不得输出源码”这一过时假设，改为对
+  每个 record 做状态自洽检查，并要求至少有一个完整 record。
+- `structure_source_cli.cmake`：新增 manifest schema 2 与 `source_failure_domain` 断言。
+- 新增 `record_failure_json_test`，覆盖 `route_refusal` 与 `record_program` 两种失败域的序列化。

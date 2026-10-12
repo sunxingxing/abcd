@@ -1,68 +1,84 @@
 # 当前状态
 
 更新时间：2026-10-12。本页只记录当前事实、阻塞项和证据索引。
-2026-09-25 至 2026-10-12 的流水记录原样归档在
-[history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)，
+2026-09-25 至 2026-10-12 的流水记录原样归档于
+[history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
 ## 更新规则
 
-- 每次提交连贯改动后更新本页：交付了什么、构建与验证证据、剩余门槛。历史写入 `history/`。
-- 不按文件数、提交数或 complete 数量宣布完成。通用性以冻结留出集为准，见
+- 每次提交连贯改动后更新本页：交付内容、构建与验证证据、剩余门槛。历史记录写入 `history/`。
+- 不按文件数、提交数或 complete 数量宣布完成；通用性以冻结留出集为准，见
   [审计共识](2026-10-12-audit-consensus.md) §5。
-- 全语料批跑、RSS 基准、全套测试仍按用户要求暂停。固定 65 项和定向验证可以运行。
+- 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
 ## 架构事实
 
-- **只有一条源码路线**：基于 pass 的 value-tree 路线。2026-10-12 按用户指令删除了 legacy
-  （`WriteRecordProgram`）和 shared（`BuildEntrySource→SourceAst→PrintSourceAst`）两套
-  writer，以及只为它们服务的分析模块。删除范围依据符号级可达性：对 13 个生产 CLI 用链接器
-  `-dead_strip -map` 求存活符号的并集，迭代到不动点。
-- 入口链路：`abc_structure --value-source` → `BuildRecordSource` → `BuildRecordTree` →
-  FunctionTree 函数族 → `TreePrinter`。双路线概念 `RoutePolicy`、`AdmitLegacyWriter`、
-  `SourceRoute::kLegacy`、`legacy_writer_used` 已删除。路线回执 schema 升为 4，旧 schema
-  明确拒绝；manifest 不再含 `legacy_writer_used`。
-- CLI：`abc_structure` 只接受“仅结构”和 `--value-source` 两种模式，`--source` 与
-  `--shared-source` 视为用法错误。`abc_semantic` 删除了 `--all-records`、
-  `--exception-flow/-template`、`--record-value-slice`、`--class-source`，所有源码形式都走
-  value-tree。`abc_source_probe` 已删除。
-- 资源：所有 CLI 共用 `tools/process_limit.h`。Linux 上设置 `RLIMIT_AS` 为 1,000,000,000 字节；
-  macOS 不设置，并如实报告 `process_limit.established=false`。`ru_maxrss` 按平台换算单位。
-  1 GB 整进程合同仍未完成，见下方门槛。
-- 规模：生产代码（`src`、`include`、`tools`）净删约 2.8 万行。`src/source` 从 543 个文件、
-  83,859 行降到 380 个文件、62,575 行。
+- **只有一条源码路线**：基于 pass 的 value-tree 路线。2026-10-12 按用户指令删除了旧方案，分两步：
+  1. **文件级**：删除 legacy（`WriteRecordProgram`）与 shared（`BuildEntrySource→SourceAst→PrintSourceAst`）
+     两套 writer，以及只为它们服务的分析模块。依据是对 13 个生产 CLI 做链接器 `-dead_strip -map`
+     符号级可达性分析，迭代至不动点。
+  2. **声明与分支级**：按 Codex 第三轮审查继续删除残留，包括 `EnvironmentEscape` 及
+     `RegisterValueFlow::BuildWithLexicals` 词法分支、spread-field 证明声明、`ModuleExports` 的
+     旧 writer 与初始化状态、`GlobalScope` 的模块槽字段、`RecordModuleInitialization`，以及
+     `ReadRecordModule` 和 `CreationExpansion` 指针。
+- **入口**：`abc_structure --value-source` → `BuildRecordSource` → `BuildRecordTree` →
+  FunctionTree 函数族 → `TreePrinter`。双路线概念已全部删除。
+- **输出格式**：路线回执 schema 升为 4。manifest schema 升为 2：失败记录改用显式的
+  `source_failure_domain`（`record_program` 或 `route_refusal`），不再输出随 variant 布局
+  变化的 `shared_failure_variant`。
+- **CLI 选项**：`abc_structure` 只接受“仅结构”和 `--value-source` 两种模式，`--source` 与
+  `--shared-source` 视为用法错误。`abc_semantic` 的所有源码形式都走 value-tree；
+  `--all-records`、`--exception-flow/-template`、`--record-value-slice`、`--class-source`
+  已删除。`abc_source_probe` 已删除。
+- **资源**：所有 CLI（`abc_scan`、`abc_structure`、`abc_semantic`、各阶段验证器）共用
+  `tools/process_limit.h`。
+  - Linux 把 `RLIMIT_AS` 软限额设为“继承值与 1,000,000,000 字节中的较小者”，这是地址空间
+    限制，不是 RSS 限制。
+  - macOS 不设限，报告 `process_limit.established=false`。
+  - 限额设置失败时输出结构化诊断：`{"error":"process_limit",...}`。
+  - `ru_maxrss` 按平台换算单位（Linux 为 KiB，macOS 为字节）。
+  - 1 GB 整进程合同仍未完成。
+- **record 失败隔离（S3 部分完成）**：单个 record 超出自身预算（`kResourceLimit`、
+  `kOutputLimit`）时，只记为该 record 的类型化失败；只有输入读写、输入变更和进程分配失败
+  （新增 `kAllocationFailure`）才会中止整个文件。
+- **规模**：生产代码（`src`、`include`、`tools`）净删约 2.9 万行；`src/source` 从 543 个文件、
+  83,859 行降至约 380 个文件、约 6.2 万行。
 
 ## 本轮验证证据（主检出 `build/regression`，macOS）
 
 | 项目 | 结果 |
 |---|---|
-| 固定五份 ABC 的 value-tree 产物，删除前后两套二进制对照，含默认合同与 `--language-numeric --language-constructors` 合同 | 源码逐字节一致；manifest 唯一差异是删除了 `legacy_writer_used` |
+| 固定五份的 value-tree 产物，删除前后两套二进制对照，覆盖默认合同和 numeric+constructors 合同 | 源码逐字节一致；manifest 只差在删除的 `legacy_writer_used` 字段 |
 | 全量构建 `make -k all` | 0 错误 |
-| 固定 65 项（`ctest --preset source-regression`） | **65/65，91.77s** |
-| 定向验证：65 项加全部改动过的测试，共 212 项 | 除下行的原有失败外全部通过 |
-| 原有失败：在 `f0028f54` 基线上以相同原因失败，不是本次引入 | pasteboard_breakpoint、backup_class_cells、index_record、navigation_graph、minigame_navigation_graph、module_entry_initialization、phased_arguments、file_generator_return、file_generator_return_loop、phased_method、hotitem_retained_selection、value_tree_pasteboard/call/immersive_slice、historical_record_source，共 15 项（测试名均带 `_source_test` 或 `_slice_test` 后缀） |
-| `window_navigation_graph_source_test` | 单独运行通过（228s）；并行时其 60 秒子进程超时，属于资源争用 |
-| `index_cli_test` | 在 macOS 上首次通过：Linux 保留 prlimit 断言，Darwin 断言“限制未建立” |
+| 固定 65 项（`ctest --preset source-regression`） | **65/65，97.26s** |
+| 审查修复相关的 16 项定向测试（含新增的 `record_failure_json_test`） | 16/16 通过；`historical_record_source_test` 由原有失败转为通过 |
+| 相对 `f0028f54` 改动过的全部测试 | 除下行所列原有失败外均通过，详见 [测试台账](2026-10-12-legacy-test-ledger.md) |
+| 原有失败（在 `f0028f54` 基线上以相同原因失败） | pasteboard_breakpoint、backup_class_cells、index_record、navigation_graph、minigame_navigation_graph、module_entry_initialization、phased_arguments、file_generator_return(_loop)、phased_method、hotitem_retained_selection、value_tree_{pasteboard,call,immersive}_slice |
+| `window_navigation_graph_source_test` | 单独运行通过（228s）；并行运行时其 60 秒子进程超时，属于资源争用 |
+| `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |
+| 留出探针：40 个探索集应用，均使用 `--value-source --language-numeric --language-constructors` | 整文件失败 1 → **0**；12.0.x/13.0.1 的模块 record 完整恢复 **83/308**；24.0 为 **0/312**（S4 处理） |
 
-测试的删除、裁剪与迁移已经用户授权，逐项记录在
-[旧路线测试台账](2026-10-12-legacy-test-ledger.md)，其中列出了随旧路线一起删除的覆盖。
+## 已知限制
 
-## 已知残留（新路线内部）
-
-- `EnvironmentEscape::Build` 只有声明、没有定义。`lexical_value_index` 依赖的 escape
-  对象只能由它构造，所以这条分支在生产中不可达，应在 C5 收敛时清除。
-- 部分保留文件内仍可能有内联后不再调用的旧辅助函数。文件级可达性已到不动点，函数级未逐一清理。
-- `SourceForm::kClassConstructor` 已无 CLI 入口，留待 C5 统一清理。
+- 文件级可达性已到不动点，声明级残留按 Codex 审查清单清理完毕；但保留文件内部是否还有
+  内联后不再被调用的旧辅助函数，没有逐函数审计。
+- `FatalRecordSource` 仍把所有 `RouteRefusal` 视为非致命，而函数族读取失败中的文件变更或
+  资源耗尽也会被包装成 `RouteRefusal`。这是继承自基线的问题，需要 S2 保留叶子原因后，
+  按叶子判定是否致命。
+- CertificateFramework 的 `Data.ts` record 超出 128 MB 预算，而它只包含几段字节数组，
+  说明预算核算方式可能有问题，待 S2 遥测给出叶子原因后再处理。
 
 ## 剩余门槛（按共识顺序）
 
-1. **S2**：端到端错误链与能力报告。目前回执只保留 class、stage、pc，无法按叶子原因做帕累托分析。
-2. **S3**：record 级失败隔离。目前单个 record 的错误仍会让整个文件 `kRecord` 失败，例如 CertificateFramework。
-3. **S4**：集中的 profile 能力表，开放 24.0。目前 24.0 在留出集上 0/312。
-4. **S5 余项**：1 GB 整进程预算与准入，macOS 上的观测与背压。
-5. **C5 → C3 → C2 → C4 → C8**：打印前语义上移 → 一般结构化 → 选择表达式通用化 →
+1. **S2**：端到端错误链与能力报告。回执目前只有 class、stage、pc，无法按叶子原因做帕累托分析。
+2. **S3 余项**：结构导出、路径规划和模块上下文中可隔离的失败；按叶子原因判定致命性。
+3. **S4**：集中的 profile 能力表，开放 24.0（留出探针中为 0/312）。
+4. **S5 余项**：1 GB 整进程预算与准入；macOS 上的观测与背压。
+5. **C5 → C3 → C2 → C4 → C8**：语义上移到打印之前 → 一般结构化 → 选择表达式通用化 →
    协议迁移 → 有界方法调度器。
-6. 冻结新的留出集（探索集为本轮使用的 40 个 Harmony 应用），并以它作为通用性主指标。
+6. **留出集**：在 `tests/corpus/source-cohorts.json` 中，MultiCommunity 已改为回归集，40 个探索
+   应用已按 hash 登记；冻结留出集为 `pending_selection`，需按应用家族、hash 和 profile 选取并冻结。
 
-阶段一（固定五份）的未完项见 [Claude 交接](2026-10-12-claude-handoff.md) §4–6。按审计
-共识，固定五份只作为回归集，不再是完成条件。
+阶段一（固定五份）的未完项见 [Claude 交接](2026-10-12-claude-handoff.md) §4–6。按审计共识，
+固定五份只作为回归集，不再是完成条件。

@@ -13,11 +13,16 @@
   应停止的做法见 [2026-10-12-audit-consensus.md](2026-10-12-audit-consensus.md)。要点是：
   目标为通用引擎，固定五份降为回归集；留出探针显示已准入版本只有 27% 的模块 record
   完整恢复，24.0 版本为 0。
-- **已完成**：S0（共识与 WIP 处置）、S1（删除 legacy/shared 旧方案，只保留 value-tree 路线）、
-  S5 的 CLI 部分（共享 `process_limit`）。证据与已知残留见 [status.md](status.md)，测试去向
-  见 [旧路线测试台账](2026-10-12-legacy-test-ledger.md)。
-- **下一步**：按共识依次做 S2（错误链与能力报告）→ S3（record 失败隔离）→ S4（profile
-  能力表与 24.0）。之后是 C5/C3/C2/C4/C8，并冻结新的留出集。第 4–6 节中补 Community
+- **已完成**：
+  - S0：共识、WIP 处置，以及 `source-cohorts.json` 的角色更新。冻结留出集仍待选取。
+  - S1：删除 legacy/shared 旧方案，只保留 value-tree 路线，并按 Codex 第三轮审查清除了
+    声明与分支级残留。
+  - S5 的 CLI 部分：所有 CLI 共用 `process_limit`，失败时输出结构化报告。
+  - S3 的一部分：record 预算失败只影响该 record，不再中止整个文件。
+
+  证据与已知限制见 [status.md](status.md)，测试去向见 [旧路线测试台账](2026-10-12-legacy-test-ledger.md)。
+- **下一步**：按共识依次做 S2（错误链与能力报告）→ S3 余项（结构导出、路径和模块上下文的
+  失败隔离，按叶子原因判定致命性）→ S4（profile 能力表与 24.0）。之后是 C5/C3/C2/C4/C8，并冻结新的留出集。第 4–6 节中补 Community
   平台模拟的计划按共识降级为回归维护，不再是主干的下一步。
 - 构建注意：主检出的 `build/regression` 用 preset 配置，需要额外指定
   `-DRuby_EXECUTABLE=$PWD/build/deps/ruby/bin/ruby`（Ruby 必须是 3.2.3）。
