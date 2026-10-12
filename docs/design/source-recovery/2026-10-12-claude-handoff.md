@@ -13,20 +13,37 @@
   应停止的做法见 [2026-10-12-audit-consensus.md](2026-10-12-audit-consensus.md)。要点是：
   目标为通用引擎，固定五份降为回归集；留出探针显示已准入版本只有 27% 的模块 record
   完整恢复，24.0 版本为 0。
-- **已完成**：
-  - S0：共识、WIP 处置，以及 `source-cohorts.json` 的角色更新。冻结留出集仍待选取。
-  - S1：删除 legacy/shared 旧方案，只保留 value-tree 路线，并按 Codex 第三轮审查清除了
+- **已完成（S0–S4 全部完成，S5 完成 CLI 部分）**：
+  - **S0**：审计共识；处置 WIP；在 `tests/corpus/source-cohorts.json` 中把 MultiCommunity 改为回归集，
+    登记 40 个探索应用，并冻结 60 个留出应用（每个版本 15 个），只评估一次。
+  - **S1**：删除 legacy/shared 旧方案，只保留基于 pass 的 value-tree 路线。按 Codex 审查清除了
     声明与分支级残留。
-  - S5 的 CLI 部分：所有 CLI 共用 `process_limit`，失败时输出结构化报告。
-  - S3 的一部分：只有能证明来自 record 自身预算的失败（`kRecordBudget`、`kOutputLimit`）
-    才隔离到该 record。底层阶段折叠的 `kResourceLimit` 仍为致命，原因见 status.md。
+  - **S2**：类型化原因链（`FailureCauseChain`）贯通 manifest；新增能力报告工具 `abc_capability`
+    （帕累托排序）。
+  - **S3**：通过 `new_handler` 带外观测真实分配失败，没有观测到时，预算类失败只隔离到对应
+    record；整文件索引失败改为逐 record 的类型化失败；每个 record 处理后复查输入是否变更。
+  - **S4**：集中的 profile 能力表，开放 24.0。同时加入三条通用语义规则：透明重抛区域擦除、
+    `CALLTHIS*WITHNAME` 提升、嵌套 literal array 遍历。
+  - **S5（CLI 部分）**：所有 CLI 共用 `process_limit`，失败时输出结构化报告，RSS 单位正确。
+- **通用性证据**（`--value-source --language-numeric --language-constructors`）：
+  - **冻结留出集**（60 个未见过的应用）：整文件失败 0，模块 record 完整恢复
+    **386/509（75.8%）**，其中 24.0 为 84/117。
+  - **探索集**（40 个应用）：完整恢复从 81/791（`f0028f54`）提升到 **419/600**，整文件失败从 1 降到 0。
+  - **固定五份**：仍为 106/106。
 
-  证据与已知限制见 [status.md](status.md)，测试去向见 [旧路线测试台账](2026-10-12-legacy-test-ledger.md)。
-- **下一步**：按共识依次做 S2（错误链与能力报告）→ S3 余项（结构导出、路径和模块上下文的
-  失败隔离，按叶子原因判定致命性）→ S4（profile 能力表与 24.0）。之后是 C5/C3/C2/C4/C8，并冻结新的留出集。第 4–6 节中补 Community
-  平台模拟的计划按共识降级为回归维护，不再是主干的下一步。
-- 构建注意：主检出的 `build/regression` 用 preset 配置，需要额外指定
+  证据、已知限制和剩余门槛见 [status.md](status.md)，测试去向见
+  [旧路线测试台账](2026-10-12-legacy-test-ledger.md)。
+- **接续第一步**：
+  1. 用 `build/regression/abc_structure` 对冻结留出集之外的输入导出。不要用冻结留出集指导修复；
+     若用了，就把该输入转入探索集。
+  2. 用 `build/regression/abc_capability --list <dirs>` 生成帕累托报告，选当前头号叶子。
+     冻结留出集的头号叶子是 `CaptureCellError::kInput`（48 个 record）。
+  3. 落在共同模型中做通用修复，补单元反例，跑固定 65 项和定向集，并对照基线。
+  4. 按审计共识，补 Community 平台模拟的计划已降级为回归维护，不再是主干的下一步。
+- **构建注意**：主检出的 `build/regression` 用 preset 配置，需额外指定
   `-DRuby_EXECUTABLE=$PWD/build/deps/ruby/bin/ruby`（Ruby 必须是 3.2.3）。
+  14 项原有失败测试的名单见 status.md；`window_navigation_graph_source_test` 需要单独运行，
+  并行运行时会因资源争用超时。
 
 以下第 1–7 节为 codex 交出时的原文，保留作历史依据。
 
