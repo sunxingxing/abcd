@@ -81,6 +81,9 @@ class SourceFile {
   auto Plan(std::size_t budget = 16 * 1024 * 1024) const {
     return structure::PlanRecordSourcePaths(*file, header, index, budget);
   }
+  auto PlanSet(std::size_t budget = 16 * 1024 * 1024) const {
+    return structure::PlanRecordSourcePathSet(*file, header, index, budget);
+  }
   abc::MetadataIndex index;
 
  private:
@@ -169,6 +172,19 @@ void EmbeddedPaths() {
                                  u"app|lib/1|v|src/Foo.ts"};
   Check(std::get<PathError>(qualified_collision.Plan()) ==
         PathError::kCollision);
+  // Per-record plan (S3): collisions refuse every member of their group and
+  // unreadable evidence refuses only its record; the others keep their paths.
+  SourceFile isolated{u"app|lib|v|src/Foo.ts", u"app|lib|v|src/foo.ts",
+                      u"app|lib|v|src/Bar.ts", u"app|lib|v|src/Baz.ts"};
+  isolated.index.records[3].method_count = 1;
+  isolated.index.methods.push_back({});
+  const auto set = std::get<std::vector<structure::RecordSourcePath>>(
+      isolated.PlanSet());
+  Check(std::get<PathError>(set[0]) == PathError::kCollision);
+  Check(std::get<PathError>(set[1]) == PathError::kCollision);
+  Check(std::get<RecordPath>(set[2]).stem == "lib/src/Bar");
+  Check(std::get<PathError>(set[3]) == PathError::kSourceEvidence);
+  Check(std::get<PathError>(isolated.PlanSet(0)) == PathError::kResourceLimit);
   SourceFile component_limit{u"app|lib|v|src/" + std::u16string(23, u'\u5305') +
                              u".ts"};
   Check(std::get<PathError>(component_limit.Plan()) ==

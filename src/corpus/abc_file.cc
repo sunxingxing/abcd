@@ -105,7 +105,10 @@ std::optional<FileError> AbcFile::ReadAt(std::uint64_t offset,
         pread(fd_, bytes.data(), std::min(bytes.size(), kStreamBytes),
               static_cast<off_t>(offset));
     if (count < 0 && errno == EINTR) continue;
-    if (count <= 0) return FileError::kRead;
+    if (count <= 0) {
+      read_failed_.store(true, std::memory_order_relaxed);
+      return FileError::kRead;
+    }
     const auto consumed = static_cast<std::size_t>(count);
     bytes = bytes.subspan(consumed);
     offset += consumed;

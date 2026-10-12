@@ -41,5 +41,17 @@ PlanRecordSourcePaths(std::span<const abc::RecordInfo> records,
 PlanRecordSourcePaths(const corpus::AbcFile& file, const abc::Header& header,
                       const abc::MetadataIndex& index,
                       std::size_t budget_bytes = 16 * 1024 * 1024);
+// Per-record form of the above (S3). The outer error is file-wide (budget
+// only); each record carries its own path or typed error: unreadable identity
+// evidence (kSourceEvidence), encoding limits, or membership in a case-folded
+// collision group (kCollision, every member). A record whose evidence failed
+// is excluded from namespace qualification and never names a file. Whether a
+// read failure is process-level is the caller's decision
+// (corpus::AbcFile::ReadFailed).
+using RecordSourcePath = std::variant<RecordPath, PathError>;
+[[nodiscard]] std::variant<std::vector<RecordSourcePath>, PathError>
+PlanRecordSourcePathSet(const corpus::AbcFile& file, const abc::Header& header,
+                        const abc::MetadataIndex& index,
+                        std::size_t budget_bytes = 16 * 1024 * 1024);
 }  // namespace abcd::structure
 #endif

@@ -22,7 +22,9 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
 // input I/O, input change or entry allocation failure. Without an observed
 // allocation failure a resource limit (kResourceLimit, kMemoryLimit refusal)
 // is this record's own budget and, like kRecordBudget, kOutputLimit and other
-// typed refusals, is isolated to the record.
+// typed refusals, is isolated to the record. A stage may fold an input read
+// failure into another typed failure (e.g. kExport); callers also consult the
+// out-of-band input signals (corpus::AbcFile::ReadFailed, CheckUnchanged).
 [[nodiscard]] bool RecordFailureIsFatal(const source::RecordSourceResult& result,
                                         bool allocation_failed);
 }  // namespace abcd::tools

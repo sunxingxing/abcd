@@ -77,11 +77,16 @@ void Scale(std::uint32_t count, abcd::abc::LiteralTag tag = abcd::abc::LiteralTa
 // `duplicates` kLiteralArray entries; A references the root back (a cycle)
 // and holds the method. Every array is visited once; the role is found; the
 // traversal fails typed under a small budget, never by allocation failure.
-void Nested(std::uint32_t duplicates) {
+// With `distinct`, all but the last root entry reference their own empty
+// subarray instead, so the root literal stays live while one set node and
+// queue slot per subarray is admitted: the minimal budget must cover their
+// sum, not their maximum.
+void Nested(std::uint32_t duplicates, bool distinct = false) {
   using namespace abcd;
   constexpr std::uint32_t kPool = 64, kCaller = 80, kTarget = 100, kRoot = 128;
   constexpr std::uint32_t kEntryBytes = 5, kCountUnits = 2;
-  const std::uint32_t sub = kRoot + 4 + duplicates * kEntryBytes;
+  const std::uint32_t empties = kRoot + 4 + duplicates * kEntryBytes;
+  const std::uint32_t sub = empties + (distinct ? (duplicates - 1) * 4 : 0);
   const std::uint32_t code = sub + 4 + 2 * kEntryBytes + 3;
   std::vector<std::uint8_t> bytes(code);
   const auto word = [&](std::size_t at, std::uint32_t value) {
@@ -92,7 +97,7 @@ void Nested(std::uint32_t duplicates) {
   for (std::uint32_t i = 0; i < duplicates; ++i) {
     const auto at = kRoot + 4 + i * kEntryBytes;
     bytes[at] = static_cast<std::uint8_t>(abc::LiteralTag::kLiteralArray);
-    word(at + 1, sub);
+    word(at + 1, distinct && i + 1 < duplicates ? empties + i * 4 : sub);
   }
   word(sub, 3 * kCountUnits);
   bytes[sub + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kLiteralArray);
@@ -145,12 +150,21 @@ void Nested(std::uint32_t duplicates) {
   const auto refused = analysis::MethodRoleIndex::Build(file, header, index, lookup, {high - 1});
   // Typed budget failure from whichever stage reaches the limit first.
   test::Check(std::holds_alternative<analysis::MethodRoleFailure>(refused));
+  if (distinct) {
+    // Live together: root entries, one node per array (charged at least
+    // 64 + offset bytes each) and the queue slots.
+    const std::size_t arrays = duplicates + 1;
+    test::Check(high >= duplicates * sizeof(abc::LiteralEntry) +
+                            arrays * (64 + sizeof(abc::EntityOffset)) +
+                            (arrays - 1) * sizeof(abc::EntityOffset));
+  }
   test::Check(unlink(path) == 0);
 }
 }  // namespace
 
 int main() {
   for (const std::uint32_t duplicates : {1, 2, 200, 201, 4000}) Nested(duplicates);
+  for (const std::uint32_t duplicates : {2, 201, 4000}) Nested(duplicates, true);
   using namespace abcd;
   for (const std::uint32_t count : {200, 201, 400, 800, 1600}) Scale(count);
   for (const std::uint32_t count : {200, 201, 402}) Scale(count, abc::LiteralTag::kGeneratorMethod);

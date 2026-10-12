@@ -56,20 +56,30 @@
   - `tools/abc_capability` 流式汇总一批导出，并按叶子原因输出帕累托排序。
     - 模块分类独立于恢复结果：根据每个 record 的结构元数据判定，元数据缺失时计为
       `module_unknown`。
+    - 没有 `source_status` 的 record 也计入 `module_unknown`，并分别计数：结构失败计为
+      `structure_failed`（其类型化叶子进入帕累托），其余计为 `unknown_status`。不会默认为“无模块”。
     - 拒绝非 value-source 视图的 manifest（计为 `view_mismatch`），整文件失败单独计数。
-- **record 失败隔离（S3）**：
-  - 真实分配失败由 `std::new_handler` 带外观测（`tools/process_limit.h`），不受底层阶段
-    把错误码折叠成 `kResourceLimit` 的影响。
-  - 分配失败观测是**粘滞的进程级信号**：一旦观测到，不论哪个 record、结果是什么类型
-    （包括被底层恢复成“成功”），导出都会失败。没有观测到时，资源类失败（`kResourceLimit`、
-    `kMemoryLimit` 类 route refusal）视为该 record 自身预算耗尽，与 `kRecordBudget`、
-    `kOutputLimit` 一样只隔离该 record。
-  - 每个 record 前后（包括提前结束的分支）以及导出末尾，都会复查分配失败信号和输入文件。
-    输入读写失败、输入变更、入口捕获的分配失败（`kAllocationFailure`）均致命；整文件索引
-    的类型化错误中，若嵌套了读失败（例如 `BodyFailure.file_error`），同样致命。
-  - 整文件索引（方法角色、函数/类创建点、源码路径规划）失败时，每个 record 记为带原因链的
-    `kFileIndex` 失败。单个 record 的路径规划失败或结构写入失败，在 manifest 中记为类型化的
-    `structure_failure`，不发布该 record 的文件，其余 record 照常导出。
+- **record 失败隔离（S3）**：进程级故障只依据带外信号判定，不依据各阶段如何折叠错误码。
+  有三种带外信号，都会在以下位置复查：每个 record 前后（包括提前结束的分支）、每个整文件
+  索引之后、导出末尾。
+  - **真实分配失败**：由 `std::new_handler` 观测（`tools/process_limit.h`），是粘滞信号。
+  - **输入读失败**：`corpus::AbcFile::ReadFailed()`，也是粘滞信号。所有输入读取都经过
+    `ReadAt`，短读或读错误都会置位；越界属于格式错误，不置位。
+  - **输入变更**：`CheckUnchanged`。
+  
+  只要出现其中任何一种，导出就失败，不论该 record 的结果是什么类型。输出写入失败（包括
+  `StructureFault::kWrite`、`EmitError::kWrite`、撤回部分产物时删除失败）同样致命。
+  
+  没有出现进程级故障时，失败按 record 隔离：
+  - 资源类失败（`kResourceLimit`、`kMemoryLimit` 类 route refusal）视为该 record 自身预算耗尽，
+    与 `kRecordBudget`、`kOutputLimit` 一样只隔离该 record。
+  - 整文件索引（方法角色、函数/类创建点）失败，或源码路径规划超出预算时，每个 record 记为
+    带原因链的 `kFileIndex` 失败。
+  - 源码路径按 record 规划（`structure::PlanRecordSourcePathSet`）。身份证据不可读、编码超限、
+    大小写折叠后冲突，都只影响相关 record：冲突组的每个成员都拒绝，以免由顺序决定胜者。这些
+    record 记为 `kSourcePath`，其余 record 照常恢复源码。
+  - 单个 record 的归档路径失败或结构写入失败，在 manifest 中记为类型化的 `structure_failure`，
+    不发布该 record 的文件。
 - **版本能力（S4）**：`include/abcd/abc/profile_capabilities.h` 是集中的能力表，列为
   container_decoding、pinned_runtime_semantics、literal_arrays_in_header，并附锁定运行时的出处。
   语义层门禁统一查询该表。
@@ -82,8 +92,9 @@
     - 没有任何 try 区域覆盖处理器 PC，因此重抛必然离开方法。自循环、互相重抛的情形都保留不擦。
   - **`CALLTHIS*WITHNAME` 按 `CALLTHIS*` 提升**：锁定解释器只在不可调用的 `TypeError` 文本中
     使用该名字。
-  - **方法角色索引遍历嵌套 literal array**：24.0 会生成嵌套形式。遍历在入队时去重，每个新节点
-    和队列扩容都先计入预算，环和共享子数组只访问一次。
+  - **方法角色索引遍历嵌套 literal array**：24.0 会生成嵌套形式。遍历在入队时去重，环和共享
+    子数组只访问一次。当前 literal 的条目容量在其存活期间一直计入预算，新节点和队列扩容也先
+    计入预算，所以峰值是这些项的总和，受预算约束。
 - **规模**：生产代码（`src`、`include`、`tools`）净删约 2.9 万行；`src/source` 从 543 个文件、
   83,859 行降至约 380 个文件、约 6.2 万行。
 
@@ -93,16 +104,16 @@
 |---|---|
 | 固定五份的 value-tree 产物，`f0028f54` 与 `7b2491b7` 两套二进制对照，覆盖默认合同和 numeric+constructors 合同 | 源码逐字节一致；manifest 只差在删除的 `legacy_writer_used` 字段。之后 manifest 升为 schema 2，失败记录的字段也随之改变 |
 | 全量构建 `make -k all` | 0 错误 |
-| 固定 65 项（`ctest --preset source-regression`，第七轮审查修复后） | **65/65，97.93s** |
+| 固定 65 项（`ctest --preset source-regression`，第八轮审查修复后） | **65/65，97.73s** |
 | 固定五份，numeric+constructors 合同 | 106/106 完整，与之前一致 |
 | 审查修复相关的 16 项定向测试（含新增的 `record_failure_json_test`） | 16/16 通过；`historical_record_source_test` 由原有失败转为通过 |
-| 第七轮审查修复后的定向回归（214 项，`-j3`，另单独运行 window） | 199 通过；失败的为下行 14 项原有失败，外加 community（单独运行时通过） |
+| 第八轮审查修复后的定向回归（215 项，`-j3`，window 与 community 单独运行） | 201 通过，失败的只有下行 14 项原有失败；window、community 单独运行通过 |
 | 相对 `f0028f54` 改动过的全部测试，加本轮新增测试 | 除下行所列原有失败外均通过，详见 [测试台账](2026-10-12-legacy-test-ledger.md) |
 | 原有失败（在 `f0028f54` 基线上以相同原因失败） | pasteboard_breakpoint、backup_class_cells、index_record、navigation_graph、minigame_navigation_graph、module_entry_initialization、phased_arguments、file_generator_return(_loop)、phased_method、hotitem_retained_selection、value_tree_{pasteboard,call,immersive}_slice |
 | `window_navigation_graph_source_test`、`community_ability_graph_source_test` | 单独运行均通过（231s、205s）；与其他测试并行运行时，其 60 秒 worker 子进程会超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |
-| 探索集：40 个应用，`--value-source --language-numeric --language-constructors`，按元数据统一分类口径，模块 record 完整恢复 | `f0028f54`：81/611（12.x/13.0.1 为 81/299，24.0 为 0/312），整文件失败 1。现在：**430/620**（12.x/13.0.1 为 218/308，24.0 为 212/312），整文件失败 **0** |
-| **冻结留出集**：60 个从未接触过的应用（每个版本 15 个），共登记两次评估，均未用于调优 | 第二次：整文件失败 **0**；模块 record 完整恢复 **386/505（76.4%）**：12.0.2 为 95/125，12.0.6 为 118/139，13.0.1 为 89/124，24.0 为 84/117。第一次（`a4d9722f`）为 386/509，当时有 4 个模块上下文失败被误计为模块 |
+| 探索集：40 个应用，`--value-source --language-numeric --language-constructors`，按元数据统一分类口径，模块 record 完整恢复 | `f0028f54`：81/611（12.x/13.0.1 为 81/299，24.0 为 0/312），整文件失败 1。现在：**430/620**（12.x/13.0.1 为 218/308，24.0 为 212/312），整文件失败 **0**。第八轮修复后复跑，结果不变 |
+| **冻结留出集**：60 个从未接触过的应用（每个版本 15 个），共登记两次评估，均未用于调优 | 第二次：整文件失败 **0**；模块 record 完整恢复 **386/505（76.4%）**：12.0.2 为 95/125，12.0.6 为 118/139，13.0.1 为 89/124，24.0 为 84/117。第一次（`a4d9722f`）为 386/509，当时有 4 个模块上下文失败被误计为模块。第八轮修复后复跑，结果相同（只核对回归，未用于调优） |
 
 ## 已知限制
 
@@ -118,7 +129,7 @@
 
 ## 剩余门槛（按共识顺序）
 
-S0–S4 已完成。下列各项按审计共识的顺序推进；后续能力工作按 `abc_capability` 报告的帕累托
+S0–S4 已实施，复审结论见本页“本轮验证证据”。下列各项按审计共识的顺序推进；后续能力工作按 `abc_capability` 报告的帕累托
 顺序排优先级，不按样本逐个处理。
 
 1. **当前缺口（帕累托顺序）**：冻结留出集中，头号叶子是 `CaptureCellError::kInput`（48 个

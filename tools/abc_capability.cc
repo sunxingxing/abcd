@@ -38,12 +38,15 @@ constexpr std::size_t kTopCauses = 40;
 struct Tally {
   std::uint64_t records = 0, non_module = 0, module_unknown = 0, complete = 0, incomplete = 0;
   std::uint64_t module_context = 0, profile_refused = 0, failed = 0;
+  // Subsets of module_unknown: records without structural metadata.
+  std::uint64_t structure_failed = 0, unknown_status = 0;
   json Json() const {
     return {{"records", records}, {"non_module", non_module},
             {"module_unknown", module_unknown},
             {"module_records", records - non_module - module_unknown}, {"complete", complete},
             {"incomplete", incomplete}, {"failed", failed},
-            {"profile_refused", profile_refused}, {"module_context_failed", module_context}};
+            {"profile_refused", profile_refused}, {"module_context_failed", module_context},
+            {"structure_failed", structure_failed}, {"unknown_status", unknown_status}};
   }
 };
 
@@ -106,11 +109,26 @@ int Run(const std::vector<std::filesystem::path>& exports,
     auto& per_version = by_version[version];
     for (const auto& record : manifest.value("records", json::array())) {
       for (auto* tally : {&total, &per_version}) ++tally->records;
-      const auto status = record.value("source_status", kNoModule);
       const auto count = [&](std::uint64_t Tally::*field) {
         ++(total.*field);
         ++(per_version.*field);
       };
+      // A record without a source status has no recovery outcome and, for a
+      // structural failure, no metadata: its module class is unknown. Never
+      // default it to "no module".
+      if (!record.contains("source_status")) {
+        count(&Tally::module_unknown);
+        if (record.contains("structure_failure")) {
+          count(&Tally::structure_failed);
+          const auto& typed = record["structure_failure"];
+          ++leaves["structure:" + typed.value("domain", std::string{}) + "=" +
+                   std::to_string(typed.value("value", 0u))];
+        } else {
+          count(&Tally::unknown_status);
+        }
+        continue;
+      }
+      const auto status = record["source_status"].get<unsigned>();
       if (status == kNoModule) { count(&Tally::non_module); continue; }
       if (status == kWritten) { count(&Tally::complete); continue; }
       if (status == kIncomplete) { count(&Tally::incomplete); continue; }

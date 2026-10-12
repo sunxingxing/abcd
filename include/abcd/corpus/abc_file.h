@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -58,6 +59,10 @@ class AbcFile {
   std::optional<FileError> ReadAt(std::uint64_t offset,
                                   std::span<std::uint8_t> bytes) const;
   std::optional<FileError> CheckUnchanged() const;
+  // Sticky: true once any positional read failed or hit early end of file.
+  // Stages may fold a read error into their own typed failure; callers that
+  // isolate failures consult this out-of-band signal instead.
+  bool ReadFailed() const { return read_failed_.load(std::memory_order_relaxed); }
   std::variant<FileFingerprint, FileError> Fingerprint() const;
 
  private:
@@ -65,6 +70,7 @@ class AbcFile {
   std::optional<FileError> ValidateRegular();
   int fd_;
   struct stat stamp_;
+  mutable std::atomic<bool> read_failed_{false};
 };
 
 }  // namespace abcd::corpus

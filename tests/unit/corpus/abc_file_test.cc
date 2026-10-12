@@ -65,6 +65,16 @@ void ReadsWithCheckedOffsets() {
   Check(!file->ReadAt(3, {}));
   Check(file->ReadAt(4, {}) == FileError::kBounds);
   Check(!file->CheckUnchanged());
+  // Bounds errors are format errors, not input faults.
+  Check(!file->ReadFailed());
+  // A short read (here: truncation after open) is a sticky input fault, even
+  // after a later read succeeds.
+  std::filesystem::resize_file(fixture.path(), 1);
+  Check(file->ReadAt(1, bytes) == FileError::kRead);
+  Check(file->ReadFailed());
+  std::array<std::uint8_t, 1> first{};
+  Check(!file->ReadAt(0, first));
+  Check(file->ReadFailed());
 }
 
 void HashesKnownEmptyDigest() {

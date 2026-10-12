@@ -129,6 +129,9 @@ struct SourceName {
   std::u16string file;
   std::optional<PackageSource> package;
   bool entry_scope = false, version_scope = false;
+  // This record's identity evidence could not be read; it is excluded from
+  // namespace qualification and receives no path (S3).
+  bool evidence_failed = false;
 };
 void Charge(std::size_t count, std::size_t width, std::size_t& bytes) {
   if (count > bytes / width) throw PathError::kResourceLimit;
@@ -151,8 +154,10 @@ std::vector<SourceName> SourceNames(const SourcePathContext& context,
   for (std::size_t i = 0; i < count; ++i) {
     auto read = ReadSourceIdentity(context.file, context.header, context.index,
                                    context.index.records[i]);
-    if (std::holds_alternative<StructureFailure>(read))
-      throw PathError::kSourceEvidence;
+    if (std::holds_alternative<StructureFailure>(read)) {
+      names[i].evidence_failed = true;
+      continue;
+    }
     auto& identity = std::get<SourceIdentity>(read);
     if (identity.state != SourceIdentityState::kUnique) continue;
     const auto parsed = ParsePackageSource(identity.file);
@@ -202,6 +207,7 @@ std::vector<SourceName> SourceNames(const SourcePathContext& context,
 }
 std::variant<RecordPath, PathError> SourcePath(const abc::RecordInfo& record,
                                                const SourceName* name) {
+  if (name && name->evidence_failed) return PathError::kSourceEvidence;
   if (!name || !name->package)
     return EncodePath(record.descriptor, record.offset, PathStyle::kSource);
   // Conversion scratch is bounded by the existing output path limit. Percent
@@ -260,43 +266,60 @@ std::variant<RecordPath, PathError> PlanRecordPath(
   return EncodePath(record.descriptor, record.offset, PathStyle::kArchive);
 }
 
-static std::variant<std::vector<RecordPath>, PathError> PlanSourcePaths(
+static std::variant<std::vector<RecordSourcePath>, PathError> PlanSourcePaths(
     std::span<const abc::RecordInfo> records, std::size_t budget_bytes,
     const SourcePathContext* context) {
-  constexpr auto kRecordBytes = sizeof(RecordPath) + sizeof(const RecordPath*);
+  constexpr auto kRecordBytes = sizeof(RecordSourcePath) + sizeof(std::size_t);
   if (records.size() > budget_bytes / kRecordBytes)
     return PathError::kResourceLimit;
   try {
-    std::vector<RecordPath> paths;
-    std::vector<const RecordPath*> order;
+    std::vector<RecordSourcePath> paths;
+    std::vector<std::size_t> order;
     paths.reserve(records.size());
     order.reserve(records.size());
-    if (paths.capacity() > budget_bytes / sizeof(RecordPath))
+    if (paths.capacity() > budget_bytes / sizeof(RecordSourcePath))
       return PathError::kResourceLimit;
-    budget_bytes -= paths.capacity() * sizeof(RecordPath);
-    if (order.capacity() > budget_bytes / sizeof(const RecordPath*))
+    budget_bytes -= paths.capacity() * sizeof(RecordSourcePath);
+    if (order.capacity() > budget_bytes / sizeof(std::size_t))
       return PathError::kResourceLimit;
-    budget_bytes -= order.capacity() * sizeof(const RecordPath*);
+    budget_bytes -= order.capacity() * sizeof(std::size_t);
     std::vector<SourceName> names;
     if (context) {
       Charge(sizeof(std::array<char, kPathBytes + 2>), 1, budget_bytes);
       names = SourceNames(*context, budget_bytes);
     }
+    // Encoding limits and unreadable evidence belong to their record; only
+    // the budget is file-wide.
     for (std::size_t i = 0; i < records.size(); ++i) {
-      auto planned = SourcePath(records[i], context ? &names[i] : nullptr);
-      if (const auto* error = std::get_if<PathError>(&planned)) return *error;
-      auto path = std::get<RecordPath>(std::move(planned));
-      if (path.stem.capacity() >= budget_bytes)
-        return PathError::kResourceLimit;
-      budget_bytes -= path.stem.capacity() + 1;
-      paths.push_back(std::move(path));
-      order.push_back(&paths.back());
+      std::variant<RecordPath, PathError> planned = PathError::kSourceEvidence;
+      try {
+        planned = SourcePath(records[i], context ? &names[i] : nullptr);
+      } catch (PathError error) {
+        planned = error;
+      }
+      if (auto* path = std::get_if<RecordPath>(&planned)) {
+        if (path->stem.capacity() >= budget_bytes)
+          return PathError::kResourceLimit;
+        budget_bytes -= path->stem.capacity() + 1;
+        order.push_back(i);
+      }
+      paths.push_back(std::move(planned));
     }
     // ASCII folding avoids silent overwrite on case-insensitive export hosts.
-    // Percent escapes are injective; literal '%' is always escaped too.
-    std::sort(order.begin(), order.end(), PathLess);
-    for (std::size_t i = 1; i < order.size(); ++i)
-      if (!PathLess(order[i - 1], order[i])) return PathError::kCollision;
+    // Percent escapes are injective; literal '%' is always escaped too. Every
+    // member of an equal group is refused; order cannot select a winner.
+    const auto path = [&](std::size_t i) { return &std::get<RecordPath>(paths[i]); };
+    std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+      return PathLess(path(a), path(b));
+    });
+    for (std::size_t first = 0; first < order.size();) {
+      auto end = first + 1;
+      while (end < order.size() && !PathLess(path(order[first]), path(order[end])))
+        ++end;
+      if (end - first > 1)
+        for (auto i = first; i < end; ++i) paths[order[i]] = PathError::kCollision;
+      first = end;
+    }
     return paths;
   } catch (PathError error) {
     return error;
@@ -306,11 +329,29 @@ static std::variant<std::vector<RecordPath>, PathError> PlanSourcePaths(
     return PathError::kResourceLimit;
   }
 }
-std::variant<std::vector<RecordPath>, PathError> PlanRecordSourcePaths(
-    std::span<const abc::RecordInfo> records, std::size_t budget_bytes) {
-  return PlanSourcePaths(records, budget_bytes, nullptr);
+// All-or-nothing view: the first record error in record order.
+static std::variant<std::vector<RecordPath>, PathError> RequireAll(
+    std::variant<std::vector<RecordSourcePath>, PathError> planned) {
+  if (const auto* error = std::get_if<PathError>(&planned)) return *error;
+  auto& entries = std::get<std::vector<RecordSourcePath>>(planned);
+  std::vector<RecordPath> paths;
+  paths.reserve(entries.size());
+  for (auto& entry : entries) {
+    if (const auto* error = std::get_if<PathError>(&entry)) return *error;
+    paths.push_back(std::get<RecordPath>(std::move(entry)));
+  }
+  return paths;
 }
 std::variant<std::vector<RecordPath>, PathError> PlanRecordSourcePaths(
+    std::span<const abc::RecordInfo> records, std::size_t budget_bytes) {
+  return RequireAll(PlanSourcePaths(records, budget_bytes, nullptr));
+}
+std::variant<std::vector<RecordPath>, PathError> PlanRecordSourcePaths(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, std::size_t budget_bytes) {
+  return RequireAll(PlanRecordSourcePathSet(file, header, index, budget_bytes));
+}
+std::variant<std::vector<RecordSourcePath>, PathError> PlanRecordSourcePathSet(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, std::size_t budget_bytes) {
   const SourcePathContext context{file, header, index};

@@ -32,13 +32,16 @@ enum class RecordProgramError : unsigned {
   kAllocationFailure = 18,
   // The record exceeded its own RecordProgramBudget, proven at a record-owned
   // budget check. Isolated to this record; other records are still exported.
-  // kResourceLimit stays process-fatal: lower stages still fold real
-  // allocation failures into it, so its origin is not provable here.
+  // Lower stages may also fold real allocation failures into kResourceLimit;
+  // exporters decide those from the out-of-band allocation signal.
   kRecordBudget = 19,
-  // A whole-file source index (method roles, function/class creation sites)
-  // could not be built; every record of the file reports it with the typed
-  // causes. The structural export still completes.
-  kFileIndex = 20
+  // A whole-file source index (method roles, function/class creation sites,
+  // source path budget) could not be built; every record of the file reports
+  // it with the typed causes. The structural export still completes.
+  kFileIndex = 20,
+  // This record's own source path could not be planned (identity evidence,
+  // encoding limit or case-folded collision); other records are unaffected.
+  kSourcePath = 21
 };
 struct RecordProgramFailure {
   RecordProgramError kind;

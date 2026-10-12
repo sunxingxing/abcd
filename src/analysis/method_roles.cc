@@ -153,8 +153,10 @@ std::variant<MethodRoleIndex, MethodRoleFailure> MethodRoleIndex::Build(
     // kLiteralArray entries (24.0 emits them). Arrays are deduplicated when
     // enqueued; every retained set node and queue slot is admitted against
     // the byte budget before it is allocated (node cost bounded by
-    // kVisitedNodeBytes). One literal is live at a time, read within the
-    // remaining budget. O((A + E) log A) for A distinct arrays and E nested
+    // kVisitedNodeBytes). One literal is live at a time; its entry capacity
+    // stays charged while set nodes and queue slots for its nested references
+    // are admitted, and is released when it is destroyed, so the live peak
+    // never exceeds the budget. O((A + E) log A) for A distinct arrays and E nested
     // references; cycles and shared subarrays are visited once.
     constexpr std::size_t kVisitedNodeBytes = 64;
     std::set<abc::EntityOffset> visited;
@@ -176,6 +178,8 @@ std::variant<MethodRoleIndex, MethodRoleFailure> MethodRoleIndex::Build(
       pending.pop_back();
       const auto literal = Take<abc::LiteralArray>(
           abc::ReadLiteralArray(file, header, current, {budget.bytes}));
+      const auto held = literal.entries.capacity();
+      Admit(held, sizeof(abc::LiteralEntry), budget.bytes);
       for (const auto& entry : literal.entries) {
         if (entry.tag == abc::LiteralTag::kLiteralArray) {
           enqueue(std::get<abc::EntityOffset>(entry.value));
@@ -186,6 +190,7 @@ std::variant<MethodRoleIndex, MethodRoleFailure> MethodRoleIndex::Build(
         const auto target = std::get<abc::EntityOffset>(entry.value);
         mark(target, *role);
       }
+      budget.bytes += held * sizeof(abc::LiteralEntry);
     }
     if (file.CheckUnchanged())
       return MethodRoleFailure{abc::MetadataError::kFileChanged};

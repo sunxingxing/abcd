@@ -39,6 +39,7 @@ enum class ExportError {
   kChanged,
   kDestination,
   kRoles,
+  kRead,
 };
 enum class SourceStatus : unsigned {
   kWritten = 0,
@@ -146,29 +147,32 @@ int Export(const std::filesystem::path& input,
   const auto packed = abc::DetectFilePackaging(file, *header, *index);
   const auto* packaging = std::get_if<abc::FilePackaging>(&packed);
   if (!packaging) return Fail(ExportError::kPackaging);
+  // Process-level faults are observed out of band, never inferred from how a
+  // stage folded its typed error (S3): a sticky real allocation failure, a
+  // sticky input read failure, or an input change. They are rechecked around
+  // every record and whole-file index, including early-ending branches.
+  const auto process_failed = [&](std::uint32_t entity) -> std::optional<int> {
+    if (tools::AllocationFailureObserved()) {
+      std::cerr << nlohmann::json{{"allocation_failure", true}, {"entity", entity}} << '\n';
+      return Fail(ExportError::kRecord, entity);
+    }
+    if (file.ReadFailed()) return Fail(ExportError::kRead, entity);
+    if (file.CheckUnchanged()) return Fail(ExportError::kChanged, entity);
+    return std::nullopt;
+  };
   // Whole-file source indexes. Their failure is reported per record with
-  // typed causes (kFileIndex); only input I/O or change, or an observed real
-  // allocation failure, stops the export (S3).
+  // typed causes (kFileIndex) unless a process-level fault was observed.
   std::optional<source::RecordProgramFailure> file_failure;
   if (emit_source && !source::SupportsRecordProgramProfile(header->profile))
     file_failure = source::RecordProgramFailure{source::RecordProgramError::kProfile, {}};
   const auto index_failure = [&](const auto& error) -> std::optional<int> {
+    if (const auto code = process_failed(0)) return code;
     source::RecordProgramFailure failure{source::RecordProgramError::kFileIndex, {}};
-    bool fatal = tools::AllocationFailureObserved();
-    // Input I/O or change anywhere in the typed envelope is process-level.
     std::visit([&](const auto& cause) {
       using T = std::decay_t<decltype(cause)>;
       if constexpr (std::is_enum_v<T>) source::AppendFailureCause(failure.causes, cause);
       else if constexpr (requires { cause.kind; }) source::AppendFailureCause(failure.causes, cause.kind);
-      if constexpr (std::is_same_v<T, abc::MetadataError>)
-        fatal |= cause == abc::MetadataError::kRead || cause == abc::MetadataError::kFileChanged;
-      if constexpr (std::is_same_v<T, abc::BodyFailure>)
-        fatal |= cause.file_error.has_value() || cause.kind == abc::BodyError::kFile;
-      if constexpr (std::is_same_v<T, abc::LiteralFailure>)
-        fatal |= cause.kind == abc::LiteralError::kRead || cause.kind == abc::LiteralError::kFileChanged;
     }, error);
-    fatal |= file.CheckUnchanged().has_value();
-    if (fatal) return Fail(ExportError::kIndex);
     file_failure = failure;
     return std::nullopt;
   };
@@ -199,18 +203,20 @@ int Export(const std::filesystem::path& input,
       return *code;
     }
   }
-  std::vector<structure::RecordPath> source_paths;
+  // Source paths are planned per record: a record with unusable identity
+  // evidence, an encoding limit or a case-folded collision gets its own typed
+  // failure; only the planning budget is file-wide (S3).
+  std::vector<structure::RecordSourcePath> source_paths;
   if (emit_source) {
-    auto planned = structure::PlanRecordSourcePaths(file, *header, *index);
+    auto planned = structure::PlanRecordSourcePathSet(file, *header, *index);
+    if (const auto code = process_failed(0)) return *code;
     if (const auto* error = std::get_if<structure::PathError>(&planned)) {
-      // Source paths are planned for the whole file; their failure is reported
-      // for every record with its typed cause instead of aborting (S3).
       if (!file_failure) {
         file_failure = source::RecordProgramFailure{source::RecordProgramError::kFileIndex, {}};
         source::AppendFailureCause(file_failure->causes, *error);
       }
     } else {
-      source_paths = std::get<std::vector<structure::RecordPath>>(std::move(planned));
+      source_paths = std::get<std::vector<structure::RecordSourcePath>>(std::move(planned));
     }
   }
   const auto parent = output.parent_path();
@@ -235,17 +241,6 @@ int Export(const std::filesystem::path& input,
   structure::RecordCounts totals;
   bool comma = false;
   std::size_t record_index = 0;
-  // Process-level conditions are rechecked around every record, including
-  // records that end early with a typed failure: an observed real allocation
-  // failure (sticky) or an input change stops the export.
-  const auto process_failed = [&](std::uint32_t entity) -> std::optional<int> {
-    if (tools::AllocationFailureObserved()) {
-      std::cerr << nlohmann::json{{"allocation_failure", true}, {"entity", entity}} << '\n';
-      return Fail(ExportError::kRecord, entity);
-    }
-    if (file.CheckUnchanged()) return Fail(ExportError::kChanged, entity);
-    return std::nullopt;
-  };
   for (const auto& record : index->records) {
     if (const auto code = process_failed(record.offset.value)) return *code;
     const auto planned = structure::PlanRecordPath(record);
@@ -276,9 +271,10 @@ int Export(const std::filesystem::path& input,
     const auto* counts = std::get_if<structure::RecordCounts>(&result);
     if (!counts) {
       const auto& failure = std::get<structure::StructureFailure>(result);
-      // Input I/O or change, or an observed allocation failure, is
-      // process-level; any other structural fault is this record's (S3).
-      bool fatal = tools::AllocationFailureObserved() || file.CheckUnchanged().has_value();
+      // Process-level faults and output write failures stop the export; any
+      // other structural fault (including budgets) is this record's (S3).
+      if (const auto code = process_failed(record.offset.value)) return *code;
+      bool output_fault = false;
       nlohmann::json typed;
       std::visit([&](const auto& error) {
         using T = std::decay_t<decltype(error)>;
@@ -288,24 +284,21 @@ int Export(const std::filesystem::path& input,
           typed = {{"domain", source::FailureDomain<std::decay_t<decltype(error.kind)>>()},
                    {"value", static_cast<unsigned>(error.kind)}};
         }
-        if constexpr (std::is_same_v<T, abc::MetadataError>)
-          fatal |= error == abc::MetadataError::kRead || error == abc::MetadataError::kFileChanged;
-        if constexpr (std::is_same_v<T, abc::AttributeFailure>)
-          fatal |= error.kind == abc::AttributeError::kFileChanged ||
-                   (error.metadata_error && (*error.metadata_error == abc::MetadataError::kRead ||
-                                             *error.metadata_error == abc::MetadataError::kFileChanged));
-        if constexpr (std::is_same_v<T, abc::ModuleFailure>)
-          fatal |= error.kind == abc::ModuleError::kRead || error.kind == abc::ModuleError::kFileChanged;
+        if constexpr (std::is_same_v<T, structure::StructureFault>)
+          output_fault = error == structure::StructureFault::kWrite;
+        if constexpr (std::is_same_v<T, source::EmitError>)
+          output_fault = error == source::EmitError::kWrite;
       }, failure.error);
-      if (fatal) {
-        std::cerr << nlohmann::json{{"structure_failure", typed}, {"entity", failure.entity.value}} << '\n';
-        return Fail(ExportError::kRecord, record.offset.value);
-      }
       metadata.close();
       declarations.close();
-      std::error_code removed;
-      std::filesystem::remove(tree.path / metadata_path, removed);
-      std::filesystem::remove(tree.path / declaration_path, removed);
+      // The partial record is withdrawn; a failed removal would publish it.
+      std::error_code removed_metadata, removed_declarations;
+      std::filesystem::remove(tree.path / metadata_path, removed_metadata);
+      std::filesystem::remove(tree.path / declaration_path, removed_declarations);
+      if (output_fault || removed_metadata || removed_declarations) {
+        std::cerr << nlohmann::json{{"structure_failure", typed}, {"entity", failure.entity.value}} << '\n';
+        return Fail(ExportError::kOutput, record.offset.value);
+      }
       typed["entity"] = failure.entity.value;
       nlohmann::json failed{{"entity", record.offset.value}, {"structure_failure", typed}};
       if (comma) manifest << ',';
@@ -331,22 +324,30 @@ int Export(const std::filesystem::path& input,
       record_manifest["executable"] = false;
       record_manifest["source_route"] =
           std::string(source::SourceRouteName(source::SourceRoute::kValueTree));
-      if (source_paths.empty()) {
-        // Whole-file source path planning failed (file_failure is set).
+      const auto* source_record_path =
+          source_paths.empty() ? nullptr : std::get_if<structure::RecordPath>(&source_paths[record_index]);
+      if (!source_record_path) {
+        // Whole-file planning failed (file_failure is set), or this record
+        // has its own typed path failure.
+        auto failure = file_failure.value_or(
+            source::RecordProgramFailure{source::RecordProgramError::kSourcePath, {}});
+        if (!file_failure)
+          source::AppendFailureCause(failure.causes,
+                                     std::get<structure::PathError>(source_paths[record_index]));
         record_manifest["source_status"] = static_cast<unsigned>(SourceStatus::kProgram);
-        tools::DescribeRecordFailure(*file_failure, record_manifest);
+        tools::DescribeRecordFailure(failure, record_manifest);
         if (comma) manifest << ',';
         comma = true;
         manifest << record_manifest;
         ++record_index;
+        if (const auto code = process_failed(record.offset.value)) return *code;
         continue;
       }
-      const auto source_stem = std::filesystem::path("sources") /
-                               source_paths[record_index].stem;
+      const auto source_stem = std::filesystem::path("sources") / source_record_path->stem;
       const auto source_path = source_stem.string() + ".mjs";
       record_manifest["planned_source"] = source_path;
       record_manifest["source_path_origin"] =
-          static_cast<unsigned>(source_paths[record_index].origin);
+          static_cast<unsigned>(source_record_path->origin);
       if (file_failure) {
         record_manifest["source_status"] =
             static_cast<unsigned>(SourceStatus::kProgram);
