@@ -20,4 +20,20 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
     }
   }, result);
 }
+
+bool RecordFailureIsFatal(const source::RecordSourceResult& result) {
+  const auto* failure = std::get_if<source::RecordProgramFailure>(&result);
+  if (!failure) return false;
+  using Error = source::RecordProgramError;
+  switch (failure->kind) {
+    case Error::kRead:
+    case Error::kWrite:
+    case Error::kFileChanged:
+    case Error::kAllocationFailure:
+    case Error::kResourceLimit:
+      return true;
+    default:
+      return false;
+  }
+}
 }  // namespace abcd::tools

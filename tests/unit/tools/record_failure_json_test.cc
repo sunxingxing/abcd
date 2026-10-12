@@ -35,6 +35,20 @@ int main() {
   nlohmann::json printed = nlohmann::json::object();
   tools::DescribeRecordFailure(source::PrintedSource{}, printed);
   Check(printed.empty());
+  // Fatality: only proven record-owned budget/output failures are isolated.
+  const auto fatal = [](source::RecordProgramError kind) {
+    return tools::RecordFailureIsFatal(source::RecordProgramFailure{kind, {}});
+  };
+  Check(!fatal(source::RecordProgramError::kRecordBudget));
+  Check(!fatal(source::RecordProgramError::kOutputLimit));
+  Check(!fatal(source::RecordProgramError::kEntry));
+  Check(fatal(source::RecordProgramError::kResourceLimit));
+  Check(fatal(source::RecordProgramError::kAllocationFailure));
+  Check(fatal(source::RecordProgramError::kRead) && fatal(source::RecordProgramError::kWrite) &&
+        fatal(source::RecordProgramError::kFileChanged));
+  Check(!tools::RecordFailureIsFatal(source::RouteRefusal{{source::RouteFailureClass::kUnproved,
+      source::ValueRouteError::kTreeStage, {}}}));
+  Check(!tools::RecordFailureIsFatal(source::PrintedSource{}));
   std::cout << "record_failure_json_test: ok\n";
   return EXIT_SUCCESS;
 }

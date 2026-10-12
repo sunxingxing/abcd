@@ -14,6 +14,12 @@ namespace abcd::tools {
 //   record_program: source_error (RecordProgramError), source_pc
 void DescribeRecordFailure(const source::RecordSourceResult& result,
                            nlohmann::json& record);
+// Process-level failures stop the export: input I/O, input change, entry
+// allocation failure and kResourceLimit, whose origin lower stages do not
+// distinguish from a real allocation failure. Only a proven record-owned
+// budget (kRecordBudget) or output allowance (kOutputLimit) failure and typed
+// route refusals are isolated to the record.
+[[nodiscard]] bool RecordFailureIsFatal(const source::RecordSourceResult& result);
 }  // namespace abcd::tools
 
 #endif  // ABCD_TOOLS_RECORD_FAILURE_JSON_H_

@@ -72,6 +72,8 @@ enum class InspectError : std::uint8_t {
   kAst,
   kFrame,
   kPrint,
+  // Appended: the result could not be written intact to stdout.
+  kOutput,
 };
 enum class InspectDetail : std::uint8_t { kSummary, kInstructions };
 // Set once the process limit is established; argument errors precede it.
@@ -90,9 +92,11 @@ int FailStage(InspectError kind, unsigned stage_error,
                  {"stage_error", stage_error}, {"pc", pc}});
   return EXIT_FAILURE;
 }
-// The final JSON object a view writes to stdout carries the process report
-// (tools/process_limit.h), so every result states whether a limit applies.
-// Views write bounded inspection output; it is buffered only to merge fields.
+// Single-object views: the JSON object a view writes to stdout gains the
+// process report (tools/process_limit.h). The view's own output channel and
+// exit code are kept. Output is buffered only to merge the fields; a capture
+// write failure or a non-JSON result is an output failure, never a silent
+// partial publication. Streaming views (--instructions) are not captured.
 template <class Run>
 int RunWithProcessReport(const abcd::tools::ProcessLimit& limit, Run&& run) {
   std::ostringstream captured;
@@ -104,20 +108,36 @@ int RunWithProcessReport(const abcd::tools::ProcessLimit& limit, Run&& run) {
     std::cout.rdbuf(previous);
     throw;
   }
+  // rdbuf() clears the stream state: read the capture state first.
+  const bool captured_ok = static_cast<bool>(std::cout);
   std::cout.rdbuf(previous);
+  if (!captured_ok) return Fail(InspectError::kOutput);
   auto text = std::move(captured).str();
   std::size_t end = text.size();
   while (end > 0 && text[end - 1] == '\n') --end;
-  const auto begin = text.rfind('\n', end == 0 ? 0 : end - 1);
+  if (end == 0) return code;  // The view reported only to stderr.
+  const auto begin = text.rfind('\n', end - 1);
   const auto start = begin == std::string::npos ? 0 : begin + 1;
   auto last = nlohmann::json::parse(text.begin() + static_cast<std::ptrdiff_t>(start),
                                     text.begin() + static_cast<std::ptrdiff_t>(end), nullptr, false);
-  if (!last.is_discarded() && last.is_object()) {
-    abcd::tools::ReportProcessMemory(last, limit);
-    text.replace(start, end - start, last.dump());
-  }
+  if (last.is_discarded() || !last.is_object()) return Fail(InspectError::kOutput);
+  abcd::tools::ReportProcessMemory(last, limit);
+  const auto merged = last.dump();
+  text.replace(start, end - start, merged);
+  // Re-sample once the merged copy exists so its allocation is counted.
+  abcd::tools::ReportProcessMemory(last, limit);
+  text.replace(start, merged.size(), last.dump());
   std::cout << text;
   return std::cout ? code : EXIT_FAILURE;
+}
+// Streaming views keep their per-line output; the process report follows as
+// one final JSON line after a successful stream.
+int StreamWithProcessReport(const abcd::tools::ProcessLimit& limit, int code) {
+  if (code != EXIT_SUCCESS || !std::cout) return code == EXIT_SUCCESS ? EXIT_FAILURE : code;
+  nlohmann::json report = nlohmann::json::object();
+  abcd::tools::ReportProcessMemory(report, limit);
+  std::cout << report << '\n';
+  return std::cout ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
             std::optional<source::SourceForm> form, InspectDetail detail,
@@ -325,11 +345,9 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   const auto* method_ir = std::get_if<analysis::SemanticMethod>(&built);
   if (!method_ir) {
     const auto& failure = std::get<analysis::SemanticFailure>(built);
-    std::cerr << nlohmann::json{
-                     {"error", static_cast<unsigned>(InspectError::kSemantic)},
-                     {"semantic_error", static_cast<unsigned>(failure.kind)},
-                     {"pc", failure.pc.value}}
-              << '\n';
+    ReportFailure({{"error", static_cast<unsigned>(InspectError::kSemantic)},
+                   {"semantic_error", static_cast<unsigned>(failure.kind)},
+                   {"pc", failure.pc.value}});
     return EXIT_FAILURE;
   }
   std::cout << nlohmann::json{
@@ -409,9 +427,8 @@ int main(int argc, char** argv) {
     return Inspect(argv[1], entity, std::nullopt, InspectDetail::kSummary, view);
   });
   if (instructions)
-    return RunWithProcessReport(limit, [&] {
-      return Inspect(argv[1], entity, std::nullopt, InspectDetail::kInstructions);
-    });
+    return StreamWithProcessReport(limit,
+        Inspect(argv[1], entity, std::nullopt, InspectDetail::kInstructions));
   // A bare --value-source keeps its historical meaning of the function form.
   if (value_routes && !form) form = source::SourceForm::kFunction;
   const auto numeric_contract = language_numeric ? source::SourceContract::kLanguageNumericV1 : language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
