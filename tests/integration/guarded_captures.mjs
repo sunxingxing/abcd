@@ -14,13 +14,15 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const [structure, fixtures] = process.argv.slice(2);
-const complete = ['probe', 'twice', 'mutate', 'parentread', 'rhs'];
+const complete = ['probe', 'twice', 'mutate', 'parentread', 'rhs', 'forward', 'forwardmixed', 'laterblock'];
 const refused = {
   childwrite: {domain: 'abcd::source::ScopeError', value: 3},
+  forwardwrite: {domain: 'abcd::source::ScopeError', value: 3},
   branch: {domain: 'abcd::source::ScopeError', value: 3},
 };
 const runner = `
-globalThis.__probe = f => { try { return 'value:' + f(); } catch (e) { return 'throw:' + e.constructor.name; } };
+const show = v => typeof v === 'function' ? 'function' : Array.isArray(v) ? '[' + v.map(show) + ']' : String(v);
+globalThis.__probe = f => { try { return 'value:' + show(f()); } catch (e) { return 'throw:' + e.constructor.name; } };
 const m = await import(process.argv[2]);
 console.log(JSON.stringify(Object.fromEntries(Object.keys(m).sort().map(k =>
   [k, typeof m[k] === 'function' ? globalThis.__probe(m[k]) : m[k]]))));

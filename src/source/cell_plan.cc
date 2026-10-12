@@ -95,6 +95,23 @@ std::optional<CellId> FindCell(const CellPlan& plan, const CellStorage& storage)
   if (found == plan.cells.end() || Key(found->storage) != Key(storage)) return {};
   return CellId{static_cast<std::uint32_t>(found - plan.cells.begin())};
 }
+std::optional<CellId> FindDemandCell(const analysis::ValueProgram& graph,
+    const analysis::ValueEnvironments& environments, const CellPlan& plan, const CellDemand& demand) {
+  if (demand.creation.value >= graph.ops.size() || demand.creation.value >= environments.flow.before.size() ||
+      !environments.flow.before[demand.creation.value]) return {};
+  const auto& op = graph.ops[demand.creation.value];
+  if (op.life != analysis::ValueLife::kLive || !std::holds_alternative<analysis::ValueFunctionCreation>(op.operation))
+    return {};
+  const auto resolved = environments.flow.environments.ResolveCapture(
+      *environments.flow.before[demand.creation.value], demand.captured.depth, demand.captured.slot);
+  const auto* binding = std::get_if<analysis::LexicalBinding>(&resolved);
+  if (!binding) return {};
+  if (const auto* local = std::get_if<analysis::EnvironmentId>(&binding->environment)) {
+    if (local->value >= plan.allocations.size()) return {};
+    return FindCell(plan, AllocatedCell{plan.allocations[local->value], binding->slot});
+  }
+  return FindCell(plan, IncomingCell{std::get<analysis::CapturedDepth>(binding->environment), binding->slot});
+}
 
 namespace {
 std::variant<std::uint64_t, CellError> VerifyPlan(

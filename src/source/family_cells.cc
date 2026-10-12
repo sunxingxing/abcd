@@ -1,5 +1,7 @@
 #include "family_cells.h"
 
+#include <bit>
+#include <limits>
 #include <new>
 #include <stdexcept>
 
@@ -36,6 +38,24 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
         }
         auto cells = std::get<CellPlan>(std::move(result));
         admit(cells.allocated_bytes, 1); step(cells.work);
+        // Weakest descendant obligation per cell: a forwarded cell is Guarded
+        // only when every demand reaching it is Guarded (normal flow only;
+        // signature entry demands stay Language). 0: none, 1: Guarded, 2: Language.
+        admit(cells.cells.size(), 1);
+        std::vector<std::uint8_t> weakest(cells.cells.size());
+        const auto combine = [](std::uint8_t& state, analysis::CaptureDomain domain) {
+          state = domain == analysis::CaptureDomain::kGuarded && state != 2 ? 1 : 2;
+        };
+        for (const auto& demand : demands[i]) {
+          step(std::bit_width(cells.cells.size()) + std::numeric_limits<std::uint32_t>::digits);
+          const auto cell = function.Phase() ? std::nullopt :
+              FindDemandCell(function.Graph(), *base.Environments(), cells, demand);
+          if (cell) combine(weakest[cell->value], demand.domain);
+        }
+        for (const auto& entry : entries) {
+          step(std::bit_width(cells.cells.size()) + 1);
+          if (const auto cell = FindCell(cells, entry)) weakest[cell->value] = 2;
+        }
         const auto original = base.Input().Captures();
         std::size_t forwarded = 0;
         for (const auto& cell : cells.cells) {
@@ -45,10 +65,11 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
         CaptureStorage storage{std::move(cells), {}};
         storage.uses.reserve(original.size() + forwarded);
         for (const auto& use : original) { step(); storage.uses.push_back(use); }
-        for (const auto& cell : storage.cells.cells) {
-          step();
+        for (std::size_t c = 0; c < storage.cells.cells.size(); ++c) {
+          step(); const auto& cell = storage.cells.cells[c];
           if (const auto* incoming = std::get_if<IncomingCell>(&cell.storage); incoming && cell.count == 0)
-            storage.uses.push_back({{incoming->depth, incoming->slot}, analysis::CaptureDomain::kLanguage});
+            storage.uses.push_back({{incoming->depth, incoming->slot}, weakest[c] == 1 ?
+                analysis::CaptureDomain::kGuarded : analysis::CaptureDomain::kLanguage});
         }
         function.SetStorage(std::move(storage));
       }
@@ -65,8 +86,20 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
       require(creation.has_value(), Error::kCreation);
       if (const auto* cells = function.Cells()) {
         auto& destination = demands[edge.parent.value];
-        for (const auto& cell : cells->cells) {
-          step(); const auto* incoming = std::get_if<IncomingCell>(&cell.storage);
+        // This child's weakest use of each incoming cell, over its own accesses
+        // and its already forwarded descendant obligations.
+        admit(cells->cells.size(), 1);
+        std::vector<std::uint8_t> weakest(cells->cells.size());
+        for (const auto& use : function.Capture().Input().Captures()) {
+          step(std::bit_width(cells->cells.size()) + 1);
+          const auto cell = FindCell(*cells, IncomingCell{use.cell.depth, use.cell.slot});
+          require(cell.has_value(), Error::kCoverage);
+          auto& state = weakest[cell->value];
+          state = use.domain == analysis::CaptureDomain::kGuarded && state != 2 ? 1 : 2;
+        }
+        for (std::size_t c = 0; c < cells->cells.size(); ++c) {
+          step(); const auto& cell = cells->cells[c];
+          const auto* incoming = std::get_if<IncomingCell>(&cell.storage);
           if (!incoming) continue;
           if (destination.size() == destination.capacity()) {
             // Geometric growth; cost proportional to retained transitive demand,
@@ -75,7 +108,8 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
             require(capacity > destination.size(), Error::kResourceLimit);
             admit(capacity, sizeof(CellDemand)); destination.reserve(capacity);
           }
-          destination.push_back({*creation, {incoming->depth, incoming->slot}});
+          destination.push_back({*creation, {incoming->depth, incoming->slot}, weakest[c] == 1 ?
+              analysis::CaptureDomain::kGuarded : analysis::CaptureDomain::kLanguage});
         }
       }
     }

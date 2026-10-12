@@ -141,18 +141,22 @@ void Run() {
     Check(refused == CaptureError::kScope &&
         std::get<ScopeError>(refused.cause) == ScopeError::kInitialization);
   }
-  // A first store in a later block cannot be the binding's declaration in the
-  // allocation's scope: a Guarded use is still refused.
+  // Outside the creation's block, only the cell's single store is certainly
+  // its first write; two stores there leave the order unproved and refuse.
   {
     const CaptureUse guarded{use.cell, CaptureDomain::kGuarded};
-    locals.stores = {{{0}, {4}}};
     method.flow.blocks[0].instruction_count = 3;
     FlowBlock later{};
     later.first_instruction = 3; later.instruction_count = 2;
     method.flow.blocks.push_back(later);
     std::optional<InstructionId> deferred;
+    locals.stores = {{{0}, {3}}, {{0}, {4}}};
     Check(std::get<ScopeError>(scopes.Rebase({2}, guarded.cell, guarded.domain, &deferred)) == ScopeError::kInitialization &&
         !deferred);
+    locals.stores = {{{0}, {4}}};
+    const auto only = scopes.Rebase({2}, guarded.cell, guarded.domain, &deferred);
+    Check(std::holds_alternative<CaptureCell>(only) == deferred.has_value());
+    if (deferred) Check(*deferred == InstructionId{4});
     method.flow.blocks.pop_back();
     method.flow.blocks[0].instruction_count = 5;
   }

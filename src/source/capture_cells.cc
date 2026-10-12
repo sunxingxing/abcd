@@ -435,8 +435,10 @@ std::variant<std::uint64_t, CaptureCellFailure> VerifyCaptureTargets(
       Require(next < plan.input.bindings.size(), Error::kCoverage);
       const auto& use = child.Input().Captures()[next];
       const auto& storage = std::get<IncomingCell>(incoming.cells[i].storage);
+      // Forwarded obligations keep their descendants' weakest Language domain.
       Require(use.cell.depth == storage.depth && use.cell.slot.value == storage.slot.value &&
-          use.domain == analysis::CaptureDomain::kLanguage, Error::kBinding);
+          (use.domain == analysis::CaptureDomain::kLanguage || use.domain == analysis::CaptureDomain::kGuarded),
+          Error::kBinding);
       Require(plan.targets[i].target == Project(parent, plan.input.bindings[next++].cell, quota), Error::kBinding);
     }
     Require(next == plan.input.bindings.size(), Error::kCoverage);

@@ -76,8 +76,10 @@ std::optional<analysis::ValueId> InitializedCellGuardInput(const analysis::Value
   return {};
 }
 namespace {
-// One deferred entry: allocated storage, a live first store in the
-// allocation's block after it, and no access of the cell in between.
+// One deferred entry: allocated storage and a live first store that is either
+// in the allocation's block after it, with no access of the cell in between,
+// or the cell's only store, in another block. Local reads separately need a
+// dominating store (CellInitializations); the owner tree places the store.
 bool DeferredStore(const analysis::ValueProgram& graph, const CellPlan& plan, CellId cell,
     analysis::OpId store, std::uint64_t& work) {
   work += std::bit_width(plan.accesses.size()) + 1;
@@ -86,16 +88,21 @@ bool DeferredStore(const analysis::ValueProgram& graph, const CellPlan& plan, Ce
   const auto* local = std::get_if<AllocatedCell>(&plan.cells[cell.value].storage);
   const auto& op = graph.ops[store.value];
   if (!local || local->allocation.value >= graph.ops.size() || op.life != analysis::ValueLife::kLive ||
-      !std::holds_alternative<analysis::ValueLexicalStore>(op.operation) ||
-      graph.ops[local->allocation.value].block != op.block || !(local->allocation < store)) return false;
-  // Accesses are sorted by operation and one block owns a contiguous range,
-  // so the access just before this store must precede the allocation.
+      !std::holds_alternative<analysis::ValueLexicalStore>(op.operation)) return false;
   const auto& entry = plan.cells[cell.value];
   const auto first = plan.accesses.begin() + entry.first, last = first + entry.count;
   const auto found = std::lower_bound(first, last, store,
       [](const CellAccess& access, analysis::OpId id) { return access.operation < id; });
   if (found == last || found->operation != store || found->kind != CellAccessKind::kStore) return false;
-  return found == first || std::prev(found)->operation < local->allocation;
+  if (graph.ops[local->allocation.value].block != op.block) {
+    // The only store of this cell: count stores among its sorted accesses.
+    work += entry.count;
+    return std::count_if(first, last, [](const CellAccess& access) { return access.kind == CellAccessKind::kStore; }) == 1;
+  }
+  // Same block: accesses are sorted by operation and one block owns a
+  // contiguous range, so the access just before this store must precede the
+  // allocation, which itself precedes the store.
+  return local->allocation < store && (found == first || std::prev(found)->operation < local->allocation);
 }
 }  // namespace
 std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& graph,
@@ -105,10 +112,12 @@ std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& gra
       cells.cells.cells.size() > budget.bytes / sizeof(std::optional<analysis::OpId>)) return {};
   cells.deferred.assign(cells.cells.cells.size(), std::nullopt);
   for (const auto& entry : deferred) {
-    if (work > budget.work) return {};
-    if (!DeferredStore(graph, cells.cells, entry.cell, entry.store, work)) return {};
+    if (work > budget.work || entry.cell.value >= cells.deferred.size()) return {};
+    ++work;
+    // Several creations may defer the same cell; check each cell once.
     auto& slot = cells.deferred[entry.cell.value];
-    if (slot && *slot != entry.store) return {};
+    if (slot) { if (*slot != entry.store) return {}; continue; }
+    if (!DeferredStore(graph, cells.cells, entry.cell, entry.store, work)) return {};
     slot = entry.store;
   }
   cells.allocated_bytes += cells.deferred.capacity() * sizeof(std::optional<analysis::OpId>);

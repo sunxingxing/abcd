@@ -104,18 +104,26 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
   }
   if (!initialized && requirement == analysis::CaptureDomain::kGuarded && deferred && allocation &&
       writes_ == analysis::ClosureWrites::kLanguage) {
-    // The cell's first store in instruction order is the first one executed
-    // after this allocation: every other store lies in a later block or after
-    // it in this block. Children may only observe the Hole through their own
-    // guards until then; the owner's native declaration there reproduces it.
+    // The store must be the first write executed after this allocation. Its
+    // block holds the allocation and creation, so either the cell's first
+    // store follows the creation in that block (instruction order is execution
+    // order there, other blocks run after it), or the cell's only store lies in
+    // another block. Children observe the Hole only through their own guards
+    // until then; the owner's native declaration at that store reproduces it,
+    // and the owner tree independently requires that store to sit directly in
+    // the allocation's own block statement.
     const auto first = std::lower_bound(locals_.stores.begin(), locals_.stores.end(), std::tuple(id, 0U),
         [](auto item, auto target) { return std::tuple(item.cell.value, item.instruction.value) < target; });
     const auto end = std::size_t(block->first_instruction) + block->instruction_count;
     if (first != locals_.stores.end() && first->cell.value == id &&
-        allocation->value >= block->first_instruction && allocation->value < creation.value &&
-        first->instruction.value > creation.value && first->instruction.value < end) {
-      *deferred = first->instruction;
-      initialized = true;
+        allocation->value >= block->first_instruction && allocation->value < creation.value) {
+      const bool same_block = first->instruction.value >= block->first_instruction && first->instruction.value < end;
+      const auto next = std::next(first);
+      const bool only = next == locals_.stores.end() || next->cell.value != id;
+      if (same_block ? first->instruction.value > creation.value : only) {
+        *deferred = first->instruction;
+        initialized = true;
+      }
     }
   }
   if (!allocation || !initialized) return Error::kInitialization;

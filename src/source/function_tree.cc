@@ -825,9 +825,12 @@ class TreeBuilder {
       if (forest_.initializations[id.value]) {
         // A deferred cell is declared by its first store, at the top level of
         // the allocation's own block scope; never nested or re-scoped.
-        if (std::holds_alternative<analysis::ValueLexicalStore>(op.operation))
-          Require(evaluation.kind == EvaluationKind::kRoot &&
+        if (std::holds_alternative<analysis::ValueLexicalStore>(op.operation)) {
+          const auto cell = evaluation_.cells->cells.operations[id.value];
+          Require(evaluation.kind == EvaluationKind::kRoot && cell && cell->value < deferred_drafts_.size() &&
+              deferred_drafts_[cell->value] == draft &&
               tree_.symbols[forest_.initializations[id.value]->value].scope == drafts_[draft].scope, Error::kBinding);
+        }
         const auto statement = Statement(DeclarationStmt{*forest_.initializations[id.value], expression}, origin);
         Append(draft, statement);
         tree_.operations.push_back({id, statement});
@@ -1297,9 +1300,18 @@ class TreeBuilder {
       const auto index = static_cast<std::size_t>(cell - cells.begin());
       const auto symbol = forest_.bindings.cells[index];
       tree_.symbols[symbol.value].scope = drafts_[draft].scope;
-      // A deferred cell keeps this scope; its first store declares it.
+      // A deferred cell keeps this scope; its first store declares it, and
+      // only directly in this same block statement (checked at the store).
       const auto& deferred = evaluation_.cells->deferred;
-      if (index < deferred.size() && deferred[index]) continue;
+      if (index < deferred.size() && deferred[index]) {
+        if (deferred_drafts_.empty()) {
+          Admit(deferred.size(), sizeof(std::optional<std::size_t>));
+          deferred_drafts_.resize(deferred.size());
+        }
+        Require(!deferred_drafts_[index], Error::kBinding);
+        deferred_drafts_[index] = draft;
+        continue;
+      }
       Append(draft, Statement(DeclarationStmt{symbol, {}}, origin));
     }
   }
@@ -1444,6 +1456,8 @@ class TreeBuilder {
   FunctionTree tree_;
   std::optional<TreeFlow> flow_;
   std::vector<BlockDraft> drafts_;
+  // Per deferred cell: the draft of its allocation's own block statement.
+  std::vector<std::optional<std::size_t>> deferred_drafts_;
   std::vector<ChildLink> links_;
   std::vector<RegionTask> tasks_;
   std::vector<NameId> name_order_;

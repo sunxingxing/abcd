@@ -59,20 +59,22 @@ class StoreCheck {
       Require(flow.cells[cell.value]->value < tree.symbols.size(), Error::kStore);
       const auto expression = *flow.expressions[operation->value];
       Require(expression.value < tree.expressions.size(), Error::kStore);
-      const auto* assignment = std::get_if<AssignmentExpr>(&tree.expressions[expression.value].expression);
-      if (!assignment) {
-        // A deferred first store is the cell's own `let` declaration; the
-        // flow verifier bound that statement as this cell's declaration.
-        const auto statement = operation->value < flow.statements.size() ? flow.statements[operation->value] : std::nullopt;
+      // A deferred first store is the cell's own `let` declaration, which the
+      // flow verifier bound as this cell's declaration point. Decide by that
+      // statement, never by the initializer's shape (it may be an assignment).
+      const auto statement = operation->value < flow.statements.size() ? flow.statements[operation->value] : std::nullopt;
+      const auto* declaration = statement && statement->value < tree.statements.size()
+          ? std::get_if<DeclarationStmt>(&tree.statements[statement->value].statement) : nullptr;
+      if (declaration) {
         const auto* bindings = flow.original && flow.original->cells ? &flow.original->cells->bindings : nullptr;
-        Require(!captured && statement && statement->value < tree.statements.size() && bindings &&
-            cell.value < bindings->size() && (*bindings)[cell.value].declaration == statement, Error::kStore);
-        const auto* declaration = std::get_if<DeclarationStmt>(&tree.statements[statement->value].statement);
-        Require(declaration && declaration->initializer == expression &&
+        Require(!captured && bindings && cell.value < bindings->size() &&
+            (*bindings)[cell.value].declaration == statement && declaration->initializer == expression &&
             declaration->symbol == *flow.cells[cell.value], Error::kStore);
         ++retained;
         continue;
       }
+      const auto* assignment = std::get_if<AssignmentExpr>(&tree.expressions[expression.value].expression);
+      Require(assignment != nullptr, Error::kStore);
       const auto* symbol = std::get_if<SymbolTarget>(&assignment->target);
       Require(symbol && symbol->symbol == *flow.cells[cell.value], Error::kStore);
       ++retained;

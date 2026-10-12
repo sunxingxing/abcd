@@ -20,6 +20,10 @@ es2abc --module --merge-abc --record-name=NAME --source-file=NAME.js --output NA
 | `mutate` | Deferred declaration followed by a later assignment | complete |
 | `parentread` | Parent arrow reads the cell before initialization | complete, TDZ preserved |
 | `rhs` | Closure invoked while the initializer is being evaluated | complete, TDZ preserved |
+| `laterblock` | The cell's only store follows a branch, in a later block of the same scope | complete, TDZ preserved |
+| `forward` | A hoisted function forwards a nested arrow's guarded read | complete, TDZ preserved |
+| `forwardmixed` | Two nested arrows, both guarded, forwarded through one function | complete, TDZ preserved |
+| `forwardwrite` | A nested arrow writes the cell; the forwarded obligation stays Language | refused: `ScopeError::kInitialization` |
 | `childwrite` | Child writes the cell before initialization (the VM store has no TDZ check) | refused: `ScopeError::kInitialization` |
 | `branch` | es2abc hoists the block environment to function entry; the store sits in a branch | refused: needs scope narrowing |
 
@@ -33,4 +37,8 @@ c0fbf13abf7fc5f3433776af085afa9b0a2c751860cf0b753a8c805c65dc9836  probe.abc
 24c3a72bb1fec3e44132ecebd3538539012a54503be407d6cf690b00afd1a019  rhs.abc
 bd5bdfebd1ce7bf8a10ddb2bbd62891c0934efb6e8de85d052eaed6c08e190d1  childwrite.abc
 6d703927cdbcf1a76b88ddcecc899b9950b1520e9b8f888e4b3ff81ebb326b46  branch.abc
+072f367934f9562cddab018cfb6ac0ee1da00eb7713b6464d6c95f6fbabf7dd9  forward.abc
+ccf64bb2fc9c19878425d9a69348f1fb9f63d5bb3499e0cba1a8c071e7623ac3  forwardmixed.abc
+40a26d802a56e1bc81323dccc756dead73004b01c616c7afc2e2927cb4929dbd  forwardwrite.abc
+763aec455a5ba9432ff7f521a20c54c5a727c01872f610cf1d73bfee3fa87b48  laterblock.abc
 ```

@@ -202,7 +202,7 @@ class FlowCheck {
             Require(anchor != nullptr, Error::kPlacement);
             const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
             Require(boundary && boundary->block == region.block && boundary->index == child, Error::kSequence);
-            if (IsEnvironmentState(op.operation)) CellDeclarations(id, block, child);
+            if (IsEnvironmentState(op.operation)) CellDeclarations(id, block, child, region.block);
             continue;
           }
           if (evaluation_.operations[id.value].kind == EvaluationKind::kLogicalValue) {
@@ -262,7 +262,7 @@ class FlowCheck {
             flow_.expressions[id.value] = *returned->value;
           } else if (const auto deferred = DeferredStore(id); deferred && std::holds_alternative<StmtId>(placement)) {
             Require(std::get<StmtId>(placement) == statement, Error::kPlacement);
-            DeferredDeclaration(id, *deferred, statement, block);
+            DeferredDeclaration(id, *deferred, statement, block, region.block);
           } else if (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) &&
                      std::holds_alternative<StmtId>(placement)) {
             Require(std::get<StmtId>(placement) == statement && region.block == tree_.body, Error::kPlacement);
@@ -446,7 +446,7 @@ class FlowCheck {
         Require(anchor, Error::kPlacement);
         const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
         Require(boundary && boundary->block == parent && boundary->index == child, Error::kSequence);
-        if (IsEnvironmentState(op.operation)) CellDeclarations(id, block, child);
+        if (IsEnvironmentState(op.operation)) CellDeclarations(id, block, child, parent);
         continue;
       }
       Require(child < block.child_count, Error::kSequence);
@@ -964,7 +964,8 @@ class FlowCheck {
   }
   // `let x = value` at the original first store, directly in the allocation's
   // block scope: before it the binding is in its TDZ, as the Hole was.
-  void DeferredDeclaration(analysis::OpId id, CellId cell, StmtId site, const BlockStmt& block) {
+  void DeferredDeclaration(analysis::OpId id, CellId cell, StmtId site, const BlockStmt& block, StmtId owner) {
+    Require(cell.value < deferred_blocks_.size() && deferred_blocks_[cell.value] == owner, Error::kPlacement);
     const auto& statement = tree_.statements[site.value];
     const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
     Require(declaration && declaration->initializer && declaration->symbol.value < tree_.symbols.size() &&
@@ -982,7 +983,7 @@ class FlowCheck {
     flow_.cell_bindings[cell.value] = {CellStorageIdentity(storage), symbol, binding.scope, site, {}};
     flow_.expressions[id.value] = *declaration->initializer;
   }
-  void CellDeclarations(analysis::OpId allocation, const BlockStmt& block, std::uint32_t& child) {
+  void CellDeclarations(analysis::OpId allocation, const BlockStmt& block, std::uint32_t& child, StmtId owner) {
     Require(evaluation_.cells.has_value(), Error::kEvaluation);
     if (!std::holds_alternative<analysis::ValueEnvironmentPush>(graph_.ops[allocation.value].operation)) return;
     const auto& cells = evaluation_.cells->cells.cells;
@@ -999,9 +1000,12 @@ class FlowCheck {
       if (!local || local->allocation != allocation) break;
       const auto index = static_cast<std::size_t>(cell - cells.begin());
       if (index < evaluation_.cells->deferred.size() && evaluation_.cells->deferred[index]) {
-        // No declaration here: its first store in this same block declares
-        // it (DeferredDeclaration), which also binds the cell's symbol.
+        // No declaration here: its first store directly in this same block
+        // statement declares it (DeferredDeclaration) and binds its symbol.
         Require(!flow_.cells[index], Error::kPlacement);
+        if (deferred_blocks_.empty()) budget_.Array(deferred_blocks_, cells.size());
+        Require(!deferred_blocks_[index], Error::kPlacement);
+        deferred_blocks_[index] = owner;
         continue;
       }
       Require(child < block.child_count, Error::kSequence);
@@ -1572,6 +1576,9 @@ class FlowCheck {
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
   const ExceptionTreeInput* exceptions_;
+  // Per deferred cell: the block statement of its allocation, which must
+  // directly contain its declaring first store.
+  std::vector<std::optional<StmtId>> deferred_blocks_;
   const CompletionTreeView& sequences_;
   std::span<const ScopeId> expression_scopes_;
   TreeFlow flow_;

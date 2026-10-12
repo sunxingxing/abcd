@@ -1,7 +1,8 @@
 # 先于初始化的受保护捕获（TDZ 捕获）
 
 状态：设计共识（Claude 与 Codex gpt-6-astra/xhigh，2026-10-12）。第 1 步（原因链）已实施；
-第 2–3 步的第一个增量（同块延迟声明）已实施，见 §5；其余仍未实施。
+第 2–3 步已实施三个增量，见 §5 和 §7：同块延迟声明（Codex 第十一轮复审 APPROVE）、
+受保护义务的转发、唯一写入在后续块。其余仍未实施。
 
 ## 1. 问题
 
@@ -142,7 +143,7 @@ load/guard 这一对。子函数原有的 Language 前提和 guard 消除（`Ini
   - 9 个停在 `FamilyTreeError::kDeferredCell`，即类根路径；
   - 4 个进入下一层的 `FamilyFileError`。
 
-## 6. 剩余类别（探索集诊断）
+## 6. 第一个增量之后的剩余类别（探索集诊断，§7 已处理前两项）
 
 1. **转发义务**：剩余拒绝中占比最大的一类。提升的函数本身不读该 cell，但它内部创建的箭头
    函数读取，且带 guard。`PlanFamilyCells` 把零访问的 incoming cell 一律转发为 `kLanguage`，
@@ -154,3 +155,39 @@ load/guard 这一对。子函数原有的 Language 前提和 guard 消除（`Ini
    的同作用域检查保证结构。
 4. **作用域收窄**：es2abc 把块环境提到函数入口，而 store 在分支内。要把声明移入分支块，需要
    证明该 cell 的所有引用都在这个块内。
+
+## 7. 第二、三个增量：转发与后续块唯一写入
+
+**受保护义务的转发（`PlanFamilyCells`）**：
+- `CellDemand.domain` 记录子级对这个 incoming cell 的最弱用法。子级自身的访问和它已经转发的
+  义务一起汇总，只有全部为 `kGuarded` 时才是 `kGuarded`。
+- 父级用 `FindDemandCell` 把需求映射到自己的 cell。只有当映射到某个零访问 incoming cell 的
+  需求全部为 `kGuarded` 时，转发用法才是 `kGuarded`。签名入口需求一律按 Language 处理。
+  phased 成员不做汇总，转发用法仍为 Language。
+- `VerifyCaptureTargets` 接受 `kLanguage` 或 `kGuarded` 的转发用法。
+- 同一 cell 上的混合用法逐条 Rebase，其中任何一条 Language 用法在未初始化时都会拒绝。
+- 嵌套箭头写入时，转发义务保持 Language，因此拒绝（fixture `forwardwrite`）。
+
+**唯一写入在后续块（`Rebase`、`MarkDeferredCells`）**：
+- 环境分配与创建点同块时，若该 cell 的唯一一次 store 位于别的块，这次 store 就是本次激活中
+  第一个执行的写入。从未执行到它的路径会让绑定一直处于 TDZ，这与原生 `let x = v` 从未执行
+  的效果相同。
+- value 层检查该 cell 恰有一次 store 访问。父函数自身的读取仍须由 `CellInitializations` 证明
+  有支配它的 store。
+- 结构上从“作用域相同”收紧为“同一个块语句”：
+  - `function_tree` 记录分配所在的 draft，要求 store 发射到同一个 draft；
+  - `tree_flow` 记录分配所在的 `BlockStmt`，要求声明语句直接位于其中。
+
+  因此循环体或分支臂永远不会承载这个声明。
+
+**其他**：采纳 Codex 第十一轮建议，`lexical_stores` 先按 flow 绑定的声明语句判定声明形态，
+不再看初始化值的形状。
+
+**证据**：
+- 新增 fixture，均通过 Node 差分：`forward`、`forwardmixed`（嵌套箭头经提升函数转发）、
+  `laterblock`（分支之后的唯一 store，分支内的提前调用同样抛出 TDZ）。`forwardwrite` 拒绝。
+- 固定 65 项全部通过。定向 219 项中失败的仅为 14 个基线原有失败。
+- 探索集完整 record：430（基线）→ 434 → 435 → **448/620**，无回退。新完整的 18 个 record
+  全部通过 `node --check`。`ScopeError::kInitialization` 叶子从 64 个 record 降到 27 个。
+- 剩余：类根路径、作用域收窄、未受保护的读取（例如提升的函数声明槽，这不是 TDZ 语义）。
+  这些以及 Codex 关于动态激活测试和独立 allocation 证据的建议，留作后续。
