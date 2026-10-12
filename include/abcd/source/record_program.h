@@ -26,10 +26,14 @@ enum class RecordProgramError : unsigned {
   kInitializer = 15,
   kAccessor = 16,
   kObject = 17,
-  // Process allocation failure (bad_alloc/length_error). Unlike
-  // kResourceLimit, which is this record's own budget, it is never isolated
-  // to one record: the export stops.
-  kAllocationFailure = 18
+  // Process allocation failure (bad_alloc/length_error) caught at the record
+  // entry. Never isolated to one record: the export stops.
+  kAllocationFailure = 18,
+  // The record exceeded its own RecordProgramBudget, proven at a record-owned
+  // budget check. Isolated to this record; other records are still exported.
+  // kResourceLimit stays process-fatal: lower stages still fold real
+  // allocation failures into it, so its origin is not provable here.
+  kRecordBudget = 19
 };
 struct RecordProgramFailure {
   RecordProgramError kind;

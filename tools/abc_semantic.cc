@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <span>
+#include <sstream>
 #include <string_view>
 
 #include "abcd/abc/metadata_index.h"
@@ -73,19 +74,50 @@ enum class InspectError : std::uint8_t {
   kPrint,
 };
 enum class InspectDetail : std::uint8_t { kSummary, kInstructions };
+// Set once the process limit is established; argument errors precede it.
+const abcd::tools::ProcessLimit* g_process_limit = nullptr;
+void ReportFailure(nlohmann::json failure) {
+  if (g_process_limit) abcd::tools::ReportProcessMemory(failure, *g_process_limit);
+  std::cerr << failure << '\n';
+}
 int Fail(InspectError kind, std::uint32_t pc = 0) {
-  std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
-                              {"pc", pc}}
-            << '\n';
+  ReportFailure({{"error", static_cast<unsigned>(kind)}, {"pc", pc}});
   return EXIT_FAILURE;
 }
 int FailStage(InspectError kind, unsigned stage_error,
               std::uint32_t pc) {
-  std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
-                              {"stage_error", stage_error},
-                              {"pc", pc}}
-            << '\n';
+  ReportFailure({{"error", static_cast<unsigned>(kind)},
+                 {"stage_error", stage_error}, {"pc", pc}});
   return EXIT_FAILURE;
+}
+// The final JSON object a view writes to stdout carries the process report
+// (tools/process_limit.h), so every result states whether a limit applies.
+// Views write bounded inspection output; it is buffered only to merge fields.
+template <class Run>
+int RunWithProcessReport(const abcd::tools::ProcessLimit& limit, Run&& run) {
+  std::ostringstream captured;
+  auto* const previous = std::cout.rdbuf(captured.rdbuf());
+  int code = EXIT_FAILURE;
+  try {
+    code = run();
+  } catch (...) {
+    std::cout.rdbuf(previous);
+    throw;
+  }
+  std::cout.rdbuf(previous);
+  auto text = std::move(captured).str();
+  std::size_t end = text.size();
+  while (end > 0 && text[end - 1] == '\n') --end;
+  const auto begin = text.rfind('\n', end == 0 ? 0 : end - 1);
+  const auto start = begin == std::string::npos ? 0 : begin + 1;
+  auto last = nlohmann::json::parse(text.begin() + static_cast<std::ptrdiff_t>(start),
+                                    text.begin() + static_cast<std::ptrdiff_t>(end), nullptr, false);
+  if (!last.is_discarded() && last.is_object()) {
+    abcd::tools::ReportProcessMemory(last, limit);
+    text.replace(start, end - start, last.dump());
+  }
+  std::cout << text;
+  return std::cout ? code : EXIT_FAILURE;
 }
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
             std::optional<source::SourceForm> form, InspectDetail detail,
@@ -369,15 +401,22 @@ int main(int argc, char** argv) {
     abcd::tools::ReportLimitFailure(std::cerr, limit);
     return EXIT_FAILURE;
   }
+  g_process_limit = &limit;
   const auto view = family_drafts ? ValueSourceScope::kFamilyDraft
       : conditional_families ? ValueSourceScope::kConditionalFamily
       : conditional_values ? ValueSourceScope::kConditionalValues : ValueSourceScope::kMember;
-  if (views) return Inspect(argv[1], entity, std::nullopt, InspectDetail::kSummary, view);
+  if (views) return RunWithProcessReport(limit, [&] {
+    return Inspect(argv[1], entity, std::nullopt, InspectDetail::kSummary, view);
+  });
   if (instructions)
-    return Inspect(argv[1], entity, std::nullopt, InspectDetail::kInstructions);
+    return RunWithProcessReport(limit, [&] {
+      return Inspect(argv[1], entity, std::nullopt, InspectDetail::kInstructions);
+    });
   // A bare --value-source keeps its historical meaning of the function form.
   if (value_routes && !form) form = source::SourceForm::kFunction;
   const auto numeric_contract = language_numeric ? source::SourceContract::kLanguageNumericV1 : language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
+  return RunWithProcessReport(limit, [&] {
   return Inspect(argv[1], entity, form, InspectDetail::kSummary, ValueSourceScope::kMember,
       language_constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract);
+  });
 }

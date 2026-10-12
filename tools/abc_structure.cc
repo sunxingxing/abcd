@@ -65,14 +65,16 @@ bool FatalContext(const source::RecordModuleFailure& failure) {
          kind == abc::ModuleError::kResourceLimit;
 }
 bool FatalRecordSource(const source::RecordSourceResult& result) {
-  // Process-level failures only: input I/O, input mutation and allocation
-  // failure. A record exceeding its own work/byte/output budget is a typed
-  // per-record failure; the remaining records are still exported.
+  // Process-level failures: input I/O, input mutation, allocation failure and
+  // kResourceLimit, whose origin lower stages do not distinguish from a real
+  // allocation failure. Only a proven record-owned budget (kRecordBudget) or
+  // output allowance (kOutputLimit) failure is isolated to the record.
   const auto* failure = std::get_if<source::RecordProgramFailure>(&result);
   return failure && (failure->kind == source::RecordProgramError::kRead ||
                      failure->kind == source::RecordProgramError::kWrite ||
                      failure->kind == source::RecordProgramError::kFileChanged ||
-                     failure->kind == source::RecordProgramError::kAllocationFailure);
+                     failure->kind == source::RecordProgramError::kAllocationFailure ||
+                     failure->kind == source::RecordProgramError::kResourceLimit);
 }
 int Fail(ExportError kind, std::uint32_t entity = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},

@@ -35,7 +35,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   try {
     const auto retain = [&](std::size_t bytes) {
-      if (bytes > budget.bytes) throw fail(Error::kResourceLimit);
+      if (bytes > budget.bytes) throw fail(Error::kRecordBudget);
       budget.bytes -= bytes;
     };
     const auto module = context.ForOwner(file, record.offset);
@@ -117,7 +117,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     if (function->cleanup) {
       const auto& cleanup = *function->cleanup;
       const auto count = cleanup.Proof().Pops().size() + cleanup.Proof().Handlers().size();
-      if (count > budget.bytes / sizeof(EnvironmentCleanupSite)) return fail(Error::kResourceLimit);
+      if (count > budget.bytes / sizeof(EnvironmentCleanupSite)) return fail(Error::kRecordBudget);
       retain(count*sizeof(EnvironmentCleanupSite)); cleanup_sites.reserve(count);
       retain((cleanup_sites.capacity()-count)*sizeof(EnvironmentCleanupSite));
       for (const auto& pop : cleanup.Proof().Pops())
@@ -201,17 +201,17 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     constexpr std::size_t kEntryStorage = 2 * (3 * sizeof(std::u16string) +
         sizeof(ModuleSyntax) + 2 * sizeof(std::size_t));
     const auto entries = external + module->local_exports.size() + module->indirect_exports.size();
-    if (entries > budget.bytes / kEntryStorage) return fail(Error::kResourceLimit);
+    if (entries > budget.bytes / kEntryStorage) return fail(Error::kRecordBudget);
     retain(entries * kEntryStorage);
     names.reserve(external + slots->slot_count()); aliases.reserve(module->local_exports.size());
     alias_slots.reserve(module->local_exports.size()); syntax.modules.reserve(external + slots->slot_count());
     const auto added_names = external + slots->slot_count();
     if (added_names > (budget.bytes / sizeof(std::u16string)))
-      return fail(Error::kResourceLimit);
+      return fail(Error::kRecordBudget);
     const auto name_count = constants->names.size() + added_names;
-    if (name_count < constants->names.size()) return fail(Error::kResourceLimit);
+    if (name_count < constants->names.size()) return fail(Error::kRecordBudget);
     if (name_count > constants->names.capacity()) {
-      if (name_count > budget.bytes / sizeof(std::u16string)) return fail(Error::kResourceLimit);
+      if (name_count > budget.bytes / sizeof(std::u16string)) return fail(Error::kRecordBudget);
       retain(name_count * sizeof(std::u16string));
       constants->names.reserve(name_count);
       retain((constants->names.capacity() - name_count) * sizeof(std::u16string));
@@ -300,7 +300,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           names[slot] != bindings->names[alias.name.value]) return fail(Error::kModule);
     }
     if (slots->slot_count() > budget.bytes / sizeof(std::optional<analysis::OpId>))
-      return fail(Error::kResourceLimit);
+      return fail(Error::kRecordBudget);
     retain(slots->slot_count() * sizeof(std::optional<analysis::OpId>));
     std::vector<std::optional<analysis::OpId>> initializers(slots->slot_count());
     retain((initializers.capacity() - initializers.size()) * sizeof(initializers.front()));

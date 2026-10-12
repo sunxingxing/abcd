@@ -98,6 +98,6 @@ struct PrintedSource {
   bool incomplete = false;
   std::vector<EnvironmentCleanupSite> environment_cleanup;
 };
-enum class SourceForm : std::uint8_t { kFunction, kClassConstructor, kRecord };
+enum class SourceForm : std::uint8_t { kFunction, kRecord };
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_PRINTED_SOURCE_H_

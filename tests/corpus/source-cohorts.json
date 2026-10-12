@@ -416,6 +416,7 @@
     "scans_executed": false,
     "hash_verification_date": "2026-09-26",
     "hash_verification_method": "sha256sum read-only over the five paired inputs; all five match abc-index.json entries under corpus_id paired",
-    "notes": "No batch validation, JS execution or RSS measurement has run; those remain suspended by the user."
+    "notes": "No batch validation, JS execution or RSS measurement has run; those remain suspended by the user.",
+    "historical_snapshot": "Fields above describe the 2026-09-26 registration state. Later exploration and test runs are recorded in docs/design/source-recovery/status.md."
   }
 }
