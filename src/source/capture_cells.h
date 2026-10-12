@@ -80,26 +80,36 @@ enum class CaptureCellError : std::uint8_t {
   kOwner, kRevision, kCreation, kInput, kCell, kCoverage, kBinding,
   kResourceLimit, kWorkLimit
 };
+// A cell-binding refusal with its typed cause: kInput keeps the CaptureFailure
+// of the rejected capture plan. Compares equal to its kind; the cause is only
+// diagnostic evidence and never changes admission.
+struct CaptureCellFailure {
+  CaptureCellError kind;
+  std::variant<std::monostate, CaptureFailure> cause;
+  CaptureCellFailure(CaptureCellError value) : kind(value) {}  // NOLINT: implicit kind.
+  CaptureCellFailure(CaptureCellError value, CaptureFailure input) : kind(value), cause(std::move(input)) {}
+  bool operator==(CaptureCellError value) const { return kind == value; }
+};
 // Resolve the actual original class-root creation point, then reuse the common
 // normal-parent/normal-or-phase-child cell binder. Defaults must freshly rebind
 // this proof after residual graphs and descendant demands settle.
-[[nodiscard]] std::variant<CaptureCells, CaptureCellError> BindClassRootCaptureCells(
+[[nodiscard]] std::variant<CaptureCells, CaptureCellFailure> BindClassRootCaptureCells(
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
     const abc::MethodLookup&, const FileFunction& creator, CaptureChild child,
     const FunctionContext& owner, analysis::SemanticBudget = {});
-[[nodiscard]] std::variant<std::uint64_t, CaptureCellError> VerifyClassRootCaptureCells(
+[[nodiscard]] std::variant<std::uint64_t, CaptureCellFailure> VerifyClassRootCaptureCells(
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
     const abc::MethodLookup&, const FileFunction& creator, CaptureChild child,
     const FunctionContext& owner, const CaptureCells&, analysis::SemanticBudget = {});
 // One genuine same-file resolved creation. Per-function plans are prepared
 // once, not rebuilt per creation. Same target at two sites produces two plans.
-[[nodiscard]] std::variant<CaptureCells, CaptureCellError> BindCaptureCells(
+[[nodiscard]] std::variant<CaptureCells, CaptureCellFailure> BindCaptureCells(
     const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
     analysis::InstructionId site, const CaptureSite& creation,
     analysis::SemanticBudget budget = {});
 // Checks the supplied cell map against WORKING creation topology and ORIGINAL
 // initialized capture occurrences. Does not rebuild BindCaptureCells.
-[[nodiscard]] std::variant<std::uint64_t, CaptureCellError> VerifyCaptureCells(
+[[nodiscard]] std::variant<std::uint64_t, CaptureCellFailure> VerifyCaptureCells(
     const abc::MetadataIndex& index, CaptureFunction parent, CaptureChild child,
     analysis::InstructionId site, const CaptureSite& creation,
     const CaptureCells& plan, analysis::SemanticBudget budget = {});

@@ -56,7 +56,7 @@ class WriteCheck {
       const auto& cells = *trees_.root_capture;
       const auto checked = VerifyClassRootCaptureCells(external_->file, external_->header, index_, external_->lookup,
           external_->creator, Child(root), external_->owner, cells, left_);
-      if (const auto* error = std::get_if<CaptureCellError>(&checked))
+      if (const auto* error = std::get_if<CaptureCellFailure>(&checked))
         Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
             *error == CaptureCellError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);
       Step(std::get<std::uint64_t>(checked));
@@ -64,7 +64,7 @@ class WriteCheck {
       if (file_family->root_capture) {
         const auto original = VerifyClassRootCaptureCells(external_->file, external_->header, index_, external_->lookup,
             external_->creator, Child(root), external_->owner, *file_family->root_capture, left_);
-        if (const auto* error = std::get_if<CaptureCellError>(&original))
+        if (const auto* error = std::get_if<CaptureCellFailure>(&original))
           Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
               *error == CaptureCellError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);
         Step(std::get<std::uint64_t>(original));
@@ -118,7 +118,7 @@ class WriteCheck {
             Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit : Error::kOwner);
           Step(std::get<std::uint64_t>(modules));
         }
-        if (const auto* error = std::get_if<CaptureCellError>(&checked))
+        if (const auto* error = std::get_if<CaptureCellFailure>(&checked))
           Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
               *error == CaptureCellError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);
         Step(std::get<std::uint64_t>(checked));
@@ -318,14 +318,14 @@ class WriteCheck {
         &phase.owner->Body() == &phase.body && &phase.owner->Locals() == &phase.locals, Error::kOwner);
     return CaptureChild{*phase.owner, phase.storage};
   }
-  std::variant<std::uint64_t, CaptureCellError> Capture(const FamilyWriteInput& source, CaptureChild child,
+  std::variant<std::uint64_t, CaptureCellFailure> Capture(const FamilyWriteInput& source, CaptureChild child,
       const NormalWriteEdge& edge, const CaptureCells& cells, std::size_t parent) {
     const auto* normal = std::get_if<CaptureFunction>(&source.function);
     Require(normal != nullptr, Error::kCapture);
     Mark(parent, edge.site, Barrier::kFunction);
     return VerifyCaptureCells(index_, *normal, child, edge.site, edge.creation, cells, left_);
   }
-  std::variant<std::uint64_t, CaptureCellError> Capture(const FamilyWriteInput& source, CaptureChild child,
+  std::variant<std::uint64_t, CaptureCellFailure> Capture(const FamilyWriteInput& source, CaptureChild child,
       const PhasedWriteEdge& edge, const CaptureCells& cells, std::size_t parent) {
     const auto* phase = std::get_if<PhasedFamilyInput>(&source.function);
     Require(phase != nullptr, Error::kCapture);

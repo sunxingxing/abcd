@@ -43,7 +43,7 @@ std::variant<CapturedFunctionBinding, CaptureEvaluationFailure> BindCaptureEvalu
     FunctionOwnerId child_owner, analysis::SemanticBudget budget) {
   if (parent_owner == child_owner) return CaptureEvaluationFailure{CaptureEvaluationError::kOwner};
   const auto checked = VerifyCaptureCells(index, parent, child, site, creation, cells, budget);
-  if (const auto* error = std::get_if<CaptureCellError>(&checked)) return CaptureEvaluationFailure{*error};
+  if (const auto* error = std::get_if<CaptureCellFailure>(&checked)) return CaptureEvaluationFailure{*error};
   return BindVerifiedCaptures(parent.values.graph, cells, child_owner, std::get<std::uint64_t>(checked), budget);
 }
 std::variant<CapturedFunctionBinding, CaptureEvaluationFailure> BindPhasedCaptureEvaluation(
@@ -54,7 +54,7 @@ std::variant<CapturedFunctionBinding, CaptureEvaluationFailure> BindPhasedCaptur
     FunctionOwnerId parent_owner, FunctionOwnerId child_owner, analysis::SemanticBudget budget, const CellPlan* parent_cells) {
   if (parent_owner == child_owner) return CaptureEvaluationFailure{CaptureEvaluationError::kOwner};
   const auto checked = VerifyPhasedCaptureCells(index, lookup, parent, body, locals, creation, child, owner, cells, budget, parent_cells);
-  if (const auto* error = std::get_if<CaptureCellError>(&checked)) return CaptureEvaluationFailure{*error};
+  if (const auto* error = std::get_if<CaptureCellFailure>(&checked)) return CaptureEvaluationFailure{*error};
   return BindVerifiedCaptures(parent.Graph(), cells, child_owner, std::get<std::uint64_t>(checked), budget);
 }
 }  // namespace abcd::source

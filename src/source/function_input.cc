@@ -374,7 +374,7 @@ InputBindingResult BindFunctionInputs(const abc::MetadataIndex& index, const Fun
   const auto& target = index.methods[creation.target.position.value];
   if (target.offset != child.Method() || target.owner_offset != child.Record()) return InputBindingError::kTarget;
   auto bound = BuildCapturePlan(ScopeFacts(parent.Input(), parent.Proof()), site, creation, child.Captures(), budget);
-  if (const auto* error = std::get_if<CaptureError>(&bound)) return *error;
+  if (const auto* error = std::get_if<CaptureFailure>(&bound)) return *error;
   auto result = std::get<CapturePlan>(std::move(bound));
   result.work += kOwnerCheckWork;
   return result;

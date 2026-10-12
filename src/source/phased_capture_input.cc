@@ -5,7 +5,7 @@
 namespace abcd::source {
 namespace {
 struct CheckedSite { analysis::ExceptionNodeId before; std::uint64_t work; };
-std::variant<CheckedSite, CaptureError, InputBindingError> CheckSite(
+std::variant<CheckedSite, CaptureFailure, InputBindingError> CheckSite(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent,
     const PhasedCreationSite& creation,
@@ -46,31 +46,31 @@ InputBindingResult BindPhasedFunctionInputs(
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     CaptureInput child, const FunctionContext& owner, analysis::SemanticBudget budget) {
   const auto checked = CheckSite(index, lookup, parent, creation, child, owner, budget);
-  if (const auto* error = std::get_if<CaptureError>(&checked)) return *error;
+  if (const auto* error = std::get_if<CaptureFailure>(&checked)) return *error;
   if (const auto* error = std::get_if<InputBindingError>(&checked)) return *error;
   const auto site = std::get<CheckedSite>(checked); budget.work -= site.work;
   const auto input = parent.TreeInput(body);
   const ScopeFacts scopes(ExceptionScopeFacts{input.input.flow, input.input.environments, locals, site.before});
   auto built = BuildCapturePlan(scopes, creation.instruction, creation.binding, child.Captures(), budget);
-  if (const auto* error = std::get_if<CaptureError>(&built)) return *error;
+  if (const auto* error = std::get_if<CaptureFailure>(&built)) return *error;
   auto result = std::get<CapturePlan>(std::move(built));
   result.work += site.work;
   return result;
 }
-std::variant<std::uint64_t, CaptureError, InputBindingError> VerifyPhasedFunctionInputs(
+std::variant<std::uint64_t, CaptureFailure, InputBindingError> VerifyPhasedFunctionInputs(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     CaptureInput child, const FunctionContext& owner, const CapturePlan& plan,
     analysis::SemanticBudget budget) {
   const auto checked = CheckSite(index, lookup, parent, creation, child, owner, budget);
-  if (const auto* error = std::get_if<CaptureError>(&checked)) return *error;
+  if (const auto* error = std::get_if<CaptureFailure>(&checked)) return *error;
   if (const auto* error = std::get_if<InputBindingError>(&checked)) return *error;
   const auto site = std::get<CheckedSite>(checked); budget.work -= site.work;
   const auto input = parent.TreeInput(body);
   const ScopeFacts scopes(ExceptionScopeFacts{input.input.flow, input.input.environments, locals, site.before});
   const auto verified = VerifyCapturePlan(scopes, creation.instruction, creation.binding, child.Captures(), plan, budget);
-  if (const auto* error = std::get_if<CaptureError>(&verified)) return *error;
+  if (const auto* error = std::get_if<CaptureFailure>(&verified)) return *error;
   return site.work + std::get<std::uint64_t>(verified);
 }
 }  // namespace abcd::source

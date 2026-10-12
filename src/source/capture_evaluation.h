@@ -13,7 +13,7 @@ struct CapturedFunctionBinding {
 enum class CaptureEvaluationError : std::uint8_t {
   kOwner, kCreation, kOuterCapture, kResourceLimit, kWorkLimit
 };
-using CaptureEvaluationFailure = std::variant<CaptureCellError, CaptureEvaluationError>;
+using CaptureEvaluationFailure = std::variant<CaptureCellFailure, CaptureEvaluationError>;
 // Connects an actual input/work capture proof to the common evaluation table.
 // Borrowed products must remain unchanged. Owners identify syntax instances,
 // not methods: two creations of the same method require distinct child owners.

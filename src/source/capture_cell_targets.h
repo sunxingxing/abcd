@@ -17,11 +17,11 @@ struct CaptureParent {
   std::span<const std::optional<analysis::InstructionId>> allocations;
   ScopeFacts scopes;
 };
-[[nodiscard]] std::variant<CaptureCells, CaptureCellError> BindCaptureTargets(
+[[nodiscard]] std::variant<CaptureCells, CaptureCellFailure> BindCaptureTargets(
     CaptureParent parent, CaptureChild child, analysis::InstructionId site,
     const CaptureSite& creation, CapturePlan input,
     analysis::SemanticBudget budget = {});
-[[nodiscard]] std::variant<std::uint64_t, CaptureCellError> VerifyCaptureTargets(
+[[nodiscard]] std::variant<std::uint64_t, CaptureCellFailure> VerifyCaptureTargets(
     CaptureParent parent, CaptureChild child, analysis::InstructionId site,
     const CaptureSite& creation, const CaptureCells& plan,
     analysis::SemanticBudget budget = {});

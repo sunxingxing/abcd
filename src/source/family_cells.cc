@@ -4,7 +4,7 @@
 #include <stdexcept>
 
 namespace abcd::source {
-std::variant<FamilyCellCost, CaptureCellError> PlanFamilyCells(
+std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
     FileFamily& family, analysis::SemanticBudget budget) {
   using Error = CaptureCellError;
   auto left = budget;

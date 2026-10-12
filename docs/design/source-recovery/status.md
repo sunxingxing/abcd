@@ -145,6 +145,13 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
 1. **当前缺口（帕累托顺序）**：冻结留出集中，头号叶子是 `CaptureCellError::kInput`（48 个
    record）。之后依次是 `FunctionEmitError::kKind`、`DerivedProjectionError` 和 `TreePrintError`
    （打印器的上下文与预算）。
+   - `kInput` 已完成诊断，并与 Codex 达成设计共识，见 [受保护捕获](guarded-captures.md)。
+     探索集中的 77 次拒绝全部是 `ScopeError::kInitialization`：类内自名绑定，或提升函数捕获之后
+     才初始化的 `let`/`const`，子函数读取都带 TDZ guard。
+   - 第 1 步已实施：原因链改为 `CaptureCellError::kInput → CaptureError::kScope → ScopeError`，
+     帕累托现在能看到这一层，准入不变。
+   - 第 2–5 步（受保护访问与 cell 生命周期证明 → 声明位置的构建与独立验证 → 反例与差分测试 →
+     cohort 评估）尚未实施。
 2. **S5 余项**：1 GB 整进程预算与准入；macOS 上的观测与背压。`abc_semantic` 的资源字段改为
    在 JSON 序列化边界直接写入。
 3. **C5 → C3 → C2 → C4 → C8**：语义上移到打印之前 → 一般结构化 → 选择表达式通用化 →

@@ -79,7 +79,7 @@ enum class FamilyFileError : std::uint8_t {
 };
 struct FamilyFileFailure {
   std::variant<FamilyFileError, FunctionFileFailure, CreationContextFailure,
-      CaptureCellError, CaptureEvaluationFailure, BodyEmitFailure, PhasedFileFailure, PhasedCreationFailure,
+      CaptureCellFailure, CaptureEvaluationFailure, BodyEmitFailure, PhasedFileFailure, PhasedCreationFailure,
       ClassInitializerError, BufferedArrayError, abc::MetadataError, abc::LiteralFailure,
       ClassInitializerReadFailure, ClassSelfError, ClassSelfOrderError> cause;
   std::optional<abc::EntityOffset> method;

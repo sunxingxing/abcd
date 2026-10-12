@@ -505,7 +505,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       Check(std::holds_alternative<FamilyFileFailure>(read_family(&child)));
       if (!initialized) {
         Check(std::holds_alternative<FamilyFileFailure>(discovered) &&
-            std::get<CaptureCellError>(std::get<FamilyFileFailure>(discovered).cause) == CaptureCellError::kInput);
+            std::get<CaptureCellFailure>(std::get<FamilyFileFailure>(discovered).cause) == CaptureCellError::kInput);
       } else {
         Check(std::holds_alternative<FileFamily>(discovered));
         auto& family = std::get<FileFamily>(discovered);
@@ -518,7 +518,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
         Check(std::holds_alternative<std::uint64_t>(VerifyClassRootCaptureCells(
             file, header, index, lookup, creator, root, owner, *family.root_capture)));
         auto stale = *family.root_capture; ++stale.child_revision.value;
-        Check(std::get<CaptureCellError>(VerifyClassRootCaptureCells(
+        Check(std::get<CaptureCellFailure>(VerifyClassRootCaptureCells(
             file, header, index, lookup, creator, root, owner, stale)) == CaptureCellError::kRevision);
         auto& member = family.members.front();
         auto syntax = std::get<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index, owner,
@@ -576,21 +576,29 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
         --built.root_capture->child_revision.value;
         if (owner.ClassSite()) Check(built.writes->captured_stores == 1 && built.writes->creations == 1);
       }
-      if (!initialized) { Check(std::get<CaptureCellError>(bound) == CaptureCellError::kInput); return; }
+      if (!initialized) {
+        // kInput keeps the refused capture plan and its rebase as typed causes:
+        // without the parent store the captured slot has no local cell.
+        const auto& refused = std::get<CaptureCellFailure>(bound);
+        const auto& input = std::get<CaptureFailure>(refused.cause);
+        Check(refused == CaptureCellError::kInput && input == CaptureError::kScope &&
+            std::get<ScopeError>(input.cause) == ScopeError::kCell);
+        return;
+      }
       Check(std::holds_alternative<CaptureCells>(bound));
       const auto& cells = std::get<CaptureCells>(bound);
       Check(cells.targets.size() == 1 && std::holds_alternative<ParentCell>(cells.targets[0].target));
       Check(std::holds_alternative<std::uint64_t>(VerifyCaptureCells(index,
           {creator.input, creator.values}, work, at, occurrence, cells)));
       auto changed = cells; ++changed.input.pc.value;
-      Check(std::get<CaptureCellError>(VerifyCaptureCells(index,
+      Check(std::get<CaptureCellFailure>(VerifyCaptureCells(index,
           {creator.input, creator.values}, work, at, occurrence, changed)) == CaptureCellError::kInput);
       changed = cells; ++std::get<ParentCell>(changed.targets[0].target).cell.value;
-      Check(std::get<CaptureCellError>(VerifyCaptureCells(index,
+      Check(std::get<CaptureCellFailure>(VerifyCaptureCells(index,
           {creator.input, creator.values}, work, at, occurrence, changed)) == CaptureCellError::kBinding);
       if (const auto* cls = std::get_if<ClassCaptureSite>(&occurrence)) {
         const ClassCaptureSite wrong{cls->owner, analysis::CapturedDepth{1}};
-        Check(std::get<CaptureCellError>(BindCaptureCells(index,
+        Check(std::get<CaptureCellFailure>(BindCaptureCells(index,
             {creator.input, creator.values}, work, at, wrong)) == CaptureCellError::kInput);
       }
     };
@@ -619,10 +627,10 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
           Check(std::holds_alternative<CapturePlan>(plan));
           Check(std::holds_alternative<std::uint64_t>(VerifyCapturePlan(scopes, site, occurrence,
               {&use, 1}, std::get<CapturePlan>(plan))));
-        } else Check(std::get<CaptureError>(plan) == CaptureError::kScope);
+        } else Check(std::get<CaptureFailure>(plan) == CaptureError::kScope);
       } else {
         commit_found |= node.phase == analysis::ExceptionPhase::kCommit;
-        Check(std::get<CaptureError>(plan) == CaptureError::kCreation);
+        Check(std::get<CaptureFailure>(plan) == CaptureError::kCreation);
       }
     }
     Check(before_found && commit_found);

@@ -31,10 +31,10 @@ void Deferred() {
       const auto& plan = std::get<CapturePlan>(result);
       Check(std::holds_alternative<std::uint64_t>(VerifyCapturePlan(scopes, {1}, creation, {&use, 1}, plan)));
       const CaptureUse defined{use.cell, CaptureDomain::kDefined};
-      Check(std::get<CaptureError>(BuildCapturePlan(scopes, {1}, creation, {&defined, 1})) == CaptureError::kScope);
+      Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, {1}, creation, {&defined, 1})) == CaptureError::kScope);
       const ScopeFacts unknown(method, proof.environments, proof.locals, proof.defined_captures, ClosureWrites::kUnknown);
-      Check(std::get<CaptureError>(BuildCapturePlan(unknown, {1}, creation, {&use, 1})) == CaptureError::kScope);
-    } else Check(std::get<CaptureError>(result) == CaptureError::kScope);
+      Check(std::get<CaptureFailure>(BuildCapturePlan(unknown, {1}, creation, {&use, 1})) == CaptureError::kScope);
+    } else Check(std::get<CaptureFailure>(result) == CaptureError::kScope);
   }
 }
 SemanticMethod Owner() {
@@ -76,15 +76,15 @@ void Run() {
     SemanticBudget budget; budget.work = plan->work;
     Check(std::holds_alternative<CapturePlan>(BuildCapturePlan(scopes, {2}, creation, uses, budget)));
     --budget.work;
-    Check(std::get<CaptureError>(BuildCapturePlan(scopes, {2}, creation, uses, budget)) == CaptureError::kWorkLimit);
+    Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, {2}, creation, uses, budget)) == CaptureError::kWorkLimit);
     budget = {}; budget.bytes = 0;
-    Check(std::get<CaptureError>(BuildCapturePlan(scopes, {2}, creation, uses, budget)) == CaptureError::kResourceLimit);
+    Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, {2}, creation, uses, budget)) == CaptureError::kResourceLimit);
     if (!count) continue;
     auto forged = *plan;
     forged.bindings[0].domain = CaptureDomain::kDefined;
-    Check(std::get<CaptureError>(VerifyCapturePlan(scopes, {2}, creation, uses, forged)) == CaptureError::kBinding);
+    Check(std::get<CaptureFailure>(VerifyCapturePlan(scopes, {2}, creation, uses, forged)) == CaptureError::kBinding);
     forged = *plan; std::get<LocalCell>(forged.bindings[0].cell).environment = {1};
-    Check(std::get<CaptureError>(VerifyCapturePlan(scopes, {2}, creation, uses, forged)) == CaptureError::kBinding);
+    Check(std::get<CaptureFailure>(VerifyCapturePlan(scopes, {2}, creation, uses, forged)) == CaptureError::kBinding);
   }
   const CaptureUse outer{{{1}, {0}}, CaptureDomain::kDefined};
   const auto outside = std::get<CapturePlan>(BuildCapturePlan(scopes, {2}, creation, {&outer, 1}));
@@ -93,21 +93,21 @@ void Run() {
   auto second = creation; second.offset = {4}; second.capture = OrdinaryCapture{EnvironmentId{1}};
   const auto other = std::get<CapturePlan>(BuildCapturePlan(scopes, {4}, second, {&use, 1}));
   Check(std::get<LocalCell>(other.bindings[0].cell).environment.value == 1);
-  Check(std::get<CaptureError>(VerifyCapturePlan(scopes, {2}, creation, {&use, 1}, other)) == CaptureError::kCreation);
+  Check(std::get<CaptureFailure>(VerifyCapturePlan(scopes, {2}, creation, {&use, 1}, other)) == CaptureError::kCreation);
   second.capture = SendableCapture{};
-  Check(std::get<CaptureError>(BuildCapturePlan(scopes, {4}, second, {&use, 1})) == CaptureError::kCreation);
+  Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, {4}, second, {&use, 1})) == CaptureError::kCreation);
   const CaptureUse needs_defined{{{0}, {0}}, CaptureDomain::kDefined};
-  Check(std::get<CaptureError>(BuildCapturePlan(scopes, {2}, creation, {&needs_defined, 1})) == CaptureError::kScope);
+  Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, {2}, creation, {&needs_defined, 1})) == CaptureError::kScope);
   defined.block_entries = {1};
   defined.guards = {{{0}, {1}, 1, 2}};
   Check(std::holds_alternative<CapturePlan>(BuildCapturePlan(scopes, {2}, creation, {&needs_defined, 1})));
   defined.guards[0].instruction = {2};
-  Check(std::get<CaptureError>(BuildCapturePlan(scopes, {2}, creation, {&needs_defined, 1})) == CaptureError::kScope);
+  Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, {2}, creation, {&needs_defined, 1})) == CaptureError::kScope);
   locals.capture_barriers = {{1}};
   ScopeFacts unknown(method, environments, locals, defined, ClosureWrites::kUnknown);
-  Check(std::get<CaptureError>(BuildCapturePlan(unknown, {2}, creation, {&use, 1})) == CaptureError::kScope);
+  Check(std::get<CaptureFailure>(BuildCapturePlan(unknown, {2}, creation, {&use, 1})) == CaptureError::kScope);
   locals.stores.clear();
-  Check(std::get<CaptureError>(BuildCapturePlan(scopes, {2}, creation, {&use, 1})) == CaptureError::kScope);
+  Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, {2}, creation, {&use, 1})) == CaptureError::kScope);
   // A closure may capture a cell before its first write, but that does not
   // establish a Language read premise. Without an unexposed-prefix proof, a
   // future dominating store (or one at creation) cannot discharge that read.
@@ -118,7 +118,10 @@ void Run() {
     locals.stores = {{{0}, store}};
     locals.initializations = {{{0}, store, {0}, 1, 2}};
     Check(std::get<ScopeError>(scopes.Rebase({2}, use.cell, use.domain)) == ScopeError::kInitialization);
-    Check(std::get<CaptureError>(BuildCapturePlan(scopes, {2}, creation, {&use, 1})) == CaptureError::kScope);
+    const auto refused = std::get<CaptureFailure>(BuildCapturePlan(scopes, {2}, creation, {&use, 1}));
+    // The rejected rebase stays visible as the typed cause of kScope.
+    Check(refused == CaptureError::kScope &&
+        std::get<ScopeError>(refused.cause) == ScopeError::kInitialization);
   }
   locals.stores = {{{0}, {1}}};
   locals.initializations = {{{0}, {1}, {0}, 1, 2}};

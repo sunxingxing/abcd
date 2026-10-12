@@ -28,7 +28,7 @@ struct FamilyTreeFailure {
       EvaluationError, FunctionTreeError, TreeFlowError, FunctionAbiError,
       ModuleAliasFailure, ModuleAliasTreeError, FamilyError,
       ParameterPlanError, CellDefaultError, CellDefaultProofError, DefaultBodyError,
-      analysis::ValueEnvironmentError, CellError, ModuleGuardError, CaptureCellError,
+      analysis::ValueEnvironmentError, CellError, ModuleGuardError, CaptureCellFailure,
       CaptureEvaluationFailure, DefaultSignatureError, TreeSemanticError,
       FamilyEnclosureFailure, FamilyWriteFailure, InstructionSourceError, DefaultCandidateError> cause;
   // Discovery evidence only; no source initializer or erasure is authorized.

@@ -266,33 +266,33 @@ void Occurrences(std::uint32_t count) {
         std::get<AllocatedCell>(parent_values.cells->cells[second_cell.value].storage).allocation);
     auto forged = first_cells;
     forged.targets[0].target = ParentCell{second_cell};
-    test::Check(std::get<CaptureCellError>(std::get<CaptureEvaluationFailure>(BindCaptureEvaluation(index,
+    test::Check(std::get<CaptureCellFailure>(std::get<CaptureEvaluationFailure>(BindCaptureEvaluation(index,
         parent_work, child_work, first_site, first, forged, {0}, {1}))) == CaptureCellError::kBinding);
-    test::Check(std::get<CaptureCellError>(VerifyCaptureCells(index, parent_work, child_work,
+    test::Check(std::get<CaptureCellFailure>(VerifyCaptureCells(index, parent_work, child_work,
         first_site, first, forged)) == CaptureCellError::kBinding);
     forged = first_cells; forged.targets.clear();
-    test::Check(std::get<CaptureCellError>(VerifyCaptureCells(index, parent_work, child_work,
+    test::Check(std::get<CaptureCellFailure>(VerifyCaptureCells(index, parent_work, child_work,
         first_site, first, forged)) == CaptureCellError::kCoverage);
     forged = first_cells; forged.targets[0].target = OuterCell{{{0}, {0}}};
-    test::Check(std::get<CaptureCellError>(VerifyCaptureCells(index, parent_work, child_work,
+    test::Check(std::get<CaptureCellFailure>(VerifyCaptureCells(index, parent_work, child_work,
         first_site, first, forged)) == CaptureCellError::kBinding);
   }
   SemanticBudget cell_budget; cell_budget.work = first_cells.work;
   test::Check(std::holds_alternative<CaptureCells>(BindCaptureCells(index, parent_work, child_work,
       first_site, first, cell_budget)));
   --cell_budget.work;
-  test::Check(std::get<CaptureCellError>(BindCaptureCells(index, parent_work, child_work,
+  test::Check(std::get<CaptureCellFailure>(BindCaptureCells(index, parent_work, child_work,
       first_site, first, cell_budget)) == CaptureCellError::kWorkLimit);
   cell_budget = {}; cell_budget.bytes = 0;
-  test::Check(std::get<CaptureCellError>(BindCaptureCells(index, parent_work, child_work,
+  test::Check(std::get<CaptureCellFailure>(BindCaptureCells(index, parent_work, child_work,
       first_site, first, cell_budget)) == CaptureCellError::kResourceLimit);
   ++child_values.graph.revision.value;
-  test::Check(std::get<CaptureCellError>(VerifyCaptureCells(index, parent_work, child_work,
+  test::Check(std::get<CaptureCellFailure>(VerifyCaptureCells(index, parent_work, child_work,
       first_site, first, first_cells)) == CaptureCellError::kRevision);
   --child_values.graph.revision.value;
   const auto identity = child_values.identity;
   child_values.identity.file_hash.bytes[0] = 1;
-  test::Check(std::get<CaptureCellError>(VerifyCaptureCells(index, parent_work, child_work,
+  test::Check(std::get<CaptureCellFailure>(VerifyCaptureCells(index, parent_work, child_work,
       first_site, first, first_cells)) == CaptureCellError::kOwner);
   child_values.identity = identity;
   const auto bound = std::get<CapturePlan>(BindFunctionInputs(index, parent, first_site, first, child));
@@ -307,9 +307,9 @@ void Occurrences(std::uint32_t count) {
   SemanticBudget budget; budget.work = bound.work;
   test::Check(std::holds_alternative<CapturePlan>(BindFunctionInputs(index, parent, first_site, first, child, budget)));
   --budget.work;
-  test::Check(std::get<CaptureError>(BindFunctionInputs(index, parent, first_site, first, child, budget)) == CaptureError::kWorkLimit);
+  test::Check(std::get<CaptureFailure>(BindFunctionInputs(index, parent, first_site, first, child, budget)) == CaptureError::kWorkLimit);
   auto wrong = first; ++wrong.offset.value;
-  test::Check(std::get<CaptureError>(BindFunctionInputs(index, parent, first_site, wrong, child)) == CaptureError::kCreation);
+  test::Check(std::get<CaptureFailure>(BindFunctionInputs(index, parent, first_site, wrong, child)) == CaptureError::kCreation);
   auto foreign = Identity(); foreign.file_hash.bytes[0] = 1;
   const auto other = std::get<FunctionInput>(FunctionInput::Build(foreign, kChild, kRecord,
       body, Frame(), InputCaptureMode::kConditional));
@@ -362,10 +362,10 @@ void ForwardingAndChildren() {
       std::vector<CaptureUse>(child.Captures().begin(), child.Captures().end())};
   const CaptureChild changed_child{CaptureFunction{child, child_values, &changed}};
   ++changed.uses[0].cell.slot.value;
-  test::Check(std::get<CaptureCellError>(BindCaptureCells(Index(), forwarded, changed_child,
+  test::Check(std::get<CaptureCellFailure>(BindCaptureCells(Index(), forwarded, changed_child,
       site, Creation(parent, site))) == CaptureCellError::kBinding);
   changed.uses.clear();
-  test::Check(std::get<CaptureCellError>(BindCaptureCells(Index(), forwarded, changed_child,
+  test::Check(std::get<CaptureCellFailure>(BindCaptureCells(Index(), forwarded, changed_child,
       site, Creation(parent, site))) == CaptureCellError::kCoverage);
   // The parent now directly accesses that same outer cell. The child must use
   // the parent's incoming binding, without discharging the parent's obligation.
@@ -379,7 +379,7 @@ void ForwardingAndChildren() {
   const auto uninitialized = Input(kParent, uninitialized_body);
   const auto uninitialized_values = std::get<FunctionValues>(BuildFunctionValues(uninitialized, uninitialized_body, Frame()));
   const auto uninitialized_site = uninitialized.Children()[0];
-  test::Check(std::get<CaptureCellError>(BindCaptureCells(Index(), {uninitialized, uninitialized_values},
+  test::Check(std::get<CaptureCellFailure>(BindCaptureCells(Index(), {uninitialized, uninitialized_values},
       {child, child_values}, uninitialized_site, Creation(uninitialized, uninitialized_site))) == CaptureCellError::kInput);
 }
 

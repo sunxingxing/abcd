@@ -92,7 +92,7 @@ void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
   if (failure.creation_pc) report["creation_pc"] = failure.creation_pc->value;
   std::visit([&](const auto& error) {
     using T = std::decay_t<decltype(error)>;
-    if constexpr (std::is_same_v<T, FamilyFileError> || std::is_same_v<T, CaptureCellError>) {
+    if constexpr (std::is_same_v<T, FamilyFileError> || std::is_same_v<T, CaptureCellFailure>) {
       report["family_error"] = Code(error);
     } else if constexpr (std::is_same_v<T, ClassInitializerError>) {
       report["class_projection_error"] = Code(error);

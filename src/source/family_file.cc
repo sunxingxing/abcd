@@ -158,7 +158,7 @@ class FamilyReader {
       auto captured = parent.Phase() ? BindPhasedCaptureCells(index_, lookup_, parent.Phase()->Phases(),
           parent.Body(), parent.Phase()->Locals(), *phase_creation, child_work, context, Remaining()) :
           BindCaptureCells(index_, parent.NormalCapture(), child_work, site, *binding, Remaining());
-      if (const auto* error = std::get_if<CaptureCellError>(&captured)) Fail(*error);
+      if (const auto* error = std::get_if<CaptureCellFailure>(&captured)) Fail(*error);
       auto cells = std::get<CaptureCells>(std::move(captured));
       Admit(cells.allocated_bytes, 1); Step(cells.work);
       Require(result_.members.size() < std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
@@ -187,7 +187,7 @@ class FamilyReader {
     else if (const auto* site = owner->ClassSite()) pc_ = site->pc;
     const auto child = result_.members.front().function.Capture();
     auto bound = BindClassRootCaptureCells(file_, header_, index_, lookup_, *creator, child, *owner, Remaining());
-    if (const auto* error = std::get_if<CaptureCellError>(&bound)) Fail(*error);
+    if (const auto* error = std::get_if<CaptureCellFailure>(&bound)) Fail(*error);
     auto cells = std::get<CaptureCells>(std::move(bound));
     pc_ = cells.input.pc;
     Admit(cells.allocated_bytes, 1); Step(cells.work);
@@ -203,7 +203,7 @@ class FamilyReader {
     // own direct accesses are not its descendants' complete capture demand.
     // Each occurrence is bound once here; no repeated subtree discovery.
     auto planned = PlanFamilyCells(result_, Remaining());
-    if (const auto* error = std::get_if<CaptureCellError>(&planned)) Fail(*error);
+    if (const auto* error = std::get_if<CaptureCellFailure>(&planned)) Fail(*error);
     const auto cost = std::get<FamilyCellCost>(planned); Admit(cost.allocated_bytes, 1); Step(cost.work);
     // Descendant forwarding must settle before binding the external root. An
     // absent creator keeps the original closed-root refusal, even for count0.
@@ -233,7 +233,7 @@ class FamilyReader {
           phase->Locals(), {*edge.phase_operation, edge.site, edge.creation}, work, *child.context,
           Remaining(), parent.function.Cells()) :
           BindCaptureCells(index_, parent.function.NormalCapture(), work, edge.site, edge.creation, Remaining());
-      if (const auto* error = std::get_if<CaptureCellError>(&rebound)) Fail(*error);
+      if (const auto* error = std::get_if<CaptureCellFailure>(&rebound)) Fail(*error);
       edge.cells = std::get<CaptureCells>(std::move(rebound));
       Admit(edge.cells.allocated_bytes, 1); Step(edge.cells.work);
       auto evaluated = phase ? BindPhasedCaptureEvaluation(index_, lookup_, phase->Phases(), phase->Body(),

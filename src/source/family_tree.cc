@@ -37,10 +37,10 @@ class FamilyTrees {
     ProjectDefaults(family, root);
     Rebind(family);
     if (family.root_capture) {
-      auto cells = Take<CaptureCells, CaptureCellError>(BindClassRootCaptureCells(file_, header_, index_, *lookup_,
+      auto cells = Take<CaptureCells, CaptureCellFailure>(BindClassRootCaptureCells(file_, header_, index_, *lookup_,
           external->creator, family.members.front().function.Capture(), *root, left_));
       Account(cells);
-      Step(Take<std::uint64_t, CaptureCellError>(VerifyClassRootCaptureCells(file_, header_, index_, *lookup_,
+      Step(Take<std::uint64_t, CaptureCellFailure>(VerifyClassRootCaptureCells(file_, header_, index_, *lookup_,
           external->creator, family.members.front().function.Capture(), *root, cells, left_)));
       family.root_capture = std::move(cells);
     }
@@ -503,7 +503,7 @@ class FamilyTrees {
     // Every residual revision is fixed before any creation edge is rebound.
     // This prevents a parent's cached binding from retaining a child's old
     // revision when that child's own defaults are projected later.
-    Account(Take<FamilyCellCost, CaptureCellError>(PlanFamilyCells(family, left_)));
+    Account(Take<FamilyCellCost, CaptureCellFailure>(PlanFamilyCells(family, left_)));
     for (auto& member : family.members) { Step(1); member.children.clear(); }
     for (std::size_t i = 1; i < family.members.size(); ++i) {
       Step(1); member_ = {static_cast<std::uint32_t>(i)};
@@ -519,7 +519,7 @@ class FamilyTrees {
         Require(lookup_ && child.context, FamilyTreeError::kContext);
         occurrence.emplace(PhasedCreationSite{*edge.phase_operation, edge.site, edge.creation});
       }
-      auto cells = Take<CaptureCells, CaptureCellError>(phase ? BindPhasedCaptureCells(index_, *lookup_, phase->Phases(),
+      auto cells = Take<CaptureCells, CaptureCellFailure>(phase ? BindPhasedCaptureCells(index_, *lookup_, phase->Phases(),
           phase->Body(), phase->Locals(), *occurrence, child_work, *child.context, left_, parent.function.Cells()) :
           BindCaptureCells(index_, parent.function.NormalCapture(), child_work,
               edge.site, edge.creation, left_));

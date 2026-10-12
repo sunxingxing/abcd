@@ -137,7 +137,7 @@ std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
     const FunctionInput& parent, analysis::InstructionId creation,
     const FunctionInput& child, analysis::SemanticBudget budget = {});
 enum class InputBindingError : std::uint8_t { kIdentity, kTarget, kMode };
-using InputBindingResult = std::variant<CapturePlan, CaptureError, InputBindingError>;
+using InputBindingResult = std::variant<CapturePlan, CaptureFailure, InputBindingError>;
 // The unchanged index and genuine BindCreation result belong to these inputs'
 // file identity. Resolves every DIRECT child capture; descendants remain the
 // child's Children obligations. Success does not authorize scalarization,

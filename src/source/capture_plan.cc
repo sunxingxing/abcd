@@ -15,7 +15,7 @@ bool SameCell(const CaptureCell& left, const CaptureCell& right) {
   return other && outer.depth == other->depth && outer.slot.value == other->slot.value;
 }
 }  // namespace
-std::variant<std::uint64_t, CaptureError> VerifyCapturePlan(
+std::variant<std::uint64_t, CaptureFailure> VerifyCapturePlan(
     const ScopeFacts& scopes, analysis::InstructionId site,
     const CaptureSite& creation, std::span<const CaptureUse> uses,
     const CapturePlan& plan, analysis::SemanticBudget budget) {
@@ -33,13 +33,13 @@ std::variant<std::uint64_t, CaptureError> VerifyCapturePlan(
     work -= query;
     const auto resolved = scopes.Rebase(site, uses[i].cell, uses[i].domain);
     const auto* cell = std::get_if<CaptureCell>(&resolved);
-    if (!cell) return CaptureError::kScope;
+    if (!cell) return CaptureFailure{CaptureError::kScope, std::get<ScopeError>(resolved)};
     if (uses[i].domain != plan.bindings[i].domain || !SameCell(*cell, plan.bindings[i].cell))
       return CaptureError::kBinding;
   }
   return budget.work - work;
 }
-std::variant<CapturePlan, CaptureError> BuildCapturePlan(
+std::variant<CapturePlan, CaptureFailure> BuildCapturePlan(
     const ScopeFacts& scopes, analysis::InstructionId site,
     const CaptureSite& creation, std::span<const CaptureUse> uses,
     analysis::SemanticBudget budget) {
@@ -64,11 +64,11 @@ std::variant<CapturePlan, CaptureError> BuildCapturePlan(
       work -= query;
       const auto resolved = scopes.Rebase(site, use.cell, use.domain);
       const auto* cell = std::get_if<CaptureCell>(&resolved);
-      if (!cell) return CaptureError::kScope;
+      if (!cell) return CaptureFailure{CaptureError::kScope, std::get<ScopeError>(resolved)};
       plan.bindings.push_back({*cell, use.domain});
     }
     const auto checked = VerifyCapturePlan(scopes, site, creation, uses, plan, {bytes, work});
-    if (const auto* error = std::get_if<CaptureError>(&checked)) return *error;
+    if (const auto* error = std::get_if<CaptureFailure>(&checked)) return *error;
     work -= std::get<std::uint64_t>(checked);
     plan.work = budget.work - work;
     plan.allocated_bytes = sizeof(plan) + plan.bindings.capacity() * sizeof(CaptureBinding);

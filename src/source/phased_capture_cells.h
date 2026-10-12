@@ -8,13 +8,13 @@ namespace abcd::source {
 // Fresh unchanged parent/child products, same original-input obligations as
 // BindPhasedFunctionInputs. Reuses normal capture targets and their independent
 // occurrence verifier; this does not close child ASTs or transitive writes.
-[[nodiscard]] std::variant<CaptureCells, CaptureCellError> BindPhasedCaptureCells(
+[[nodiscard]] std::variant<CaptureCells, CaptureCellFailure> BindPhasedCaptureCells(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,
     CaptureChild child, const FunctionContext& owner, analysis::SemanticBudget budget = {},
     const CellPlan* parent_cells = nullptr);
-[[nodiscard]] std::variant<std::uint64_t, CaptureCellError> VerifyPhasedCaptureCells(
+[[nodiscard]] std::variant<std::uint64_t, CaptureCellFailure> VerifyPhasedCaptureCells(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const PhasedBody& parent, const abc::MethodBody& body,
     const analysis::ExceptionLocals& locals, const PhasedCreationSite& creation,

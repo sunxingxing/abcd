@@ -93,7 +93,7 @@ void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool
     const CaptureUse use{{{0}, {0}}, CaptureDomain::kLanguage};
     const auto built = BuildCapturePlan(scopes, node.instruction, binding, {&use, 1});
     if (!early_store && instruction.pc.value == catch_pc) {
-      test::Check(std::get<CaptureError>(built) == CaptureError::kScope);
+      test::Check(std::get<CaptureFailure>(built) == CaptureError::kScope);
       continue;
     }
     test::Check(std::holds_alternative<CapturePlan>(built));
@@ -110,25 +110,25 @@ void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool
     test::Check(std::holds_alternative<std::uint64_t>(verify_cells()));
     const auto saved_target = cells.targets[0].target;
     cells.targets[0].target = ParentCell{CellId{1}};
-    test::Check(std::get<CaptureCellError>(verify_cells()) == CaptureCellError::kBinding);
+    test::Check(std::get<CaptureCellFailure>(verify_cells()) == CaptureCellError::kBinding);
     cells.targets[0].target = saved_target;
     ++working_env.revision.value;
-    test::Check(std::get<CaptureCellError>(verify_cells()) == CaptureCellError::kRevision);
+    test::Check(std::get<CaptureCellFailure>(verify_cells()) == CaptureCellError::kRevision);
     --working_env.revision.value;
     auto allocations = locals.plan.allocations;
     const auto environment = std::get<LocalCell>(plan.bindings[0].cell).environment;
     allocations[environment.value] = node.instruction;
     auto wrong_parent = parent; wrong_parent.allocations = allocations;
-    test::Check(std::get<CaptureCellError>(VerifyCaptureTargets(wrong_parent, {child_input, child_values},
+    test::Check(std::get<CaptureCellFailure>(VerifyCaptureTargets(wrong_parent, {child_input, child_values},
         node.instruction, binding, cells)) == CaptureCellError::kCell);
     SemanticBudget cell_budget; cell_budget.work = cells.work;
     test::Check(std::holds_alternative<CaptureCells>(BindCaptureTargets(parent, {child_input, child_values},
         node.instruction, binding, plan, cell_budget)));
     --cell_budget.work;
-    test::Check(std::get<CaptureCellError>(BindCaptureTargets(parent, {child_input, child_values},
+    test::Check(std::get<CaptureCellFailure>(BindCaptureTargets(parent, {child_input, child_values},
         node.instruction, binding, plan, cell_budget)) == CaptureCellError::kWorkLimit);
     cell_budget = {}; cell_budget.bytes = 0;
-    test::Check(std::get<CaptureCellError>(BindCaptureTargets(parent, {child_input, child_values},
+    test::Check(std::get<CaptureCellFailure>(BindCaptureTargets(parent, {child_input, child_values},
         node.instruction, binding, plan, cell_budget)) == CaptureCellError::kResourceLimit);
     if (profile == abc::ProfileId::kDynamic1301 && early_store && !prior_environment && creations == 1) {
       // Many original reads AND writes alias one mutable cell. The verifier
@@ -152,38 +152,38 @@ void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool
         test::Check(std::holds_alternative<std::uint64_t>(VerifyCaptureTargets(parent,
             {repeated_input, repeated_values}, node.instruction, binding, targets)));
         targets.input.bindings.pop_back();
-        test::Check(std::get<CaptureCellError>(VerifyCaptureTargets(parent, {repeated_input, repeated_values},
+        test::Check(std::get<CaptureCellFailure>(VerifyCaptureTargets(parent, {repeated_input, repeated_values},
             node.instruction, binding, targets)) == CaptureCellError::kInput);
       }
     }
     test::Check(std::holds_alternative<std::uint64_t>(VerifyCapturePlan(scopes, node.instruction, binding, {&use, 1}, plan)));
     plan.writes = ClosureWrites::kUnknown;
-    test::Check(std::get<CaptureError>(VerifyCapturePlan(scopes, node.instruction, binding, {&use, 1}, plan)) == CaptureError::kScope);
+    test::Check(std::get<CaptureFailure>(VerifyCapturePlan(scopes, node.instruction, binding, {&use, 1}, plan)) == CaptureError::kScope);
     const ScopeFacts unproved(ExceptionScopeFacts{flow, env, unknown, before});
-    test::Check(std::get<CaptureError>(BuildCapturePlan(unproved, node.instruction, binding, {&use, 1})) == CaptureError::kScope);
+    test::Check(std::get<CaptureFailure>(BuildCapturePlan(unproved, node.instruction, binding, {&use, 1})) == CaptureError::kScope);
     const ScopeFacts unchanged(ExceptionScopeFacts{flow, env, read_only, before});
     const auto preserved_plan = std::get<CapturePlan>(BuildCapturePlan(unchanged, node.instruction, binding, {&use, 1}));
     test::Check(preserved_plan.writes == ClosureWrites::kUnknown);
     const ScopeFacts commit(ExceptionScopeFacts{flow, env, locals, ExceptionNodeId{before.value + 1}});
-    test::Check(std::get<CaptureError>(BuildCapturePlan(commit, node.instruction, binding, {})) == CaptureError::kCreation);
+    test::Check(std::get<CaptureFailure>(BuildCapturePlan(commit, node.instruction, binding, {})) == CaptureError::kCreation);
     const CaptureUse defined{{{0}, {0}}, CaptureDomain::kDefined};
-    test::Check(std::get<CaptureError>(BuildCapturePlan(scopes, node.instruction, binding, {&defined, 1})) == CaptureError::kScope);
+    test::Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, node.instruction, binding, {&defined, 1})) == CaptureError::kScope);
     const CaptureUse outer{{{1}, {0}}, CaptureDomain::kDefined};
     const auto outward = std::get<CapturePlan>(BuildCapturePlan(scopes, node.instruction, binding, {&outer, 1}));
     test::Check(std::get<CapturedSlot>(outward.bindings[0].cell).depth.value == 0 &&
         outward.bindings[0].domain == CaptureDomain::kDefined);
     auto forged = std::get<CapturePlan>(built);
     std::get<LocalCell>(forged.bindings[0].cell).slot.value = 1;
-    test::Check(std::get<CaptureError>(VerifyCapturePlan(scopes, node.instruction, binding, {&use, 1}, forged)) == CaptureError::kBinding);
+    test::Check(std::get<CaptureFailure>(VerifyCapturePlan(scopes, node.instruction, binding, {&use, 1}, forged)) == CaptureError::kBinding);
     SemanticBudget empty; empty.bytes = 0;
-    test::Check(std::get<CaptureError>(BuildCapturePlan(scopes, node.instruction, binding, {&use, 1}, empty)) == CaptureError::kResourceLimit);
+    test::Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, node.instruction, binding, {&use, 1}, empty)) == CaptureError::kResourceLimit);
     for (const std::size_t count : {200, 201, 4096}) {
       const std::vector<CaptureUse> uses(count, use);
       const auto many = std::get<CapturePlan>(BuildCapturePlan(scopes, node.instruction, binding, uses));
       SemanticBudget budget; budget.work = many.work;
       test::Check(std::holds_alternative<CapturePlan>(BuildCapturePlan(scopes, node.instruction, binding, uses, budget)));
       --budget.work;
-      test::Check(std::get<CaptureError>(BuildCapturePlan(scopes, node.instruction, binding, uses, budget)) == CaptureError::kWorkLimit);
+      test::Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, node.instruction, binding, uses, budget)) == CaptureError::kWorkLimit);
     }
   }
   test::Check(creations == 2);

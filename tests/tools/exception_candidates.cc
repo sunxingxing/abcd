@@ -180,20 +180,20 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       --exact.work;
       const auto limited = BindPhasedFunctionInputs(index, lookup, staged, *body,
           *local_scopes, child, *ready_child, child_owner, exact);
-      if (!std::holds_alternative<CaptureError>(limited) ||
-          std::get<CaptureError>(limited) != CaptureError::kWorkLimit) return 1;
+      if (!std::holds_alternative<CaptureFailure>(limited) ||
+          std::get<CaptureFailure>(limited) != CaptureError::kWorkLimit) return 1;
       exact = budget; exact.bytes = 0;
       const auto exhausted = BindPhasedFunctionInputs(index, lookup, staged, *body,
           *local_scopes, child, *ready_child, child_owner, exact);
-      if (!std::holds_alternative<CaptureError>(exhausted) ||
-          std::get<CaptureError>(exhausted) != CaptureError::kResourceLimit) return 1;
+      if (!std::holds_alternative<CaptureFailure>(exhausted) ||
+          std::get<CaptureFailure>(exhausted) != CaptureError::kResourceLimit) return 1;
       const auto saved = child.instruction;
       child.instruction = analysis::InstructionId{static_cast<std::uint32_t>(original.flow.instructions.size())};
       const auto invalid = BindPhasedFunctionInputs(index, lookup, staged, *body,
           *local_scopes, child, *ready_child, child_owner, budget);
       child.instruction = saved;
-      if (!std::holds_alternative<CaptureError>(invalid) ||
-          std::get<CaptureError>(invalid) != CaptureError::kCreation) return 1;
+      if (!std::holds_alternative<CaptureFailure>(invalid) ||
+          std::get<CaptureFailure>(invalid) != CaptureError::kCreation) return 1;
       const auto offset = child.binding.offset;
       ++child.binding.offset.value;
       const auto wrong_owner = BindPhasedFunctionInputs(index, lookup, staged, *body,
@@ -217,18 +217,18 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       --exact.work;
       const auto cells_limited = BindPhasedCaptureCells(index, lookup, staged,
           *body, *local_scopes, child, {*ready_child, *values}, child_owner, exact);
-      if (!std::holds_alternative<CaptureCellError>(cells_limited) ||
-          std::get<CaptureCellError>(cells_limited) != CaptureCellError::kWorkLimit) return 1;
+      if (!std::holds_alternative<CaptureCellFailure>(cells_limited) ||
+          std::get<CaptureCellFailure>(cells_limited) != CaptureCellError::kWorkLimit) return 1;
       const auto verify = [&] { return VerifyPhasedCaptureCells(index, lookup, staged,
           *body, *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, budget); };
       if (!std::holds_alternative<std::uint64_t>(verify())) return 1;
       const auto revision = mapped->parent_revision; ++mapped->parent_revision.value;
-      if (std::get<CaptureCellError>(verify()) != CaptureCellError::kRevision) return 1;
+      if (std::get<CaptureCellFailure>(verify()) != CaptureCellError::kRevision) return 1;
       mapped->parent_revision = revision;
       for (auto& target : mapped->targets) {
         const auto saved_target = target.target;
         target.target = OuterCell{{analysis::CapturedDepth{0}, analysis::LexicalSlot{0}}};
-        if (std::get<CaptureCellError>(verify()) != CaptureCellError::kBinding) return 1;
+        if (std::get<CaptureCellFailure>(verify()) != CaptureCellError::kBinding) return 1;
         target.target = saved_target;
       }
       if (!std::holds_alternative<std::uint64_t>(verify())) return 1;
