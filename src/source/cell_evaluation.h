@@ -19,12 +19,24 @@ struct CellEvaluation {
   // Shared SSA copy/phi identity equations. Initialization and source alias
   // consumers use this same index; no per-guard copy-chain walk or layout test.
   analysis::ValueIdentities identities;
+  // Indexed by CellId: the first store that must be this local cell's native
+  // lexical declaration, because a child may observe its TDZ before it.
+  std::vector<std::optional<analysis::OpId>> deferred;
 };
 enum class CellEvaluationError : std::uint8_t {
   kEnvironment, kCells, kInitialization, kInternalIdentity, kResourceLimit, kWorkLimit
 };
 // O(1) after fresh CellEvaluation verification. Incoming witnesses retain the
 // existing enclosing-owner obligation; they never authorize standalone output.
+// Check and record deferred TDZ initializations on a fresh normal-flow plan:
+// each names an allocated cell and its live first store, which follows the
+// allocation in the same block with no access of that cell in between.
+// Returns the work spent, or nothing when any entry fails these checks.
+[[nodiscard]] std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& graph,
+    CellEvaluation& cells, std::span<const DeferredCellInitialization> deferred, analysis::SemanticBudget budget);
+// Recheck every recorded entry against the same facts. O(cells + entries log accesses).
+[[nodiscard]] std::optional<std::uint64_t> VerifyDeferredCells(const analysis::ValueProgram& graph,
+    const CellEvaluation& cells, analysis::SemanticBudget budget);
 [[nodiscard]] bool IsInitializedCellGuard(const analysis::ValueProgram&, const CellEvaluation&, analysis::OpId);
 [[nodiscard]] std::optional<analysis::ValueId> InitializedCellGuardInput(const analysis::ValueProgram&, const CellEvaluation&, analysis::OpId);
 [[nodiscard]] bool IsEnvironmentState(const analysis::ValueOperation& operation);

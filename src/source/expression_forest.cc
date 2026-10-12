@@ -227,8 +227,8 @@ class ForestBuilder {
     Reserve(forest_.origin_parts, graph_.ops.size() * kOriginPartsPerOperation);
     Reserve(forest_.operations, graph_.ops.size());
     forest_.operations.resize(graph_.ops.size());
-    Reserve(forest_.module_initializations, graph_.ops.size());
-    forest_.module_initializations.resize(graph_.ops.size());
+    Reserve(forest_.initializations, graph_.ops.size());
+    forest_.initializations.resize(graph_.ops.size());
     Reserve(forest_.initializers, graph_.ops.size());
     Reserve(objects_, graph_.ops.size());
     Step(graph_.ops.size()); Step(graph_.ops.size());
@@ -338,7 +338,7 @@ class ForestBuilder {
           const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
           const auto value = Use(op.first_use, origin);
           if (binding->initialize) {
-            forest_.module_initializations[i] = symbol;
+            forest_.initializations[i] = symbol;
             forest_.operations[i] = value;
           } else forest_.operations[i] = Add(AssignmentExpr{SymbolTarget{symbol}, value}, origin);
           continue;
@@ -986,8 +986,16 @@ class ForestBuilder {
       }
       else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>)
         return Add(SymbolExpr{CellSymbol(id)}, origin);
-      else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>)
+      else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) {
+        // A deferred first store is the binding's declaration, not a write.
+        const auto& cells = evaluation_.cells;
+        const auto cell = cells && id.value < cells->cells.operations.size() ? cells->cells.operations[id.value] : std::nullopt;
+        if (cell && cell->value < cells->deferred.size() && cells->deferred[cell->value] == id) {
+          forest_.initializations[id.value] = CellSymbol(id);
+          return operands[0];
+        }
         return Add(AssignmentExpr{SymbolTarget{CellSymbol(id)}, operands[0]}, origin);
+      }
       else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
         using U = analysis::UnaryOperator;
         if (NeedsNumericScratch(graph_, op)) {

@@ -40,13 +40,18 @@ bool NormalScopeFacts::Matches(analysis::InstructionId site, const ClassCaptureS
 }
 std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
     analysis::InstructionId creation, analysis::CapturedSlot capture,
-    analysis::CaptureDomain requirement) const {
+    analysis::CaptureDomain requirement, std::optional<analysis::InstructionId>* deferred) const {
   using Error = ScopeError;
+  if (deferred) deferred->reset();
   switch (requirement) {
     case analysis::CaptureDomain::kLanguage:
-    case analysis::CaptureDomain::kDefined: break;
+    case analysis::CaptureDomain::kDefined:
+    case analysis::CaptureDomain::kGuarded: break;
     default: return Error::kDomain;
   }
+  // Guarded weakens only the initialization premise; every Language proof
+  // below applies to it unchanged.
+  const bool language = requirement != analysis::CaptureDomain::kDefined;
   const auto instruction = creation.value;
   if (instruction >= method_.instructions.size() || instruction >= environments_.before.size() ||
       !environments_.before[instruction]) return Error::kSite;
@@ -82,21 +87,36 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
   // allocation-to-store prefix proves no observer/escape. This discharges the
   // child's eventual Language reads, not a value at the creation site. Defined
   // requirements and unknown transitive writes retain the strict old rule.
-  if (!initialized && requirement == analysis::CaptureDomain::kLanguage &&
-      writes_ == analysis::ClosureWrites::kLanguage &&
+  if (!initialized && language && writes_ == analysis::ClosureWrites::kLanguage &&
       id < locals_.unexposed_initializations.size() && locals_.unexposed_initializations[id]) {
     const auto& prefix = *locals_.unexposed_initializations[id];
     initialized = allocation && prefix.allocation == *allocation &&
         prefix.allocation.value >= block->first_instruction &&
         prefix.allocation.value < instruction && instruction < prefix.store.value;
   }
-  if (!initialized && requirement == analysis::CaptureDomain::kLanguage && writes_ == analysis::ClosureWrites::kLanguage &&
+  if (!initialized && language && writes_ == analysis::ClosureWrites::kLanguage &&
       id < module_prefix_.size() && module_prefix_[id]) {
     const auto& prefix=*module_prefix_[id];
     initialized=allocation && prefix.allocation==*allocation &&
         (prefix.capture ? *prefix.capture==creation :
          prefix.allocation.value>=block->first_instruction &&
          prefix.allocation.value<instruction && instruction<prefix.store.value);
+  }
+  if (!initialized && requirement == analysis::CaptureDomain::kGuarded && deferred && allocation &&
+      writes_ == analysis::ClosureWrites::kLanguage) {
+    // The cell's first store in instruction order is the first one executed
+    // after this allocation: every other store lies in a later block or after
+    // it in this block. Children may only observe the Hole through their own
+    // guards until then; the owner's native declaration there reproduces it.
+    const auto first = std::lower_bound(locals_.stores.begin(), locals_.stores.end(), std::tuple(id, 0U),
+        [](auto item, auto target) { return std::tuple(item.cell.value, item.instruction.value) < target; });
+    const auto end = std::size_t(block->first_instruction) + block->instruction_count;
+    if (first != locals_.stores.end() && first->cell.value == id &&
+        allocation->value >= block->first_instruction && allocation->value < creation.value &&
+        first->instruction.value > creation.value && first->instruction.value < end) {
+      *deferred = first->instruction;
+      initialized = true;
+    }
   }
   if (!allocation || !initialized) return Error::kInitialization;
   if (writes_ == analysis::ClosureWrites::kUnknown) {
@@ -155,7 +175,12 @@ bool ScopeFacts::Matches(analysis::InstructionId site, const CaptureSite& creati
   }, input_, creation);
 }
 std::variant<CaptureCell, ScopeError> ScopeFacts::Rebase(analysis::InstructionId site,
-    analysis::CapturedSlot capture, analysis::CaptureDomain domain) const {
-  return std::visit([&](const auto& input) { return input.Rebase(site, capture, domain); }, input_);
+    analysis::CapturedSlot capture, analysis::CaptureDomain domain,
+    std::optional<analysis::InstructionId>* deferred) const {
+  if (const auto* normal = std::get_if<NormalScopeFacts>(&input_))
+    return normal->Rebase(site, capture, domain, deferred);
+  // Exception owners keep the strict initialization proof for every domain.
+  if (deferred) deferred->reset();
+  return std::get<ExceptionScopeFacts>(input_).Rebase(site, capture, domain);
 }
 }  // namespace abcd::source

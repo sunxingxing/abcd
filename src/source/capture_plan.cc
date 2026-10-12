@@ -31,10 +31,12 @@ std::variant<std::uint64_t, CaptureFailure> VerifyCapturePlan(
   for (std::size_t i = 0; i < uses.size(); ++i) {
     if (query > work) return CaptureError::kWorkLimit;
     work -= query;
-    const auto resolved = scopes.Rebase(site, uses[i].cell, uses[i].domain);
+    std::optional<analysis::InstructionId> deferred;
+    const auto resolved = scopes.Rebase(site, uses[i].cell, uses[i].domain, &deferred);
     const auto* cell = std::get_if<CaptureCell>(&resolved);
     if (!cell) return CaptureFailure{CaptureError::kScope, std::get<ScopeError>(resolved)};
-    if (uses[i].domain != plan.bindings[i].domain || !SameCell(*cell, plan.bindings[i].cell))
+    if (uses[i].domain != plan.bindings[i].domain || !SameCell(*cell, plan.bindings[i].cell) ||
+        deferred != plan.bindings[i].deferred)
       return CaptureError::kBinding;
   }
   return budget.work - work;
@@ -62,10 +64,11 @@ std::variant<CapturePlan, CaptureFailure> BuildCapturePlan(
     for (const auto& use : uses) {
       if (query > work) return CaptureError::kWorkLimit;
       work -= query;
-      const auto resolved = scopes.Rebase(site, use.cell, use.domain);
+      std::optional<analysis::InstructionId> deferred;
+      const auto resolved = scopes.Rebase(site, use.cell, use.domain, &deferred);
       const auto* cell = std::get_if<CaptureCell>(&resolved);
       if (!cell) return CaptureFailure{CaptureError::kScope, std::get<ScopeError>(resolved)};
-      plan.bindings.push_back({*cell, use.domain});
+      plan.bindings.push_back({*cell, use.domain, deferred});
     }
     const auto checked = VerifyCapturePlan(scopes, site, creation, uses, plan, {bytes, work});
     if (const auto* error = std::get_if<CaptureFailure>(&checked)) return *error;

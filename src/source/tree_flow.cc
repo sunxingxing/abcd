@@ -110,6 +110,14 @@ class FlowCheck {
     }
   }
   TreeFlow Run() {
+    if (evaluation_.cells && !evaluation_.cells->deferred.empty()) {
+      // Deferred TDZ initializations are a normal-flow fact only. Recheck each
+      // entry on this graph; the placement below then demands its declaration.
+      Require(!exceptions_, Error::kEvaluation);
+      const auto checked = VerifyDeferredCells(graph_, *evaluation_.cells, budget_.Remaining());
+      Require(checked.has_value(), Error::kEvaluation);
+      budget_.Step(*checked);
+    }
     IndexPlacements();
     ModulePairs();
     CheckBodyOrigin();
@@ -252,6 +260,9 @@ class FlowCheck {
             const auto* returned = std::get_if<ReturnStmt>(&syntax);
             Require(returned && returned->value, Error::kPlacement);
             flow_.expressions[id.value] = *returned->value;
+          } else if (const auto deferred = DeferredStore(id); deferred && std::holds_alternative<StmtId>(placement)) {
+            Require(std::get<StmtId>(placement) == statement, Error::kPlacement);
+            DeferredDeclaration(id, *deferred, statement, block);
           } else if (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) &&
                      std::holds_alternative<StmtId>(placement)) {
             Require(std::get<StmtId>(placement) == statement && region.block == tree_.body, Error::kPlacement);
@@ -943,6 +954,34 @@ class FlowCheck {
     // common success transition, never a guessed scope-entry allocation.
     return {*states.normal_after[local.allocation.value],local.slot};
   }
+  // The cell whose deferred TDZ initialization is this exact first store.
+  std::optional<CellId> DeferredStore(analysis::OpId id) const {
+    if (!evaluation_.cells || id.value >= evaluation_.cells->cells.operations.size()) return {};
+    const auto cell = evaluation_.cells->cells.operations[id.value];
+    const auto& deferred = evaluation_.cells->deferred;
+    if (!cell || cell->value >= deferred.size() || deferred[cell->value] != id) return {};
+    return cell;
+  }
+  // `let x = value` at the original first store, directly in the allocation's
+  // block scope: before it the binding is in its TDZ, as the Hole was.
+  void DeferredDeclaration(analysis::OpId id, CellId cell, StmtId site, const BlockStmt& block) {
+    const auto& statement = tree_.statements[site.value];
+    const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
+    Require(declaration && declaration->initializer && declaration->symbol.value < tree_.symbols.size() &&
+        statement.origin.value == graph_.ops[id.value].origin.value, Error::kPlacement);
+    const auto symbol = declaration->symbol;
+    const auto& binding = tree_.symbols[symbol.value];
+    Require(binding.kind == BindingKind::kLocal && binding.scope == block.scope &&
+        binding.declaration == DeclarationKind::kLet && !binding.temporary &&
+        !declared_[symbol.value], Error::kSnapshot);
+    auto& actual = flow_.cells[cell.value];
+    Require(!actual, Error::kPlacement);
+    declared_[symbol.value] = 1;
+    actual = symbol;
+    const auto& storage = evaluation_.cells->cells.cells[cell.value].storage;
+    flow_.cell_bindings[cell.value] = {CellStorageIdentity(storage), symbol, binding.scope, site, {}};
+    flow_.expressions[id.value] = *declaration->initializer;
+  }
   void CellDeclarations(analysis::OpId allocation, const BlockStmt& block, std::uint32_t& child) {
     Require(evaluation_.cells.has_value(), Error::kEvaluation);
     if (!std::holds_alternative<analysis::ValueEnvironmentPush>(graph_.ops[allocation.value].operation)) return;
@@ -958,6 +997,13 @@ class FlowCheck {
       budget_.Step();
       const auto* local = std::get_if<AllocatedCell>(&cell->storage);
       if (!local || local->allocation != allocation) break;
+      const auto index = static_cast<std::size_t>(cell - cells.begin());
+      if (index < evaluation_.cells->deferred.size() && evaluation_.cells->deferred[index]) {
+        // No declaration here: its first store in this same block declares
+        // it (DeferredDeclaration), which also binds the cell's symbol.
+        Require(!flow_.cells[index], Error::kPlacement);
+        continue;
+      }
       Require(child < block.child_count, Error::kSequence);
       const auto site=sequences_.Child(block.first_child + child++);
       if(!activation)activation=site;
@@ -1272,7 +1318,8 @@ class FlowCheck {
         flow_.defined_properties[property->value] = 1;
         flow_.initializers[i] = *property;
         flow_.expressions[i] = tree_.properties[property->value].value;
-      } else if (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) &&
+      } else if ((std::holds_alternative<analysis::ValueModuleWrite>(op.operation) ||
+                  DeferredStore({static_cast<std::uint32_t>(i)})) &&
                  std::holds_alternative<StmtId>(placement)) {
         // Initializations own a declaration statement; updates own assignments.
       } else if (evaluation_.operations[i].kind == EvaluationKind::kLogicalValue ||

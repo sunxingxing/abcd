@@ -362,6 +362,20 @@ class OperandCheck {
           RequireMeaning(Node<SymbolExpr>(expression).symbol == CellSymbol(expression,CellAccessKind::kLoad), Error::kOperand);
           original_.operations[i].intrinsic_expression=expression;
         } else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) {
+          if (const auto cell = DeferredCell()) {
+            // Deferred TDZ initialization: the cell's own declaration statement
+            // owns the stored value, exactly as a module initialization does.
+            RequireMeaning(flow_.statements[i].has_value() && cell->value < flow_.cells.size() &&
+                flow_.cells[cell->value] && original_.cells && cell->value < original_.cells->bindings.size(), Error::kOperand);
+            const auto* declaration = std::get_if<DeclarationStmt>(&tree_.statements[flow_.statements[i]->value].statement);
+            RequireMeaning(declaration && declaration->initializer == expression &&
+                declaration->symbol == *flow_.cells[cell->value] &&
+                original_.cells->bindings[cell->value].binding == declaration->symbol &&
+                original_.cells->bindings[cell->value].declaration == flow_.statements[i], Error::kOperand);
+            InputAt(0, expression);
+            Store(*flow_.statements[i], declaration->symbol, expression, input(0));
+            return;
+          }
           const auto& assignment = Node<AssignmentExpr>(expression);
           const auto* target = std::get_if<SymbolTarget>(&assignment.target);
           RequireMeaning(target && target->symbol == CellSymbol(expression,CellAccessKind::kStore), Error::kOperand);
@@ -679,6 +693,14 @@ class OperandCheck {
   }
 
  private:
+  // This store's cell when it is that cell's deferred TDZ initialization.
+  std::optional<CellId> DeferredCell() const {
+    if (!evaluation_.cells || current_.value >= evaluation_.cells->cells.operations.size()) return {};
+    const auto cell = evaluation_.cells->cells.operations[current_.value];
+    const auto& deferred = evaluation_.cells->deferred;
+    if (!cell || cell->value >= deferred.size() || deferred[cell->value] != current_) return {};
+    return cell;
+  }
   SymbolId CellSymbol(ExprId expression,CellAccessKind kind) {
     RequireMeaning(evaluation_.cells.has_value(), Error::kOperand);
     const auto cell = evaluation_.cells->cells.operations[current_.value];

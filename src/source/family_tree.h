@@ -20,7 +20,7 @@ struct ExternalFamilyCapture {
   ClassCaptureParent source;
 };
 enum class FamilyTreeError : std::uint8_t {
-  kContext, kParent, kModules, kResourceLimit, kWorkLimit
+  kContext, kParent, kModules, kResourceLimit, kWorkLimit, kDeferredCell
 };
 struct FamilyTreeFailure {
   FamilyId member;

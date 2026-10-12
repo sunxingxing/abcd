@@ -11,6 +11,9 @@ struct CaptureUse {
 struct CaptureBinding {
   CaptureCell cell;
   analysis::CaptureDomain domain;
+  // Set only for a Guarded use admitted before initialization: the owner's
+  // first store of this local cell, which must become its TDZ declaration.
+  std::optional<analysis::InstructionId> deferred = {};
 };
 struct CapturePlan {
   analysis::InstructionId site;

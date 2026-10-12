@@ -26,6 +26,24 @@ void Deferred() {
     const CreationBinding creation{{2}, std::get<FunctionCreation>(method.instructions[1].operation),
         {{0}, {}}, OrdinaryCapture{EnvironmentId{0}}};
     const auto result = BuildCapturePlan(scopes, {1}, creation, {&use, 1});
+    // A Guarded use only ever observes the cell through its own Hole guard. It
+    // is admitted before the first store, which is recorded as the deferred
+    // TDZ declaration site; an already initialized cell defers nothing.
+    const CaptureUse guarded{use.cell, CaptureDomain::kGuarded};
+    const auto deferred = BuildCapturePlan(scopes, {1}, creation, {&guarded, 1});
+    Check(std::holds_alternative<CapturePlan>(deferred));
+    const auto& binding = std::get<CapturePlan>(deferred).bindings.at(0);
+    const InstructionId store{static_cast<std::uint32_t>(method.instructions.size() - 2)};
+    Check(std::holds_alternative<LexicalStore>(method.instructions[store.value].operation));
+    Check(binding.deferred == (barrier ? std::optional{store} : std::nullopt));
+    Check(std::holds_alternative<std::uint64_t>(
+        VerifyCapturePlan(scopes, {1}, creation, {&guarded, 1}, std::get<CapturePlan>(deferred))));
+    auto forged = std::get<CapturePlan>(deferred);
+    forged.bindings[0].deferred = barrier ? std::nullopt : std::optional{store};
+    Check(std::get<CaptureFailure>(VerifyCapturePlan(scopes, {1}, creation, {&guarded, 1}, forged)) == CaptureError::kBinding);
+    // Unknown transitive child writes might store Hole: never deferred.
+    const ScopeFacts unknown_writes(method, proof.environments, proof.locals, proof.defined_captures, ClosureWrites::kUnknown);
+    if (barrier) Check(std::get<CaptureFailure>(BuildCapturePlan(unknown_writes, {1}, creation, {&guarded, 1})) == CaptureError::kScope);
     if (!barrier) {
       Check(std::holds_alternative<CapturePlan>(result));
       const auto& plan = std::get<CapturePlan>(result);
@@ -122,6 +140,21 @@ void Run() {
     // The rejected rebase stays visible as the typed cause of kScope.
     Check(refused == CaptureError::kScope &&
         std::get<ScopeError>(refused.cause) == ScopeError::kInitialization);
+  }
+  // A first store in a later block cannot be the binding's declaration in the
+  // allocation's scope: a Guarded use is still refused.
+  {
+    const CaptureUse guarded{use.cell, CaptureDomain::kGuarded};
+    locals.stores = {{{0}, {4}}};
+    method.flow.blocks[0].instruction_count = 3;
+    FlowBlock later{};
+    later.first_instruction = 3; later.instruction_count = 2;
+    method.flow.blocks.push_back(later);
+    std::optional<InstructionId> deferred;
+    Check(std::get<ScopeError>(scopes.Rebase({2}, guarded.cell, guarded.domain, &deferred)) == ScopeError::kInitialization &&
+        !deferred);
+    method.flow.blocks.pop_back();
+    method.flow.blocks[0].instruction_count = 5;
   }
   locals.stores = {{{0}, {1}}};
   locals.initializations = {{{0}, {1}, {0}, 1, 2}};

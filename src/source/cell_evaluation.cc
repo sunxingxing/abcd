@@ -1,6 +1,8 @@
 #include "cell_evaluation.h"
 #include "recovery_scratch.h"
 
+#include <algorithm>
+#include <bit>
 #include <new>
 #include <stdexcept>
 
@@ -72,6 +74,60 @@ std::optional<analysis::ValueId> InitializedCellGuardInput(const analysis::Value
   if(std::holds_alternative<StoredInitialization>(witness) ||
       (cells.incoming == IncomingCells::kConditional && std::holds_alternative<IncomingInitialization>(witness)))return root;
   return {};
+}
+namespace {
+// One deferred entry: allocated storage, a live first store in the
+// allocation's block after it, and no access of the cell in between.
+bool DeferredStore(const analysis::ValueProgram& graph, const CellPlan& plan, CellId cell,
+    analysis::OpId store, std::uint64_t& work) {
+  work += std::bit_width(plan.accesses.size()) + 1;
+  if (cell.value >= plan.cells.size() || store.value >= graph.ops.size() ||
+      store.value >= plan.operations.size() || plan.operations[store.value] != cell) return false;
+  const auto* local = std::get_if<AllocatedCell>(&plan.cells[cell.value].storage);
+  const auto& op = graph.ops[store.value];
+  if (!local || local->allocation.value >= graph.ops.size() || op.life != analysis::ValueLife::kLive ||
+      !std::holds_alternative<analysis::ValueLexicalStore>(op.operation) ||
+      graph.ops[local->allocation.value].block != op.block || !(local->allocation < store)) return false;
+  // Accesses are sorted by operation and one block owns a contiguous range,
+  // so the access just before this store must precede the allocation.
+  const auto& entry = plan.cells[cell.value];
+  const auto first = plan.accesses.begin() + entry.first, last = first + entry.count;
+  const auto found = std::lower_bound(first, last, store,
+      [](const CellAccess& access, analysis::OpId id) { return access.operation < id; });
+  if (found == last || found->operation != store || found->kind != CellAccessKind::kStore) return false;
+  return found == first || std::prev(found)->operation < local->allocation;
+}
+}  // namespace
+std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& graph,
+    CellEvaluation& cells, std::span<const DeferredCellInitialization> deferred, analysis::SemanticBudget budget) {
+  std::uint64_t work = cells.cells.cells.size() + 1;
+  if (cells.cells.revision != graph.revision || cells.cells.cfg_revision != graph.cfg_revision ||
+      cells.cells.cells.size() > budget.bytes / sizeof(std::optional<analysis::OpId>)) return {};
+  cells.deferred.assign(cells.cells.cells.size(), std::nullopt);
+  for (const auto& entry : deferred) {
+    if (work > budget.work) return {};
+    if (!DeferredStore(graph, cells.cells, entry.cell, entry.store, work)) return {};
+    auto& slot = cells.deferred[entry.cell.value];
+    if (slot && *slot != entry.store) return {};
+    slot = entry.store;
+  }
+  cells.allocated_bytes += cells.deferred.capacity() * sizeof(std::optional<analysis::OpId>);
+  if (work > budget.work) return {};
+  return work;
+}
+std::optional<std::uint64_t> VerifyDeferredCells(const analysis::ValueProgram& graph,
+    const CellEvaluation& cells, analysis::SemanticBudget budget) {
+  std::uint64_t work = cells.deferred.size() + 1;
+  if (cells.deferred.empty()) return work;
+  if (cells.deferred.size() != cells.cells.cells.size() || cells.cells.revision != graph.revision ||
+      cells.cells.cfg_revision != graph.cfg_revision) return {};
+  for (std::size_t i = 0; i < cells.deferred.size(); ++i) {
+    if (work > budget.work) return {};
+    if (cells.deferred[i] && !DeferredStore(graph, cells.cells, CellId{static_cast<std::uint32_t>(i)},
+        *cells.deferred[i], work)) return {};
+  }
+  if (work > budget.work) return {};
+  return work;
 }
 bool IsInitializedCellGuard(const analysis::ValueProgram& graph, const CellEvaluation& cells, analysis::OpId id) {
   return InitializedCellGuardInput(graph,cells,id).has_value();

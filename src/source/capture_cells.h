@@ -73,6 +73,10 @@ struct CaptureCells {
   // parent mutable storage or retains an outward binding obligation.
   // An OuterCell is never an implicit declaration or a loaded-value snapshot.
   std::vector<CaptureCellBinding> targets;
+  // Parent cells this creation captures before their first store, each with
+  // that store (a deferred TDZ initialization). In binding order; the parent
+  // owner must declare each cell at exactly that store.
+  std::vector<DeferredCellInitialization> deferred;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

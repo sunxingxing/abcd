@@ -397,6 +397,25 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
     if (!evaluation) return fail_from(Error::kValue, evaluated);
     retain(evaluation->allocated_bytes);
+    if (family) {
+      // Root cells that direct children capture before their first store
+      // (deferred TDZ initializations): this entry tree must declare them there.
+      std::size_t count = 0;
+      for (const auto& member : family->members)
+        if (member.incoming && member.incoming->parent == FileFamily::kRoot) count += member.incoming->cells.deferred.size();
+      if (count) {
+        retain(count * sizeof(DeferredCellInitialization));
+        std::vector<DeferredCellInitialization> deferred;
+        deferred.reserve(count);
+        for (const auto& member : family->members)
+          if (member.incoming && member.incoming->parent == FileFamily::kRoot)
+            deferred.insert(deferred.end(), member.incoming->cells.deferred.begin(), member.incoming->cells.deferred.end());
+        if (!evaluation->cells) return fail_with(Error::kFunction, FamilyTreeError::kDeferredCell);
+        if (!MarkDeferredCells(graph, *evaluation->cells, deferred, {budget.bytes}))
+          return fail_with(Error::kFunction, FamilyTreeError::kDeferredCell);
+        retain(evaluation->cells->deferred.capacity() * sizeof(std::optional<analysis::OpId>));
+      }
+    }
     // First-store declarations and slot/name correspondence above establish
     // the enclosing native record bindings before preparing class descendants.
     class_scope.module_local_names = std::span<const std::u16string>(names).subspan(external);

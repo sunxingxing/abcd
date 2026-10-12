@@ -60,7 +60,19 @@ class StoreCheck {
       const auto expression = *flow.expressions[operation->value];
       Require(expression.value < tree.expressions.size(), Error::kStore);
       const auto* assignment = std::get_if<AssignmentExpr>(&tree.expressions[expression.value].expression);
-      Require(assignment != nullptr, Error::kStore);
+      if (!assignment) {
+        // A deferred first store is the cell's own `let` declaration; the
+        // flow verifier bound that statement as this cell's declaration.
+        const auto statement = operation->value < flow.statements.size() ? flow.statements[operation->value] : std::nullopt;
+        const auto* bindings = flow.original && flow.original->cells ? &flow.original->cells->bindings : nullptr;
+        Require(!captured && statement && statement->value < tree.statements.size() && bindings &&
+            cell.value < bindings->size() && (*bindings)[cell.value].declaration == statement, Error::kStore);
+        const auto* declaration = std::get_if<DeclarationStmt>(&tree.statements[statement->value].statement);
+        Require(declaration && declaration->initializer == expression &&
+            declaration->symbol == *flow.cells[cell.value], Error::kStore);
+        ++retained;
+        continue;
+      }
       const auto* symbol = std::get_if<SymbolTarget>(&assignment->target);
       Require(symbol && symbol->symbol == *flow.cells[cell.value], Error::kStore);
       ++retained;

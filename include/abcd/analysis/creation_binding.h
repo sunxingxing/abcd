@@ -23,7 +23,11 @@ struct CapturedSlot {
 // weakening this requirement; initialization alone proves only Language.
 // A local unexposed-prefix proof may establish Language before any child can
 // execute, rather than at creation; it never establishes Defined or constness.
-enum class CaptureDomain : std::uint8_t { kLanguage, kDefined };
+// kGuarded is a Language read whose loaded value reaches nothing but the
+// method's own Hole guard before that guard completes. Its uninitialized
+// observation is the guard's ReferenceError, so a parent may discharge it with
+// a native TDZ declaration at the initializing store instead of initialization.
+enum class CaptureDomain : std::uint8_t { kLanguage, kDefined, kGuarded };
 enum class CaptureRebaseError { kSendableEnvironment };
 
 // One ordinary creation edge: input is a target-method captured binding;

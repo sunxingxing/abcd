@@ -275,12 +275,43 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       quota.Step(); count += std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment);
     }
     quota.Reserve(uses, count); quota.Reserve(accesses, count);
+    // A captured load is Guarded when, in its own block and on its only path,
+    // nothing but effect-free register copies separates it from a Hole guard
+    // of the unchanged accumulator. No copy is read and no handler can observe
+    // a copy before the guard completes, so Hole never escapes the load/guard
+    // pair. Methods with try regions keep the strict Language obligation.
+    const auto guarded_load = [&](std::uint32_t site) {
+      if (!body.tries.empty() || !std::holds_alternative<analysis::LexicalLoad>(input->instructions[site].operation))
+        return false;
+      quota.Step(std::bit_width(input->flow.blocks.size()) + 1);
+      const auto found = std::upper_bound(input->flow.blocks.begin(), input->flow.blocks.end(), site,
+          [](auto value, const auto& block) { return value < block.first_instruction; });
+      if (found == input->flow.blocks.begin()) return false;
+      const auto& block = *std::prev(found);
+      const auto end = std::size_t(block.first_instruction) + block.instruction_count;
+      for (auto i = std::size_t(site) + 1; i < end; ++i) {
+        quota.Step();
+        const auto& instruction = input->instructions[i];
+        if (const auto* guard = std::get_if<analysis::HoleGuard>(&instruction.operation))
+          return std::holds_alternative<analysis::Accumulator>(guard->value) &&
+              std::holds_alternative<analysis::HoleNameSlot>(guard->name);
+        const auto* copy = std::get_if<analysis::ScalarAssignment>(&instruction.operation);
+        const auto* source = copy ? std::get_if<analysis::ScalarValue>(&copy->expression) : nullptr;
+        if (!source || !std::holds_alternative<abc::RegisterId>(copy->destination) ||
+            !std::holds_alternative<analysis::Accumulator>(*source) ||
+            instruction.effects.normal != analysis::LanguageEffect::kNone ||
+            instruction.effects.exceptional != analysis::ExceptionalCompletion::kImpossible) return false;
+      }
+      return false;
+    };
     for (const auto& binding : proof->environments.bindings) {
       quota.Step();
       const auto* depth = std::get_if<analysis::CapturedDepth>(&binding.binding.environment);
       if (!depth) continue;
       const auto kind = Access(*input, binding.instruction);
-      uses.push_back({{*depth, binding.binding.slot}, analysis::CaptureDomain::kLanguage});
+      const auto domain = kind == analysis::LocalAccessKind::kLoad && guarded_load(binding.instruction)
+          ? analysis::CaptureDomain::kGuarded : analysis::CaptureDomain::kLanguage;
+      uses.push_back({{*depth, binding.binding.slot}, domain});
       accesses.push_back({{binding.instruction}, kind});
     }
     // Independently match the verifier's conditional read ledger. Stores are

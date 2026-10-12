@@ -98,6 +98,34 @@ class FamilyTrees {
     ReferenceNames(family, entry.has_value());
     Reserve(receiver_cells_, family.members.size()); receiver_cells_.resize(family.members.size());
     Reserve(receiver_scopes_, family.members.size()); receiver_scopes_.resize(family.members.size());
+    // Deferred TDZ initializations each child edge requires from its parent,
+    // gathered once per family. A supplied entry tree was built with its own
+    // (the record root marks them first); an external class-root creator
+    // cannot honor them here and refuses.
+    std::vector<std::vector<DeferredCellInitialization>> deferred;
+    Reserve(deferred, family.members.size()); deferred.resize(family.members.size());
+    Require(!family.root_capture || family.root_capture->deferred.empty(), FamilyTreeError::kDeferredCell);
+    std::vector<std::size_t> counts;
+    Reserve(counts, family.members.size()); counts.resize(family.members.size());
+    for (std::size_t i = 1; i < family.members.size(); ++i) {
+      Step(1);
+      const auto& member = family.members[i];
+      if (!member.incoming || member.incoming->cells.deferred.empty()) continue;
+      const auto parent = member.incoming->parent.value;
+      Require(parent < i, FamilyTreeError::kDeferredCell);
+      counts[parent] += member.incoming->cells.deferred.size();
+    }
+    // Reserve once per parent, then fill: linear in the total demand.
+    for (std::size_t i = 0; i < family.members.size(); ++i) {
+      Step(1); if (counts[i]) Reserve(deferred[i], counts[i]);
+    }
+    for (std::size_t i = 1; i < family.members.size(); ++i) {
+      const auto& member = family.members[i];
+      if (!member.incoming) continue;
+      for (const auto& cell : member.incoming->cells.deferred) {
+        Step(1); deferred[member.incoming->parent.value].push_back(cell);
+      }
+    }
     std::vector<FamilyMember> trees;
     bool incomplete = false;
     Reserve(trees, family.members.size());
@@ -168,6 +196,12 @@ class FamilyTrees {
               member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
               guards, entries));
       Account(evaluation);
+      if (!deferred[i].empty()) {
+        Require(!phase && evaluation.cells, FamilyTreeError::kDeferredCell);
+        const auto marked = MarkDeferredCells(graph, *evaluation.cells, deferred[i], left_);
+        if (!marked) Fail(FamilyTreeError::kDeferredCell);
+        Step(*marked);
+      }
       std::optional<IncomingCaptureTree> incoming;
       if (member.incoming) {
         const auto parent = member.incoming->parent.value;

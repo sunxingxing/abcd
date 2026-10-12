@@ -822,8 +822,13 @@ class TreeBuilder {
         continue;
       }
       Require(expression.has_value(), Error::kOwnership);
-      if (forest_.module_initializations[id.value]) {
-        const auto statement = Statement(DeclarationStmt{*forest_.module_initializations[id.value], expression}, origin);
+      if (forest_.initializations[id.value]) {
+        // A deferred cell is declared by its first store, at the top level of
+        // the allocation's own block scope; never nested or re-scoped.
+        if (std::holds_alternative<analysis::ValueLexicalStore>(op.operation))
+          Require(evaluation.kind == EvaluationKind::kRoot &&
+              tree_.symbols[forest_.initializations[id.value]->value].scope == drafts_[draft].scope, Error::kBinding);
+        const auto statement = Statement(DeclarationStmt{*forest_.initializations[id.value], expression}, origin);
         Append(draft, statement);
         tree_.operations.push_back({id, statement});
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
@@ -915,7 +920,7 @@ class TreeBuilder {
       if (placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kModuleGuard) {
         const auto shape = DescribeEvaluation(op.operation);
         Require(exceptions_ && placement.kind == EvaluationKind::kRoot && shape && shape->expression &&
-            !forest_.module_initializations[id.value] && !IsReceiverGuard(tree_, id) &&
+            !forest_.initializations[id.value] && !IsReceiverGuard(tree_, id) &&
             !std::holds_alternative<analysis::ValueReturn>(op.operation) &&
             !std::holds_alternative<analysis::ValueThrow>(op.operation), Error::kOwnership);
         decision_roots_.push_back(RootExpression(id, *expression));
@@ -1289,8 +1294,12 @@ class TreeBuilder {
       Step();
       const auto* local = std::get_if<AllocatedCell>(&cell->storage);
       if (!local || local->allocation != allocation) break;
-      const auto symbol = forest_.bindings.cells[static_cast<std::size_t>(cell - cells.begin())];
+      const auto index = static_cast<std::size_t>(cell - cells.begin());
+      const auto symbol = forest_.bindings.cells[index];
       tree_.symbols[symbol.value].scope = drafts_[draft].scope;
+      // A deferred cell keeps this scope; its first store declares it.
+      const auto& deferred = evaluation_.cells->deferred;
+      if (index < deferred.size() && deferred[index]) continue;
       Append(draft, Statement(DeclarationStmt{symbol, {}}, origin));
     }
   }

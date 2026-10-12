@@ -289,6 +289,31 @@ CaptureTarget Rebase(const CaptureParent& parent, analysis::OpId creation, Incom
   Require(environment.value < allocations.size(), Error::kCell);
   return Target(parent, AllocatedCell{allocations[environment.value], binding->slot}, quota);
 }
+// Each Guarded use admitted before initialization names the parent's first
+// store of that local cell. Resolve it to the parent's working cell and live
+// store operation; the parent tree must declare the cell exactly there.
+std::vector<DeferredCellInitialization> Deferred(const CaptureParent& parent, const CapturePlan& input, Quota& quota) {
+  std::vector<DeferredCellInitialization> result;
+  std::size_t count = 0;
+  for (const auto& binding : input.bindings) { quota.Step(); count += binding.deferred.has_value(); }
+  if (!count) return result;
+  quota.Size(result, count);
+  std::size_t next = 0;
+  for (const auto& binding : input.bindings) {
+    quota.Step();
+    if (!binding.deferred) continue;
+    Require(std::holds_alternative<analysis::LocalCell>(binding.cell) &&
+        binding.domain == analysis::CaptureDomain::kGuarded, Error::kCell);
+    const auto target = Project(parent, binding.cell, quota);
+    const auto* cell = std::get_if<ParentCell>(&target);
+    const auto store = Operation(parent, *binding.deferred, quota);
+    Require(cell && parent.cells && store.value < parent.cells->operations.size() &&
+        std::holds_alternative<analysis::ValueLexicalStore>(parent.graph.ops[store.value].operation) &&
+        parent.cells->operations[store.value] == cell->cell, Error::kCell);
+    result[next++] = {cell->cell, store};
+  }
+  return result;
+}
 struct ClassRootPoint { analysis::InstructionId site; CaptureSite creation; };
 ClassRootPoint RootPoint(const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup, const FileFunction& creator,
@@ -415,8 +440,11 @@ std::variant<std::uint64_t, CaptureCellFailure> VerifyCaptureTargets(
       Require(plan.targets[i].target == Project(parent, plan.input.bindings[next++].cell, quota), Error::kBinding);
     }
     Require(next == plan.input.bindings.size(), Error::kCoverage);
+    Require(plan.deferred == Deferred(parent, plan.input, quota), Error::kBinding);
     return quota.Work();
-  } catch (Error error) { return error; }
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 
 std::variant<CaptureCells, CaptureCellFailure> BindCaptureTargets(
@@ -441,11 +469,13 @@ std::variant<CaptureCells, CaptureCellFailure> BindCaptureTargets(
       Require(cell != nullptr, Error::kCell);
       plan.targets[i] = {CellId{incoming.first + static_cast<std::uint32_t>(i)}, Rebase(parent, operation, *cell, quota)};
     }
+    plan.deferred = Deferred(parent, plan.input, quota);
     const auto checked = VerifyCaptureTargets(parent, child, site, creation, plan, quota.Remaining());
     if (const auto* error = std::get_if<CaptureCellFailure>(&checked)) return *error;
     quota.Step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = sizeof(plan) + plan.input.allocated_bytes +
-        plan.targets.capacity() * sizeof(CaptureCellBinding);
+        plan.targets.capacity() * sizeof(CaptureCellBinding) +
+        plan.deferred.capacity() * sizeof(DeferredCellInitialization);
     plan.work = quota.Work();
     return plan;
   } catch (Error error) { return error;

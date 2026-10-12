@@ -46,6 +46,13 @@ struct CellPlan {
   // or evidence of initialization. The signature owner must prove each demand.
   std::vector<IncomingCell> entry_demands;
 };
+// A local cell whose first store must be its native lexical declaration:
+// a child may run before that store and observe the binding's TDZ.
+struct DeferredCellInitialization {
+  CellId cell;
+  analysis::OpId store;
+  bool operator==(const DeferredCellInitialization&) const = default;
+};
 // Query an unchanged verified plan. O(log(cells + 1)); no allocation.
 [[nodiscard]] std::optional<CellId> FindCell(const CellPlan& plan, const CellStorage& storage);
 enum class CellError : std::uint8_t {

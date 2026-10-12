@@ -2326,6 +2326,11 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_isolation.mjs
         $<TARGET_FILE:abc_structure> ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
     endif()
+    if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_captures.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_captures)
+    endif()
     if(ABCD_NODE_EXECUTABLE AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc")

@@ -112,7 +112,8 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
         std::holds_alternative<analysis::ValueDebugger>(op.operation) ||
         std::holds_alternative<analysis::ValueThrow>(op.operation) ||
         std::holds_alternative<analysis::ValueReturn>(op.operation) || IsEnvironmentState(op.operation) ||
-        (std::holds_alternative<analysis::ValueModuleWrite>(op.operation) && flow.statements[i] &&
+        ((std::holds_alternative<analysis::ValueModuleWrite>(op.operation) ||
+          std::holds_alternative<analysis::ValueLexicalStore>(op.operation)) && flow.statements[i] &&
          std::holds_alternative<DeclarationStmt>(tree.statements[flow.statements[i]->value].statement))) continue;
     // Selected staged definitions keep their store PC on the DataProperty;
     // the conditional child retains its separately verified branch origin.
@@ -153,8 +154,9 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   for (const auto& statement : tree.statements) {
     budget.Step();
     if (const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement)) {
-      // Fresh TreeFlow consumed every local exactly at its allocation and
-      // checked this original origin. Several slots may share one allocation.
+      // Fresh TreeFlow consumed every local exactly at its allocation (or, for a
+      // deferred cell, at its first store) and checked this original origin.
+      // Several slots may share one allocation.
       if (tree.symbols[declaration->symbol.value].kind == BindingKind::kLocal) continue;
       const auto* origin = std::get_if<BindingOrigin>(&tree.origins[statement.origin.value]);
       RequireMeaning(origin && origin->symbol == declaration->symbol && !visited[statement.origin.value], Error::kOrigin);

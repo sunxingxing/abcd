@@ -150,8 +150,13 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
      才初始化的 `let`/`const`，子函数读取都带 TDZ guard。
    - 第 1 步已实施：原因链改为 `CaptureCellError::kInput → CaptureError::kScope → ScopeError`，
      帕累托现在能看到这一层，准入不变。
-   - 第 2–5 步（受保护访问与 cell 生命周期证明 → 声明位置的构建与独立验证 → 反例与差分测试 →
-     cohort 评估）尚未实施。
+   - 第 2–3 步的第一个增量已实施：同块延迟 TDZ 声明。子函数的受保护读取记为 `kGuarded`；
+     父函数在第一次 store 处输出 `let x = v`，并由 tree_flow、operands、lexical_stores 独立复核。
+     新增 `guarded_captures_cli_test`，用 es2abc fixture 在 Node 下做差分，并用变异检测确认
+     测试能发现提前声明。
+   - 探索集完整 record 430 → 434/620，无回退。`kInitialization` 从 64 个 record 降到 47 个。
+     剩余类别依次为：转发义务、类根路径、store 在后续块、作用域收窄，详见
+     [受保护捕获](guarded-captures.md) §6。
 2. **S5 余项**：1 GB 整进程预算与准入；macOS 上的观测与背压。`abc_semantic` 的资源字段改为
    在 JSON 序列化边界直接写入。
 3. **C5 → C3 → C2 → C4 → C8**：语义上移到打印之前 → 一般结构化 → 选择表达式通用化 →

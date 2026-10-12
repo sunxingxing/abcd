@@ -35,9 +35,14 @@ class NormalScopeFacts {
       const analysis::EnvironmentFlow& environments, const analysis::LocalAccessPlan& locals,
       const analysis::DefinedCaptures& defined, analysis::ClosureWrites writes)
       : method_(method), environments_(environments), locals_(locals), defined_(defined), writes_(writes) {}
+  // A Guarded use of a local cell that is not yet initialized at creation is
+  // admitted only as a deferred TDZ initialization: allocation, creation and
+  // the cell's first store share one block in that order. `deferred` then
+  // receives that store; the owner must declare the binding exactly there.
   [[nodiscard]] std::variant<CaptureCell, ScopeError> Rebase(
       analysis::InstructionId creation, analysis::CapturedSlot capture,
-      analysis::CaptureDomain requirement) const;
+      analysis::CaptureDomain requirement,
+      std::optional<analysis::InstructionId>* deferred = nullptr) const;
   [[nodiscard]] bool Matches(analysis::InstructionId site,
       const analysis::CreationBinding& creation) const;
   [[nodiscard]] bool Matches(analysis::InstructionId site, const ClassCaptureSite& creation) const;
@@ -80,7 +85,8 @@ class ScopeFacts {
       analysis::ClosureWrites writes) : input_(NormalScopeFacts(method, environments, locals, defined, writes)) {}
   explicit ScopeFacts(ExceptionScopeFacts input) : input_(input) {}
   [[nodiscard]] std::variant<CaptureCell, ScopeError> Rebase(
-      analysis::InstructionId site, analysis::CapturedSlot capture, analysis::CaptureDomain domain) const;
+      analysis::InstructionId site, analysis::CapturedSlot capture, analysis::CaptureDomain domain,
+      std::optional<analysis::InstructionId>* deferred = nullptr) const;
   [[nodiscard]] bool Matches(analysis::InstructionId site, const CaptureSite& creation) const;
   [[nodiscard]] std::uint64_t QueryWork() const;
   [[nodiscard]] analysis::ClosureWrites Writes() const;

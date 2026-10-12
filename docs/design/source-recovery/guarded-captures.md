@@ -1,7 +1,7 @@
 # 先于初始化的受保护捕获（TDZ 捕获）
 
 状态：设计共识（Claude 与 Codex gpt-6-astra/xhigh，2026-10-12）。第 1 步（原因链）已实施；
-第 2–5 步未实施，生产准入不变。
+第 2–3 步的第一个增量（同块延迟声明）已实施，见 §5；其余仍未实施。
 
 ## 1. 问题
 
@@ -81,3 +81,76 @@
   一致。若验收合同把消息字符串算作可观察行为，就必须保留诊断语义或拒绝。现有模块读取设计也
   没有声称消息等价。
 - **sendable 环境**：保持现有的排除。
+
+## 5. 已实施的第一个增量：同块延迟 TDZ 声明
+
+适用范围刻意保持在可独立证明的最小一类，其余情形一律保持拒绝。
+
+**子函数（`function_input.cc`）**：普通流程（方法无 try 区域）里，一个捕获 `LexicalLoad` 如果
+满足下列条件，就记为 `CaptureDomain::kGuarded`，否则仍是 `kLanguage`：
+- 在同一基本块内，它与对累加器的 `HoleGuard(Accumulator, HoleNameSlot)` 之间只有无副作用、
+  不会异常完成、只把累加器复制到寄存器的 `ScalarAssignment`。
+
+这些复制在 guard 完成之前不会被读取。guard 抛出时方法没有处理器，所以 Hole 不会离开
+load/guard 这一对。子函数原有的 Language 前提和 guard 消除（`InitializedCellGuardInput`）不变：
+除 guard 之外，加载值的每次使用都在 guard 成功完成之后。
+
+**父函数（`NormalScopeFacts::Rebase`）**：cell 在创建点尚未初始化时，`kGuarded` 用法只有在下列
+条件全部满足时才被接受，并通过 `deferred` 报告该 store：
+- `ClosureWrites::kLanguage`，即子函数不会写回 Hole；
+- 环境分配、创建点，以及该 cell 按指令序的第一个 store，三者在同一基本块，并按此顺序出现。
+
+同一基本块内指令序就是执行序，其他块里的访问只会在离开该块之后发生，所以这个 store 就是
+本次激活中第一个执行的写入。异常路径（`ExceptionScopeFacts`）对所有 domain 都保持严格初始化。
+`kLanguage` 用法和子函数写入的处理不变。子函数写入的 VM store 不检查 TDZ，所以仍然拒绝。
+
+**传递与发射**：
+- `CaptureBinding.deferred` 记录 store。
+- `CaptureCells.deferred` 把它解析为父函数的 `CellId` 和 live store `OpId`，由
+  `VerifyCaptureTargets` 复核。
+- 父树把它记入 `CellEvaluation.deferred`：record 根在 `record_tree.cc`，其余成员在
+  `family_tree.cc`。`MarkDeferredCells` 检查：
+  - cell 是已分配的 cell；
+  - store 与分配在同一个 value 块，且在分配之后；
+  - 两者之间没有该 cell 的其他访问。
+- 外部的类根创建者无法承接这些 store，因此拒绝（`FamilyTreeError::kDeferredCell`）。
+- `EmitCells` 不在分配处输出该 cell 的声明。`expression_forest` 把这个 store 降为声明的初始化值，
+  `function_tree` 在 store 处输出 `let x = v`，并要求该 op 是 root 求值，且 draft 的作用域正是
+  分配所在的块作用域。
+
+**独立验证**：
+- `tree_flow` 先用 `VerifyDeferredCells` 复核每一项（异常流程中出现即拒绝）。分配处不接受声明，
+  store 处要求同块作用域、`let`、尚未声明的 `DeclarationStmt`，并由它绑定 cell 的符号和声明点。
+- `tree_operands` 像模块初始化那样核对声明的初始化值。
+- `lexical_stores` 接受这种声明形态，并对照原始流程的 cell 声明点。
+- 源码位置对应检查与模块初始化一样，由声明语句持有 store 的 PC。
+
+**证据**：
+- `guarded_captures_cli_test` 使用随测试提交的 es2abc 编译 fixture，来源见
+  `tests/integration/fixtures/guarded_captures/README.md`。
+  - 五个完整场景在 Node 下与原始源码差分执行，结果一致，其中都包含初始化前调用抛出的
+    ReferenceError。
+  - 把延迟声明改回提前的 `let x;`，测试必然能检出差异。
+  - 子函数提前写入，以及环境被 es2abc 提到函数入口而 store 在分支里，这两种情形以
+    `ScopeError::kInitialization` 拒绝。
+- `capture_plan_test` 覆盖以下情形：同块延迟、已初始化不延迟、伪造延迟、未知写入、后续块的
+  store。
+- 固定 65 项全部通过。定向 218 项中失败的仅为 14 个基线原有失败。
+- 探索集完整 record 从 430/620 升至 434/620，无回退。原 64 个 `kInput` record 中：
+  - 4 个完整恢复；
+  - 47 个仍为 `ScopeError::kInitialization`；
+  - 9 个停在 `FamilyTreeError::kDeferredCell`，即类根路径；
+  - 4 个进入下一层的 `FamilyFileError`。
+
+## 6. 剩余类别（探索集诊断）
+
+1. **转发义务**：剩余拒绝中占比最大的一类。提升的函数本身不读该 cell，但它内部创建的箭头
+   函数读取，且带 guard。`PlanFamilyCells` 把零访问的 incoming cell 一律转发为 `kLanguage`，
+   `VerifyCaptureTargets` 也要求如此，于是 guarded 性质在上一层丢失了。需要按 cell 汇总子级
+   义务：所有子级用法都是 `kGuarded` 时，才转发为 `kGuarded`。
+2. **类根路径（9 个 record）**：类内自名绑定的方法属于以 record 根为外部创建者的类家族。延迟
+   store 需要在根树构建之前传到 `record_tree`，而类树在根树之后才构建。
+3. **store 在后续块**：需要把同块条件推广为“该 store 支配该 cell 的其他所有访问”，并由发射端
+   的同作用域检查保证结构。
+4. **作用域收窄**：es2abc 把块环境提到函数入口，而 store 在分支内。要把声明移入分支块，需要
+   证明该 cell 的所有引用都在这个块内。
