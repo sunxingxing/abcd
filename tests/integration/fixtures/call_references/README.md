@@ -18,10 +18,11 @@ DevEco Studio's bundled es2abc (`--bc-version` 24.0.0.0), command
 | `phthrow` | The selected arm's getter throws; caught, the call is not made | complete, Node-equal trace |
 | `phrewrite` | The selected arm replaces `obj.f`; the old function is still called | complete, Node-equal trace |
 | `phnoncall` | Non-callable callee throws `TypeError` after the selected argument ran; caught | complete, Node-equal trace |
+| `realmlit` | Object/array initializers holding `globalThis` itself or reading from it, in normal and phased code (the closed realm value must stay a literal initializer) | complete, Node-equal result |
 | `phconcat` | `obj.f('a' + (H ? x.g.h : G(6)) + 'b')` inside try/catch | refused, same chain as `optarg` (call-references.md §5.2) |
 | `optarg` | `o.f(G(x.g?.h))`: the member callee is read before an argument whose optional chain splits the call's region | refused (its nested `??` selection has no single consumer) with `FunctionTreeError::kExpression → ExpressionError::kUnsupportedOperation → CallPlanError::kReference` |
 
-The `ph*` fixtures were compiled with `--opt-level=0` added: this es2abc's
+The `ph*` and `realmlit` fixtures were compiled with `--opt-level=0` added: this es2abc's
 default bytecode optimizer writes catch blocks with `code_size` 0, which the
 current catch-region layout refuses (a separate gap, see status.md).
 
@@ -44,4 +45,5 @@ fe8e0804a541d8874493eb89e053551bc460ed6ad5433c5d6eb48f129bcd8920  phthrow.abc
 8ce552ee678b3e61d90652aa90e151e198f76c8128d61071b8289aecd0e9b460  phrewrite.abc
 5a2de38cbecf5d8f73b19a4506085be693c51f2cc8236545ec719e786b4c2ff4  phnoncall.abc
 c4ea8bdb726d5f7b79d0cb7da68902e88c777a3e96a6663d4ddb8af1aef7a930  phconcat.abc
+5927312aa0284bfe5daec9a776642d9d602f21c9c031e211445196cbd3a1e9a1  realmlit.abc
 ```

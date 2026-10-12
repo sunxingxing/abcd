@@ -16,7 +16,7 @@ const [structure, fixtures] = process.argv.slice(2);
 // The ph* fixtures put the call inside try/catch, so they take the phased
 // (exception-aware) route; their callee and argument chains start at globalThis.
 const complete = ['single', 'twoargs', 'computed', 'rewrite', 'throwing', 'noncallable',
-  'phplain', 'phtrue', 'phfalse', 'phthrow', 'phrewrite', 'phnoncall'];
+  'phplain', 'phtrue', 'phfalse', 'phthrow', 'phrewrite', 'phnoncall', 'realmlit'];
 const throwsBeforeCall = new Set(['throwing', 'phthrow']);
 const directory = mkdtempSync(join(tmpdir(), 'abcd-call-references-'));
 try {

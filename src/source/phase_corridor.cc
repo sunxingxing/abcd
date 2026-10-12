@@ -248,11 +248,18 @@ bool PhaseCorridors::HasCatchCopies(OpId operation) const {
 bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
   const auto& child = graph_.ops[producer.value];
   const auto& parent = graph_.ops[consumer.value];
-  // A closed pure value (no inputs, effects or throw) is classified by the
-  // shared evaluation semantics, as in normal-flow closed expressions; it
-  // reaches the invariant check below instead of an operation-kind list.
+  // A language expression is pure here when its shared evaluation shape is
+  // eager and it has no effect or abrupt completion. With no input at all it
+  // is a closed value (e.g. the realm's global object): admit it by these
+  // semantics rather than by the operation-kind list in Expression().
+  const auto shape = DescribeEvaluation(child.operation);
+  const bool pure = shape && shape->expression && shape->inputs == InputEvaluation::kEager &&
+      child.normal == LanguageEffect::kNone && child.before_throw == LanguageEffect::kNone &&
+      child.exceptional == ExceptionalCompletion::kImpossible && child.result &&
+      graph_.values[child.result->value].domain.IsLanguage();
+  const bool closed = pure && child.use_count == 0 && shape->Count() == 0;
   if (producer.value >= consumer.value || child.life != ValueLife::kLive ||
-      !child.result || (!Expression(child.operation) && !IsClosedPureValue(graph_, producer)) ||
+      !child.result || (!Expression(child.operation) && !closed) ||
       (!Expression(parent.operation) && !ConsumesOperands(parent.operation))) return false;
   const auto& uses = uses_[child.result->value];
   if (uses.multiple || uses.first != use) return false;
@@ -260,11 +267,7 @@ bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
   // receiver identity or catch timing to preserve across a CFG split. Original
   // SSA availability still applies. Use shared evaluation semantics, never an
   // opcode list; mutable/phi/catch reads retain the corridor rules below.
-  const auto shape = DescribeEvaluation(child.operation);
-  if (shape && shape->expression && shape->inputs == InputEvaluation::kEager &&
-      child.normal == LanguageEffect::kNone && child.before_throw == LanguageEffect::kNone &&
-      child.exceptional == ExceptionalCompletion::kImpossible &&
-      graph_.values[child.result->value].domain.IsLanguage()) {
+  if (pure) {
     bool invariant = true;
     for (std::uint32_t i = 0; i < child.use_count; ++i) {
       budget_.Step(); invariant &= !std::holds_alternative<ValueId>(graph_.uses[child.first_use.value + i].operand);

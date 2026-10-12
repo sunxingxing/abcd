@@ -211,15 +211,19 @@ retry 分区不能合并原本分开的 root）。
 用 es2abc 构建的最小复现（`--opt-level=0`，见下文）把 phased 路径上的失败拆成了三层。其中两层
 不是选择组合问题，而是通用语义分类缺口：
 
-1. **`ValueGlobalObject` 未被标为纯值。** `ldglobal` 读取当前 realm 的全局对象：无输入、无效果、
-   不会抛出，整个活动期内身份不变。共享语义表 `DescribeEvaluation` 原先给它默认的
-   `SourceEvaluation::kDirect`，而 `PhaseCorridors::Expression` 的类型列表里也没有它。结果在 phased
-   路径上，`globalThis` 永远是独立的 root。只要它夹在 callee 读取与参数链之间，调用的效果区间就
-   不衔接（`child.end != expected`），callee 只能保留快照，最终报 `CallPlanError::kReference`。
-   连不含选择的 `globalThis.obj.f(globalThis.x.g.h)` 也会因此失败。
-   修正：在 `evaluation_shape.cc` 中把它标为 `kPure`。`PhaseCorridors::CanFuse` 让满足
-   `IsClosedPureValue` 的生产者越过类型列表，进入已有的“无绑定输入的纯表达式”快速通道。
-   这是按共享语义分类，不是 opcode 列表。normal 路径的 `CrossEvaluationInline` 用的是同一个谓词。
+1. **封闭纯值被类型列表挡在融合之外。** `ldglobal`（`ValueGlobalObject`）读取当前 realm 的全局
+   对象：无输入、无效果、不会抛出，整个活动期内身份不变。但 `PhaseCorridors::Expression` 的类型
+   列表里没有它，所以 phased 路径上 `globalThis` 永远是独立的 root。只要它夹在 callee 读取与参数链
+   之间，调用的效果区间就不衔接（`child.end != expected`），callee 只能保留快照，最终报
+   `CallPlanError::kReference`。连不含选择的 `globalThis.obj.f(globalThis.x.g.h)` 也会因此失败。
+   修正：`CanFuse` 先用共享求值形状计算“纯”（eager 表达式、无效果、不抛出、语言域结果），再把
+   其中无任何输入者视为封闭值，让它越过类型列表，进入原有的“无绑定输入纯表达式”快速通道。
+   这是按语义判定，不是 opcode 列表；原有表达式的判定条件不变。
+   **撤回的第一版**（84cbdc24）是在 `DescribeEvaluation` 中把 `ValueGlobalObject` 标为
+   `SourceEvaluation::kPure`。Codex 第十九轮指出（R1，已复现）：`literal_plan` 对 `kPure` 额外要求
+   `CanErasePureOp`，而分析层的可擦除谓词仍排除它，导致 `{g: globalThis}` 从可恢复退化为
+   `EvaluationError::kUnsupportedOperation`。扩大 `CanErasePureOp` 会牵动 IR 化简的死代码删除，
+   超出本修复的范围。因此恢复原分类，只修改 `CanFuse` 的门禁。回归 fixture 为 `realmlit`。
 2. **phi 输入消费者未被当作执行根。** `r = o.f(c ? a : b)` 中，调用结果是 phi 的唯一输入，放置为
    `EvaluationKind::kPhiInput`。按 `evaluation_plan.h` 的契约，它在原始边上拥有唯一可执行的
    incoming-copy 右值，其可用性、效果与异常 staging 已经独立证明；`IndexPhaseInlineRoots` 也把它
