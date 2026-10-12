@@ -16,6 +16,15 @@ string(JSON fixture_source ERROR_VARIABLE missing GET "${fixture_manifest}" reco
 if(NOT missing OR EXISTS "${root}/fixture-output/${fixture_source}")
   message(FATAL_ERROR "unproved fixture produced executable source")
 endif()
+# Manifest schema 2 names the failure domain instead of a variant index.
+string(JSON fixture_schema GET "${fixture_manifest}" schema)
+string(JSON fixture_domain GET "${fixture_manifest}" records 0 source_failure_domain)
+string(JSON fixture_variant ERROR_VARIABLE variant_absent GET "${fixture_manifest}"
+  records 0 shared_failure_variant)
+if(NOT fixture_schema EQUAL 2 OR NOT fixture_domain STREQUAL "record_program"
+    OR NOT variant_absent)
+  message(FATAL_ERROR "fixture failure lost its typed domain: ${fixture_manifest}")
+endif()
 execute_process(COMMAND "${ABCD_STRUCTURE}"
   "${root}/input/static.abc" "${root}/static-output" --value-source
   RESULT_VARIABLE status OUTPUT_QUIET ERROR_QUIET)

@@ -321,7 +321,10 @@ int Run(int argc, char** argv, InspectionStage stage) {
     return EXIT_FAILURE;
   }
   const auto limit = EstablishProcessLimit();
-  if (!ProcessLimitAcceptable(limit)) return EXIT_FAILURE;
+  if (!ProcessLimitAcceptable(limit)) {
+    ReportLimitFailure(std::cerr, limit);
+    return EXIT_FAILURE;
+  }
 
   std::map<std::string, std::filesystem::path> roots;
   for (int i = 2; i < argc; i += kRootArgumentWidth) {

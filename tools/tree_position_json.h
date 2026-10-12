@@ -5,7 +5,7 @@
 
 #include "abcd/source/tree_printer.h"
 
-namespace abcd::source { struct InstructionSources; class FamilyEmission; struct RecordModuleInitialization; }
+namespace abcd::source { struct InstructionSources; class FamilyEmission; }
 namespace abcd::tools {
 // Serialize the unchanged tree's origin DAG and printer events in linear space
 // and time. Coordinates belong to the supplied print, including absolute family
@@ -18,7 +18,5 @@ void WriteTreePositions(std::ostream& output, const source::FunctionTree& tree,
 // remain relative to the entire family, not to each child's start.
 [[nodiscard]] bool WriteFamilyMembers(std::ostream& output,
                                      const source::FamilyEmission& emission);
-[[nodiscard]] bool WriteModuleInitialization(std::ostream& output,
-    const source::RecordModuleInitialization& initialization);
 }  // namespace abcd::tools
 #endif

@@ -35,11 +35,22 @@ bool ProcessLimitAcceptable(const ProcessLimit& limit) {
   return limit.kind == LimitKind::kNone || limit.established;
 }
 
+namespace {
+nlohmann::json DescribeLimit(const ProcessLimit& limit) {
+  return {{"kind", limit.kind == LimitKind::kAddressSpace ? "address_space" : "none"},
+          {"bytes", limit.bytes ? nlohmann::json(*limit.bytes) : nlohmann::json(nullptr)},
+          {"established", limit.established}};
+}
+}  // namespace
+
+void ReportLimitFailure(std::ostream& output, const ProcessLimit& limit) {
+  output << nlohmann::json{{"error", "process_limit"},
+                           {"process_limit", DescribeLimit(limit)}}
+         << '\n';
+}
+
 void ReportProcessMemory(nlohmann::json& report, const ProcessLimit& limit) {
-  report["process_limit"] = {
-      {"kind", limit.kind == LimitKind::kAddressSpace ? "address_space" : "none"},
-      {"bytes", limit.bytes ? nlohmann::json(*limit.bytes) : nlohmann::json(nullptr)},
-      {"established", limit.established}};
+  report["process_limit"] = DescribeLimit(limit);
   report["address_space_limit_bytes"] =
       limit.established ? nlohmann::json(*limit.bytes) : nlohmann::json(nullptr);
   const auto peak = PeakResidentBytes();

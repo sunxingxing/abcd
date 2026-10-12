@@ -20,7 +20,7 @@ int Run(int argc, char** argv) {
   }
   const auto limit = abcd::tools::EstablishProcessLimit();
   if (!abcd::tools::ProcessLimitAcceptable(limit)) {
-    std::cerr << "cannot establish process memory limit\n";
+    abcd::tools::ReportLimitFailure(std::cerr, limit);
     return EXIT_FAILURE;
   }
   std::vector<abcd::corpus::CorpusRoot> roots;

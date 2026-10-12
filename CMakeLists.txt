@@ -120,7 +120,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/binding_liveness.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/register_effect.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/register_uses.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/register_ssa.cc src/analysis/register_rename.cc)
-target_sources(abcd_analysis PRIVATE src/analysis/register_value_flow.cc src/analysis/register_value_rule.cc src/analysis/lexical_value_index.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/register_value_flow.cc src/analysis/register_value_rule.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/object_creation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/array_creation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/block_order.cc)
@@ -291,10 +291,10 @@ if(ABCD_BUILD_TOOLS)
   add_library(abcd_process tools/process_limit.cc)
   target_link_libraries(abcd_process PUBLIC abcd_json)
   target_compile_features(abcd_process PUBLIC cxx_std_20)
-  add_executable(abc_semantic tools/abc_semantic.cc tools/record_module.cc
+  add_executable(abc_semantic tools/abc_semantic.cc
     tools/value_source_inspect.cc tools/family_value_inspect.cc tools/tree_position_json.cc)
-  target_link_libraries(abc_semantic PRIVATE abcd_source abcd_json)
-  add_executable(abc_structure tools/abc_structure.cc)
+  target_link_libraries(abc_semantic PRIVATE abcd_source abcd_json abcd_process)
+  add_executable(abc_structure tools/abc_structure.cc tools/record_failure_json.cc)
   target_link_libraries(abc_structure PRIVATE abcd_structure abcd_corpus abcd_json abcd_process)
   add_executable(abc_scan tools/abc_scan.cc)
   target_link_libraries(abc_scan PRIVATE abcd_corpus abcd_json abcd_process)
@@ -2136,12 +2136,6 @@ if(BUILD_TESTING)
     endif()
     if(TARGET historical_async_member_sample_test)
     endif()
-    add_test(NAME module_exports_js_test COMMAND ${CMAKE_COMMAND}
-      -DABCD_CONSTANT_FIXTURE=$<TARGET_FILE:module_exports_test>
-      -DABCD_CONSTANT_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_exports.mjs
-      -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
-      -DABCD_OUTPUT_NAME=module-exports.mjs
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/linear_constants.cmake)
     add_test(NAME string_literal_js_test COMMAND ${CMAKE_COMMAND}
       -DABCD_STRING_TEST=$<TARGET_FILE:string_literal_test>
       -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
@@ -2373,6 +2367,11 @@ if(BUILD_TESTING)
     add_test(NAME scan_cli_test COMMAND ${CMAKE_COMMAND}
       -DABCD_SCAN=$<TARGET_FILE:abc_scan>
       -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/scan_cli.cmake)
+    add_executable(record_failure_json_test tests/unit/tools/record_failure_json_test.cc
+      tools/record_failure_json.cc)
+    target_include_directories(record_failure_json_test PRIVATE tools)
+    target_link_libraries(record_failure_json_test PRIVATE abcd_source abcd_json)
+    add_test(NAME record_failure_json_test COMMAND record_failure_json_test)
     add_executable(index_fixture tests/integration/index_fixture.cc)
     target_link_libraries(index_fixture PRIVATE abcd_abc ZLIB::ZLIB)
     add_test(NAME index_cli_test COMMAND ${CMAKE_COMMAND}

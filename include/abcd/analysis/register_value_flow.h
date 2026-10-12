@@ -8,12 +8,6 @@
 #include "abcd/analysis/value_kinds.h"
 
 namespace abcd::analysis {
-struct EnvironmentFlow;
-class EnvironmentEscape;
-struct LexicalValueContext {
-  const EnvironmentFlow& environments;
-  const EnvironmentEscape& escape;
-};
 struct EntryValueFact {
   SsaValueId value;
   ValueKinds kinds;
@@ -28,7 +22,6 @@ enum class ValueFlowError {
   kDuplicateEntryFact,
   kInvalidLoadFact,
   kDuplicateLoadFact,
-  kInvalidLexicals,
   kWorkLimit,
   kResourceLimit,
   kInvalidSemantics,
@@ -82,14 +75,6 @@ class RegisterValueFlow {
                          CallResultValues calls = CallResultValues::kUnknown,
                          FrameReceiver receiver = FrameReceiver::kUnknown,
       ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
-  // Same unchanged inputs as the escape proof. Nonescaping local cells join
-  // Hole and ALL stores, not reaching stores. Captured/escaped cells stay top.
-  [[nodiscard]] static std::variant<RegisterValueFlow, ValueFlowFailure>
-  BuildWithLexicals(const abc::MethodBody& body, const RegisterSsa& ssa,
-                    std::uint64_t frame_size,
-                    std::span<const EntryValueFact> entries,
-                    const LexicalValueContext& lexicals, IdfQuota& quota,
-                    IdfBudget budget = {});
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }
@@ -103,11 +88,9 @@ class RegisterValueFlow {
   ValueFlowWork work;
 
  private:
-  struct LexicalIndex;
   static std::variant<RegisterValueFlow, ValueFlowFailure> Analyze(
       const abc::MethodBody& body, const RegisterSsa& ssa,
       std::uint64_t frame_size, std::span<const EntryValueFact> entries,
-      const LexicalValueContext* lexicals,
       std::span<const LanguageLoadFact> loads, IdfQuota& quota,
       IdfBudget budget, std::span<const SemanticInstruction> semantics = {},
       CallResultValues calls = CallResultValues::kUnknown,

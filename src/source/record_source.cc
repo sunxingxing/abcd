@@ -62,9 +62,9 @@ RecordSourceResult BuildRecordSource(
   } catch (const RecordProgramFailure& failure) {
     return failure;
   } catch (const std::bad_alloc&) {
-    return fail(Error::kResourceLimit);
+    return fail(Error::kAllocationFailure);
   } catch (const std::length_error&) {
-    return fail(Error::kResourceLimit);
+    return fail(Error::kAllocationFailure);
   }
 }
 }  // namespace abcd::source

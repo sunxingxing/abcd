@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <ostream>
 
 #include <nlohmann/json.hpp>
 
@@ -36,6 +37,9 @@ struct ProcessLimit {
 // Report fields: process_limit {kind, bytes, established},
 // address_space_limit_bytes (null when not established), peak_rss_bytes.
 void ReportProcessMemory(nlohmann::json& report, const ProcessLimit& limit);
+// Structured diagnostic for a limit that could not be established; written as
+// one JSON line {"error":"process_limit","process_limit":{...}}.
+void ReportLimitFailure(std::ostream& output, const ProcessLimit& limit);
 }  // namespace abcd::tools
 
 #endif  // ABCD_TOOLS_PROCESS_LIMIT_H_

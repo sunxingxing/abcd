@@ -22,6 +22,7 @@
 #include "abcd/structure/record_path.h"
 #include "abcd/structure/record_writer.h"
 #include "process_limit.h"
+#include "record_failure_json.h"
 
 namespace {
 using namespace abcd;
@@ -64,13 +65,14 @@ bool FatalContext(const source::RecordModuleFailure& failure) {
          kind == abc::ModuleError::kResourceLimit;
 }
 bool FatalRecordSource(const source::RecordSourceResult& result) {
-  // Process-level failures only; typed refusals are per-record products.
+  // Process-level failures only: input I/O, input mutation and allocation
+  // failure. A record exceeding its own work/byte/output budget is a typed
+  // per-record failure; the remaining records are still exported.
   const auto* failure = std::get_if<source::RecordProgramFailure>(&result);
   return failure && (failure->kind == source::RecordProgramError::kRead ||
                      failure->kind == source::RecordProgramError::kWrite ||
                      failure->kind == source::RecordProgramError::kFileChanged ||
-                     failure->kind == source::RecordProgramError::kResourceLimit ||
-                     failure->kind == source::RecordProgramError::kOutputLimit);
+                     failure->kind == source::RecordProgramError::kAllocationFailure);
 }
 int Fail(ExportError kind, std::uint32_t entity = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
@@ -189,7 +191,9 @@ int Export(const std::filesystem::path& input,
   StagedTree tree(output);
   if (tree.path.empty()) return Fail(ExportError::kOutput);
   std::ofstream manifest(tree.path / "manifest.json", std::ios::binary);
-  manifest << "{\"schema\":1,\"view\":\""
+  // Schema 2: single value-tree route; failures carry an explicit
+  // source_failure_domain instead of a result-variant index.
+  manifest << "{\"schema\":2,\"view\":\""
            << (emit_source ? "declarations_with_value_source" : "declarations_only")
            << "\",\"sha256\":\"" << Hex(hash->sha256)
            << "\",\"packaging\":" << static_cast<unsigned>(*packaging)
@@ -336,19 +340,7 @@ int Export(const std::filesystem::path& input,
                 record_manifest["host_realm_binding"] = artifact->host_realm->binding;
             } else {
               record_manifest["source_status"] = static_cast<unsigned>(SourceStatus::kProgram);
-              record_manifest["shared_failure_variant"] = built.index();
-              std::visit([&](const auto& failure) {
-                using T = std::decay_t<decltype(failure)>;
-                if constexpr (std::is_same_v<T, source::RouteRefusal>) {
-                  record_manifest["source_failure"] = {
-                      {"class", source::RouteFailureClassName(failure.failure.failure_class)},
-                      {"reason", source::ValueRouteErrorName(failure.failure.reason)}};
-                  if (failure.failure.pc) record_manifest["source_failure"]["pc"] = failure.failure.pc->value;
-                } else if constexpr (!std::is_same_v<T, source::PrintedSource>) {
-                  record_manifest["source_error"] = static_cast<unsigned>(failure.kind);
-                  record_manifest["source_pc"] = failure.pc.value;
-                }
-              }, built);
+              tools::DescribeRecordFailure(built, record_manifest);
             }
           }
         } else {
@@ -410,7 +402,10 @@ int main(int argc, char** argv) {
   const auto numeric_contract = numeric ? source::SourceContract::kLanguageNumericV1 : language ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
   const auto contract = constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract;
   const auto limit = tools::EstablishProcessLimit();
-  if (!tools::ProcessLimitAcceptable(limit)) return EXIT_FAILURE;
+  if (!tools::ProcessLimitAcceptable(limit)) {
+    tools::ReportLimitFailure(std::cerr, limit);
+    return EXIT_FAILURE;
+  }
   try {
     return Export(argv[1], argv[2], mode, contract, limit);
   } catch (const std::exception& error) {

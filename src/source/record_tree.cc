@@ -659,8 +659,8 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     source.environment_cleanup = std::move(cleanup_sites);
     return source;
   } catch (const RecordProgramFailure& failure) { return failure; }
-    catch (const std::bad_alloc&) { return fail(Error::kResourceLimit); }
-    catch (const std::length_error&) { return fail(Error::kResourceLimit); }
+    catch (const std::bad_alloc&) { return fail(Error::kAllocationFailure); }
+    catch (const std::length_error&) { return fail(Error::kAllocationFailure); }
 }
 RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::RecordInfo& record,

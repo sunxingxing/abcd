@@ -3,14 +3,21 @@
   "purpose": "Corpus-wide grouping and holdout policy for the unified source recovery effort. Groups reference content hashes; classification evidence is reused from the existing manifest, never duplicated here.",
   "roots": {
     "paired": "/Users/sun/abcd/samples/abc_with_code",
-    "batch": "/Users/sun/abcd/samples/abc"
+    "batch": "/Users/sun/abcd/samples/abc",
+    "harmony": "/Users/sun/abcd/samples/applications_app_samples/harmonysample"
   },
   "classification_manifest": "tests/corpus/abc-index.json",
   "manifest_summary": "900 files, 894 unique contents, 402 dynamic, 498 static, 0 unknown/malformed (recorded evidence; not a re-scan).",
   "deduplication": "Same sha256 counts as one sample regardless of path; pasteboard appears in both roots under one identity.",
   "membership": {
     "key": "sha256",
-    "precedence": ["holdout", "development", "development_pool"],
+    "precedence": [
+      "holdout",
+      "regression",
+      "exploration",
+      "development",
+      "development_pool"
+    ],
     "rule": "Resolve membership before method selection: a holdout hash is excluded from every development path alias and pool. Explicit named development cohorts precede the residual pool. Contradictory named families require reconciliation, not duplicate evidence."
   },
   "independent_method_candidates": [
@@ -18,7 +25,12 @@
       "gate": "G1",
       "family": "Immersive",
       "sha256": "8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a",
-      "capabilities": ["normal_branch", "parameter_binding", "property_read", "property_write"],
+      "capabilities": [
+        "normal_branch",
+        "parameter_binding",
+        "property_read",
+        "property_write"
+      ],
       "entity": 21082,
       "record": 19072,
       "profile": "dynamic_13_0_1_0",
@@ -30,7 +42,11 @@
       "gate": "G2",
       "family": "push-kit-sample-code-clientdemo-arkts",
       "sha256": "b2074425e0e2a4a20b547c8b711727b0160d299efc8eeb2af266aa6983eab44f",
-      "capabilities": ["ordered_call", "callee_reference", "effect_order"],
+      "capabilities": [
+        "ordered_call",
+        "callee_reference",
+        "effect_order"
+      ],
       "entity": null,
       "status": "unfrozen",
       "reason": "Method-level ABC inspection pending; no call shape is inferred from the application name."
@@ -39,7 +55,11 @@
       "gate": "G3",
       "family": "Immersive",
       "sha256": "8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a",
-      "capabilities": ["object_initialization", "own_property_definition", "closure_capture"],
+      "capabilities": [
+        "object_initialization",
+        "own_property_definition",
+        "closure_capture"
+      ],
       "entity": null,
       "status": "unfrozen",
       "reason": "Method-level ABC inspection pending; all required capabilities must occur in the selected whole method."
@@ -97,7 +117,7 @@
     },
     {
       "id": "multi-community",
-      "kind": "holdout",
+      "kind": "regression",
       "family": "MultiCommunityApplication",
       "inputs": [
         {
@@ -107,8 +127,267 @@
           "index_kind": "dynamic"
         }
       ],
-      "role": "First independent-application holdout. No rule tuning against these inputs until a frozen implementation is verified; any earlier holdout failure moves the input to the regression set and a fresh holdout is selected.",
-      "candidate_methods": "Identity not yet frozen; select by content hash + entity after the method-level route exists (T01+). Do not guess entities."
+      "role": "Fixed regression input. Former first holdout; exposed to repeated development and test tuning (e.g. 2698c824 and Community graph work), so it moved to the regression set on 2026-10-12 and no longer counts as unseen evidence.",
+      "exposure_history": [
+        "2026-09-26 registered as holdout",
+        "2026-10-12 moved to regression after repeated tuning (audit consensus C10)"
+      ]
+    },
+    {
+      "id": "harmony-exploration-2026-10-12",
+      "kind": "exploration",
+      "root": "harmony",
+      "selection": "ready-abc-files.jsonl, group=application, 50,000 < bytes < 400,000; random.seed(20261012) sample 12, then random.seed(7) sample 28 more from the rest",
+      "inputs": [
+        {
+          "path": "projects/DocsSample/DistributedAppDev/DistributedAuthentication/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "6104ddd9fd26119ec686bfba0955979f7c6ad498fc681460d1cf089ca8b81260",
+          "version": "12.0.2.0",
+          "project": "code/DocsSample/DistributedAppDev/DistributedAuthentication"
+        },
+        {
+          "path": "projects/SuperFeature/Widget/ArkTSCard/Calculator/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "76f6f5479d061650cc7f31c17e6dc35c9fa8df89c3a0ab14c5fa2ea203ea02b2",
+          "version": "12.0.6.0",
+          "project": "code/SuperFeature/Widget/ArkTSCard/Calculator"
+        },
+        {
+          "path": "projects/Solutions/Social/PublishMultimediaUpdate/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "a37eb9d47dd219ca8c767a0ef3a69ee851b307248e4d75b732b4eeb91a68fbfe",
+          "version": "12.0.2.0",
+          "project": "code/Solutions/Social/PublishMultimediaUpdate"
+        },
+        {
+          "path": "projects/SuperFeature/MultiDeviceAppDev/Settings/artifacts/products/default/default/default/modules/modules.abc",
+          "sha256": "08eacde6124237f92ba7f7b5de6893569fdebc69d685391724826f0a2330cbb1",
+          "version": "12.0.2.0",
+          "project": "code/SuperFeature/MultiDeviceAppDev/Settings"
+        },
+        {
+          "path": "projects/SystemFeature/Security/CertificateFramework/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "09984a705a15bea55359c3b46230a3e4c87b6bea63d8ce414f104da6428d75ba",
+          "version": "12.0.2.0",
+          "project": "code/SystemFeature/Security/CertificateFramework"
+        },
+        {
+          "path": "projects/UI/CalendarViewSwitch/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "710aba8f62e2f17636a3cce9af9065250a53bc69deafa392e9cffb9c313349ed",
+          "version": "12.0.2.0",
+          "project": "code/UI/CalendarViewSwitch"
+        },
+        {
+          "path": "projects/DocsSample/Media/Audio/AudioIntraAppFocusSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "eaea90689cee7f70b95c4db509f41d317ee56dd5bb93c1d057f56d6f85f80a72",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/Media/Audio/AudioIntraAppFocusSample"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/DynamicLayout/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "b9541966840ae970872cb5c561b42bed322e60dae7511d69de064d647b8eceac",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/DynamicLayout"
+        },
+        {
+          "path": "projects/DocsSample/InputMethod/KikaInputMethod/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "3589579289c5eba9f305355e27e8e83e03d58e92b92963419d03971983d3247b",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/InputMethod/KikaInputMethod"
+        },
+        {
+          "path": "projects/DocsSample/ArkData/RelationalStore/DataSyncAndPersistence/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "1bb1577b7890e1dd8faeba7da5958ae37ed6430efc6e3e29bacbcb984f458e63",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkData/RelationalStore/DataSyncAndPersistence"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/ChooseComponent/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "6334c455eb3c1bee42bd161e8a47487859ca4e8243526be5e22f09c35992c2c9",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/ChooseComponent"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/NativeFormExample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "0a3a1773d4fb6897b1b4490533eacbbb86b78f7debb7317151b0c771de4b3df0",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/NativeFormExample"
+        },
+        {
+          "path": "projects/DocsSample/Security/AssetStoreKit/AssetStoreArkTS/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "f3ae3b548b63b128021d36287436ff2c5e4a8a7c516f5d86afa1803a21018dbe",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/Security/AssetStoreKit/AssetStoreArkTS"
+        },
+        {
+          "path": "projects/DocsSample/Ability/UIAbilityLaunchType/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "a54f124ab15cd2a8aeb0a602079d55b19b7431ba4f7bf976e4793bd3fefdc7d8",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/Ability/UIAbilityLaunchType"
+        },
+        {
+          "path": "projects/DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "6c48fbd71869e90b3fde0cc7bae43f0a70d5911e4d3f29959e942ee4ec40ebf3",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond"
+        },
+        {
+          "path": "projects/Solutions/InputMethod/KikaInput/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "56aac03baae919ac0046582231a9223ea2996264010e3192c828618e30442206",
+          "version": "24.0.0.0",
+          "project": "code/Solutions/InputMethod/KikaInput"
+        },
+        {
+          "path": "projects/DocsSample/Media/Audio/AudioRoutingManagerSampleJS/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "9d8379060ef3c62560682dcd5115a8ad6017906905afe4ed299bd519f36f17a8",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Media/Audio/AudioRoutingManagerSampleJS"
+        },
+        {
+          "path": "projects/DocsSample/Media/AVPlayer/AVPlayerArkTSStreamingMedia/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "6b3fc463289215194cfe45352c7b093b523d074d011145e368a2b8603d0218d4",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/Media/AVPlayer/AVPlayerArkTSStreamingMedia"
+        },
+        {
+          "path": "projects/DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "ca8f36708a5ea1fd2046664c76fde5d0dec116597fadbbea85d94645cd009a81",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket"
+        },
+        {
+          "path": "projects/DocsSample/Media/Audio/AudioRoutingAndVolumeSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "f11977d67bae0e349a38181a348b7843211d037dd21530c1dc8f4b43178a3f0b",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Media/Audio/AudioRoutingAndVolumeSample"
+        },
+        {
+          "path": "projects/UI/CustomAnimationTab/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "2f9723e9d5df2a4f0eaee73a1358797cb2ad6029a3c1edb72c5d25181f6baedf",
+          "version": "12.0.2.0",
+          "project": "code/UI/CustomAnimationTab"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/ArktsNewComputed/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "1d21ae35aba7550fab4ed37a801f95649be45377a4a0db3af6f4f269a24d32c3",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/ArktsNewComputed"
+        },
+        {
+          "path": "projects/SystemFeature/TV/TVDemonstration/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "52ce75863a89bcafa468b79797c711dfb56385e216a8025cb73b07434f6bc2a8",
+          "version": "13.0.1.0",
+          "project": "code/SystemFeature/TV/TVDemonstration"
+        },
+        {
+          "path": "projects/DocsSample/Media/AVPlayer/AVPlayerArkTSSubtitle/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "b015ad6b0faa8397ca5c3a99a2d71a8761052c15415c1c93e93a8948803eb282",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/Media/AVPlayer/AVPlayerArkTSSubtitle"
+        },
+        {
+          "path": "projects/BasicFeature/Media/Camera_js/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "6b04909814196483d557c7626864b43904a18052757c231d5c56c8ac16adeac2",
+          "version": "12.0.2.0",
+          "project": "code/BasicFeature/Media/Camera_js"
+        },
+        {
+          "path": "projects/BasicFeature/Media/CustomScan/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "d2fa185711b3481c2198563c9bf29a06e7ec15ba4eab449980106fa2ac290322",
+          "version": "12.0.6.0",
+          "project": "code/BasicFeature/Media/CustomScan"
+        },
+        {
+          "path": "projects/DocsSample/Media/Audio/AudioSessionSampleJS/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "023564b4724c3df9f0f5c05aa026280bd205d96f9edee703038af1aa45e1502e",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Media/Audio/AudioSessionSampleJS"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/BindSheet/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "2bc3a848d3c4041927bbee31e6fff63fa761c0cce3828d53111b011a0c1bdedc",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/BindSheet"
+        },
+        {
+          "path": "projects/Solutions/InputMethod/KikaInputMethod/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "f089055288a6d87148bd64832a491a14c6237c5a3ac5ae7bb9ca73e679e02653",
+          "version": "24.0.0.0",
+          "project": "code/Solutions/InputMethod/KikaInputMethod"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/wrapbuilder/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "29be4b4c04d9a7abd26dfc2a3f03ebfe183491dab7dbc20db28c102ea0835724",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/wrapbuilder"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/NativeDialogSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "fbf911e5c06a063e505c24f134e6e967375bb52ae8e4d49a9bbd62842aa7fe7e",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/NativeDialogSample"
+        },
+        {
+          "path": "projects/Performance/ComponentPrebuildByOnIdle/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "dcc26ef2fac023018d9288e6fc42e3d3587c30a949d74de7d6821febb89a64b1",
+          "version": "12.0.6.0",
+          "project": "code/Performance/ComponentPrebuildByOnIdle"
+        },
+        {
+          "path": "projects/DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "3e4c3d41e8a741f11df5197de374b09dd79f00c8e94990070cc261c605469c63",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/NativeType/CustomRenderNode/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "cb11e65db393bf032c1bec080eba8f75cd56c4b1d799ab8f18579729cdd0ce1f",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/NativeType/CustomRenderNode"
+        },
+        {
+          "path": "projects/DocsSample/Media/Audio/AudioRendererSampleJS/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "21b509c19cba56f1063e871e9f9df5a4e8088387a8102e2850329bf0728a93db",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Media/Audio/AudioRendererSampleJS"
+        },
+        {
+          "path": "projects/BasicFeature/Notification/CustomEmitter/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "1174330b27d5f89bd7cfb4b8f28c25250cdc55532b50fa746b7eeca326bde19c",
+          "version": "12.0.2.0",
+          "project": "code/BasicFeature/Notification/CustomEmitter"
+        },
+        {
+          "path": "projects/DocsSample/Media/Camera/PhotoSameSource/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "847def8a18011a9942a8357abc4a104e40ae3e7857ba4b1c3c8e71b0fdb959a4",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Media/Camera/PhotoSameSource"
+        },
+        {
+          "path": "projects/DocsSample/DriverDevelopmentKit/UsbSerialDriverDemo/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "3b9e7d3cb3f789ad7c5964700138e11970718ce7f1c357cf874e9d4174fb5022",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/DriverDevelopmentKit/UsbSerialDriverDemo"
+        },
+        {
+          "path": "projects/DocsSample/DriverDevelopmentKit/ScsiPeripheralDemo/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "0aecb13194f3f471563e824050cc29966477f48b5df9e1b86835301fcd876f41",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/DriverDevelopmentKit/ScsiPeripheralDemo"
+        },
+        {
+          "path": "projects/DocsSample/ArkWeb/ArkWebMenu/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "a18544a61fda22eb6e4aa9ff03e19f50e3b301c0296c0e6825adfbdd007096fb",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkWeb/ArkWebMenu"
+        }
+      ],
+      "role": "Exposed generality probe used to find capability gaps on 2026-10-12. May guide fixes; never counted as unseen held-out evidence."
+    },
+    {
+      "id": "harmony-frozen-holdout",
+      "kind": "holdout",
+      "root": "harmony",
+      "status": "pending_selection",
+      "rule": "Select by application family, content hash and profile (including 24.0.0.0), disjoint from every development, regression and exploration hash; freeze identities before evaluation. Any holdout input used to guide a fix moves to exploration. Selection does not require resuming paused batch runs."
     },
     {
       "id": "batch-anonymous",
@@ -122,7 +401,11 @@
     }
   ],
   "profile_layering": {
-    "profiles_in_named_cohorts": ["dynamic_12_0_2_0", "dynamic_12_0_6_0", "dynamic_13_0_1_0"],
+    "profiles_in_named_cohorts": [
+      "dynamic_12_0_2_0",
+      "dynamic_12_0_6_0",
+      "dynamic_13_0_1_0"
+    ],
     "v7_reference": "OpenHarmony-v7.0-Release pinned in docs/reference/openharmony-v7.0-release.lock.json",
     "rule": "Historical profiles never use v7 rules without pinned per-profile evidence; multiple applications on one profile do not count as cross-profile validation. Where a real corpus lacks a profile, existing historical fixtures cover it and the gap is recorded."
   },

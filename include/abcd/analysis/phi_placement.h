@@ -37,7 +37,6 @@ class IdfQuota {
   friend class ExceptionValueFlow;
   friend class RegisterValueFlow;
   friend class GuardedReads;
-  friend class EnvironmentEscape;
   bool Take(std::uint64_t units) {
     if (units > remaining_) {
       remaining_ = 0;

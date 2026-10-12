@@ -19,7 +19,6 @@
 // Published artifacts of the value-tree source route: typed failures,
 // generated positions and the printed record/function text with its maps.
 namespace abcd::source {
-class ModuleExports;
 enum class SourceError : std::uint8_t {
   kUnsupportedOperation,
   kMissingTarget,
@@ -82,11 +81,6 @@ struct HostRealmRequirement {
 };
 enum class VmSlotUse : std::uint8_t { kUnknown, kNone, kRequired };
 enum class RegisterUse : std::uint8_t { kUnused, kUsed };
-struct RecordModuleInitialization {
-  abc::EntityOffset record;
-  abc::EntityOffset entry;
-  std::shared_ptr<const ModuleExports> bindings;
-};
 struct PrintedSource {
   std::string text;
   std::vector<GeneratedSpan> spans;
@@ -99,9 +93,6 @@ struct PrintedSource {
   std::vector<RegisterUse> register_uses;
   std::vector<ParameterDefault> parameter_defaults;
   std::vector<FunctionSegment> function_segments;
-  // Record-only, immutable emitted declaration state. This does not grant
-  // module read/TDZ equivalence or upgrade the enclosing source route.
-  std::optional<RecordModuleInitialization> module_initialization;
   // A retained class/member gap makes the surrounding record incomplete.
   // This is recovery status, never permission to execute a partial artifact.
   bool incomplete = false;

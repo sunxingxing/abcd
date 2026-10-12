@@ -8,7 +8,6 @@
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/semantic_ir.h"
 #include "idf_scratch.h"
-#include "lexical_value_index.h"
 #include "register_value_rule.h"
 #include "value_propagation.h"
 
@@ -25,22 +24,11 @@ bool SameSlot(ScalarSlot a, ScalarSlot b) {
 }
 }  // namespace
 
-std::variant<RegisterValueFlow, ValueFlowFailure>
-RegisterValueFlow::BuildWithLexicals(const abc::MethodBody& body,
-                                     const RegisterSsa& ssa,
-                                     std::uint64_t frame_size,
-                                     std::span<const EntryValueFact> entries,
-                                     const LexicalValueContext& lexicals,
-                                     IdfQuota& quota, IdfBudget budget) {
-  return Analyze(body, ssa, frame_size, entries, &lexicals, {}, quota,
-                 budget);
-}
-
 std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Build(
     const abc::MethodBody& body, const RegisterSsa& ssa,
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     IdfQuota& quota, IdfBudget budget) {
-  return Analyze(body, ssa, frame_size, entries, nullptr, {}, quota,
+  return Analyze(body, ssa, frame_size, entries, {}, quota,
                  budget);
 }
 
@@ -51,14 +39,13 @@ RegisterValueFlow::BuildWithLanguageLoads(
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
     IdfBudget budget, std::span<const SemanticInstruction> semantics,
     CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
-  return Analyze(body, ssa, frame_size, entries, nullptr, loads, quota,
+  return Analyze(body, ssa, frame_size, entries, loads, quota,
                  budget, semantics, calls, receiver, arithmetic);
 }
 
 std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
     const abc::MethodBody& body, const RegisterSsa& ssa,
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
-    const LexicalValueContext* lexicals,
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
     IdfBudget budget, std::span<const SemanticInstruction> semantics,
     CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
@@ -88,15 +75,11 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         return ValueFlowFailure{Error::kInvalidSemantics, id, {}};
     }
     detail::IdfScratch memory{budget.bytes};
-    LexicalIndex cells{body, ssa, frame_size, quota, &memory};
-    if (lexicals) cells.Collect(*lexicals);
     const auto value_count = ssa.Values().size();
     // Keep graph edges as compact as register-only SSA IDs. A graph beyond
     // this representable range cannot fit the engine's process memory bound.
-    if (value_count > UINT32_MAX ||
-        cells.cells.size() > UINT32_MAX - value_count)
-      throw std::bad_alloc{};
-    const auto count = value_count + cells.cells.size();
+    if (value_count > UINT32_MAX) throw std::bad_alloc{};
+    const auto count = value_count;
     charge(count);
     std::pmr::vector<ValueNode> nodes(count, {}, &memory);
     std::pmr::vector<ValueKinds> facts(count, {}, &memory);
@@ -182,30 +165,6 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         }
       }
     }
-    // Flow-insensitive CELL categories, not last-store forwarding. Every fresh
-    // dynamic instance starts Hole, including a repeatedly executed allocation.
-    // Joining all stores preserves that possibility; never seed JS undefined.
-    for (std::size_t i = value_count; i < count; ++i) {
-      charge();
-      nodes[i].kind = Kind::kJoin;
-      facts[i] = ValueKinds::Hole();
-    }
-    for (const auto access : cells.accesses) {
-      charge();
-      const ValueNodeId cell{
-          static_cast<std::uint32_t>(value_count + access.cell.value)};
-      const ValueNodeId value{access.value.value};
-      switch (access.kind) {
-        case LexicalIndex::AccessKind::kLoad:
-          nodes[value.value].kind = Kind::kJoin;
-          facts[value.value] = {};
-          edges.push_back({cell, value});
-          break;
-        case LexicalIndex::AccessKind::kStore:
-          edges.push_back({value, cell});
-          break;
-      }
-    }
     for (const auto& entry : entries) {
       charge();
       const auto id = entry.value.value;
@@ -218,7 +177,6 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
       facts[id] = entry.kinds;
     }
     RegisterValueFlow result;
-    result.work.cells = cells.cells.size();
     detail::PropagateValues(nodes, edges, facts, marked, memory, charge, result.work);
     charge(value_count);
     if (value_count > memory.Available() / sizeof(ValueKinds))

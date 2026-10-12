@@ -25,7 +25,11 @@ enum class RecordProgramError : unsigned {
   kFunction = 14,
   kInitializer = 15,
   kAccessor = 16,
-  kObject = 17
+  kObject = 17,
+  // Process allocation failure (bad_alloc/length_error). Unlike
+  // kResourceLimit, which is this record's own budget, it is never isolated
+  // to one record: the export stops.
+  kAllocationFailure = 18
 };
 struct RecordProgramFailure {
   RecordProgramError kind;

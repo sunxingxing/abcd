@@ -21,7 +21,6 @@ struct AwaitSite;
 // Per-method constant/module/global context shared by value-tree stages,
 // with the typed failures of constant and object-buffer reads.
 namespace abcd::source {
-class CreationExpansion;
 // Default output is not admitted by a work-count threshold. Explicit finite
 // budgets remain available to legacy analysis callers, not imposed here.
 inline constexpr std::uint64_t kDefaultMethodWork = std::numeric_limits<std::uint64_t>::max();
@@ -93,10 +92,7 @@ struct MethodConstants {
   // Caller-proven source-formal names, in ABI parameter order; empty falls
   // back to private $pN bindings without guessing from method-table names.
   std::span<const std::string_view> source_parameters;
-  // Lookup capability alone allows one level. Only a synchronous, bounded
-  // expansion context may propagate it to created-function descendants.
   const abc::MethodLookup* leaf_methods = nullptr;
-  CreationExpansion* expansion = nullptr;
   // Optional owner-verified normalized-body index -> original ABC PC mapping.
   // Borrowed only for synchronous emission; child methods never inherit it.
   std::span<const abc::CodeOffset> source_pcs;

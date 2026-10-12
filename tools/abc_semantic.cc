@@ -30,7 +30,7 @@
 #include "abcd/source/record_program.h"
 #include "abcd/source/source_route.h"
 #include "abcd/abc/pool_reference.h"
-#include "record_module.h"
+#include "process_limit.h"
 #include "value_source_inspect.h"
 
 namespace {
@@ -362,6 +362,13 @@ int main(int argc, char** argv) {
       forms + instructions + views > 1 || (contract_options && !forms && !value_routes) ||
       (value_routes && (instructions || views)))
     return Fail(InspectError::kArguments);
+  // Same process boundary as every CLI (tools/process_limit.h); established
+  // after argument validation and before any file access.
+  const auto limit = abcd::tools::EstablishProcessLimit();
+  if (!abcd::tools::ProcessLimitAcceptable(limit)) {
+    abcd::tools::ReportLimitFailure(std::cerr, limit);
+    return EXIT_FAILURE;
+  }
   const auto view = family_drafts ? ValueSourceScope::kFamilyDraft
       : conditional_families ? ValueSourceScope::kConditionalFamily
       : conditional_values ? ValueSourceScope::kConditionalValues : ValueSourceScope::kMember;

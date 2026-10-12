@@ -125,22 +125,36 @@ if(status EQUAL 0 OR NOT report STREQUAL "" OR NOT error EQUAL ABCD_ARGUMENT_ERR
   message(FATAL_ERROR "removed --class-source must be an argument error: ${report}")
 endif()
 # --record-source prints the owning record through the record route, never
-# the method fragment: complete output carries source and exits 0; an
-# incomplete record publishes no source.
+# the method fragment. Positive: record 6897 (owner of method 7586) is
+# completely recovered on the value-tree route.
 execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586"
   --record-source --value-source RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
 string(JSON record GET "${report}" record)
 string(JSON route GET "${report}" route)
 string(JSON complete GET "${report}" source_complete)
-string(FIND "${report}" "\"source\":" source_at)
-if(NOT record EQUAL 6897 OR NOT route STREQUAL "value_tree")
-  message(FATAL_ERROR "--record-source did not report the owning record: ${report}")
+string(JSON text GET "${report}" source)
+if(NOT status EQUAL 0 OR NOT record EQUAL 6897 OR NOT route STREQUAL "value_tree"
+    OR NOT complete OR text STREQUAL "")
+  message(FATAL_ERROR "record 6897 must be completely recovered: ${report}")
 endif()
-if(complete AND (NOT status EQUAL 0 OR source_at EQUAL -1))
-  message(FATAL_ERROR "complete record lost its source: ${report}")
+string(FIND "${text}" "INCOMPLETE" incomplete_at)
+string(FIND "${text}" "UNRECOVERED" unrecovered_at)
+if(NOT incomplete_at EQUAL -1 OR NOT unrecovered_at EQUAL -1)
+  message(FATAL_ERROR "complete record carries gap markers: ${report}")
 endif()
-if(NOT complete AND (status EQUAL 0 OR NOT source_at EQUAL -1))
-  message(FATAL_ERROR "incomplete record published source: ${report}")
+# Negative: record 4767 (owner of method 4917) keeps an unsupported
+# constructor operation. It is reported incomplete, with explicit typed gap
+# markers in the partial text, never as complete source.
+execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "4917"
+  --record-source --value-source RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+string(JSON record GET "${report}" record)
+string(JSON complete GET "${report}" source_complete)
+string(JSON executable GET "${report}" executable)
+string(JSON text GET "${report}" source)
+string(FIND "${text}" "/* INCOMPLETE: partial decompilation; not executable-equivalent. */" banner_at)
+string(FIND "${text}" "/* UNRECOVERED: unsupported operation; PC " reason_at)
+if(NOT record EQUAL 4767 OR complete OR executable OR banner_at EQUAL -1 OR reason_at EQUAL -1)
+  message(FATAL_ERROR "incomplete record lost its typed gap: ${report}")
 endif()
 
 # A bare --value-source selects the function form; it never prints the

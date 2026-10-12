@@ -1,29 +1,13 @@
 #include "abcd/source/module_exports.h"
 
 #include <algorithm>
-#include <array>
-#include <charconv>
-#include <limits>
 #include <new>
 #include <numeric>
-#include <ostream>
 #include <stdexcept>
-#include <streambuf>
 
-#include "abcd/source/string_literal.h"
-#include "member_key.h"
-#include "module_binding_name.h"
 
 namespace abcd::source {
 namespace {
-class DiscardBuffer : public std::streambuf {
-  std::streamsize xsputn(const char*, std::streamsize count) override {
-    return count;
-  }
-  int_type overflow(int_type value) override {
-    return traits_type::not_eof(value);
-  }
-};
 bool Supported(abc::ProfileId profile) {
   switch (profile) {
     case abc::ProfileId::kDynamic9:
@@ -57,11 +41,6 @@ ModuleExportResult BuildModuleExports(const corpus::AbcFile& file,
                              sizeof(ModuleExports::Alias);
     if (alias_bytes > budget.bytes) return ModuleExportError::kResourceLimit;
     budget.bytes -= alias_bytes;
-    if (count > budget.bytes / sizeof(ModuleSlotState)) return ModuleExportError::kResourceLimit;
-    result.initialized_.resize(count);
-    if (result.initialized_.capacity() > budget.bytes / sizeof(ModuleSlotState))
-      return ModuleExportError::kResourceLimit;
-    budget.bytes -= result.initialized_.capacity() * sizeof(ModuleSlotState);
     if (count > budget.bytes / sizeof(std::size_t))
       return ModuleExportError::kResourceLimit;
     std::vector<std::size_t> order(count);
@@ -115,116 +94,4 @@ ModuleExportResult BuildModuleExports(const corpus::AbcFile& file,
   }
 }
 
-bool ModuleExports::Complete() const {
-  return std::all_of(initialized_.begin(),
-                     initialized_.begin() + slot_count_,
-                     [](const ModuleSlotState& state) { return !std::holds_alternative<ModuleTdz>(state); });
-}
-
-bool ModuleExports::IsInitialized(analysis::ModuleSlot slot) const {
-  const auto* state = State(slot);
-  return state && !std::holds_alternative<ModuleTdz>(*state);
-}
-const ModuleSlotState* ModuleExports::State(analysis::ModuleSlot slot) const {
-  return slot.value < slot_count_ ? &initialized_[slot.value] : nullptr;
-}
-
-std::variant<std::size_t, ModuleExportError> ModuleExports::WriteAliases(
-    std::ostream& output, EmitBudget budget) const {
-  DiscardBuffer null;
-  std::ostream dry(&null);
-  const auto checked = WriteAliasesPass(dry, budget);
-  if (!std::holds_alternative<std::size_t>(checked))
-    return std::get<ModuleExportError>(checked);
-  return WriteAliasesPass(output, budget);
-}
-
-std::variant<std::size_t, ModuleExportError> ModuleExports::WriteAliasesPass(
-    std::ostream& output, EmitBudget budget) const {
-  std::size_t used = 0;
-  const auto text = [&](std::string_view value) -> bool {
-    if (value.size() > budget.bytes - used) return false;
-    output.write(value.data(), static_cast<std::streamsize>(value.size()));
-    used += value.size();
-    return static_cast<bool>(output);
-  };
-  try {
-    for (const auto& alias : aliases_) {
-      if (!text("export { ") || !text(kLocalModulePrefix))
-        return output ? ModuleExportError::kOutputLimit
-                      : ModuleExportError::kWrite;
-      std::array<char, std::numeric_limits<std::uint16_t>::digits10 + 2>
-          digits{};
-      const auto encoded = std::to_chars(digits.data(), digits.data() +
-                                        digits.size(), alias.slot.value);
-      if (encoded.ec != std::errc{}) return ModuleExportError::kResourceLimit;
-      if (!text({digits.data(),
-                 static_cast<std::size_t>(encoded.ptr - digits.data())}) ||
-          !text(" as "))
-        return output ? ModuleExportError::kOutputLimit
-                      : ModuleExportError::kWrite;
-      // Exported names use IdentifierName, including keywords; this does not
-      // rename the private module binding or select BindingIdentifier syntax.
-      switch (ClassifyMemberKey(alias.exported)) {
-        case MemberKeySyntax::kIdentifier:
-          for (const auto unit : alias.exported) {
-            const char ch = static_cast<char>(unit);
-            if (!text({&ch, 1}))
-              return output ? ModuleExportError::kOutputLimit
-                            : ModuleExportError::kWrite;
-          }
-          break;
-        case MemberKeySyntax::kQuoted: {
-          const auto literal = WriteStringLiteral(alias.exported, output,
-                                                  {budget.bytes - used});
-          if (const auto* error = std::get_if<EmitError>(&literal))
-            return *error == EmitError::kOutputLimit
-                       ? ModuleExportError::kOutputLimit
-                       : ModuleExportError::kWrite;
-          used += std::get<std::size_t>(literal);
-          break;
-        }
-      }
-      if (!text(" };\n"))
-        return output ? ModuleExportError::kOutputLimit
-                      : ModuleExportError::kWrite;
-    }
-    return used;
-  } catch (const std::ios_base::failure&) {
-    return ModuleExportError::kWrite;
-  }
-}
-
-std::variant<std::size_t, ModuleExportError> ModuleExports::WriteStore(
-    analysis::ModuleStore store, std::ostream& output, EmitBudget budget,
-    std::optional<abc::CodeOffset> pc) {
-  if (store.slot.value >= slot_count_) return ModuleExportError::kSlot;
-  std::array<char, std::numeric_limits<std::uint16_t>::digits10 + 2> digits{};
-  const auto encoded = std::to_chars(digits.data(), digits.data() + digits.size(),
-                                     store.slot.value);
-  if (encoded.ec != std::errc{}) return ModuleExportError::kResourceLimit;
-  const std::string_view ordinal{
-      digits.data(), static_cast<std::size_t>(encoded.ptr - digits.data())};
-  constexpr std::string_view kName = kLocalModulePrefix;
-  constexpr std::string_view kValue = " = $acc;\n";
-  const bool first = !IsInitialized(store.slot);
-  constexpr std::string_view kDeclaration = "let ";
-  const auto bytes = (first ? kDeclaration.size() : 0) + kName.size() +
-                     ordinal.size() + kValue.size();
-  if (bytes > budget.bytes) return ModuleExportError::kOutputLimit;
-  try {
-    if (first) output << kDeclaration;
-    output << kName << ordinal << kValue;
-    if (!output) return ModuleExportError::kWrite;
-    // Commit the declaration origin only after successful source output.
-    // Later stores update the live value, never its lexical initialization PC.
-    if (first) {
-      if (pc) initialized_[store.slot.value] = ModuleInitialization{*pc};
-      else initialized_[store.slot.value] = UnlocatedModuleInitialization{};
-    }
-    return bytes;
-  } catch (const std::ios_base::failure&) {
-    return ModuleExportError::kWrite;
-  }
-}
 }  // namespace abcd::source
