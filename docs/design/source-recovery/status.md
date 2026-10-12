@@ -169,8 +169,12 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
      [成员调用引用](call-references.md)。
    - 第三位缺口 `FunctionEmitError::kKind`：15 次来自 async 前缀只允许 `mov` 的检查。第一版按
      相邻 opcode 放宽，被 Codex 第十五轮驳回（被删除的 acc 定义缺少 def-use 证明，且属于局部模式），
-     已撤回。现在改为按类型化语义准入前缀，并证明被删除的 acc 定义不可观察。探索集 455 →
-     **461**，详见 `docs/design/async-lexical-prelude.md`。
+     已撤回。现在改为按类型化语义准入前缀，并在 CFG 上用数据流证明被删除的 acc 定义不可观察。
+     探索集 455 → **461**，详见 `docs/design/async-lexical-prelude.md`。Codex 第十六轮要求把
+     直线判定改成数据流，第十七轮（`8527050d`）复审为 **APPROVE**。
+   - 剩余 17 个 `CallPlanError::kReference` 都出现在带异常处理器的方法里，例如链式的
+     `.then(f).catch(g)`：callee 读取与调用被可抛出操作分到不同的 phase 块。对应
+     [成员调用引用](call-references.md) 第 2 步尚未实施的 phased 共同引用证据。
 2. **S5 余项**：1 GB 整进程预算与准入；macOS 上的观测与背压。`abc_semantic` 的资源字段改为
    在 JSON 序列化边界直接写入。
 3. **C5 → C3 → C2 → C4 → C8**：语义上移到打印之前 → 一般结构化 → 选择表达式通用化 →

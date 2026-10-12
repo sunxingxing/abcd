@@ -5,6 +5,8 @@
 #include <array>
 #include <climits>
 #include <limits>
+#include <new>
+#include <stdexcept>
 
 #include "abcd/abc/control_transfer.h"
 #include "abcd/abc/register_access.h"
@@ -166,11 +168,14 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   // redefined. Exception edges are not followed: handler entry defines acc as
   // the caught value. A suspension or an unresolved target refuses. Each
   // instruction is visited once; targets are found by binary search.
-  {  // Scratch released before the normalization allocations below.
+  try {  // Scratch released before the normalization allocations below.
     if (sites.size() > bytes / (sizeof(std::uint8_t) + sizeof(std::size_t))) return FunctionEmitError::kResourceLimit;
     std::vector<std::uint8_t> visited(sites.size());
     std::vector<std::size_t> pending;
     pending.reserve(sites.size());
+    if (visited.capacity() > bytes / sizeof(std::uint8_t) ||
+        pending.capacity() > (bytes - visited.capacity()) / sizeof(std::size_t))
+      return FunctionEmitError::kResourceLimit;
     const auto index_of = [&](abc::CodeOffset target) -> std::optional<std::size_t> {
       const auto found = std::lower_bound(sites.begin(), sites.end(), target,
           [](const auto& site, auto pc) { return site.offset < pc; });
@@ -202,7 +207,8 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       for (const auto successor : next)
         if (successor && !visited[*successor]) { visited[*successor] = 1; pending.push_back(*successor); }
     }
-  }
+  } catch (const std::bad_alloc&) { return FunctionEmitError::kResourceLimit;
+  } catch (const std::length_error&) { return FunctionEmitError::kResourceLimit; }
   const auto handler = sites.size() - 3;
   abc::RegisterId caught, resolved, rejected;
   if (handler <= enter + 4 ||

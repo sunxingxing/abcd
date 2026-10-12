@@ -767,7 +767,7 @@ void AwaitCompletion(abc::ProfileId profile, std::ostream* output) {
 // The pre-promise prefix is admitted by typed semantics (no effect, cannot
 // throw, no transfer; copies/constants, or depth-0 stores into the fresh
 // environment), not by opcode layout. The erased ASYNCFUNCTIONENTER acc
-// definition must be overwritten before any read, transfer or join.
+// definition must reach no read on the normal CFG (dataflow, not layout).
 void AsyncPrefixes(abc::ProfileId profile) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   using Bytes = std::vector<std::uint8_t>;
