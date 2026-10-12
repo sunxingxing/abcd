@@ -67,8 +67,14 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     return result;
   }
 }
+template<class T> RouteFailure ProjectWithCauses(const T& error, ValueRouteError stage) {
+  auto result = Project(error, stage);
+  RouteFailure chain{result.failure_class, result.reason, result.pc};
+  CollectFailureCauses(error, chain.causes);
+  return chain;
+}
 }  // namespace
-RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure) { return Project(failure, ValueRouteError::kTreeStage); }
-RouteFailure FamilyRouteFailure(const FamilyEmitFailure& failure) { return Project(failure, ValueRouteError::kPrintStage); }
-RouteFailure FamilyRouteFailure(const analysis::FunctionSiteFailure& failure) { return Project(failure, ValueRouteError::kContextStage); }
+RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
+RouteFailure FamilyRouteFailure(const FamilyEmitFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kPrintStage); }
+RouteFailure FamilyRouteFailure(const analysis::FunctionSiteFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kContextStage); }
 }  // namespace abcd::source

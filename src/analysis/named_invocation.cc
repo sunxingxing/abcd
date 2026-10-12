@@ -27,33 +27,56 @@ std::optional<abc::RegisterId> ReceiverCall::At(
 
 std::variant<ReceiverCall, CallError> LiftReceiverCall(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
+  // CALLTHIS*WITHNAME (API 24+) has CALLTHIS* semantics in the pinned v7
+  // interpreter (ets_runtime interpreter-inl.cpp:1402-1460): the string_id only
+  // names the callee in the TypeError raised for a non-callable value, which
+  // the source contract does not preserve for CALLTHIS* either. The name
+  // operand is validated and then ignored.
   std::uint8_t count = 0;
+  bool named = false;
   switch (instruction.opcode) {
+    case abc::Opcode::kCALLTHIS0WITHNAME_IMM8_ID16_V8:
+      named = true;
+      [[fallthrough]];
     case abc::Opcode::kCALLTHIS0_IMM8_V8:
       break;
+    case abc::Opcode::kCALLTHIS1WITHNAME_IMM8_ID16_V8_V8:
+      named = true;
+      [[fallthrough]];
     case abc::Opcode::kCALLTHIS1_IMM8_V8_V8:
       count = 1;
       break;
+    case abc::Opcode::kCALLTHIS2WITHNAME_IMM8_ID16_V8_V8_V8:
+      named = true;
+      [[fallthrough]];
     case abc::Opcode::kCALLTHIS2_IMM8_V8_V8_V8:
       count = 2;
       break;
+    case abc::Opcode::kCALLTHIS3WITHNAME_IMM8_ID16_V8_V8_V8_V8:
+      named = true;
+      [[fallthrough]];
     case abc::Opcode::kCALLTHIS3_IMM8_V8_V8_V8_V8:
       count = 3;
       break;
+    case abc::Opcode::kCALLTHISRANGEWITHNAME_IMM8_IMM8_ID16_V8:
+      named = true;
+      [[fallthrough]];
     case abc::Opcode::kCALLTHISRANGE_IMM8_IMM8_V8: {
       constexpr std::size_t kRangeCount = 1;
-      constexpr std::size_t kRangeReceiver = 2;
-      if (instruction.operand_count != 3 ||
+      const std::size_t name = named ? 2 : 0;
+      const std::size_t receiver_index = named ? 3 : 2;
+      if (instruction.operand_count != (named ? 4u : 3u) ||
           instruction.operands[0].kind != abc::OperandKind::kImmediate ||
           instruction.operands[0].raw_bits > UINT8_MAX ||
           instruction.operands[kRangeCount].kind !=
               abc::OperandKind::kImmediate ||
           instruction.operands[kRangeCount].raw_bits > UINT8_MAX ||
-          instruction.operands[kRangeReceiver].kind !=
+          (named && instruction.operands[name].kind != abc::OperandKind::kString) ||
+          instruction.operands[receiver_index].kind !=
               abc::OperandKind::kRegister ||
-          instruction.operands[kRangeReceiver].raw_bits > UINT8_MAX)
+          instruction.operands[receiver_index].raw_bits > UINT8_MAX)
         return CallError::kMalformedInstruction;
-      const auto base = instruction.operands[kRangeReceiver].raw_bits;
+      const auto base = instruction.operands[receiver_index].raw_bits;
       const auto range_count =
           instruction.operands[kRangeCount].raw_bits;
       if (base >= frame_size || range_count > frame_size - base - 1)
@@ -67,26 +90,28 @@ std::variant<ReceiverCall, CallError> LiftReceiverCall(
       return CallError::kUnsupportedOpcode;
   }
   constexpr std::size_t kCache = 0;
-  constexpr std::size_t kReceiver = 1;
-  constexpr std::size_t kArguments = 2;
-  if (instruction.operand_count != kArguments + count ||
+  constexpr std::size_t kName = 1;
+  const std::size_t receiver_index = named ? 2 : 1;
+  const std::size_t first_argument = receiver_index + 1;
+  if (instruction.operand_count != first_argument + count ||
       instruction.operands[kCache].kind != abc::OperandKind::kImmediate ||
-      instruction.operands[kCache].raw_bits > UINT8_MAX)
+      instruction.operands[kCache].raw_bits > UINT8_MAX ||
+      (named && instruction.operands[kName].kind != abc::OperandKind::kString))
     return CallError::kMalformedInstruction;
   ReceiverCall result{};
   CallRegisters arguments;
   arguments.count = count;
-  for (std::size_t i = kReceiver; i < kArguments + count; ++i) {
+  for (std::size_t i = receiver_index; i < first_argument + count; ++i) {
     const auto& operand = instruction.operands[i];
     if (operand.kind != abc::OperandKind::kRegister ||
         operand.raw_bits > UINT8_MAX)
       return CallError::kMalformedInstruction;
     if (operand.raw_bits >= frame_size) return CallError::kRegisterRange;
     const abc::RegisterId reg{static_cast<std::uint32_t>(operand.raw_bits)};
-    if (i == kReceiver)
+    if (i == receiver_index)
       result.receiver = reg;
     else
-      arguments.values[i - kArguments] = reg;
+      arguments.values[i - first_argument] = reg;
   }
   result.arguments = arguments;
   return result;

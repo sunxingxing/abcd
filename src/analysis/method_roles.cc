@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <new>
+#include <set>
 #include <type_traits>
+#include <vector>
 
 #include "abcd/corpus/abc_file.h"
 
@@ -70,7 +72,10 @@ std::optional<MethodRole> Role(abc::LiteralTag tag) {
     case abc::LiteralTag::kGetter:
     case abc::LiteralTag::kSetter:
       return MethodRole::kOther;
+    // Nested arrays are traversed by the caller (offset form); the header
+    // buffer-index form needs the header literal index and stays refused.
     case abc::LiteralTag::kLiteralArray:
+      return {};
     case abc::LiteralTag::kLiteralBufferIndex:
       throw MethodRoleFailure{MethodRoleError::kNestedLiteral};
     case abc::LiteralTag::kBoolean:
@@ -144,12 +149,23 @@ std::variant<MethodRoleIndex, MethodRoleFailure> MethodRoleIndex::Build(
            } else
              literals[next++] = target;
          });
-    if (next > 1) std::sort(literals.get(), literals.get() + next);
-    for (std::size_t i = 0; i < next; ++i) {
-      if (i != 0 && literals[i] == literals[i - 1]) continue;
+    // Each literal array is read once, including arrays nested through
+    // kLiteralArray entries (24.0 emits them). Ordered visited set and a
+    // worklist: O(A log A) for A distinct arrays, bounded by the byte budget.
+    std::set<abc::EntityOffset> visited;
+    std::vector<abc::EntityOffset> pending(literals.get(), literals.get() + next);
+    while (!pending.empty()) {
+      const auto current = pending.back();
+      pending.pop_back();
+      if (!visited.insert(current).second) continue;
+      Admit(1, sizeof(abc::EntityOffset) * 4, budget.bytes);
       const auto literal = Take<abc::LiteralArray>(
-          abc::ReadLiteralArray(file, header, literals[i], {budget.bytes}));
+          abc::ReadLiteralArray(file, header, current, {budget.bytes}));
       for (const auto& entry : literal.entries) {
+        if (entry.tag == abc::LiteralTag::kLiteralArray) {
+          pending.push_back(std::get<abc::EntityOffset>(entry.value));
+          continue;
+        }
         const auto role = Role(entry.tag);
         if (!role) continue;
         const auto target = std::get<abc::EntityOffset>(entry.value);

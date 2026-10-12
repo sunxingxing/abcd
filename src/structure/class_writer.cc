@@ -1,4 +1,5 @@
 #include <type_traits>
+#include "abcd/abc/profile_capabilities.h"
 
 #include "abcd/abc/class_buffer.h"
 #include "abcd/abc/method_body.h"
@@ -172,7 +173,9 @@ void IncompleteClass(const RecordText& text, const abc::MetadataIndex& index,
                      const abc::MethodInfo& caller,
                      const abc::DecodedInstruction& instruction,
                      std::ostream& out, const abc::FrameLayout* frame) {
-  if (text.header.profile != abc::ProfileId::kDynamic1301)
+  // Class-literal layout without header literal arrays, under pinned semantics.
+  if (!abc::HasPinnedRuntimeSemantics(text.header.profile) ||
+      abc::CapabilitiesOf(text.header.profile).literal_arrays_in_header)
     throw SiteFailure{ClassProfileError::kUnsupportedSemanticProfile};
   const auto lifted = analysis::LiftDefineInstruction(
       instruction, frame ? frame->registers : UINT64_MAX);

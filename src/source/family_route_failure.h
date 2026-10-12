@@ -3,7 +3,43 @@
 
 #include "family_emission.h"
 
+#include <type_traits>
+#include <variant>
+
 namespace abcd::source {
+// Records every typed enum on a failure path into the bounded chain, outermost
+// first, through the typed envelopes (kind, cause/error/reason, variants and
+// the optional nested errors). A nested RouteFailure contributes its chain.
+// Compile-time typed traversal only; never parses messages or names.
+template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& out) {
+  if constexpr (std::is_same_v<T, RouteFailure>) {
+    out.Extend(error.causes);
+  } else if constexpr (std::is_enum_v<T>) {
+    AppendFailureCause(out, error);
+  } else if constexpr (std::is_same_v<T, std::monostate>) {
+  } else if constexpr (requires { std::variant_size<T>::value; }) {
+    std::visit([&](const auto& nested) { CollectFailureCauses(nested, out); }, error);
+  } else {
+    if constexpr (requires { error.kind; }) CollectFailureCauses(error.kind, out);
+    if constexpr (requires { error.cause; }) CollectFailureCauses(error.cause, out);
+    else if constexpr (requires { error.error; }) CollectFailureCauses(error.error, out);
+    else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);
+    if constexpr (std::is_same_v<T, analysis::SemanticFailure>) CollectFailureCauses(error.ssa_cause, out);
+    if constexpr (std::is_same_v<T, analysis::RegisterUseFailure>)
+      if (error.instruction) CollectFailureCauses(*error.instruction, out);
+    if constexpr (std::is_same_v<T, abc::BodyFailure>) {
+      if (error.instruction_error) CollectFailureCauses(*error.instruction_error, out);
+      if (error.file_error) CollectFailureCauses(*error.file_error, out);
+    }
+    if constexpr (std::is_same_v<T, BodyEmitFailure>) {
+      if (error.scalar_error) CollectFailureCauses(*error.scalar_error, out);
+      if (error.emit_error) CollectFailureCauses(*error.emit_error, out);
+      if (error.metadata_error) CollectFailureCauses(*error.metadata_error, out);
+      if (error.literal_error) CollectFailureCauses(*error.literal_error, out);
+      if (error.object_error) CollectFailureCauses(*error.object_error, out);
+    }
+  }
+}
 // Preserve resource/work/output classes and available original PCs. Remaining
 // unclosed semantic premises map to Unproved, never successful source.
 RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure);

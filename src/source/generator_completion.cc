@@ -1,4 +1,5 @@
 #include "generator_completion.h"
+#include "abcd/abc/profile_capabilities.h"
 
 #include <algorithm>
 #include <limits>
@@ -228,8 +229,7 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
     GeneratorExecution execution) {
   try {
     Require(resources == ResourceFailureScope::kExcluded &&
-        (profile == abc::ProfileId::kDynamic1202 || profile == abc::ProfileId::kDynamic1206 ||
-         profile == abc::ProfileId::kDynamic1301));
+        abc::HasPinnedRuntimeSemantics(profile));
     const auto& code = body.instructions;
     Require(execution == GeneratorExecution::kSynchronous || execution == GeneratorExecution::kAsynchronous);
     const bool asynchronous = execution == GeneratorExecution::kAsynchronous;

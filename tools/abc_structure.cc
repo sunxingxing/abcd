@@ -146,25 +146,54 @@ int Export(const std::filesystem::path& input,
   const auto packed = abc::DetectFilePackaging(file, *header, *index);
   const auto* packaging = std::get_if<abc::FilePackaging>(&packed);
   if (!packaging) return Fail(ExportError::kPackaging);
+  // Whole-file source indexes. Their failure is reported per record with
+  // typed causes (kFileIndex); only input I/O or change, or an observed real
+  // allocation failure, stops the export (S3).
+  std::optional<source::RecordProgramFailure> file_failure;
+  if (emit_source && !source::SupportsRecordProgramProfile(header->profile))
+    file_failure = source::RecordProgramFailure{source::RecordProgramError::kProfile, {}};
+  const auto index_failure = [&](const auto& error) -> std::optional<int> {
+    source::RecordProgramFailure failure{source::RecordProgramError::kFileIndex, {}};
+    bool fatal = tools::TakeAllocationFailure();
+    std::visit([&](const auto& cause) {
+      using T = std::decay_t<decltype(cause)>;
+      if constexpr (std::is_enum_v<T>) source::AppendFailureCause(failure.causes, cause);
+      else if constexpr (requires { cause.kind; }) source::AppendFailureCause(failure.causes, cause.kind);
+      if constexpr (std::is_same_v<T, abc::MetadataError>)
+        fatal |= cause == abc::MetadataError::kRead || cause == abc::MetadataError::kFileChanged;
+    }, error);
+    fatal |= file.CheckUnchanged().has_value();
+    if (fatal) return Fail(ExportError::kIndex);
+    file_failure = failure;
+    return std::nullopt;
+  };
   std::optional<analysis::MethodRoleIndex> roles;
-  if (emit_source &&
-      source::SupportsRecordProgramProfile(header->profile)) {
-    auto built =
-        analysis::MethodRoleIndex::Build(file, *header, *index, *lookup);
-    if (auto* ready = std::get_if<analysis::MethodRoleIndex>(&built))
-      roles.emplace(std::move(*ready));
-    else
-      return Fail(ExportError::kRoles);
-  }
   std::optional<analysis::FunctionCreationSites> functions;
   std::optional<analysis::ClassMethodSites> classes;
-  if (emit_source && roles) {
+  if (emit_source && !file_failure) {
+    static_cast<void>(tools::TakeAllocationFailure());
+    auto built = analysis::MethodRoleIndex::Build(file, *header, *index, *lookup);
+    if (auto* ready = std::get_if<analysis::MethodRoleIndex>(&built)) {
+      roles.emplace(std::move(*ready));
+    } else if (const auto code = index_failure(std::get<analysis::MethodRoleFailure>(built).error)) {
+      return *code;
+    }
+  }
+  if (emit_source && !file_failure) {
     auto indexed_functions = analysis::FunctionCreationSites::Build(file, *header, *index, *lookup);
+    if (auto* ready = std::get_if<analysis::FunctionCreationSites>(&indexed_functions)) {
+      functions = std::move(*ready);
+    } else if (const auto code = index_failure(std::get<analysis::FunctionSiteFailure>(indexed_functions).error)) {
+      return *code;
+    }
+  }
+  if (emit_source && !file_failure) {
     auto indexed_classes = analysis::ClassMethodSites::Build(file, *header, *index, *lookup);
-    if (!std::holds_alternative<analysis::FunctionCreationSites>(indexed_functions) ||
-        !std::holds_alternative<analysis::ClassMethodSites>(indexed_classes)) return Fail(ExportError::kIndex);
-    functions = std::get<analysis::FunctionCreationSites>(std::move(indexed_functions));
-    classes = std::get<analysis::ClassMethodSites>(std::move(indexed_classes));
+    if (auto* ready = std::get_if<analysis::ClassMethodSites>(&indexed_classes)) {
+      classes = std::move(*ready);
+    } else if (const auto code = index_failure(std::get<analysis::ClassSiteFailure>(indexed_classes).error)) {
+      return *code;
+    }
   }
   std::vector<structure::RecordPath> source_paths;
   if (emit_source) {
@@ -191,7 +220,10 @@ int Export(const std::filesystem::path& input,
            << source::SourceContractName(identity.contract)
            << "\",\"source_route\":\""
            << (emit_source ? source::SourceRouteName(source::SourceRoute::kValueTree) : "none")
-           << "\",\"records\":[";
+           << "\",\"abc_version\":"
+           << nlohmann::json(std::vector<unsigned>(header->version.bytes.begin(),
+                                                   header->version.bytes.end()))
+           << ",\"records\":[";
   structure::RecordCounts totals;
   bool comma = false;
   std::size_t record_index = 0;
@@ -241,11 +273,10 @@ int Export(const std::filesystem::path& input,
       record_manifest["planned_source"] = source_path;
       record_manifest["source_path_origin"] =
           static_cast<unsigned>(source_paths[record_index].origin);
-      if (!roles) {
+      if (file_failure) {
         record_manifest["source_status"] =
             static_cast<unsigned>(SourceStatus::kProgram);
-        record_manifest["source_error"] =
-            static_cast<unsigned>(source::RecordProgramError::kProfile);
+        tools::DescribeRecordFailure(*file_failure, record_manifest);
       } else {
         const auto context = source::ReadRecordModuleContext(
             file, *header, *index, record, *packaging);
@@ -256,11 +287,21 @@ int Export(const std::filesystem::path& input,
             record_manifest["source_status"] =
                 static_cast<unsigned>(SourceStatus::kNoModule);
           } else {
+            static_cast<void>(tools::TakeAllocationFailure());
             const auto built = source::BuildRecordSource(
                 file, *header, *index, *lookup, record, *ready, *roles, {}, identity,
                 functions ? &*functions : nullptr, classes ? &*classes : nullptr);
-            if (tools::RecordFailureIsFatal(built))
+            // A record that saw a real allocation failure, or an input that
+            // changed underneath it, stops the export; budgets do not.
+            if (file.CheckUnchanged()) return Fail(ExportError::kChanged, record.offset.value);
+            if (tools::RecordFailureIsFatal(built, tools::TakeAllocationFailure())) {
+              // Typed diagnostic for the fatal record failure (S2).
+              nlohmann::json failure;
+              tools::DescribeRecordFailure(built, failure);
+              std::cerr << nlohmann::json{{"record_failure", failure},
+                                          {"entity", record.offset.value}} << '\n';
               return Fail(ExportError::kRecord, record.offset.value);
+            }
             record_manifest["source_complete"] = false;
             record_manifest["executable"] = false;
             if (const auto* artifact = std::get_if<source::PrintedSource>(&built)) {
@@ -391,6 +432,7 @@ int main(int argc, char** argv) {
   }
   const auto numeric_contract = numeric ? source::SourceContract::kLanguageNumericV1 : language ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
   const auto contract = constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract;
+  tools::InstallAllocationFailureMonitor();
   const auto limit = tools::EstablishProcessLimit();
   if (!tools::ProcessLimitAcceptable(limit)) {
     tools::ReportLimitFailure(std::cerr, limit);

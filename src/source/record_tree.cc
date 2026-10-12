@@ -33,6 +33,12 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     const analysis::ClassMethodSites* classes, bool metadata_names, bool& proposed_names) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
+  // Record failure with the typed inner cause that produced it (S2).
+  const auto fail_with = [&]<class E>(Error kind, const E& cause) {
+    auto failure = fail(kind);
+    CollectFailureCauses(cause, failure.causes);
+    return failure;
+  };
   try {
     const auto retain = [&](std::size_t bytes) {
       if (bytes > budget.bytes) throw fail(Error::kRecordBudget);
@@ -45,11 +51,11 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     auto* enclosure = std::get_if<ModuleEnclosure>(&enclosed);
     if (!enclosure) {
       const auto error = std::get<ModuleEnclosureError>(enclosed);
-      if (error == ModuleEnclosureError::kResourceLimit) return fail(Error::kResourceLimit);
-      if (error == ModuleEnclosureError::kFileChanged) return fail(Error::kFileChanged);
+      if (error == ModuleEnclosureError::kResourceLimit) return fail_with(Error::kResourceLimit, error);
+      if (error == ModuleEnclosureError::kFileChanged) return fail_with(Error::kFileChanged, error);
       if (error == ModuleEnclosureError::kWorkLimit)
         return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
-      return fail(Error::kModule);
+      return fail_with(Error::kModule, error);
     }
     retain(enclosure->AllocatedBytes());
     const auto external = enclosure->Names().size();
@@ -64,14 +70,14 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     const auto* local_names = std::get_if<ModuleBindingNames>(&named);
     if (!local_names) return std::visit([&](auto error) -> RecordSourceResult {
       using T = decltype(error);
-      if (error == T::kResourceLimit) return fail(Error::kResourceLimit);
+      if (error == T::kResourceLimit) return fail_with(Error::kResourceLimit, error);
       if constexpr (std::is_same_v<T, abc::MetadataError>) {
-        if (error == T::kFileChanged) return fail(Error::kFileChanged);
-        if (error == T::kRead) return fail(Error::kRead);
+        if (error == T::kFileChanged) return fail_with(Error::kFileChanged, error);
+        if (error == T::kRead) return fail_with(Error::kRead, error);
       } else if (error == T::kWorkLimit) {
         return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
       }
-      return fail(Error::kExport);
+      return fail_with(Error::kExport, error);
     }, std::get<ModuleBindingNameFailure>(named));
     retain(local_names->allocated_bytes);
     if (local_names->locals.size() != slots->slot_count()) return fail(Error::kExport);
@@ -98,14 +104,14 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         return std::visit([&](const auto& failure) -> RecordSourceResult {
           using T = std::decay_t<decltype(failure)>;
           if constexpr (std::is_same_v<T, FunctionFileError>) {
-            if (failure == FunctionFileError::kResourceLimit) return fail(Error::kResourceLimit);
-            if (failure == FunctionFileError::kChanged) return fail(Error::kFileChanged);
+            if (failure == FunctionFileError::kResourceLimit) return fail_with(Error::kResourceLimit, failure);
+            if (failure == FunctionFileError::kChanged) return fail_with(Error::kFileChanged, failure);
           } else if constexpr (std::is_same_v<T, abc::MetadataError>) {
-            if (failure == abc::MetadataError::kResourceLimit) return fail(Error::kResourceLimit);
-            if (failure == abc::MetadataError::kFileChanged) return fail(Error::kFileChanged);
-            if (failure == abc::MetadataError::kRead) return fail(Error::kRead);
+            if (failure == abc::MetadataError::kResourceLimit) return fail_with(Error::kResourceLimit, failure);
+            if (failure == abc::MetadataError::kFileChanged) return fail_with(Error::kFileChanged, failure);
+            if (failure == abc::MetadataError::kRead) return fail_with(Error::kRead, failure);
           }
-          return fail(Error::kBody);
+          return fail_with(Error::kBody, failure);
         }, error);
       }
       standalone.emplace(std::move(*function)); function = &*standalone;
@@ -140,10 +146,10 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     auto* prototype_reads = std::get_if<ClassPrototypeReads>(&found_prototypes);
     if (!prototype_reads) {
       const auto error = std::get<ClassPrototypeError>(found_prototypes);
-      if (error == ClassPrototypeError::kResourceLimit) return fail(Error::kResourceLimit);
+      if (error == ClassPrototypeError::kResourceLimit) return fail_with(Error::kResourceLimit, error);
       if (error == ClassPrototypeError::kWorkLimit)
         return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
-      return fail(Error::kValue);
+      return fail_with(Error::kValue, error);
     }
     retain(prototype_reads->allocated_bytes);
     std::erase_if(prototype_reads->reads, [&](const auto& site) {
@@ -153,10 +159,10 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     const auto* projection = std::get_if<ClassProjection>(&projected);
     if (!projection) {
       const auto error = std::get<ClassInitializerError>(projected);
-      if (error == ClassInitializerError::kResourceLimit) return fail(Error::kResourceLimit);
+      if (error == ClassInitializerError::kResourceLimit) return fail_with(Error::kResourceLimit, error);
       if (error == ClassInitializerError::kWorkLimit)
         return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
-      return fail(Error::kInitializer);
+      return fail_with(Error::kInitializer, error);
     }
     retain(projection->allocated_bytes);
     for (const auto read : projection->prototypes) {
@@ -181,15 +187,15 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           graph, constants->names, syntax.locals, {budget.bytes});
       if (const auto* storage = std::get_if<CellNameStorage>(&named)) retain(storage->bytes);
       else if (const auto* error = std::get_if<abc::MetadataError>(&named)) {
-        if (*error == abc::MetadataError::kFileChanged) return fail(Error::kFileChanged);
-        if (*error == abc::MetadataError::kResourceLimit) return fail(Error::kResourceLimit);
-        return fail(Error::kRead);
+        if (*error == abc::MetadataError::kFileChanged) return fail_with(Error::kFileChanged, *error);
+        if (*error == abc::MetadataError::kResourceLimit) return fail_with(Error::kResourceLimit, *error);
+        return fail_with(Error::kRead, *error);
       } else {
         const auto constant_error = std::get<TreeConstantError>(named);
-        if (constant_error == TreeConstantError::kResourceLimit) return fail(Error::kResourceLimit);
+        if (constant_error == TreeConstantError::kResourceLimit) return fail_with(Error::kResourceLimit, constant_error);
         if (constant_error == TreeConstantError::kWorkLimit)
           return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
-        return fail(Error::kValue);
+        return fail_with(Error::kValue, constant_error);
       }
       proposed_names = !syntax.locals.empty();
     }
@@ -273,14 +279,14 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     if (!bindings) {
       const auto classify = [&](const auto& error) -> RecordSourceResult {
         using T = std::decay_t<decltype(error)>;
-        if (error == T::kResourceLimit) return fail(Error::kResourceLimit);
+        if (error == T::kResourceLimit) return fail_with(Error::kResourceLimit, error);
         if constexpr (std::is_same_v<T, abc::MetadataError>) {
-          if (error == T::kFileChanged) return fail(Error::kFileChanged);
-          if (error == T::kRead) return fail(Error::kRead);
+          if (error == T::kFileChanged) return fail_with(Error::kFileChanged, error);
+          if (error == T::kRead) return fail_with(Error::kRead, error);
         } else if (error == T::kWorkLimit) {
           return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
         }
-        return fail(Error::kModule);
+        return fail_with(Error::kModule, error);
       };
       return std::visit([&](const auto& error) -> RecordSourceResult {
         using T = std::decay_t<decltype(error)>;
@@ -338,10 +344,10 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     if (placed != stores) {
       auto checked = analysis::VerifyValueFlow(graph, {budget.bytes});
       if (const auto* error = std::get_if<analysis::ValueAvailabilityError>(&checked)) {
-        if (*error == analysis::ValueAvailabilityError::kResourceLimit) return fail(Error::kResourceLimit);
+        if (*error == analysis::ValueAvailabilityError::kResourceLimit) return fail_with(Error::kResourceLimit, *error);
         if (*error == analysis::ValueAvailabilityError::kWorkLimit)
           return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kContextStage, {}}};
-        return fail(Error::kValue);
+        return fail_with(Error::kValue, *error);
       }
       initialization_flow.emplace(std::get<analysis::ValueFlowProof>(std::move(checked)));
       retain(initialization_flow->allocated_bytes);
@@ -579,7 +585,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           if (const auto* error = std::get_if<TreePrintError>(&checked)) {
             if (*error == TreePrintError::kWorkLimit)
               return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kPrintStage, {}}};
-            return fail(Error::kResourceLimit);
+            return fail_with(Error::kResourceLimit, *error);
           }
           const auto& check = std::get<DefaultExportCheck>(checked);
           retain(check.allocated_bytes);
@@ -597,12 +603,13 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         {std::min(budget.strings.bytes, budget.bytes)});
     const auto* prelude_bytes = std::get_if<std::size_t>(&prelude);
     if (!prelude_bytes) {
-      switch (std::get<ModuleImportFailure>(prelude).kind) {
-        case ModuleImportError::kOutputLimit: return fail(Error::kOutputLimit);
-        case ModuleImportError::kResourceLimit: return fail(Error::kResourceLimit);
-        case ModuleImportError::kWrite: return fail(Error::kWrite);
+      const auto import_error = std::get<ModuleImportFailure>(prelude).kind;
+      switch (import_error) {
+        case ModuleImportError::kOutputLimit: return fail_with(Error::kOutputLimit, import_error);
+        case ModuleImportError::kResourceLimit: return fail_with(Error::kResourceLimit, import_error);
+        case ModuleImportError::kWrite: return fail_with(Error::kWrite, import_error);
         case ModuleImportError::kRequestIndex:
-        case ModuleImportError::kString: return fail(Error::kModule);
+        case ModuleImportError::kString: return fail_with(Error::kModule, import_error);
       }
     }
     bool incomplete = false;
@@ -624,12 +631,13 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     }();
     const auto* body = std::get_if<std::size_t>(&printed);
     if (!body) {
-      switch (std::get<TreePrintError>(printed)) {
-        case TreePrintError::kResourceLimit: return fail(Error::kResourceLimit);
-        case TreePrintError::kOutputLimit: return fail(Error::kOutputLimit);
-        case TreePrintError::kWrite: return fail(Error::kWrite);
+      const auto print_error = std::get<TreePrintError>(printed);
+      switch (print_error) {
+        case TreePrintError::kResourceLimit: return fail_with(Error::kResourceLimit, print_error);
+        case TreePrintError::kOutputLimit: return fail_with(Error::kOutputLimit, print_error);
+        case TreePrintError::kWrite: return fail_with(Error::kWrite, print_error);
         case TreePrintError::kUnsupportedContext:
-        case TreePrintError::kInvalidLiteral: return fail(Error::kValue);
+        case TreePrintError::kInvalidLiteral: return fail_with(Error::kValue, print_error);
         case TreePrintError::kWorkLimit:
           return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kPrintStage, {}}};
       }

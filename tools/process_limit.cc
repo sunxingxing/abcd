@@ -3,6 +3,8 @@
 #include <sys/resource.h>
 
 #include <algorithm>
+#include <atomic>
+#include <new>
 
 namespace abcd::tools {
 ProcessLimit EstablishProcessLimit() {
@@ -36,12 +38,22 @@ bool ProcessLimitAcceptable(const ProcessLimit& limit) {
 }
 
 namespace {
+std::atomic<bool> allocation_failed{false};
+void OnAllocationFailure() {
+  allocation_failed.store(true, std::memory_order_relaxed);
+  throw std::bad_alloc();
+}
 nlohmann::json DescribeLimit(const ProcessLimit& limit) {
   return {{"kind", limit.kind == LimitKind::kAddressSpace ? "address_space" : "none"},
           {"bytes", limit.bytes ? nlohmann::json(*limit.bytes) : nlohmann::json(nullptr)},
           {"established", limit.established}};
 }
 }  // namespace
+
+void InstallAllocationFailureMonitor() { std::set_new_handler(OnAllocationFailure); }
+bool TakeAllocationFailure() {
+  return allocation_failed.exchange(false, std::memory_order_relaxed);
+}
 
 void ReportLimitFailure(std::ostream& output, const ProcessLimit& limit) {
   output << nlohmann::json{{"error", "process_limit"},

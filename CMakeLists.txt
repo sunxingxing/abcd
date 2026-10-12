@@ -113,6 +113,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/global_access.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/module_load.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/module_store.cc src/analysis/module_slot_set.cc src/analysis/module_initialization.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/ordinary_call.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/transparent_rethrow.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/constructor_call.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/named_invocation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/phi_placement.cc src/analysis/iterated_frontier.cc)
@@ -296,6 +297,8 @@ if(ABCD_BUILD_TOOLS)
   target_link_libraries(abc_semantic PRIVATE abcd_source abcd_json abcd_process)
   add_executable(abc_structure tools/abc_structure.cc tools/record_failure_json.cc)
   target_link_libraries(abc_structure PRIVATE abcd_structure abcd_corpus abcd_json abcd_process)
+  add_executable(abc_capability tools/abc_capability.cc)
+  target_link_libraries(abc_capability PRIVATE abcd_source abcd_json abcd_process)
   add_executable(abc_scan tools/abc_scan.cc)
   target_link_libraries(abc_scan PRIVATE abcd_corpus abcd_json abcd_process)
   add_library(abcd_inspection tools/corpus_inspection.cc tools/method_inspection.cc tools/reference_inspection.cc tools/module_inspection.cc)
@@ -1088,6 +1091,9 @@ if(BUILD_TESTING)
   add_executable(ordinary_call_test tests/unit/analysis/ordinary_call_test.cc)
   target_link_libraries(ordinary_call_test PRIVATE abcd_source)
   add_test(NAME ordinary_call_test COMMAND ordinary_call_test)
+  add_executable(transparent_rethrow_test tests/unit/analysis/transparent_rethrow_test.cc)
+  target_link_libraries(transparent_rethrow_test PRIVATE abcd_analysis)
+  add_test(NAME transparent_rethrow_test COMMAND transparent_rethrow_test)
   add_executable(constructor_call_test tests/unit/analysis/constructor_call_test.cc)
   target_link_libraries(constructor_call_test PRIVATE abcd_source)
   add_test(NAME constructor_call_test COMMAND constructor_call_test)
@@ -2326,6 +2332,11 @@ if(BUILD_TESTING)
         -DABCD_NODE=${ABCD_NODE_EXECUTABLE}
         -DABCD_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_constructor.mjs
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_constructor.cmake)
+      add_test(NAME capability_cli_test COMMAND ${CMAKE_COMMAND}
+        -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
+        -DABCD_CAPABILITY=$<TARGET_FILE:abc_capability>
+        -DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/capability_cli.cmake)
       add_test(NAME historical_record_source_test COMMAND ${CMAKE_COMMAND}
         -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
         -DABCD_SAMPLE=${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc
@@ -2372,6 +2383,10 @@ if(BUILD_TESTING)
     target_include_directories(record_failure_json_test PRIVATE tools)
     target_link_libraries(record_failure_json_test PRIVATE abcd_source abcd_json)
     add_test(NAME record_failure_json_test COMMAND record_failure_json_test)
+    add_executable(process_limit_test tests/unit/tools/process_limit_test.cc)
+    target_include_directories(process_limit_test PRIVATE tools)
+    target_link_libraries(process_limit_test PRIVATE abcd_process)
+    add_test(NAME process_limit_test COMMAND process_limit_test)
     add_executable(index_fixture tests/integration/index_fixture.cc)
     target_link_libraries(index_fixture PRIVATE abcd_abc ZLIB::ZLIB)
     add_test(NAME index_cli_test COMMAND ${CMAKE_COMMAND}

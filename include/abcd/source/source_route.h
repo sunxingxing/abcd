@@ -2,6 +2,8 @@
 #define ABCD_SOURCE_SOURCE_ROUTE_H_
 
 #include <cstdint>
+#include <type_traits>
+#include <array>
 #include <optional>
 #include <span>
 #include <string>
@@ -56,11 +58,50 @@ enum class ValueRouteError : std::uint8_t {
   kTreeStage,
   kPrintStage,
 };
+// Typed failure cause (S2): one enum value from a stage on the failing path.
+// domain is the compiler-derived qualified enum type name; it is a
+// serialization label only and is never parsed back into engine decisions.
+struct FailureCause {
+  std::string_view domain;
+  std::uint32_t value = 0;
+};
+// Bounded cause chain, outermost stage first; the last entry is the leaf.
+inline constexpr std::size_t kMaxFailureCauses = 8;
+struct FailureCauseChain {
+  std::array<FailureCause, kMaxFailureCauses> entries{};
+  std::uint8_t count = 0;
+  bool truncated = false;
+  [[nodiscard]] std::span<const FailureCause> View() const { return {entries.data(), count}; }
+  void Append(FailureCause cause) {
+    if (count == kMaxFailureCauses) { truncated = true; return; }
+    entries[count++] = cause;
+  }
+  void Extend(const FailureCauseChain& inner) {
+    for (const auto cause : inner.View()) Append(cause);
+    truncated |= inner.truncated;
+  }
+};
 struct RouteFailure {
   RouteFailureClass failure_class;
   ValueRouteError reason;
   std::optional<abc::CodeOffset> pc = {};
+  FailureCauseChain causes = {};
 };
+template <class E>
+constexpr std::string_view FailureDomain() {
+  static_assert(std::is_enum_v<E>);
+  constexpr std::string_view signature = __PRETTY_FUNCTION__;
+  constexpr auto marker = signature.find("E = ");
+  static_assert(marker != std::string_view::npos);
+  constexpr auto begin = marker + 4;
+  constexpr auto end = signature.find_first_of(";]", begin);
+  return signature.substr(begin, end - begin);
+}
+// Appends one typed cause; a full chain records truncation instead.
+template <class E>
+void AppendFailureCause(FailureCauseChain& chain, E value) {
+  chain.Append({FailureDomain<E>(), static_cast<std::uint32_t>(value)});
+}
 
 // Typed identity binding route evidence to the exact input it describes
 // (T00 correction R3). Reuses the existing content-hash, ABC-version, profile

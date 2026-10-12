@@ -5,6 +5,7 @@
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/emission.h"
+#include "abcd/source/source_route.h"
 
 namespace abcd::source {
 enum class RecordProgramError : unsigned {
@@ -33,11 +34,17 @@ enum class RecordProgramError : unsigned {
   // budget check. Isolated to this record; other records are still exported.
   // kResourceLimit stays process-fatal: lower stages still fold real
   // allocation failures into it, so its origin is not provable here.
-  kRecordBudget = 19
+  kRecordBudget = 19,
+  // A whole-file source index (method roles, function/class creation sites)
+  // could not be built; every record of the file reports it with the typed
+  // causes. The structural export still completes.
+  kFileIndex = 20
 };
 struct RecordProgramFailure {
   RecordProgramError kind;
   abc::CodeOffset pc;
+  // Typed causes from the stage that produced this record failure (S2).
+  FailureCauseChain causes = {};
 };
 struct RecordProgramBudget {
   std::size_t bytes = 128 * 1024 * 1024;

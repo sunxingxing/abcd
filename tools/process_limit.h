@@ -37,6 +37,13 @@ struct ProcessLimit {
 // Report fields: process_limit {kind, bytes, established},
 // address_space_limit_bytes (null when not established), peak_rss_bytes.
 void ReportProcessMemory(nlohmann::json& report, const ProcessLimit& limit);
+// Real allocation failures are observed out of band: a std::new_handler sets
+// a flag before throwing std::bad_alloc, so a failure stays visible even when
+// a lower stage folds the exception into its own resource-limit error. Budget
+// exhaustion never reaches operator new failure and does not set the flag.
+void InstallAllocationFailureMonitor();
+// Returns whether an allocation failed since the previous call, and clears it.
+[[nodiscard]] bool TakeAllocationFailure();
 // Structured diagnostic for a limit that could not be established; written as
 // one JSON line {"error":"process_limit","process_limit":{...}}.
 void ReportLimitFailure(std::ostream& output, const ProcessLimit& limit);

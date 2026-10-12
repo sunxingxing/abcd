@@ -1,4 +1,5 @@
 #include "abcd/source/async_completion.h"
+#include "abcd/abc/profile_capabilities.h"
 
 #include <algorithm>
 #include <climits>
@@ -31,19 +32,9 @@ bool IsReturn(const abc::BodyInstruction& instruction) {
 }
 bool AllowsLexicalPrelude(abc::ProfileId profile, ResourceFailureScope resources) {
   if (resources != ResourceFailureScope::kExcluded) return false;
-  // Same modern resume profiles as FindAwaitRegions. Do not infer support
-  // for historical/future encodings from a matching opcode spelling.
-  switch (profile) {
-    case abc::ProfileId::kDynamic1202:
-    case abc::ProfileId::kDynamic1206:
-    case abc::ProfileId::kDynamic1301: return true;
-    case abc::ProfileId::kUnknown:
-    case abc::ProfileId::kDynamic9:
-    case abc::ProfileId::kDynamic1102:
-    case abc::ProfileId::kDynamic2400:
-    case abc::ProfileId::kStatic0107: return false;
-  }
-  return false;
+  // Same resume protocol as FindAwaitRegions: the pinned-runtime column of
+  // the profile capability table, never an opcode spelling match.
+  return abc::HasPinnedRuntimeSemantics(profile);
 }
 bool TouchesRegister(const abc::BodyInstruction& instruction,
                      abc::RegisterId register_id, std::uint32_t count) {

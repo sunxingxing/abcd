@@ -1,4 +1,5 @@
 #include "abcd/analysis/await_region.h"
+#include "abcd/abc/profile_capabilities.h"
 
 #include <algorithm>
 #include <new>
@@ -120,14 +121,8 @@ const AwaitRegion* Interior(const std::vector<AwaitRegion>& regions,
 
 AwaitRegions FindAwaitRegions(const abc::MethodBody& body, abc::ProfileId profile,
                              std::uint64_t frame_size, std::size_t bytes) {
-  switch (profile) {
-    case abc::ProfileId::kDynamic1202:
-    case abc::ProfileId::kDynamic1206:
-    case abc::ProfileId::kDynamic1301:
-      break;
-    default:
-      return AwaitRegionFailure{AwaitRegionError::kUnsupportedProfile, {}};
-  }
+  if (!abc::HasPinnedRuntimeSemantics(profile))
+    return AwaitRegionFailure{AwaitRegionError::kUnsupportedProfile, {}};
   try {
     const auto sites = std::span(body.instructions);
     std::size_t count = 0;

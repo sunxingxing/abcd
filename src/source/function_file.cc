@@ -1,4 +1,5 @@
 #include "function_file.h"
+#include "abcd/analysis/transparent_rethrow.h"
 
 #include <new>
 #include <stdexcept>
@@ -33,6 +34,9 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     auto decoded = abc::DecodeMethodBody(file, header.profile, *method.code, {bytes});
     if (const auto* error = std::get_if<abc::BodyFailure>(&decoded)) return FunctionFileFailure{*error};
     auto body = std::get<abc::MethodBody>(std::move(decoded));
+    // Exception-transparent rethrow regions are semantically absent; the
+    // method then takes the normal route (analysis/transparent_rethrow.h).
+    static_cast<void>(analysis::EraseTransparentRethrowRegions(body));
     arena(body.instructions); arena(body.tries); arena(body.handlers);
     std::optional<CleanupBody> cleanup;
     if (body_mode == FunctionBodyMode::kCleanupEntry) {

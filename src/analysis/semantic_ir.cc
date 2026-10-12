@@ -1,4 +1,5 @@
 #include "abcd/analysis/semantic_ir.h"
+#include "abcd/abc/profile_capabilities.h"
 
 #include <new>
 #include <stdexcept>
@@ -21,19 +22,7 @@ SemanticFailure Fail(SemanticError kind, abc::CodeOffset pc = {}) {
 }
 
 bool SupportsSemantics(abc::ProfileId profile) {
-  switch (profile) {
-    case abc::ProfileId::kDynamic1202:
-    case abc::ProfileId::kDynamic1206:
-    case abc::ProfileId::kDynamic1301:
-      return true;
-    case abc::ProfileId::kUnknown:
-    case abc::ProfileId::kDynamic9:
-    case abc::ProfileId::kDynamic1102:
-    case abc::ProfileId::kDynamic2400:
-    case abc::ProfileId::kStatic0107:
-      return false;
-  }
-  return false;
+  return abc::HasPinnedRuntimeSemantics(profile);
 }
 
 std::variant<SemanticOperation, SemanticFailure> LiftOperation(

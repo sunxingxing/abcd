@@ -1,4 +1,5 @@
 #include "creation_tree_context.h"
+#include "abcd/abc/profile_capabilities.h"
 
 #include <new>
 #include <stdexcept>
@@ -17,8 +18,7 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     analysis::FunctionSiteId site, RouteInputIdentity identity, analysis::SemanticBudget budget,
     CreationContextMode mode) {
   try {
-    Require(header.profile == abc::ProfileId::kDynamic1202 || header.profile == abc::ProfileId::kDynamic1206 ||
-        header.profile == abc::ProfileId::kDynamic1301, Error::kProfile);
+    Require(abc::HasPinnedRuntimeSemantics(header.profile), Error::kProfile);
     Require(identity.profile == header.profile && identity.abc_version == header.version &&
         identity.file_size == header.file_size, Error::kProfile);
     if (file.Size() != header.file_size || file.CheckUnchanged())

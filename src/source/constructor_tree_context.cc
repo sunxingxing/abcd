@@ -4,6 +4,7 @@
 #include <new>
 #include <stdexcept>
 #include "function_file.h"
+#include "abcd/abc/profile_capabilities.h"
 namespace abcd::source {
 std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveConstructor(
     const corpus::AbcFile& file, const abc::Header& header,
@@ -26,8 +27,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveCon
     if (identity.profile != header.profile || identity.file_size != header.file_size ||
         identity.abc_version != header.version) return fail(Error::kProfile);
     if (file.Size() != header.file_size || file.CheckUnchanged()) return ClassContextFailure{abc::MetadataError::kFileChanged};
-    if (header.profile != abc::ProfileId::kDynamic1202 && header.profile != abc::ProfileId::kDynamic1206 &&
-        header.profile != abc::ProfileId::kDynamic1301) return fail(Error::kProfile);
+    if (!abc::HasPinnedRuntimeSemantics(header.profile)) return fail(Error::kProfile);
     // Caller supplies a fresh unchanged file-backed input/value pair, as for
     // family capture binding. Resolve one occurrence in O(log M + log R), never
     // decode and rescan the entire creator for every class in a large record.

@@ -386,8 +386,373 @@
       "id": "harmony-frozen-holdout",
       "kind": "holdout",
       "root": "harmony",
-      "status": "pending_selection",
-      "rule": "Select by application family, content hash and profile (including 24.0.0.0), disjoint from every development, regression and exploration hash; freeze identities before evaluation. Any holdout input used to guide a fix moves to exploration. Selection does not require resuming paused batch runs."
+      "status": "frozen",
+      "rule": "Select by application family, content hash and profile (including 24.0.0.0), disjoint from every development, regression and exploration hash; freeze identities before evaluation. Any holdout input used to guide a fix moves to exploration. Selection does not require resuming paused batch runs.",
+      "frozen_on": "2026-10-12",
+      "selection": "ready-abc-files.jsonl, group=application, bytes <= 2,000,000, hash and project disjoint from regression and exploration; per version (12.0.2, 12.0.6, 13.0.1, 24.0) random.seed(20261013) shuffle of sha256-sorted pool, first 15 distinct projects",
+      "inputs": [
+        {
+          "path": "projects/SuperFeature/Widget/ArkTSCard/CardInteractionCase/artifacts/entry/default/default/widgets/widgets.abc",
+          "sha256": "c0528978dc8a882c3cc4cc7dfcc7031f256b017044bdbed2d4ef9b1653ab1262",
+          "version": "12.0.2.0",
+          "project": "code/SuperFeature/Widget/ArkTSCard/CardInteractionCase"
+        },
+        {
+          "path": "projects/UI/KeyboardAvoid/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "77d49d4cf4aac8f959a270a264ff78063e7003100508d0f076246086c9f5c280",
+          "version": "12.0.2.0",
+          "project": "code/UI/KeyboardAvoid"
+        },
+        {
+          "path": "projects/DocsSample/Media/Audio/AudioDuckSampleC/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "3d4710cbf1f19c17be002f301180dcae6196d5023b9db9afcc1c859e429e2aa1",
+          "version": "12.0.2.0",
+          "project": "code/DocsSample/Media/Audio/AudioDuckSampleC"
+        },
+        {
+          "path": "projects/SuperFeature/DistributedAppDev/JsDistributedMusicPlayer/artifacts/entry/default/default/legacy-js/MainAbility/app/app.abc",
+          "sha256": "37902918564e6d804fa27291c758432a874fac831c1d52c9913fc9ff15dfdf88",
+          "version": "12.0.2.0",
+          "project": "code/SuperFeature/DistributedAppDev/JsDistributedMusicPlayer"
+        },
+        {
+          "path": "projects/BasicFeature/Notification/CustomCommonEvent/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "e768cab2c2feef88b02bc867ee439088d6afa67e9b2e1ffb88b51ab983458271",
+          "version": "12.0.2.0",
+          "project": "code/BasicFeature/Notification/CustomCommonEvent"
+        },
+        {
+          "path": "projects/SuperFeature/MultiDeviceAppDev/JsAdaptiveCapabilities/artifacts/entry/default/default/legacy-js/MainAbility/vendors/vendors.abc",
+          "sha256": "3a295f167acd72451cf80bc1cc33e39ff749edfafd360aabcfaf1b95e07a31a3",
+          "version": "12.0.2.0",
+          "project": "code/SuperFeature/MultiDeviceAppDev/JsAdaptiveCapabilities"
+        },
+        {
+          "path": "projects/DocsSample/Media/Audio/AudioEffectManagement/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "cb1c0ea4ea32515148f1b633ae67526beb349da27789d313eac9b761fe335bde",
+          "version": "12.0.2.0",
+          "project": "code/DocsSample/Media/Audio/AudioEffectManagement"
+        },
+        {
+          "path": "projects/DocsSample/MindSporeLiteKit/MindSporeLiteArkTSDemo/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "6c7b4816ed4bd08151031742fa9c3588ebd1ab92ce9f5ceb9cb43971274dac6c",
+          "version": "12.0.2.0",
+          "project": "code/DocsSample/MindSporeLiteKit/MindSporeLiteArkTSDemo"
+        },
+        {
+          "path": "projects/SuperFeature/DistributedAppDev/DistributedRdb/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "212e38c1a5089aa56c82ed949f36d115b941a81c02500c89d15ea4c05d6a35fe",
+          "version": "12.0.2.0",
+          "project": "code/SuperFeature/DistributedAppDev/DistributedRdb"
+        },
+        {
+          "path": "projects/BasicFeature/Security/PaySecurely/artifacts/paySDK/default/default/modules/modules.abc",
+          "sha256": "c9b1fdca730968c20b174b9230c77f2df8d299ab2e739da6ef6d2ff589893aa0",
+          "version": "12.0.2.0",
+          "project": "code/BasicFeature/Security/PaySecurely"
+        },
+        {
+          "path": "projects/SuperFeature/MultiDeviceAppDev/MultiNavBar/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "276ce8245a1f2d4cf05b76de7459b3fda5cec49fca064cb9c7285655e2d31b2d",
+          "version": "12.0.2.0",
+          "project": "code/SuperFeature/MultiDeviceAppDev/MultiNavBar"
+        },
+        {
+          "path": "projects/UI/PullToRefresh/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "72d77f4cce9169f3d02b16345be7cebe519222d565a9e29954bdfff20225abb1",
+          "version": "12.0.2.0",
+          "project": "code/UI/PullToRefresh"
+        },
+        {
+          "path": "projects/BasicFeature/DataManagement/pasteboard/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "527bcf73a58f0c03d17a052ae347471c5322103b0402d2e3979d34a205b8822a",
+          "version": "12.0.2.0",
+          "project": "code/BasicFeature/DataManagement/pasteboard"
+        },
+        {
+          "path": "projects/BasicFeature/DFX/AppRecovery/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "455c22188048d29e8092e26a2d893fdfc27516c8e53bfad64e68b304ede9c098",
+          "version": "12.0.2.0",
+          "project": "code/BasicFeature/DFX/AppRecovery"
+        },
+        {
+          "path": "projects/BasicFeature/DFX/Debug/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "94219a659e31aad854f89e3c496a5826db59eb06564f7e15b28f56d78cdab4eb",
+          "version": "12.0.2.0",
+          "project": "code/BasicFeature/DFX/Debug"
+        },
+        {
+          "path": "projects/BasicFeature/Native/NdkNotification/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "b4c5755063de026b8fcdaf8cc5f8ada6f7a684a923f5ba526ac4aa8b6994b780",
+          "version": "12.0.6.0",
+          "project": "code/BasicFeature/Native/NdkNotification"
+        },
+        {
+          "path": "projects/DocsSample/ConnectivityKit/NFC/NFCReadAndWrite/artifacts/entry1/default/default/modules/modules.abc",
+          "sha256": "bcc6e58244d724bce06fd1084f549c1a2241aba481e3af2a4b7e5fb3662c5872",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/ConnectivityKit/NFC/NFCReadAndWrite"
+        },
+        {
+          "path": "projects/DocsSample/Security/CryptoArchitectureKit/KeyNegotiation/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "62b2bb9ea8c4c766c53ecf5f23e967c21fbd397a1ea3a9ab737c936f7a33984c",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/Security/CryptoArchitectureKit/KeyNegotiation"
+        },
+        {
+          "path": "projects/UI/ArkTsComponentCollection/StateManagement/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "e3a76be919cfd736e0ebc73f91da608b36a62167537b019a1ac33e47558fc0fa",
+          "version": "12.0.6.0",
+          "project": "code/UI/ArkTsComponentCollection/StateManagement"
+        },
+        {
+          "path": "projects/DocsSample/graphic/NDKGraphics2D/NDKTextDecorationPlaceholder/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "bccda363607185052e398b6cc3d36492c809b33798e0a73f8d3dde1b413d32f0",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/graphic/NDKGraphics2D/NDKTextDecorationPlaceholder"
+        },
+        {
+          "path": "projects/DocsSample/Media/Image/NdkPixelMap_js/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "8c34bd7c2ad7023cbe4213d12a56f10978ca81ef228c933b9253e3c7c36c6672",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/Media/Image/NdkPixelMap_js"
+        },
+        {
+          "path": "projects/Project/ApplicationHap/MultiHap/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "135995c545cfa8e890d0b36b5fa2c9be12bbe9f83a5bd1672c0ce0b63d9cf4d7",
+          "version": "12.0.6.0",
+          "project": "code/Project/ApplicationHap/MultiHap"
+        },
+        {
+          "path": "projects/BasicFeature/Graphics/Graphics2d/TsDrawingSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "3e5aaa184f607453d93f7e13fd1a086bc8dc2978677194c53395131088a8871f",
+          "version": "12.0.6.0",
+          "project": "code/BasicFeature/Graphics/Graphics2d/TsDrawingSample"
+        },
+        {
+          "path": "projects/UI/ArkTsComponentCollection/MediaQuery/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "a81f1df563b9ffc47ea97d1a8f54d5b6b5a05c947f627313ee45914089acb65e",
+          "version": "12.0.6.0",
+          "project": "code/UI/ArkTsComponentCollection/MediaQuery"
+        },
+        {
+          "path": "projects/DocsSample/ConnectivityKit/Bluetooth/SerialCommunication/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "ff34ae9904b13ed537b0461377c05579f97125573aa40225da98d15b26f049f2",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/ConnectivityKit/Bluetooth/SerialCommunication"
+        },
+        {
+          "path": "projects/DocsSample/ResourceManagement/RawFile/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "cf0eae6bb8333702e31b6843e9c4592a234b4941ae706281e588d65d7b92e1bd",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/ResourceManagement/RawFile"
+        },
+        {
+          "path": "projects/DocsSample/Security/CryptoArchitectureKit/EncryptionDecryption/EncryptionDecryptionGuidanceRSA/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "1b4cf1540f4575dd8d2dce0fa42aee4c0370a2f436961034113dcb10b22b6a7a",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/Security/CryptoArchitectureKit/EncryptionDecryption/EncryptionDecryptionGuidanceRSA"
+        },
+        {
+          "path": "projects/DocsSample/Security/CryptoArchitectureKit/KeyGenerationConversion/BinaryDataConvertAsymmetricKeyPair/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "abd5a3150fb1948336d6327c11edb6925c4ec88d7948af7e3b1e99eea01c62d6",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/Security/CryptoArchitectureKit/KeyGenerationConversion/BinaryDataConvertAsymmetricKeyPair"
+        },
+        {
+          "path": "projects/Performance/web_import/WebImportInterJS/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "1f7b0a0b91d18129b486fbc6753709115a8fe154e80d3b75a489522d5d11df53",
+          "version": "12.0.6.0",
+          "project": "code/Performance/web_import/WebImportInterJS"
+        },
+        {
+          "path": "projects/DocsSample/Media/AVPlayer/AVPlayerArkTSURL/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "6e53bd2cfbebb1c4c1c47059a96517daca91d3e010d4cef7088c78954d7c3557",
+          "version": "12.0.6.0",
+          "project": "code/DocsSample/Media/AVPlayer/AVPlayerArkTSURL"
+        },
+        {
+          "path": "projects/DocsSample/Security/CryptoArchitectureKit/SignatureVerification/SigningSignatureVerificationArkTs/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "0b561ea23133a23a882ad006e48e48ea4d7fbd0f67338dbac833787a0f5aa96f",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Security/CryptoArchitectureKit/SignatureVerification/SigningSignatureVerificationArkTs"
+        },
+        {
+          "path": "projects/DocsSample/Media/Camera/YUVPhotoSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "22d4dcbfc9045fc6932ca3402cd7048b05f4f66f7c3da29e43953aef476eb8d2",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Media/Camera/YUVPhotoSample"
+        },
+        {
+          "path": "projects/DocsSample/Media/Camera/NDKDeferredCaptureSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "c04efd188af9bd4a19fed2e41732e225fb8272e42a8f9aa8e4f5952402e6dba5",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Media/Camera/NDKDeferredCaptureSample"
+        },
+        {
+          "path": "projects/DocsSample/Security/UniversalKeystoreKit/NonanonymousKeyProof/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "c1accd618067725cd4ad112fc14a3777f8966e921af077f025480297d5a83bc8",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Security/UniversalKeystoreKit/NonanonymousKeyProof"
+        },
+        {
+          "path": "projects/DocsSample/Security/UniversalKeystoreKit/KeyUsage/SigningVerification/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "c4184ce821c4ef950f53b63d1c8044fba308929925b812cddce660c607df0535",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Security/UniversalKeystoreKit/KeyUsage/SigningVerification"
+        },
+        {
+          "path": "projects/DocsSample/Media/Audio/VoipCallSampleJS/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "34e8dda881eeedc2d01564310a4cbf7a5c020cd8603225af6d6d8854e5163e7e",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Media/Audio/VoipCallSampleJS"
+        },
+        {
+          "path": "projects/DocsSample/bmsSample/TypicalScenarioConfiguration/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "86df85932ef6e124af2554ca240f28e59af1f1af445e3b28d517832dc62b7824",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/bmsSample/TypicalScenarioConfiguration"
+        },
+        {
+          "path": "projects/DocsSample/Security/CryptoArchitectureKit/EncryptionDecryption/EncryptionDecryptionGuidanceSM4/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "c43959003605937fc3116360c17c2344af9ab5db2f82b264d63d3e0a18130008",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Security/CryptoArchitectureKit/EncryptionDecryption/EncryptionDecryptionGuidanceSM4"
+        },
+        {
+          "path": "projects/DocsSample/Security/UniversalKeystoreKit/OtherOperations/CheckKeyExists/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "1ac2bbeddf888d1b7eb3c758e9ff1c722c1249e9fb599b6b99d672c37dcfd99f",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Security/UniversalKeystoreKit/OtherOperations/CheckKeyExists"
+        },
+        {
+          "path": "projects/DocsSample/IPC/IPC_sendMessage/IPC_Client/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "6feb34f582ef8e574b7dc70f99a8797b996817d6d13cd19585213480f6d00d16",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/IPC/IPC_sendMessage/IPC_Client"
+        },
+        {
+          "path": "projects/DocsSample/Form/FormManagerDemo/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "767c4fbad4775456a408cbc1fc365231304cf960f028690ff7f0e9f72fce85d1",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Form/FormManagerDemo"
+        },
+        {
+          "path": "projects/DocsSample/Media/LowPowerAVSInk/lowPowerAVSinkSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "f2682202d31bbdc54bc37b3377e76064f1820e77322a78ac6baf8b222b57ee0b",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Media/LowPowerAVSInk/lowPowerAVSinkSample"
+        },
+        {
+          "path": "projects/DocsSample/MediaLibraryKit/MovingPhotoViewSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "61dc5d242266b36e7bbcf5424a380228e8f4ac6d2198ca07d5994cb59690e48d",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/MediaLibraryKit/MovingPhotoViewSample"
+        },
+        {
+          "path": "projects/DocsSample/Security/CryptoArchitectureKit/EncryptionDecryption/EncryptionDecryptionGuidanceCpp/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "779468780a0cdec35998bc7eb3217cd5275dc2b2e134804d272fe694f60a1f57",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/Security/CryptoArchitectureKit/EncryptionDecryption/EncryptionDecryptionGuidanceCpp"
+        },
+        {
+          "path": "projects/DocsSample/bmsSample/IntegratedHsp/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "11b12c8db668b727327e01141778d12f2e9a9c74bf2482671f8d3eecaa4a3f52",
+          "version": "13.0.1.0",
+          "project": "code/DocsSample/bmsSample/IntegratedHsp"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/statemanagementproject/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "0b98a51c0768a961814981d70c5cbe54bbcfcac666c9fbac59e8af60ef5c3403",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/statemanagementproject"
+        },
+        {
+          "path": "projects/DocsSample/ArkTS/Start/LearningArkTS/CodingStyleGuide/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "7e9f289fc9ff9dc9d2e747c991969c038d02546e85cd7d94711aabb623bc24f3",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkTS/Start/LearningArkTS/CodingStyleGuide"
+        },
+        {
+          "path": "projects/DocsSample/ArkTS/NodeAPI/NodeAPIFaqs/NodeAPIDeconstructInOrder/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "25b45e4b9a5f1ff481727c8392e57f42149a959a563bfde0ae46a074f39b6a6e",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkTS/NodeAPI/NodeAPIFaqs/NodeAPIDeconstructInOrder"
+        },
+        {
+          "path": "projects/DocsSample/ArkGraphics2D/TextEngine/NDKDrawingSimpleText/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "7006ee06b455116d8b3856dc00cd69b3cd935faae670a5c0565c384ee94b022b",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkGraphics2D/TextEngine/NDKDrawingSimpleText"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/NativeXComponentSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "18c143d91f58883114f46086a6c74d3afd9bd0efac52899523ad2e603085d754",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/NativeXComponentSample"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/Restrictions/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "0bb49dde7771f5f48159e26fdbb6c1edbc6150d4aa158918e7c8fb1b76918a3f",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/Restrictions"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/ButtonList/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "d00f20c9dcb881e6d09677351dc1e40e48b9c6cbdec58910e84ad9090b298151",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/ButtonList"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/NativeType/NativeDrawPageSample/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "d3bc95ba94be891f5b0b60964deee6e51cced4e2c74af62d0586bcb94caac19e",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/NativeType/NativeDrawPageSample"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/StateTrack/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "ee2c22b0c6081af7e12c78dc532c8a01e34e2f700a4322a8093ad796bb703c7a",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/StateTrack"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/FrameNode/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "ee5397593f88e1c81cd026a10285369b2b6c3a9dc5e34436fda652acddba5833",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/FrameNode"
+        },
+        {
+          "path": "projects/DocsSample/ArkTS/ArkTsConcurrent/ConcurrentThreadCommunication/SendableScenarios/artifacts/crossconcurrency/default/default/modules/modules.abc",
+          "sha256": "10a75b978387084191b3bafe8423161bd261a8a631dbe0857d53b01801d158d0",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkTS/ArkTsConcurrent/ConcurrentThreadCommunication/SendableScenarios"
+        },
+        {
+          "path": "projects/DocsSample/ArkTS/ArkTsCommonLibrary/ArkTsContainerLibrary/NonlinearContainers/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "2df71e6f81f41f04e6ba21664c830a0d4fbdb3445b36d3abab27e10aa9813672",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkTS/ArkTsCommonLibrary/ArkTsContainerLibrary/NonlinearContainers"
+        },
+        {
+          "path": "projects/DocsSample/ArkUISample/ImmersiveLightSense/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "4350245b250963ce64914537f12286218f084be12576282106ffaf6c06e44885",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkUISample/ImmersiveLightSense"
+        },
+        {
+          "path": "projects/DocsSample/ArkTS/ArkTSCompilationToolchain/ArkBytecode/FundamentalsAndNamingConventions/artifacts/entry/default/default/modules/modules.abc",
+          "sha256": "fb976865c6f8301f836d564d2a46c0151189dd39b475f74a076e6949ff286dfd",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkTS/ArkTSCompilationToolchain/ArkBytecode/FundamentalsAndNamingConventions"
+        },
+        {
+          "path": "projects/DocsSample/ArkTS/JSVMAPI/JsvmUsageGuide/JsvmAboutPrimitive/artifacts/getnull/default/default/modules/modules.abc",
+          "sha256": "8bb6bddd144aac33094bf355def40749ed625bc1acb37d5bf110275fe2049141",
+          "version": "24.0.0.0",
+          "project": "code/DocsSample/ArkTS/JSVMAPI/JsvmUsageGuide/JsvmAboutPrimitive"
+        }
+      ],
+      "evaluations": []
     },
     {
       "id": "batch-anonymous",

@@ -1,5 +1,7 @@
 #include "abcd/source/verified_function.h"
 
+#include "abcd/analysis/transparent_rethrow.h"
+
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -178,7 +180,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     budget.Step(context->Work());
     const auto& method = index.methods[context->Position().value];
     auto decoded = abc::DecodeMethodBody(file, header.profile, *method.code, {budget.Remaining().bytes});
-    const auto* body = std::get_if<abc::MethodBody>(&decoded);
+    auto* body = std::get_if<abc::MethodBody>(&decoded);
     if (!body) {
       const auto& failure = std::get<abc::BodyFailure>(decoded);
       const auto kind = failure.kind == abc::BodyError::kResourceLimit
@@ -187,6 +189,9 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
               ? Error::kFileChanged : Error::kBody;
       return FunctionPrepareFailure{kind, {}, failure.offset};
     }
+    // Exception-transparent rethrow regions are semantically absent; such a
+    // method takes the normal route (analysis/transparent_rethrow.h).
+    static_cast<void>(analysis::EraseTransparentRethrowRegions(*body));
     // No caller-supplied graph/certificate can bypass this fresh input proof.
     // BuildValueStage currently bounds its constituent work passes separately;
     // whole-method work accounting remains distinct from this shared byte cap.

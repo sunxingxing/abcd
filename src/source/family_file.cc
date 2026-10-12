@@ -1,5 +1,6 @@
 #include "family_file.h"
 #include "family_cells.h"
+#include "abcd/analysis/transparent_rethrow.h"
 
 #include <bit>
 #include <algorithm>
@@ -268,12 +269,21 @@ class FamilyReader {
     Grow(values, values.empty() ? 1 : values.size() * kGrowth);
   }
   analysis::SemanticBudget Remaining() const { return {bytes_, work_}; }
+  // Transient decode within the remaining byte budget; nothing is retained.
+  bool TransparentRegionsOnly(const abc::MethodInfo& method) {
+    auto decoded = abc::DecodeMethodBody(file_, header_.profile, *method.code, {bytes_});
+    auto* body = std::get_if<abc::MethodBody>(&decoded);
+    return body && analysis::EraseTransparentRethrowRegions(*body) && body->tries.empty();
+  }
   FamilyFunction ReadMethod(abc::MethodPosition position, const FunctionContext* owner,
       InputCaptureMode mode = InputCaptureMode::kClosed, const ParentModuleInput* modules_input = nullptr) {
     Require(position.value < index_.methods.size() && index_.methods[position.value].code, Error::kMethod);
-    const bool cleanup_entry = !owner && modules_ && class_mode_ == FamilyClassMode::kRetainRoot &&
-        index_.methods[position.value].code->try_count;
-    if ((index_.methods[position.value].code->try_count && !cleanup_entry) ||
+    // Regions that only rethrow are semantically absent: such a method stays
+    // on the normal route, which erases them identically on its own decode.
+    const bool regions = index_.methods[position.value].code->try_count &&
+        !TransparentRegionsOnly(index_.methods[position.value]);
+    const bool cleanup_entry = !owner && modules_ && class_mode_ == FamilyClassMode::kRetainRoot && regions;
+    if ((regions && !cleanup_entry) ||
         (owner && IsGeneratorCallable(owner->Callable()))) {
       Require(owner != nullptr, Error::kOccurrence);
       Require(owner->Position() == position && owner->Target() == index_.methods[position.value].offset &&

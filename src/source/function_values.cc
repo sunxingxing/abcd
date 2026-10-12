@@ -16,6 +16,13 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
                         std::optional<abc::CodeOffset> pc = {}) {
     return FunctionValueFailure{stage, {kind, reason, pc}, revision};
   };
+  // Same failure with its typed leaf cause (S2).
+  const auto fail_with = [&]<class E>(RouteFailureClass kind, ValueRouteError reason,
+                                      E cause, std::optional<abc::CodeOffset> pc = {}) {
+    auto failure = fail(kind, reason, pc);
+    AppendFailureCause(failure.cause.causes, cause);
+    return failure;
+  };
   auto imported = analysis::ImportNormalValues(body, input, proof, frame, budget);
   auto* graph = std::get_if<analysis::ValueProgram>(&imported);
   if (!graph) {
@@ -33,18 +40,18 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
       case analysis::ValueImportError::kInvalidPhi:
       case analysis::ValueImportError::kInvalidGraph: break;
     }
-    return fail(kind, ValueRouteError::kImportStage, error.pc);
+    return fail_with(kind, ValueRouteError::kImportStage, error.kind, error.pc);
   }
   // Import admitted normal block-map storage and the use/view scratch. The
   // independent consumer needs original block cardinality after compaction.
   const auto verified = analysis::VerifyImportedValues(*graph, input, proof, frame,
       {analysis::ImportedValueScratch(graph->uses.size(), input.flow.blocks.size()), budget.work});
   if (verified)
-    return fail(verified->kind == analysis::ValueImportError::kWorkLimit
-                    ? RouteFailureClass::kWorkLimit :
-                verified->kind == analysis::ValueImportError::kResourceLimit
-                    ? RouteFailureClass::kMemoryLimit : RouteFailureClass::kInvariantViolation,
-                ValueRouteError::kImportStage, verified->pc);
+    return fail_with(verified->kind == analysis::ValueImportError::kWorkLimit
+                         ? RouteFailureClass::kWorkLimit :
+                     verified->kind == analysis::ValueImportError::kResourceLimit
+                         ? RouteFailureClass::kMemoryLimit : RouteFailureClass::kInvariantViolation,
+                     ValueRouteError::kImportStage, verified->kind, verified->pc);
   stage = SourceStage::kValuesImported;
   revision = graph->revision.value;
   const auto simplified = analysis::SimplifyValues(*graph, graph->revision, budget);
@@ -59,7 +66,7 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
       case analysis::ValueSimplifyError::kInvalidGraph:
       case analysis::ValueSimplifyError::kCopyCycle: break;
     }
-    return fail(kind, ValueRouteError::kTransformStage);
+    return fail_with(kind, ValueRouteError::kTransformStage, *error);
   }
   revision = graph->revision.value;
   bool needs_environments = false;
@@ -102,7 +109,7 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
     const auto kind = *error == ModuleGuardError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
         *error == ModuleGuardError::kWorkLimit ? RouteFailureClass::kWorkLimit :
         *error == ModuleGuardError::kUnsupportedProof ? RouteFailureClass::kUnsupported : RouteFailureClass::kInvariantViolation;
-    return fail(kind, ValueRouteError::kTransformStage);
+    return fail_with(kind, ValueRouteError::kTransformStage, *error);
   }
   auto modules = std::get<ModuleGuards>(std::move(guarded));
   if (!admit(modules.allocated_bytes, 1))
@@ -113,7 +120,7 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
     const auto kind = *error == analysis::ValueHeritageError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
         *error == analysis::ValueHeritageError::kWorkLimit ? RouteFailureClass::kWorkLimit :
         *error == analysis::ValueHeritageError::kDomain ? RouteFailureClass::kUnsupported : RouteFailureClass::kInvariantViolation;
-    return fail(kind, ValueRouteError::kTransformStage);
+    return fail_with(kind, ValueRouteError::kTransformStage, *error);
   }
   auto classes = std::get<analysis::ValueHeritages>(std::move(heritage));
   if (!admit(classes.allocated_bytes, 1)) return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
@@ -122,7 +129,7 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
   if (const auto* error = std::get_if<ClassInitializerError>(&initializer_calls)) {
     const auto kind = *error == ClassInitializerError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
         *error == ClassInitializerError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kInvariantViolation;
-    return fail(kind, ValueRouteError::kTransformStage);
+    return fail_with(kind, ValueRouteError::kTransformStage, *error);
   }
   auto initializers = std::get<ClassInitializerCalls>(std::move(initializer_calls));
   if (!admit(initializers.allocated_bytes, 1)) return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
@@ -131,7 +138,7 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
   if (const auto* error = std::get_if<ClassDefinitionError>(&member_sites)) {
     const auto kind = *error == ClassDefinitionError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
         *error == ClassDefinitionError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kInvariantViolation;
-    return fail(kind, ValueRouteError::kTransformStage);
+    return fail_with(kind, ValueRouteError::kTransformStage, *error);
   }
   auto definitions = std::get<ClassDefinitionSites>(std::move(member_sites));
   if (!admit(definitions.allocated_bytes, 1)) return fail(RouteFailureClass::kMemoryLimit, ValueRouteError::kTransformStage);
@@ -141,7 +148,7 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
     if (const auto* error = std::get_if<analysis::ValueEnvironmentError>(&built)) {
       const auto kind = *error == analysis::ValueEnvironmentError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
           *error == analysis::ValueEnvironmentError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kUnproved;
-      return fail(kind, ValueRouteError::kTransformStage);
+      return fail_with(kind, ValueRouteError::kTransformStage, *error);
     }
     environments = std::get<analysis::ValueEnvironments>(std::move(built));
     if (!admit(environments->allocated_bytes, 1))
@@ -160,7 +167,7 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
         case FunctionCaptureError::kCoverage:
         case FunctionCaptureError::kBinding: break;
       }
-      return fail(kind, ValueRouteError::kTransformStage);
+      return fail_with(kind, ValueRouteError::kTransformStage, *error);
     }
     if (owner.Mode() == InputCaptureMode::kConditional) {
       auto planned = BuildCellPlan(*graph, *environments,
@@ -168,7 +175,7 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
       if (const auto* error = std::get_if<CellError>(&planned)) {
         const auto kind = *error == CellError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
             *error == CellError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kInvariantViolation;
-        return fail(kind, ValueRouteError::kTransformStage);
+        return fail_with(kind, ValueRouteError::kTransformStage, *error);
       }
       cells = std::get<CellPlan>(std::move(planned));
     }
