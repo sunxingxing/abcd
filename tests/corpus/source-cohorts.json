@@ -838,7 +838,95 @@
               "records": 2
             }
           ],
-          "note": "First and only evaluation of this frozen set; it has not guided any fix. Using any of these inputs to guide a fix moves it to exploration."
+          "note": "First evaluation. The module denominator counted 4 module-context failures as modules; the classifier was corrected in the second evaluation."
+        },
+        {
+          "date": "2026-10-12",
+          "implementation": "Codex round-7 fixes on top of a4d9722f (commit recorded in status.md)",
+          "options": "--value-source --language-numeric --language-constructors",
+          "tool": "abc_capability (metadata-based module classification)",
+          "exports": 60,
+          "export_failures": 0,
+          "total": {
+            "complete": 386,
+            "failed": 119,
+            "incomplete": 0,
+            "module_context_failed": 0,
+            "module_records": 505,
+            "module_unknown": 0,
+            "non_module": 556,
+            "profile_refused": 0,
+            "records": 1061
+          },
+          "by_version": {
+            "12.0.2.0": {
+              "module_records": 125,
+              "module_unknown": 0,
+              "complete": 95,
+              "failed": 30
+            },
+            "12.0.6.0": {
+              "module_records": 139,
+              "module_unknown": 0,
+              "complete": 118,
+              "failed": 21
+            },
+            "13.0.1.0": {
+              "module_records": 124,
+              "module_unknown": 0,
+              "complete": 89,
+              "failed": 35
+            },
+            "24.0.0.0": {
+              "module_records": 117,
+              "module_unknown": 0,
+              "complete": 84,
+              "failed": 33
+            }
+          },
+          "top_leaves": [
+            {
+              "leaf": "abcd::source::CaptureCellError=3",
+              "records": 48
+            },
+            {
+              "leaf": "abcd::source::FunctionEmitError=1",
+              "records": 15
+            },
+            {
+              "leaf": "abcd::source::DerivedProjectionError=1",
+              "records": 13
+            },
+            {
+              "leaf": "abcd::source::TreePrintError=0",
+              "records": 8
+            },
+            {
+              "leaf": "abcd::analysis::SemanticError=1",
+              "records": 6
+            },
+            {
+              "leaf": "abcd::source::ClassInitializerError=1",
+              "records": 4
+            },
+            {
+              "leaf": "abcd::source::EvaluationError=5",
+              "records": 4
+            },
+            {
+              "leaf": "abcd::source::PhasedMethodError=4",
+              "records": 4
+            },
+            {
+              "leaf": "abcd::source::TreePrintError=3",
+              "records": 4
+            },
+            {
+              "leaf": "abcd::source::FunctionTreeError=0",
+              "records": 2
+            }
+          ],
+          "note": "Second recorded evaluation after review-driven correctness fixes; no fix was guided by these inputs."
         }
       ]
     },

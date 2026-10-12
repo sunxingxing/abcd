@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <source_location>
+#include <algorithm>
 #include <string>
 #include <variant>
 
@@ -62,6 +63,13 @@ bool SameReceipt(const MethodRouteReceipt& left,
          left.record == right.record && left.route == right.route &&
          left.stage == right.stage && left.coverage == right.coverage &&
          left.work_revision == right.work_revision &&
+         (!left.failure || !right.failure ||
+          (left.failure->causes.count == right.failure->causes.count &&
+           left.failure->causes.truncated == right.failure->causes.truncated &&
+           std::equal(left.failure->causes.View().begin(), left.failure->causes.View().end(),
+               right.failure->causes.View().begin(), [](const auto& a, const auto& b) {
+                 return a.domain == b.domain && a.value == b.value;
+               }))) &&
          left.failure.has_value() == right.failure.has_value() &&
          (!left.failure ||
           (left.failure->failure_class == right.failure->failure_class &&
@@ -156,8 +164,20 @@ int main() {
   Check(ValidateRouteReceipt(invalid_stage) == RouteReceiptError::kStage);
 
   // Receipt round trip through the versioned boundary: a refused decoded
-  // method and a complete value-tree product.
-  const auto samples = {RefusedReceipt(), complete_value};
+  // method, a refusal with a typed cause chain (including a truncated chain
+  // whose last entry is the true leaf) and a complete value-tree product.
+  auto caused = RefusedReceipt();
+  AppendFailureCause(caused.failure->causes, RouteFailureClass::kUnproved);
+  AppendFailureCause(caused.failure->causes, ValueRouteError::kTreeStage);
+  auto deep = RefusedReceipt();
+  for (unsigned i = 0; i < 6; ++i)
+    AppendFailureCause(deep.failure->causes, static_cast<RouteFailureClass>(i));
+  for (unsigned i = 0; i < 6; ++i)
+    AppendFailureCause(deep.failure->causes, static_cast<ValueRouteError>(i));
+  Check(deep.failure->causes.count == kMaxFailureCauses && deep.failure->causes.truncated);
+  Check(deep.failure->causes.View().back().value == 5 &&
+        deep.failure->causes.View().back().domain == "abcd::source::ValueRouteError");
+  const auto samples = {RefusedReceipt(), caused, deep, complete_value};
   for (const auto& receipt : samples) {
     const auto serialized = SerializeRouteReceipt(receipt);
     const auto* json = std::get_if<std::string>(&serialized);
@@ -192,12 +212,14 @@ int main() {
     mutated.replace(at, from.size(), to);
     Check(std::get<RouteReceiptError>(ParseRouteReceipt(mutated)) == expected);
   };
-  // Schema 3 receipts carried the removed legacy-writer field; never reinterpret.
-  reject("\"schema\":4", "\"schema\":3", RouteReceiptError::kSchema);
-  reject("\"schema\":4", "\"schema\":\"4\"", RouteReceiptError::kSchema);
+  // Schema 3 carried the removed legacy-writer field and schema 4 lacked the
+  // cause chain; neither is reinterpreted.
+  reject("\"schema\":5", "\"schema\":3", RouteReceiptError::kSchema);
+  reject("\"schema\":5", "\"schema\":4", RouteReceiptError::kSchema);
+  reject("\"schema\":5", "\"schema\":\"5\"", RouteReceiptError::kSchema);
   // 4294967297 must not narrow to 1 on this platform (R4).
-  reject("\"schema\":4", "\"schema\":4294967297", RouteReceiptError::kSchema);
-  reject("\"schema\":4", "\"schema\":2.5", RouteReceiptError::kSchema);
+  reject("\"schema\":5", "\"schema\":4294967297", RouteReceiptError::kSchema);
+  reject("\"schema\":5", "\"schema\":2.5", RouteReceiptError::kSchema);
   const auto rules = "\"evidence_rules\":" + std::to_string(kRouteEvidenceRules);
   reject(rules, "\"evidence_rules\":23",
          RouteReceiptError::kEvidence);

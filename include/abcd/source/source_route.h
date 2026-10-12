@@ -59,13 +59,16 @@ enum class ValueRouteError : std::uint8_t {
   kPrintStage,
 };
 // Typed failure cause (S2): one enum value from a stage on the failing path.
-// domain is the compiler-derived qualified enum type name; it is a
-// serialization label only and is never parsed back into engine decisions.
+// domain is the compiler-derived qualified enum type name (owned so receipts
+// can round-trip); it is a serialization label only and is never parsed back
+// into engine decisions.
 struct FailureCause {
-  std::string_view domain;
+  std::string domain;
   std::uint32_t value = 0;
 };
-// Bounded cause chain, outermost stage first; the last entry is the leaf.
+// Bounded cause chain, outermost stage first. The last slot always holds the
+// deepest (true leaf) cause: once full, middle causes are dropped, the leaf
+// slot is replaced and truncated is set.
 inline constexpr std::size_t kMaxFailureCauses = 8;
 struct FailureCauseChain {
   std::array<FailureCause, kMaxFailureCauses> entries{};
@@ -73,11 +76,15 @@ struct FailureCauseChain {
   bool truncated = false;
   [[nodiscard]] std::span<const FailureCause> View() const { return {entries.data(), count}; }
   void Append(FailureCause cause) {
-    if (count == kMaxFailureCauses) { truncated = true; return; }
-    entries[count++] = cause;
+    if (count == kMaxFailureCauses) {
+      truncated = true;
+      entries[kMaxFailureCauses - 1] = std::move(cause);
+      return;
+    }
+    entries[count++] = std::move(cause);
   }
   void Extend(const FailureCauseChain& inner) {
-    for (const auto cause : inner.View()) Append(cause);
+    for (const auto& cause : inner.View()) Append(cause);
     truncated |= inner.truncated;
   }
 };
@@ -100,7 +107,7 @@ constexpr std::string_view FailureDomain() {
 // Appends one typed cause; a full chain records truncation instead.
 template <class E>
 void AppendFailureCause(FailureCauseChain& chain, E value) {
-  chain.Append({FailureDomain<E>(), static_cast<std::uint32_t>(value)});
+  chain.Append({std::string(FailureDomain<E>()), static_cast<std::uint32_t>(value)});
 }
 
 // Typed identity binding route evidence to the exact input it describes
@@ -199,7 +206,7 @@ struct RouteRefusal {
 // out-of-range integers, missing fields and receipts identifying neither a
 // method nor a record are rejected; a parse result is never defaulted into
 // success, and a parsed receipt must still satisfy ValidateRouteReceipt.
-inline constexpr unsigned kRouteReceiptSchema = 4;
+inline constexpr unsigned kRouteReceiptSchema = 5;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.

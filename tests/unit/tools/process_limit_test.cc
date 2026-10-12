@@ -15,10 +15,10 @@ void Check(bool value) {
 int main() {
   using namespace abcd::tools;
   InstallAllocationFailureMonitor();
-  Check(!TakeAllocationFailure());
-  // An ordinary allocation never sets the flag.
+  Check(!AllocationFailureObserved());
+  // An ordinary allocation never sets the signal.
   delete new int(1);
-  Check(!TakeAllocationFailure());
+  Check(!AllocationFailureObserved());
   // A real allocation failure is observed even if the caller swallows it.
   bool thrown = false;
   try {
@@ -27,8 +27,10 @@ int main() {
   } catch (const std::bad_alloc&) {
     thrown = true;
   }
-  Check(thrown && TakeAllocationFailure());
-  Check(!TakeAllocationFailure());  // Taking clears the observation.
+  Check(thrown && AllocationFailureObserved());
+  // Sticky: a failure the caller swallowed or recovered from stays visible.
+  delete new int(2);
+  Check(AllocationFailureObserved());
   // The report always states whether a limit was established.
   nlohmann::json report;
   ReportProcessMemory(report, EstablishProcessLimit());

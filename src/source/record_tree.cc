@@ -39,6 +39,18 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     CollectFailureCauses(cause, failure.causes);
     return failure;
   };
+  // Record failure carrying the typed error alternative of a stage result.
+  const auto fail_from = [&](Error kind, const auto& result) {
+    auto failure = fail(kind);
+    std::visit([&](const auto& alternative) {
+      using T = std::decay_t<decltype(alternative)>;
+      if constexpr (std::is_enum_v<T>) AppendFailureCause(failure.causes, alternative);
+      else if constexpr (requires { alternative.kind; })
+        if constexpr (std::is_enum_v<std::decay_t<decltype(alternative.kind)>>)
+          CollectFailureCauses(alternative, failure.causes);
+    }, result);
+    return failure;
+  };
   try {
     const auto retain = [&](std::size_t bytes) {
       if (bytes > budget.bytes) throw fail(Error::kRecordBudget);
@@ -65,7 +77,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     retain(budget.export_bytes);
     auto exports = BuildModuleExports(file, header, *module, {budget.export_bytes, budget.strings});
     const auto* slots = std::get_if<ModuleExports>(&exports);
-    if (!slots) return fail(Error::kExport);
+    if (!slots) return fail_from(Error::kExport, exports);
     auto named = ResolveModuleBindingNames(file, header, *module, {budget.bytes});
     const auto* local_names = std::get_if<ModuleBindingNames>(&named);
     if (!local_names) return std::visit([&](auto error) -> RecordSourceResult {
@@ -136,11 +148,11 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     }
     auto controlled = BuildControlPlan(graph, {budget.bytes});
     auto* control = std::get_if<ControlPlan>(&controlled);
-    if (!control) return fail(Error::kBody);
+    if (!control) return fail_from(Error::kBody, controlled);
     retain(control->allocated_bytes);
     auto resolved = ResolveTreeConstants(file, header, index, index.methods[entry.value].offset, graph, {budget.bytes});
     auto* constants = std::get_if<TreeConstants>(&resolved);
-    if (!constants) return fail(Error::kValue);
+    if (!constants) return fail_from(Error::kValue, resolved);
     retain(constants->allocated_bytes);
     auto found_prototypes = FindClassPrototypeReads(graph, {budget.bytes});
     auto* prototype_reads = std::get_if<ClassPrototypeReads>(&found_prototypes);
@@ -383,7 +395,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, children, bindings->evaluations, demands,
         function->values.initializers.calls, closure_writes, function->values.definitions.sites, {}, {}, function->self_order ? &*function->self_order : nullptr, prototype_reads->reads);
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
-    if (!evaluation) return fail(Error::kValue);
+    if (!evaluation) return fail_from(Error::kValue, evaluated);
     retain(evaluation->allocated_bytes);
     // First-store declarations and slot/name correspondence above establish
     // the enclosing native record bindings before preparing class descendants.
@@ -457,7 +469,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     syntax.names = std::move(constants->names); syntax.texts = std::move(constants->texts);
     auto constructed = BuildFunctionTree(graph, *control, *evaluation, std::move(syntax), view, {budget.bytes});
     auto* result = std::get_if<ConstructedFunction>(&constructed);
-    if (!result) return fail(Error::kValue);
+    if (!result) return fail_from(Error::kValue, constructed);
     retain(result->allocated_bytes);
     // Recheck the actual emitted tree against the complete metadata inventory.
     // Entry-body locals and imports occupy the same native ESM scope even

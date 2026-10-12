@@ -24,7 +24,7 @@
      `ReadRecordModule` 和 `CreationExpansion` 指针。
 - **入口**：`abc_structure --value-source` → `BuildRecordSource` → `BuildRecordTree` →
   FunctionTree 函数族 → `TreePrinter`。双路线概念已全部删除。
-- **输出格式**：路线回执 schema 升为 4。manifest schema 升为 2：失败记录改用显式的
+- **输出格式**：路线回执 schema 先升为 4，第七轮审查修复后升为 5。manifest schema 升为 2：失败记录改用显式的
   `source_failure_domain`（`record_program` 或 `route_refusal`），不再输出随 variant 布局
   变化的 `shared_failure_variant`。
 - **CLI 选项**：`abc_structure` 只接受“仅结构”和 `--value-source` 两种模式，`--source` 与
@@ -51,31 +51,39 @@
   `FailureCauseChain`，按“外层 → 叶子”排列，每项为 `{domain, value}`。domain 是编译器推导的
   枚举类型名，只作为序列化标签。
   - manifest 中写为 `causes`/`source_causes`，manifest 头部还记录 `abc_version`；致命的 record
-    失败会在 stderr 输出它的原因链。
-  - `tools/abc_capability` 流式汇总一批导出，区分整文件失败、模块与非模块分母、版本拒绝和
-    真正的恢复缺口，并按叶子原因输出帕累托排序。
+    失败会在 stderr 输出它的原因链。路由回执的 schema 升为 5，原因链可以往返序列化。
+  - 原因链满 8 项时保留前 7 个外层原因，最后一格始终是真实叶子，并标记 `truncated`。
+  - `tools/abc_capability` 流式汇总一批导出，并按叶子原因输出帕累托排序。
+    - 模块分类独立于恢复结果：根据每个 record 的结构元数据判定，元数据缺失时计为
+      `module_unknown`。
+    - 拒绝非 value-source 视图的 manifest（计为 `view_mismatch`），整文件失败单独计数。
 - **record 失败隔离（S3）**：
   - 真实分配失败由 `std::new_handler` 带外观测（`tools/process_limit.h`），不受底层阶段
     把错误码折叠成 `kResourceLimit` 的影响。
-  - 一个 record 的资源类失败（`kResourceLimit`，或 `kMemoryLimit` 类 route refusal），只有在构建
-    该 record 期间观测到真实分配失败时才致命；否则视为该 record 自身预算耗尽，与
-    `kRecordBudget`、`kOutputLimit` 一样只隔离该 record。
-  - 每个 record 处理完都会复查输入文件；输入读写失败、输入变更、入口捕获的分配失败
-    （`kAllocationFailure`）均致命。
-  - 整文件索引（方法角色、函数/类创建点）失败时，每个 record 记为带原因链的 `kFileIndex`
-    失败，结构导出照常完成。
+  - 分配失败观测是**粘滞的进程级信号**：一旦观测到，不论哪个 record、结果是什么类型
+    （包括被底层恢复成“成功”），导出都会失败。没有观测到时，资源类失败（`kResourceLimit`、
+    `kMemoryLimit` 类 route refusal）视为该 record 自身预算耗尽，与 `kRecordBudget`、
+    `kOutputLimit` 一样只隔离该 record。
+  - 每个 record 前后（包括提前结束的分支）以及导出末尾，都会复查分配失败信号和输入文件。
+    输入读写失败、输入变更、入口捕获的分配失败（`kAllocationFailure`）均致命；整文件索引
+    的类型化错误中，若嵌套了读失败（例如 `BodyFailure.file_error`），同样致命。
+  - 整文件索引（方法角色、函数/类创建点、源码路径规划）失败时，每个 record 记为带原因链的
+    `kFileIndex` 失败。单个 record 的路径规划失败或结构写入失败，在 manifest 中记为类型化的
+    `structure_failure`，不发布该 record 的文件，其余 record 照常导出。
 - **版本能力（S4）**：`include/abcd/abc/profile_capabilities.h` 是集中的能力表，列为
   container_decoding、pinned_runtime_semantics、literal_arrays_in_header，并附锁定运行时的出处。
   语义层门禁统一查询该表。
   - 24.0.0.0 已开放：锁定解释器只按 opcode 分派，相同 opcode 在 13.0.1 与 24.0 语义一致。
   - 9 和 1102 仍可解码，但语义恢复未准入（类型化 `kProfile`）。
 - **本轮新增的通用语义规则**（均与样本无关，附出处，见源码注释）：
-  - **透明重抛区域**：方法内所有 try 区域的处理器都是 `THROW` 时，整体擦除这些区域
-    （`analysis/transparent_rethrow.h`）。出处是 es2panda 的
-    `AddCatchBlockForImplicitSuperCallChecks`。
+  - **透明重抛区域**：同时满足两个条件时，整体擦除方法内的 try 区域
+    （`analysis/transparent_rethrow.h`），出处是 es2panda 的 `AddCatchBlockForImplicitSuperCallChecks`：
+    - 所有处理器的入口都是 `THROW`；
+    - 没有任何 try 区域覆盖处理器 PC，因此重抛必然离开方法。自循环、互相重抛的情形都保留不擦。
   - **`CALLTHIS*WITHNAME` 按 `CALLTHIS*` 提升**：锁定解释器只在不可调用的 `TypeError` 文本中
     使用该名字。
-  - **方法角色索引遍历嵌套 literal array**：24.0 会生成嵌套形式。
+  - **方法角色索引遍历嵌套 literal array**：24.0 会生成嵌套形式。遍历在入队时去重，每个新节点
+    和队列扩容都先计入预算，环和共享子数组只访问一次。
 - **规模**：生产代码（`src`、`include`、`tools`）净删约 2.9 万行；`src/source` 从 543 个文件、
   83,859 行降至约 380 个文件、约 6.2 万行。
 
@@ -85,15 +93,16 @@
 |---|---|
 | 固定五份的 value-tree 产物，`f0028f54` 与 `7b2491b7` 两套二进制对照，覆盖默认合同和 numeric+constructors 合同 | 源码逐字节一致；manifest 只差在删除的 `legacy_writer_used` 字段。之后 manifest 升为 schema 2，失败记录的字段也随之改变 |
 | 全量构建 `make -k all` | 0 错误 |
-| 固定 65 项（`ctest --preset source-regression`，`a4d9722f`） | **65/65，97.57s** |
-| 固定五份，numeric+constructors 合同（`a4d9722f`） | 106/106 完整，与之前一致 |
+| 固定 65 项（`ctest --preset source-regression`，第七轮审查修复后） | **65/65，97.93s** |
+| 固定五份，numeric+constructors 合同 | 106/106 完整，与之前一致 |
 | 审查修复相关的 16 项定向测试（含新增的 `record_failure_json_test`） | 16/16 通过；`historical_record_source_test` 由原有失败转为通过 |
-| 相对 `f0028f54` 改动过的全部测试，加本轮新增测试，共 215 项（`a4d9722f`） | 除下行所列原有失败外均通过，详见 [测试台账](2026-10-12-legacy-test-ledger.md) |
+| 第七轮审查修复后的定向回归（214 项，`-j3`，另单独运行 window） | 199 通过；失败的为下行 14 项原有失败，外加 community（单独运行时通过） |
+| 相对 `f0028f54` 改动过的全部测试，加本轮新增测试 | 除下行所列原有失败外均通过，详见 [测试台账](2026-10-12-legacy-test-ledger.md) |
 | 原有失败（在 `f0028f54` 基线上以相同原因失败） | pasteboard_breakpoint、backup_class_cells、index_record、navigation_graph、minigame_navigation_graph、module_entry_initialization、phased_arguments、file_generator_return(_loop)、phased_method、hotitem_retained_selection、value_tree_{pasteboard,call,immersive}_slice |
-| `window_navigation_graph_source_test` | 单独运行通过（228s）；并行运行时其 60 秒子进程超时，属于资源争用 |
+| `window_navigation_graph_source_test`、`community_ability_graph_source_test` | 单独运行均通过（231s、205s）；与其他测试并行运行时，其 60 秒 worker 子进程会超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |
-| 探索集：40 个应用，`--value-source --language-numeric --language-constructors`，模块 record 完整恢复 | `f0028f54`：12.x/13.0.1 为 81/299，24.0 为 0/312，整文件失败 1。`a4d9722f`：12.x/13.0.1 为 **218/308**，24.0 为 **201/292**，整文件失败 **0** |
-| **冻结留出集**：60 个从未接触过的应用（每个版本 15 个），只评估一次，`a4d9722f` | 整文件失败 **0**；模块 record 完整恢复 **386/509（75.8%）**：12.0.2 为 95/129，12.0.6 为 118/139，13.0.1 为 89/124，24.0 为 84/117 |
+| 探索集：40 个应用，`--value-source --language-numeric --language-constructors`，按元数据统一分类口径，模块 record 完整恢复 | `f0028f54`：81/611（12.x/13.0.1 为 81/299，24.0 为 0/312），整文件失败 1。现在：**430/620**（12.x/13.0.1 为 218/308，24.0 为 212/312），整文件失败 **0** |
+| **冻结留出集**：60 个从未接触过的应用（每个版本 15 个），共登记两次评估，均未用于调优 | 第二次：整文件失败 **0**；模块 record 完整恢复 **386/505（76.4%）**：12.0.2 为 95/125，12.0.6 为 118/139，13.0.1 为 89/124，24.0 为 84/117。第一次（`a4d9722f`）为 386/509，当时有 4 个模块上下文失败被误计为模块 |
 
 ## 已知限制
 
@@ -102,7 +111,10 @@
 - 原因链的叶子粒度取决于各阶段错误枚举的粒度。例如 `FamilyTreeError::kContext` 被 30 多处
   检查共用，要更细的帕累托分析，需要把这类笼统的枚举值拆开。
 - 透明重抛规则只在方法内所有区域都透明时生效；部分透明的方法仍走 phased 路径。
-- 冻结留出集已评估一次。今后若用其中任何输入指导修复，该输入须转入探索集，并另选新的留出。
+- 冻结留出集已登记两次评估。今后若用其中任何输入指导修复，该输入须转入探索集，并另选新的留出。
+- `FailureDomain` 依赖编译器的 `__PRETTY_FUNCTION__` 格式；改为显式、版本化的序列化域是后续 S2 工作。
+- 分配失败观测目前是进程级全局标志，接入并发（C8）前需要按任务归属重新设计，并补上
+  nothrow new 的用例。
 
 ## 剩余门槛（按共识顺序）
 

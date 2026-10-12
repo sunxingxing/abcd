@@ -42,8 +42,10 @@ void ReportProcessMemory(nlohmann::json& report, const ProcessLimit& limit);
 // a lower stage folds the exception into its own resource-limit error. Budget
 // exhaustion never reaches operator new failure and does not set the flag.
 void InstallAllocationFailureMonitor();
-// Returns whether an allocation failed since the previous call, and clears it.
-[[nodiscard]] bool TakeAllocationFailure();
+// Sticky process-level signal: true once any allocation has failed since the
+// monitor was installed. It is never cleared, so a failure that a lower stage
+// folded or recovered from still stops the run.
+[[nodiscard]] bool AllocationFailureObserved();
 // Structured diagnostic for a limit that could not be established; written as
 // one JSON line {"error":"process_limit","process_limit":{...}}.
 void ReportLimitFailure(std::ostream& output, const ProcessLimit& limit);

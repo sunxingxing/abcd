@@ -64,6 +64,18 @@ int main() {
   Protect(targeted, 1);
   Check(analysis::EraseTransparentRethrowRegions(targeted));
   Check(targeted.instructions.size() == 2);
+  // A handler covered by a region rethrows into dispatch again: a self loop
+  // (region covers its own handler) and a mutual chain must keep the regions.
+  auto self_loop = Body({kLdUndefined, kThrowPrefix, kThrow});
+  self_loop.handlers.push_back({{}, {1}, 1});
+  self_loop.tries.push_back({{0}, 3, 0, 1});
+  Check(!analysis::EraseTransparentRethrowRegions(self_loop) && self_loop.tries.size() == 1);
+  auto mutual = Body({kReturnUndefined, kThrowPrefix, kThrow, kThrowPrefix, kThrow});
+  mutual.handlers.push_back({{}, {3}, 1});
+  mutual.tries.push_back({{1}, 2, 0, 1});  // covers handler at 1, sends to 3
+  mutual.handlers.push_back({{}, {1}, 1});
+  mutual.tries.push_back({{3}, 2, 1, 1});  // covers handler at 3, sends to 1
+  Check(!analysis::EraseTransparentRethrowRegions(mutual) && mutual.tries.size() == 2);
   // Malformed handler slices are left untouched.
   auto malformed = Body({kReturnUndefined, kThrowPrefix, kThrow});
   malformed.tries.push_back({{0}, 1, 5, 1});

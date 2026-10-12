@@ -1,6 +1,9 @@
 #include "abcd/analysis/transparent_rethrow.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <iterator>
+#include <utility>
 #include <vector>
 
 #include "abcd/abc/control_transfer.h"
@@ -37,6 +40,30 @@ bool EraseTransparentRethrowRegions(abc::MethodBody& body) {
       if (!entry || entry->decoded.opcode != abc::Opcode::kTHROW_PREF_NONE) return false;
       handler_pcs.push_back(handler.offset);
     }
+  }
+  // A rethrow re-enters exception dispatch at the handler PC (ets_runtime
+  // Method::FindCatchBlock, first covering try in file order). Erasure is
+  // exact only if that dispatch leaves the method: no try region may cover
+  // any handler, otherwise a rethrow can be caught again (including itself).
+  // Covered intervals sorted by start and merged; O((R + H) log R).
+  std::vector<std::pair<std::uint64_t, std::uint64_t>> covered;
+  covered.reserve(body.tries.size());
+  for (const auto& region : body.tries)
+    covered.emplace_back(region.offset.value,
+                         std::uint64_t{region.offset.value} + region.length);
+  std::sort(covered.begin(), covered.end());
+  std::size_t merged = 0;
+  for (const auto& interval : covered) {
+    if (merged != 0 && interval.first <= covered[merged - 1].second)
+      covered[merged - 1].second = std::max(covered[merged - 1].second, interval.second);
+    else
+      covered[merged++] = interval;
+  }
+  covered.resize(merged);
+  for (const auto pc : handler_pcs) {
+    const auto after = std::upper_bound(covered.begin(), covered.end(),
+        std::pair<std::uint64_t, std::uint64_t>{pc.value, UINT64_MAX});
+    if (after != covered.begin() && pc.value < std::prev(after)->second) return false;
   }
   body.tries.clear();
   body.handlers.clear();

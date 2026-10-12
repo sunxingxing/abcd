@@ -17,6 +17,7 @@
 #include <map>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "abcd/source/record_program.h"
@@ -31,14 +32,16 @@ constexpr unsigned kNoModule = 2;
 constexpr unsigned kProgram = 3;
 constexpr unsigned kIncomplete = 4;
 constexpr unsigned kManifestSchema = 2;
+constexpr std::string_view kValueSourceView = "declarations_with_value_source";
 constexpr std::size_t kTopCauses = 40;
 
 struct Tally {
-  std::uint64_t records = 0, non_module = 0, complete = 0, incomplete = 0;
+  std::uint64_t records = 0, non_module = 0, module_unknown = 0, complete = 0, incomplete = 0;
   std::uint64_t module_context = 0, profile_refused = 0, failed = 0;
   json Json() const {
     return {{"records", records}, {"non_module", non_module},
-            {"module_records", records - non_module}, {"complete", complete},
+            {"module_unknown", module_unknown},
+            {"module_records", records - non_module - module_unknown}, {"complete", complete},
             {"incomplete", incomplete}, {"failed", failed},
             {"profile_refused", profile_refused}, {"module_context_failed", module_context}};
   }
@@ -63,11 +66,16 @@ std::string LeafKey(const json& record) {
   return "record_program=" + std::to_string(record.value("source_error", 0u));
 }
 
-bool HasModule(const std::filesystem::path& root, const json& record) {
+// Module classification is independent of the recovery outcome: it comes
+// from the record's own structural metadata. Unreadable metadata is unknown,
+// never silently folded into either denominator.
+enum class ModuleClass { kModule, kNonModule, kUnknown };
+ModuleClass ClassifyModule(const std::filesystem::path& root, const json& record) {
   std::ifstream stream(root / record.value("metadata", std::string{}), std::ios::binary);
-  if (!stream) return true;  // Unknown: keep it in the module denominator.
+  if (!stream) return ModuleClass::kUnknown;
   const auto metadata = json::parse(stream, nullptr, false);
-  return metadata.is_discarded() || !metadata.contains("module") || !metadata["module"].is_null();
+  if (metadata.is_discarded() || !metadata.contains("module")) return ModuleClass::kUnknown;
+  return metadata["module"].is_null() ? ModuleClass::kNonModule : ModuleClass::kModule;
 }
 
 int Run(const std::vector<std::filesystem::path>& exports,
@@ -75,13 +83,18 @@ int Run(const std::vector<std::filesystem::path>& exports,
   Tally total;
   std::map<std::string, Tally> by_version;
   std::map<std::string, std::uint64_t> leaves;
-  std::uint64_t export_failures = 0, schema_mismatch = 0;
+  std::uint64_t export_failures = 0, schema_mismatch = 0, view_mismatch = 0;
   for (const auto& root : exports) {
     std::ifstream stream(root / "manifest.json", std::ios::binary);
     if (!stream) { ++export_failures; continue; }
     const auto manifest = json::parse(stream, nullptr, false);
     if (manifest.is_discarded() || manifest.value("schema", 0u) != kManifestSchema) {
       ++schema_mismatch;
+      continue;
+    }
+    // Only value-source exports carry recovery outcomes.
+    if (manifest.value("view", std::string{}) != kValueSourceView) {
+      ++view_mismatch;
       continue;
     }
     std::string version = "unknown";
@@ -98,26 +111,24 @@ int Run(const std::vector<std::filesystem::path>& exports,
         ++(total.*field);
         ++(per_version.*field);
       };
-      switch (status) {
-        case kNoModule: count(&Tally::non_module); break;
-        case kWritten: count(&Tally::complete); break;
-        case kIncomplete: count(&Tally::incomplete); break;
-        case kModuleContext: count(&Tally::module_context); break;
-        case kProgram:
-          if (record.value("source_failure_domain", std::string{}) == "record_program" &&
-              record.value("source_error", 0u) ==
-                  static_cast<unsigned>(abcd::source::RecordProgramError::kProfile)) {
-            // Profile refusal precedes module classification: take the module
-            // denominator from the record's own metadata.
-            if (HasModule(root, record)) count(&Tally::profile_refused);
-            else count(&Tally::non_module);
-          } else {
-            count(&Tally::failed);
-            ++leaves[LeafKey(record)];
-          }
-          break;
-        default: count(&Tally::failed); ++leaves["unknown_status"]; break;
+      if (status == kNoModule) { count(&Tally::non_module); continue; }
+      if (status == kWritten) { count(&Tally::complete); continue; }
+      if (status == kIncomplete) { count(&Tally::incomplete); continue; }
+      // Failures may precede module classification (profile, whole-file
+      // index): classify from metadata before counting the outcome.
+      const auto module = ClassifyModule(root, record);
+      if (module == ModuleClass::kNonModule) { count(&Tally::non_module); continue; }
+      if (module == ModuleClass::kUnknown) { count(&Tally::module_unknown); continue; }
+      if (status == kModuleContext) { count(&Tally::module_context); continue; }
+      if (status == kProgram &&
+          record.value("source_failure_domain", std::string{}) == "record_program" &&
+          record.value("source_error", 0u) ==
+              static_cast<unsigned>(abcd::source::RecordProgramError::kProfile)) {
+        count(&Tally::profile_refused);
+        continue;
       }
+      count(&Tally::failed);
+      ++leaves[status == kProgram ? LeafKey(record) : "unknown_status"];
     }
   }
   std::vector<std::pair<std::string, std::uint64_t>> ordered(leaves.begin(), leaves.end());
@@ -130,7 +141,8 @@ int Run(const std::vector<std::filesystem::path>& exports,
   json versions = json::object();
   for (const auto& [version, tally] : by_version) versions[version] = tally.Json();
   json report{{"exports", exports.size()}, {"export_failures", export_failures},
-              {"schema_mismatch", schema_mismatch}, {"total", total.Json()},
+              {"schema_mismatch", schema_mismatch}, {"view_mismatch", view_mismatch},
+              {"total", total.Json()},
               {"by_version", versions}, {"distinct_leaves", leaves.size()},
               {"pareto", pareto}};
   abcd::tools::ReportProcessMemory(report, limit);

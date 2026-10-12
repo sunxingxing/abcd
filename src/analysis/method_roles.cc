@@ -150,20 +150,35 @@ std::variant<MethodRoleIndex, MethodRoleFailure> MethodRoleIndex::Build(
              literals[next++] = target;
          });
     // Each literal array is read once, including arrays nested through
-    // kLiteralArray entries (24.0 emits them). Ordered visited set and a
-    // worklist: O(A log A) for A distinct arrays, bounded by the byte budget.
+    // kLiteralArray entries (24.0 emits them). Arrays are deduplicated when
+    // enqueued; every retained set node and queue slot is admitted against
+    // the byte budget before it is allocated (node cost bounded by
+    // kVisitedNodeBytes). One literal is live at a time, read within the
+    // remaining budget. O((A + E) log A) for A distinct arrays and E nested
+    // references; cycles and shared subarrays are visited once.
+    constexpr std::size_t kVisitedNodeBytes = 64;
     std::set<abc::EntityOffset> visited;
-    std::vector<abc::EntityOffset> pending(literals.get(), literals.get() + next);
+    std::vector<abc::EntityOffset> pending;
+    const auto enqueue = [&](abc::EntityOffset target) {
+      if (visited.count(target)) return;
+      Admit(1, kVisitedNodeBytes + sizeof(abc::EntityOffset), budget.bytes);
+      visited.insert(target);
+      if (pending.size() == pending.capacity()) {
+        const auto grown = pending.empty() ? std::size_t{16} : pending.size() * 2;
+        Admit(grown - pending.capacity(), sizeof(abc::EntityOffset), budget.bytes);
+        pending.reserve(grown);
+      }
+      pending.push_back(target);
+    };
+    for (std::size_t i = 0; i < next; ++i) enqueue(literals[i]);
     while (!pending.empty()) {
       const auto current = pending.back();
       pending.pop_back();
-      if (!visited.insert(current).second) continue;
-      Admit(1, sizeof(abc::EntityOffset) * 4, budget.bytes);
       const auto literal = Take<abc::LiteralArray>(
           abc::ReadLiteralArray(file, header, current, {budget.bytes}));
       for (const auto& entry : literal.entries) {
         if (entry.tag == abc::LiteralTag::kLiteralArray) {
-          pending.push_back(std::get<abc::EntityOffset>(entry.value));
+          enqueue(std::get<abc::EntityOffset>(entry.value));
           continue;
         }
         const auto role = Role(entry.tag);

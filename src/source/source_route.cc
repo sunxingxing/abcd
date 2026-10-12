@@ -233,6 +233,12 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
                    {"pc", receipt.failure->pc
                               ? Json(receipt.failure->pc->value)
                               : Json(nullptr)}};
+    // Schema 5: the typed cause chain, outermost first, last entry the leaf.
+    Json causes = Json::array();
+    for (const auto& cause : receipt.failure->causes.View())
+      causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
+    failure["causes"] = std::move(causes);
+    failure["causes_truncated"] = receipt.failure->causes.truncated;
   }
   Json version = Json::array();
   for (const auto byte : receipt.identity.abc_version.bytes)
@@ -383,6 +389,27 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
       if (!offset) return RouteReceiptError::kFailure;
       typed.pc = abc::CodeOffset{*offset};
     }
+    // Required and exactly typed: never defaulted (schema 5).
+    const auto causes = failure->find("causes");
+    const auto truncated = failure->find("causes_truncated");
+    if (causes == failure->end() || !causes->is_array() ||
+        causes->size() > kMaxFailureCauses || truncated == failure->end() ||
+        !truncated->is_boolean())
+      return RouteReceiptError::kFailure;
+    for (const auto& cause : *causes) {
+      if (!cause.is_object() || cause.size() != 2) return RouteReceiptError::kFailure;
+      const auto domain = cause.find("domain");
+      const auto value = cause.find("value");
+      if (domain == cause.end() || !domain->is_string() || domain->get<std::string>().empty() ||
+          value == cause.end())
+        return RouteReceiptError::kFailure;
+      const auto number = ParseUnsigned<std::uint32_t>(*value);
+      if (!number) return RouteReceiptError::kFailure;
+      typed.causes.Append({domain->get<std::string>(), *number});
+    }
+    typed.causes.truncated = truncated->get<bool>();
+    if (typed.causes.truncated && typed.causes.count != kMaxFailureCauses)
+      return RouteReceiptError::kFailure;
     receipt.failure = std::move(typed);
   }
   // A syntactically complete receipt must still describe a state the reached

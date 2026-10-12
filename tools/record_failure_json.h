@@ -17,12 +17,12 @@ namespace abcd::tools {
 // entry is the leaf used for capability (Pareto) aggregation.
 void DescribeRecordFailure(const source::RecordSourceResult& result,
                            nlohmann::json& record);
-// Process-level failures stop the export: input I/O and change, entry
-// allocation failure, and any resource-limit outcome (kResourceLimit or a
-// kMemoryLimit route refusal) when a real allocation failure was observed
-// while building this record (tools/process_limit.h). Without that
-// observation a resource limit is this record's own budget and, like
-// kRecordBudget, kOutputLimit and other typed refusals, is isolated.
+// Process-level failures stop the export: any outcome once a real
+// allocation failure has been observed (sticky, tools/process_limit.h), and
+// input I/O, input change or entry allocation failure. Without an observed
+// allocation failure a resource limit (kResourceLimit, kMemoryLimit refusal)
+// is this record's own budget and, like kRecordBudget, kOutputLimit and other
+// typed refusals, is isolated to the record.
 [[nodiscard]] bool RecordFailureIsFatal(const source::RecordSourceResult& result,
                                         bool allocation_failed);
 }  // namespace abcd::tools

@@ -73,9 +73,84 @@ void Scale(std::uint32_t count, abcd::abc::LiteralTag tag = abcd::abc::LiteralTa
   test::Check(roles.At({1}) == (tag == abc::LiteralTag::kGeneratorMethod ? analysis::MethodRole::kGenerator : analysis::MethodRole::kOrdinary));
   test::Check(unlink(path) == 0);
 }
+// Nested literal arrays (24.0): the root array references subarray A through
+// `duplicates` kLiteralArray entries; A references the root back (a cycle)
+// and holds the method. Every array is visited once; the role is found; the
+// traversal fails typed under a small budget, never by allocation failure.
+void Nested(std::uint32_t duplicates) {
+  using namespace abcd;
+  constexpr std::uint32_t kPool = 64, kCaller = 80, kTarget = 100, kRoot = 128;
+  constexpr std::uint32_t kEntryBytes = 5, kCountUnits = 2;
+  const std::uint32_t sub = kRoot + 4 + duplicates * kEntryBytes;
+  const std::uint32_t code = sub + 4 + 2 * kEntryBytes + 3;
+  std::vector<std::uint8_t> bytes(code);
+  const auto word = [&](std::size_t at, std::uint32_t value) {
+    for (std::size_t i = 0; i < sizeof(value); ++i) bytes[at + i] = value >> (8 * i);
+  };
+  word(kPool, kRoot);
+  word(kRoot, duplicates * kCountUnits);
+  for (std::uint32_t i = 0; i < duplicates; ++i) {
+    const auto at = kRoot + 4 + i * kEntryBytes;
+    bytes[at] = static_cast<std::uint8_t>(abc::LiteralTag::kLiteralArray);
+    word(at + 1, sub);
+  }
+  word(sub, 3 * kCountUnits);
+  bytes[sub + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kLiteralArray);
+  word(sub + 5, kRoot);
+  bytes[sub + 9] = static_cast<std::uint8_t>(abc::LiteralTag::kMethod);
+  word(sub + 10, kTarget);
+  bytes[sub + 14] = static_cast<std::uint8_t>(abc::LiteralTag::kMethodAffiliate);
+  const auto uleb = [&](std::uint32_t value) {
+    do {
+      const auto part = value & 0x7f;
+      value >>= 7;
+      bytes.push_back(part | (value ? 0x80 : 0));
+    } while (value);
+  };
+  uleb(0); uleb(0); uleb(5); uleb(0);
+  const auto instructions = bytes.size();
+  bytes.insert(bytes.end(), {7, 0, 0, 0, 0x65});
+  char path[] = "/tmp/abcd-method-role-nested-XXXXXX";
+  const auto fd = mkstemp(path);
+  test::Check(fd >= 0);
+  test::Check(write(fd, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size()));
+  test::Check(close(fd) == 0);
+  auto opened = corpus::AbcFile::Open(path);
+  const auto& file = *std::get<std::unique_ptr<corpus::AbcFile>>(opened);
+  abc::Header header;
+  header.kind = abc::AbcKind::kDynamic;
+  header.profile = abc::ProfileId::kDynamic2400;
+  header.layout = abc::DynamicLayout{};
+  header.file_size = bytes.size();
+  abc::MetadataIndex index;
+  index.regions.push_back({kCaller, kRoot, {}, {1, kPool}, {}, {}});
+  index.methods.resize(2);
+  index.methods[0].offset = {kCaller};
+  index.methods[0].code = abc::CodeInfo{{code}, {static_cast<std::uint32_t>(instructions)}, 0, 0, 5, 0};
+  index.methods[1].offset = {kTarget};
+  const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
+  const auto built = analysis::MethodRoleIndex::Build(file, header, index, lookup);
+  test::Check(std::get<analysis::MethodRoleIndex>(built).At({1}) == analysis::MethodRole::kOrdinary);
+  const auto fits = [&](std::size_t budget) {
+    return std::holds_alternative<analysis::MethodRoleIndex>(
+        analysis::MethodRoleIndex::Build(file, header, index, lookup, {budget}));
+  };
+  std::size_t low = 0, high = analysis::MethodRoleBudget{}.bytes;
+  test::Check(!fits(low) && fits(high));
+  while (high - low > 1) {
+    const auto middle = low + (high - low) / 2;
+    (fits(middle) ? high : low) = middle;
+  }
+  test::Check(fits(high) && !fits(high - 1));
+  const auto refused = analysis::MethodRoleIndex::Build(file, header, index, lookup, {high - 1});
+  // Typed budget failure from whichever stage reaches the limit first.
+  test::Check(std::holds_alternative<analysis::MethodRoleFailure>(refused));
+  test::Check(unlink(path) == 0);
+}
 }  // namespace
 
 int main() {
+  for (const std::uint32_t duplicates : {1, 2, 200, 201, 4000}) Nested(duplicates);
   using namespace abcd;
   for (const std::uint32_t count : {200, 201, 400, 800, 1600}) Scale(count);
   for (const std::uint32_t count : {200, 201, 402}) Scale(count, abc::LiteralTag::kGeneratorMethod);

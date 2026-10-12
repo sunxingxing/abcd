@@ -8,10 +8,11 @@ namespace abcd::analysis {
 //
 // A handler whose first instruction is THROW rethrows the caught exception
 // unchanged: the pinned interpreter enters a handler with the exception in the
-// accumulator. When EVERY try region of a method has only such handlers, each
-// exception still leaves the method with the same value whether or not the
-// regions exist, so erasing all of them preserves observable behaviour and the
-// try-based first-match selection order. Partially transparent methods are
+// accumulator. The rethrow re-enters dispatch at the handler PC. When EVERY
+// try region of a method has only such handlers and NO region covers any
+// handler PC, every exception leaves the method with the same value whether or
+// not the regions exist, so erasing all of them preserves observable
+// behaviour. A covered handler (self or mutual rethrow chain) keeps them all. Partially transparent methods are
 // left unchanged, because erasing one region could redirect an exception to a
 // later overlapping region.
 //
@@ -21,7 +22,8 @@ namespace abcd::analysis {
 //
 // After erasure, trailing handler instructions that no normal edge reaches
 // (not a branch target, previous instruction does not fall through) are
-// removed. Returns true if the body changed. O(instructions + handlers).
+// removed. Returns true if the body changed.
+// O(instructions + (regions + handlers) log regions).
 [[nodiscard]] bool EraseTransparentRethrowRegions(abc::MethodBody& body);
 }  // namespace abcd::analysis
 

@@ -52,26 +52,25 @@ int main() {
   nlohmann::json printed = nlohmann::json::object();
   tools::DescribeRecordFailure(source::PrintedSource{}, printed);
   Check(printed.empty());
-  // Fatality: input I/O/change and entry allocation failure always stop the
-  // export; resource limits only when a real allocation failure was observed.
+  // Fatality: an observed real allocation failure is process-level for every
+  // outcome, including recovered success; otherwise only input I/O/change and
+  // entry allocation failure stop the export, and budgets are per record.
   const auto fatal = [](source::RecordProgramError kind, bool allocation_failed) {
     return tools::RecordFailureIsFatal(source::RecordProgramFailure{kind, {}}, allocation_failed);
   };
   using Error = source::RecordProgramError;
-  for (const bool observed : {false, true}) {
-    Check(!fatal(Error::kRecordBudget, observed));
-    Check(!fatal(Error::kOutputLimit, observed));
-    Check(!fatal(Error::kEntry, observed));
-    Check(fatal(Error::kAllocationFailure, observed));
-    Check(fatal(Error::kRead, observed) && fatal(Error::kWrite, observed) &&
-          fatal(Error::kFileChanged, observed));
-    Check(fatal(Error::kResourceLimit, observed) == observed);
-    Check(tools::RecordFailureIsFatal(source::RouteRefusal{{source::RouteFailureClass::kMemoryLimit,
-        source::ValueRouteError::kTreeStage, {}}}, observed) == observed);
-    Check(!tools::RecordFailureIsFatal(source::RouteRefusal{{source::RouteFailureClass::kUnproved,
-        source::ValueRouteError::kTreeStage, {}}}, observed));
-    Check(!tools::RecordFailureIsFatal(source::PrintedSource{}, observed));
+  for (const auto kind : {Error::kRecordBudget, Error::kOutputLimit, Error::kEntry,
+                          Error::kResourceLimit, Error::kExport, Error::kFileIndex}) {
+    Check(!fatal(kind, false));
+    Check(fatal(kind, true));
   }
+  for (const auto kind : {Error::kAllocationFailure, Error::kRead, Error::kWrite, Error::kFileChanged})
+    Check(fatal(kind, false) && fatal(kind, true));
+  const source::RouteRefusal memory{{source::RouteFailureClass::kMemoryLimit,
+      source::ValueRouteError::kTreeStage, {}}};
+  Check(!tools::RecordFailureIsFatal(memory, false) && tools::RecordFailureIsFatal(memory, true));
+  Check(!tools::RecordFailureIsFatal(source::PrintedSource{}, false));
+  Check(tools::RecordFailureIsFatal(source::PrintedSource{}, true));
   std::cout << "record_failure_json_test: ok\n";
   return EXIT_SUCCESS;
 }

@@ -51,8 +51,8 @@ nlohmann::json DescribeLimit(const ProcessLimit& limit) {
 }  // namespace
 
 void InstallAllocationFailureMonitor() { std::set_new_handler(OnAllocationFailure); }
-bool TakeAllocationFailure() {
-  return allocation_failed.exchange(false, std::memory_order_relaxed);
+bool AllocationFailureObserved() {
+  return allocation_failed.load(std::memory_order_relaxed);
 }
 
 void ReportLimitFailure(std::ostream& output, const ProcessLimit& limit) {
