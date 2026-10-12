@@ -81,3 +81,34 @@ preserved scope across await and handlers, original-PC propagation and budgets.
 
 验收需包括以下变体：寄存器复制、插入 NOP、入口后未覆盖 acc、只有部分分支覆盖、先复制 acc
 再使用。
+
+### 通用重做（替代上述撤回）
+
+`ProveAsyncCompletion` 的前缀准入改为按类型化语义判定，不再看 opcode 排列：
+- 前导 NOP 保留在前缀中；随后识别可选的 `PushEnvironment`。
+- `ASYNCFUNCTIONENTER` 之前的其余每条指令都要经共同的 `LiftSemanticInstruction` 提升，不可能抛出，
+  也不改变控制流（`kFallthrough`），并且只能是以下两类之一：
+  - 无效果的 `NoOperation` 或 `ScalarAssignment`，即寄存器/累加器复制或常量；
+  - 已有新环境时，depth 0 的 `LexicalStore`，其效果只能是 `kLexicalWrite | kEnvironmentRead`。
+    此时还不可能存在闭包（任何创建都带 `kAllocation`，已被拒绝），所以这次写入不可观察。
+- 前缀中的任何指令都不得触及 promise 寄存器（`TouchesRegister`）。
+
+原来的 `mov` 模板（只允许参数复制到局部寄存器）随之移除。寄存器复制、插入 NOP、先复制再写入
+等等价变体都自然准入，无需再加局部模式。
+
+**被删除的协议定义**：从被删除的 `sta vPromise` 的下一条指令起，沿直线路径用
+`LiftRegisterEffect` 检查每条指令：在出现控制转移或汇合点（任何分支目标）之前，累加器必须先被
+写入，此前不得读取。否则被删除的 async 对象就会变得可观察。promise 寄存器在正文中的使用仍由
+原有检查约束。这一项同时补上了原有 `newlexenv` 前缀的同类缺口（它也会写 acc）。
+
+**证据**：
+- `control_composition_test` 的 `AsyncPrefixes` 共 9 种情形：
+  - 准入：捕获的参数、先复制再写入、中间插入 NOP；
+  - 拒绝：外层 depth、没有新环境、可观察的前缀效果、入口后读取被删除的 acc、先复制 acc、
+    重新定义 acc 之前就有分支。
+- 原有的 `AwaitCompletion` 仍然通过。
+- 固定 65 项全部通过；定向测试只有基线原有失败。
+- 探索集 455 → **461/620**，无回退，原有输出文本不变；新完整的 6 个 record 都通过
+  `node --check`。
+
+本机 es2abc 的 async 尾部布局不同，仍然没有 Node 差分（epilogue 模板是另一项限制）。

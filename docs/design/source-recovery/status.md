@@ -167,10 +167,10 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
      `CallPlanError::kReference`：成员调用的 callee 读取早于参数中的选择区域。
      normal 路径的融合域已沿内联消费链延伸，探索集 448 → **455**，详见
      [成员调用引用](call-references.md)。
-   - 第三位缺口 `FunctionEmitError::kKind`：15 次来自 async 前缀只允许 `mov` 的检查（参数写入
-     cell）。曾按相邻 opcode 放宽准入，但 Codex 第十五轮指出两项问题：被删除的 acc 定义没有做
-     def-use 证明；扩展方式属于局部模式。该扩展已撤回，待改用通用的数据流证明，见
-     `docs/design/async-lexical-prelude.md`。
+   - 第三位缺口 `FunctionEmitError::kKind`：15 次来自 async 前缀只允许 `mov` 的检查。第一版按
+     相邻 opcode 放宽，被 Codex 第十五轮驳回（被删除的 acc 定义缺少 def-use 证明，且属于局部模式），
+     已撤回。现在改为按类型化语义准入前缀，并证明被删除的 acc 定义不可观察。探索集 455 →
+     **461**，详见 `docs/design/async-lexical-prelude.md`。
 2. **S5 余项**：1 GB 整进程预算与准入；macOS 上的观测与背压。`abc_semantic` 的资源字段改为
    在 JSON 序列化边界直接写入。
 3. **C5 → C3 → C2 → C4 → C8**：语义上移到打印之前 → 一般结构化 → 选择表达式通用化 →

@@ -764,6 +764,67 @@ void AwaitCompletion(abc::ProfileId profile, std::ostream* output) {
   test::Check(awaits.size() == 1);
   Emit(normalized, profile, 3, 1, false, output, {}, 0, false, {}, CompositionStage::kSource, 0, awaits);
 }
+// The pre-promise prefix is admitted by typed semantics (no effect, cannot
+// throw, no transfer; copies/constants, or depth-0 stores into the fresh
+// environment), not by opcode layout. The erased ASYNCFUNCTIONENTER acc
+// definition must be overwritten before any read, transfer or join.
+void AsyncPrefixes(abc::ProfileId profile) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  using Bytes = std::vector<std::uint8_t>;
+  const auto lda = [&](std::uint8_t r) { return Bytes{op(abc::Opcode::kLDA_V8), r}; };
+  const auto store = [&](std::uint8_t depth) { return Bytes{op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), depth}; };
+  const Bytes env{op(abc::Opcode::kNEWLEXENV_IMM8), 1};
+  const Bytes nop{op(abc::Opcode::kNOP)};
+  const Bytes copy{op(abc::Opcode::kMOV_V4_V4), 0x32};  // v2 <- v3 (local <- argument)
+  const Bytes heap{op(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0};
+  const Bytes reload = lda(3);
+  const Bytes sta1{op(abc::Opcode::kSTA_V8), 1};
+  const Bytes branch{op(abc::Opcode::kJEQZ_IMM8), 2};
+  struct Case { std::vector<Bytes> prefix; std::vector<Bytes> start; bool admitted; };
+  const auto concat = [](std::initializer_list<Bytes> parts) { Bytes out; for (const auto& p : parts) out.insert(out.end(), p.begin(), p.end()); return out; };
+  const std::vector<Case> cases{
+      {{nop, env, lda(3), store(0)}, {reload}, true},             // captured argument
+      {{env, copy, lda(2), store(0)}, {reload}, true},            // copied first
+      {{env, lda(3), nop, store(0)}, {reload}, true},             // separated by a NOP
+      {{env, lda(3), store(1)}, {reload}, false},                 // outer environment
+      {{lda(3), store(0)}, {reload}, false},                      // no fresh environment
+      {{env, heap}, {reload}, false},                             // observable prefix effect
+      {{env, lda(3), store(0)}, {nop}, false},                    // erased acc read by resolve
+      {{env, lda(3), store(0)}, {sta1, reload}, false},           // erased acc copied first
+      {{env, lda(3), store(0)}, {branch, reload}, false}};        // transfer before redefinition
+  for (const auto& c : cases) {
+    Bytes bytes;
+    for (const auto& part : c.prefix) bytes.insert(bytes.end(), part.begin(), part.end());
+    const auto prefix = static_cast<std::uint32_t>(bytes.size());
+    bytes.insert(bytes.end(), {op(abc::Opcode::kASYNCFUNCTIONENTER), op(abc::Opcode::kSTA_V8), 0});
+    for (const auto& part : c.start) bytes.insert(bytes.end(), part.begin(), part.end());
+    bytes.insert(bytes.end(), {op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, op(abc::Opcode::kRETURN)});
+    const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
+    bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1,
+        op(abc::Opcode::kASYNCFUNCTIONREJECT_V8), 0, op(abc::Opcode::kRETURN)});
+    auto body = test::Body(bytes);
+    abc::TryRegion region; region.offset = {prefix + 3}; region.length = handler_pc - prefix - 3; region.handler_count = 1;
+    abc::CatchHandler handler; handler.offset = {handler_pc}; handler.length = 5;
+    body.tries = {region}; body.handlers = {handler};
+    const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
+    std::vector<abc::CodeOffset> origins;
+    const auto proved = ProveAsyncCompletion(body, frame, SemanticBudget{}.bytes, &origins, nullptr, profile,
+        ResourceFailureScope::kExcluded);
+    if (std::holds_alternative<abc::MethodBody>(proved) != c.admitted)
+      std::cerr << "async prefix case " << (&c - cases.data()) << " admitted=" << std::holds_alternative<abc::MethodBody>(proved)
+                << " error=" << (std::holds_alternative<FunctionEmitError>(proved) ? int(std::get<FunctionEmitError>(proved)) : -1) << '\n';
+    test::Check(std::holds_alternative<abc::MethodBody>(proved) == c.admitted);
+    if (!c.admitted) {
+      test::Check(std::get<FunctionEmitError>(proved) == FunctionEmitError::kKind);
+      continue;
+    }
+    // The whole prefix survives, in order, ahead of the retained body.
+    const auto& normalized = std::get<abc::MethodBody>(proved);
+    for (std::size_t i = 0; i < c.prefix.size(); ++i)
+      test::Check(normalized.instructions[i].decoded.opcode == body.instructions[i].decoded.opcode);
+  }
+  (void)concat;
+}
 enum class SharedInnerCatch { kNone, kRethrow, kCallback, kLoopCallback, kReturn };
 void CompilerFinally(abc::ProfileId profile, std::ostream* output,
     CompositionStage stage = CompositionStage::kHoleFinally, std::uint32_t count = 1, bool early_return = false,
@@ -1501,6 +1562,7 @@ int main(int argc, char** argv) {
     CompilerFinally(profile, nullptr, CompositionStage::kHoleSource);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally);
     AwaitCompletion(profile, nullptr);
+    AsyncPrefixes(profile);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,
         SharedInnerCatch::kNone, 1, true);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,

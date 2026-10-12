@@ -10,6 +10,8 @@
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/await_catch.h"
 #include "abcd/analysis/lexical.h"
+#include "abcd/analysis/register_effect.h"
+#include "abcd/analysis/semantic_ir.h"
 #include "async_handlers.h"
 
 namespace abcd::source {
@@ -104,19 +106,45 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   if (sites.size() < 7 || body.tries.empty() || body.handlers.empty())
     return FunctionEmitError::kKind;
   std::size_t enter = 0;
+  // NOPs carry no semantics; leading ones stay in the normalized prefix.
+  while (enter < sites.size() && sites[enter].decoded.opcode == Opcode::kNOP) ++enter;
   // v7 NEWLEXENV[WITHNAME] allocates VM-only state before promise creation.
   // Keep it in normalized IR; only OOM timing is excluded by the contract.
-  // No user-visible prefix effects or arbitrary stores are admitted here.
-  if (AllowsLexicalPrelude(profile, resources) &&
+  bool lexical_prelude = false;
+  if (enter < sites.size() && AllowsLexicalPrelude(profile, resources) &&
       std::holds_alternative<analysis::PushEnvironment>(
-          analysis::LiftLexicalInstruction(sites.front().decoded, frame.registers)))
+          analysis::LiftLexicalInstruction(sites[enter].decoded, frame.registers))) {
     ++enter;
-  const auto copy_begin = enter;
+    lexical_prelude = true;
+  }
+  // Function instantiation before ASYNCFUNCTIONENTER is retained verbatim in
+  // the normalized prefix. Admit it by its typed semantics, not by opcode
+  // layout: every instruction must lift through the common lifter, cannot
+  // throw or transfer control, and is either an effect-free no-op/scalar
+  // assignment (register/acc copy or constant) or, with the fresh environment
+  // above, a depth-0 store into it (e.g. a captured parameter). No user code,
+  // heap access or throw precedes the promise. Promise storage is checked once
+  // its register is known.
+  const auto prefix_begin = enter;
   while (enter < sites.size() &&
          sites[enter].decoded.opcode != Opcode::kASYNCFUNCTIONENTER) {
-    if (sites[enter].decoded.opcode != Opcode::kMOV_V4_V4 &&
-        sites[enter].decoded.opcode != Opcode::kMOV_V8_V8)
+    const auto lifted = analysis::LiftSemanticInstruction(sites[enter], profile, frame.registers, &frame);
+    const auto* instruction = std::get_if<analysis::SemanticInstruction>(&lifted);
+    if (!instruction || instruction->effects.exceptional != analysis::ExceptionalCompletion::kImpossible ||
+        abc::GetControlTransfer(sites[enter].decoded.opcode) != abc::ControlTransfer::kFallthrough)
       return FunctionEmitError::kKind;
+    const auto& operation = instruction->operation;
+    const auto* store = std::get_if<analysis::LexicalStore>(&operation);
+    // A depth-0 store writes the fresh environment's own cell: its lexical
+    // write and environment read are unobservable here, because no closure
+    // can exist yet (any creation lifts with kAllocation and is refused).
+    constexpr auto kFreshCellStore = analysis::LanguageEffect::kLexicalWrite | analysis::LanguageEffect::kEnvironmentRead;
+    const bool cell = store && lexical_prelude && store->address.depth.value == 0 &&
+        (static_cast<std::uint16_t>(instruction->effects.normal) & ~static_cast<std::uint16_t>(kFreshCellStore)) == 0;
+    const bool pure = instruction->effects.normal == analysis::LanguageEffect::kNone &&
+        (std::holds_alternative<analysis::NoOperation>(operation) ||
+         std::holds_alternative<analysis::ScalarAssignment>(operation));
+    if (!cell && !pure) return FunctionEmitError::kKind;
     ++enter;
   }
   if (enter + 5 >= sites.size() ||
@@ -126,16 +154,31 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   if (!IsRegister(sites[enter + 1], Opcode::kSTA_V8, &promise) ||
       promise.value >= frame.locals)
     return FunctionEmitError::kKind;
-  for (std::size_t i = copy_begin; i < enter; ++i) {
-    const auto& copy = sites[i].decoded;
-    if (copy.operand_count != 2 ||
-        copy.operands[0].kind != abc::OperandKind::kRegister ||
-        copy.operands[1].kind != abc::OperandKind::kRegister ||
-        copy.operands[0].raw_bits >= frame.locals ||
-        copy.operands[0].raw_bits == promise.value ||
-        copy.operands[1].raw_bits < frame.locals ||
-        copy.operands[1].raw_bits >= frame.registers)
-      return FunctionEmitError::kKind;
+  for (std::size_t i = prefix_begin; i < enter; ++i)
+    if (TouchesRegister(sites[i], promise, frame.registers)) return FunctionEmitError::kKind;
+  // Normalization erases ASYNCFUNCTIONENTER's accumulator definition (the
+  // async object) with its `sta promise`. After that store the original acc
+  // still holds the async object while the normalized body would see the
+  // prefix's last acc value. So, on the straight-line path from there, acc
+  // must be (re)defined before any read and before any control transfer or
+  // join. The erased promise register is checked separately for the body.
+  {  // Scratch released before the normalization allocations below.
+    std::vector<abc::CodeOffset> targets;
+    if (sites.size() > bytes / sizeof(abc::CodeOffset)) return FunctionEmitError::kResourceLimit;
+    targets.reserve(sites.size());
+    for (const auto& site : sites) if (site.branch_target) targets.push_back(*site.branch_target);
+    std::sort(targets.begin(), targets.end());
+    for (std::size_t i = enter + 2;; ++i) {
+      if (i >= sites.size() || abc::GetControlTransfer(sites[i].decoded.opcode) != abc::ControlTransfer::kFallthrough ||
+          std::binary_search(targets.begin(), targets.end(), sites[i].offset))
+        return FunctionEmitError::kKind;
+      const auto effect = analysis::LiftRegisterEffect(sites[i].decoded, frame.registers);
+      const auto* registers = std::get_if<analysis::RegisterEffect>(&effect);
+      if (!registers) return FunctionEmitError::kKind;
+      for (std::uint8_t r = 0; r < registers->read_count; ++r)
+        if (std::holds_alternative<analysis::Accumulator>(registers->reads[r])) return FunctionEmitError::kKind;
+      if (registers->write && std::holds_alternative<analysis::Accumulator>(*registers->write)) break;
+    }
   }
   const auto handler = sites.size() - 3;
   abc::RegisterId caught, resolved, rejected;
