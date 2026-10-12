@@ -1,9 +1,10 @@
 #ifndef ABCD_SOURCE_RECORD_PROGRAM_H_
 #define ABCD_SOURCE_RECORD_PROGRAM_H_
 
-#include "abcd/analysis/method_roles.h"
-#include "abcd/source/created_class.h"
-#include "abcd/source/module_exports.h"
+#include "abcd/abc/header.h"
+#include "abcd/abc/method_body.h"
+#include "abcd/abc/string_entity.h"
+#include "abcd/source/emission.h"
 
 namespace abcd::source {
 enum class RecordProgramError : unsigned {
@@ -36,27 +37,9 @@ struct RecordProgramBudget {
   EmitBudget output;
   abc::StringBudget strings;
 };
-using RecordProgramResult =
-    std::variant<std::size_t, RecordProgramFailure>;
-
-// Admission to the record-source interpreter, not blanket source admission
-// for every instruction or method in any admitted profile.
+// Record-level admission for the value-tree route, not blanket source
+// admission for every instruction or method in an admitted profile.
 [[nodiscard]] bool SupportsRecordProgramProfile(abc::ProfileId profile);
-
-// Emits one complete ESM record only when every entry instruction and all
-// transitively created class bodies pass source admission. The caller supplies
-// an unchanged merged-module record, its own module table and whole-file role
-// index. Dynamic 12.0.2, 12.0.6 and 13.0.1.0 use separately admitted
-// semantics; other historical ABC containers remain parseable but not
-// source-admitted.
-// Semantic/budget refusal writes nothing. IO/file mutation during the second
-// pass can leave a prefix; publish only through a staged atomic file.
-[[nodiscard]] RecordProgramResult WriteRecordProgram(
-    const corpus::AbcFile& file, const abc::Header& header,
-    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-    const abc::RecordInfo& record, const abc::ModuleInfo& module,
-    const analysis::MethodRoleIndex& roles, std::ostream& output,
-    RecordProgramBudget budget = {});
 }  // namespace abcd::source
 
 #endif  // ABCD_SOURCE_RECORD_PROGRAM_H_

@@ -7,7 +7,7 @@ const [engine, abc, paired] = process.argv.slice(2);
 // oracle; its type-only declarations do not represent runtime field writes.
 const report = JSON.parse(execFileSync(engine, [abc, '20678', '--record-source', '--value-source'], { encoding: 'utf8' }));
 assert.equal(report.source_complete, true);
-assert.equal(report.legacy_writer_used, false);
+assert.equal(report.legacy_writer_used, undefined);
 assert.match(report.source, /item\?\.reviewCnt/);
 assert.match(report.source, /item\?\.subContent/);
 assert.doesNotMatch(report.source, /item !== null|item !== \(void 0\)/);

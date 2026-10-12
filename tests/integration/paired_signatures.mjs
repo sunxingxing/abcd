@@ -48,7 +48,7 @@ try {
       // accepted as decompiled classes. Every actual source must be complete.
       assert.ok(!row.incomplete_source, `${relative}:${row.entity}`);
       assert.equal(row.source_route, 'value_tree');
-      assert.equal(row.legacy_writer_used, false);
+      assert.equal(row.legacy_writer_used, undefined);
       if (!row.source) {
         // Serialized SourceStatus::kNoModule from tools/abc_structure.cc.
         const noModuleStatus = 2;

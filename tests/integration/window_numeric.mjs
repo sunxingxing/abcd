@@ -11,7 +11,7 @@ assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout);
 assert.equal(report.record, 7618);
 assert.equal(report.source_complete, true);
-assert.equal(report.legacy_writer_used, false);
+assert.equal(report.legacy_writer_used, undefined);
 assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED/);
 const referenceText = readFileSync(paired, 'utf8');
 assert.equal((referenceText.match(/^@Observed$/gm) ?? []).length, 1);

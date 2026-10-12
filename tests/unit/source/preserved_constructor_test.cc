@@ -99,7 +99,7 @@ std::string Run(abc::ProfileId profile,Call call,unsigned copies,bool split,bool
   const auto emitted=FamilyEmission::Write(std::move(family),destination,output,{0});
   test::PreservationCheck(std::holds_alternative<FamilyEmission>(emitted));
   for(const auto& receipt:std::get<FamilyEmission>(emitted).Receipts())
-    test::PreservationCheck(receipt.coverage==Coverage::kComplete&&!receipt.legacy_writer_used);
+    test::PreservationCheck(receipt.coverage==Coverage::kComplete&&receipt.route == abcd::source::SourceRoute::kValueTree);
   test::PreservationCheck(!file.CheckUnchanged()&&unlink(path)==0);
   return output.str();
 }

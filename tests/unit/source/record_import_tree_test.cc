@@ -457,7 +457,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   }
   const auto build = [&](source::RecordProgramBudget budget = {}) {
     return source::BuildRecordSource(*file, header, index, lookup, record, context, roles,
-        budget, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, (family || cleanup_entry) ? &creations : nullptr, mixed ? &classes : nullptr);
+        budget, identity, (family || cleanup_entry) ? &creations : nullptr, mixed ? &classes : nullptr);
   };
   auto result = build();
   if (mode == FixtureCase::kCleanupOverwrite || mode == FixtureCase::kModuleWriterEarly) {

@@ -19,7 +19,7 @@ assert.equal(createHash('sha256').update(input).digest('hex'),identity.sha256);
 const recovered = JSON.parse(execFileSync(tool, [join(root, 'modules.abc'), '12208',
   '--record-source', '--value-source'], {encoding: 'utf8'}));
 assert.equal(recovered.source_complete, true);
-assert.equal(recovered.legacy_writer_used, false);
+assert.equal(recovered.legacy_writer_used, undefined);
 assert.equal(recovered.record,11989); assert.equal(recovered.route,'value_tree');
 assert.doesNotMatch(recovered.source,/INCOMPLETE|UNRECOVERED/);
 // Source representation is checked independently from execution. The field

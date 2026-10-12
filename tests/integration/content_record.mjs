@@ -26,7 +26,7 @@ try {
   assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
   for (const [name, entity, path] of records) {
     const record = manifest.records.find(row => row.entity === entity);
-    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     assert.equal(record.executable, false);
     assert.equal(record.source_route, 'value_tree'); assert.equal(record.source, 'sources/' + path + '.mjs');
     sources[name] = readFileSync(join(output, record.source), 'utf8');

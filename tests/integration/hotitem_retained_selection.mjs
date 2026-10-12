@@ -11,7 +11,7 @@ const [tool, root] = process.argv.slice(2);
 const recovered = JSON.parse(execFileSync(tool, [join(root,'modules.abc'), '47847',
   '--record-source','--value-source'], {encoding:'utf8'}));
 assert.equal(recovered.source_complete,true);
-assert.equal(recovered.legacy_writer_used,false);
+assert.equal(recovered.legacy_writer_used, undefined);
 assert.match(recovered.source, /showDetail \?\? false/);
 assert.match(recovered.source, /params\.indexWidth\)\s*\?\?/);
 assert.match(recovered.source, /params\.indexIconGap\)\s*\?\?/);

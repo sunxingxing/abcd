@@ -1,8 +1,10 @@
 #ifndef ABCD_SOURCE_CAPTURE_PRESERVATION_H_
 #define ABCD_SOURCE_CAPTURE_PRESERVATION_H_
 
+#include "abcd/abc/method_lookup.h"
+#include "abcd/source/method_context.h"
 #include "abcd/analysis/capture_effect.h"
-#include "abcd/source/semantic_source.h"
+#include "abcd/source/printed_source.h"
 
 namespace abcd::source {
 struct CapturePreservations {

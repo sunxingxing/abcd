@@ -29,7 +29,7 @@ for (const row of fixtures) {
   assert.equal(report.record, entity);
   assert.equal(report.source_contract, 'language_numeric_constructors_v1');
   assert.equal(report.source_complete, true);
-  assert.equal(report.legacy_writer_used, false);
+  assert.equal(report.legacy_writer_used, undefined);
   assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED/);
   assert.match(report.source, /constructor\(\.\.\./);
   assert.match(report.source, /super\(\.\.\./);

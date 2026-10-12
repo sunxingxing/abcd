@@ -28,7 +28,7 @@ try {
     assert.equal(record.source_contract, manifest.source_contract);
   for (const name of names) {
     const record = manifest.records.find(record => record.source === 'sources/' + name + '.mjs');
-    assert.equal(record.source_complete, true); assert.equal(record.source_route, 'value_tree'); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.source_route, 'value_tree'); assert.equal(record.legacy_writer_used, undefined);
     sources[name] = readFileSync(join(output, record.source), 'utf8'); assert.doesNotMatch(sources[name], /INCOMPLETE|UNRECOVERED/);
   }
 } finally {rmSync(temporary, {recursive: true});}

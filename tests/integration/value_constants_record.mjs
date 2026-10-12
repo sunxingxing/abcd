@@ -14,7 +14,7 @@ const run = spawnSync(tool, [abc, '8889', '--record-source', '--value-source'],
 assert.equal(run.status, 0, run.stderr + run.stdout);
 const report = JSON.parse(run.stdout);
 assert.equal(report.source_complete, true);
-assert.equal(report.legacy_writer_used, false);
+assert.equal(report.legacy_writer_used, undefined);
 assert.equal(report.route, 'value_tree');
 assert.equal(report.record, 8755);
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));

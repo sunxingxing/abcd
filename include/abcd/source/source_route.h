@@ -15,21 +15,12 @@
 
 namespace abcd::source {
 // Source route identity (docs/design/source-recovery/acceptance.md §2).
-// RoutePolicy selects which pipeline may publish a method body; SourceRoute
-// records which one actually ran. A route receipt without an explicit route
-// is never interpreted as the value-tree route (T00/A01: legacy methods that
-// predate receipts stay Legacy).
-enum class RoutePolicy : std::uint8_t {
-  kLegacyAllowed = 0,
-  kRequireValueTree = 1,
-};
+// The value-tree route is the only source route; SourceRoute stays a typed
+// receipt field so serialized evidence names the route that produced it.
 enum class SourceRoute : std::uint8_t {
-  kLegacy = 0,
-  kValueTree = 1,
+  kValueTree = 0,
 };
-// Unified stage ladder. The legacy route may claim Decoded, InputVerified,
-// Printed and Published only; Values* through TreeVerified are value-tree
-// stages that the legacy pipeline must never claim.
+// Value-tree stage ladder, walked in order by the owner of each stage.
 enum class SourceStage : std::uint8_t {
   kDecoded = 0,
   kInputVerified = 1,
@@ -55,13 +46,10 @@ enum class RouteFailureClass : std::uint8_t {
   kMemoryLimit = 5,
   kOutputFailure = 6,
 };
-// Typed reasons owned by the value-tree route itself. Legacy failure enums
-// are reported through their own result variants and join receipts only when
-// a task defines their mapping; never overload SourceError here.
+// Typed stage reasons owned by the value-tree route itself; never overload
+// SourceError here.
 enum class ValueRouteError : std::uint8_t {
-  // No value-tree stage is implemented past route admission yet (T00).
-  kRouteUnavailable = 0,
-  kInputStage,
+  kInputStage = 0,
   kImportStage,
   kTransformStage,
   kContextStage,
@@ -97,30 +85,20 @@ struct RouteInputIdentity {
 // route stage ran. Serializers must not invent stages or coverage.
 // work_revision binds a receipt to the working-IR revision it was produced
 // from; it is absent before ValuesImported and mandatory on working products.
-// Legacy products never carry a working revision (schema 3).
 struct MethodRouteReceipt {
   RouteInputIdentity identity{};
   std::optional<abc::EntityOffset> method = {};
   std::optional<abc::EntityOffset> record = {};
-  SourceRoute route = SourceRoute::kLegacy;
+  SourceRoute route = SourceRoute::kValueTree;
   std::optional<SourceStage> stage = {};
   Coverage coverage = Coverage::kUnsupported;
-  bool legacy_writer_used = false;
   std::optional<RouteFailure> failure = {};
   std::optional<std::uint64_t> work_revision = {};
 };
 
 // Boundary label names; serialization only, engine decisions use the enums.
-constexpr std::string_view RoutePolicyName(RoutePolicy policy) {
-  switch (policy) {
-    case RoutePolicy::kLegacyAllowed: return "legacy_allowed";
-    case RoutePolicy::kRequireValueTree: return "require_value_tree";
-  }
-  return {};
-}
 constexpr std::string_view SourceRouteName(SourceRoute route) {
   switch (route) {
-    case SourceRoute::kLegacy: return "legacy";
     case SourceRoute::kValueTree: return "value_tree";
   }
   return {};
@@ -161,7 +139,6 @@ constexpr std::string_view RouteFailureClassName(RouteFailureClass kind) {
 }
 constexpr std::string_view ValueRouteErrorName(ValueRouteError reason) {
   switch (reason) {
-    case ValueRouteError::kRouteUnavailable: return "route_unavailable";
     case ValueRouteError::kInputStage: return "input_stage";
     case ValueRouteError::kImportStage: return "import_stage";
     case ValueRouteError::kTransformStage: return "transform_stage";
@@ -172,27 +149,7 @@ constexpr std::string_view ValueRouteErrorName(ValueRouteError reason) {
   return {};
 }
 
-// Admission decision consulted by every entry that can reach the legacy
-// writer. When legacy is not permitted the caller must surface
-// value_route_failure as its typed product and must not run the legacy
-// pipeline, in whole or in part (A01: no legacy body may replace a refused
-// new-route attempt).
-//
-// Invocation-context rule: RoutePolicy is decided once per invocation at a
-// guarded entry (BuildSemanticBody, BuildSemanticTemplate, BuildEntrySource,
-// BuildRecordSource, WriteBaseFunction, WriteBaseFunctionTemplate). Guarded
-// entries take the policy as a required argument - no default silently
-// resets it - and descendant writers inherit the admitting entry's policy by
-// construction: a refused policy never reaches them, and they must not
-// re-admit, downgrade or re-default it. Writers that only ever run inside a
-// legacy invocation context state that context explicitly at their calls.
-struct RouteAdmission {
-  bool legacy_permitted = true;
-  std::optional<RouteFailure> value_route_failure = {};
-};
-[[nodiscard]] RouteAdmission AdmitLegacyWriter(RoutePolicy policy);
-
-// Returned by guarded pipeline entries when policy refuses the legacy route.
+// Typed refusal returned by a value-tree stage that cannot prove its output.
 struct RouteRefusal {
   RouteFailure failure;
 };
@@ -201,7 +158,7 @@ struct RouteRefusal {
 // out-of-range integers, missing fields and receipts identifying neither a
 // method nor a record are rejected; a parse result is never defaulted into
 // success, and a parsed receipt must still satisfy ValidateRouteReceipt.
-inline constexpr unsigned kRouteReceiptSchema = 3;
+inline constexpr unsigned kRouteReceiptSchema = 4;
 // Engine/rules provenance of the admission and stage semantics above. Bump
 // with any change to them; receipts signed under other rules are rejected
 // rather than reinterpreted.
@@ -361,17 +318,13 @@ enum class RouteReceiptError : std::uint8_t {
   kStage = 4,
   kCoverage = 5,
   kFailure = 6,
-  kWriter = 7,
   kContradiction = 8,
   kEvidence = 9,
 };
 // Central typed receipt validation (T00 correction R2). Producers, the
 // boundary parser and obligation closure all consult this one contract; no
 // code path may certify a receipt state that the reached stages do not prove:
-// - Legacy receipts exist only for legacy-writer text: stage Printed or
-//   Published, legacy_writer_used set, no failure (legacy failures are not
-//   mapped into receipts yet) and coverage Complete or Incomplete.
-// - ValueTree receipts never used the legacy writer. Coverage Unsupported
+// - Coverage Unsupported
 //   requires the typed failure that refused it; Complete requires an emitted
 //   product (stage at least Printed) and no failure. A TreeVerified-only
 //   artifact is Incomplete, never Complete.
@@ -383,11 +336,8 @@ SerializeRouteReceipt(const MethodRouteReceipt& receipt);
 [[nodiscard]] std::variant<MethodRouteReceipt, RouteReceiptError>
 ParseRouteReceipt(std::string_view text);
 
-// Monotonic route-aware stage ledger. Each route may only walk its own
-// ordered stage sequence (legacy: Decoded, InputVerified, Printed, Published;
-// value tree: the full ladder), one step at a time from its first stage: a
-// legacy ledger can never claim a value stage, and no ledger may jump
-// straight to a terminal stage. Each Advance call is made by the owner of
+// Monotonic stage ledger: the value-tree ladder is walked one step at a time
+// from its first stage and never jumps straight to a terminal stage. Each Advance call is made by the owner of
 // that stage after it succeeded, not by the serializer.
 class RouteStageLedger {
  public:
@@ -404,10 +354,8 @@ class RouteStageLedger {
 // Child-method route obligations (A02). The obligation names the expected
 // input identity as well as the method: closure requires a receipt that is
 // valid under ValidateRouteReceipt, matches both identities and is Complete
-// on a route the policy accepts (RequireValueTree accepts only ValueTree
-// children; LegacyAllowed accepts a valid completed Legacy or ValueTree
-// child - it is not RequireLegacy). A missing child receipt, a child on the
-// wrong route, an incomplete or unsupported child, a failed child or a
+// on the value-tree route. A missing child receipt, an incomplete or
+// unsupported child, a failed child or a
 // receipt from another input leaves the parent's obligations open.
 struct ChildRouteObligation {
   abc::EntityOffset method{0};
@@ -415,6 +363,6 @@ struct ChildRouteObligation {
   std::optional<MethodRouteReceipt> receipt = {};
 };
 [[nodiscard]] bool RouteObligationsClosed(
-    RoutePolicy policy, std::span<const ChildRouteObligation> obligations);
+    std::span<const ChildRouteObligation> obligations);
 }  // namespace abcd::source
 #endif  // ABCD_SOURCE_SOURCE_ROUTE_H_

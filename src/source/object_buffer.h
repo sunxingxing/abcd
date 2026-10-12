@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "abcd/analysis/object_creation.h"
-#include "abcd/source/linear_body.h"
+#include "abcd/source/method_context.h"
 #include "abcd/source/object_field.h"
 
 namespace abcd::source {

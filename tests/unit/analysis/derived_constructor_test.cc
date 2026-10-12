@@ -318,8 +318,6 @@ int main() {
       kStore, 5, 0x3e, 31, 0, 0x43, 2, 56, 0, 5,
       kLoad, 2, kCheckPrefix, kSuperCheck, kRequireInitialized,
       kReturn};
-  const auto field_proof = analysis::ProveSpreadFieldDerivedConstructor(
-      Body(field_constructor), rest_frame);
   // The shared sparse initialization proof admits real spread protocol and
   // arbitrary trailing effects; the old range API must retain its restriction.
   const auto spread_proof = analysis::ProveSpreadDerivedConstructor(
@@ -383,44 +381,6 @@ int main() {
   Check(std::get<analysis::DerivedConstructorError>(
       analysis::ProveSpreadDerivedConstructor(branch_body(joined_code), rest_frame)) ==
       analysis::DerivedConstructorError::kValue);
-  const auto* fields =
-      std::get_if<analysis::SpreadFieldDerivedConstructor>(&field_proof);
-  Check(fields && fields->writes.size() == 1 &&
-        fields->writes[0].name.value == 56 &&
-        fields->writes[0].value.value == 31);
-  auto wrong_field = field_constructor;
-  wrong_field[46] = 3;
-  Check(std::holds_alternative<analysis::DerivedConstructorError>(
-      analysis::ProveSpreadFieldDerivedConstructor(
-          Body(wrong_field), rest_frame)));
-  auto wrong_rest = field_constructor;
-  wrong_rest[9] = 1;
-  Check(std::holds_alternative<analysis::DerivedConstructorError>(
-      analysis::ProveSpreadFieldDerivedConstructor(
-          Body(wrong_rest), rest_frame)));
-  auto wrong_spread = field_constructor;
-  wrong_spread[20] = 4;
-  Check(std::get<analysis::DerivedConstructorError>(
-            analysis::ProveSpreadFieldDerivedConstructor(
-                Body(wrong_spread), rest_frame)) ==
-        analysis::DerivedConstructorError::kValue);
-  auto branched_field = Body(field_constructor);
-  branched_field.instructions[0].branch_target = abc::CodeOffset{0};
-  Check(std::get<analysis::DerivedConstructorError>(
-            analysis::ProveSpreadFieldDerivedConstructor(
-                branched_field, rest_frame)) ==
-        analysis::DerivedConstructorError::kControlFlow);
-  Check(std::get<analysis::DerivedConstructorError>(
-            analysis::ProveSpreadFieldDerivedConstructor(
-                Body(field_constructor), rest_frame, {0})) ==
-        analysis::DerivedConstructorError::kResourceLimit);
-  for (const std::size_t count : {200U, 201U, 400U, 800U}) {
-    auto longer = field_constructor;
-    longer.insert(longer.begin() + 12, count, kNop);
-    Check(std::holds_alternative<analysis::SpreadFieldDerivedConstructor>(
-        analysis::ProveSpreadFieldDerivedConstructor(
-            Body(longer), rest_frame)));
-  }
   const auto prove = [&](std::span<const std::uint8_t> code,
                          analysis::DerivedConstructorBudget budget = {}) {
     return analysis::ProveForwardingDerivedConstructor(Body(code), frame,

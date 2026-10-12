@@ -79,5 +79,5 @@ int main(int argc, char** argv) {
   Check(std::holds_alternative<FamilyEmission>(printed));
   const auto& receipts = std::get<FamilyEmission>(printed).Receipts();
   Check(receipts.size() == 1 && receipts.front().route == SourceRoute::kValueTree &&
-      !receipts.front().legacy_writer_used);
+      receipts.front().route == abcd::source::SourceRoute::kValueTree);
 }

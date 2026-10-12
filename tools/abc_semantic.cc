@@ -18,21 +18,18 @@
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/method_lookup.h"
 #include "abcd/analysis/method_roles.h"
-#include "abcd/analysis/semantic_region.h"
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/await_region.h"
 #include "abcd/analysis/semantic_ir.h"
 #include "abcd/analysis/exception_edge.h"
 #include "abcd/analysis/semantic_validation.h"
 #include "abcd/corpus/abc_file.h"
-#include "abcd/source/semantic_source.h"
-#include "abcd/source/semantic_entry.h"
-#include "abcd/source/named_scope.h"
+#include "abcd/source/printed_source.h"
+#include "abcd/source/printed_source.h"
+#include "abcd/source/method_context.h"
 #include "abcd/source/record_program.h"
 #include "abcd/source/source_route.h"
 #include "abcd/abc/pool_reference.h"
-#include "semantic_survey.h"
-#include "exception_inspect.h"
 #include "record_module.h"
 #include "value_source_inspect.h"
 
@@ -75,64 +72,7 @@ enum class InspectError : std::uint8_t {
   kFrame,
   kPrint,
 };
-enum class InspectDetail : std::uint8_t { kSummary, kInstructions, kExceptionFlow, kExceptionTemplate };
-// Value-tree route receipts for methods the new pipeline cannot serve yet.
-// Stage kDecoded is honest: this selector decodes the body to identify the
-// method, then admission refuses the route before any analysis or emission;
-// no value-tree stage ran, no legacy stage ran and no legacy text exists
-// (A01). The failure is the admission decision's own typed product.
-source::MethodRouteReceipt ValueRouteReceipt(
-    const source::RouteInputIdentity& identity,
-    const source::RouteFailure& failure, std::uint32_t entity,
-    std::optional<std::uint32_t> record) {
-  source::MethodRouteReceipt receipt;
-  receipt.identity = identity;
-  receipt.method = abc::EntityOffset{entity};
-  if (record) receipt.record = abc::EntityOffset{*record};
-  receipt.route = source::SourceRoute::kValueTree;
-  receipt.stage = source::SourceStage::kDecoded;
-  receipt.coverage = source::Coverage::kUnsupported;
-  receipt.legacy_writer_used = false;
-  receipt.failure = failure;
-  return receipt;
-}
-int ReportRouteReceipt(const source::MethodRouteReceipt& receipt,
-                       const analysis::ValueProgram* graph = nullptr) {
-  const auto serialized = source::SerializeRouteReceipt(receipt);
-  const auto* json = std::get_if<std::string>(&serialized);
-  if (!json) {
-    std::cerr << "invalid route receipt: "
-              << static_cast<unsigned>(
-                     std::get<source::RouteReceiptError>(serialized)) << '\n';
-    return EXIT_FAILURE;
-  }
-  // The receipt is the requested product; a non-Complete coverage is still a
-  // non-success exit so automation cannot mistake refusal for recovery.
-  nlohmann::json report{
-      {"route_receipt", nlohmann::json::parse(*json)},
-      {"source_complete", false},
-      {"executable", false}};
-  if (graph) {
-    const auto live = [](const auto& items) {
-      return std::count_if(items.begin(), items.end(), [](const auto& item) {
-        return item.life == analysis::ValueLife::kLive;
-      });
-    };
-    report["value_graph"] = {
-      {"operations", graph->ops.size()}, {"values", graph->values.size()},
-      {"uses", graph->uses.size()}, {"blocks", graph->blocks.size()},
-      {"edges", graph->edges.size()},
-      {"exceptional_exits", graph->exceptional_exits.size()},
-      {"live_operations", live(graph->ops)}, {"live_values", live(graph->values)},
-      {"live_uses", live(graph->uses)}};
-  }
-  std::cout << report << '\n';
-  if (!std::cout) return EXIT_FAILURE;
-  return receipt.coverage == source::Coverage::kComplete &&
-                 !receipt.failure
-             ? EXIT_SUCCESS
-             : EXIT_FAILURE;
-}
+enum class InspectDetail : std::uint8_t { kSummary, kInstructions };
 int Fail(InspectError kind, std::uint32_t pc = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
                               {"pc", pc}}
@@ -148,8 +88,7 @@ int FailStage(InspectError kind, unsigned stage_error,
   return EXIT_FAILURE;
 }
 int Inspect(const std::filesystem::path& path, std::uint32_t entity,
-            std::optional<source::SourceForm> form, bool all_records,
-            InspectDetail detail, source::RoutePolicy policy,
+            std::optional<source::SourceForm> form, InspectDetail detail,
             ValueSourceScope scope = ValueSourceScope::kMember,
             source::SourceContract contract = source::kSourceContract) {
   auto opened = corpus::AbcFile::Open(path);
@@ -170,7 +109,6 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   const auto indexed = abc::BuildMetadataIndex(file, *header, {kIndexBytes});
   const auto* index = std::get_if<abc::MetadataIndex>(&indexed);
   if (!index) return Fail(InspectError::kIndex);
-  if (all_records) return SurveyRecords(file, *header, *index, *hash, std::cout);
   const auto method = std::find_if(
       index->methods.begin(), index->methods.end(),
       [entity](const abc::MethodInfo& item) {
@@ -192,64 +130,12 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
     const auto& failure = std::get<abc::BodyFailure>(decoded);
     return Fail(InspectError::kBody, failure.offset.value);
   }
-  // Dispatch before legacy analysis/header/VM declarations. Failure never
-  // falls back to the old AST or writer.
-  if (scope == ValueSourceScope::kRecordSlice)
-    return InspectValueSource(file, *header, *index, *method,
-        identity, std::cout, scope);
-  if (policy == source::RoutePolicy::kRequireValueTree) {
-    if (form && *form == source::SourceForm::kRecord)
+  if (form) {
+    if (*form == source::SourceForm::kRecord)
       return InspectValueSource(file, *header, *index, *method,
           identity, std::cout, ValueSourceScope::kRecordTree);
-    if (form && *form != source::SourceForm::kFunction) {
-      return ReportRouteReceipt(ValueRouteReceipt(
-          identity,
-          {source::RouteFailureClass::kUnsupported,
-           source::ValueRouteError::kRouteUnavailable, {}},
-          method->offset.value, method->owner_offset.value));
-    }
     return InspectValueSource(file, *header, *index, *method,
         identity, std::cout);
-  }
-  if (detail == InspectDetail::kExceptionFlow || detail == InspectDetail::kExceptionTemplate) {
-    // Child templates need the same-file membership and role owners used by
-    // record emission. These do not grant module/global/capture premises.
-    const auto lookup = abc::MethodLookup::Build(index->methods);
-    const auto* methods = std::get_if<abc::MethodLookup>(&lookup);
-    if (!methods) return Fail(InspectError::kIndex);
-    const auto role_index = analysis::MethodRoleIndex::Build(file, *header, *index, *methods);
-    const auto* roles = std::get_if<analysis::MethodRoleIndex>(&role_index);
-    source::MethodConstants constants{file, *header, *index,
-                                            method->offset, abc::StringBudget{}};
-    constants.leaf_methods = methods;
-    constants.roles = roles;
-    const auto packaging = abc::DetectFilePackaging(file, *header, *index);
-    const auto* layout = std::get_if<abc::FilePackaging>(&packaging);
-    if (!layout) return Fail(InspectError::kIndex);
-    std::optional<RecordModule> bindings;
-    if (*layout == abc::FilePackaging::kMerged) {
-      const auto position = static_cast<std::size_t>(method - index->methods.begin());
-      const auto record = std::find_if(index->records.begin(), index->records.end(),
-          [&](const auto& owner) {
-            return position >= owner.first_method &&
-                   position - owner.first_method < owner.method_count;
-          });
-      if (record == index->records.end()) return Fail(InspectError::kIndex);
-      auto loaded = ReadRecordModule(file, *header, *index, *record);
-      auto* module = std::get_if<std::optional<RecordModule>>(&loaded);
-      if (!module) return Fail(InspectError::kIndex);
-      bindings = std::move(*module);
-      if (bindings) {
-        constants.module = &bindings->module;
-        constants.global_scope.emplace();
-        constants.global_scope->module_slots = bindings->exports.slot_count();
-        constants.global_scope->module_exports = &bindings->exports;
-      }
-    }
-    return InspectExceptionFlow(*body, header->profile,
-                                 code.registers + code.arguments, code.registers,
-                                 constants, std::cout, detail == InspectDetail::kExceptionTemplate
-                                     ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject);
   }
   if (detail == InspectDetail::kInstructions) {
     constexpr std::size_t kDispatchBytes = 16 * 1024 * 1024;
@@ -414,156 +300,6 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
               << '\n';
     return EXIT_FAILURE;
   }
-  if (form) {
-    constexpr std::size_t kMethodBytes = 64 * 1024 * 1024;
-    source::MethodConstants constants{file, *header, *index, method->offset,
-                                      {kMethodBytes}};
-    if (method_ir->allocated_bytes > kMethodBytes)
-      return Fail(InspectError::kIndex);
-    const auto lookup = abc::MethodLookup::Build(
-        index->methods, {kMethodBytes - method_ir->allocated_bytes});
-    const auto* methods = std::get_if<abc::MethodLookup>(&lookup);
-    if (!methods) return Fail(InspectError::kIndex);
-    constants.leaf_methods = methods;
-    auto available = kMethodBytes - methods->AllocatedBytes();
-    // Nested arrow/template emission needs the complete same-file role proof,
-    // just like record and exception owners. Never treat a missing index as
-    // kUnseen or infer roles from the inspected function alone.
-    const auto role_index = analysis::MethodRoleIndex::Build(
-        file, *header, *index, *methods,
-        {available - method_ir->allocated_bytes});
-    const auto* roles = std::get_if<analysis::MethodRoleIndex>(&role_index);
-    if (roles) {
-      if (roles->AllocatedBytes() > available - method_ir->allocated_bytes)
-        return Fail(InspectError::kIndex);
-      available -= roles->AllocatedBytes();
-      constants.roles = roles;
-    }
-    // Reserve the complete module context, including export-name decoding
-    // scratch, alongside the live IR/lookup/roles. Planning is not execution:
-    // these slots remain uninitialized in detached function inspection.
-    constexpr std::size_t kRecordContextBytes = 16 * 1024 * 1024;
-    constexpr std::size_t kModuleTableBytes = kRecordContextBytes / 2;
-    constexpr std::size_t kExportPlanBytes = kRecordContextBytes / 4;
-    constexpr std::size_t kExportStringBytes =
-        kRecordContextBytes - kModuleTableBytes - kExportPlanBytes;
-    if (kRecordContextBytes > available - method_ir->allocated_bytes)
-      return Fail(InspectError::kIndex);
-    const auto packaging = abc::DetectFilePackaging(
-        file, *header, *index, {kRecordContextBytes});
-    const auto* layout = std::get_if<abc::FilePackaging>(&packaging);
-    if (!layout) return Fail(InspectError::kIndex);
-    std::optional<RecordModule> bindings;
-    const std::array wrapper_bindings{std::string_view(method->name)};
-    if (*layout == abc::FilePackaging::kMerged) {
-      const auto position = static_cast<std::size_t>(method - index->methods.begin());
-      const auto record = std::find_if(index->records.begin(), index->records.end(),
-          [&](const auto& owner) {
-            return owner.offset == method->owner_offset &&
-                   position >= owner.first_method &&
-                   position - owner.first_method < owner.method_count;
-          });
-      if (record == index->records.end()) return Fail(InspectError::kIndex);
-      if (*form == source::SourceForm::kRecord) {
-        // Pinned translator wire entry name, not instruction/string dispatch.
-        static constexpr std::string_view kEntryName = "func_main_0";
-        if (method->name != kEntryName ||
-            !source::SupportsRecordProgramProfile(header->profile) ||
-            record->first_method > index->methods.size() ||
-            record->method_count > index->methods.size() - record->first_method)
-          return Fail(InspectError::kMethod);
-        const auto entries = std::count_if(
-            index->methods.begin() + record->first_method,
-            index->methods.begin() + record->first_method + record->method_count,
-            [](const auto& item) { return item.name == kEntryName; });
-        if (entries != 1) return Fail(InspectError::kMethod);
-        const auto attributes = abc::ReadMergedRecordAttributes(
-            file, *header, *index, *record, {kRecordContextBytes});
-        const auto* flags = std::get_if<abc::RecordAttributes>(&attributes);
-        if (!flags || flags->common_js.value_or(false) ||
-            flags->shared.value_or(false) || flags->top_level_await.value_or(false))
-          return Fail(InspectError::kMethod);
-      }
-      auto loaded = ReadRecordModule(file, *header, *index, *record,
-          {{kModuleTableBytes}, {kExportPlanBytes, {kExportStringBytes}},
-           {kRecordContextBytes}});
-      auto* module = std::get_if<std::optional<RecordModule>>(&loaded);
-      if (!module) return Fail(InspectError::kIndex);
-      bindings = std::move(*module);
-      if (bindings) {
-        available -= kRecordContextBytes;
-        constants.module = &bindings->module;
-        constants.global_scope.emplace();
-        if (*form != source::SourceForm::kRecord)
-          constants.global_scope->enclosing_bindings = wrapper_bindings;
-        constants.global_scope->module_slots = bindings->exports.slot_count();
-        constants.global_scope->module_exports = &bindings->exports;
-      }
-    }
-    if (*form == source::SourceForm::kRecord && !bindings)
-      return Fail(InspectError::kMethod);
-    const auto call = abc::ReadCallType(file, *header, *index,
-                                        method->annotations);
-    const auto* call_type = std::get_if<abc::CallType>(&call);
-    if (!call_type) return Fail(InspectError::kFrame);
-    const auto built_frame = abc::BuildFrameLayout(
-        code.registers, code.arguments,
-        abc::DecodeCallFlags(call_type->value));
-    const auto* frame = std::get_if<abc::FrameLayout>(&built_frame);
-    if (!frame) return Fail(InspectError::kFrame);
-    const auto rendered = source::BuildEntrySource(
-        *body, *method_ir, *frame, *form, method->name, constants,
-        *form == source::SourceForm::kRecord ? &bindings->exports : nullptr,
-        {available}, kMethodBytes, policy);
-    const auto* printed = std::get_if<source::PrintedSource>(&rendered);
-    if (!printed) {
-      return std::visit([&](const auto& failure) -> int {
-        using T = std::decay_t<decltype(failure)>;
-        if constexpr (std::is_same_v<T, source::PrintedSource>) {
-          std::terminate();
-        } else if constexpr (std::is_same_v<T, source::RouteRefusal>) {
-          // Defense in depth: admission already refused above, so this is
-          // unreachable today. Consume the typed failure rather than
-          // re-deriving it (A01).
-          return ReportRouteReceipt(ValueRouteReceipt(
-              identity,
-              failure.failure, entity, method->owner_offset.value));
-        } else {
-          constexpr auto stage = [] {
-            if constexpr (std::is_same_v<T, analysis::SemanticFailure>)
-              return InspectError::kSemantic;
-            else if constexpr (std::is_same_v<T, analysis::SemanticProofFailure>)
-              return InspectError::kProof;
-            else if constexpr (std::is_same_v<T, analysis::RegionFailure>)
-              return InspectError::kRegion;
-            else return InspectError::kPrint;
-          }();
-          return FailStage(stage, static_cast<unsigned>(failure.kind), failure.pc.value);
-        }
-      }, rendered);
-    }
-    nlohmann::json map = nlohmann::json::array();
-    for (const auto& span : printed->spans)
-      map.push_back({{"pc", span.pc.value},
-                     {"origin_kind", source::SpanOriginName(span.origin)},
-                     {"begin", {span.begin.byte, span.begin.line,
-                                 span.begin.column}},
-                     {"end", {span.end.byte, span.end.line,
-                               span.end.column}}});
-    std::cout << nlohmann::json{{"entity", entity},
-                                {"source_route", source::SourceRouteName(source::SourceRoute::kLegacy)},
-                                {"source_contract", source::SourceContractName(printed->contract)},
-                                {"host_realm_binding", printed->host_realm
-                                    ? nlohmann::json(printed->host_realm->binding) : nlohmann::json(nullptr)},
-                                {"source_complete", false},
-                                {"executable", false},
-                                {"requires_module_bindings", bindings.has_value() &&
-                                    *form != source::SourceForm::kRecord},
-                                {"source", printed->text},
-                                {"positions", std::move(map)}}
-              << '\n';
-    return std::cout ? EXIT_SUCCESS : EXIT_FAILURE;
-  }
   std::cout << nlohmann::json{
                    {"entity", entity},
                    {"instructions", method_ir->instructions.size()},
@@ -576,129 +312,65 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 
 int main(int argc, char** argv) {
   if (argc < 3 || argc > 7) {
-    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--class-source|--function-source|--record-source] [--value-source]\n"
-                 "       abc_semantic INPUT.abc METHOD_ENTITY --instructions|--exception-flow|--exception-template\n"
-                 "       abc_semantic INPUT.abc --all-records\n"
-                 "       abc_semantic INPUT.abc METHOD_ENTITY --record-value-slice\n"
-                 "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-values\n"
+    std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--instructions]\n"
+                 "       abc_semantic INPUT.abc METHOD_ENTITY --function-source|--record-source\n"
+                 "                    [--language-arithmetic|--language-numeric] [--language-constructors]\n"
+                                  "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-values\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-family\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --family-source-draft\n"
+                 "  every source form uses the unified value-tree route; --value-source is\n"
+                 "  accepted for compatibility and changes nothing\n"
                  "  --family-source-draft retains supported body prefixes with marked gaps, not executable source\n"
                  "  --conditional-values inspects open capture obligations; it emits no source\n"
                  "  --conditional-family follows actual child creations; it emits no source\n"
-                 "  exactly one source form per invocation; duplicates, conflicting forms\n"
-                 "  and any combination of a detail mode with --value-source are rejected\n"
-                 "  regardless of option order\n"
-                 "  --value-source requires the unified value-tree route\n"
-                 "  --language-arithmetic selects binary language arithmetic on that route\n"
-                 "  --language-numeric selects unary and binary language numeric semantics\n"
-                 "  --language-constructors selects native language super semantics independently\n"
-                 "  ordinary function expressions require a strict enclosing destination;\n"
-                 "  method/closure fragments do not certify a complete executable record\n"
-                 "  unimplemented stages return a typed route receipt with no source text and\n"
-                 "  never fall back to the legacy writer\n";
+                 "  exactly one source form or view per invocation; duplicates and conflicting\n"
+                 "  selectors are rejected regardless of option order\n"
+                 "  unsupported stages return a typed route receipt with no source text\n";
     return Fail(InspectError::kArguments);
   }
   std::uint32_t entity = 0;
   const std::string_view token{argv[2]};
-  if (token == "--all-records" && argc == 3)
-    return Inspect(argv[1], 0, std::nullopt, true, InspectDetail::kSummary,
-                   source::RoutePolicy::kLegacyAllowed);
   const auto number = std::from_chars(
       token.data(), token.data() + token.size(), entity);
   if (number.ec != std::errc{} ||
       number.ptr != token.data() + token.size())
     return Fail(InspectError::kArguments);
   // Parse every option first, then validate combinations independent of
-  // order before any file access (T00 correction R1): an earlier-accepted
-  // option can no longer mute a later --value-source.
+  // order before any file access.
   std::optional<source::SourceForm> form;
-  InspectDetail detail = InspectDetail::kSummary;
-  unsigned forms = 0;
-  unsigned details = 0;
-  unsigned value_routes = 0;
-  unsigned language_arithmetic = 0;
-  unsigned language_numeric = 0;
-  unsigned language_constructors = 0;
-  unsigned record_slices = 0;
-  unsigned conditional_values = 0;
-  unsigned conditional_families = 0;
-  unsigned family_drafts = 0;
+  unsigned forms = 0, instructions = 0, value_routes = 0;
+  unsigned language_arithmetic = 0, language_numeric = 0, language_constructors = 0;
+  unsigned conditional_values = 0, conditional_families = 0, family_drafts = 0;
   for (int i = 3; i < argc; ++i) {
     const std::string_view option{argv[i]};
-    if (option == "--language-arithmetic") {
-      ++language_arithmetic;
-    } else if (option == "--language-constructors") {
-      ++language_constructors;
-    } else if (option == "--language-numeric") {
-      ++language_numeric;
-    } else if (option == "--family-source-draft") {
-      ++family_drafts;
-    } else if (option == "--conditional-family") {
-      ++conditional_families;
-    } else if (option == "--conditional-values") {
-      ++conditional_values;
-    } else if (option == "--record-value-slice") {
-      ++record_slices;
-    } else if (option == "--value-source") {
-      ++value_routes;
-    } else if (option == "--instructions" ||
-               option == "--exception-flow" ||
-               option == "--exception-template") {
-      ++details;
-      detail = option == "--instructions" ? InspectDetail::kInstructions
-              : option == "--exception-flow" ? InspectDetail::kExceptionFlow
-                                             : InspectDetail::kExceptionTemplate;
-    } else if (option == "--class-source") {
-      ++forms;
-      form = source::SourceForm::kClassConstructor;
-    } else if (option == "--function-source") {
-      ++forms;
-      form = source::SourceForm::kFunction;
-    } else if (option == "--record-source") {
-      ++forms;
-      form = source::SourceForm::kRecord;
-    } else {
-      return Fail(InspectError::kArguments);
-    }
+    if (option == "--language-arithmetic") ++language_arithmetic;
+    else if (option == "--language-constructors") ++language_constructors;
+    else if (option == "--language-numeric") ++language_numeric;
+    else if (option == "--family-source-draft") ++family_drafts;
+    else if (option == "--conditional-family") ++conditional_families;
+    else if (option == "--conditional-values") ++conditional_values;
+    else if (option == "--value-source") ++value_routes;
+    else if (option == "--instructions") ++instructions;
+    else if (option == "--function-source") { ++forms; form = source::SourceForm::kFunction; }
+    else if (option == "--record-source") { ++forms; form = source::SourceForm::kRecord; }
+    else return Fail(InspectError::kArguments);
   }
-  // Numeric opt-in is limited to the common source route, in every order.
-  if (language_constructors > 1 || language_arithmetic + language_numeric > 1 || ((language_constructors || language_arithmetic || language_numeric) &&
-      (value_routes != 1 || details || record_slices || conditional_values || conditional_families || family_drafts)))
+  const unsigned views = conditional_values + conditional_families + family_drafts;
+  const bool contract_options = language_constructors || language_arithmetic || language_numeric;
+  if (forms > 1 || instructions > 1 || value_routes > 1 || views > 1 ||
+      language_constructors > 1 || language_arithmetic + language_numeric > 1 ||
+      forms + instructions + views > 1 || (contract_options && !forms && !value_routes) ||
+      (value_routes && (instructions || views)))
     return Fail(InspectError::kArguments);
-  // Duplicate or conflicting selectors are rejected in every order.
-  if (family_drafts > 1 || (family_drafts && (forms || details || value_routes || record_slices || conditional_values || conditional_families)))
-    return Fail(InspectError::kArguments);
-  if (family_drafts)
-    return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kSummary,
-                   source::RoutePolicy::kLegacyAllowed, ValueSourceScope::kFamilyDraft);
-  if (conditional_families > 1 || (conditional_families && (forms || details || value_routes || record_slices || conditional_values)))
-    return Fail(InspectError::kArguments);
-  if (conditional_families)
-    return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kSummary,
-                   source::RoutePolicy::kLegacyAllowed, ValueSourceScope::kConditionalFamily);
-  if (conditional_values > 1 || (conditional_values && (forms || details || value_routes || record_slices)))
-    return Fail(InspectError::kArguments);
-  if (conditional_values)
-    return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kSummary,
-                   source::RoutePolicy::kLegacyAllowed, ValueSourceScope::kConditionalValues);
-  if (forms > 1 || details > 1 || value_routes > 1 || (forms && details))
-    return Fail(InspectError::kArguments);
-  if (record_slices > 1 || (record_slices && (forms || details || value_routes)))
-    return Fail(InspectError::kArguments);
-  if (record_slices)
-    return Inspect(argv[1], entity, std::nullopt, false, InspectDetail::kSummary,
-                   source::RoutePolicy::kLegacyAllowed, ValueSourceScope::kRecordSlice);
-  // Raw inspection modes predate route receipts; do not mix them with a
-  // route policy until those views carry receipts too.
-  if (details && value_routes) return Fail(InspectError::kArguments);
-  if (details)
-    return Inspect(argv[1], entity, std::nullopt, false, detail,
-                   source::RoutePolicy::kLegacyAllowed);
-  const auto policy = value_routes
-                          ? source::RoutePolicy::kRequireValueTree
-                          : source::RoutePolicy::kLegacyAllowed;
+  const auto view = family_drafts ? ValueSourceScope::kFamilyDraft
+      : conditional_families ? ValueSourceScope::kConditionalFamily
+      : conditional_values ? ValueSourceScope::kConditionalValues : ValueSourceScope::kMember;
+  if (views) return Inspect(argv[1], entity, std::nullopt, InspectDetail::kSummary, view);
+  if (instructions)
+    return Inspect(argv[1], entity, std::nullopt, InspectDetail::kInstructions);
+  // A bare --value-source keeps its historical meaning of the function form.
+  if (value_routes && !form) form = source::SourceForm::kFunction;
   const auto numeric_contract = language_numeric ? source::SourceContract::kLanguageNumericV1 : language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
-  return Inspect(argv[1], entity, form, false, InspectDetail::kSummary, policy,
-      ValueSourceScope::kMember, language_constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract);
+  return Inspect(argv[1], entity, form, InspectDetail::kSummary, ValueSourceScope::kMember,
+      language_constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract);
 }

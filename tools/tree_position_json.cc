@@ -4,7 +4,7 @@
 #include "../src/source/instruction_sources.h"
 #include "../src/source/family_emission.h"
 #include "abcd/source/module_exports.h"
-#include "abcd/source/semantic_source.h"
+#include "abcd/source/printed_source.h"
 
 #include <nlohmann/json.hpp>
 #include <ostream>

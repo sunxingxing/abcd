@@ -13,7 +13,7 @@ assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
 const run = spawnSync(tool, [abc, entry, '--record-source', '--value-source'], {encoding: 'utf8', timeout: 60_000});
 assert.equal(run.status, 0, run.stderr + run.stdout);
 const report = JSON.parse(run.stdout);
-assert.equal(report.source_complete, true); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.source_complete, true); assert.equal(report.legacy_writer_used, undefined);
 assert.equal(report.route, 'value_tree');
 // Only the independent oracle reads paired TS. No source enters the engine.
 // The paired Ark TS build erases uninitialized type-only private declarations.

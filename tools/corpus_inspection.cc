@@ -1,6 +1,5 @@
 #include "corpus_inspection.h"
 
-#include <sys/resource.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -19,6 +18,7 @@
 #include <vector>
 
 #include "abcd/abc/metadata_index.h"
+#include "process_limit.h"
 #include "abcd/corpus/manifest.h"
 #include "method_inspection.h"
 #include "module_inspection.h"
@@ -33,11 +33,9 @@ using abcd::corpus::ManifestError;
 using abcd::corpus::ManifestStore;
 using abcd::corpus::SampleKind;
 
-constexpr rlim_t kProcessMemoryLimit = 1000000000;
 // Only one index is alive at a time. Leave the rest of the process ceiling for
 // IO, the manifest, output, allocator overhead and transient allocations.
 constexpr std::size_t kIndexMemoryBudget = 256 * 1024 * 1024;
-constexpr std::uint64_t kBytesPerKibibyte = 1024;
 constexpr int kRequiredArguments = 4;
 constexpr int kRootArgumentWidth = 2;
 
@@ -64,7 +62,6 @@ enum class IndexOutcome {
   kDominatorFailure,
   kFramesChecked,
   kFrameFailure,
-  kSourceBodiesProbed,
   kEnvironmentsProbed,
   kCreationsProbed,
   kCreationFailure,
@@ -88,8 +85,6 @@ const char* ToolName(InspectionStage stage) {
       return "abc_dominators";
     case InspectionStage::kFrames:
       return "abc_frames";
-    case InspectionStage::kSourceBodies:
-      return "abc_source_probe";
     case InspectionStage::kEnvironments:
       return "abc_environments";
     case InspectionStage::kCreations:
@@ -144,8 +139,6 @@ const char* OutcomeLabel(IndexOutcome outcome) {
       return "frames_checked";
     case IndexOutcome::kFrameFailure:
       return "frame_failure";
-    case IndexOutcome::kSourceBodiesProbed:
-      return "source_bodies_probed";
     case IndexOutcome::kEnvironmentsProbed:
       return "environments_probed";
     case IndexOutcome::kCreationsProbed:
@@ -283,9 +276,6 @@ FileReport IndexFile(const std::filesystem::path& root,
       case InspectionStage::kFrames:
         report.outcome = IndexOutcome::kFramesChecked;
         break;
-      case InspectionStage::kSourceBodies:
-        report.outcome = IndexOutcome::kSourceBodiesProbed;
-        break;
       case InspectionStage::kEnvironments:
         report.outcome = IndexOutcome::kEnvironmentsProbed;
         break;
@@ -330,10 +320,8 @@ int Run(int argc, char** argv, InspectionStage stage) {
               << " [--bundle-descriptor VALUE (modules only)] MANIFEST CORPUS_ID ROOT [CORPUS_ID ROOT ...]\n";
     return EXIT_FAILURE;
   }
-  rlimit limit{};
-  if (getrlimit(RLIMIT_AS, &limit) != 0) return EXIT_FAILURE;
-  limit.rlim_cur = std::min(limit.rlim_cur, kProcessMemoryLimit);
-  if (setrlimit(RLIMIT_AS, &limit) != 0) return EXIT_FAILURE;
+  const auto limit = EstablishProcessLimit();
+  if (!ProcessLimitAcceptable(limit)) return EXIT_FAILURE;
 
   std::map<std::string, std::filesystem::path> roots;
   for (int i = 2; i < argc; i += kRootArgumentWidth) {
@@ -394,7 +382,6 @@ int Run(int argc, char** argv, InspectionStage stage) {
       case IndexOutcome::kModulesChecked:
       case IndexOutcome::kDominatorsBuilt:
       case IndexOutcome::kFramesChecked:
-      case IndexOutcome::kSourceBodiesProbed:
       case IndexOutcome::kEnvironmentsProbed:
       case IndexOutcome::kCreationsProbed:
         ++indexed;
@@ -431,8 +418,6 @@ int Run(int argc, char** argv, InspectionStage stage) {
   // Per-file reports and failures are already streamed, with no full-corpus
   // report buffer. Include output allocations in the measured peak.
   std::cout << ']';
-  rusage usage{};
-  if (getrusage(RUSAGE_SELF, &usage) != 0) return EXIT_FAILURE;
   nlohmann::json summary{
       {"stage", StageLabel(stage)},
       {"files", files},
@@ -441,10 +426,8 @@ int Run(int argc, char** argv, InspectionStage stage) {
       {"failed", failed},
       {"records", records},
       {"methods", methods},
-      {"fields", fields},
-      {"peak_rss_bytes",
-       static_cast<std::uint64_t>(usage.ru_maxrss) * kBytesPerKibibyte},
-      {"address_space_limit_bytes", limit.rlim_cur}};
+      {"fields", fields}};
+  ReportProcessMemory(summary, limit);
   summary.update(SerializeCounts(inspection));
   if (bundle_descriptor) summary["bundle_descriptor"] = *bundle_descriptor;
   if (stage == InspectionStage::kModules) summary.update(SerializeCounts(modules));

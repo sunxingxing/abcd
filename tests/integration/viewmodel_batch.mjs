@@ -172,7 +172,7 @@ try {
   }
   for (const [app, entity, name, dependency, field, methods] of cases) {
     const record = manifests.get(app).records.find(row => row.entity === entity);
-    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     assert.equal(record.source_route, 'value_tree');
     const source = readFileSync(join(temporary, app, record.source), 'utf8');
     // Safe class-self scopes use native declarations. A discarded own
@@ -187,7 +187,7 @@ try {
   const app = 'MultiCommunityApplication';
   const sources = [44106, 41409].map(entity => {
     const record = manifests.get(app).records.find(row => row.entity === entity);
-    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     assert.equal(record.source_route, 'value_tree');
     return readFileSync(join(temporary, app, record.source), 'utf8');
   });

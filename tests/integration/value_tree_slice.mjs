@@ -19,7 +19,7 @@ assert.equal(report.route_receipt.route, 'value_tree');
 assert.equal(report.route_receipt.stage, 'printed');
 assert.equal(report.route_receipt.coverage, 'complete');
 assert.equal(report.route_receipt.failure, null);
-assert.equal(report.route_receipt.legacy_writer_used, false);
+assert.equal(report.route_receipt.legacy_writer_used, undefined);
 assert.equal(report.fragment, 'class_member');
 assert.equal(report.method_slice_complete, true);
 assert.equal(report.executable, false);

@@ -81,7 +81,7 @@ try {
   const records = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8')).records;
   const generated = entity => {
     const row = records.find(row => row.entity === entity);
-    assert.equal(row.source_complete, true, `record ${entity}`); assert.equal(row.legacy_writer_used, false);
+    assert.equal(row.source_complete, true, `record ${entity}`); assert.equal(row.legacy_writer_used, undefined);
     return readFileSync(join(output, row.source), 'utf8');
   };
   const paired = path => stripTypeScriptTypes(readFileSync(join(root, 'Immersive_src', path), 'utf8'));

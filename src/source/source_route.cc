@@ -11,11 +11,7 @@ namespace abcd::source {
 namespace {
 using Json = nlohmann::json;
 
-// Route-specific ordered stage sequences. The legacy pipeline never claims a
-// value stage; both sequences must be walked in order, never jumped.
-constexpr std::array kLegacyStages{
-    SourceStage::kDecoded, SourceStage::kInputVerified,
-    SourceStage::kPrinted, SourceStage::kPublished};
+// The value-tree stage sequence; walked in order, never jumped.
 constexpr std::array kValueStages{
     SourceStage::kDecoded,        SourceStage::kInputVerified,
     SourceStage::kValuesImported, SourceStage::kValuesVerified,
@@ -33,7 +29,7 @@ constexpr std::string_view kContractNames[]{"language_and_host_v1",
                                             "language_numeric_v1", "language_constructors_v1",
                                             "language_arithmetic_constructors_v1",
                                             "language_numeric_constructors_v1"};
-constexpr std::string_view kRouteNames[]{"legacy", "value_tree"};
+constexpr std::string_view kRouteNames[]{"value_tree"};
 constexpr std::string_view kStageNames[]{
     "decoded", "input_verified", "values_imported", "values_verified",
     "control_frozen", "bindings_frozen", "tree_verified", "printed",
@@ -43,7 +39,7 @@ constexpr std::string_view kCoverageNames[]{"complete", "incomplete",
 constexpr std::string_view kFailureClassNames[]{
     "unsupported", "unproved", "invalid_input", "invariant_violation",
     "work_limit", "memory_limit", "output_failure"};
-constexpr std::string_view kFailureReasonNames[]{"route_unavailable", "input_stage", "import_stage", "transform_stage", "context_stage", "tree_stage", "print_stage"};
+constexpr std::string_view kFailureReasonNames[]{"input_stage", "import_stage", "transform_stage", "context_stage", "tree_stage", "print_stage"};
 constexpr std::size_t kSha256TextBytes = 64;
 
 // Exact-range unsigned access (T00 correction R4): every integer field is
@@ -108,18 +104,6 @@ RouteInputIdentity MakeRouteInputIdentity(
                             header.version, header.profile, kSourceContract};
 }
 
-RouteAdmission AdmitLegacyWriter(RoutePolicy policy) {
-  // T00: the value-tree route has no stages implemented, so requiring it is
-  // a typed refusal at admission. When later tasks add stages this remains
-  // the single decision point: legacy stays permitted only under
-  // LegacyAllowed, and a refused attempt never falls back to this writer.
-  if (policy == RoutePolicy::kLegacyAllowed)
-    return RouteAdmission{true, {}};
-  return RouteAdmission{false,
-                        RouteFailure{RouteFailureClass::kUnsupported,
-                                     ValueRouteError::kRouteUnavailable, {}}};
-}
-
 std::optional<RouteReceiptError> ValidateRouteReceipt(
     const MethodRouteReceipt& receipt) {
   if (!receipt.method && !receipt.record) return RouteReceiptError::kIdentity;
@@ -156,21 +140,7 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
       receipt.coverage != Coverage::kUnsupported)
     return RouteReceiptError::kCoverage;
   switch (receipt.route) {
-    case SourceRoute::kLegacy:
-      // A legacy receipt certifies legacy-writer text only: earlier stages
-      // and the value stages are not legacy products, and legacy failures
-      // stay in their own result variants until a task defines the mapping.
-      if (!receipt.stage || *receipt.stage < SourceStage::kPrinted)
-        return RouteReceiptError::kStage;
-      if (receipt.failure) return RouteReceiptError::kFailure;
-      if (!receipt.legacy_writer_used) return RouteReceiptError::kWriter;
-      if (receipt.coverage == Coverage::kUnsupported)
-        return RouteReceiptError::kCoverage;
-      return {};
     case SourceRoute::kValueTree:
-      // The value-tree route never publishes through the legacy writer; a
-      // run that used it is honestly a Legacy receipt.
-      if (receipt.legacy_writer_used) return RouteReceiptError::kWriter;
       if (receipt.failure) {
         // A refusal carries its typed reason and claims no product.
         if (receipt.coverage != Coverage::kUnsupported)
@@ -178,12 +148,6 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
         if (static_cast<unsigned>(receipt.failure->failure_class) >=
             std::size(kFailureClassNames)) return RouteReceiptError::kFailure;
         switch (receipt.failure->reason) {
-          case ValueRouteError::kRouteUnavailable:
-            if (receipt.failure->failure_class != RouteFailureClass::kUnsupported ||
-                receipt.failure->pc) return RouteReceiptError::kFailure;
-            if (receipt.stage && *receipt.stage != SourceStage::kDecoded)
-              return RouteReceiptError::kStage;
-            break;
           case ValueRouteError::kInputStage:
             if (receipt.stage != SourceStage::kDecoded) return RouteReceiptError::kStage;
             break;
@@ -211,8 +175,8 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
       }
       switch (receipt.coverage) {
         case Coverage::kUnsupported:
-          // Unsupported without a typed reason is exactly the capability
-          // gap the old writer used to mask; it never closes obligations.
+          // Unsupported without a typed reason hides the capability gap; it
+          // never closes obligations.
           return RouteReceiptError::kCoverage;
         case Coverage::kIncomplete:
           return {};
@@ -229,12 +193,8 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
 }
 
 bool RouteStageLedger::Advance(SourceStage stage) {
-  if (route_ != SourceRoute::kLegacy && route_ != SourceRoute::kValueTree)
-    return false;
-  const std::span<const SourceStage> sequence =
-      route_ == SourceRoute::kLegacy
-          ? std::span<const SourceStage>{kLegacyStages}
-          : std::span<const SourceStage>{kValueStages};
+  if (route_ != SourceRoute::kValueTree) return false;
+  const std::span<const SourceStage> sequence{kValueStages};
   auto next = sequence.begin();
   if (reached_) {
     next = std::find(sequence.begin(), sequence.end(), *reached_);
@@ -247,10 +207,7 @@ bool RouteStageLedger::Advance(SourceStage stage) {
 }
 
 bool RouteObligationsClosed(
-    RoutePolicy policy, std::span<const ChildRouteObligation> obligations) {
-  if (policy != RoutePolicy::kLegacyAllowed &&
-      policy != RoutePolicy::kRequireValueTree)
-    return false;
+    std::span<const ChildRouteObligation> obligations) {
   for (const auto& obligation : obligations) {
     if (!obligation.receipt) return false;
     const auto& receipt = *obligation.receipt;
@@ -260,9 +217,7 @@ bool RouteObligationsClosed(
     if (!(receipt.identity == obligation.identity)) return false;
     if (ValidateRouteReceipt(receipt)) return false;
     if (receipt.coverage != Coverage::kComplete) return false;
-    if (policy == RoutePolicy::kRequireValueTree &&
-        receipt.route != SourceRoute::kValueTree)
-      return false;
+    if (receipt.route != SourceRoute::kValueTree) return false;
   }
   return true;
 }
@@ -300,7 +255,6 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       {"stage", receipt.stage ? Json(SourceStageName(*receipt.stage))
                               : Json(nullptr)},
       {"coverage", CoverageName(receipt.coverage)},
-      {"legacy_writer_used", receipt.legacy_writer_used},
       {"failure", std::move(failure)}}
       .dump();
 }
@@ -407,12 +361,6 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     receipt.coverage = *value;
   else
     return RouteReceiptError::kCoverage;
-  // Required boolean: a missing or nonboolean value never defaults to false
-  // (T00 correction R4).
-  const auto legacy = parsed.find("legacy_writer_used");
-  if (legacy == parsed.end() || !legacy->is_boolean())
-    return RouteReceiptError::kWriter;
-  receipt.legacy_writer_used = legacy->get<bool>();
   const auto failure = parsed.find("failure");
   if (failure == parsed.end()) return RouteReceiptError::kFailure;
   if (!failure->is_null()) {

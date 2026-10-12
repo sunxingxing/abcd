@@ -73,7 +73,7 @@ try {
   for (const [app, entity, paired] of cases) {
     const record = manifests.get(app).records.find(row => row.entity === entity);
     assert.equal(record.source_complete, true);
-    assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.legacy_writer_used, undefined);
     const source = readFileSync(join(temporary, app, record.source), 'utf8');
     assert.doesNotMatch(source, /INCOMPLETE/);
     const dependency = entity === 16247 ? stripTypeScriptTypes(readFileSync(join(root, app,

@@ -112,7 +112,7 @@ try {
     }
     const output = outputs.get(folder);
     const record = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8')).records.find(item => item.entity === entity);
-    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     const generated = readFileSync(join(output, record.source), 'utf8');
     const paired = stripTypeScriptTypes(readFileSync(join(root, folder, pairedPath), 'utf8'));
     for (const dark of [false, true]) for (const value of ['payload', 17, undefined, Symbol('payload')])

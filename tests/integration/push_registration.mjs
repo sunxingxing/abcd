@@ -9,7 +9,7 @@ const run = spawnSync(tool, [abc, '3753', '--record-source', '--value-source'], 
 assert.equal(run.status, 0, run.stderr);
 const output = JSON.parse(run.stdout.trim());
 assert.equal(output.record, 3444); assert.equal(output.source_complete, false);
-assert.equal(output.executable, false); assert.equal(output.legacy_writer_used, false);
+assert.equal(output.executable, false); assert.equal(output.legacy_writer_used, undefined);
 assert.ok(output.source.includes('registerDefaultEvent()') && output.source.includes('registerIMEvent()'));
 assert.equal(output.source.match(/\?\./g)?.length, 2);
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));

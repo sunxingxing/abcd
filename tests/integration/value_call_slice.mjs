@@ -15,7 +15,7 @@ assert.equal(report.route_receipt.identity.sha256,
 assert.equal(report.route_receipt.method, 7613);
 assert.equal(report.route_receipt.stage, 'printed');
 assert.equal(report.route_receipt.coverage, 'complete');
-assert.equal(report.route_receipt.legacy_writer_used, false);
+assert.equal(report.route_receipt.legacy_writer_used, undefined);
 assert.equal(report.method_slice_complete, true);
 assert.equal(report.source_complete, false);
 assert.equal(report.executable, false);

@@ -11,7 +11,7 @@ const run = spawnSync(tool, [abc, '8202', '--record-source', '--value-source', '
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout);
 assert.equal(report.record, 7618); assert.equal(report.source_complete, false);
-assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, undefined);
 // Node does not parse ArkTS decorators. This fixture supplies an identity
 // Observed decorator for the unused WindowInfo class in both modules; it does
 // not test that host's observation protocol or construct either class.

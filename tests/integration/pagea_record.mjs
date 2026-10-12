@@ -16,7 +16,7 @@ assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
 const report = JSON.parse(execFileSync(tool,
   [abc, '7283', '--record-source', '--value-source'], {encoding: 'utf8', timeout: 60_000}));
 assert.equal(report.record, 6897); assert.equal(report.source_complete, true);
-assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, undefined);
 assert.equal(report.executable, false); // This test does not grant a platform receipt.
 const paired = readFileSync(join(dirname(abc),
   'pasteboard_src/src/main/ets/pages/PageA.ts'), 'utf8');

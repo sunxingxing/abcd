@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <source_location>
 #include <string>
 #include <variant>
 
@@ -11,8 +12,11 @@ namespace {
 using namespace abcd;
 using namespace abcd::source;
 
-void Check(bool value) {
-  if (!value) std::abort();
+void Check(bool value,
+           std::source_location where = std::source_location::current()) {
+  if (value) return;
+  std::cerr << "source_route_test: check failed at line " << where.line() << '\n';
+  std::abort();
 }
 
 // Pinned identity: the pasteboard development slice's recorded content hash
@@ -38,8 +42,7 @@ RouteInputIdentity SampleIdentity() {
   return identity;
 }
 
-// The T00 product: a method whose requested value-tree route was refused at
-// admission after decode. No legacy stage ran and no legacy text exists.
+// A method whose value-tree context stage refused it right after decode.
 MethodRouteReceipt RefusedReceipt() {
   MethodRouteReceipt receipt;
   receipt.identity = SampleIdentity();
@@ -48,9 +51,8 @@ MethodRouteReceipt RefusedReceipt() {
   receipt.route = SourceRoute::kValueTree;
   receipt.stage = SourceStage::kDecoded;
   receipt.coverage = Coverage::kUnsupported;
-  receipt.legacy_writer_used = false;
   receipt.failure = RouteFailure{RouteFailureClass::kUnsupported,
-                                 ValueRouteError::kRouteUnavailable, {}};
+                                 ValueRouteError::kContextStage, {}};
   return receipt;
 }
 
@@ -59,7 +61,6 @@ bool SameReceipt(const MethodRouteReceipt& left,
   return left.identity == right.identity && left.method == right.method &&
          left.record == right.record && left.route == right.route &&
          left.stage == right.stage && left.coverage == right.coverage &&
-         left.legacy_writer_used == right.legacy_writer_used &&
          left.work_revision == right.work_revision &&
          left.failure.has_value() == right.failure.has_value() &&
          (!left.failure ||
@@ -71,7 +72,7 @@ bool SameReceipt(const MethodRouteReceipt& left,
 
 // Not executed while the user's test pause is in force (task T00). The
 // assertions document the versioned, identity-bound receipt boundary, the
-// central validator and the A01 admission contract; run via
+// central validator; run via
 // `ctest --test-dir build -R '^source_route_test$'` after the pause is
 // lifted.
 int main() {
@@ -97,28 +98,18 @@ int main() {
   Check(NormalCallResults(kSourceContract) == NormalCallResults(SourceContract::kLanguageAndHostV2));
   Check(RealmBinding(kSourceContract) == RealmBinding(SourceContract::kLanguageAndHostV2));
   Check(ResourceFailures(kSourceContract) == ResourceFailures(SourceContract::kLanguageAndHostV2));
-  // Admission: legacy stays permitted only under LegacyAllowed; a required
-  // value tree is a typed refusal, never a legacy fallback (A01).
-  const auto legacy = AdmitLegacyWriter(RoutePolicy::kLegacyAllowed);
-  Check(legacy.legacy_permitted && !legacy.value_route_failure);
-  const auto refused = AdmitLegacyWriter(RoutePolicy::kRequireValueTree);
-  Check(!refused.legacy_permitted && refused.value_route_failure);
-  Check(refused.value_route_failure->failure_class ==
-        RouteFailureClass::kUnsupported);
-  Check(refused.value_route_failure->reason ==
-        ValueRouteError::kRouteUnavailable);
-  Check(!refused.value_route_failure->pc);
-
   // Central validation (R2): each state below is checked against the stages
   // that could actually prove it.
   const auto valid = [](MethodRouteReceipt receipt) {
     return !ValidateRouteReceipt(receipt);
   };
   Check(valid(RefusedReceipt()));
+  // Every refusal names the stage that refused it; with a single always
+  // available route there is no stage-less "route unavailable" receipt.
   MethodRouteReceipt unstaged_record = RefusedReceipt();
   unstaged_record.method = {};
-  unstaged_record.stage = {};  // a record where no route stage ran at all
-  Check(valid(unstaged_record));
+  unstaged_record.stage = {};
+  Check(ValidateRouteReceipt(unstaged_record) == RouteReceiptError::kStage);
   MethodRouteReceipt tree_only = RefusedReceipt();
   tree_only.failure = {};
   tree_only.stage = SourceStage::kTreeVerified;
@@ -137,42 +128,11 @@ int main() {
   Check(ValidateRouteReceipt(complete_early) == RouteReceiptError::kStage);
   MethodRouteReceipt complete_failed = complete_value;
   complete_failed.failure = RouteFailure{RouteFailureClass::kUnproved,
-                                         ValueRouteError::kRouteUnavailable, {}};
+                                         ValueRouteError::kTreeStage, {}};
   Check(ValidateRouteReceipt(complete_failed) == RouteReceiptError::kCoverage);
   MethodRouteReceipt unsupported_silent = RefusedReceipt();
   unsupported_silent.failure = {};  // unsupported without a typed reason
   Check(ValidateRouteReceipt(unsupported_silent) ==
-        RouteReceiptError::kCoverage);
-  MethodRouteReceipt value_writer = RefusedReceipt();
-  value_writer.legacy_writer_used = true;
-  Check(ValidateRouteReceipt(value_writer) == RouteReceiptError::kWriter);
-  MethodRouteReceipt legacy_complete = RefusedReceipt();
-  legacy_complete.route = SourceRoute::kLegacy;
-  legacy_complete.stage = SourceStage::kPrinted;
-  legacy_complete.coverage = Coverage::kComplete;
-  legacy_complete.legacy_writer_used = true;
-  legacy_complete.failure = {};
-  Check(valid(legacy_complete));
-  MethodRouteReceipt legacy_incomplete = legacy_complete;
-  legacy_incomplete.stage = SourceStage::kPublished;
-  legacy_incomplete.coverage = Coverage::kIncomplete;
-  Check(valid(legacy_incomplete));
-  MethodRouteReceipt legacy_early = legacy_complete;
-  legacy_early.stage = SourceStage::kDecoded;
-  Check(ValidateRouteReceipt(legacy_early) == RouteReceiptError::kStage);
-  MethodRouteReceipt legacy_value_stage = legacy_complete;
-  legacy_value_stage.stage = SourceStage::kTreeVerified;
-  Check(ValidateRouteReceipt(legacy_value_stage) == RouteReceiptError::kStage);
-  MethodRouteReceipt legacy_unwritten = legacy_complete;
-  legacy_unwritten.legacy_writer_used = false;
-  Check(ValidateRouteReceipt(legacy_unwritten) == RouteReceiptError::kWriter);
-  MethodRouteReceipt legacy_failed = legacy_complete;
-  legacy_failed.failure = RouteFailure{RouteFailureClass::kOutputFailure,
-                                       ValueRouteError::kRouteUnavailable, {}};
-  Check(ValidateRouteReceipt(legacy_failed) == RouteReceiptError::kFailure);
-  MethodRouteReceipt legacy_unsupported = legacy_complete;
-  legacy_unsupported.coverage = Coverage::kUnsupported;
-  Check(ValidateRouteReceipt(legacy_unsupported) ==
         RouteReceiptError::kCoverage);
   MethodRouteReceipt anonymous = RefusedReceipt();
   anonymous.method = {};
@@ -189,17 +149,15 @@ int main() {
   published_refusal.work_revision = 0;
   Check(ValidateRouteReceipt(published_refusal) == RouteReceiptError::kStage);
   auto wrong_failure = RefusedReceipt();
-  wrong_failure.failure->failure_class = RouteFailureClass::kUnproved;
+  wrong_failure.failure->failure_class = static_cast<RouteFailureClass>(255);
   Check(ValidateRouteReceipt(wrong_failure) == RouteReceiptError::kFailure);
   auto invalid_stage = complete_value;
   invalid_stage.stage = static_cast<SourceStage>(255);
   Check(ValidateRouteReceipt(invalid_stage) == RouteReceiptError::kStage);
 
-  // Receipt round trip through the versioned boundary: a refusal with no
-  // stage, a refused decoded method, a complete value-tree product and a
-  // legacy writer artifact.
-  const auto samples = {RefusedReceipt(), unstaged_record, complete_value,
-                        legacy_complete};
+  // Receipt round trip through the versioned boundary: a refused decoded
+  // method and a complete value-tree product.
+  const auto samples = {RefusedReceipt(), complete_value};
   for (const auto& receipt : samples) {
     const auto serialized = SerializeRouteReceipt(receipt);
     const auto* json = std::get_if<std::string>(&serialized);
@@ -234,11 +192,12 @@ int main() {
     mutated.replace(at, from.size(), to);
     Check(std::get<RouteReceiptError>(ParseRouteReceipt(mutated)) == expected);
   };
-  reject("\"schema\":3", "\"schema\":2", RouteReceiptError::kSchema);
-  reject("\"schema\":3", "\"schema\":\"3\"", RouteReceiptError::kSchema);
+  // Schema 3 receipts carried the removed legacy-writer field; never reinterpret.
+  reject("\"schema\":4", "\"schema\":3", RouteReceiptError::kSchema);
+  reject("\"schema\":4", "\"schema\":\"4\"", RouteReceiptError::kSchema);
   // 4294967297 must not narrow to 1 on this platform (R4).
-  reject("\"schema\":3", "\"schema\":4294967297", RouteReceiptError::kSchema);
-  reject("\"schema\":3", "\"schema\":2.5", RouteReceiptError::kSchema);
+  reject("\"schema\":4", "\"schema\":4294967297", RouteReceiptError::kSchema);
+  reject("\"schema\":4", "\"schema\":2.5", RouteReceiptError::kSchema);
   const auto rules = "\"evidence_rules\":" + std::to_string(kRouteEvidenceRules);
   reject(rules, "\"evidence_rules\":23",
          RouteReceiptError::kEvidence);
@@ -265,10 +224,10 @@ int main() {
          RouteReceiptError::kStage);
   reject("\"coverage\":\"unsupported\"", "\"coverage\":\"complete-ish\"",
          RouteReceiptError::kCoverage);
-  reject("\"reason\":\"route_unavailable\"", "\"reason\":\"mystery\"",
+  reject("\"reason\":\"context_stage\"", "\"reason\":\"mystery\"",
          RouteReceiptError::kFailure);
-  reject("\"legacy_writer_used\":false", "\"legacy_writer_used\":\"false\"",
-         RouteReceiptError::kWriter);
+  reject("\"reason\":\"context_stage\"", "\"reason\":\"route_unavailable\"",
+         RouteReceiptError::kFailure);
   std::string numeric_stage{text};
   const std::string_view stage_field = "\"stage\":\"decoded\"";
   Check(numeric_stage
@@ -287,9 +246,6 @@ int main() {
             ParseRouteReceipt(remove_field("stage"))) ==
         RouteReceiptError::kStage);
   Check(std::get<RouteReceiptError>(ParseRouteReceipt(
-            remove_field("legacy_writer_used"))) ==
-        RouteReceiptError::kWriter);
-  Check(std::get<RouteReceiptError>(ParseRouteReceipt(
             remove_field("evidence_rules"))) ==
         RouteReceiptError::kEvidence);
   Check(std::get<RouteReceiptError>(ParseRouteReceipt(remove_field("identity"))) ==
@@ -304,19 +260,13 @@ int main() {
     const auto* actual = std::get_if<RouteReceiptError>(&result);
     Check(actual != nullptr && *actual == error);
   };
-  rejected(value_writer, RouteReceiptError::kWriter);
   rejected(complete_early, RouteReceiptError::kStage);
   rejected(complete_failed, RouteReceiptError::kCoverage);
-  rejected(legacy_failed, RouteReceiptError::kFailure);
   rejected(unbound, RouteReceiptError::kIdentity);
   rejected(invented_revision, RouteReceiptError::kSchema);
   rejected(published_refusal, RouteReceiptError::kStage);
   // Invalid external evidence must be rejected independently of publication.
   auto contradiction = nlohmann::json::parse(text);
-  contradiction["legacy_writer_used"] = true;
-  Check(std::get<RouteReceiptError>(ParseRouteReceipt(contradiction.dump())) ==
-        RouteReceiptError::kWriter);
-  contradiction = nlohmann::json::parse(text);
   contradiction["stage"] = "published";
   contradiction["work_revision"] = 0;
   Check(std::get<RouteReceiptError>(ParseRouteReceipt(contradiction.dump())) ==
@@ -365,9 +315,8 @@ int main() {
   context_refusal.failure->reason = ValueRouteError::kContextStage;
   Check(!ValidateRouteReceipt(context_refusal));
 
-  // Stage ledgers only move forward along their own route's sequence: a
-  // fresh ledger starts at its first stage, never jumps, and the legacy
-  // ledger can never claim a value stage.
+  // The stage ledger only moves forward along the value-tree sequence: a
+  // fresh ledger starts at its first stage and never jumps.
   RouteStageLedger ledger{SourceRoute::kValueTree};
   Check(!ledger.reached());
   Check(!ledger.Advance(SourceStage::kPublished));
@@ -385,43 +334,29 @@ int main() {
   Check(ledger.Advance(SourceStage::kPublished));
   Check(!ledger.Advance(SourceStage::kPublished));
   Check(ledger.reached() == SourceStage::kPublished);
-  RouteStageLedger legacy_ledger{SourceRoute::kLegacy};
-  Check(legacy_ledger.Advance(SourceStage::kDecoded));
-  Check(!legacy_ledger.Advance(SourceStage::kValuesImported));
-  Check(!legacy_ledger.Advance(SourceStage::kTreeVerified));
-  Check(legacy_ledger.Advance(SourceStage::kInputVerified));
-  Check(legacy_ledger.Advance(SourceStage::kPrinted));
-  Check(legacy_ledger.Advance(SourceStage::kPublished));
-  Check(legacy_ledger.reached() == SourceStage::kPublished);
 
   // Child obligations close only on receipts that bind to the expected
-  // input identity and are valid and Complete on the policy's accepted
-  // routes (A02).
-  const auto closes = [](RoutePolicy policy, MethodRouteReceipt receipt) {
+  // input identity and are valid and Complete on the value-tree route (A02).
+  const auto closes = [](MethodRouteReceipt receipt) {
     const ChildRouteObligation obligation{abc::EntityOffset{7586},
                                           SampleIdentity(), receipt};
-    return RouteObligationsClosed(policy, {&obligation, 1});
+    return RouteObligationsClosed({&obligation, 1});
   };
-  Check(closes(RoutePolicy::kRequireValueTree, complete_value));
-  Check(closes(RoutePolicy::kLegacyAllowed, complete_value));
-  Check(closes(RoutePolicy::kLegacyAllowed, legacy_complete));
-  Check(!closes(RoutePolicy::kRequireValueTree, legacy_complete));
-  Check(!closes(RoutePolicy::kRequireValueTree, RefusedReceipt()));
-  Check(!closes(RoutePolicy::kLegacyAllowed, tree_only));
+  Check(closes(complete_value));
+  Check(!closes(RefusedReceipt()));
+  Check(!closes(tree_only));
   auto other_input = complete_value;
   other_input.identity.file_size += 1;
-  Check(!closes(RoutePolicy::kRequireValueTree, other_input));
+  Check(!closes(other_input));
   ChildRouteObligation missing{abc::EntityOffset{7586}, SampleIdentity(), {}};
-  Check(!RouteObligationsClosed(RoutePolicy::kRequireValueTree,
-                                {&missing, 1}));
-  Check(RouteObligationsClosed(RoutePolicy::kRequireValueTree, {}));
+  Check(!RouteObligationsClosed({&missing, 1}));
+  Check(RouteObligationsClosed({}));
   auto mismatched = complete_value;
   mismatched.method = abc::EntityOffset{7559};
-  Check(!closes(RoutePolicy::kRequireValueTree, mismatched));
+  Check(!closes(mismatched));
   const ChildRouteObligation unbound_child{abc::EntityOffset{7586}, {}, unbound};
-  Check(!RouteObligationsClosed(RoutePolicy::kRequireValueTree,
-                                {&unbound_child, 1}));
-  Check(!closes(RoutePolicy::kRequireValueTree, invented_revision));
+  Check(!RouteObligationsClosed({&unbound_child, 1}));
+  Check(!closes(invented_revision));
 
   std::cout << "source_route_test: ok\n";
   return EXIT_SUCCESS;

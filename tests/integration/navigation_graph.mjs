@@ -54,7 +54,7 @@ try {
   const byEntity = new Map(manifest.records.map(record => [record.entity, record]));
   for (const [entity, name] of records) {
     const record = byEntity.get(entity);
-    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     assert.equal(record.source_route, 'value_tree');
     assert.equal(record.source, `sources/${name}.mjs`);
     sources[name] = readFileSync(join(output, record.source), 'utf8');

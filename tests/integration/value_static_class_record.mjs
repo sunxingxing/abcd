@@ -13,7 +13,7 @@ assert.equal(run.status, 0, run.stderr + run.stdout);
 const report = JSON.parse(run.stdout);
 assert.equal(report.source_complete, true);
 assert.equal(report.route, 'value_tree');
-assert.equal(report.legacy_writer_used, false);
+assert.equal(report.legacy_writer_used, undefined);
 assert.equal(report.record, 7167);
 assert.doesNotMatch(report.source, /INCOMPLETE|\$value|\.call\(|Object\.defineProperty/);
 assert.match(report.source, /static TEXT_OPACITY = \[/);

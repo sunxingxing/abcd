@@ -1,8 +1,9 @@
 #ifndef ABCD_SOURCE_GENERATOR_DELEGATE_H_
 #define ABCD_SOURCE_GENERATOR_DELEGATE_H_
+#include "abcd/abc/frame_layout.h"
 #include "abcd/analysis/yield_region.h"
 #include "abcd/abc/metadata_index.h"
-#include "abcd/source/base_function.h"
+#include "abcd/source/function_emit_error.h"
 
 namespace abcd::source {
 struct GeneratorNames {

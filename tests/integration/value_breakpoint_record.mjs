@@ -13,7 +13,7 @@ const run = spawnSync(tool, [abc, '19387', '--record-source', '--value-source'],
 assert.equal(run.status, 0, run.stderr + run.stdout);
 const report = JSON.parse(run.stdout);
 assert.equal(report.record, 19234); assert.equal(report.route, 'value_tree');
-assert.equal(report.source_complete, true); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.source_complete, true); assert.equal(report.legacy_writer_used, undefined);
 // This ABC uses assignment-field semantics. Node's type stripper retains native
 // fields, so erase only these three uninitialized TS declarations in the oracle.
 // This is a test reference adaptation, never an engine input or profile claim.

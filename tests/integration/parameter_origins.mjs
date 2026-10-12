@@ -17,10 +17,10 @@ try {
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
   const record = manifest.records.find(record => record.entity === 14411);
   assert.equal(record.source_complete, true);
-  assert.equal(record.legacy_writer_used, false);
+  assert.equal(record.legacy_writer_used, undefined);
   generated = readFileSync(join(output, record.source), 'utf8');
   const index = manifest.records.find(record => record.entity === 9572);
-  assert.equal(index.source_complete, true); assert.equal(index.legacy_writer_used, false);
+  assert.equal(index.source_complete, true); assert.equal(index.legacy_writer_used, undefined);
   generatedIndex = readFileSync(join(output, index.source), 'utf8');
 } finally { rmSync(temporary, {recursive: true}); }
 // The paired source is evaluation input only, read after ABC-only generation.

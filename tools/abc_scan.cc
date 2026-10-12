@@ -1,5 +1,3 @@
-#include <sys/resource.h>
-
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
@@ -8,21 +6,11 @@
 #include <vector>
 
 #include "abcd/corpus/scan.h"
+#include "process_limit.h"
 
 namespace {
-// Conservative process-level ceiling: virtual address space also bounds RSS.
-// Library users still need a host-wide budget; this CLI launches no children.
-constexpr rlim_t kProcessMemoryLimit = 1000000000;
-constexpr std::uint64_t kBytesPerKibibyte = 1024;
 constexpr int kRequiredArguments = 4;
 constexpr int kRootArgumentWidth = 2;
-
-bool LimitAddressSpace() {
-  rlimit limit{};
-  if (getrlimit(RLIMIT_AS, &limit) != 0) return false;
-  limit.rlim_cur = std::min(limit.rlim_cur, kProcessMemoryLimit);
-  return setrlimit(RLIMIT_AS, &limit) == 0;
-}
 
 int Run(int argc, char** argv) {
   if (argc < kRequiredArguments || (argc - 2) % kRootArgumentWidth != 0) {
@@ -30,7 +18,8 @@ int Run(int argc, char** argv) {
         << "usage: abc_scan MANIFEST CORPUS_ID ROOT [CORPUS_ID ROOT ...]\n";
     return EXIT_FAILURE;
   }
-  if (!LimitAddressSpace()) {
+  const auto limit = abcd::tools::EstablishProcessLimit();
+  if (!abcd::tools::ProcessLimitAcceptable(limit)) {
     std::cerr << "cannot establish process memory limit\n";
     return EXIT_FAILURE;
   }
@@ -50,28 +39,18 @@ int Run(int argc, char** argv) {
     return EXIT_FAILURE;
   }
   const auto& stats = std::get<abcd::corpus::ScanStats>(result);
-  rusage usage{};
-  if (getrusage(RUSAGE_SELF, &usage) != 0) {
-    std::cerr << "cannot measure process memory\n";
-    return EXIT_FAILURE;
-  }
-  std::cout << nlohmann::json{{"files", stats.files},
-                              {"unique_contents", stats.unique_contents},
-                              {"bytes_hashed", stats.bytes_hashed},
-                              {"classified", stats.classified},
-                              {"reused", stats.reused},
-                              {"dynamic", stats.dynamic},
-                              {"static", stats.static_abc},
-                              {"unknown", stats.unknown},
-                              {"invalid", stats.invalid},
-                              {"symlinks_skipped", stats.symlinks_skipped},
-                              {"peak_rss_bytes",
-                               static_cast<std::uint64_t>(usage.ru_maxrss) *
-                                   kBytesPerKibibyte},
-                              {"address_space_limit_bytes",
-                               kProcessMemoryLimit}}
-                   .dump(2)
-            << '\n';
+  nlohmann::json report{{"files", stats.files},
+                        {"unique_contents", stats.unique_contents},
+                        {"bytes_hashed", stats.bytes_hashed},
+                        {"classified", stats.classified},
+                        {"reused", stats.reused},
+                        {"dynamic", stats.dynamic},
+                        {"static", stats.static_abc},
+                        {"unknown", stats.unknown},
+                        {"invalid", stats.invalid},
+                        {"symlinks_skipped", stats.symlinks_skipped}};
+  abcd::tools::ReportProcessMemory(report, limit);
+  std::cout << report.dump(2) << '\n';
   return EXIT_SUCCESS;
 }
 }  // namespace

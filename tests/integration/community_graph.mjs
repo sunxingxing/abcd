@@ -26,7 +26,7 @@ try {
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
   assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
   for (const record of manifest.records) if (record.source) {
-    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     assert.equal(record.source_route, 'value_tree');
     const name = record.source.slice('sources/'.length, -'.mjs'.length);
     sources[name] = readFileSync(join(output, record.source), 'utf8');

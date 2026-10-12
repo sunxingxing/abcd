@@ -61,7 +61,7 @@ try {
     const manifest = JSON.parse(readFileSync(join(output,'manifest.json')));
     assert.equal(manifest.source_contract, 'language_arithmetic_v1');
     const record = manifest.records.find(record => record.entity === item.entity);
-    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     const text = readFileSync(join(output,record.source), 'utf8');
     assert.doesNotMatch(text, /INCOMPLETE|switch\s*\(/); generated.push(text);
   }

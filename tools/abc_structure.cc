@@ -1,6 +1,5 @@
 #include <fcntl.h>
 #include <stdio.h>
-#include <sys/resource.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -18,9 +17,11 @@
 #include "abcd/source/record_module_context.h"
 #include "abcd/source/record_program.h"
 #include "abcd/source/record_source.h"
+#include "abcd/analysis/method_roles.h"
 #include "abcd/source/source_route.h"
 #include "abcd/structure/record_path.h"
 #include "abcd/structure/record_writer.h"
+#include "process_limit.h"
 
 namespace {
 using namespace abcd;
@@ -37,7 +38,6 @@ enum class ExportError {
   kChanged,
   kDestination,
   kRoles,
-  kRouteReceipt
 };
 enum class SourceStatus : unsigned {
   kWritten = 0,
@@ -45,11 +45,8 @@ enum class SourceStatus : unsigned {
   kNoModule = 2,
   kProgram = 3,
   kIncomplete = 4,
-  // Value-tree route refused the record before any stage ran; no source file
-  // exists for it and no legacy writer was consulted (A01).
-  kValueRouteRefused = 5
 };
-enum class SourceMode { kNone, kLegacy, kShared, kValueTree };
+enum class SourceMode { kNone, kValueTree };
 bool FatalMetadata(abc::MetadataError error) {
   return error == abc::MetadataError::kResourceLimit ||
          error == abc::MetadataError::kRead ||
@@ -66,42 +63,14 @@ bool FatalContext(const source::RecordModuleFailure& failure) {
          kind == abc::ModuleError::kRead ||
          kind == abc::ModuleError::kResourceLimit;
 }
-bool FatalSharedSource(const source::RecordSourceResult& result) {
-  return std::visit([](const auto& failure) {
-    using T = std::decay_t<decltype(failure)>;
-    if constexpr (std::is_same_v<T, source::PrintedSource>) {
-      return false;
-    } else if constexpr (std::is_same_v<T, source::RouteRefusal>) {
-      // Typed route product, not a process-level export failure.
-      return false;
-    } else if constexpr (std::is_same_v<T, source::RecordProgramFailure>) {
-      return failure.kind == source::RecordProgramError::kRead ||
-             failure.kind == source::RecordProgramError::kWrite ||
-             failure.kind == source::RecordProgramError::kFileChanged ||
-             failure.kind == source::RecordProgramError::kResourceLimit ||
-             failure.kind == source::RecordProgramError::kOutputLimit;
-    } else if constexpr (std::is_same_v<T, analysis::SemanticFailure>) {
-      if (failure.kind == analysis::SemanticError::kResourceLimit) return true;
-      return std::visit([](const auto& cause) {
-        using C = std::decay_t<decltype(cause)>;
-        if constexpr (std::is_same_v<C, analysis::RegisterUseFailure>) {
-          return cause.kind == analysis::RegisterUseError::kResourceLimit ||
-                 cause.kind == analysis::RegisterUseError::kWorkLimit;
-        } else if constexpr (requires { C::kResourceLimit; }) {
-          if (cause == C::kResourceLimit) return true;
-          if constexpr (requires { C::kWorkLimit; }) return cause == C::kWorkLimit;
-          return false;
-        } else return false;
-      }, failure.ssa_cause);
-    } else if constexpr (std::is_same_v<T, analysis::SemanticProofFailure>) {
-      return failure.kind == analysis::SemanticProofError::kResourceLimit;
-    } else if constexpr (std::is_same_v<T, analysis::RegionFailure>) {
-      return failure.kind == analysis::RegionError::kResourceLimit;
-    } else if constexpr (std::is_same_v<T, source::SourceFailure>) {
-      return failure.kind == source::SourceError::kResourceLimit ||
-             failure.kind == source::SourceError::kOutput;
-    }
-  }, result);
+bool FatalRecordSource(const source::RecordSourceResult& result) {
+  // Process-level failures only; typed refusals are per-record products.
+  const auto* failure = std::get_if<source::RecordProgramFailure>(&result);
+  return failure && (failure->kind == source::RecordProgramError::kRead ||
+                     failure->kind == source::RecordProgramError::kWrite ||
+                     failure->kind == source::RecordProgramError::kFileChanged ||
+                     failure->kind == source::RecordProgramError::kResourceLimit ||
+                     failure->kind == source::RecordProgramError::kOutputLimit);
 }
 int Fail(ExportError kind, std::uint32_t entity = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
@@ -147,12 +116,11 @@ std::string Hex(const corpus::Sha256& hash) {
   return result;
 }
 int Export(const std::filesystem::path& input,
-           const std::filesystem::path& output, SourceMode mode, source::SourceContract contract) {
-  const bool emit_source = mode != SourceMode::kNone;
-  // Value-tree mode admits the route per record and never plans legacy
-  // emission: role indexes and source paths below exist only for the legacy
-  // and shared writers, and consulting them would already be a fallback.
-  const bool route_value = mode == SourceMode::kValueTree;
+           const std::filesystem::path& output, SourceMode mode, source::SourceContract contract,
+           const tools::ProcessLimit& limit) {
+  // The value-tree route is the only source route; without it only record
+  // structure and declarations are exported.
+  const bool emit_source = mode == SourceMode::kValueTree;
   if (output.filename().empty() ||
       std::filesystem::exists(std::filesystem::symlink_status(output)))
     return Fail(ExportError::kDestination);
@@ -176,9 +144,6 @@ int Export(const std::filesystem::path& input,
   // recovery result; the batch layer does not fabricate route refusals.
   auto identity = source::MakeRouteInputIdentity(*hash, *header);
   identity.contract = contract;
-  const auto route_policy = route_value
-                                ? source::RoutePolicy::kRequireValueTree
-                                : source::RoutePolicy::kLegacyAllowed;
   constexpr std::size_t kIndexBytes = 256 * 1024 * 1024;
   const auto indexed = abc::BuildMetadataIndex(file, *header, {kIndexBytes});
   const auto* index = std::get_if<abc::MetadataIndex>(&indexed);
@@ -201,7 +166,7 @@ int Export(const std::filesystem::path& input,
   }
   std::optional<analysis::FunctionCreationSites> functions;
   std::optional<analysis::ClassMethodSites> classes;
-  if (route_value && roles) {
+  if (emit_source && roles) {
     auto indexed_functions = analysis::FunctionCreationSites::Build(file, *header, *index, *lookup);
     auto indexed_classes = analysis::ClassMethodSites::Build(file, *header, *index, *lookup);
     if (!std::holds_alternative<analysis::FunctionCreationSites>(indexed_functions) ||
@@ -225,18 +190,13 @@ int Export(const std::filesystem::path& input,
   if (tree.path.empty()) return Fail(ExportError::kOutput);
   std::ofstream manifest(tree.path / "manifest.json", std::ios::binary);
   manifest << "{\"schema\":1,\"view\":\""
-           << (mode == SourceMode::kShared ? "declarations_with_incomplete_source"
-               : route_value ? "declarations_with_value_source"
-               : emit_source ? "declarations_with_verified_source"
-                           : "declarations_only")
+           << (emit_source ? "declarations_with_value_source" : "declarations_only")
            << "\",\"sha256\":\"" << Hex(hash->sha256)
            << "\",\"packaging\":" << static_cast<unsigned>(*packaging)
            << ",\"source_contract\":\""
            << source::SourceContractName(identity.contract)
            << "\",\"source_route\":\""
-           << (route_value ? source::SourceRouteName(source::SourceRoute::kValueTree)
-               : emit_source ? source::SourceRouteName(source::SourceRoute::kLegacy)
-                           : "none")
+           << (emit_source ? source::SourceRouteName(source::SourceRoute::kValueTree) : "none")
            << "\",\"records\":[";
   structure::RecordCounts totals;
   bool comma = false;
@@ -277,17 +237,13 @@ int Export(const std::filesystem::path& input,
                                    {"metadata", metadata_path},
                                    {"declarations", declaration_path}};
     if (emit_source) {
-      if (route_value) {
-        record_manifest["source_complete"] = false;
-        record_manifest["executable"] = false;
-        record_manifest["legacy_writer_used"] = false;
-      }
+      record_manifest["source_complete"] = false;
+      record_manifest["executable"] = false;
       record_manifest["source_route"] =
-          std::string(source::SourceRouteName(route_value ? source::SourceRoute::kValueTree : source::SourceRoute::kLegacy));
+          std::string(source::SourceRouteName(source::SourceRoute::kValueTree));
       const auto source_stem = std::filesystem::path("sources") /
                                source_paths[record_index].stem;
-      const auto source_path = source_stem.string() +
-          (mode == SourceMode::kShared ? ".incomplete.mjs" : ".mjs");
+      const auto source_path = source_stem.string() + ".mjs";
       record_manifest["planned_source"] = source_path;
       record_manifest["source_path_origin"] =
           static_cast<unsigned>(source_paths[record_index].origin);
@@ -305,12 +261,11 @@ int Export(const std::filesystem::path& input,
           if (!module) {
             record_manifest["source_status"] =
                 static_cast<unsigned>(SourceStatus::kNoModule);
-          } else if (mode == SourceMode::kShared || route_value) {
+          } else {
             const auto built = source::BuildRecordSource(
-                file, *header, *index, *lookup, record, *ready, *roles, {},
-                nullptr, route_policy, nullptr, nullptr, route_value ? &identity : nullptr,
+                file, *header, *index, *lookup, record, *ready, *roles, {}, identity,
                 functions ? &*functions : nullptr, classes ? &*classes : nullptr);
-            if (FatalSharedSource(built))
+            if (FatalRecordSource(built))
               return Fail(ExportError::kRecord, record.offset.value);
             record_manifest["source_complete"] = false;
             record_manifest["executable"] = false;
@@ -352,7 +307,7 @@ int Export(const std::filesystem::path& input,
               positions << "]}\n";
               positions.close();
               if (!positions) return Fail(ExportError::kOutput, record.offset.value);
-              const bool complete = route_value && !artifact->incomplete;
+              const bool complete = !artifact->incomplete;
               record_manifest["source_status"] = static_cast<unsigned>(complete ? SourceStatus::kWritten : SourceStatus::kIncomplete);
               record_manifest["source_complete"] = complete;
               record_manifest[complete ? "source" : "incomplete_source"] = source_path;
@@ -395,36 +350,6 @@ int Export(const std::filesystem::path& input,
                 }
               }, built);
             }
-          } else {
-            std::filesystem::create_directories(
-                (tree.path / source_stem).parent_path());
-            std::ofstream program(tree.path / source_path, std::ios::binary);
-            if (!program) return Fail(ExportError::kOutput, record.offset.value);
-            const auto written = source::WriteRecordProgram(
-                file, *header, *index, *lookup, record, *module, *roles,
-                program);
-            program.close();
-            if (!program) return Fail(ExportError::kOutput, record.offset.value);
-            if (const auto* failure =
-                    std::get_if<source::RecordProgramFailure>(&written)) {
-              if (failure->kind == source::RecordProgramError::kWrite ||
-                  failure->kind == source::RecordProgramError::kRead ||
-                  failure->kind == source::RecordProgramError::kFileChanged ||
-                  failure->kind == source::RecordProgramError::kResourceLimit)
-                return Fail(ExportError::kRecord, record.offset.value);
-              std::error_code removed;
-              std::filesystem::remove(tree.path / source_path, removed);
-              if (removed) return Fail(ExportError::kOutput, record.offset.value);
-              record_manifest["source_status"] =
-                  static_cast<unsigned>(SourceStatus::kProgram);
-              record_manifest["source_error"] =
-                  static_cast<unsigned>(failure->kind);
-              record_manifest["source_pc"] = failure->pc.value;
-            } else {
-              record_manifest["source_status"] =
-                  static_cast<unsigned>(SourceStatus::kWritten);
-              record_manifest["source"] = source_path;
-            }
           }
         } else {
           const auto& failure = std::get<source::RecordModuleFailure>(context);
@@ -455,18 +380,7 @@ int Export(const std::filesystem::path& input,
   auto report_fields = nlohmann::json{
       {"output", output.string()},
       {"counts", counts}};
-  if (mode != SourceMode::kShared) {
-    rusage usage{};
-    getrusage(RUSAGE_SELF, &usage);
-#if defined(__APPLE__)
-    // Darwin getrusage reports bytes; Linux reports KiB.
-    constexpr std::uint64_t kRssUnitBytes = 1;
-#else
-    constexpr std::uint64_t kRssUnitBytes = 1024;
-#endif
-    report_fields["peak_rss_bytes"] =
-        static_cast<std::uint64_t>(usage.ru_maxrss) * kRssUnitBytes;
-  }
+  tools::ReportProcessMemory(report_fields, limit);
   const auto report = report_fields.dump();
   if (!tree.Publish(output)) return Fail(ExportError::kDestination);
   std::cout << report << '\n';
@@ -484,12 +398,10 @@ int main(int argc, char** argv) {
     if (option == "--language-numeric") { ++numeric; continue; }
     ++modes;
     if (option == "--value-source") mode = SourceMode::kValueTree;
-    else if (option == "--shared-source") mode = SourceMode::kShared;
-    else if (option == "--source") mode = SourceMode::kLegacy;
     else valid = false;
   }
   if (!valid || modes > 1 || constructors > 1 || language + numeric > 1 || ((constructors || language || numeric) && mode != SourceMode::kValueTree)) {
-    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--source|--shared-source|--value-source] [--language-arithmetic|--language-numeric] [--language-constructors]\n"
+    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--value-source] [--language-arithmetic|--language-numeric] [--language-constructors]\n"
                  "  --language-arithmetic requires --value-source and selects binary language arithmetic\n"
                  "  --language-numeric requires --value-source and selects unary and binary numeric semantics\n"
                  "  --language-constructors requires --value-source and selects native super semantics\n";
@@ -497,18 +409,10 @@ int main(int argc, char** argv) {
   }
   const auto numeric_contract = numeric ? source::SourceContract::kLanguageNumericV1 : language ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
   const auto contract = constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract;
-#if !defined(__APPLE__)
-  // Darwin rejects this Linux virtual-address-space limit; it also cannot
-  // establish the process RSS contract. Existing bounded stage allocations
-  // remain active on both hosts. Do not claim a measured 1 GB RSS guarantee.
-  constexpr rlim_t kProcessBytes = 1000000000;
-  rlimit limit{};
-  if (getrlimit(RLIMIT_AS, &limit) != 0) return EXIT_FAILURE;
-  limit.rlim_cur = std::min(limit.rlim_cur, kProcessBytes);
-  if (setrlimit(RLIMIT_AS, &limit) != 0) return EXIT_FAILURE;
-#endif
+  const auto limit = tools::EstablishProcessLimit();
+  if (!tools::ProcessLimitAcceptable(limit)) return EXIT_FAILURE;
   try {
-    return Export(argv[1], argv[2], mode, contract);
+    return Export(argv[1], argv[2], mode, contract, limit);
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return EXIT_FAILURE;

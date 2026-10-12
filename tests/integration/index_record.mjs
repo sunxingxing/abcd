@@ -13,12 +13,12 @@ assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
 const report = JSON.parse(execFileSync(tool, [abc, '10009', '--record-source', '--value-source'], {encoding: 'utf8'}));
 assert.equal(report.source_complete, true);
 assert.equal(report.route, 'value_tree');
-assert.equal(report.legacy_writer_used, false);
+assert.equal(report.legacy_writer_used, undefined);
 assert.match(report.source, /class extends \(ViewPU\)/);
 assert.equal(report.record, 9572);
 const routes = JSON.parse(execFileSync(tool, [abc, '8889', '--record-source', '--value-source'], {encoding: 'utf8'}));
 assert.equal(routes.source_complete, true); assert.equal(routes.record, 8755);
-assert.equal(routes.route, 'value_tree'); assert.equal(routes.legacy_writer_used, false);
+assert.equal(routes.route, 'value_tree'); assert.equal(routes.legacy_writer_used, undefined);
 // Full paired module is an independent oracle, read only after the ABC-only
 // engine process has exited. No method fragments are spliced into its output.
 const paired = readFileSync(join(dirname(abc), 'Immersive_src/default/src/main/ets/pages/Index.ts'), 'utf8');

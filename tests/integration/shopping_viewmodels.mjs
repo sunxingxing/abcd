@@ -34,7 +34,7 @@ try {
   for(const [entity,name] of records) {
     const row = manifest.records.find(row=>row.entity===entity);assert.ok(row);
     assert.equal(row.source_complete,true);assert.equal(row.source_status,0);
-    assert.equal(row.source_route,'value_tree');assert.equal(row.legacy_writer_used,false);
+    assert.equal(row.source_route,'value_tree');assert.equal(row.legacy_writer_used, undefined);
     sources[name]=readFileSync(join(output,row.source),'utf8');parseJavaScript(sources[name]);
     assert.doesNotMatch(sources[name],/INCOMPLETE|UNRECOVERED/);
   }

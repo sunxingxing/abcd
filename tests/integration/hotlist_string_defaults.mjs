@@ -9,7 +9,7 @@ import vm from 'node:vm';
 // registration and its Text callback; ForEach, child views and rendering are excluded.
 const [tool,root] = process.argv.slice(2);
 const output = JSON.parse(execFileSync(tool,[join(root,'modules.abc'),'48609','--record-source','--value-source'],{encoding:'utf8'}));
-assert.equal(output.source_complete,true); assert.equal(output.legacy_writer_used,false);
+assert.equal(output.source_complete,true); assert.equal(output.legacy_writer_used, undefined);
 const paired = stripTypeScriptTypes(readFileSync(join(root,'src/rank/src/main/ets/view/HotListView.ts'),'utf8'));
 const token = Symbol('title'), overrideValue = {};
 const hostile = {[Symbol.toPrimitive]() { assert.fail('coerced title'); }};

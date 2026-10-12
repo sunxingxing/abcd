@@ -93,7 +93,7 @@ try {
   for (const [entity, name, folder, target] of cases) {
     const record = manifest.records.find(item => item.entity === entity);
     assert.equal(record.source_complete, true);
-    assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.legacy_writer_used, undefined);
     const generated = readFileSync(join(output, record.source), 'utf8');
     const paired = stripTypeScriptTypes(readFileSync(join(root, 'src', folder, 'src/main/ets/view', `${name}.ts`), 'utf8'));
     assert.ok(generated.includes(' ? '));

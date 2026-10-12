@@ -1,5 +1,4 @@
 #include "abcd/analysis/exception_inputs.h"
-#include "abcd/analysis/instruction_ssa.h"
 
 #include "analysis/ssa_fixture.h"
 
@@ -68,12 +67,6 @@ void CheckSnapshot(std::uint32_t parameters) {
   test::Check(ssa.Reads(normal_return)[0].value == *ssa.Write(commit));
   test::Check(ssa.Reads(handler_return)[0].value == *ssa.Write(caught));
   test::Check(ssa.Write(commit) != ssa.Write(caught));
-  auto indexed = InstructionSsa::Build(flow, ssa);
-  test::Check(std::holds_alternative<InstructionSsa>(indexed));
-  const auto& view = std::get<InstructionSsa>(indexed);
-  test::Check(view.Reads({0}).size() == parameters);
-  test::Check(view.Definition(*ssa.Write(commit)) == InstructionId{0});
-  test::Check(!view.Definition(*ssa.Write(caught)));
   auto bound = AnalyzeExceptionEnvironments(flow);
   test::Check(std::holds_alternative<EnvironmentFlow>(bound));
   const auto& environments = std::get<EnvironmentFlow>(bound);

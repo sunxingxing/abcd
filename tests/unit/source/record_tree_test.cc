@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
   source::RouteInputIdentity identity;
   identity.profile = header.profile; identity.abc_version = header.version; identity.file_size = header.file_size;
   auto result = source::BuildRecordSource(file, header, index, lookup, record, context, roles,
-      {}, nullptr, source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity);
+      {}, identity);
   if (const auto* error = std::get_if<source::RecordProgramFailure>(&result)) {
     if (mode == "conditional-first" || mode == "branch-before-root")
       Check(error->kind == source::RecordProgramError::kInitializer);
@@ -206,11 +206,9 @@ int main(int argc, char** argv) {
   if (argc > 1) std::cout << source;
   auto invalid_identity = identity; ++invalid_identity.file_size;
   Check(!std::holds_alternative<source::PrintedSource>(source::BuildRecordSource(
-      file, header, index, lookup, record, context, roles, {}, nullptr,
-      source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &invalid_identity)));
+      file, header, index, lookup, record, context, roles, {}, invalid_identity)));
   source::RecordProgramBudget small; small.output.bytes = 1;
   Check(!std::holds_alternative<source::PrintedSource>(source::BuildRecordSource(
-      file, header, index, lookup, record, context, roles, small, nullptr,
-      source::RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity)));
+      file, header, index, lookup, record, context, roles, small, identity)));
   Check(unlink(path) == 0);
 }

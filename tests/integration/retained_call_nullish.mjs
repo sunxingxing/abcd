@@ -11,7 +11,7 @@ const report = JSON.parse(execFileSync(tool, [abc, '9057', '--record-source', '-
   {encoding: 'utf8', timeout: 60_000}));
 assert.equal(report.record, 8917);
 assert.equal(report.source_complete, true);
-assert.equal(report.legacy_writer_used, false);
+assert.equal(report.legacy_writer_used, undefined);
 // Redundant parentheses are printer choices; require the native
 // nullish operation and its operands rather than one obsolete printed spelling.
 const nullish = node => node.type === 'LogicalExpression' && node.operator === '??';

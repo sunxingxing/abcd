@@ -22,7 +22,7 @@ for (const [directory, entry] of [['commons', 7000], ['minigame', 14383], ['shop
   assert.equal(run.status, 0, run.stderr + run.stdout);
   const report = JSON.parse(run.stdout);
   assert.equal(report.source_complete, true);
-  assert.equal(report.legacy_writer_used, false);
+  assert.equal(report.legacy_writer_used, undefined);
   assert.equal(report.route, 'value_tree');
   // Representation is native ESM reexport syntax with no copied-value locals.
   assert.match(report.source, /export\s*\{/);

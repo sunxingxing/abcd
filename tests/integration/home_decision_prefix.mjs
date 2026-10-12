@@ -85,7 +85,7 @@ try {
   const run = spawnSync(tool, [join(root, 'modules.abc'), output, '--value-source'], {encoding: 'utf8'});
   assert.equal(run.status, 0, run.stderr);
   const record = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8')).records.find(value => value.entity === 23956);
-  assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+  assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
   const generated = readFileSync(join(output, record.source), 'utf8');
   assert.equal(generated.match(/\?\./g)?.length, 12);
   const paired = stripTypeScriptTypes(readFileSync(join(root, 'Immersive_src/shopping/src/main/ets/view/Home.ts'), 'utf8'));

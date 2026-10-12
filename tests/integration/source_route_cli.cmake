@@ -1,13 +1,12 @@
-# Route admission CLI regression specification (T00, corrections R1/R5/R6).
-# NOT EXECUTED while the user's test pause is in force; this script is the
-# runnable specification for later verification. It requires:
-#   - prohibited detail/value and duplicate/conflicting option combinations
-#     are rejected in both orders before any file access, without receipts;
+# Value-tree route CLI regression specification (corrections R1/R5/R6).
+# It requires:
+#   - prohibited, removed (legacy) and duplicate/conflicting option
+#     combinations are rejected in both orders before any file access,
+#     without receipts;
 #   - --value-source yields a printed class-member slice bound to the frozen
 #     pasteboard identity, with incomplete record coverage and no legacy fields;
-#   - abc_structure --value-source executes record recovery and reports
-#     no source files, while the legacy shared writer succeeds on the same
-#     input (A01 contrast: new route fails honestly, old writer can succeed).
+#   - abc_structure --value-source executes record recovery, and the removed
+#     legacy --source/--shared-source routes are rejected as usage errors.
 # Run via `ctest --test-dir build -R '^source_route_cli_test$'`.
 set(ABCD_ROUTE_HASH
   "854fb0d9bbc1df0e0e9b2ab4b0b5adedaf78831561dbe8692e323128f572ba9e")
@@ -88,10 +87,9 @@ foreach(arguments IN ITEMS "--function-source;--value-source"
   if(NOT coverage STREQUAL "complete")
     message(FATAL_ERROR "unexpected import coverage: ${report}")
   endif()
-  string(JSON writer GET "${report}" route_receipt legacy_writer_used)
-  string(JSON writer_type TYPE "${report}" route_receipt legacy_writer_used)
-  if(NOT writer_type STREQUAL "BOOLEAN" OR writer)
-    message(FATAL_ERROR "refusal claims the legacy writer: ${report}")
+  string(JSON writer ERROR_VARIABLE writer_absent GET "${report}" route_receipt legacy_writer_used)
+  if(NOT writer_absent)
+    message(FATAL_ERROR "receipt still carries the removed legacy writer field: ${report}")
   endif()
   string(JSON failure_type TYPE "${report}" route_receipt failure)
   string(JSON revision GET "${report}" route_receipt work_revision)
@@ -118,25 +116,35 @@ foreach(arguments IN ITEMS "--function-source;--value-source"
   endif()
 endforeach()
 
-foreach(form IN ITEMS --class-source --record-source)
-  execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586"
-    "${form}" --value-source RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
-  if(form STREQUAL "--record-source")
-    string(JSON complete GET "${report}" source_complete)
-    if(complete)
-      message(FATAL_ERROR "record is not completely recovered: ${report}")
-    endif()
-    set(coverage "unsupported")
-  else()
-    string(JSON coverage GET "${report}" route_receipt coverage)
-  endif()
-  string(FIND "${report}" "\"source\":" source_at)
-  if(status EQUAL 0 OR NOT coverage STREQUAL "unsupported" OR NOT source_at EQUAL -1)
-    message(FATAL_ERROR "method fragment must not masquerade as ${form}: ${report}")
-  endif()
-endforeach()
+# The value route has no class-constructor fragment view: the removed
+# --class-source form is a usage error, never a fabricated receipt.
+execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586"
+  --class-source --value-source RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_VARIABLE failure)
+string(JSON error GET "${failure}" error)
+if(status EQUAL 0 OR NOT report STREQUAL "" OR NOT error EQUAL ABCD_ARGUMENT_ERROR)
+  message(FATAL_ERROR "removed --class-source must be an argument error: ${report}")
+endif()
+# --record-source prints the owning record through the record route, never
+# the method fragment: complete output carries source and exits 0; an
+# incomplete record publishes no source.
+execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586"
+  --record-source --value-source RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+string(JSON record GET "${report}" record)
+string(JSON route GET "${report}" route)
+string(JSON complete GET "${report}" source_complete)
+string(FIND "${report}" "\"source\":" source_at)
+if(NOT record EQUAL 6897 OR NOT route STREQUAL "value_tree")
+  message(FATAL_ERROR "--record-source did not report the owning record: ${report}")
+endif()
+if(complete AND (NOT status EQUAL 0 OR source_at EQUAL -1))
+  message(FATAL_ERROR "complete record lost its source: ${report}")
+endif()
+if(NOT complete AND (status EQUAL 0 OR NOT source_at EQUAL -1))
+  message(FATAL_ERROR "incomplete record published source: ${report}")
+endif()
 
-# Summary mode: admission happens before the legacy semantic summary.
+# A bare --value-source selects the function form; it never prints the
+# instruction summary.
 execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "7586"
   "--value-source" RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
 if(status EQUAL 0)
@@ -149,7 +157,7 @@ endif()
 foreach(legacy_field IN ITEMS "\"ssa_values\"" "\"instructions\"")
   string(FIND "${report}" "${legacy_field}" field_at)
   if(NOT field_at EQUAL -1)
-    message(FATAL_ERROR "legacy summary ran before admission: ${report}")
+    message(FATAL_ERROR "summary ran instead of the value route: ${report}")
   endif()
 endforeach()
 
@@ -196,23 +204,11 @@ if(NOT count EQUAL 19)
 endif()
 file(REMOVE_RECURSE "${root}")
 
-# A01 contrast on the same input: the legacy shared writer succeeds where the
-# value route refuses, and its artifacts are honestly marked Legacy.
-execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${root}"
-  "--shared-source" RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
-if(NOT status EQUAL 0)
-  message(FATAL_ERROR "legacy shared export failed: ${report}")
-endif()
-file(READ "${root}/manifest.json" manifest)
-string(JSON view GET "${manifest}" view)
-if(NOT view STREQUAL "declarations_with_incomplete_source")
-  message(FATAL_ERROR "unexpected shared view: ${manifest}")
-endif()
-string(JSON route GET "${manifest}" source_route)
-if(NOT route STREQUAL "legacy")
-  message(FATAL_ERROR "shared export lost its legacy route marking")
-endif()
-if(NOT EXISTS "${root}/sources")
-  message(FATAL_ERROR "legacy writer must still publish its sources")
-endif()
-file(REMOVE_RECURSE "${root}")
+# The removed legacy routes are usage errors and publish nothing.
+foreach(legacy_option IN ITEMS --source --shared-source)
+  execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${root}"
+    "${legacy_option}" RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
+  if(status EQUAL 0 OR EXISTS "${root}")
+    message(FATAL_ERROR "removed legacy route ${legacy_option} was accepted: ${report}")
+  endif()
+endforeach()

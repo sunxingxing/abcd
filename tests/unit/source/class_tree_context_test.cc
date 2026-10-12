@@ -14,7 +14,6 @@
 #include "abcd/source/class_method.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/analysis/coroutine.h"
-#include "../../support/function_segments.h"
 #include "../../support/instruction_positions.h"
 #include "../../support/phased_file_checks.h"
 #include "../../support/phased_family_emission.h"
@@ -641,9 +640,6 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(!std::get<PrintedFamilyDraft>(printed).members[0].incomplete);
     test::CheckPhasedFamilyEmission(file, header, index, lookup, roles, functions,
         sites, range.first, identity, output.str());
-    if (exception == ExceptionShape::kAsyncAwait)
-      test::CheckSelectedClassBridge(file, header, index, lookup, roles, sites,
-          range.first, identity, owner.Name(), output.str());
     std::ostringstream unowned;
     Check(std::get<TreePrintError>(PrintFamilyDraft(family, unowned)) == TreePrintError::kUnsupportedContext);
     Check(unowned.str().empty());
@@ -1083,7 +1079,6 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(published_family.Receipts()[0].stage == SourceStage::kPrinted &&
       published_family.Receipts()[0].coverage == Coverage::kComplete &&
       !ValidateRouteReceipt(published_family.Receipts()[0]));
-  test::CheckFunctionTransport(std::get<FamilyEmission>(std::move(family_emission)), emitted_output.str());
   Check(printed.fragment == FunctionFragment::kClassMember);
   Check(printed.bytes == output.view().size());
   Check(output.view().starts_with(defaults ? "run($arg0 = (-1)) {\n" : "run($arg0) {\n"));
@@ -1141,7 +1136,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(emission.Destination().end == composed.view().size());
   Check(composed.view().substr(emission.Destination().begin) == output.view());
   Check(emission.Receipt().stage == SourceStage::kPrinted && emission.Receipt().coverage == Coverage::kComplete);
-  Check(!emission.Receipt().legacy_writer_used && !ValidateRouteReceipt(emission.Receipt()));
+  Check(emission.Receipt().route == abcd::source::SourceRoute::kValueTree && !ValidateRouteReceipt(emission.Receipt()));
   Check(emission.Function().Abi().parameters[0].reads.references == 1);
   Check(emission.Positions().parameters == printed.parameters);
   Check(emission.Positions().properties == printed.properties);
@@ -1150,7 +1145,6 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     const auto end = emission.Destination().begin + span.end;
     Check(begin < end && end <= emission.Destination().end);
   }
-  test::CheckFunctionTransport(std::get<FunctionEmission>(std::move(segment)), output.view());
   auto mismatched = shape;
   mismatched.member.target.value++;
   Check(std::get<FunctionEmitError>(WriteClassMethod(mismatched, fresh(), denied, {})) == FunctionEmitError::kCreation);

@@ -13,7 +13,7 @@ assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout.trim());
 assert.equal(report.record, 4767); assert.equal(report.source_complete, named);
 assert.equal(report.source_contract, named ? 'language_numeric_constructors_v1' : 'language_and_host_v3');
-assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, undefined);
 assert.ok(report.source.includes('onWindowStageCreate('));
 if (named) {
   // The scope literal names storage receiving the entry value. Its spelling

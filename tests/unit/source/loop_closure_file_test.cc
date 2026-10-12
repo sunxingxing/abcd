@@ -12,7 +12,7 @@
 #include "../../../src/source/family_print.h"
 #include "abcd/abc/method_attributes.h"
 #include "abcd/analysis/coroutine.h"
-#include "abcd/source/base_function.h"
+#include "abcd/source/function_emit_error.h"
 #include "../../../src/source/tree_structure.h"
 #include "analysis/ssa_fixture.h"
 #include "analysis/generator_delegate_fixture.h"

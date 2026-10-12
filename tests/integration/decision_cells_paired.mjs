@@ -47,7 +47,7 @@ try {
   execFileSync(tool, [join(root, 'MultiCommunityApplication/modules.abc'), output, '--value-source', '--language-arithmetic'], {timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
   const record = manifest.records.find(record => record.entity === 48945);
-  assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+  assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
   const source = readFileSync(join(output, record.source), 'utf8');
   assert.doesNotMatch(source, /INCOMPLETE|switch\s*\(/);
   const actual = await load(source);

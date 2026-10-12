@@ -12,7 +12,7 @@ const output = join(temporary, 'output');
 try {
   execFileSync(tool, [join(root, 'modules.abc'), output, '--value-source'], {timeout: 60_000});
   const record = JSON.parse(readFileSync(join(output, 'manifest.json'))).records.find(record => record.entity === 12527);
-  assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+  assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
   generated = readFileSync(join(output, record.source), 'utf8');
 } finally { rmSync(temporary, {recursive: true}); }
 // Paired text is read only after ABC-only generation. These host protocols

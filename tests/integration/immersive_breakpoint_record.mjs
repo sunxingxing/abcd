@@ -14,7 +14,7 @@ assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
 const report = JSON.parse(execFileSync(tool, [abc, '7531', '--record-source', '--value-source'],
   {encoding: 'utf8', timeout: 60_000}));
 assert.equal(report.record, 7395); assert.equal(report.source_complete, true);
-assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, undefined);
 assert.equal(report.executable, false);
 const fields = ['sm', 'md', 'lg', 'xl'];
 const pairedText = readFileSync(paired, 'utf8');

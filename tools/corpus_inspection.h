@@ -11,7 +11,6 @@ enum class InspectionStage {
   kModules,
   kDominators,
   kFrames,
-  kSourceBodies,
   kEnvironments,
   kCreations
 };

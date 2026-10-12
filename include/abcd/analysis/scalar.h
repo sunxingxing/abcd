@@ -88,8 +88,6 @@ enum class ScalarError {
 };
 using ScalarResult = std::variant<ScalarAssignment, ScalarError>;
 
-[[nodiscard]] bool ReadsAccumulator(const ScalarExpression& expression);
-
 // A pre-SSA, single-instruction semantic boundary for pinned dynamic
 // operations. Slots denote already evaluated values, not source expressions to
 // duplicate. A throwing RHS does not publish the destination. VM

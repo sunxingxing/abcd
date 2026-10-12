@@ -10,7 +10,7 @@ const run = spawnSync(tool, [abc, '5001', '--record-source', '--value-source', '
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout);
 assert.equal(report.record, 4767); assert.equal(report.source_complete, false);
-assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, undefined);
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
 async function load(source) {
   let current;

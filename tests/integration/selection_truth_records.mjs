@@ -15,7 +15,7 @@ try {
   execFileSync(tool, [join(root, 'modules.abc'), output, '--value-source'], {timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
   records = new Map(manifest.records.filter(record => [25350, 48379].includes(record.entity)).map(record => {
-    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     assert.equal(record.source_route, 'value_tree'); assert.equal(record.executable, false);
     return [record.entity, readFileSync(join(output, record.source), 'utf8')];
   }));

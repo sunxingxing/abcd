@@ -9,7 +9,7 @@ const run = spawnSync(tool, [abc, '9460', '--record-source', '--value-source'], 
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout);
 assert.equal(report.source_complete, true);
-assert.equal(report.legacy_writer_used, false);
+assert.equal(report.legacy_writer_used, undefined);
 assert.match(report.source,/class EntryBackupAbility extends/);
 assert.ok(!report.source.includes('constructor('));
 assert.ok(!report.source.includes('super(') && !report.source.includes('INCOMPLETE'));

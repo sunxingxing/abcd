@@ -83,16 +83,15 @@ int main() {
   const auto roles_result = analysis::MethodRoleIndex::Build(
       file, header, index, lookup);
   const auto& roles = std::get<analysis::MethodRoleIndex>(roles_result);
-  // The empty method inventory has no valid record entry. Required-route
-  // admission must precede that legacy failure, without fabricating metadata.
-  const auto refused = source::BuildRecordSource(file, header, index, lookup,
-      record, context, roles, {}, nullptr,
-      source::RoutePolicy::kRequireValueTree);
-  Check(std::holds_alternative<source::RouteRefusal>(refused));
-  const auto legacy = source::BuildRecordSource(file, header, index, lookup,
-      record, context, roles, {}, nullptr,
-      source::RoutePolicy::kLegacyAllowed);
-  Check(!std::holds_alternative<source::RouteRefusal>(legacy));
+  // The empty method inventory has no valid record entry: the value-tree
+  // record route reports a typed entry failure without fabricating metadata.
+  const source::RouteInputIdentity identity{};
+  const auto missing_entry = source::BuildRecordSource(file, header, index,
+      lookup, record, context, roles, {}, identity);
+  const auto* entry_failure =
+      std::get_if<source::RecordProgramFailure>(&missing_entry);
+  Check(entry_failure &&
+        entry_failure->kind == source::RecordProgramError::kEntry);
   auto second_opened = corpus::AbcFile::Open(path);
   Check(std::holds_alternative<std::unique_ptr<corpus::AbcFile>>(second_opened));
   const auto& second = *std::get<std::unique_ptr<corpus::AbcFile>>(second_opened);

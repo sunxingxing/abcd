@@ -10,7 +10,7 @@ assert.equal(run.status, 0, run.stderr);
 const result = JSON.parse(run.stdout.trim());
 assert.ok(result.source.includes('setImmersiveType(type)'));
 assert.equal(result.record, 7618); assert.equal(result.source_complete, false);
-assert.equal(result.executable, false); assert.equal(result.legacy_writer_used, false);
+assert.equal(result.executable, false); assert.equal(result.legacy_writer_used, undefined);
 assert.equal((result.source.match(/UNRECOVERED class member/g) ?? []).length, 2);
 // The paired TS enters only this independent oracle. The decorator belongs to
 // WindowInfo, which is not constructed or tested here; both modules load with

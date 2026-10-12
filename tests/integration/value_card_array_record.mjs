@@ -15,7 +15,7 @@ assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
 const run = spawnSync(tool, [abc, '30756', '--record-source', '--value-source'], {encoding: 'utf8', timeout: 60_000});
 assert.equal(run.status, 0, run.stderr + run.stdout);
 const report = JSON.parse(run.stdout);
-assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, undefined);
 assert.equal(report.source_complete, true);
 // Whole-record style allows the immutable captured receiver alias and explicit
 // pinned instance assignment. Class, imports, native arrow/forEach construction,
@@ -27,12 +27,12 @@ const peerRun = spawnSync(tool, [abc, '30993', '--record-source', '--value-sourc
 assert.equal(peerRun.status, 0, peerRun.stderr + peerRun.stdout);
 const peer = JSON.parse(peerRun.stdout);
 assert.equal(peer.record, 30839); assert.equal(peer.source_complete, true);
-assert.equal(peer.route, 'value_tree'); assert.equal(peer.legacy_writer_used, false);
+assert.equal(peer.route, 'value_tree'); assert.equal(peer.legacy_writer_used, undefined);
 const commentRun = spawnSync(tool, [abc, '20678', '--record-source', '--value-source'], {encoding: 'utf8', timeout: 60_000});
 assert.equal(commentRun.status, 0, commentRun.stderr + commentRun.stdout);
 const comment = JSON.parse(commentRun.stdout);
 assert.equal(comment.source_complete, true); assert.equal(comment.route, 'value_tree');
-assert.equal(comment.legacy_writer_used, false);
+assert.equal(comment.legacy_writer_used, undefined);
 const pairedText = readFileSync(paired, 'utf8');
 assert.match(pairedText, /export class CardArray/);
 assert.match(report.source, /class CardArray \{/);

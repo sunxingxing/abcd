@@ -10,7 +10,6 @@
 #include "abcd/abc/metadata_index.h"
 #include "abcd/abc/method_attributes.h"
 #include "corpus_inspection.h"
-#include "source_inspection.h"
 #include "environment_inspection.h"
 #include "creation_inspection.h"
 
@@ -20,7 +19,6 @@ struct MethodCounts {
   CreationCounts creations;
   std::uint64_t failed_creation_indexes = 0;
   EnvironmentCounts environments;
-  SourceCounts source;
   std::array<std::uint64_t, abc::kFunctionKindCount> function_kinds{};
   std::uint64_t sendable_methods = 0;
   std::uint64_t frame_methods = 0;

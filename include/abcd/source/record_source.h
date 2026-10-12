@@ -2,46 +2,32 @@
 #define ABCD_SOURCE_RECORD_SOURCE_H_
 
 #include "abcd/source/record_module_context.h"
+#include "abcd/analysis/method_roles.h"
 #include "abcd/analysis/function_creation_sites.h"
 #include "abcd/analysis/class_method_sites.h"
 #include "abcd/source/record_program.h"
-#include "abcd/source/semantic_entry.h"
+#include "abcd/source/printed_source.h"
+#include "abcd/source/source_route.h"
 
 namespace abcd::source {
-struct ClassMethodSelection;
-struct FunctionCreationSelection;
-// RouteRefusal is appended (stable indices). Also reports an explicit member
-// migration obligation that could not be retained by record assembly.
-using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure,
-    analysis::SemanticFailure, analysis::SemanticProofFailure,
-    analysis::RegionFailure, SourceFailure, RouteRefusal>;
-// Shared-pipeline artifact, not a complete/equivalent-source certificate.
+// Result of the value-tree record route: printed source, a typed record-level
+// failure, or a typed route refusal from a recovery stage.
+using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure, RouteRefusal>;
+// Value-tree record source: the single production route. The record entry
+// checks merged record flags and the unique func_main_0 entry, then builds the
+// FunctionTree family for the whole record. Unsupported input is a typed
+// failure or RouteRefusal; there is no alternative writer to fall back to.
 // Context proves same-file module ownership. Metadata/lookup/roles/context are
 // caller-owned; budget covers decoded body, exports and analysis. Output has
 // its separate allowance. The caller must stage publication and recheck file.
-// Optional realm_binding is an explicit embedding-host trust capability; it
-// is never fabricated from an import, free identifier or mutable property.
-// policy has no default (invocation-context rule in source_route.h): the
-// required value-tree route uses the merged record entry and same-file identity
-// supplied below. Missing identity refuses before analysis. Neither case falls
-// back to the legacy writer. Current module-tree support is straight-line with
-// native imports/exports and closed base classes; unsupported input stays explicit.
-// Optional creation indexes are built once per file and borrowed across records.
-// A record containing classes requires both; absence is never an empty body.
-// Optional selection requires that exact class occurrence to use the verified
-// value-tree member route. Other code remains legacy; this mixed artifact is
-// not a complete value-tree record. A missing selected segment refuses output.
-// Alternatively select a DEFINEFUNC/DEFINEMETHOD occurrence with the same
-// obligation. Supplying both selections is rejected, never precedence-based.
+// Creation indexes are built once per file and borrowed across records; a
+// record containing classes or created functions requires them.
 [[nodiscard]] RecordSourceResult BuildRecordSource(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const abc::RecordInfo& record, const RecordModuleContext& context,
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
-    const HostRealmBinding* realm_binding, RoutePolicy policy,
-    const ClassMethodSelection* selection = nullptr,
-    const FunctionCreationSelection* function_selection = nullptr,
-    const RouteInputIdentity* identity = nullptr,
+    const RouteInputIdentity& identity,
     const analysis::FunctionCreationSites* functions = nullptr,
     const analysis::ClassMethodSites* classes = nullptr);
 }  // namespace abcd::source

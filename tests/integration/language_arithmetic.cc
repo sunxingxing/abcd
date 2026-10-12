@@ -5,7 +5,6 @@
 #include "../../src/analysis/phased_value_import.h"
 #include "../../src/source/exception_tree.h"
 #include "abcd/source/tree_printer.h"
-#include "abcd/analysis/linear_lexicals.h"
 #include "analysis/ssa_fixture.h"
 #include <array>
 #include <iostream>
@@ -137,10 +136,6 @@ int main(int argc, char**) {
     test::Check(std::holds_alternative<FunctionInput>(input));
     const auto& proof = std::get<FunctionInput>(input).Proof();
     test::Check(proof.arithmetic == ArithmeticSemantics::kSourceLanguage);
-    IdfQuota linear_work{kDefaultSemanticWork};
-    test::Check(std::holds_alternative<LinearLexicals>(LinearLexicals::Build(body,
-        proof.environments, frame.registers, linear_work, {}, {}, CapturedValues::kReject,
-        {}, {}, {}, Arithmetic(identity.contract))));
   }
 
   if (argc > 1) std::cout << "export default [\n";

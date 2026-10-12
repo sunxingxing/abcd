@@ -10,10 +10,10 @@ const [tool, abc, pairedPath] = process.argv.slice(2);
 const report = JSON.parse(execFileSync(tool, [abc, '3753', '--record-source',
   '--value-source', '--language-constructors'], {encoding: 'utf8', timeout: 60_000}));
 assert.equal(report.record, 3444); assert.equal(report.source_complete, true);
-assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, undefined);
 const serviceReport = JSON.parse(execFileSync(tool, [abc, '12208', '--record-source', '--value-source'],
   {encoding: 'utf8', timeout: 60_000}));
-assert.equal(serviceReport.source_complete, true); assert.equal(serviceReport.legacy_writer_used, false);
+assert.equal(serviceReport.source_complete, true); assert.equal(serviceReport.legacy_writer_used, undefined);
 assert.equal(serviceReport.route, 'value_tree');
 const reference = stripTypeScriptTypes(readFileSync(pairedPath, 'utf8'));
 const serviceReference = stripTypeScriptTypes(readFileSync(join(dirname(pairedPath), '../service/VoipCallService.ts'), 'utf8'));

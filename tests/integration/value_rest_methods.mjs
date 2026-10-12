@@ -20,21 +20,6 @@ for (const [method, name] of [[4604, 'info'], [4631, 'warn'], [4658, 'debug'], [
   assert.equal(report.source_complete, false);
   assert.equal(report.draft_root_fragment, 'class-member');
   assert.equal(report.draft_positions.length, 1);
-  const recordRun = spawnSync(tool, [sample, String(method), '--record-value-slice'],
-    {encoding: 'utf8', timeout: 60_000, maxBuffer: 4 * 1024 * 1024});
-  assert.equal(recordRun.status, 1, recordRun.stderr);
-  const record = JSON.parse(recordRun.stdout);
-  assert.equal(record.record_emitted, true, JSON.stringify(record));
-  assert.equal(record.source_complete, false);
-  assert.equal(record.enclosing_route, 'legacy');
-  assert.ok(record.source.startsWith('import hilog from \"@ohos:hilog\";'));
-  assert.equal(record.function_segments.length, 1);
-  const segment = record.function_segments[0];
-  assert.equal(segment.route_receipt.method, method);
-  assert.equal(segment.route_receipt.route, 'value_tree');
-  assert.equal(segment.route_receipt.coverage, 'complete');
-  assert.equal(segment.route_receipt.legacy_writer_used, false);
-  assert.equal(Buffer.from(record.source).subarray(segment.begin, segment.end).toString(), report.draft_source);
   const source = report.draft_source;
   assert.ok(source.startsWith(`${name}(...args)`));
   assert.ok(!source.includes('INCOMPLETE'));

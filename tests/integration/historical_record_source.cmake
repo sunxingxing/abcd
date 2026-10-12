@@ -1,7 +1,7 @@
 string(RANDOM LENGTH 12 token)
 set(root "${CMAKE_CURRENT_BINARY_DIR}/historical-source-${token}")
 set(constants_entity 4182)
-execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${root}" --source
+execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${root}" --value-source
   RESULT_VARIABLE status ERROR_VARIABLE error)
 if(NOT status EQUAL 0)
   message(FATAL_ERROR "historical source export failed: ${error}")
@@ -31,7 +31,7 @@ if(NOT found)
   message(FATAL_ERROR "historical CommonConstants record missing")
 endif()
 execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_UNSUPPORTED_SAMPLE}"
-  "${root}-unsupported" --source RESULT_VARIABLE unsupported_status
+  "${root}-unsupported" --value-source RESULT_VARIABLE unsupported_status
   ERROR_VARIABLE unsupported_error)
 if(NOT unsupported_status EQUAL 0)
   message(FATAL_ERROR "12.0.2 audit failed: ${unsupported_error}")

@@ -88,7 +88,7 @@ try {
   for (const [entity, specifier, paired] of records) {
     const record = manifest.records.find(row => row.entity === entity);
     assert.equal(record.source_complete, true, `record ${entity}`);
-    assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.legacy_writer_used, undefined);
     actual.set(specifier, readFileSync(join(destination, record.source), 'utf8'));
     if (entity === 16474) {
       assert.doesNotMatch(actual.get(specifier), /\(\{\[""\]:/,

@@ -1,5 +1,6 @@
 #include "cell_names.h"
 #include "record_tree.h"
+#include "abcd/source/module_exports.h"
 
 #include <algorithm>
 #include <numeric>

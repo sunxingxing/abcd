@@ -12,7 +12,7 @@ assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
 const report = JSON.parse(execFileSync(tool, [abc, '8431', '--record-source',
   '--value-source', '--language-numeric'], {encoding: 'utf8', timeout: 60_000}));
 assert.equal(report.record, 7618); assert.equal(report.source_complete, true);
-assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, false);
+assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, undefined);
 assert.equal(report.executable, false);
 assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED|Reflect\.|\bswitch\s*\(/);
 for (const pattern of [/new WindowInfo\(/, /async \(windowSize\)/, /sensor\.on\(/,

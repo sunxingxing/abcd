@@ -13,7 +13,7 @@ assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
 // a separate oracle realm, never the engine or any generated function body.
 const report = JSON.parse(execFileSync(tool,[abc,'6100','--record-source','--value-source'],{encoding:'utf8'}));
 assert.equal(report.record,5521); assert.equal(report.source_complete,true);
-assert.equal(report.route,'value_tree'); assert.equal(report.legacy_writer_used,false);
+assert.equal(report.route,'value_tree'); assert.equal(report.legacy_writer_used, undefined);
 const paired = readFileSync(join(dirname(abc),'pasteboard_src/src/main/ets/pages/Home.ts'),'utf8');
 const declarations = paired.match(/^    private [A-Za-z_$][\w$]*: [^;=\n]+;$/gm);
 assert.equal(declarations?.length,7);

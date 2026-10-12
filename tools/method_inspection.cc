@@ -101,8 +101,6 @@ const char* StageLabel(InspectionStage stage) {
       return "normal_dominators";
     case InspectionStage::kFrames:
       return "frames";
-    case InspectionStage::kSourceBodies:
-      return "source_body_probe";
     case InspectionStage::kEnvironments:
       return "environment_bindings";
     case InspectionStage::kCreations:
@@ -115,7 +113,6 @@ MethodCounts& MethodCounts::operator+=(const MethodCounts& other) {
   creations += other.creations;
   failed_creation_indexes += other.failed_creation_indexes;
   environments += other.environments;
-  source += other.source;
   for (std::size_t i = 0; i < function_kinds.size(); ++i)
     function_kinds[i] += other.function_kinds[i];
   sendable_methods += other.sendable_methods;
@@ -202,7 +199,6 @@ nlohmann::json SerializeCounts(const MethodCounts& counts) {
           {"dominator_edge_visits", counts.dominator_edge_visits},
           {"dominator_eval_steps", counts.dominator_eval_steps},
           {"dominator_peak_bytes", counts.dominator_peak_bytes}};
-  result.update(SerializeCounts(counts.source));
   result.update(SerializeCounts(counts.environments));
   result.update(SerializeCounts(counts.creations));
   result["failed_creation_indexes"] = counts.failed_creation_indexes;
@@ -216,8 +212,7 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
                             InspectionStage stage, std::ostream& diagnostics) {
   MethodCounts counts;
   std::optional<abc::MethodLookup> lookup;
-  if (stage == InspectionStage::kCreations ||
-      stage == InspectionStage::kSourceBodies) {
+  if (stage == InspectionStage::kCreations) {
     auto built = abc::MethodLookup::Build(index.methods);
     if (const auto* error = std::get_if<abc::MethodLookupError>(&built)) {
       ++counts.failed_creation_indexes;
@@ -283,10 +278,6 @@ MethodCounts InspectMethods(const corpus::AbcFile& file,
     counts.instructions += body.instructions.size();
     counts.try_regions += body.tries.size();
     counts.catch_handlers += body.handlers.size();
-    if (stage == InspectionStage::kSourceBodies) {
-      InspectSource(file, header, index, *lookup, method, body, &counts.source);
-      continue;
-    }
     if (stage == InspectionStage::kInstructions) continue;
     const auto flow = analysis::BuildNormalFlow(body);
     if (const auto* failure = std::get_if<analysis::FlowFailure>(&flow)) {

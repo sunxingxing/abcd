@@ -13,7 +13,7 @@ const report = JSON.parse(run.stdout.trim());
 assert.equal(report.record, entry ? 5374 : 4224);
 assert.equal(report.source_complete, false);
 assert.equal(report.executable, false);
-assert.equal(report.legacy_writer_used, false);
+assert.equal(report.legacy_writer_used, undefined);
 assert.ok(report.source.includes('onCreate(') && report.source.includes('onNewWant('));
 assert.match(report.source, /\?\? "default value"/);
 assert.equal(report.source.match(/\?\./g)?.length, 2);

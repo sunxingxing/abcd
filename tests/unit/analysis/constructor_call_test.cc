@@ -3,14 +3,11 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
-#include <sstream>
 #include <vector>
 
-#include "abcd/analysis/accumulator_flow.h"
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/register_ssa.h"
 #include "abcd/analysis/register_value_flow.h"
-#include "abcd/source/acyclic_body.h"
 
 namespace {
 void Check(bool condition) {
@@ -30,22 +27,19 @@ abcd::abc::MethodBody Body(std::span<const std::uint8_t> bytes) {
 }
 }  // namespace
 
-int main(int argc, char** argv) {
+int main() {
   using namespace abcd;
   using namespace analysis;
   struct Case {
     std::vector<std::uint8_t> encoding;
     std::uint16_t count;
     std::optional<std::uint16_t> profile_slot;
-    std::string_view source;
   };
   const std::array cases{
-      Case{{0x08, 7, 1, 0}, 1, 7, "acc = new (ctor)();\nreturn acc;\n"},
-      Case{{0x08, 7, 3, 0}, 3, 7, "acc = new (ctor)(a, b);\nreturn acc;\n"},
-      Case{{0x83, 0x34, 0x12, 2, 0}, 2, 0x1234,
-           "acc = new (ctor)(a);\nreturn acc;\n"},
-      Case{{0xfd, 0x01, 3, 0, 0}, 3, std::nullopt,
-           "acc = new (ctor)(a, b);\nreturn acc;\n"}};
+      Case{{0x08, 7, 1, 0}, 1, 7},
+      Case{{0x08, 7, 3, 0}, 3, 7},
+      Case{{0x83, 0x34, 0x12, 2, 0}, 2, 0x1234},
+      Case{{0xfd, 0x01, 3, 0, 0}, 3, std::nullopt}};
   const std::array<std::string_view, 3> names{"ctor", "a", "b"};
   for (std::size_t index = 0; index < cases.size(); ++index) {
     const auto& item = cases[index];
@@ -67,24 +61,13 @@ int main(int argc, char** argv) {
     std::vector<std::uint8_t> code = item.encoding;
     code.push_back(0x64);
     const auto body = Body(code);
-    std::ostringstream rendered, ordered;
-    Check(std::holds_alternative<std::size_t>(
-        source::WriteLinearBody(body, {"acc", names}, rendered)));
-    Check(std::holds_alternative<std::size_t>(
-        source::WriteAcyclicBody(body, {"acc", names}, ordered)));
-    Check(rendered.str() == item.source && ordered.str() == rendered.str());
     const auto graph = std::get<NormalFlow>(BuildNormalFlow(body));
-    Check(std::holds_alternative<AccumulatorFlow>(
-        AnalyzeAcyclicAccumulator(body, graph, names.size())));
     IdfQuota work{UINT64_MAX};
     const auto ssa = std::get<RegisterSsa>(
         RegisterSsa::Build(body, graph, names.size(), work));
     const auto values = std::get<RegisterValueFlow>(
         RegisterValueFlow::Build(body, ssa, names.size(), {}, work));
     Check(values.At(*ssa.Write({0})) == ValueKinds::Language());
-    if (argc == 2 && std::string_view(argv[1]) == "--emit")
-      std::cout << "export function construct" << index
-                << "(ctor,a,b){let acc;\n" << rendered.str() << "}\n";
     auto malformed = decoded;
     malformed.operand_count = 0;
     Check(std::get<ConstructorCallError>(
@@ -142,17 +125,6 @@ int main(int argc, char** argv) {
         LiftConstructorCall(body.instructions[0].decoded, count));
     Check(call.inputs.count == count &&
           call.ArgumentAt(count - 2)->value == count - 1);
-    std::vector<std::string> storage;
-    storage.reserve(count);
-    for (std::size_t i = 0; i < count; ++i)
-      storage.push_back("r" + std::to_string(i));
-    const std::vector<std::string_view> names(storage.begin(), storage.end());
-    std::ostringstream rendered;
-    Check(std::holds_alternative<std::size_t>(
-        source::WriteLinearBody(body, {"acc", names}, rendered)));
-    Check(rendered.str().starts_with("acc = new (r0)(r1") &&
-          rendered.str().ends_with("r" + std::to_string(count - 1) +
-                                   ");\nreturn acc;\n"));
   }
   const auto other = Body(std::array<std::uint8_t, 1>{0x64});
   Check(std::get<ConstructorCallError>(LiftConstructorCall(

@@ -3,7 +3,6 @@
 #include <cstdlib>
 #include <vector>
 
-#include "abcd/analysis/accumulator_flow.h"
 
 namespace {
 void Check(bool value) {
@@ -52,12 +51,4 @@ int main() {
   Check(std::get<NamedWriteError>(
             LiftNamedWrite(Decode({0x7a, 0, 0, 0, 0}), 1)) ==
         NamedWriteError::kUnsupportedOpcode);
-  abc::MethodBody body;
-  body.instructions.push_back({{0}, Decode({0x43, 0, 0, 0, 0}), {}});
-  body.instructions.push_back({{5}, Decode({0x64}), {}});
-  const auto graph = std::get<NormalFlow>(BuildNormalFlow(body));
-  const auto rejected =
-      std::get<AccumulatorFailure>(AnalyzeAcyclicAccumulator(body, graph, 1));
-  Check(rejected.kind == AccumulatorError::kReadBeforeValue &&
-        rejected.offset.value == 0);
 }

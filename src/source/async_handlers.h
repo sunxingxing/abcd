@@ -5,7 +5,7 @@
 #include <span>
 
 #include "abcd/abc/method_body.h"
-#include "abcd/source/base_function.h"
+#include "abcd/source/function_emit_error.h"
 
 namespace abcd::source {
 // The completion region/handler must be last in file order. Earlier regions

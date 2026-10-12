@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
       file, header, index, *record, packaging));
   const auto classes = std::get<ClassMethodSites>(ClassMethodSites::Build(file, header, index, lookup));
   const auto recovered = BuildRecordSource(file, header, index, lookup, *record, modules, roles,
-      {}, nullptr, RoutePolicy::kRequireValueTree, nullptr, nullptr, &identity, &sites, &classes);
+      {}, identity, &sites, &classes);
   Check(std::holds_alternative<PrintedSource>(recovered));
   const auto& source = std::get<PrintedSource>(recovered);
   Check(source.incomplete);

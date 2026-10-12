@@ -100,7 +100,7 @@ try {
     assert.equal(bytes.length, identity.size); assert.equal(manifest.sha256, identity.sha256);
     assert.equal(manifest.source_route, 'value_tree'); assert.equal(manifest.source_contract, 'language_and_host_v3');
     const record = manifest.records.find(item => item.entity === entity);
-    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, false);
+    assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     const generated = readFileSync(join(output, record.source), 'utf8');
     // Receiver identity belongs to the initialized invocation, even across
     // copies/branches and arbitrary parent object returns. Avoid a duplicate

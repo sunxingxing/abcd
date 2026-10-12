@@ -161,8 +161,7 @@ int main(int argc, char** argv) {
     identity.abc_version = current_header.version;
     identity.file_size = current_header.file_size;
     return source::BuildRecordSource(file, current_header, current_index, lookup, record,
-        context, roles, {}, nullptr, source::RoutePolicy::kRequireValueTree,
-        nullptr, nullptr, &identity, &functions);
+        context, roles, {}, identity, &functions);
   };
   const auto printed = [](const source::RecordSourceResult& result) {
     if (!std::holds_alternative<source::PrintedSource>(result)) {

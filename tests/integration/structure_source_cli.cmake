@@ -6,7 +6,7 @@ if(NOT status EQUAL 0)
   message(FATAL_ERROR "fixture failed")
 endif()
 execute_process(COMMAND "${ABCD_STRUCTURE}"
-  "${root}/input/dynamic.abc" "${root}/fixture-output" --source
+  "${root}/input/dynamic.abc" "${root}/fixture-output" --value-source
   RESULT_VARIABLE status ERROR_VARIABLE error)
 if(NOT status EQUAL 0)
   message(FATAL_ERROR "fixture source export failed: ${error}")
@@ -17,13 +17,13 @@ if(NOT missing OR EXISTS "${root}/fixture-output/${fixture_source}")
   message(FATAL_ERROR "unproved fixture produced executable source")
 endif()
 execute_process(COMMAND "${ABCD_STRUCTURE}"
-  "${root}/input/static.abc" "${root}/static-output" --source
+  "${root}/input/static.abc" "${root}/static-output" --value-source
   RESULT_VARIABLE status OUTPUT_QUIET ERROR_QUIET)
 if(status EQUAL 0 OR EXISTS "${root}/static-output")
   message(FATAL_ERROR "static input published executable source")
 endif()
 execute_process(COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}"
-  "${root}/sample-output" --source RESULT_VARIABLE status ERROR_VARIABLE error)
+  "${root}/sample-output" --value-source RESULT_VARIABLE status ERROR_VARIABLE error)
 if(NOT status EQUAL 0)
   message(FATAL_ERROR "sample source export failed: ${error}")
 endif()

@@ -1,7 +1,7 @@
 string(RANDOM LENGTH 12 token)
 set(output "${CMAKE_CURRENT_BINARY_DIR}/constructor-record-${token}")
 execute_process(
-  COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${output}" --source
+  COMMAND "${ABCD_STRUCTURE}" "${ABCD_SAMPLE}" "${output}" --value-source
   RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_VARIABLE error)
 if(NOT status EQUAL 0)
   message(FATAL_ERROR "record export failed: ${report}${error}")

@@ -3,7 +3,7 @@
 
 #include "abcd/abc/frame_layout.h"
 #include "abcd/abc/method_body.h"
-#include "abcd/source/base_function.h"
+#include "abcd/source/function_emit_error.h"
 #include "abcd/analysis/await_region.h"
 #include "abcd/source/source_contract.h"
 
