@@ -18,7 +18,8 @@
   - S1：删除 legacy/shared 旧方案，只保留 value-tree 路线，并按 Codex 第三轮审查清除了
     声明与分支级残留。
   - S5 的 CLI 部分：所有 CLI 共用 `process_limit`，失败时输出结构化报告。
-  - S3 的一部分：record 预算失败只影响该 record，不再中止整个文件。
+  - S3 的一部分：只有能证明来自 record 自身预算的失败（`kRecordBudget`、`kOutputLimit`）
+    才隔离到该 record。底层阶段折叠的 `kResourceLimit` 仍为致命，原因见 status.md。
 
   证据与已知限制见 [status.md](status.md)，测试去向见 [旧路线测试台账](2026-10-12-legacy-test-ledger.md)。
 - **下一步**：按共识依次做 S2（错误链与能力报告）→ S3 余项（结构导出、路径和模块上下文的

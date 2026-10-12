@@ -37,11 +37,16 @@
     限制，不是 RSS 限制。
   - macOS 不设限，报告 `process_limit.established=false`。
   - 限额设置失败时输出结构化诊断：`{"error":"process_limit",...}`。
+  - `abc_structure`、`abc_scan` 和各阶段验证器在报告里写入资源字段。`abc_semantic` 把
+    `process_limit`、`address_space_limit_bytes`、`peak_rss_bytes` 并入它输出的最后一个 JSON
+    对象：成功时在 stdout，失败时在 stderr。
   - `ru_maxrss` 按平台换算单位（Linux 为 KiB，macOS 为字节）。
   - 1 GB 整进程合同仍未完成。
-- **record 失败隔离（S3 部分完成）**：单个 record 超出自身预算（`kResourceLimit`、
-  `kOutputLimit`）时，只记为该 record 的类型化失败；只有输入读写、输入变更和进程分配失败
-  （新增 `kAllocationFailure`）才会中止整个文件。
+- **record 失败隔离（S3 部分完成）**：只有能证明来自 record 自身预算的失败才隔离到该
+  record，包括 `record_tree` 中 record 级预算检查产生的新错误 `kRecordBudget`，以及输出上限
+  `kOutputLimit`。`kResourceLimit` 仍是进程级致命错误，因为底层阶段（例如
+  `module_enclosure.cc:91`、`TreePrinter`）会把真实的分配失败也折叠成它，无法区分来源。
+  输入读写、输入变更和入口捕获的分配失败（`kAllocationFailure`）同样致命。
 - **规模**：生产代码（`src`、`include`、`tools`）净删约 2.9 万行；`src/source` 从 543 个文件、
   83,859 行降至约 380 个文件、约 6.2 万行。
 
@@ -49,15 +54,15 @@
 
 | 项目 | 结果 |
 |---|---|
-| 固定五份的 value-tree 产物，删除前后两套二进制对照，覆盖默认合同和 numeric+constructors 合同 | 源码逐字节一致；manifest 只差在删除的 `legacy_writer_used` 字段 |
+| 固定五份的 value-tree 产物，`f0028f54` 与 `7b2491b7` 两套二进制对照，覆盖默认合同和 numeric+constructors 合同 | 源码逐字节一致；manifest 只差在删除的 `legacy_writer_used` 字段。之后 manifest 升为 schema 2，失败记录的字段也随之改变 |
 | 全量构建 `make -k all` | 0 错误 |
-| 固定 65 项（`ctest --preset source-regression`） | **65/65，97.26s** |
+| 固定 65 项（`ctest --preset source-regression`） | **65/65，96.70s** |
 | 审查修复相关的 16 项定向测试（含新增的 `record_failure_json_test`） | 16/16 通过；`historical_record_source_test` 由原有失败转为通过 |
 | 相对 `f0028f54` 改动过的全部测试 | 除下行所列原有失败外均通过，详见 [测试台账](2026-10-12-legacy-test-ledger.md) |
 | 原有失败（在 `f0028f54` 基线上以相同原因失败） | pasteboard_breakpoint、backup_class_cells、index_record、navigation_graph、minigame_navigation_graph、module_entry_initialization、phased_arguments、file_generator_return(_loop)、phased_method、hotitem_retained_selection、value_tree_{pasteboard,call,immersive}_slice |
 | `window_navigation_graph_source_test` | 单独运行通过（228s）；并行运行时其 60 秒子进程超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |
-| 留出探针：40 个探索集应用，均使用 `--value-source --language-numeric --language-constructors` | 整文件失败 1 → **0**；12.0.x/13.0.1 的模块 record 完整恢复 **83/308**；24.0 为 **0/312**（S4 处理） |
+| 留出探针：40 个探索集应用，均使用 `--value-source --language-numeric --language-constructors` | 12.0.x/13.0.1 的模块 record 完整恢复 81/299（不含整文件失败的 CertificateFramework）；24.0 为 **0/312**（S4 处理）；整文件失败 1 |
 
 ## 已知限制
 
@@ -66,13 +71,16 @@
 - `FatalRecordSource` 仍把所有 `RouteRefusal` 视为非致命，而函数族读取失败中的文件变更或
   资源耗尽也会被包装成 `RouteRefusal`。这是继承自基线的问题，需要 S2 保留叶子原因后，
   按叶子判定是否致命。
-- CertificateFramework 的 `Data.ts` record 超出 128 MB 预算，而它只包含几段字节数组，
-  说明预算核算方式可能有问题，待 S2 遥测给出叶子原因后再处理。
+- CertificateFramework 仍是整文件失败：`Data.ts` record 的失败来自 `TreePrinter` 的
+  `kResourceLimit`（`record_tree.cc:628`）。在区分预算与真实分配失败之前，它仍按致命处理。
+  这个 record 只包含几段字节数组，说明打印器的预算核算方式可能有问题，是 S2/S3 的直接线索。
 
 ## 剩余门槛（按共识顺序）
 
 1. **S2**：端到端错误链与能力报告。回执目前只有 class、stage、pc，无法按叶子原因做帕累托分析。
-2. **S3 余项**：结构导出、路径规划和模块上下文中可隔离的失败；按叶子原因判定致命性。
+2. **S3 余项**：让底层阶段区分“预算耗尽”与“真实分配失败”，包括 `module_enclosure`、
+   `TreePrinter`、函数族等；处理结构导出、路径规划和模块上下文中可隔离的失败；按叶子原因
+   判定 `RouteRefusal` 是否致命。
 3. **S4**：集中的 profile 能力表，开放 24.0（留出探针中为 0/312）。
 4. **S5 余项**：1 GB 整进程预算与准入；macOS 上的观测与背压。
 5. **C5 → C3 → C2 → C4 → C8**：语义上移到打印之前 → 一般结构化 → 选择表达式通用化 →
