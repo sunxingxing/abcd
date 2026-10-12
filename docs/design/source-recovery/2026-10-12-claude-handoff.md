@@ -13,7 +13,7 @@
   应停止的做法见 [2026-10-12-audit-consensus.md](2026-10-12-audit-consensus.md)。要点是：
   目标为通用引擎，固定五份降为回归集；留出探针显示已准入版本只有 27% 的模块 record
   完整恢复，24.0 版本为 0。
-- **已实施（S0–S4，S5 完成 CLI 部分；Codex 第七轮的 6 项阻断问题已在后续提交中修复）**：
+- **已实施（S0–S4，S5 完成 CLI 部分）**：Codex 第七到第九轮的阻断问题已全部修复，第十轮复审结论为 APPROVE。
   - **S0**：审计共识；处置 WIP；在 `tests/corpus/source-cohorts.json` 中把 MultiCommunity 改为回归集，
     登记 40 个探索应用，并冻结 60 个留出应用（每个版本 15 个），只评估一次。
   - **S1**：删除 legacy/shared 旧方案，只保留基于 pass 的 value-tree 路线。按 Codex 审查清除了

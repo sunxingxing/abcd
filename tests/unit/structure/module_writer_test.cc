@@ -138,9 +138,20 @@ int main() {
   // A real short write by a target buffer is an output fault (kWrite) and
   // takes precedence over a later structural fault of the same record; quota
   // exhaustion (above) never reaches the targets.
+  // The target accepts `capacity` bytes, then writes short, so the writer
+  // continues past the failure and reaches the owner check.
   struct Refusing : std::streambuf {
-    std::streamsize xsputn(const char*, std::streamsize) override { return 0; }
-    int_type overflow(int_type) override { return traits_type::eof(); }
+    std::size_t capacity = 0;
+    std::streamsize xsputn(const char*, std::streamsize count) override {
+      const auto accepted = std::min<std::size_t>(capacity, static_cast<std::size_t>(count));
+      capacity -= accepted;
+      return static_cast<std::streamsize>(accepted);
+    }
+    int_type overflow(int_type value) override {
+      if (capacity == 0) return traits_type::eof();
+      --capacity;
+      return value;
+    }
   } refusing;
   std::ostream refused(&refusing);
   abc::MetadataIndex foreign;
@@ -159,8 +170,14 @@ int main() {
   };
   std::ostringstream healthy_json, healthy_declarations;
   Check(fault(healthy_json, healthy_declarations) == structure::StructureFault::kOwner);
-  std::ostringstream other_declarations;
-  Check(fault(refused, other_declarations) == structure::StructureFault::kWrite);
+  // The healthy run's JSON ends in the owner failure; a target that fails
+  // after its first bytes still reports the write fault.
+  for (const std::size_t accepted : {std::size_t{0}, std::size_t{1}, healthy_json.str().size() - 1}) {
+    refusing.capacity = accepted;
+    refused.clear();
+    std::ostringstream other_declarations;
+    Check(fault(refused, other_declarations) == structure::StructureFault::kWrite);
+  }
   // Keep ctime stable until all lazy readers and identity checks finish.
   unlink(path);
 }

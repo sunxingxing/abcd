@@ -16,6 +16,7 @@ const [structure, sample] = process.argv.slice(2);
 // its scope names (the index page of the paired Immersive application).
 const kDescriptor = 'L&default/src/main/ets/pages/Index&;';
 const kChecksumOffset = 8, kChecksumStart = 12, kStringTag = 5;
+const kBadString = 5;  // abc::MetadataError::kBadString
 
 const adler32 = bytes => {
   let a = 1, b = 0;
@@ -64,13 +65,18 @@ try {
   for (const [i, record] of after.records.entries()) {
     assert.equal(record.entity, before.records[i].entity);
     if (record.entity !== target.entity) {
-      assert.equal(record.source_status, before.records[i].source_status, 'record ' + record.entity);
+      // Other records keep their outcome and their published source bytes.
+      assert.deepEqual(record, before.records[i], 'record ' + record.entity);
+      for (const key of ['source', 'incomplete_source'])
+        if (record[key])
+          assert.ok(readFileSync(join(output, record[key])).equals(readFileSync(join(baseline, record[key]))),
+            key + ' ' + record.entity);
       complete += record.source_status === 0;
       continue;
     }
     assert.equal(record.source_status, 3);
     assert.equal(record.source_failure_domain, 'record_program');
-    assert.ok(record.source_causes.some(cause => cause.domain === 'abcd::abc::MetadataError'),
+    assert.deepEqual(record.source_causes.at(-1), {domain: 'abcd::abc::MetadataError', value: kBadString},
       JSON.stringify(record.source_causes));
     assert.equal(record.source, undefined);
   }

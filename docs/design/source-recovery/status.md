@@ -112,6 +112,7 @@
 |---|---|
 | 固定五份的 value-tree 产物，`f0028f54` 与 `7b2491b7` 两套二进制对照，覆盖默认合同和 numeric+constructors 合同 | 源码逐字节一致；manifest 只差在删除的 `legacy_writer_used` 字段。之后 manifest 升为 schema 2，失败记录的字段也随之改变 |
 | 全量构建 `make -k all` | 0 错误 |
+| Codex 复审（gpt-6-astra，xhigh） | 第七到第九轮共提出 13 项阻断问题，均已修复；第十轮（`9e79196f`）结论为 **APPROVE**。其两条非阻断建议已采纳：延迟短写的测试，以及其余 record 源码逐字节不变、目标叶子为 `kBadString` 的断言 |
 | 固定 65 项（`ctest --preset source-regression`，第九轮审查修复后） | **65/65，85.12s** |
 | 固定五份，numeric+constructors 合同 | 106/106 完整，与之前一致 |
 | 审查修复相关的 16 项定向测试（含新增的 `record_failure_json_test`） | 16/16 通过；`historical_record_source_test` 由原有失败转为通过 |
@@ -138,7 +139,7 @@
 
 ## 剩余门槛（按共识顺序）
 
-S0–S4 已实施，复审结论见本页“本轮验证证据”。下列各项按审计共识的顺序推进；后续能力工作按 `abc_capability` 报告的帕累托
+S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共识的顺序推进；后续能力工作按 `abc_capability` 报告的帕累托
 顺序排优先级，不按样本逐个处理。
 
 1. **当前缺口（帕累托顺序）**：冻结留出集中，头号叶子是 `CaptureCellError::kInput`（48 个
