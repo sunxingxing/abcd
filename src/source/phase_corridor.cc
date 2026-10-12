@@ -248,8 +248,11 @@ bool PhaseCorridors::HasCatchCopies(OpId operation) const {
 bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
   const auto& child = graph_.ops[producer.value];
   const auto& parent = graph_.ops[consumer.value];
+  // A closed pure value (no inputs, effects or throw) is classified by the
+  // shared evaluation semantics, as in normal-flow closed expressions; it
+  // reaches the invariant check below instead of an operation-kind list.
   if (producer.value >= consumer.value || child.life != ValueLife::kLive ||
-      !child.result || !Expression(child.operation) ||
+      !child.result || (!Expression(child.operation) && !IsClosedPureValue(graph_, producer)) ||
       (!Expression(parent.operation) && !ConsumesOperands(parent.operation))) return false;
   const auto& uses = uses_[child.result->value];
   if (uses.multiple || uses.first != use) return false;

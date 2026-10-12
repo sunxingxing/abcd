@@ -79,7 +79,11 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       EvaluationShape shape{kNoOperands, true}; shape.receiver = ReceiverValue::kCurrent; return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueFrameFunction>) return EvaluationShape{kNoOperands, true};
-    else if constexpr (std::is_same_v<T, analysis::ValueGlobalObject>) return EvaluationShape{kNoOperands, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueGlobalObject>) {
+      // The current realm's global object: no input, effect or abrupt
+      // completion, and one identity for the whole activation.
+      EvaluationShape shape{kNoOperands, true}; shape.source = SourceEvaluation::kPure; return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueSymbolConstructor>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueRestArguments>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueArgumentSnapshot>) {

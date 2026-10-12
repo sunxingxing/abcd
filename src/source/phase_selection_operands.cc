@@ -242,7 +242,11 @@ class OperandSelections {
     const auto& invoke = graph_.ops[consumer.value];
     const auto* operation = std::get_if<ValueInvoke>(&invoke.operation);
     const auto consumer_kind = BeforeLogicalFusion(graph_, plan_, consumer.value).kind;
-    if (consumer_kind != EvaluationKind::kRoot && consumer_kind != EvaluationKind::kInline) return {};
+    // A phi-input consumer is its own execution root: it owns the sole
+    // executable incoming-copy RHS, whose original availability, effects and
+    // exceptional staging were proved at its original edge.
+    if (consumer_kind != EvaluationKind::kRoot && consumer_kind != EvaluationKind::kInline &&
+        consumer_kind != EvaluationKind::kPhiInput) return {};
     std::variant<OpId, PhaseCallReference, PhaseSelectionArm, PhaseSelectionBinding> owner = consumer;
     std::size_t prefix_count = 0;
     if (operation) {

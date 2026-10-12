@@ -205,3 +205,37 @@ retry 分区不能合并原本分开的 root）。
 2. 选择事件索引与带域区间验证；
 3. 组合 builder；
 4. 差分、变异和 IR 反例测试，然后看探索集。
+
+### 5.3 phased 路径的两处语义修正（2026-10-13）
+
+用 es2abc 构建的最小复现（`--opt-level=0`，见下文）把 phased 路径上的失败拆成了三层。其中两层
+不是选择组合问题，而是通用语义分类缺口：
+
+1. **`ValueGlobalObject` 未被标为纯值。** `ldglobal` 读取当前 realm 的全局对象：无输入、无效果、
+   不会抛出，整个活动期内身份不变。共享语义表 `DescribeEvaluation` 原先给它默认的
+   `SourceEvaluation::kDirect`，而 `PhaseCorridors::Expression` 的类型列表里也没有它。结果在 phased
+   路径上，`globalThis` 永远是独立的 root。只要它夹在 callee 读取与参数链之间，调用的效果区间就
+   不衔接（`child.end != expected`），callee 只能保留快照，最终报 `CallPlanError::kReference`。
+   连不含选择的 `globalThis.obj.f(globalThis.x.g.h)` 也会因此失败。
+   修正：在 `evaluation_shape.cc` 中把它标为 `kPure`。`PhaseCorridors::CanFuse` 让满足
+   `IsClosedPureValue` 的生产者越过类型列表，进入已有的“无绑定输入的纯表达式”快速通道。
+   这是按共享语义分类，不是 opcode 列表。normal 路径的 `CrossEvaluationInline` 用的是同一个谓词。
+2. **phi 输入消费者未被当作执行根。** `r = o.f(c ? a : b)` 中，调用结果是 phi 的唯一输入，放置为
+   `EvaluationKind::kPhiInput`。按 `evaluation_plan.h` 的契约，它在原始边上拥有唯一可执行的
+   incoming-copy 右值，其可用性、效果与异常 staging 已经独立证明；`IndexPhaseInlineRoots` 也把它
+   当作自身的根。`OperandSelections::Check` 原先只接受 root 或 inline 消费者，现在同样接受
+   kPhiInput。其余证明（callee 前缀、catch 一致性、作用域、Inert 区间）不变，验证器重跑同一个
+   `CheckAll`。
+3. **剩余：Binary 串接中的选择**（`o.f('a' + (c ? x : y) + 'b')`，fixture `phconcat`）仍需 §5.2 的
+   调用级二次组合，保持拒绝，原因链不变。
+
+测试：`call_references_cli_test` 新增 `phplain`、`phtrue`、`phfalse`、`phthrow`、`phrewrite`、
+`phnoncall` 六个完整类（在 harness 下与原始源码的 getter、调用、接收者日志逐条相等，并做 detach、
+reread 变异检测），以及 `phconcat` 拒绝类。
+
+**旁路发现：catch `code_size` 为 0。** 这个 es2abc 默认的字节码优化器（opt-level 2）输出的 catch
+条目 `code_size=0`。固定版本运行时 `Method::FindCatchBlock`（ets_runtime/ecmascript/method.cpp:98）
+只使用 try 范围和 `handler_pc`，所以这是合法输入。但 `BuildExceptionRegions` 要求处理器长度大于
+0，报 `CatchRegionError::kHandlerShape`，导致整个方法以 `PhasedMethodError::kRegion` 失败。
+需要改为由 CFG 推导处理器范围，尚未实施。抽查的两个 24.0.0.0 语料文件（共 60 个处理器）长度都
+不为 0，影响面待评估。

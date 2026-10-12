@@ -13,7 +13,11 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const [structure, fixtures] = process.argv.slice(2);
-const complete = ['single', 'twoargs', 'computed', 'rewrite', 'throwing', 'noncallable'];
+// The ph* fixtures put the call inside try/catch, so they take the phased
+// (exception-aware) route; their callee and argument chains start at globalThis.
+const complete = ['single', 'twoargs', 'computed', 'rewrite', 'throwing', 'noncallable',
+  'phplain', 'phtrue', 'phfalse', 'phthrow', 'phrewrite', 'phnoncall'];
+const throwsBeforeCall = new Set(['throwing', 'phthrow']);
 const directory = mkdtempSync(join(tmpdir(), 'abcd-call-references-'));
 try {
   const exportRecord = name => {
@@ -45,7 +49,7 @@ try {
         ['detach', member => `(0, ${member})(`],
         ['reread', member => `(${member}, ${member.replace(/\.f$/, '')}).f(`]]) {
       // The receiver is unobservable when the argument throws before the call.
-      if (!text.includes('globalThis.obj.f(') || (kind === 'detach' && name === 'throwing')) continue;
+      if (!text.includes('globalThis.obj.f(') || (kind === 'detach' && throwsBeforeCall.has(name))) continue;
       const mutated = join(directory, `${name}.${kind}.mjs`);
       writeFileSync(mutated, text.replace('globalThis.obj.f(', replace('globalThis.obj.f')));
       assert.notEqual(evaluate(mutated), expected, `${name} ${kind} mutation must be detected`);
@@ -55,11 +59,16 @@ try {
   assert.ok(mutations.detach > 0 && mutations.reread > 0, JSON.stringify(mutations));
   // A nested `??` selection without a single consumer stays refused, with the
   // full typed cause chain.
-  const {record} = exportRecord('optarg');
-  assert.equal(record.source_status, 3);
-  const causes = record.source_failure?.causes ?? record.source_causes;
-  assert.deepEqual(causes.map(cause => cause.domain.split('::').at(-1) + '=' + cause.value),
-      ['FunctionTreeError=1', 'ExpressionError=4', 'CallPlanError=4']);
+  // A selection inside a concatenated argument on the phased route is the open
+  // gap of call-references.md section 5.2 (the Binary chain was rooted before
+  // selection fusion); it stays refused with the same typed chain until then.
+  for (const name of ['optarg', 'phconcat']) {
+    const {record} = exportRecord(name);
+    assert.equal(record.source_status, 3, name);
+    const causes = record.source_failure?.causes ?? record.source_causes;
+    assert.deepEqual(causes.map(cause => cause.domain.split('::').at(-1) + '=' + cause.value),
+        ['FunctionTreeError=1', 'ExpressionError=4', 'CallPlanError=4'], name);
+  }
 } finally {
   rmSync(directory, {recursive: true, force: true});
 }
