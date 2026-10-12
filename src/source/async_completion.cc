@@ -104,36 +104,16 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   if (sites.size() < 7 || body.tries.empty() || body.handlers.empty())
     return FunctionEmitError::kKind;
   std::size_t enter = 0;
-  // NOP has no semantics; leading ones stay in the normalized prefix.
-  while (enter < sites.size() && sites[enter].decoded.opcode == Opcode::kNOP) ++enter;
   // v7 NEWLEXENV[WITHNAME] allocates VM-only state before promise creation.
   // Keep it in normalized IR; only OOM timing is excluded by the contract.
   // No user-visible prefix effects or arbitrary stores are admitted here.
-  bool lexical_prelude = false;
-  if (enter < sites.size() && AllowsLexicalPrelude(profile, resources) &&
+  if (AllowsLexicalPrelude(profile, resources) &&
       std::holds_alternative<analysis::PushEnvironment>(
-          analysis::LiftLexicalInstruction(sites[enter].decoded, frame.registers))) {
+          analysis::LiftLexicalInstruction(sites.front().decoded, frame.registers)))
     ++enter;
-    lexical_prelude = true;
-  }
   const auto copy_begin = enter;
-  // With that fresh environment, function instantiation may also copy an
-  // incoming argument into one of its cells (a parameter captured by a
-  // closure): `lda vArg; stlexvar 0, slot`. Both are effect-free and stay in
-  // the normalized prefix like the argument copies; checked again below.
-  const auto parameter_cell = [&](std::size_t i) {
-    abc::RegisterId argument;
-    if (!lexical_prelude || i + 1 >= sites.size() ||
-        !IsRegister(sites[i], Opcode::kLDA_V8, &argument) ||
-        argument.value < frame.locals || argument.value >= frame.registers) return false;
-    const auto lifted = analysis::LiftLexicalInstruction(sites[i + 1].decoded, frame.registers);
-    const auto* store = std::get_if<analysis::LexicalStore>(&lifted);
-    return store && store->address.depth.value == 0 &&
-        std::holds_alternative<analysis::Accumulator>(store->value);
-  };
   while (enter < sites.size() &&
          sites[enter].decoded.opcode != Opcode::kASYNCFUNCTIONENTER) {
-    if (parameter_cell(enter)) { enter += 2; continue; }
     if (sites[enter].decoded.opcode != Opcode::kMOV_V4_V4 &&
         sites[enter].decoded.opcode != Opcode::kMOV_V8_V8)
       return FunctionEmitError::kKind;
@@ -147,7 +127,6 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       promise.value >= frame.locals)
     return FunctionEmitError::kKind;
   for (std::size_t i = copy_begin; i < enter; ++i) {
-    if (parameter_cell(i)) { ++i; continue; }
     const auto& copy = sites[i].decoded;
     if (copy.operand_count != 2 ||
         copy.operands[0].kind != abc::OperandKind::kRegister ||

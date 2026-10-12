@@ -93,3 +93,22 @@ _source_test 只向引擎提供ABC，独立TS进入Node对照：185组构造参�
 newTarget/Proxy/bound/iterator/返回/异常场景及70组async方法场景。
 两份新模块的语法及固定五输入的无回退比较已验证；完整 instance fields、
 宿主平台和阶段一所有模块的独立语义/风格验收仍开放。
+
+## 2026-10-12 诊断：转发之后的字段初始化（探索集 16 个 record）
+
+探索集中 `DerivedProjectionError::kProtocol` 的 16 个 record（临时插桩，已回退）全部来自
+`implicit_constructor.cc` 的同一项检查：在原帧转发的 `super(...)` 之后，出现了带效果的
+`ValueNamedWrite`。对应源码是带实例字段初始化的派生类，TS 前端把字段初始化降为在隐式构造器里
+执行 `this.x = v`，也就是 `stobjbyname`，语义是 [[Set]]，可能调用继承来的 setter。
+
+这里没有语义等价的通用 JS 表示：
+- 原生类字段 `x = v` 使用的是 [[DefineOwnProperty]]。若原型链上有同名 setter 或只读属性，
+  结果就不同，而基类常常是外部 SDK 类，无法证明不存在这些情况。
+- 显式写成 `constructor(...args) { super(...args); this.x = v; }`，会增加可观察的
+  `Array.prototype[Symbol.iterator]` 访问。本文前面已经说明，帧转发不能采用这种默认打印方式。
+
+因此这不是局部检查放宽能解决的。可选方向有两种：
+- 在获批的语言契约下，把帧转发打印为 `super(...args)`（需用户批准新的契约范围）；
+- 证明字段名在原型链上没有 accessor 或只读属性（需要类层次的外部事实）。
+
+在决定之前，这些 record 保持拒绝。

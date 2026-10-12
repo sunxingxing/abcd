@@ -56,38 +56,28 @@ Deferred regressions: observable-resource default refusal, malformed/named
 scope metadata, unsupported profiles, prefix side effects, branch reentry,
 preserved scope across await and handlers, original-PC propagation and budgets.
 
-## 2026-10-12：参数写入 cell 的前缀与前导 NOP
+## 2026-10-12：参数写入 cell 的前缀（已撤回）
 
 探索集中 `FunctionEmitError::kKind`（20 个 record）的诊断（临时插桩，已回退）显示：15 次都来自
-本前缀之后只允许 `mov` 的检查。其中的实际指令序列是：
+本前缀之后只允许 `mov` 的检查。实际的指令序列是：
 
 `newlexenvwithname; mov…; lda vArg; stlexvar 0, slot; asyncfunctionenter`
 
 也就是说，async 函数的参数或 `this` 被闭包捕获，函数实例化阶段就把它拷贝进新环境的 cell。
 
-**准入（`ProveAsyncCompletion`）**：已接受上述 `PushEnvironment` 前缀时，`asyncfunctionenter` 之前
-还可以出现若干 `lda v; stlexvar d, s` 对，条件是：
-- `v` 是传入参数寄存器（`frame.locals ≤ v < frame.registers`）；
-- 这次 store 经类型化的 `LiftLexicalInstruction` 提升后，是 depth 为 0、取值来自累加器的
-  `LexicalStore`。
+`eadd4c1f` 曾按相邻的 `lda vArg; stlexvar 0,s` 对放宽准入，探索集 455 → 461。Codex 第十五轮
+指出两项阻断，该扩展已撤回：
+- **R1**：前缀会在累加器中留下参数值，而归一化随后删除了定义累加器的
+  `ASYNCFUNCTIONENTER; sta vPromise`。现有检查只限制对 `vPromise` 的访问，没有证明这个被删除
+  的累加器定义没有后续读取。依据锁定解释器：enter 把 async 状态对象写入 acc，resolve 从 acc
+  取兑现值。反例：入口之后不重新加载 acc 就 resolve。这一缺口同样涉及原有的
+  `newlexenv` 前缀（它也会写 acc），需要一并证明。
+- **R2**：按相邻 opcode 对扩充旧模板，违反 AGENTS.md 关于通用恢复准入的规则。
 
-这些指令没有用户可见的效果，与 `mov` 拷贝一样保留在归一化前缀中，由后续的环境/SSA、局部初始化、
-捕获和异常来源准入各自独立检查。拷贝校验循环会对每一对重新识别并校验。另外，前缀之前的 NOP
-没有语义，同样保留在前缀中。
+**正确的做法**：在原始 CFG 上，用类型化标量和累加器的 def-use，证明以下几点：
+- 参数来源与写入目标属于本次新分配的环境；
+- 前缀的效果可以保留；
+- 被删除的协议定义（acc 与 promise 寄存器）没有被保留指令或返回值读取。
 
-以下情形仍然拒绝：
-- 局部寄存器（不是参数）；
-- 外层 depth；
-- 没有前导分配的写入；
-- 前缀之外的任何其他指令。
-
-**证据**：
-- `control_composition_test` 新增 `AsyncParameterCells`，覆盖：准入并完整保留前缀，以及局部
-  寄存器、外层 depth、无环境分配三种拒绝。
-- 探索集 455 → **461/620**，无回退；新完整的 6 个 record 都通过 `node --check`。典型输出是
-  `async m() { let $local1 = this; … }`，其中的箭头函数捕获了 `this`。
-- 本机 es2abc 生成的 fixture 的 async 尾部布局不同，会在 epilogue 模板检查处被拒绝（与本改动
-  无关的另一项模板限制），所以这次没有 Node 差分。
-
-**仍未覆盖**：上述 epilogue 布局；本前缀条件仍是局部的充分条件，按审计共识应迁移到通用的效果与
-初始化证明上。
+验收需包括以下变体：寄存器复制、插入 NOP、入口后未覆盖 acc、只有部分分支覆盖、先复制 acc
+再使用。
