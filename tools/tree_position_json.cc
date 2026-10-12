@@ -133,12 +133,15 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
   const auto completion = printed.fragment == FunctionFragment::kStaticFields ||
       printed.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);
   const auto completion_label = printed.fragment == FunctionFragment::kModuleBody ? "module_completion" : "tail_completion";
-  const auto nodes = [&](std::string_view label, const auto& syntax, const auto& spans) {
+  const auto nodes = [&](std::string_view label, const auto& syntax, const auto& spans, const auto& extents) {
     output << ",\"" << label << "\":[";
     for (std::size_t i = 0; i < syntax.size(); ++i) {
       if (i != 0) output << ',';
       nlohmann::json item{{"origin", syntax[i].origin.value},
           {"begin", spans[i].begin}, {"end", spans[i].end}};
+      // The printer's own representation decision: an omission boundary is a
+      // zero-width coordinate, not a lost span (e.g. a folded branch statement).
+      if (i < extents.size() && extents[i] == source::GeneratedExtent::kBoundary) item["extent"] = "boundary";
       if (completion && ((label == "expressions" && completion->value == ExprId{static_cast<std::uint32_t>(i)}) ||
           (label == "statements" && completion->statement == StmtId{static_cast<std::uint32_t>(i)})))
         item["emission"] = completion_label;
@@ -152,9 +155,9 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
     }
     output << ']';
   };
-  nodes("expressions", tree.expressions, printed.expressions);
-  nodes("properties", tree.properties, printed.properties);
-  nodes("statements", tree.statements, printed.statements);
+  nodes("expressions", tree.expressions, printed.expressions, printed.expression_extents);
+  nodes("properties", tree.properties, printed.properties, printed.property_extents);
+  nodes("statements", tree.statements, printed.statements, printed.statement_extents);
   output << ",\"anchors\":[";
   for (std::size_t i = 0; i < tree.anchors.size(); ++i) {
     if (i != 0) output << ',';

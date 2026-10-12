@@ -24,6 +24,7 @@
 | guarded_global_call_sample_test、historical_guarded_global_sample_test、historical_async_member_sample_test | 旧 guarded-global writer 与旧类成员 writer |
 | spread_field_constructor_test、spread_field_constructor_sample_test | 旧 spread-field 构造器 writer |
 | guarded_reads_test、lexical_value_flow_test、first_for_in_test、capture_propagation_test | 只被旧 writer 消费的分析模块（已删除） |
+| iterator_candidates（`EXCLUDE_FROM_ALL` 诊断工具，2026-10-13 补删） | 引用已删除的 `first_for_in` 模块，自 `7b2491b7` 起无法构建；没有测试使用它 |
 
 上述目标的 `.mjs`/`.cmake` 消费者及 CMake 注册一并删除。
 

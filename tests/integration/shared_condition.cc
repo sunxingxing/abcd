@@ -84,7 +84,19 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool last_positiv
   const ExpressionConstants resolved{constants, syntax.names.size(), 0, {}};
   auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), resolved);
   if (extra_root) {
-    test::Check(std::holds_alternative<FunctionTreeFailure>(built)); return control.work;
+    // A discarded getter between two shared conditions is an independent
+    // effect on the fallthrough path only: it must run after the first test
+    // fails and before the second test, never unconditionally or after it.
+    test::Check(std::holds_alternative<ConstructedFunction>(built));
+    std::ostringstream text;
+    test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(std::get<ConstructedFunction>(built).tree, text)));
+    const auto source = text.str();
+    const auto guard = source.find("if (!$condition1) {"), getter = source.find("object.discarded;"),
+        second = source.find("object.field1"), action = source.find("object.action()");
+    test::Check(guard != std::string::npos && getter != std::string::npos && second != std::string::npos &&
+        action != std::string::npos && guard < getter && getter < second && second < action &&
+        source.find("object.discarded", getter + 1) == std::string::npos);
+    return control.work;
   }
   if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error " << static_cast<unsigned>(error->kind) << '\n';
   test::Check(std::holds_alternative<ConstructedFunction>(built));

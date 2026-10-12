@@ -67,7 +67,8 @@ async function load(source) {
 const actual = await load(report.source), expected = await load(reference);
 const body = actual.method.toString();
 assert.doesNotMatch(body, /INCOMPLETE|switch\s*\(/);
-assert.equal((body.match(/\(\$phi\d+ = /g) ?? []).length, 1);
+// Exactly one phi materialization, as an assignment or its own declaration.
+assert.equal((body.match(/(\(|const |let )\$phi\d+ = /g) ?? []).length, 1);
 assert.equal((body.match(/if \(/g) ?? []).length, 1);
 assert.equal((body.match(/\?/g) ?? []).length, 2);
 assert.match(body, /< 600/); assert.match(body, /< 840/);

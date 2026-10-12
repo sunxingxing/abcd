@@ -375,7 +375,11 @@ void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
     for (const auto& placement : tree.operations) {
       if (const auto* statement = std::get_if<StmtId>(&placement.node)) {
         const auto range = positions.statements[statement->value];
-        test::Check(range.begin < range.end && range.end <= source_size);
+        // Recovery may represent a statement by an omission boundary (e.g. a
+        // branch printed as one boolean assignment): a zero-width coordinate.
+        if (positions.statement_extents[statement->value] == GeneratedExtent::kBoundary)
+          test::Check(range.begin == range.end && range.end <= source_size);
+        else test::Check(range.begin < range.end && range.end <= source_size);
         const auto origin = tree.statements[statement->value].origin;
         test::Check(std::get<OriginalSite>(tree.origins[origin.value]).pc ==
             graph.origins[graph.ops[placement.operation.value].origin.value].pc);

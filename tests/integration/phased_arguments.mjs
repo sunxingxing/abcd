@@ -111,6 +111,7 @@ for (const [index, sample] of samples.entries()) {
     const right = ranges.get(26), addition = ranges.get(30);
     assert(left.end < right.begin && right.end <= invocation.end);
     assert(addition.begin <= left.begin && right.end <= addition.end);
-    assert.equal(source.subarray(addition.begin, addition.end).toString(), '(($arg0.run + "run") + $arg0.run)');
+    // Left-associative `+` needs no grouping: this parses as ((a + "run") + a).
+    assert.equal(source.subarray(addition.begin, addition.end).toString(), '$arg0.run + "run" + $arg0.run');
   }
 }

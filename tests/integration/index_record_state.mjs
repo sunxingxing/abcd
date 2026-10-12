@@ -377,7 +377,9 @@ export async function verifyIndexRecordBatch(source, routes, reference, referenc
     ['this.__windowUtil.purgeDependencyOnElmtId(rmElmtId);', 'this.__windowUtil.purgeDependencyOnElmtId(0);'],
     ['this.__navPageInfos.aboutToBeDeleted();', 'this.__navPageInfos.get();'],
     ['this.updateDirtyElements();', 'return this.updateDirtyElements();'],
-    ['($local0 = this);', '($local0 = globalThis);'],
+    // The receiver cell may print as an assignment or as its own initializer.
+    ...(source.includes('($local0 = this);') ? [['($local0 = this);', '($local0 = globalThis);']]
+        : [['let $local0 = this;', 'let $local0 = globalThis;']]),
     ['elmtId = (-1)', 'elmtId = 0'],
     ['new Shopping(', 'new ShoppingAvoid('],
     ['super(parent, __localStorage, elmtId, extraInfo)', 'super(parent, params, elmtId, extraInfo)'],

@@ -48,7 +48,10 @@ assert.equal(bodyOrigin.kind, 'original');
 assert.equal(bodyOrigin.pc, 14); // Entry-copy tombstones do not own the body.
 for (const node of [...positions.expressions, ...positions.statements]) {
   assert.ok(Number.isSafeInteger(node.begin) && Number.isSafeInteger(node.end));
-  assert.ok(node.begin >= 0 && node.begin < node.end && node.end <= bytes.length);
+  // A node recovery represents by an omission boundary (e.g. an implicit tail
+  // completion) carries its emission kind and a zero-width coordinate.
+  if (node.extent === 'boundary') assert.ok(node.begin >= 0 && node.begin === node.end && node.end <= bytes.length, JSON.stringify(node));
+  else assert.ok(node.begin >= 0 && node.begin < node.end && node.end <= bytes.length, JSON.stringify(node));
   assert.ok(node.origin >= 0 && node.origin < positions.origins.length);
 }
 for (const anchor of positions.anchors) {

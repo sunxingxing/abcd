@@ -97,10 +97,20 @@ void Run(std::uint32_t count, bool captured) {
   test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(changed)));
   if (!captured) {
     syntax.parameters[0] = {NameId{0}, NameEvidence::kMetadata};
-    // Metadata parameters already reject the private '$' namespace before
-    // constructing a tree. Keep that refusal, then exercise actual lexical
-    // shadowing with an admitted identifier instead of extracting an error.
-    test::Check(std::get<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, constants)) == FunctionTreeError::kName);
+    // A metadata name in the '$' spelling is kept verbatim: every syntax name
+    // is reserved, so no synthesized name in this tree can reuse it. Then
+    // exercise actual lexical shadowing with an ordinary identifier.
+    {
+      const auto built = BuildFunctionTree(graph, control, evaluation, syntax, constants);
+      const auto& metadata = std::get<ConstructedFunction>(built).tree;
+      const auto& parameter = metadata.symbols[metadata.parameters[0].symbol.value];
+      test::Check(metadata.names[parameter.name.value] == u"$arg0" && parameter.evidence == NameEvidence::kMetadata);
+      // A same-named import in the module scope is ordinary shadowing; only a
+      // synthesized name may never reuse the reserved metadata spelling.
+      for (const auto& symbol : metadata.symbols)
+        if (symbol.evidence == NameEvidence::kSynthesized)
+          test::Check(metadata.names[symbol.name.value] != u"$arg0");
+    }
     syntax.names[0] = u"importedBinding";
     auto shadowed = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation, syntax, constants)).tree;
     for (auto& expression : shadowed.expressions)

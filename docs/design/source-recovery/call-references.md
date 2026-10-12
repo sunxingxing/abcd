@@ -167,3 +167,41 @@ obj.f('…' + (c1 ? a : b) + … + (c2 ? x : y))
 提交 callee 和参数的 placement。成员引用证据需要独立登记，并由独立 verifier 接管
 `phase_references`。这是 phased evaluation 的算法改动，不能靠放宽 `Ancestors` 的条件来实现：
 已试过“沿 eager 表达式上爬”，在顶层 root 处就终止了，因此未提交。
+
+### 5.2 调用级二次组合的设计共识（Codex，基于 `5438e829`）
+
+在选择提交之后、`BuildIntegerNaNs` 之前，新增 `ComposePhaseExpressions`：以包含已提交选择的成员
+调用为入口，复用 normal 路径中“选择原子化、逆序组合、正序验证”的方法，不重跑 `Schedule`（它的
+retry 分区不能合并原本分开的 root）。
+
+1. **受影响的森林**：从选择结果沿规范化 def-use 的 eager 消费边向上，可以穿过当前为 root 的
+   Binary。逐条边检查：唯一消费（包括快照、phi 用法）、`DescribeEvaluation` 允许内联、Commit 可用性
+   与存储作用域、base 与 receiver 相同。
+2. **选择作为原子事件**：使用类型化节点 `OpId | SelectionId`。摘要包含：
+   - 结果与消费 `UseId`；
+   - 入口和正常完成出口；
+   - prefix、arm、嵌套的所有权；
+   - 内部异常出口；
+   - 外部输入。
+
+   join 只收缩到结果汇合的边界，不吞并 join 块里的后续操作。phased 的 `Producer()` 要能解析选择
+   产生的 phi。
+3. **收缩后的事件顺序**：扩展 `EffectOrder`。普通 op 和 Binary 都是事件，选择是一个事件；回边、
+   额外入口和绕过路径要参与执行次数证明。
+4. **后序加逆序消费**：区间带事件域身份 `{chain, begin, end}`，联合提交 callee 与参数的 placement；
+   失败时整体撤销这棵组合树的变更。
+
+**验证职责**：
+- 选择验证器只验证内部路径，并拆分出“结构证明”与随最终所有权重算的 `execution`。
+- `VerifyPhaseExpressions` 用带域的正序串接方程，把选择事件区间计入父节点，不再豁免
+  `CrossLogicalInline`。
+- 独立的引用验证器负责 `phase_references` 的身份和完整性。
+
+**catch**：每个被移动的抛出点（getter、key、各 Binary、predicate、各 arm、调用）都要与最终求值上下文
+兼容。第一个增量不新增表达式内部的 staging 能力。
+
+**落地顺序**：
+1. 拆分验证器（准入不变）；
+2. 选择事件索引与带域区间验证；
+3. 组合 builder；
+4. 差分、变异和 IR 反例测试，然后看探索集。

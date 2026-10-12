@@ -523,8 +523,14 @@ export async function verifyNavigationBatch(sources, reference, request) {
     ['shopping/src/main/ets/view/CommonView', 'this.__isCenter.set(newValue);', 'this.__isCenter.get();'],
     ['shopping/src/main/ets/viewmodel/HomeViewModel', 'return this.homeModel.getTabBarList();', 'return this.homeModel.getTabBarList().slice(1);'],
   );
-  for (const [page, before, after, config = {}] of mutants) if (selected('mutations')) {
-    const name = Object.hasOwn(sources, page) ? page : recordFor(page), changed = sources[name].replace(before, after); assert.notEqual(changed, sources[name]);
+  for (let [page, before, after, config = {}] of mutants) if (selected('mutations')) {
+    const name = Object.hasOwn(sources, page) ? page : recordFor(page);
+    // A cell's first store may print as `(x = v);` or as its own `let x = v;`.
+    const statement = /^\((\$\w+) = (.*)\);$/;
+    if (!sources[name].includes(before) && statement.test(before) && statement.test(after)) {
+      before = before.replace(statement, 'let $1 = $2;'); after = after.replace(statement, 'let $1 = $2;');
+    }
+    const changed = sources[name].replace(before, after); assert.notEqual(changed, sources[name], `${page}: ${before}`);
     new vm.SourceTextModule(changed);
     await assert.rejects(async () => {
       const actual = await exercise({...sources, [name]: changed}, {...base, ...config});

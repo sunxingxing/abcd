@@ -180,7 +180,9 @@ int main(int argc, char** argv) {
   const auto& source = std::get<source::PrintedSource>(result).text;
   if (joined || split) {
     Check(source.find("let answer = ") != std::string::npos);
-    Check(source.find(joined_loop ? "while (" : "if (") != std::string::npos);
+    // A loop may print as `while` or as a `for` with its update clause.
+    Check(joined_loop ? (source.find("while (") != std::string::npos || source.find("for (") != std::string::npos)
+                      : source.find("if (") != std::string::npos);
     if (!joined_loop) Check(source.find("(answer = 7)") != std::string::npos &&
         source.find("(answer = 9)") != std::string::npos);
   } else if (stored_branch) {

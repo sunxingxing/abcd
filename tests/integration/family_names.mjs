@@ -107,9 +107,13 @@ const verifiedBehaviorCases = behaviorCases;
 
 let mutationChecks = 0;
 for (const row of rows.filter((_, index) => index % 2 === 0)) {
-  const assignment = row.source.match(/\((\$local\d+|\$binding\d+) = (\$arg\d+|\$binding\d+)\);/);
-  assert.ok(assignment);
-  for (const changed of [row.source.replace(assignment[0], `(${assignment[1]} = null);`),
+  // The captured argument copy may print as an assignment statement or, after
+  // declaration recovery, as the cell's own `let` initializer.
+  const assignment = row.source.match(/\((\$local\d+|\$binding\d+) = (\$arg\d+|\$binding\d+)\);/) ??
+      row.source.match(/let (\$local\d+|\$binding\d+) = (\$arg\d+|\$binding\d+);/);
+  assert.ok(assignment, row.source);
+  const nulled = assignment[0].startsWith('let ') ? `let ${assignment[1]} = null;` : `(${assignment[1]} = null);`;
+  for (const changed of [row.source.replace(assignment[0], nulled),
     row.source.replaceAll(assignment[1], row.name)]) {
     assert.notEqual(changed, row.source);
     new vm.SourceTextModule(`export default (${changed});`);

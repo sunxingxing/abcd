@@ -211,5 +211,7 @@ for (const placement of forwardMap.operations) {
     placement.kind === 'statement' ? forwardMap.statements[placement.node] : forwardMap.expressions[placement.node];
   assert(pcs(range.origin, forwardMap).includes(forwardedPcs[placement.operation]));
   if (placement.kind === 'anchor') assert(range.byte <= Buffer.byteLength(forwarded.source));
+  // Omission boundaries (e.g. an implicit tail completion) are zero-width.
+  else if (range.extent === 'boundary') assert(range.begin === range.end && range.end <= Buffer.byteLength(forwarded.source));
   else assert(range.begin < range.end && range.end <= Buffer.byteLength(forwarded.source));
 }

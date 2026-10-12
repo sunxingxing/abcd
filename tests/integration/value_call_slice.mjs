@@ -21,6 +21,7 @@ assert.equal(report.source_complete, false);
 assert.equal(report.executable, false);
 const bytes = Buffer.from(report.source);
 const spans = new Map();
+const emissions = new Map();
 for (const placement of report.positions.operations) {
   const nodes = placement.kind === 'expression' ? report.positions.expressions :
     report.positions.statements;
@@ -28,11 +29,14 @@ for (const placement of report.positions.operations) {
   const origin = report.positions.origins[node.origin];
   assert.equal(origin.kind, 'original');
   spans.set(origin.pc, bytes.subarray(node.begin, node.end).toString());
+  if (node.emission) emissions.set(origin.pc, {emission: node.emission, width: node.end - node.begin});
 }
 assert.equal(spans.get(14), 'this.__curBp');
 assert.ok(spans.get(22).endsWith('.purgeDependencyOnElmtId'));
 assert.ok(spans.get(34).includes('.purgeDependencyOnElmtId(rmElmtId)'));
-assert.equal(spans.get(39), 'return (void 0);');
+// The method's final `return undefined` is its implicit tail completion: a
+// zero-width boundary at the body's end, not printed text.
+assert.deepEqual(emissions.get(39), {emission: 'tail_completion', width: 0});
 
 const Slice = Function(`return class {\n${report.source}\n};`)();
 const recovered = Slice.prototype.purgeVariableDependenciesOnElmtId;
