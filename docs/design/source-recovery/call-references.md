@@ -115,3 +115,30 @@ callee 读取若与选择之间夹着未归属的效果，区间就不连续，�
 - phased 路径消费抽出的共同引用证据；
 - 没有唯一消费者的嵌套或多选择参数；
 - 共识 §2 中其余的反例与预算测试：执行次数和回边的迁移、伪造证据、200/201 规模。
+
+## 5. phased 路径的诊断与第二轮共识（2026-10-13）
+
+探索集剩余 17 个 `CallPlanError::kReference` 都出现在带异常处理器的方法中，走 phased 路径。
+临时插桩已回退。逐项定位如下：
+- phased 普通参数的融合本身已经存在：`BuildPhaseExpressions` 按逆语法顺序组合效果区间。callee
+  读取和函数创建参数的 `CanFuse`、`SameCatch` 在这些样本中都成立。
+- 失败的直接判据是：在 `Schedule` 中，callee 的效果区间与调用期望的后缀不衔接
+  （`child.end != expected`）。
+- 统计不衔接的情形：在 o12、o24 中，callee 读取与调用之间都夹着 branch/jump，即参数里含有选择
+  区域（共 22 处）；o36 中有 2 处没有控制流的情形，待单独定位。
+
+所以，主要剩余形态是 **phased 路径上带选择参数的成员调用**。现有 `PhaseSelectionCall` 的前提
+（已有 inline argument 链、explicit receiver 等）没有覆盖它。
+
+Codex 的共识方案（第二轮）：
+1. 先补齐失败定位，不改变准入。区分以下几类，并保留类型化原因：引用多用、区间不闭合、
+   Commit 不可用、快照差异、作用域差异、表示限制。
+2. 把 `PhaseCallReference` 抽成与选择无关的独立成员引用证据和 verifier，先让现有的选择调用
+   改用它，并证明准入没有扩大。
+3. 接入普通参数与选择参数的跨 phase 组合。
+4. 处理各抛出点需要不同快照的情形，这涉及发射和 AST 的独立验证。
+5. normal 与 phased 逐步共用同一份证据契约。
+
+同时必须让 `ExpressionScopes()` 在普通跨 phase inline 时也启动。测试矩阵见共识原文：各位置
+抛出、callee/receiver 改写、catch 快照、环境与控制反例、伪造证据，以及 es2abc 与底层 IR 两类
+fixture。
