@@ -155,6 +155,8 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
      新增 `guarded_captures_cli_test`，用 es2abc fixture 在 Node 下做差分，并用变异检测确认
      测试能发现提前声明。
    - Codex 第十一轮复审（`5836d200`、`98d806ec`）：**APPROVE**。
+   - 第十二轮发现一项阻断问题 R1：中间函数自身带 guard 的读取会掩盖后代的 Language 义务。
+     `31db00d2` 已修复，第十三轮复审为 **APPROVE**。
    - 后续增量：受保护义务的转发、唯一写入在后续块（声明语句必须直接位于分配所在的块语句中）。
    - 探索集完整 record 430 → **448/620**，无回退。`kInitialization` 从 64 个 record 降到 27 个。
      剩余类别为：类根路径、作用域收窄、未受保护的读取，详见
