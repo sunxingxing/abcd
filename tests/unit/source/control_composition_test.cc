@@ -764,6 +764,42 @@ void AwaitCompletion(abc::ProfileId profile, std::ostream* output) {
   test::Check(awaits.size() == 1);
   Emit(normalized, profile, 3, 1, false, output, {}, 0, false, {}, CompositionStage::kSource, 0, awaits);
 }
+// A fresh-environment prelude may copy an incoming argument into a cell (a
+// parameter captured by a closure) before ASYNCFUNCTIONENTER; leading NOPs
+// carry no semantics. Locals, outer depths or a missing allocation refuse.
+void AsyncParameterCells(abc::ProfileId profile) {
+  const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
+  enum class Variant { kAdmitted, kLocal, kOuter, kNoEnvironment };
+  for (const auto variant : {Variant::kAdmitted, Variant::kLocal, Variant::kOuter, Variant::kNoEnvironment}) {
+    std::vector<std::uint8_t> bytes{op(abc::Opcode::kNOP)};
+    if (variant != Variant::kNoEnvironment) bytes.insert(bytes.end(), {op(abc::Opcode::kNEWLEXENV_IMM8), 1});
+    // v3 is the frame's incoming argument; v2 is a local. Slot 0, depth 0|1.
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), static_cast<std::uint8_t>(variant == Variant::kLocal ? 2 : 3),
+        op(abc::Opcode::kSTLEXVAR_IMM4_IMM4), static_cast<std::uint8_t>(variant == Variant::kOuter ? 1 : 0)});
+    const auto prefix = static_cast<std::uint32_t>(bytes.size());
+    bytes.insert(bytes.end(), {op(abc::Opcode::kASYNCFUNCTIONENTER), op(abc::Opcode::kSTA_V8), 0,
+        op(abc::Opcode::kLDA_V8), 3, op(abc::Opcode::kASYNCFUNCTIONRESOLVE_V8), 0, op(abc::Opcode::kRETURN)});
+    const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
+    bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), 1,
+        op(abc::Opcode::kASYNCFUNCTIONREJECT_V8), 0, op(abc::Opcode::kRETURN)});
+    auto body = test::Body(bytes);
+    abc::TryRegion region; region.offset = {prefix + 3}; region.length = handler_pc - prefix - 3; region.handler_count = 1;
+    abc::CatchHandler handler; handler.offset = {handler_pc}; handler.length = 5;
+    body.tries = {region}; body.handlers = {handler};
+    const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
+    std::vector<abc::CodeOffset> origins;
+    const auto proved = ProveAsyncCompletion(body, frame, SemanticBudget{}.bytes, &origins, nullptr, profile,
+        ResourceFailureScope::kExcluded);
+    if (variant != Variant::kAdmitted) {
+      test::Check(std::get<FunctionEmitError>(proved) == FunctionEmitError::kKind);
+      continue;
+    }
+    const auto& normalized = std::get<abc::MethodBody>(proved);
+    // The whole prelude survives, in order, ahead of the retained body.
+    for (std::size_t i = 0; i < 4; ++i)
+      test::Check(normalized.instructions[i].decoded.opcode == body.instructions[i].decoded.opcode);
+  }
+}
 enum class SharedInnerCatch { kNone, kRethrow, kCallback, kLoopCallback, kReturn };
 void CompilerFinally(abc::ProfileId profile, std::ostream* output,
     CompositionStage stage = CompositionStage::kHoleFinally, std::uint32_t count = 1, bool early_return = false,
@@ -1501,6 +1537,7 @@ int main(int argc, char** argv) {
     CompilerFinally(profile, nullptr, CompositionStage::kHoleSource);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally);
     AwaitCompletion(profile, nullptr);
+    AsyncParameterCells(profile);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,
         SharedInnerCatch::kNone, 1, true);
     CompilerFinally(profile, nullptr, CompositionStage::kHoleFinally, 1, false,

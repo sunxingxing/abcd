@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
     const auto built_tree = BuildFunctionTree(derived.values.graph, control, constructor_evaluation,
         std::move(syntax.syntax), constants);
     if (const auto* error = std::get_if<FunctionTreeFailure>(&built_tree))
-      std::cerr << "derived tree failure " << static_cast<unsigned>(*error) << '\n';
+      std::cerr << "derived tree failure " << static_cast<unsigned>(error->kind) << '\n';
     Check(std::holds_alternative<ConstructedFunction>(built_tree));
     const auto& constructor_tree = std::get<ConstructedFunction>(built_tree).tree;
     Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(derived.values.graph, control,
@@ -425,7 +425,7 @@ int main(int argc, char** argv) {
           std::cerr << "render prepare cause " << failure->cause.index();
           if (const auto* tree = std::get_if<FamilyTreeFailure>(&failure->cause)) {
             std::cerr << " member " << tree->member.value << " cause " << tree->cause.index();
-            if (const auto* error = std::get_if<FunctionTreeFailure>(&tree->cause)) std::cerr << " tree " << static_cast<unsigned>(*error);
+            if (const auto* error = std::get_if<FunctionTreeFailure>(&tree->cause)) std::cerr << " tree " << static_cast<unsigned>(error->kind);
           }
           std::cerr << '\n'; return 1;
         }
@@ -642,7 +642,7 @@ int main(int argc, char** argv) {
       const auto& evaluation = std::get<EvaluationPlan>(evaluated);
       const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax.syntax), constants_view);
       if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) {
-        std::cerr << "tree failure=" << static_cast<unsigned>(*error) << '\n'; return 1;
+        std::cerr << "tree failure=" << static_cast<unsigned>(error->kind) << '\n'; return 1;
       }
       const auto& tree = std::get<ConstructedFunction>(built).tree;
       std::ostringstream denied;

@@ -746,7 +746,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   syntax.names = constants.names; syntax.texts = constants.texts;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   auto tree = BuildFunctionTree(graph, control, evaluation, syntax, constants.View());
-  if (const auto* error = std::get_if<FunctionTreeFailure>(&tree)) std::cerr << "tree failure " << static_cast<unsigned>(*error) << '\n';
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&tree)) std::cerr << "tree failure " << static_cast<unsigned>(error->kind) << '\n';
   Check(std::holds_alternative<ConstructedFunction>(tree));
   if (!prototype_reads.empty()) {
     auto wrong = syntax;

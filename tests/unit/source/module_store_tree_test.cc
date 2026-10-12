@@ -45,7 +45,7 @@ void Run(std::uint32_t count, abc::ProfileId profile, bool print) {
   const ExpressionConstants constants{operations, syntax.names.size(), 0};
   const auto built = BuildFunctionTree(graph, control, evaluation, syntax, constants);
   if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) {
-    std::cerr << "tree " << static_cast<unsigned>(*error) << '\n'; test::Check(false);
+    std::cerr << "tree " << static_cast<unsigned>(error->kind) << '\n'; test::Check(false);
   }
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   const auto verified = VerifyTreeSemantics(graph, control, evaluation, tree, constants);

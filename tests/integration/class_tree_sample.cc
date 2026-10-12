@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
     syntax.owner = {1}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
     auto constructed = BuildFunctionTree(graph, control, plan, syntax, {constants});
     if (const auto* error = std::get_if<FunctionTreeFailure>(&constructed)) {
-      std::cerr << "creation AST failure " << static_cast<unsigned>(*error) << '\n'; return 1;
+      std::cerr << "creation AST failure " << static_cast<unsigned>(error->kind) << '\n'; return 1;
     }
     const auto& root = std::get<ConstructedFunction>(constructed).tree;
     Check(!root.hole);

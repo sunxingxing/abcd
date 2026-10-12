@@ -119,7 +119,8 @@
 | 第九轮审查修复后的定向回归（218 项，`-j3`，window 与 community 单独运行） | 204 通过，失败的只有下行 14 项原有失败；window、community 单独运行通过 |
 | `record_isolation_cli_test`（新增）：把 Immersive 中一个 record 的 scope 名称字符串改成非法 MUTF-8，并重算校验和 | 导出成功；只有该 record 失败，带 `MetadataError` 原因链，其余 record 结果不变。修复前，整个导出会因 `kRead` 中止 |
 | 相对 `f0028f54` 改动过的全部测试，加本轮新增测试 | 除下行所列原有失败外均通过，详见 [测试台账](2026-10-12-legacy-test-ledger.md) |
-| 原有失败之外新发现：`exception_plan_test` | 在 `3a9d7b88` 上单独构建同样失败（line 378，打印位置断言），早于 TDZ 工作；此前不在定向列表中，待单独排查 |
+| 构建核对更正（Codex 第十四轮 R1） | 此前用 `cmake --build … -k` 核对“全量构建无错误”，但 `-k` 并没有传给 make，构建在第一个错误处就停了。`5836d200` 与 `6130717d` 的错误类型封装因此漏改了 11 个测试和诊断翻译单元，以及排除构建的 `exception_candidates`。这些已修复，并按正确方式重新核对：`cmake --build build/regression -j 6 -- -k` 无错误，排除构建的目标也逐个单独构建。另外，排除构建的 `iterator_candidates` 在 HEAD 上同样无法构建（引用已删除的 `abcd/analysis/first_for_in.h`），属于原有问题，待清理 |
+| 原有失败之外新发现的 4 项（此前不在定向列表中） | `exception_plan_test`（line 378，打印位置断言）、`shared_condition_test`（`shared_condition.cc:87`）、`module_scope_test`（未捕获的 `bad_variant_access`）、`family_names_source_test`（`family_names.mjs:111`，`assert.ok(assignment)`）。四项都在 `3a9d7b88`（TDZ 工作之前）上单独构建核对过，失败位置和信息完全相同，属于原有失败，待单独排查 |
 | 原有失败（在 `f0028f54` 基线上以相同原因失败） | pasteboard_breakpoint、backup_class_cells、index_record、navigation_graph、minigame_navigation_graph、module_entry_initialization、phased_arguments、file_generator_return(_loop)、phased_method、hotitem_retained_selection、value_tree_{pasteboard,call,immersive}_slice |
 | `window_navigation_graph_source_test`、`community_ability_graph_source_test` | 单独运行均通过（231s、205s）；与其他测试并行运行时，其 60 秒 worker 子进程会超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |
@@ -166,6 +167,9 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
      `CallPlanError::kReference`：成员调用的 callee 读取早于参数中的选择区域。
      normal 路径的融合域已沿内联消费链延伸，探索集 448 → **455**，详见
      [成员调用引用](call-references.md)。
+   - 第三位缺口 `FunctionEmitError::kKind`：其中 15 次来自 async 前缀只允许 `mov` 的检查。现在在
+     新环境前缀之后，还允许“参数写入 cell”（`lda vArg; stlexvar 0, s`），也允许前导 NOP。
+     探索集 455 → **461**，详见 `docs/design/async-lexical-prelude.md`。
 2. **S5 余项**：1 GB 整进程预算与准入；macOS 上的观测与背压。`abc_semantic` 的资源字段改为
    在 JSON 序列化边界直接写入。
 3. **C5 → C3 → C2 → C4 → C8**：语义上移到打印之前 → 一般结构化 → 选择表达式通用化 →

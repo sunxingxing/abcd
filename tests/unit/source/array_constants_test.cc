@@ -82,7 +82,7 @@ int main(int argc, char**) {
       FunctionSyntax syntax{}; syntax.method = {kMethod}; syntax.callable = CallableKind::kFunction;
       syntax.strictness = Strictness::kStrict; syntax.names = constants.names; syntax.texts = constants.texts;
       const auto built = BuildFunctionTree(graph, control, evaluation, syntax, constants.View());
-      if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error=" << static_cast<unsigned>(*error) << '\n';
+      if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error=" << static_cast<unsigned>(error->kind) << '\n';
       const auto tree = std::get<ConstructedFunction>(built).tree;
       test::Check(tree.properties.size() == kCounts[slot]);
       auto wrong_constants = constants;

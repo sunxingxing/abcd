@@ -52,7 +52,7 @@ std::uint64_t Run(abc::ProfileId profile, SourceContract contract, unsigned copi
   if (Constructors(contract) == ConstructorSemantics::kPinnedRuntime) {
     test::Check(std::holds_alternative<FunctionTreeFailure>(built)); return 0;
   }
-  if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error " << unsigned(*error) << '\n';
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error " << unsigned(error->kind) << '\n';
   test::Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   test::Check(tree.recovery_issues.empty());

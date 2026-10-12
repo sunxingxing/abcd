@@ -86,7 +86,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool last_positiv
   if (extra_root) {
     test::Check(std::holds_alternative<FunctionTreeFailure>(built)); return control.work;
   }
-  if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error " << static_cast<unsigned>(*error) << '\n';
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error " << static_cast<unsigned>(error->kind) << '\n';
   test::Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   test::Check(tree.recovery_issues.empty());

@@ -249,7 +249,11 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
         const auto evaluation_limited = BindPhasedCaptureEvaluation(index, lookup, staged,
             *body, *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, kParentOwner, child_id, exact);
         const auto* work_failure = std::get_if<CaptureEvaluationFailure>(&evaluation_limited);
-        if (!work_failure || !std::visit([](auto error) { return error == decltype(error)::kWorkLimit; }, *work_failure)) return 1;
+        if (!work_failure || !std::visit([](const auto& error) {
+              if constexpr (std::is_same_v<std::decay_t<decltype(error)>, CaptureCellFailure>)
+                return error == CaptureCellError::kWorkLimit;
+              else return error == std::decay_t<decltype(error)>::kWorkLimit;
+            }, *work_failure)) return 1;
         const auto same_owner = BindPhasedCaptureEvaluation(index, lookup, staged, *body,
             *local_scopes, child, {*ready_child, *values}, child_owner, *mapped, kParentOwner, kParentOwner, budget);
         const auto* failure = std::get_if<CaptureEvaluationFailure>(&same_owner);
@@ -293,7 +297,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       report["family_mapped_instructions"] = probe.mapped_instructions;
       if (probe.draft) report["conditional_family_source"] = *probe.draft;
       report["family_probe_stage"] = static_cast<unsigned>(probe.stage);
-      if (probe.tree_error) report["family_probe_tree_error"] = static_cast<unsigned>(*probe.tree_error);
+      if (probe.tree_error) report["family_probe_tree_error"] = static_cast<unsigned>(probe.tree_error->kind);
     }
   }
   // Independent standalone admission must still refuse missing child-family
@@ -316,7 +320,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       const auto constants = syntax->View();
       const auto tree = BuildExceptionFunctionDraft(phased.Graph(), phased.TreeInput(*body),
           phased.Evaluation(), std::move(syntax->syntax), constants, budget);
-      if (const auto* error = std::get_if<FunctionTreeFailure>(&tree)) report["tree_error"] = static_cast<unsigned>(*error);
+      if (const auto* error = std::get_if<FunctionTreeFailure>(&tree)) report["tree_error"] = static_cast<unsigned>(error->kind);
       else {
         const auto& draft = std::get<ExceptionFunctionDraft>(tree);
         if (phased.Modules()) {
