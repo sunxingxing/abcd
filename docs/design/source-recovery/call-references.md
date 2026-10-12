@@ -142,3 +142,28 @@ Codex 的共识方案（第二轮）：
 同时必须让 `ExpressionScopes()` 在普通跨 phase inline 时也启动。测试矩阵见共识原文：各位置
 抛出、callee/receiver 改写、catch 快照、环境与控制反例、伪造证据，以及 es2abc 与底层 IR 两类
 fixture。
+
+### 5.1 定位结论（Codex 只读追踪与插桩复核）
+
+在方法 6084 中核对了失败的调用（原始 PC 373→470，归一化后为 370→467），它的形态是：
+
+```text
+obj.f('…' + (c1 ? a : b) + … + (c2 ? x : y))
+```
+
+也就是“选择 → Binary 串接 → 成员调用的参数”。逐层核对的结果：
+- 范围内的 7 个选择区域，`Operand()` 和 `Check()` 都接受，分组也完整，owner 是普通的 Binary
+  消费者。
+- 沿 inline 边向上爬，经过若干 Binary 后，到达的是**被判为 root 的顶层 Binary**，而不是调用的
+  inline 参数。
+
+原因是 `Schedule` 在选择融合之前就决定了参数和 callee 的放置。那时选择区域的分支使区间不连续，
+所以参数表达式和 callee 都保留了快照；选择被提交为 inline 之后，没有任何一步重新考虑这些决定。
+此外，`.then` 链上看到的 `role != kArgument` 只说明后续调用没有拿到证据，不会撤销已有引用；
+它不是这些失败的原因。
+
+**所需修复**（共识第 2–3 步）：以调用为中心，在选择提交之后，把每个已提交的选择当作一个原子
+事件，对整棵调用表达式（callee 加上各参数子树）重新做效果区间组合与 catch 状态证明，然后联合
+提交 callee 和参数的 placement。成员引用证据需要独立登记，并由独立 verifier 接管
+`phase_references`。这是 phased evaluation 的算法改动，不能靠放宽 `Ancestors` 的条件来实现：
+已试过“沿 eager 表达式上爬”，在顶层 root 处就终止了，因此未提交。
