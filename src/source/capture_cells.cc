@@ -132,8 +132,12 @@ void Owner(CaptureChild function, Quota& quota, bool check_uses = true) {
   Require(uses.size() >= original.size(), Error::kCoverage);
   for (std::size_t i = 0; check_uses && i < original.size(); ++i) {
     quota.Step();
+    // A family may only strengthen an own Guarded use to Language (a
+    // descendant demands it); it never weakens an original obligation.
     Require(uses[i].cell.depth == original[i].cell.depth &&
-        uses[i].cell.slot.value == original[i].cell.slot.value && uses[i].domain == original[i].domain, Error::kBinding);
+        uses[i].cell.slot.value == original[i].cell.slot.value && (uses[i].domain == original[i].domain ||
+        (original[i].domain == analysis::CaptureDomain::kGuarded && uses[i].domain == analysis::CaptureDomain::kLanguage)),
+        Error::kBinding);
   }
   const auto* cells = function.Cells(); const auto* environments = function.Environments();
   const auto& graph = function.Graph();

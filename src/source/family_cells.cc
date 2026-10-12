@@ -38,9 +38,12 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
         }
         auto cells = std::get<CellPlan>(std::move(result));
         admit(cells.allocated_bytes, 1); step(cells.work);
-        // Weakest descendant obligation per cell: a forwarded cell is Guarded
-        // only when every demand reaching it is Guarded (normal flow only;
-        // signature entry demands stay Language). 0: none, 1: Guarded, 2: Language.
+        // Weakest descendant obligation per cell: Guarded only when every
+        // demand reaching it is Guarded (normal flow only; signature entry
+        // demands stay Language). 0: none, 1: Guarded, 2: Language. This holds
+        // for EVERY incoming cell, including ones this function accesses itself:
+        // a descendant's Language read or write must never be masked by this
+        // function's own Guarded read (it may run before initialization).
         admit(cells.cells.size(), 1);
         std::vector<std::uint8_t> weakest(cells.cells.size());
         const auto combine = [](std::uint8_t& state, analysis::CaptureDomain domain) {
@@ -64,7 +67,18 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
         admit(original.size() + forwarded, sizeof(CaptureUse));
         CaptureStorage storage{std::move(cells), {}};
         storage.uses.reserve(original.size() + forwarded);
-        for (const auto& use : original) { step(); storage.uses.push_back(use); }
+        for (const auto& use : original) {
+          // Strengthen (never weaken) an own Guarded use when a descendant or
+          // entry demand on the same cell requires Language.
+          step(std::bit_width(storage.cells.cells.size()) + 1);
+          auto strengthened = use;
+          if (use.domain == analysis::CaptureDomain::kGuarded) {
+            const auto cell = FindCell(storage.cells, IncomingCell{use.cell.depth, use.cell.slot});
+            require(cell.has_value(), Error::kCoverage);
+            if (weakest[cell->value] == 2) strengthened.domain = analysis::CaptureDomain::kLanguage;
+          }
+          storage.uses.push_back(strengthened);
+        }
         for (std::size_t c = 0; c < storage.cells.cells.size(); ++c) {
           step(); const auto& cell = storage.cells.cells[c];
           if (const auto* incoming = std::get_if<IncomingCell>(&cell.storage); incoming && cell.count == 0)

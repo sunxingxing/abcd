@@ -191,3 +191,31 @@ load/guard 这一对。子函数原有的 Language 前提和 guard 消除（`Ini
   全部通过 `node --check`。`ScopeError::kInitialization` 叶子从 64 个 record 降到 27 个。
 - 剩余：类根路径、作用域收窄、未受保护的读取（例如提升的函数声明槽，这不是 TDZ 语义）。
   这些以及 Codex 关于动态激活测试和独立 allocation 证据的建议，留作后续。
+
+## 8. Codex 第十二轮阻断项 R1 及修复
+
+**问题**：中间函数自己访问某个 incoming cell 时，只原样复制它自身的用法，后代对同一 cell 的
+Language 读取或写入没有进入它的 `storage.uses`。因此，中间函数自身带 guard 的读取会掩盖后代
+更强的要求，向上汇总出 `kGuarded`，父函数就可能错误地延迟声明。98d806ec 也有同样的缺口。
+反例：子函数无 guard 地写入外层 Hole 槽，在 VM 中会成功，而原生 `x = value` 会抛出 TDZ。
+
+**修复（`PlanFamilyCells`）**：
+- 对所有 incoming cell 汇总后代需求和 entry 需求，不再只汇总零访问的 cell。
+- 中间函数自身的 `kGuarded` 用法，只要该 cell 上有任何 Language 需求，就加强为 `kLanguage`。
+  向上的需求由加强后的用法计算。
+- `capture_cells` 的 owner 检查只允许“与原始相同”或“原始 Guarded 加强为 Language”，绝不允许
+  减弱。
+
+**测试**：
+- 新增 fixture `ownwrite`：中间函数带 guard 读取，嵌套箭头写入，现在被拒绝。修复前该 record
+  会被完整恢复。在这个例子里 es2abc 恰好在写入前插入了 guard，所以修复前的 Node 行为碰巧一致，
+  但对任意 ABC 并不健全。
+- 新增 fixture `ownread`：中间函数和嵌套箭头都带 guard 读取，仍然完整恢复，并通过 Node 差分。
+- 新增动态激活 fixture（Codex 第十一轮建议）：`recursion`（每层激活各有一个新 cell）、
+  `initthrow`（初始化抛出后，已逃逸的闭包仍处于 TDZ）、`fnowner`（普通函数作为所有者）。
+- 变异检测推广到缩进的声明：把声明提到所在块的块首。
+
+**验证**：
+- 固定 65 项全部通过。
+- 定向 220 项中失败的仅为 14 个基线原有失败。
+- 探索集保持 448/620：修复只收紧了反例情形，探索集中没有受影响的 record。

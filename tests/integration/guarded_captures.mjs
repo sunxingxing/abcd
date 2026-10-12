@@ -14,10 +14,12 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const [structure, fixtures] = process.argv.slice(2);
-const complete = ['probe', 'twice', 'mutate', 'parentread', 'rhs', 'forward', 'forwardmixed', 'laterblock'];
+const complete = ['probe', 'twice', 'mutate', 'parentread', 'rhs', 'forward', 'forwardmixed', 'laterblock',
+  'recursion', 'initthrow', 'fnowner', 'ownread'];
 const refused = {
   childwrite: {domain: 'abcd::source::ScopeError', value: 3},
   forwardwrite: {domain: 'abcd::source::ScopeError', value: 3},
+  ownwrite: {domain: 'abcd::source::ScopeError', value: 3},
   branch: {domain: 'abcd::source::ScopeError', value: 3},
 };
 const runner = `
@@ -55,12 +57,21 @@ try {
     assert.ok(expected.includes('throw:ReferenceError'), name + ' exercises TDZ: ' + expected);
     assert.equal(evaluate(decompiled), expected, name);
     // Hoisting any deferred `let x = v` back to an early `let x;` must be observable.
-    const text = readFileSync(decompiled, 'utf8');
-    const deferred = [...text.matchAll(/^let (\$local\d+) = (.*);$/gm)];
-    assert.ok(deferred.length > 0, name + ' declares its cell at the store');
-    let hoisted = text;
-    for (const [line, symbol, value] of deferred)
-      hoisted = `let ${symbol};\n` + hoisted.replace(line, `${symbol} = ${value};`);
+    // Each `let X = V;` becomes `X = V;` with `let X;` at the top of its
+    // enclosing block (the nearest less-indented line opening a brace).
+    const lines = readFileSync(decompiled, 'utf8').split('\n');
+    const declaration = /^(\s*)let (\$\w+) = (.*);$/;
+    const found = lines.map((line, i) => [i, line.match(declaration)]).filter(([, m]) => m);
+    assert.ok(found.length > 0, name + ' declares its cell at the store');
+    const inserts = found.map(([i, [, indent, symbol, value]]) => {
+      lines[i] = `${indent}${symbol} = ${value};`;
+      let owner = i - 1;
+      while (owner >= 0 && !(lines[owner].trimEnd().endsWith('{') &&
+          lines[owner].length - lines[owner].trimStart().length < indent.length)) --owner;
+      return [owner + 1, `${indent}let ${symbol};`];
+    });
+    for (const [at, line] of inserts.sort((a, b) => b[0] - a[0])) lines.splice(at, 0, line);
+    const hoisted = lines.join('\n');
     const mutated = join(directory, name + '.hoisted.mjs');
     writeFileSync(mutated, hoisted);
     assert.notEqual(evaluate(mutated), expected, name + ' mutation must be detected');
