@@ -67,8 +67,16 @@
     `ReadAt`，短读或读错误都会置位；越界属于格式错误，不置位。
   - **输入变更**：`CheckUnchanged`。
   
-  只要出现其中任何一种，导出就失败，不论该 record 的结果是什么类型。输出写入失败（包括
-  `StructureFault::kWrite`、`EmitError::kWrite`、撤回部分产物时删除失败）同样致命。
+  只要出现其中任何一种，导出就失败，不论该 record 的结果是什么类型。错误码本身不决定致命性：
+  各阶段会把无关错误折叠进 `kRead`/`kWrite`（例如名称字符串格式错误折叠为 `kRead`），所以
+  record 级只剩入口捕获的 `kAllocationFailure` 一种按错误码判为致命；模块上下文失败也按
+  record 隔离。
+  
+  真实输出文件的 I/O 失败在写文件处判定，同样致命，包括以下几种：
+  - 结构写入器目标缓冲的短写：单独记录，优先于同一 record 之后出现的结构错误；输出配额
+    耗尽不会触及目标流。
+  - 关闭时才暴露的刷新失败。
+  - 撤回部分产物时删除失败。
   
   没有出现进程级故障时，失败按 record 隔离：
   - 资源类失败（`kResourceLimit`、`kMemoryLimit` 类 route refusal）视为该 record 自身预算耗尽，
@@ -104,16 +112,17 @@
 |---|---|
 | 固定五份的 value-tree 产物，`f0028f54` 与 `7b2491b7` 两套二进制对照，覆盖默认合同和 numeric+constructors 合同 | 源码逐字节一致；manifest 只差在删除的 `legacy_writer_used` 字段。之后 manifest 升为 schema 2，失败记录的字段也随之改变 |
 | 全量构建 `make -k all` | 0 错误 |
-| 固定 65 项（`ctest --preset source-regression`，第八轮审查修复后） | **65/65，97.73s** |
+| 固定 65 项（`ctest --preset source-regression`，第九轮审查修复后） | **65/65，85.12s** |
 | 固定五份，numeric+constructors 合同 | 106/106 完整，与之前一致 |
 | 审查修复相关的 16 项定向测试（含新增的 `record_failure_json_test`） | 16/16 通过；`historical_record_source_test` 由原有失败转为通过 |
-| 第八轮审查修复后的定向回归（215 项，`-j3`，window 与 community 单独运行） | 201 通过，失败的只有下行 14 项原有失败；window、community 单独运行通过 |
+| 第九轮审查修复后的定向回归（218 项，`-j3`，window 与 community 单独运行） | 204 通过，失败的只有下行 14 项原有失败；window、community 单独运行通过 |
+| `record_isolation_cli_test`（新增）：把 Immersive 中一个 record 的 scope 名称字符串改成非法 MUTF-8，并重算校验和 | 导出成功；只有该 record 失败，带 `MetadataError` 原因链，其余 record 结果不变。修复前，整个导出会因 `kRead` 中止 |
 | 相对 `f0028f54` 改动过的全部测试，加本轮新增测试 | 除下行所列原有失败外均通过，详见 [测试台账](2026-10-12-legacy-test-ledger.md) |
 | 原有失败（在 `f0028f54` 基线上以相同原因失败） | pasteboard_breakpoint、backup_class_cells、index_record、navigation_graph、minigame_navigation_graph、module_entry_initialization、phased_arguments、file_generator_return(_loop)、phased_method、hotitem_retained_selection、value_tree_{pasteboard,call,immersive}_slice |
 | `window_navigation_graph_source_test`、`community_ability_graph_source_test` | 单独运行均通过（231s、205s）；与其他测试并行运行时，其 60 秒 worker 子进程会超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |
-| 探索集：40 个应用，`--value-source --language-numeric --language-constructors`，按元数据统一分类口径，模块 record 完整恢复 | `f0028f54`：81/611（12.x/13.0.1 为 81/299，24.0 为 0/312），整文件失败 1。现在：**430/620**（12.x/13.0.1 为 218/308，24.0 为 212/312），整文件失败 **0**。第八轮修复后复跑，结果不变 |
-| **冻结留出集**：60 个从未接触过的应用（每个版本 15 个），共登记两次评估，均未用于调优 | 第二次：整文件失败 **0**；模块 record 完整恢复 **386/505（76.4%）**：12.0.2 为 95/125，12.0.6 为 118/139，13.0.1 为 89/124，24.0 为 84/117。第一次（`a4d9722f`）为 386/509，当时有 4 个模块上下文失败被误计为模块。第八轮修复后复跑，结果相同（只核对回归，未用于调优） |
+| 探索集：40 个应用，`--value-source --language-numeric --language-constructors`，按元数据统一分类口径，模块 record 完整恢复 | `f0028f54`：81/611（12.x/13.0.1 为 81/299，24.0 为 0/312），整文件失败 1。现在：**430/620**（12.x/13.0.1 为 218/308，24.0 为 212/312），整文件失败 **0**。第八、九轮修复后复跑，结果不变 |
+| **冻结留出集**：60 个从未接触过的应用（每个版本 15 个），共登记两次评估，均未用于调优 | 第二次：整文件失败 **0**；模块 record 完整恢复 **386/505（76.4%）**：12.0.2 为 95/125，12.0.6 为 118/139，13.0.1 为 89/124，24.0 为 84/117。第一次（`a4d9722f`）为 386/509，当时有 4 个模块上下文失败被误计为模块。第八、九轮修复后复跑，结果相同（只核对回归，未用于调优） |
 
 ## 已知限制
 

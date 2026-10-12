@@ -24,9 +24,13 @@ void RecordText::String(std::ostream& out, abc::EntityOffset offset) const {
   String(out, Read(offset));
 }
 namespace {
+// Quota exhaustion never reaches the target streams; write_failed records a
+// real short write by a target buffer and takes precedence over any later
+// structural error, so an output fault is never reported as a record fault.
 struct OutputQuota {
   std::size_t remaining;
   bool exceeded = false;
+  bool write_failed = false;
 };
 class OutputBuffer : public std::streambuf {
  public:
@@ -40,6 +44,7 @@ class OutputBuffer : public std::streambuf {
       return 0;
     }
     const auto written = target_->sputn(data, count);
+    if (written < count) quota_.write_failed = true;
     if (written > 0) quota_.remaining -= static_cast<std::size_t>(written);
     return written;
   }
@@ -246,6 +251,8 @@ std::variant<RecordCounts, StructureFailure> WriteRecordStructure(
     out << "],\"pending\":[\"class_layout\",\"globals\",\"local_scopes\","
            "\"source_signatures\",\"bodies\"]}\n";
     declaration << "export {};\n";
+    if (quota.write_failed)
+      return StructureFailure{record.offset, StructureFault::kWrite};
     if (quota.exceeded)
       return StructureFailure{record.offset, StructureFault::kOutputLimit};
     if (!out || !declaration)
@@ -254,10 +261,14 @@ std::variant<RecordCounts, StructureFailure> WriteRecordStructure(
       return StructureFailure{record.offset, abc::MetadataError::kFileChanged};
     return counts;
   } catch (const StructureFailure& failure) {
+    if (quota.write_failed)
+      return StructureFailure{record.offset, StructureFault::kWrite};
     if (quota.exceeded)
       return StructureFailure{record.offset, StructureFault::kOutputLimit};
     return failure;
   } catch (const std::bad_alloc&) {
+    if (quota.write_failed)
+      return StructureFailure{record.offset, StructureFault::kWrite};
     return StructureFailure{record.offset, StructureFault::kResourceLimit};
   } catch (const std::ios_base::failure&) {
     return StructureFailure{record.offset, StructureFault::kWrite};

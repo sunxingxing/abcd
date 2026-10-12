@@ -49,22 +49,6 @@ enum class SourceStatus : unsigned {
   kIncomplete = 4,
 };
 enum class SourceMode { kNone, kValueTree };
-bool FatalMetadata(abc::MetadataError error) {
-  return error == abc::MetadataError::kResourceLimit ||
-         error == abc::MetadataError::kRead ||
-         error == abc::MetadataError::kFileChanged;
-}
-bool FatalContext(const source::RecordModuleFailure& failure) {
-  if (const auto* error = std::get_if<source::RecordModuleError>(&failure.reason))
-    return *error == source::RecordModuleError::kResourceLimit;
-  if (const auto* error = std::get_if<abc::AttributeFailure>(&failure.reason))
-    return error->kind == abc::AttributeError::kFileChanged ||
-           (error->metadata_error && FatalMetadata(*error->metadata_error));
-  const auto kind = std::get<abc::ModuleFailure>(failure.reason).kind;
-  return kind == abc::ModuleError::kFileChanged ||
-         kind == abc::ModuleError::kRead ||
-         kind == abc::ModuleError::kResourceLimit;
-}
 int Fail(ExportError kind, std::uint32_t entity = 0) {
   std::cerr << nlohmann::json{{"error", static_cast<unsigned>(kind)},
                               {"entity", entity}}
@@ -291,6 +275,8 @@ int Export(const std::filesystem::path& input,
       }, failure.error);
       metadata.close();
       declarations.close();
+      // A write that only failed while flushing is an output fault too.
+      output_fault |= !metadata || !declarations;
       // The partial record is withdrawn; a failed removal would publish it.
       std::error_code removed_metadata, removed_declarations;
       std::filesystem::remove(tree.path / metadata_path, removed_metadata);
@@ -365,9 +351,11 @@ int Export(const std::filesystem::path& input,
             const auto built = source::BuildRecordSource(
                 file, *header, *index, *lookup, record, *ready, *roles, {}, identity,
                 functions ? &*functions : nullptr, classes ? &*classes : nullptr);
-            // An observed real allocation failure stops the export; budgets
-            // do not (input change is rechecked for every record below).
-            if (tools::RecordFailureIsFatal(built, tools::AllocationFailureObserved())) {
+            // Out-of-band process faults stop the export; folded error codes
+            // and budgets do not.
+            const bool process_fault = tools::AllocationFailureObserved() ||
+                                       file.ReadFailed() || file.CheckUnchanged().has_value();
+            if (tools::RecordFailureIsFatal(built, process_fault)) {
               // Typed diagnostic for the fatal record failure (S2).
               nlohmann::json failure;
               tools::DescribeRecordFailure(built, failure);
@@ -449,8 +437,8 @@ int Export(const std::filesystem::path& input,
           }
         } else {
           const auto& failure = std::get<source::RecordModuleFailure>(context);
-          if (FatalContext(failure))
-            return Fail(ExportError::kRecord, record.offset.value);
+          // Module context failures are this record's; process faults are
+          // rechecked out of band below.
           record_manifest["source_status"] =
               static_cast<unsigned>(SourceStatus::kModuleContext);
           record_manifest["source_error"] = failure.reason.index();

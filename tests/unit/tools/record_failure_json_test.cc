@@ -52,20 +52,22 @@ int main() {
   nlohmann::json printed = nlohmann::json::object();
   tools::DescribeRecordFailure(source::PrintedSource{}, printed);
   Check(printed.empty());
-  // Fatality: an observed real allocation failure is process-level for every
-  // outcome, including recovered success; otherwise only input I/O/change and
-  // entry allocation failure stop the export, and budgets are per record.
-  const auto fatal = [](source::RecordProgramError kind, bool allocation_failed) {
-    return tools::RecordFailureIsFatal(source::RecordProgramFailure{kind, {}}, allocation_failed);
+  // Fatality is decided out of band: an observed process fault (allocation,
+  // input read, input change) is fatal for every outcome, including recovered
+  // success. Without one only an entry allocation failure stops the export;
+  // folded codes (kRead from malformed names, kWrite from invalid literals),
+  // budgets and other typed failures are per record.
+  const auto fatal = [](source::RecordProgramError kind, bool process_fault) {
+    return tools::RecordFailureIsFatal(source::RecordProgramFailure{kind, {}}, process_fault);
   };
   using Error = source::RecordProgramError;
   for (const auto kind : {Error::kRecordBudget, Error::kOutputLimit, Error::kEntry,
-                          Error::kResourceLimit, Error::kExport, Error::kFileIndex}) {
+                          Error::kResourceLimit, Error::kExport, Error::kFileIndex,
+                          Error::kSourcePath, Error::kRead, Error::kWrite, Error::kFileChanged}) {
     Check(!fatal(kind, false));
     Check(fatal(kind, true));
   }
-  for (const auto kind : {Error::kAllocationFailure, Error::kRead, Error::kWrite, Error::kFileChanged})
-    Check(fatal(kind, false) && fatal(kind, true));
+  Check(fatal(Error::kAllocationFailure, false) && fatal(Error::kAllocationFailure, true));
   const source::RouteRefusal memory{{source::RouteFailureClass::kMemoryLimit,
       source::ValueRouteError::kTreeStage, {}}};
   Check(!tools::RecordFailureIsFatal(memory, false) && tools::RecordFailureIsFatal(memory, true));

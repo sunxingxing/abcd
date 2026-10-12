@@ -35,19 +35,9 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
 }
 
 bool RecordFailureIsFatal(const source::RecordSourceResult& result,
-                          bool allocation_failed) {
-  if (allocation_failed) return true;
+                          bool process_fault) {
+  if (process_fault) return true;
   const auto* failure = std::get_if<source::RecordProgramFailure>(&result);
-  if (!failure) return false;
-  using Error = source::RecordProgramError;
-  switch (failure->kind) {
-    case Error::kRead:
-    case Error::kWrite:
-    case Error::kFileChanged:
-    case Error::kAllocationFailure:
-      return true;
-    default:
-      return false;
-  }
+  return failure && failure->kind == source::RecordProgramError::kAllocationFailure;
 }
 }  // namespace abcd::tools

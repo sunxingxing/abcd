@@ -2322,6 +2322,9 @@ if(BUILD_TESTING)
         -DABCD_ROUTES_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_constants_sample.mjs
         -DABCD_BACKUP_ORACLE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/entry_backup_ability.mjs
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/structure_source_cli.cmake)
+      add_test(NAME record_isolation_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/record_isolation.mjs
+        $<TARGET_FILE:abc_structure> ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
     endif()
     if(ABCD_NODE_EXECUTABLE AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND

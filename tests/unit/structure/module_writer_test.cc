@@ -135,6 +135,32 @@ int main() {
   Check(std::get<structure::StructureFault>(
             std::get<structure::StructureFailure>(limited).error) ==
         structure::StructureFault::kOutputLimit);
+  // A real short write by a target buffer is an output fault (kWrite) and
+  // takes precedence over a later structural fault of the same record; quota
+  // exhaustion (above) never reaches the targets.
+  struct Refusing : std::streambuf {
+    std::streamsize xsputn(const char*, std::streamsize) override { return 0; }
+    int_type overflow(int_type) override { return traits_type::eof(); }
+  } refusing;
+  std::ostream refused(&refusing);
+  abc::MetadataIndex foreign;
+  foreign.methods.resize(1);
+  foreign.methods[0].owner_offset = abc::EntityOffset{request.value + 1};
+  abc::RecordInfo owner;
+  owner.offset = request;
+  owner.method_count = 1;
+  const auto foreign_lookup =
+      std::get<abc::MethodLookup>(abc::MethodLookup::Build(foreign.methods));
+  const auto fault = [&](std::ostream& json, std::ostream& declaration) {
+    return std::get<structure::StructureFault>(
+        std::get<structure::StructureFailure>(structure::WriteRecordStructure(
+            file, header, foreign, foreign_lookup, owner,
+            abc::FilePackaging::kBundle, json, declaration)).error);
+  };
+  std::ostringstream healthy_json, healthy_declarations;
+  Check(fault(healthy_json, healthy_declarations) == structure::StructureFault::kOwner);
+  std::ostringstream other_declarations;
+  Check(fault(refused, other_declarations) == structure::StructureFault::kWrite);
   // Keep ctime stable until all lazy readers and identity checks finish.
   unlink(path);
 }
