@@ -927,6 +927,94 @@
             }
           ],
           "note": "Second recorded evaluation after review-driven correctness fixes; no fix was guided by these inputs."
+        },
+        {
+          "date": "2026-10-12",
+          "implementation": "28a8d453",
+          "options": "--value-source --language-numeric --language-constructors",
+          "tool": "abc_capability (metadata-based module classification)",
+          "exports": 60,
+          "export_failures": 0,
+          "total": {
+            "complete": 395,
+            "failed": 110,
+            "incomplete": 0,
+            "module_context_failed": 0,
+            "module_records": 505,
+            "module_unknown": 0,
+            "non_module": 556,
+            "profile_refused": 0,
+            "records": 1061
+          },
+          "by_version": {
+            "12.0.2.0": {
+              "module_records": 125,
+              "module_unknown": 0,
+              "complete": 97,
+              "failed": 28
+            },
+            "12.0.6.0": {
+              "module_records": 139,
+              "module_unknown": 0,
+              "complete": 118,
+              "failed": 21
+            },
+            "13.0.1.0": {
+              "module_records": 124,
+              "module_unknown": 0,
+              "complete": 93,
+              "failed": 31
+            },
+            "24.0.0.0": {
+              "module_records": 117,
+              "module_unknown": 0,
+              "complete": 87,
+              "failed": 30
+            }
+          },
+          "top_leaves": [
+            {
+              "leaf": "abcd::source::ScopeError=3",
+              "records": 35
+            },
+            {
+              "leaf": "abcd::source::FunctionEmitError=1",
+              "records": 15
+            },
+            {
+              "leaf": "abcd::source::DerivedProjectionError=1",
+              "records": 14
+            },
+            {
+              "leaf": "abcd::source::TreePrintError=0",
+              "records": 8
+            },
+            {
+              "leaf": "abcd::analysis::SemanticError=1",
+              "records": 6
+            },
+            {
+              "leaf": "abcd::source::TreePrintError=3",
+              "records": 5
+            },
+            {
+              "leaf": "abcd::source::ClassInitializerError=1",
+              "records": 4
+            },
+            {
+              "leaf": "abcd::source::EvaluationError=5",
+              "records": 4
+            },
+            {
+              "leaf": "abcd::source::PhasedMethodError=4",
+              "records": 4
+            },
+            {
+              "leaf": "abcd::source::FunctionTreeError=0",
+              "records": 2
+            }
+          ],
+          "note": "Third evaluation, after the guarded-capture (TDZ) increments 98d806ec/3cfb5b45/31db00d2, which were developed on the exploration cohort only. No per-record regression against the second evaluation; the 9 newly complete records pass node --check. Not used for tuning."
         }
       ]
     },

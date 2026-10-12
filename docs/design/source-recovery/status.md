@@ -122,8 +122,8 @@
 | 原有失败（在 `f0028f54` 基线上以相同原因失败） | pasteboard_breakpoint、backup_class_cells、index_record、navigation_graph、minigame_navigation_graph、module_entry_initialization、phased_arguments、file_generator_return(_loop)、phased_method、hotitem_retained_selection、value_tree_{pasteboard,call,immersive}_slice |
 | `window_navigation_graph_source_test`、`community_ability_graph_source_test` | 单独运行均通过（231s、205s）；与其他测试并行运行时，其 60 秒 worker 子进程会超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |
-| 探索集：40 个应用，`--value-source --language-numeric --language-constructors`，按元数据统一分类口径，模块 record 完整恢复 | `f0028f54`：81/611（12.x/13.0.1 为 81/299，24.0 为 0/312），整文件失败 1。现在：**430/620**（12.x/13.0.1 为 218/308，24.0 为 212/312），整文件失败 **0**。第八、九轮修复后复跑，结果不变 |
-| **冻结留出集**：60 个从未接触过的应用（每个版本 15 个），共登记两次评估，均未用于调优 | 第二次：整文件失败 **0**；模块 record 完整恢复 **386/505（76.4%）**：12.0.2 为 95/125，12.0.6 为 118/139，13.0.1 为 89/124，24.0 为 84/117。第一次（`a4d9722f`）为 386/509，当时有 4 个模块上下文失败被误计为模块。第八、九轮修复后复跑，结果相同（只核对回归，未用于调优） |
+| 探索集：40 个应用，`--value-source --language-numeric --language-constructors`，按元数据统一分类口径，模块 record 完整恢复 | `f0028f54`：81/611，整文件失败 1。S2–S4 后：430/620。受保护捕获的三个增量之后：**448/620**，整文件失败 **0**，无逐 record 回退 |
+| **冻结留出集**：60 个从未接触过的应用（每个版本 15 个），共登记三次评估，均未用于调优 | 第二次：386/505（76.4%）。第三次（`28a8d453`，受保护捕获之后）：**395/505（78.2%）**，整文件失败 0，无逐 record 回退；新增的 9 个完整 record 全部通过 `node --check`。头号叶子 `ScopeError::kInitialization` 从 48 个降到 35 个 |
 
 ## 已知限制
 
