@@ -1,5 +1,29 @@
 # Claude 开发交接（2026-10-12）
 
+## 0. Claude 接手后的更新（以本节为准）
+
+- **接续位置已变更**：codex 工作树 `codex/resume-generator-post-loop`（`f0028f54`）已覆盖主检出
+  `/Users/sun/abcd` 的 `feat/abc-foundation`，并已快进推送到 `origin/feat/abc-foundation`。
+  后续开发在主检出进行，codex 工作树不再是事实来源。
+  - 主检出原有的 8 个未推送文档提交另存为本地分支 `backup/main-checkout-pre-overwrite-20261012`；
+    原有的循环相关未提交改动另存为 stash：`main-checkout loop WIP before overwrite …`。
+  - 第 5 节的 `cell.reset` 实验另存为本地分支 `wip/community-reset-experiment`（`1565478f`），
+    已从工作区撤回。它是未验证的宿主假设，不合并。
+- **审计共识**：Claude 与 Codex（gpt-6-astra，xhigh）两轮交叉审计的问题清单、修复顺序和
+  应停止的做法见 [2026-10-12-audit-consensus.md](2026-10-12-audit-consensus.md)。要点是：
+  目标为通用引擎，固定五份降为回归集；留出探针显示已准入版本只有 27% 的模块 record
+  完整恢复，24.0 版本为 0。
+- **已完成**：S0（共识与 WIP 处置）、S1（删除 legacy/shared 旧方案，只保留 value-tree 路线）、
+  S5 的 CLI 部分（共享 `process_limit`）。证据与已知残留见 [status.md](status.md)，测试去向
+  见 [旧路线测试台账](2026-10-12-legacy-test-ledger.md)。
+- **下一步**：按共识依次做 S2（错误链与能力报告）→ S3（record 失败隔离）→ S4（profile
+  能力表与 24.0）。之后是 C5/C3/C2/C4/C8，并冻结新的留出集。第 4–6 节中补 Community
+  平台模拟的计划按共识降级为回归维护，不再是主干的下一步。
+- 构建注意：主检出的 `build/regression` 用 preset 配置，需要额外指定
+  `-DRuby_EXECUTABLE=$PWD/build/deps/ruby/bin/ruby`（Ruby 必须是 3.2.3）。
+
+以下第 1–7 节为 codex 交出时的原文，保留作历史依据。
+
 本文按用户要求记录当前工作树、目标、已验收边界、未完成工作和接续步骤。
 **阶段一整体尚未完成；不要从 complete 标志、提交数、函数数量或测试场景数量推算完成百分比。**
 本次交接只更新文档，不继续开发，也不把未验收修改提交为实现成果。
