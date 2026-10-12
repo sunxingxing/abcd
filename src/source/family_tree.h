@@ -25,7 +25,7 @@ enum class FamilyTreeError : std::uint8_t {
 struct FamilyTreeFailure {
   FamilyId member;
   std::variant<FamilyTreeError, DerivedProjectionError, SyntaxResolutionFailure, ControlError,
-      EvaluationError, FunctionTreeError, TreeFlowError, FunctionAbiError,
+      EvaluationError, FunctionTreeFailure, TreeFlowError, FunctionAbiError,
       ModuleAliasFailure, ModuleAliasTreeError, FamilyError,
       ParameterPlanError, CellDefaultError, CellDefaultProofError, DefaultBodyError,
       analysis::ValueEnvironmentError, CellError, ModuleGuardError, CaptureCellFailure,

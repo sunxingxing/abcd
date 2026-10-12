@@ -109,15 +109,15 @@ void TreeBinding(const FunctionValues& parent, const FunctionValues& child,
   naming_budget = {}; naming_budget.bytes = 0;
   test::Check(std::get<CaptureTreeError>(BindCaptureAliases(cells, {outer, parent_flow}, inner.owner, {1}, naming_budget)) == CaptureTreeError::kResourceLimit);
   auto wrong_owner = child_syntax; wrong_owner.owner = {2};
-  test::Check(std::get<FunctionTreeError>(BuildFunctionTree(child.graph, child_control,
+  test::Check(std::get<FunctionTreeFailure>(BuildFunctionTree(child.graph, child_control,
       child_evaluation, wrong_owner, constants, {}, &incoming)) == FunctionTreeError::kCapture);
   auto stale = cells; ++stale.child_revision.value;
   const IncomingCaptureTree stale_input{stale, {outer, parent_flow}};
-  test::Check(std::get<FunctionTreeError>(BuildFunctionTree(child.graph, child_control,
+  test::Check(std::get<FunctionTreeFailure>(BuildFunctionTree(child.graph, child_control,
       child_evaluation, child_syntax, constants, {}, &stale_input)) == FunctionTreeError::kCapture);
   if (!names.aliases.empty()) {
     auto supplied = child_syntax; supplied.captures = names.aliases;
-    test::Check(std::get<FunctionTreeError>(BuildFunctionTree(child.graph, child_control,
+    test::Check(std::get<FunctionTreeFailure>(BuildFunctionTree(child.graph, child_control,
         child_evaluation, supplied, constants, {}, &incoming)) == FunctionTreeError::kCapture);
     test::Check(std::get<CaptureTreeError>(BindCaptureAliases(cells, {outer, parent_flow}, inner.owner,
         {std::numeric_limits<std::uint32_t>::max()})) == CaptureTreeError::kResourceLimit);

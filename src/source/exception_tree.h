@@ -47,7 +47,7 @@ struct ExceptionFunctionDraft {
   std::uint64_t work = 0;
   std::optional<TreeFlow> flow;
 };
-[[nodiscard]] std::variant<ExceptionFunctionDraft, FunctionTreeError>
+[[nodiscard]] std::variant<ExceptionFunctionDraft, FunctionTreeFailure>
 BuildExceptionFunctionDraft(const analysis::ValueProgram& graph,
     const ExceptionTreeInput& exceptions, const EvaluationPlan& evaluation,
     FunctionSyntax syntax, ExpressionConstants constants,

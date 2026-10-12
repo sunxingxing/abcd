@@ -186,14 +186,14 @@ void Staging(std::uint32_t count) {
   const auto& forest = std::get<ExpressionForest>(expressed);
   test::Check(std::holds_alternative<ExpressionForest>(BuildPhasedExpressionForest(
       graph, evaluation, 1, {0}, {constants, 1}, {SemanticBudget{}.bytes, forest.work})));
-  test::Check(std::get<ExpressionError>(BuildPhasedExpressionForest(
+  test::Check(std::get<ExpressionFailure>(BuildPhasedExpressionForest(
       graph, evaluation, 1, {0}, {constants, 1}, {SemanticBudget{}.bytes, forest.work - 1})) ==
       ExpressionError::kWorkLimit);
-  test::Check(std::get<ExpressionError>(BuildPhasedExpressionForest(
+  test::Check(std::get<ExpressionFailure>(BuildPhasedExpressionForest(
       graph, evaluation, 1, {0}, {constants, 1}, {0})) == ExpressionError::kResourceLimit);
   test::Check(forest.edges.empty() && forest.edge_assignments.empty());
   test::Check(forest.throw_assignments.size() == count && forest.catch_assignments.size() == count);
-  test::Check(std::holds_alternative<ExpressionError>(BuildExpressionForest(
+  test::Check(std::holds_alternative<ExpressionFailure>(BuildExpressionForest(
       graph, evaluation, 1, {0}, {constants, 1})));
   std::vector<bool> owned(forest.expressions.size());
   for (const auto roots : {std::span<const ExprId>(forest.throw_assignments),
@@ -342,8 +342,8 @@ void Decoded(abc::ProfileId profile, ThrowingSite site, std::ostream* output = n
   syntax.names = {u"field"}; syntax.parameters.resize(frame.parameters);
   const ExceptionTreeInput context{body, input, regions, control};
   const auto drafted = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, 1});
-  if (const auto* error = std::get_if<FunctionTreeError>(&drafted))
-    std::cerr << "exception tree error " << static_cast<unsigned>(*error) << '\n';
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&drafted))
+    std::cerr << "exception tree error " << static_cast<unsigned>(error->kind) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(drafted));
   const auto& draft = std::get<ExceptionFunctionDraft>(drafted);
   test::Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(draft.tree)));
@@ -461,7 +461,7 @@ void Decoded(abc::ProfileId profile, ThrowingSite site, std::ostream* output = n
   if (output) *output << text.str() << ",\n";
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(
       graph, context, evaluation, syntax, {constants, 1}, {SemanticBudget{}.bytes, draft.work})));
-  test::Check(std::get<FunctionTreeError>(BuildExceptionFunctionDraft(
+  test::Check(std::get<FunctionTreeFailure>(BuildExceptionFunctionDraft(
       graph, context, evaluation, syntax, {constants, 1}, {SemanticBudget{}.bytes, draft.work - 1})) ==
       FunctionTreeError::kWorkLimit);
 }

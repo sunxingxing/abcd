@@ -2327,6 +2327,9 @@ if(BUILD_TESTING)
         $<TARGET_FILE:abc_structure> ${ABCD_PAIRED_CORPUS_ROOT}/Immersive/modules.abc)
     endif()
     if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME call_references_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/call_references.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/call_references)
       add_test(NAME guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_captures.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_captures)

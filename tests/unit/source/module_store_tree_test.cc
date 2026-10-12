@@ -44,7 +44,7 @@ void Run(std::uint32_t count, abc::ProfileId profile, bool print) {
   }
   const ExpressionConstants constants{operations, syntax.names.size(), 0};
   const auto built = BuildFunctionTree(graph, control, evaluation, syntax, constants);
-  if (const auto* error = std::get_if<FunctionTreeError>(&built)) {
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) {
     std::cerr << "tree " << static_cast<unsigned>(*error) << '\n'; test::Check(false);
   }
   const auto& tree = std::get<ConstructedFunction>(built).tree;
@@ -70,15 +70,15 @@ void Run(std::uint32_t count, abc::ProfileId profile, bool print) {
   wrong = operations;
   std::get<ModuleStoreConstant>(wrong[stores.front().value]).initialize = false;
   wrong_constants.operations = wrong;
-  test::Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, wrong_constants)));
+  test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, wrong_constants)));
   auto readonly = syntax;
   readonly.modules[0].access = ModuleAccess::kReadOnly;
-  test::Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, readonly, constants)));
+  test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, readonly, constants)));
   if (count > 1) {
     wrong = operations;
     std::get<ModuleStoreConstant>(wrong[stores[1].value]).initialize = true;
     wrong_constants.operations = wrong;
-    test::Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, wrong_constants)));
+    test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, wrong_constants)));
   }
 }
 }

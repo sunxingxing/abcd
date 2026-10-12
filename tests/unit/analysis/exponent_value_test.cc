@@ -90,8 +90,8 @@ void Phased(const abc::MethodBody& original, bool admitted, bool representable =
       break;
     }
     test::Check(checked);
-    test::Check(std::holds_alternative<FunctionTreeError>(built));
-    test::Check(std::get<FunctionTreeError>(built) == FunctionTreeError::kSemantics);
+    test::Check(std::holds_alternative<FunctionTreeFailure>(built));
+    test::Check(std::get<FunctionTreeFailure>(built) == FunctionTreeError::kSemantics);
     return;
   }
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
@@ -125,8 +125,8 @@ std::string Source(const abc::MethodBody& body, bool representable = true, std::
   syntax.strictness = Strictness::kStrict;
   const auto built = BuildFunctionTree(graph, control, evaluation, syntax, {constants});
   if (!representable) {
-    test::Check(std::holds_alternative<FunctionTreeError>(built));
-    test::Check(std::get<FunctionTreeError>(built) == FunctionTreeError::kSemantics);
+    test::Check(std::holds_alternative<FunctionTreeFailure>(built));
+    test::Check(std::get<FunctionTreeFailure>(built) == FunctionTreeError::kSemantics);
     return {};
   }
   const auto tree = std::get<ConstructedFunction>(built).tree;

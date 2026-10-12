@@ -165,7 +165,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
   const auto constructed = BuildExceptionFunctionDraft(
       graph, context, evaluation, syntax, {constants, syntax.names.size()});
   if (split_dispatch) {
-    test::Check(std::get<FunctionTreeError>(constructed) == FunctionTreeError::kSemantics);
+    test::Check(std::get<FunctionTreeFailure>(constructed) == FunctionTreeError::kSemantics);
     return evaluation.literals->work;
   }
   const auto& draft = std::get<ExceptionFunctionDraft>(constructed);

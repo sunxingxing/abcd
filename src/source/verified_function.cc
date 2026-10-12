@@ -384,18 +384,18 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     auto tree_budget = budget.Remaining();
     if (transferred > allowance.bytes - tree_budget.bytes) throw Error::kResourceLimit;
     tree_budget.bytes += transferred;
-    auto constructed = [&]() -> std::variant<ConstructedFunction, FunctionTreeError> {
+    auto constructed = [&]() -> std::variant<ConstructedFunction, FunctionTreeFailure> {
       if (!phased) return BuildFunctionTree(graph, *control, *evaluation,
           std::move(syntax), constant_view, tree_budget);
       auto drafted = BuildExceptionFunctionDraft(graph, phased->TreeInput(*body), *evaluation,
           std::move(syntax), constant_view, tree_budget);
       if (auto* result = std::get_if<ExceptionFunctionDraft>(&drafted))
         return ConstructedFunction{std::move(result->tree), result->allocated_bytes, result->work, std::move(result->flow)};
-      return std::get<FunctionTreeError>(drafted);
+      return std::get<FunctionTreeFailure>(drafted);
     }();
     auto* function = std::get_if<ConstructedFunction>(&constructed);
     if (!function) {
-      const auto error = std::get<FunctionTreeError>(constructed);
+      const auto error = std::get<FunctionTreeFailure>(constructed);
       if (error == FunctionTreeError::kResourceLimit) throw Error::kResourceLimit;
       if (error == FunctionTreeError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kTree;

@@ -118,7 +118,7 @@ void MissingWitness() {
   test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
   graph.values[0].domain = ValueKinds::NonNaNNumber();
   test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
-  test::Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, resolved)));
+  test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, resolved)));
 }
 
 }

@@ -316,7 +316,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
       const auto constants = syntax->View();
       const auto tree = BuildExceptionFunctionDraft(phased.Graph(), phased.TreeInput(*body),
           phased.Evaluation(), std::move(syntax->syntax), constants, budget);
-      if (const auto* error = std::get_if<FunctionTreeError>(&tree)) report["tree_error"] = static_cast<unsigned>(*error);
+      if (const auto* error = std::get_if<FunctionTreeFailure>(&tree)) report["tree_error"] = static_cast<unsigned>(*error);
       else {
         const auto& draft = std::get<ExceptionFunctionDraft>(tree);
         if (phased.Modules()) {

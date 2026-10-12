@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
     syntax.identity = identity; syntax.method = index.methods[creator->value].offset;
     syntax.owner = {1}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
     auto constructed = BuildFunctionTree(graph, control, plan, syntax, {constants});
-    if (const auto* error = std::get_if<FunctionTreeError>(&constructed)) {
+    if (const auto* error = std::get_if<FunctionTreeFailure>(&constructed)) {
       std::cerr << "creation AST failure " << static_cast<unsigned>(*error) << '\n'; return 1;
     }
     const auto& root = std::get<ConstructedFunction>(constructed).tree;
@@ -108,10 +108,10 @@ int main(int argc, char** argv) {
     Check(std::get<TreePrintError>(PrintFunctionTree(wrong_owner, rejected)) == TreePrintError::kUnsupportedContext);
     auto missing = constants;
     missing[1] = std::monostate{};
-    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, plan, syntax, {missing})));
+    Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, plan, syntax, {missing})));
     auto wrong_creation = graph;
     ++std::get<analysis::ValueClassCreation>(wrong_creation.ops[1].operation).constructor.value;
-    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(wrong_creation, control, plan, syntax, {constants})));
+    Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(wrong_creation, control, plan, syntax, {constants})));
     std::ostringstream unprepared;
     Check(std::get<TreePrintError>(PrintFunctionTree(root, unprepared)) == TreePrintError::kUnsupportedContext);
     // Prepare only after the parent AST, then fill its original ClassExpr.

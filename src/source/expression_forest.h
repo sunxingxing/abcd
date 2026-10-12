@@ -61,6 +61,15 @@ enum class ExpressionError : std::uint8_t {
   kBinding, kOrigin, kConstant, kUnavailableValue, kUnsupportedOperation,
   kOwnership, kResourceLimit, kWorkLimit
 };
+// An expression refusal with its typed cause (a call-plan refusal behind
+// kUnsupportedOperation). Compares equal to its kind; the cause is diagnostic.
+struct ExpressionFailure {
+  ExpressionError kind;
+  std::variant<std::monostate, CallPlanError> cause;
+  ExpressionFailure(ExpressionError value) : kind(value) {}  // NOLINT: implicit kind.
+  ExpressionFailure(ExpressionError value, CallPlanError plan) : kind(value), cause(plan) {}
+  bool operator==(ExpressionError value) const { return kind == value; }
+};
 // Inputs must have passed import/rewrite verification. Builds each owned tree
 // once in dependency order, without recursion or sharing effectful expressions.
 // Checked placements retain runtime order; binding identity uses original IDs.
@@ -79,7 +88,7 @@ enum class ExpressionError : std::uint8_t {
 // independently from actual control-arm ownership and checks omitted-edge copies.
 // AllowPartial can return recovery_stop for a supported straight-line prefix;
 // its expressions are still exclusively owned by the retained root operations.
-[[nodiscard]] std::variant<ExpressionForest, ExpressionError>
+[[nodiscard]] std::variant<ExpressionForest, ExpressionFailure>
 BuildExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
     FunctionOwnerId owner, ExpressionConstants constants,
@@ -89,7 +98,7 @@ BuildExpressionForest(const analysis::ValueProgram& graph,
     std::span<const BranchPolarity> polarity = {}, CallableKind callable = CallableKind::kFunction,
     analysis::ArithmeticSemantics arithmetic = analysis::ArithmeticSemantics::kPinnedRuntime,
     ConstructorSemantics constructors = ConstructorSemantics::kPinnedRuntime);
-[[nodiscard]] std::variant<ExpressionForest, ExpressionError>
+[[nodiscard]] std::variant<ExpressionForest, ExpressionFailure>
 BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
     FunctionOwnerId owner, ExpressionConstants constants,

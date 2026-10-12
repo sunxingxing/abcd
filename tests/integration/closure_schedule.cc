@@ -134,7 +134,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print) {
           constants[i] = NameId{field->name.value - 4};
       const auto forest = BuildExpressionForest(graph, std::get<EvaluationPlan>(evaluation), 3,
           inputs.Owner(FileFamily::kRoot), {constants, 2});
-      test::Check(std::get<ExpressionError>(forest) == ExpressionError::kOwnership);
+      test::Check(std::get<ExpressionFailure>(forest) == ExpressionError::kOwnership);
     }
   }
   std::ostringstream output;

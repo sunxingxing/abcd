@@ -9,7 +9,7 @@ namespace abcd::source {
 // Transfers checked phi-expression ownership; selected logical edges are
 // consumed by the enclosing expression. No allocations beyond admitted vectors.
 // Failure leaves an unpublished partial forest, which the caller must discard.
-[[nodiscard]] std::variant<std::uint64_t, ExpressionError> AppendCopyExpressions(
+[[nodiscard]] std::variant<std::uint64_t, ExpressionFailure> AppendCopyExpressions(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     ExpressionForest& forest, FunctionOwnerId owner, std::uint64_t work, std::span<const std::uint8_t> selected_edges = {});
 }  // namespace abcd::source

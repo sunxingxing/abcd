@@ -36,7 +36,7 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
   auto built = BuildExceptionFunctionDraft(parent.Graph(), parent.TreeInput(body), evaluation,
       std::move(syntax->syntax), constants, budget);
   auto* tree = std::get_if<ExceptionFunctionDraft>(&built);
-  if (!tree) { result.tree_error = std::get<FunctionTreeError>(built); return result; }
+  if (!tree) { result.tree_error = std::get<FunctionTreeFailure>(built); return result; }
   result.stage = FamilyProbeStage::kParentFlow;
   auto flowed = VerifyExceptionTreeFlow(parent.Graph(), parent.TreeInput(body), evaluation, tree->tree, budget);
   auto* flow = std::get_if<TreeFlow>(&flowed);
@@ -118,7 +118,7 @@ ExceptionFamilyProbe ProbeExceptionFamily(const corpus::AbcFile& file,
     auto child_built = BuildFunctionTree(graph, *control, *child_evaluation,
         std::move(child_syntax->syntax), child_constants, budget, &incoming);
     auto* child_tree = std::get_if<ConstructedFunction>(&child_built);
-    if (!child_tree) { result.tree_error = std::get<FunctionTreeError>(child_built); return result; }
+    if (!child_tree) { result.tree_error = std::get<FunctionTreeFailure>(child_built); return result; }
     result.stage = FamilyProbeStage::kChildFlow;
     auto child_flowed = VerifyTreeFlow(graph, *control, *child_evaluation, child_tree->tree, budget);
     auto* child_flow = std::get_if<TreeFlow>(&child_flowed);

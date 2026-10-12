@@ -47,7 +47,7 @@ void ScopeEscape(abc::ProfileId profile) {
   FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction;
   syntax.strictness = Strictness::kStrict; syntax.parameters.resize(frame.parameters);
   std::vector<ExpressionConstant> constants(graph.ops.size());
-  test::Check(std::get<FunctionTreeError>(BuildExceptionFunctionDraft(graph,
+  test::Check(std::get<FunctionTreeFailure>(BuildExceptionFunctionDraft(graph,
       {body, input, regions, control}, evaluation, std::move(syntax), {constants})) == FunctionTreeError::kBinding);
 }
 void Run(abc::ProfileId profile, StoreOrder order, std::size_t count = 1,

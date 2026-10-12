@@ -174,7 +174,7 @@ class CopyExpressions {
   std::span<const std::uint8_t> selected_edges_;
 };
 }  // namespace
-std::variant<std::uint64_t, ExpressionError> AppendCopyExpressions(
+std::variant<std::uint64_t, ExpressionFailure> AppendCopyExpressions(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     ExpressionForest& forest, FunctionOwnerId owner, std::uint64_t work, std::span<const std::uint8_t> selected_edges) {
   try {

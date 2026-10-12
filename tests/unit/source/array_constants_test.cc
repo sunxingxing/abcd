@@ -82,12 +82,12 @@ int main(int argc, char**) {
       FunctionSyntax syntax{}; syntax.method = {kMethod}; syntax.callable = CallableKind::kFunction;
       syntax.strictness = Strictness::kStrict; syntax.names = constants.names; syntax.texts = constants.texts;
       const auto built = BuildFunctionTree(graph, control, evaluation, syntax, constants.View());
-      if (const auto* error = std::get_if<FunctionTreeError>(&built)) std::cerr << "tree error=" << static_cast<unsigned>(*error) << '\n';
+      if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error=" << static_cast<unsigned>(*error) << '\n';
       const auto tree = std::get<ConstructedFunction>(built).tree;
       test::Check(tree.properties.size() == kCounts[slot]);
       auto wrong_constants = constants;
       std::get<AggregateConstant>(wrong_constants.operations[0]).kind = AggregateKind::kObject;
-      test::Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, wrong_constants.View())));
+      test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, wrong_constants.View())));
       if (!tree.properties.empty()) {
         auto changed = tree;
         changed.expressions[changed.properties.front().value.value].expression = TreeLiteral{UndefinedLiteral{}};

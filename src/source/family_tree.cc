@@ -219,12 +219,12 @@ class FamilyTrees {
       if (derived && derived->implicit) constants.implicit_constructor = &function.Normal();
       auto constructed = [&]() -> ConstructedFunction {
         if (phase) {
-          auto draft = Take<ExceptionFunctionDraft, FunctionTreeError>(BuildExceptionFunctionDraft(graph,
+          auto draft = Take<ExceptionFunctionDraft, FunctionTreeFailure>(BuildExceptionFunctionDraft(graph,
               phase->Phases().TreeInput(phase->Body()), evaluation, std::move(syntax.syntax), constants, left_,
               incoming ? &*incoming : nullptr));
           return {std::move(draft.tree), draft.allocated_bytes, draft.work, std::move(draft.flow)};
         }
-        return Take<ConstructedFunction, FunctionTreeError>(BuildFunctionTree(graph, control,
+        return Take<ConstructedFunction, FunctionTreeFailure>(BuildFunctionTree(graph, control,
             evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr,
             member.children.empty() && !family.members[i].function.Defaults() ? recovery_ : RecoveryMode::kCompleteOnly));
       }();

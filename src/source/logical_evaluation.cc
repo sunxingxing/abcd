@@ -428,6 +428,26 @@ struct DomainIndex {
     }
   }
 };
+// The selection's consumer may itself be an inline operand of a larger
+// expression in the same block (e.g. the argument call of `o.f(G(x?.y))`).
+// That whole expression is the transformation's final consumer: its earlier
+// operands, such as a member callee read before the selection, belong to the
+// same eager evaluation and join the same interval proof. Only actual inline
+// consumer edges extend it, forward within the block; any root or other
+// placement ends it. Returns the final consumer; collects the ancestors.
+OpId InlineAncestors(const ValueProgram& graph, const EvaluationPlan& plan, OpId consumer,
+    TreeCheckBudget& budget, std::vector<OpId>* chain = nullptr) {
+  for (;;) {
+    budget.Step();
+    const auto& placement = plan.operations[consumer.value];
+    if (placement.kind != EvaluationKind::kInline || !placement.consumer) return consumer;
+    const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
+    if (!owner || graph.ops[owner->value].block != graph.ops[consumer.value].block ||
+        graph.ops[owner->value].order <= graph.ops[consumer.value].order) return consumer;
+    consumer = *owner;
+    if (chain) { budget.Admit(1, sizeof(OpId)); chain->push_back(consumer); }
+  }
+}
 // Contract selections with their linear execution prefixes and final join.
 // Each selection is one conditional event; its arms remain independently checked. A private
 // object interval grows at each own definition and is consumed exactly once.
@@ -441,6 +461,11 @@ class Domain {
         last_owner_(std::get<OpId>(graph.uses[(object ? object->consumer :
             *selections.consumers[route.back()->branch.value]).value].owner)) {
     Require(graph.ops[last_owner_.value].block == route.back()->join);
+    // Object routes keep their literal consumer as the final consumer.
+    if (!object_) {
+      InlineAncestors(graph, plan, last_owner_, budget_, &chain_);
+      if (!chain_.empty()) last_owner_ = chain_.back();
+    }
     // Include every preceding linear block, stopping at the already consumed
     // prefix of an earlier domain. Their effects participate in the same
     // suffix proof as the conditional and final consumer; no layout exception.
@@ -474,6 +499,7 @@ class Domain {
       index_.owners[std::get<OpId>(graph.uses[object_->consumer.value].owner).value] = 1;
       for (const auto field : object_->definitions) index_.owners[field.value] = 1;
     }
+    for (const auto owner : chain_) { budget_.Step(); index_.owners[owner.value] = 1; }
     Dependencies();
   }
   ~Domain() {
@@ -490,6 +516,7 @@ class Domain {
       index_.owners[std::get<OpId>(graph_.uses[object_->consumer.value].owner).value] = 0;
       for (const auto field : object_->definitions) index_.owners[field.value] = 0;
     }
+    for (const auto owner : chain_) index_.owners[owner.value] = 0;
   }
   bool Build(std::vector<std::pair<OpId, UseId>>& selected) {
     std::size_t serial = 0, definition = 0, objects_consumed = 0;
@@ -660,6 +687,8 @@ class Domain {
   const SelectionIndex& selections_;
   std::span<const SelectionRegion* const> route_; std::vector<Interval>& intervals_;
   DomainIndex& index_; TreeCheckBudget& budget_; std::optional<SelectedObject> object_; OpId last_owner_;
+  // Inline ancestors of the selection consumer, outermost last (see ctor).
+  std::vector<OpId> chain_;
 };
 }  // namespace
 const PhaseSelectionOperand* FindPhaseSelectionOperand(const ValueProgram& graph, const EvaluationPlan& plan, OpId branch) {
@@ -747,7 +776,10 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
       used[selected_region->header.value].header = true;
       const auto consumer = selected_region == route.back() && object ? object->consumer :
           *index.consumers[selected_region->branch.value];
-      used[selected_region->join.value].prefix_end = std::get<OpId>(graph.uses[consumer.value].owner);
+      // The consumed join prefix ends at the domain's final consumer.
+      used[selected_region->join.value].prefix_end = selected_region == route.back() && !object
+          ? InlineAncestors(graph, plan, std::get<OpId>(graph.uses[consumer.value].owner), budget)
+          : std::get<OpId>(graph.uses[consumer.value].owner);
     }
     for (const auto& [producer, use] : selected) { budget.Step(); plan.operations[producer.value] = {EvaluationKind::kInline, use, {}}; }
   }

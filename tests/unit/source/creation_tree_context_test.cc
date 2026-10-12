@@ -279,7 +279,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
       if (context.Callable() == CallableKind::kArrow && snapshot_case == SnapshotCase::kReceiver) {
         const auto& failure = std::get<FamilyPrepareFailure>(prepared);
         test::Check(std::holds_alternative<FamilyTreeFailure>(failure.cause));
-        test::Check(std::get<FunctionTreeError>(std::get<FamilyTreeFailure>(failure.cause).cause) ==
+        test::Check(std::get<FunctionTreeFailure>(std::get<FamilyTreeFailure>(failure.cause).cause) ==
             FunctionTreeError::kSemantics);
         test::Check(unlink(path) == 0);
         return;

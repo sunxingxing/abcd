@@ -29,7 +29,7 @@ struct ExceptionFamilyProbe {
   std::size_t child_trees = 0;
   bool layout = false;
   bool enclosure = false;
-  std::optional<source::FunctionTreeError> tree_error;
+  std::optional<source::FunctionTreeFailure> tree_error;
   bool rejected_capture_forgery = false;
   std::size_t checked_store_methods = 0, checked_lexical_stores = 0;
   bool family_writes = false, rejected_write_forgery = false;

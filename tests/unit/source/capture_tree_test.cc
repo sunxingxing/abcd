@@ -120,7 +120,7 @@ void Cells(std::uint8_t count, CallableKind kind) {
   evaluation.cells->incoming = IncomingCells::kReject;
   test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, evaluation)));
   auto missing = fixture.syntax; missing.captures.clear();
-  test::Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(fixture.graph, fixture.control,
+  test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(fixture.graph, fixture.control,
       fixture.evaluation, std::move(missing), fixture.Constants())));
   auto changed = tree;
   changed.captures[0].target.owner = changed.owner;

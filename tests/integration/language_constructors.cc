@@ -50,9 +50,9 @@ std::uint64_t Run(abc::ProfileId profile, SourceContract contract, unsigned copi
   ExpressionConstants resolved{constants, syntax.names.size()}; resolved.derived_constructor = &function;
   const auto built = BuildFunctionTree(graph, control, evaluation, syntax, resolved);
   if (Constructors(contract) == ConstructorSemantics::kPinnedRuntime) {
-    test::Check(std::holds_alternative<FunctionTreeError>(built)); return 0;
+    test::Check(std::holds_alternative<FunctionTreeFailure>(built)); return 0;
   }
-  if (const auto* error = std::get_if<FunctionTreeError>(&built)) std::cerr << "tree error " << unsigned(*error) << '\n';
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error " << unsigned(*error) << '\n';
   test::Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   test::Check(tree.recovery_issues.empty());

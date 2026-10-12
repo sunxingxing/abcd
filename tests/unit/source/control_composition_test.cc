@@ -217,11 +217,11 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     // Catch-carried state also creates selected-arm phi copies; the current
     // control preflight refuses those before RHS staging is considered.
     const auto expected = staging ? FunctionTreeError::kControl : FunctionTreeError::kOwnership;
-    test::Check(std::get_if<FunctionTreeError>(&built) && std::get<FunctionTreeError>(built) == expected);
+    test::Check(std::get_if<FunctionTreeFailure>(&built) && std::get<FunctionTreeFailure>(built) == expected);
     return; // Neither refusal permits hoisting statements or catch state.
   }
-  if (const auto* error = std::get_if<FunctionTreeError>(&built))
-    std::cerr << "loop-carried tree error " << static_cast<unsigned>(*error) << '\n';
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&built))
+    std::cerr << "loop-carried tree error " << static_cast<unsigned>(error->kind) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   if (draft_work) *draft_work = std::get<ExceptionFunctionDraft>(built).work;
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
@@ -253,8 +253,8 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     test::Check(std::get_if<TreeFlowError>(&changed_flow) &&
         std::get<TreeFlowError>(changed_flow) == TreeFlowError::kControl);
     const auto changed_draft = BuildExceptionFunctionDraft(graph, changed_context, evaluation, syntax, resolved);
-    test::Check(std::get_if<FunctionTreeError>(&changed_draft) &&
-        std::get<FunctionTreeError>(changed_draft) == FunctionTreeError::kControl);
+    test::Check(std::get_if<FunctionTreeFailure>(&changed_draft) &&
+        std::get<FunctionTreeFailure>(changed_draft) == FunctionTreeError::kControl);
     std::size_t finalizers = 0;
     for (const auto& statement : tree.statements)
       if (const auto* region = std::get_if<TryStmt>(&statement.statement); region && region->finalizer)

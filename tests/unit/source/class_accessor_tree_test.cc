@@ -746,7 +746,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   syntax.names = constants.names; syntax.texts = constants.texts;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   auto tree = BuildFunctionTree(graph, control, evaluation, syntax, constants.View());
-  if (const auto* error = std::get_if<FunctionTreeError>(&tree)) std::cerr << "tree failure " << static_cast<unsigned>(*error) << '\n';
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&tree)) std::cerr << "tree failure " << static_cast<unsigned>(*error) << '\n';
   Check(std::holds_alternative<ConstructedFunction>(tree));
   if (!prototype_reads.empty()) {
     auto wrong = syntax;
@@ -756,9 +756,9 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     } else {
       const auto name = std::get<NameId>(constants.operations[site.read.value]); wrong.names[name.value] = u"getter";
     }
-    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, wrong, constants.View())));
+    Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, wrong, constants.View())));
     const auto original = definition->operation; definition->operation = site.read;
-    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+    Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
     definition->operation = original;
   }
   auto built = BuildClassTree(file, header, index, lookup, roles, functions, classes, creator,
@@ -805,18 +805,18 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     auto gap = std::move(definition->definitions[0].omissions[0]);
     definition->definitions[0].omissions[0].reset();
     Check(!definition->DraftPrepared());
-    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+    Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
     definition->definitions[0].omissions[0] = std::move(gap);
     auto& omission = *definition->definitions[0].omissions[0];
     ++omission.root.value;
     Check(!definition->DraftPrepared());
-    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+    Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
     --omission.root.value;
     auto conflict = std::move(definition->definitions[1].bodies[1]);
     definition->definitions[1].bodies[1].reset();
     definition->definitions[0].bodies[0] = std::move(conflict);
     Check(!definition->DraftPrepared());
-    Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+    Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
     definition->definitions[1].bodies[1] = std::move(definition->definitions[0].bodies[0]);
     definition->definitions[0].bodies[0].reset();
     Check(definition->DraftPrepared());
@@ -843,14 +843,14 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       Check(std::get<TreePrintError>(PrintClassTree(*definition, rejected, {}, {}, &globals)) ==
           TreePrintError::kUnsupportedContext);
       Check(rejected.str().empty());
-      Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+      Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
       body = std::move(missing_body);
     }
   }
   // Independent operand checking must reject removal or substitution of the
   // prepared body behind an otherwise well-formed projection certificate.
   auto missing = std::move(definition->definitions.back()); definition->definitions.pop_back();
-  Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
+  Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
   definition->definitions.push_back(std::move(missing));
   const auto final_semantics = std::get<TreeSemantics>(VerifyTreeSemantics(
       graph, control, evaluation, std::get<ConstructedFunction>(tree).tree, constants.View()));

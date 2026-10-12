@@ -473,7 +473,7 @@ void EdgeSyntax() {
     budget.work = forest.work;
     Check(std::holds_alternative<ExpressionForest>(BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, budget)));
     --budget.work;
-    Check(std::get<ExpressionError>(BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, budget)) == ExpressionError::kWorkLimit);
+    Check(std::get<ExpressionFailure>(BuildExpressionForest(graph, evaluation, 1, {0}, {constants}, budget)) == ExpressionError::kWorkLimit);
     const auto tree = Tree(graph, evaluation, {constants, 2}, allowance);
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
     const auto flow = std::get<TreeFlow>(VerifyTreeFlow(graph, control, evaluation, tree, allowance));

@@ -105,7 +105,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print, bool arm =
   const ExpressionConstants resolved{constants, syntax.names.size(), 0, {}, properties};
   const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), resolved);
   if (barrier) {
-    const auto* error = std::get_if<FunctionTreeError>(&built);
+    const auto* error = std::get_if<FunctionTreeFailure>(&built);
     test::Check(error && (*error == FunctionTreeError::kExpression || *error == FunctionTreeError::kControl ||
         *error == FunctionTreeError::kOwnership));
     return evaluation.work;

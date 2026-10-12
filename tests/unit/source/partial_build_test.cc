@@ -15,7 +15,7 @@ constexpr std::uint8_t kNegateHigh = static_cast<std::uint8_t>(kLegacyNegate >> 
 constexpr std::uint8_t kStore = static_cast<std::uint8_t>(abc::Opcode::kSTA_V8);
 constexpr std::uint8_t kDebugger = 0xb0, kInteger = 0x62, kNegate = static_cast<std::uint8_t>(kLegacyNegate), kReturn = 0x64,
     kReturnUndefined = 0x65, kLoad = 0x60, kCall = 0x29, kTypeof = 0x1c, kZeroBranch = 0x4f;
-std::variant<ConstructedFunction, FunctionTreeError> Build(
+std::variant<ConstructedFunction, FunctionTreeFailure> Build(
     std::initializer_list<std::uint8_t> bytes, RecoveryMode recovery, bool valid_constants = true) {
   const auto body = test::Body(bytes);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {false, false, false, false}));
@@ -59,8 +59,8 @@ void DecodedPrefix() {
   // preserve the partial-output boundary on an actual unsupported domain.
   const auto bytes = {kDebugger, kLoad, std::uint8_t{0}, kNegate, kNegateHigh, std::uint8_t{0}, kReturnUndefined};
   const auto complete = Build(bytes, RecoveryMode::kCompleteOnly);
-  test::Check(std::holds_alternative<FunctionTreeError>(complete));
-  test::Check(std::get<FunctionTreeError>(complete) == FunctionTreeError::kExpression);
+  test::Check(std::holds_alternative<FunctionTreeFailure>(complete));
+  test::Check(std::get<FunctionTreeFailure>(complete) == FunctionTreeError::kExpression);
   const auto recovered = Build(bytes, RecoveryMode::kAllowPartial);
   test::Check(std::holds_alternative<ConstructedFunction>(recovered));
   test::Check(!std::get<ConstructedFunction>(recovered).flow);
@@ -75,7 +75,7 @@ void DecodedPrefix() {
   test::Check(tree.recovery_issues.size() == 1 && tree.recovery_issues[0].begin.has_value());
   // lda's parameter copy is elided; the first retained gap is deprecated NEG.
   test::Check(tree.recovery_issues[0].begin == abc::CodeOffset{3});
-  test::Check(std::holds_alternative<FunctionTreeError>(Build(bytes, RecoveryMode::kAllowPartial, false)));
+  test::Check(std::holds_alternative<FunctionTreeFailure>(Build(bytes, RecoveryMode::kAllowPartial, false)));
 }
 void InlineBoundary() {
   const auto recovered = Build({kDebugger, kLoad, 0, kTypeof, 0, kStore, 0,
@@ -110,8 +110,8 @@ void CompleteAndBranched() {
   test::Check(Print(tree).find("return 7;") != std::string::npos);
   const auto branch = Build({kDebugger, kLoad, 0, kNegate, kNegateHigh, 0, kInteger, 7, 0, 0, 0,
       kZeroBranch, 3, kReturnUndefined, kReturnUndefined}, RecoveryMode::kAllowPartial);
-  test::Check(std::holds_alternative<FunctionTreeError>(branch));
-  test::Check(std::get<FunctionTreeError>(branch) == FunctionTreeError::kExpression);
+  test::Check(std::holds_alternative<FunctionTreeFailure>(branch));
+  test::Check(std::get<FunctionTreeFailure>(branch) == FunctionTreeError::kExpression);
 }
 }  // namespace
 int main(int argc, char** argv) {

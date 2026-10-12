@@ -137,7 +137,7 @@ void StagedBuffer(bool print = false) {
     if (auto* member = std::get_if<MemberTarget>(&assign->target)) member->key = NameId{2};
   Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, resolved)));
   auto missing = constants; missing[3] = NameId{2};
-  Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax,
+  Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax,
       {missing, 3, 0, {}, properties})));
   std::ostringstream output;
   Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
@@ -396,7 +396,7 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
         gap_constants[1] = NameId{static_cast<std::uint32_t>(gap_syntax.names.size() - 1)};
         const ExpressionConstants gap_resolved{gap_constants, gap_syntax.names.size(), 0, {}, properties};
         const auto gap_evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(sparse));
-        Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(sparse, control,
+        Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(sparse, control,
             gap_evaluation, gap_syntax, gap_resolved)));
       } else Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(sparse)));
       sparse = graph; sparse.ops[0].operation = ValueObjectAllocation{};
@@ -603,7 +603,7 @@ void LateMemberCalls(bool print = false) {
       }
       const auto rejected = BuildEvaluationPlan(changed);
       Check(std::holds_alternative<EvaluationPlan>(rejected));
-      Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(changed, control,
+      Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(changed, control,
           std::get<EvaluationPlan>(rejected), syntax, {constants, count + 2})));
     }
   }

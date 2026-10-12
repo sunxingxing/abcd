@@ -249,8 +249,8 @@ std::string OuterTransfer(abc::ProfileId profile, bool stop, bool carried) {
   const std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExpressionConstants resolved{constants, 0, 1, TextId{0}};
   auto tree_result = BuildFunctionTree(graph, control, evaluation, syntax, resolved);
-  if (const auto* error = std::get_if<FunctionTreeError>(&tree_result))
-    std::cerr << "outer transfer tree error " << static_cast<unsigned>(*error) << '\n';
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&tree_result))
+    std::cerr << "outer transfer tree error " << static_cast<unsigned>(error->kind) << '\n';
   test::Check(std::holds_alternative<ConstructedFunction>(tree_result));
   const auto& tree = std::get<ConstructedFunction>(tree_result).tree;
   test::Check(tree.recovery_issues.empty());

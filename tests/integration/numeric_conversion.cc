@@ -65,7 +65,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print = false, bo
   const ExpressionConstants resolved{constants, syntax.names.size()};
   if (count == 1) {
     auto strict_contract = syntax; strict_contract.identity.contract = SourceContract::kLanguageAndHostV1;
-    test::Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, strict_contract, resolved)));
+    test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, strict_contract, resolved)));
   }
   const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), resolved);
   test::Check(std::holds_alternative<ConstructedFunction>(built));

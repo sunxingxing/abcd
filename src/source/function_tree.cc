@@ -117,10 +117,10 @@ class TreeBuilder {
         constants_, {bytes_, work_}, modules,
         (incoming_ && !incoming_->cells.targets.empty()) || exceptions_ || !syntax_.captures.empty()
             ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_, syntax_.callable, Arithmetic(syntax_.identity.contract), Constructors(syntax_.identity.contract));
-    if (const auto* error = std::get_if<ExpressionError>(&expressions)) {
+    if (const auto* error = std::get_if<ExpressionFailure>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kExpression;
+      throw FunctionTreeFailure{Error::kExpression, *error};
     }
     forest_ = std::get<ExpressionForest>(std::move(expressions));
     Admit(forest_.allocated_bytes, 1);
@@ -1474,7 +1474,7 @@ class TreeBuilder {
 };
 }  // namespace
 
-std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
+std::variant<ConstructedFunction, FunctionTreeFailure> BuildFunctionTree(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
     ExpressionConstants constants, analysis::SemanticBudget budget,
@@ -1483,10 +1483,11 @@ std::variant<ConstructedFunction, FunctionTreeError> BuildFunctionTree(
     return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget, incoming,
                        nullptr, recovery).Build();
   } catch (Error error) { return error;
+  } catch (const FunctionTreeFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
-std::variant<ExceptionFunctionDraft, FunctionTreeError> BuildExceptionFunctionDraft(
+std::variant<ExceptionFunctionDraft, FunctionTreeFailure> BuildExceptionFunctionDraft(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
     ExpressionConstants constants, analysis::SemanticBudget budget, const IncomingCaptureTree* incoming) {
@@ -1495,6 +1496,7 @@ std::variant<ExceptionFunctionDraft, FunctionTreeError> BuildExceptionFunctionDr
         std::move(syntax), constants, budget, incoming, &exceptions).Build();
     return ExceptionFunctionDraft{std::move(built.tree), built.allocated_bytes, built.work, std::move(built.flow)};
   } catch (Error error) { return error;
+  } catch (const FunctionTreeFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }

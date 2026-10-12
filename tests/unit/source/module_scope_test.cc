@@ -100,7 +100,7 @@ void Run(std::uint32_t count, bool captured) {
     // Metadata parameters already reject the private '$' namespace before
     // constructing a tree. Keep that refusal, then exercise actual lexical
     // shadowing with an admitted identifier instead of extracting an error.
-    test::Check(std::get<FunctionTreeError>(BuildFunctionTree(graph, control, evaluation, syntax, constants)) == FunctionTreeError::kName);
+    test::Check(std::get<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, constants)) == FunctionTreeError::kName);
     syntax.names[0] = u"importedBinding";
     auto shadowed = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation, syntax, constants)).tree;
     for (auto& expression : shadowed.expressions)

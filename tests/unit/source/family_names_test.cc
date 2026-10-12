@@ -155,7 +155,7 @@ std::string Source(std::string_view free_name, bool module_read, bool named, boo
     std::cerr << "prepare variant=" << failure->cause.index() << '\n';
     if (const auto* tree = std::get_if<FamilyTreeFailure>(&failure->cause)) {
       std::cerr << "tree variant=" << tree->cause.index() << " member=" << tree->member.value << '\n';
-      if (const auto* build = std::get_if<FunctionTreeError>(&tree->cause)) std::cerr << "build=" << static_cast<unsigned>(*build) << '\n';
+      if (const auto* build = std::get_if<FunctionTreeFailure>(&tree->cause)) std::cerr << "build=" << static_cast<unsigned>(*build) << '\n';
       if (const auto* scope = std::get_if<FamilyEnclosureFailure>(&tree->cause)) std::cerr << "enclosure=" << static_cast<unsigned>(scope->kind) << '\n';
     }
   }

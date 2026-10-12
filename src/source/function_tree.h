@@ -19,6 +19,15 @@ enum class FunctionTreeError : std::uint8_t {
   kControl, kExpression, kBinding, kName, kOrigin, kOwnership,
   kResourceLimit, kWorkLimit, kStructure, kSemantics, kCapture
 };
+// A function-tree refusal with its typed cause (the expression failure behind
+// kExpression). Compares equal to its kind; the cause is diagnostic only.
+struct FunctionTreeFailure {
+  FunctionTreeError kind;
+  std::variant<std::monostate, ExpressionFailure> cause;
+  FunctionTreeFailure(FunctionTreeError value) : kind(value) {}  // NOLINT: implicit kind.
+  FunctionTreeFailure(FunctionTreeError value, ExpressionFailure expression) : kind(value), cause(expression) {}
+  bool operator==(FunctionTreeError value) const { return kind == value; }
+};
 // Builds syntax checked against IR/control/evaluation and resolved constants.
 // Caller establishes callable/strictness from creation evidence; construction
 // does not certify those facts or authorize publishing.
@@ -31,7 +40,7 @@ enum class FunctionTreeError : std::uint8_t {
 // lowering in one normal straight-line region without cells/phis/children.
 // The suffix becomes an explicit gap; malformed inputs remain errors. Other
 // topologies retain complete-only behavior, never a guessed linearization.
-[[nodiscard]] std::variant<ConstructedFunction, FunctionTreeError>
+[[nodiscard]] std::variant<ConstructedFunction, FunctionTreeFailure>
 BuildFunctionTree(const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
     ExpressionConstants constants, analysis::SemanticBudget budget = {},

@@ -101,7 +101,7 @@ class ForestBuilder {
       const auto error = std::get<CallPlanError>(calls);
       if (error == CallPlanError::kResourceLimit) throw Error::kResourceLimit;
       if (error == CallPlanError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kUnsupportedOperation;
+      throw ExpressionFailure{Error::kUnsupportedOperation, error};
     }
     Admit(call_plan->allocated_bytes, 1); Step(call_plan->work);
     forest_.calls = std::move(*call_plan);
@@ -435,7 +435,7 @@ class ForestBuilder {
       Step(); if (evaluation_.operations[region.branch.value].kind != EvaluationKind::kLogicalValue) LogicalTree(region);
     }
     const auto copied = AppendCopyExpressions(graph_, evaluation_, forest_, owner_, work_, selected_edges);
-    if (const auto* error = std::get_if<Error>(&copied)) throw *error;
+    if (const auto* error = std::get_if<ExpressionFailure>(&copied)) throw error->kind;
     Step(std::get<std::uint64_t>(copied));
     forest_.allocated_bytes = budget_.bytes - bytes_;
     forest_.work = budget_.work - work_;
@@ -1169,7 +1169,7 @@ class ForestBuilder {
   analysis::ArithmeticSemantics arithmetic_;
   ConstructorSemantics constructors_;
 };
-std::variant<ExpressionForest, ExpressionError> BuildForest(
+std::variant<ExpressionForest, ExpressionFailure> BuildForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner,
     ExpressionConstants constants, analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules,
@@ -1186,18 +1186,19 @@ std::variant<ExpressionForest, ExpressionError> BuildForest(
     return ForestBuilder(graph, evaluation, owner, constants, budget,
                          std::get<BindingPlan>(std::move(bindings)), modules, recovery, names, logicals, polarity, callable, arithmetic, constructors).Build();
   } catch (Error error) { return error;
+  } catch (const ExpressionFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 }  // namespace
-std::variant<ExpressionForest, ExpressionError> BuildExpressionForest(
+std::variant<ExpressionForest, ExpressionFailure> BuildExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,
     std::span<const std::u16string> names, std::span<const SelectionRegion> logicals, std::span<const BranchPolarity> polarity, CallableKind callable, analysis::ArithmeticSemantics arithmetic, ConstructorSemantics constructors) {
   return BuildForest(graph, evaluation, parameter_count, owner, constants, budget, modules, EvaluationFlow::kNormal, recovery, names, logicals, polarity, callable, arithmetic, constructors);
 }
-std::variant<ExpressionForest, ExpressionError> BuildPhasedExpressionForest(
+std::variant<ExpressionForest, ExpressionFailure> BuildPhasedExpressionForest(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, FunctionOwnerId owner, ExpressionConstants constants,
     analysis::SemanticBudget budget, std::span<const ModuleSymbol> modules, RecoveryMode recovery,

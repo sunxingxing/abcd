@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
           candidate.body, candidate.values.graph, {0}));
       auto constants = syntax.View(); constants.receiver_guards = protocol.guards; constants.implicit_constructor = &candidate;
       const auto built = BuildFunctionTree(candidate.values.graph, control, evaluation, std::move(syntax.syntax), constants);
-      if (const auto* error = std::get_if<FunctionTreeError>(&built)) std::cerr << "fixture tree error " << static_cast<unsigned>(*error) << '\n';
+      if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "fixture tree error " << static_cast<unsigned>(*error) << '\n';
       Check(std::holds_alternative<ConstructedFunction>(built));
       const auto& tree = std::get<ConstructedFunction>(built).tree;
       Check(tree.ImplicitConstructor());

@@ -94,7 +94,7 @@ class Fixture {
     syntax.modules = modules;
     return syntax;
   }
-  std::variant<ConstructedFunction, FunctionTreeError> Build(
+  std::variant<ConstructedFunction, FunctionTreeFailure> Build(
       analysis::SemanticBudget budget = {}) const {
     auto control = BuildControlPlan(graph);
     auto evaluation = BuildEvaluationPlan(graph);
@@ -1484,7 +1484,7 @@ void BranchTree() {
   Check(std::holds_alternative<ConstructedAbi>(BuildFunctionAbi(f.graph, tree, frame, 1, census_budget)));
   analysis::SemanticBudget limited;
   limited.work = std::get<ConstructedFunction>(built).work - 1;
-  Check(std::get<FunctionTreeError>(f.Build(limited)) == FunctionTreeError::kWorkLimit);
+  Check(std::get<FunctionTreeFailure>(f.Build(limited)) == FunctionTreeError::kWorkLimit);
   limited.work += 1;
   Check(std::holds_alternative<ConstructedFunction>(f.Build(limited)));
 }
@@ -1516,7 +1516,7 @@ void SnapshotTree() {
 void NameAndConstantRefusals() {
   auto f = BranchFixture();
   f.constants[0] = NameId{2};
-  Check(std::get<FunctionTreeError>(f.Build()) == FunctionTreeError::kExpression);
+  Check(std::get<FunctionTreeFailure>(f.Build()) == FunctionTreeError::kExpression);
   f.constants[0] = NameId{1};
   auto control = BuildControlPlan(f.graph);
   auto evaluation = BuildEvaluationPlan(f.graph);
@@ -1535,7 +1535,7 @@ void NameAndConstantRefusals() {
   syntax = f.Syntax(); syntax.names[0] = u"eval";
   built = BuildFunctionTree(f.graph, std::get<ControlPlan>(control),
       std::get<EvaluationPlan>(evaluation), std::move(syntax), {f.constants, 2, 0, {}});
-  Check(std::get<FunctionTreeError>(built) == FunctionTreeError::kName);
+  Check(std::get<FunctionTreeFailure>(built) == FunctionTreeError::kName);
 }
 void PredicateSnapshot() {
   using namespace analysis;
@@ -1649,7 +1649,7 @@ void GlobalTree() {
   Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
   Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kConstant);
   std::get<ValueGlobalRead>(fixture.graph.ops[0].operation).lookup = GlobalLookup::kVar;
-  Check(std::get<FunctionTreeError>(fixture.Build()) == FunctionTreeError::kExpression);
+  Check(std::get<FunctionTreeFailure>(fixture.Build()) == FunctionTreeError::kExpression);
 }
 void ConstructorGuardAnchors() {
   using namespace analysis;
@@ -1680,7 +1680,7 @@ void ConstructorGuardAnchors() {
   for (const auto& expression : tree.expressions) Check(!std::holds_alternative<ThisExpr>(expression.expression));
   constants.receiver_guards = {};
   Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(fixture.graph, control, evaluation, tree, constants)));
-  Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(fixture.graph, control, evaluation, syntax, constants)));
+  Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(fixture.graph, control, evaluation, syntax, constants)));
 }
 void DerivedEntryValue() {
   using namespace analysis;
@@ -2029,7 +2029,7 @@ void CreationSelfTree() {
     reject([](auto& copy) { copy.identity.contract = SourceContract::kLanguageAndHostV1; });
     reject([](auto& copy) { copy.inferred_name.reset(); });
     syntax.identity.contract = SourceContract::kLanguageAndHostV1;
-    Check(std::holds_alternative<FunctionTreeError>(build()));
+    Check(std::holds_alternative<FunctionTreeFailure>(build()));
   }
 }
 void FrameFunctionTree() {
@@ -2082,7 +2082,7 @@ void FrameFunctionTree() {
   const GlobalScope scope{};
   Check(std::get<TreeGlobalError>(VerifyTreeGlobals(global, &scope)) == TreeGlobalError::kShadowed);
   syntax.inferred_name.reset();
-  Check(std::holds_alternative<FunctionTreeError>(BuildFunctionTree(fixture.graph, control, evaluation,
+  Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(fixture.graph, control, evaluation,
       syntax, {fixture.constants, 2, 0, {}})));
 }
 // A source-native entry value needs no private save, whether the shared

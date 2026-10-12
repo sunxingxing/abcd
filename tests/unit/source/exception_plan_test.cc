@@ -149,8 +149,8 @@ void Nested(abc::ProfileId profile, std::uint32_t prelude, std::uint32_t depth =
   const std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExceptionTreeInput context{body, input, plan, control};
   const auto drafted = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants});
-  if (const auto* error = std::get_if<FunctionTreeError>(&drafted))
-    std::cerr << "nested exception tree error " << static_cast<unsigned>(*error) << '\n';
+  if (const auto* error = std::get_if<FunctionTreeFailure>(&drafted))
+    std::cerr << "nested exception tree error " << static_cast<unsigned>(error->kind) << '\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(drafted));
   const auto& tree = std::get<ExceptionFunctionDraft>(drafted).tree;
   test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(
@@ -323,8 +323,8 @@ void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
     syntax.names = {u"field"}; syntax.parameters.resize(frame.parameters);
     const ExceptionTreeInput context{body, input, regions, control};
     const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, {constants, 1});
-    if (const auto* error = std::get_if<FunctionTreeError>(&built))
-      std::cerr << "control draft error " << static_cast<unsigned>(*error) << '\n';
+    if (const auto* error = std::get_if<FunctionTreeFailure>(&built))
+      std::cerr << "control draft error " << static_cast<unsigned>(error->kind) << '\n';
     test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
     const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
     if (backedge_pc) {
