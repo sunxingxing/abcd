@@ -37,9 +37,14 @@
     限制，不是 RSS 限制。
   - macOS 不设限，报告 `process_limit.established=false`。
   - 限额设置失败时输出结构化诊断：`{"error":"process_limit",...}`。
-  - `abc_structure`、`abc_scan` 和各阶段验证器在报告里写入资源字段。`abc_semantic` 把
-    `process_limit`、`address_space_limit_bytes`、`peak_rss_bytes` 并入它输出的最后一个 JSON
-    对象：成功时在 stdout，失败时在 stderr。
+  - `abc_structure`、`abc_scan` 和各阶段验证器在报告里写入资源字段。`abc_semantic` 保持
+    各视图原有的输出通道和退出码，并附上 `process_limit`、`address_space_limit_bytes`、
+    `peak_rss_bytes`：
+    - 单对象视图的 stdout 结果：并入该 JSON 对象。退出码可以非 0，例如源码片段视图。
+    - stderr 错误诊断：并入错误对象。
+    - 流式的 `--instructions`：在末尾追加一行资源报告。
+    - 参数校验发生在限额建立之前，所以参数错误不带这些字段。
+    - 结果捕获失败或结果不是 JSON 时，报告输出错误（`kOutput`），不会发布部分结果。
   - `ru_maxrss` 按平台换算单位（Linux 为 KiB，macOS 为字节）。
   - 1 GB 整进程合同仍未完成。
 - **record 失败隔离（S3 部分完成）**：只有能证明来自 record 自身预算的失败才隔离到该
@@ -56,7 +61,7 @@
 |---|---|
 | 固定五份的 value-tree 产物，`f0028f54` 与 `7b2491b7` 两套二进制对照，覆盖默认合同和 numeric+constructors 合同 | 源码逐字节一致；manifest 只差在删除的 `legacy_writer_used` 字段。之后 manifest 升为 schema 2，失败记录的字段也随之改变 |
 | 全量构建 `make -k all` | 0 错误 |
-| 固定 65 项（`ctest --preset source-regression`） | **65/65，96.70s** |
+| 固定 65 项（`ctest --preset source-regression`） | **65/65，85.79s** |
 | 审查修复相关的 16 项定向测试（含新增的 `record_failure_json_test`） | 16/16 通过；`historical_record_source_test` 由原有失败转为通过 |
 | 相对 `f0028f54` 改动过的全部测试 | 除下行所列原有失败外均通过，详见 [测试台账](2026-10-12-legacy-test-ledger.md) |
 | 原有失败（在 `f0028f54` 基线上以相同原因失败） | pasteboard_breakpoint、backup_class_cells、index_record、navigation_graph、minigame_navigation_graph、module_entry_initialization、phased_arguments、file_generator_return(_loop)、phased_method、hotitem_retained_selection、value_tree_{pasteboard,call,immersive}_slice |
