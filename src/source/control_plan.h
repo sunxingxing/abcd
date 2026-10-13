@@ -74,7 +74,7 @@ enum class ControlError : std::uint8_t {
 };
 struct ControlFailure {
   ControlError kind;
-  ControlOwnershipError cause;
+  std::variant<ControlOwnershipError, DecisionContinuationError> cause;
   ControlOwnershipEvidence control;
 };
 using ControlResult = std::variant<ControlPlan, ControlError, ControlFailure>;

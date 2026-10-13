@@ -262,3 +262,93 @@ leaf chain and the structured `control` witness. Serialization rejects unknown
 origin tags and synthetic nodes carrying PCs. This is additional refusal evidence,
 not source admission or a promise that every control refusal has an ownership
 witness: other typed control failures retain their own enum without invented data.
+
+## Bounded decision continuations (Round 40)
+
+Decision discovery and final continuation selection are separate. `Decisions()`
+records the existing layout preference and a reverse-topological last-predicate /
+fallback summary. `Regions()` resolves a maximal decision once, when its actual
+region stop is known, before it claims any node. Child decisions receive that
+same resolved join; their input edges and conditional prefixes remain unchanged.
+
+There are three distinct trees over the checked acyclic `ControlGraphView`:
+
+1. **Entry dominance:** predecessor LCA, rooted at every scoped entry. Together
+   with `AllAbrupt` and `ReachMeet` it proves private terminal ownership.
+2. **Lexical follow:** the existing `Postdominators()` and `CompleteFollows()`
+   preferences, including the Round 39 shared-continuation rule. This is a layout
+   tree, not a proof that all paths pass its parent. It is unchanged here.
+3. **Normal postdominance:** successor LCA in reverse topological order, with
+   every sink connected to the virtual exit and **no abrupt arm omitted**. This
+   proves that every maximal normal path from S passes T. A normal/unknown port
+   remains its original completion kind; a synthetic sink never becomes a return.
+
+Let D be a decision entry, S its shared body, R its final fallback, J0 its old
+join preference, and T the enclosing region stop. Replace J0 by T only when T is
+real, J0 == R, Private(R), T postdominates S in the original checked projection,
+and R does not dominate T. Discovery supplies the conditional-prefix entry and
+edge evidence; before selecting the new join, each member's shared edge and the
+final fallback are rechecked. Scope/ownership and all original edge destinations
+are independently verified before any plan is published. R cannot own T: every
+vertex reachable from a private R is dominated by R. S must reach T, so arranging
+S to search for R would cross the enclosing boundary. R stays a complete private
+conditional arm, S ends at T, and the enclosing region keeps ownership of T.
+
+This is a deterministic incompatibility proof, not a failed-layout retry. Valid
+old decisions retain every layout field, including early-exit and double-terminal
+forms. No follow, declaration placement, expression fusion, phi/catch staging,
+raise transfer or try-exit semantics are changed. If lexical ancestry witnesses a
+reachable T but real postdominance cannot prove all paths reach it, the first
+increment refuses with `DecisionContinuationError::kPostdominator`; it does not
+replace postdominance with `AllAbrupt(S)`. A broken shared-prefix correspondence
+has `kPrefix`. Cases outside this proven extension retain the old candidate and
+the existing independent verifier. In particular, arbitrary overlapping dispatch
+bodies and case fallthroughs are not implemented by this change.
+
+`ControlFailure` retains `ControlError` and a typed ownership-or-continuation
+cause. Continuation evidence contains the entry, last predicate, shared body,
+fallback, old join, enclosing stop, and incompatibility witness. For that cause,
+the general bounds describe the proposed arm and its enclosing region, not prior
+node ownership. Normal evidence uses an available input origin; phase adapters
+map original/working PCs, while try/loop synthetic locations retain typed IDs.
+The cause chain, receipt and manifest serialization preserve the evidence and
+resource classifications. Original control-error and ownership-enum values are
+unchanged. An absent instruction origin never acquires an invented PC.
+
+The independent verifier consumes the final region plan and immutable original
+edges; it does not consume Private or postdominance flags. It checks every actual
+conditional edge, the final fallback and shared region, unique ownership,
+coverage, scoped normal continuation and loop/exception correspondence. Restoring
+the old private-return join in a new plan must fail this verifier. The existing
+exception projection comparison also rechecks original phase/try-exit mappings.
+
+The third ancestor table adds O(V log V) storage; retained entry dominance and
+constant-sized decision-tail summaries avoid per-decision graph searches. Each
+maximal chain is resolved and emitted once. DAG construction and LCA queries cost
+O((V+E) log V), with all tables charged through `ControlQuota` before allocation.
+This is the standard DAG postdominator recurrence, independently implemented
+using the repository's binary-lifting convention; no dependency or copied code.
+No new source-language premise is required.
+
+Tests: `control_decision_test`, the converted Class B case in
+`control_terminal_test`, and `decision_continuations_cli_test`. The IR tests cover
+reversed polarities, private/internal joins, continuing joins, edge splitting and
+copies, original/projected views, exact old-layout preservation, external entry,
+unknown completion, a continuing path that bypasses T, shared-tail and backedge
+mutations, old-join/edge/condition/fallback mutations, 200/201/400/800 scaling and
+exact work/byte boundaries. Existing try-exit mutation coverage remains in
+`exception_plan_test`. The real es2abc fixture and Node oracle cover short-circuit
+side effects, private returns, getters/calls throwing, catch, async, and compiled
+finally wrappers. See [fixture provenance and oracle limits](../../../tests/integration/fixtures/decision_continuations/README.md).
+
+Workspace validation against `e0d667a3`: full keep-going build succeeded; fixed
+source regression 65/65; control/phased/loop/try/logical plus the new CLI, route
+and exception-plan slice 81/86. The five failures are the same as the Round 39
+log (try_tree, phased_literal, phased_arm_selection_source, try_tree_source,
+file_generator_return_loop_source); their expectations were not changed. The
+final focused six-test run passed. Both exploration flag sets have zero status
+regressions and zero already-complete text drift, including o32/49868. Completion
+is 479/620 (old flags) and 511/620 (source), up one each: o5/44477 YearView. All
+11 source-flag Class B first refusals are gone, but ten records expose later
+control/tree/capture/reference gaps. o18/57687 and o38/13920 retain byte-equivalent
+failure objects under their respective flags. No holdout, full-suite or RSS run.

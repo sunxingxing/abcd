@@ -107,9 +107,7 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure> B
             }
           }, topology.mapping.units[location.node]);
         };
-        locate(failure.control.node); locate(failure.control.current.first); locate(failure.control.previous.first);
-        if (failure.control.current.stop) locate(*failure.control.current.stop);
-        if (failure.control.previous.stop) locate(*failure.control.previous.stop);
+        MapControlLocations(failure.control, locate);
         throw ExceptionControlFailure{Translate(failure.kind), failure};
       }
     }();

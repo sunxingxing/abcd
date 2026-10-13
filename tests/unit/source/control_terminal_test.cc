@@ -161,18 +161,23 @@ void DoubleTerminal() {
 void ClassB() {
   const auto graph = Graph({{{6, 1}}, {{4, 2}}, {{4, 3}}, {}, {{5, {}}}, {{6, {}}}, {}});
   const auto built = BuildControlPlan(graph);
-  assert(std::holds_alternative<ControlFailure>(built));
-  const auto& failure = std::get<ControlFailure>(built);
-  assert(failure.kind == ControlError::kCrossEntry);
-  assert(failure.cause == ControlOwnershipError::kDuplicate);
-  assert(failure.control.node.node == 6);
-  assert(failure.control.current.stop && failure.control.current.stop->node == 3);
-  assert(failure.control.previous.first.node == 0);
+  assert(std::holds_alternative<ControlPlan>(built));
+  const auto& plan = std::get<ControlPlan>(built);
+  assert(plan.nodes[1].decision && plan.nodes[1].decision->join == ControlId{6});
+  assert(!plan.nodes[1].next && plan.nodes[0].next == ControlId{6});
+  assert(std::holds_alternative<std::uint64_t>(VerifyControlPlan(graph, plan)));
+  auto mutant = plan;
+  mutant.nodes[1].decision->join = {3}; mutant.nodes[1].next = ControlId{3};
+  assert(std::holds_alternative<ControlError>(VerifyControlPlan(graph, mutant)));
+  const ControlOwnershipEvidence failure{
+      {6, ControlOriginKind::kBlock, 6}, {},
+      {{4, ControlOriginKind::kBlock, 4}, ControlLocation{3, ControlOriginKind::kBlock, 3}},
+      {{0, ControlOriginKind::kBlock, 0}, {}}};
   // No original arc exists for a lexical jump to the chosen join.
-  assert(ParseControlJson(ControlJson(failure.control)) == failure.control);
-  auto json = ControlJson(failure.control); json["node"]["origin"] = 99;
+  assert(ParseControlJson(ControlJson(failure)) == failure);
+  auto json = ControlJson(failure); json["node"]["origin"] = 99;
   assert(!ParseControlJson(json));
-  json = ControlJson(failure.control); json["node"]["origin"] = static_cast<unsigned>(ControlOriginKind::kTry);
+  json = ControlJson(failure); json["node"]["origin"] = static_cast<unsigned>(ControlOriginKind::kTry);
   json["node"]["pc"] = 8;
   assert(!ParseControlJson(json));
 }

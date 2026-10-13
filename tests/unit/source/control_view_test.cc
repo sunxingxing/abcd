@@ -136,7 +136,7 @@ void ProjectedDecisions() {
     catch (ControlError) { rejected = true; }
     catch (const ControlFailure& failure) {
       rejected = failure.kind == ControlError::kCrossEntry &&
-          failure.cause == ControlOwnershipError::kDuplicate;
+          std::get<ControlOwnershipError>(failure.cause) == ControlOwnershipError::kDuplicate;
     }
     Check(rejected);
   }

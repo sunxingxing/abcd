@@ -937,3 +937,10 @@ normal control. It adds internal-branch/merge ownership without changing try-exi
 loop or completion semantics. The independent projection verifier remains the
 source of phase/handler/try-exit identity. See the same note's typed control failure
 section for method, original/working PC, synthetic-node and region-bound evidence.
+
+Round 40 resolves shared-decision continuations against their enclosing stop
+using a separate real normal-postdominator tree. The [bounded continuation
+proof](loop-discovery.md#bounded-decision-continuations-round-40) is shared with
+normal control. It does not alter this projection, raise edges, handler entries,
+try-exit ports or catch staging. Failure-location translation visits every new
+decision witness endpoint, preserving phase PCs and synthetic identities.

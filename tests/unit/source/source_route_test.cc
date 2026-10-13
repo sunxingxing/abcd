@@ -196,6 +196,11 @@ int main() {
       {17, ControlOriginKind::kPhase, 17, abc::CodeOffset{73}, abc::CodeOffset{31}}, 19,
       {{5, ControlOriginKind::kPhase, 5}, ControlLocation{13, ControlOriginKind::kTryExit, 2}},
       {{0, ControlOriginKind::kPhase, 0}, {}}};
+  caused.failure->control->decision = DecisionContinuationEvidence{
+      {1, ControlOriginKind::kPhase, 1}, {2, ControlOriginKind::kPhase, 2},
+      {4, ControlOriginKind::kPhase, 4}, {3, ControlOriginKind::kPhase, 3},
+      {3, ControlOriginKind::kPhase, 3}, {6, ControlOriginKind::kPhase, 6},
+      {6, ControlOriginKind::kPhase, 6, abc::CodeOffset{73}, abc::CodeOffset{31}}};
   caused.failure->capture = CaptureOccurrence{3, {{2}, {7}}, analysis::CaptureDomain::kLanguage,
       CaptureOrigin{{456}, abc::CodeOffset{31}, abc::CodeOffset{17}}};
   caused.failure->call_reference = CallReferenceEvidence{CallReferenceError::kNotInline,

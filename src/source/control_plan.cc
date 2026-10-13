@@ -16,6 +16,7 @@ void Require(bool condition, Error error) {
   if (!condition) throw error;
 }
 struct RegionTask { std::uint32_t first; std::uint32_t stop; bool retain_stop = false; std::optional<ControlArcId> incoming; };
+struct DecisionTail { ControlId predicate, fallback; };
 class ControlBuilder {
  public:
   ControlBuilder(ControlGraphView graph, std::span<const ControlId> entries, ControlQuota& quota)
@@ -37,6 +38,7 @@ class ControlBuilder {
     quota_.Size(all_abrupt_, exit_);
     quota_.Size(shared_continuations_, exit_);
     quota_.Size(decisions_, exit_);
+    quota_.Size(decision_tails_, exit_);
     quota_.Size(tasks_, exit_);
     plan_.view = graph_.Kind();
     plan_.revision = graph_.Revision();
@@ -49,6 +51,7 @@ class ControlBuilder {
     TerminalRegions();
     Postdominators();
     CompleteFollows();
+    NormalPostdominators();
     Decisions();
     Regions();
     plan_.allocated_bytes = plan_.nodes.capacity() * sizeof(ControlNode) +
@@ -117,12 +120,12 @@ class ControlBuilder {
     // suffix has another entry. AllAbrupt excludes normal try-exit ports and
     // nonterminating loop wrappers. Neither summary deletes any original arc;
     // the independent ownership verifier checks the final layout.
-    std::vector<std::uint32_t> first, cursor, predecessors, dom_parent, dom_depth, dom_up, meet;
+    std::vector<std::uint32_t> first, cursor, predecessors, dom_parent, meet;
     std::vector<std::uint8_t> roots;
     quota_.Size(first, exit_ + 1); quota_.Size(cursor, exit_);
     quota_.Size(predecessors, graph_.ArcCount());
-    quota_.Size(dom_parent, exit_ + 1); quota_.Size(dom_depth, exit_ + 1);
-    quota_.Size(dom_up, (exit_ + 1) * levels_); quota_.Size(meet, exit_);
+    quota_.Size(dom_parent, exit_ + 1); quota_.Size(dom_depth_, exit_ + 1);
+    quota_.Size(dom_up_, (exit_ + 1) * levels_); quota_.Size(meet, exit_);
     quota_.Size(roots, exit_);
     for (const auto entry : entries_) {
       quota_.Work(); Require(entry.value < exit_, Error::kInvalidGraph); roots[entry.value] = 1;
@@ -137,10 +140,10 @@ class ControlBuilder {
     for (std::uint32_t e = 0; e < graph_.ArcCount(); ++e) {
       quota_.Work(); const auto edge = graph_.Arc({e}); predecessors[cursor[edge.target.value]++] = edge.source.value;
     }
-    const auto ancestor = [&](std::uint32_t id, std::size_t level) { return dom_up[id * levels_ + level]; };
+    const auto ancestor = [&](std::uint32_t id, std::size_t level) { return dom_up_[id * levels_ + level]; };
     const auto common = [&](std::uint32_t a, std::uint32_t b) {
-      if (dom_depth[a] < dom_depth[b]) std::swap(a, b);
-      auto distance = dom_depth[a] - dom_depth[b];
+      if (dom_depth_[a] < dom_depth_[b]) std::swap(a, b);
+      auto distance = dom_depth_[a] - dom_depth_[b];
       for (std::size_t bit = 0; distance; ++bit, distance >>= 1) {
         quota_.Work(); if (distance & 1U) a = ancestor(a, bit);
       }
@@ -155,7 +158,7 @@ class ControlBuilder {
     };
     dom_parent[exit_] = exit_;
     for (std::size_t level = 0; level < levels_; ++level) {
-      quota_.Work(); dom_up[exit_ * levels_ + level] = exit_;
+      quota_.Work(); dom_up_[exit_ * levels_ + level] = exit_;
     }
     for (const auto id : order_) {
       quota_.Work(); auto parent = static_cast<std::uint32_t>(exit_);
@@ -165,10 +168,10 @@ class ControlBuilder {
           quota_.Work(); parent = common(parent, predecessors[p]);
         }
       }
-      dom_parent[id] = parent; dom_depth[id] = dom_depth[parent] + 1;
-      dom_up[id * levels_] = parent;
+      dom_parent[id] = parent; dom_depth_[id] = dom_depth_[parent] + 1;
+      dom_up_[id * levels_] = parent;
       for (std::size_t level = 1; level < levels_; ++level) {
-        quota_.Work(); dom_up[id * levels_ + level] = ancestor(ancestor(id, level - 1), level - 1);
+        quota_.Work(); dom_up_[id * levels_ + level] = ancestor(ancestor(id, level - 1), level - 1);
       }
     }
     for (std::size_t i = exit_; i-- > 0;) {
@@ -330,6 +333,47 @@ class ControlBuilder {
     }
     return result;
   }
+  std::uint32_t TreeCommon(std::uint32_t a, std::uint32_t b,
+      std::span<const std::uint32_t> depths, std::span<const std::uint32_t> up) {
+    const auto ancestor = [&](std::uint32_t node, std::size_t level) { return up[node * levels_ + level]; };
+    if (depths[a] < depths[b]) std::swap(a, b);
+    auto distance = depths[a] - depths[b];
+    for (std::size_t bit = 0; distance; ++bit, distance >>= 1) {
+      quota_.Work(); if (distance & 1U) a = ancestor(a, bit);
+    }
+    if (a == b) return a;
+    for (auto bit = levels_; bit != 0; --bit) {
+      quota_.Work();
+      if (ancestor(a, bit - 1) != ancestor(b, bit - 1)) {
+        a = ancestor(a, bit - 1); b = ancestor(b, bit - 1);
+      }
+    }
+    return ancestor(a, 0);
+  }
+  void NormalPostdominators() {
+    // Real all-normal-path postdominance, separate from both entry dominance
+    // and the frozen lexical follow preference. Every sink reaches the virtual
+    // exit; no abrupt arm is omitted. A normal/unknown port remains a port,
+    // never an invented return. Standard DAG successor-LCA recurrence.
+    quota_.Size(post_depth_, exit_ + 1);
+    quota_.Size(post_up_, (exit_ + 1) * levels_);
+    for (std::size_t level = 0; level < levels_; ++level) {
+      quota_.Work(); post_up_[exit_ * levels_ + level] = exit_;
+    }
+    for (std::size_t i = exit_; i-- > 0;) {
+      quota_.Work(); const auto id = order_[i]; const auto node = graph_.Node({id});
+      auto parent = static_cast<std::uint32_t>(exit_);
+      for (std::uint8_t e = 0; e < node.arc_count; ++e) {
+        quota_.Work(); const auto target = graph_.Arc({node.first_arc.value + e}).target.value;
+        parent = e == 0 ? target : TreeCommon(parent, target, post_depth_, post_up_);
+      }
+      post_depth_[id] = post_depth_[parent] + 1; post_up_[id * levels_] = parent;
+      for (std::size_t level = 1; level < levels_; ++level) {
+        quota_.Work(); post_up_[id * levels_ + level] =
+            post_up_[post_up_[id * levels_ + level - 1] * levels_ + level - 1];
+      }
+    }
+  }
   void Decisions() {
     // Reverse-topological path summaries cross Before/Commit and ordinary
     // linear evaluation without a suffix walk per branch. Independent roots
@@ -376,9 +420,56 @@ class ControlBuilder {
           decisions_[id] = ControlDecision{{evaluate}, e == 0, c == 0, join,
               predicate.value == evaluate ? std::nullopt : std::optional<ControlId>{predicate},
               predicates[evaluate] == predicate ? DecisionPrefix::kLinear : DecisionPrefix::kRegion};
+          decision_tails_[id] = tail ? decision_tails_[predicate.value] : DecisionTail{predicate, {other}};
         }
       }
     }
+  }
+  std::uint32_t DecisionJoin(std::uint32_t id, const RegionTask& task) {
+    const auto& candidate = *decisions_[id];
+    const auto old = candidate.join.value;
+    const auto tail = decision_tails_[id];
+    const auto node = graph_.Node({id});
+    const auto shared = graph_.Arc({node.first_arc.value + (candidate.evaluate_on_taken ? 1U : 0U)}).target.value;
+    // Only a proven incompatible preference is replaced, before any ownership
+    // is committed. All other decisions retain their exact old choice. Prefix
+    // entry/edge evidence comes from discovery; the independent region checker
+    // rechecks every edge, scope and completion, not these summary flags.
+    if (task.stop == exit_ || old != tail.fallback.value || !private_terminal_[old] ||
+        TreeCommon(old, task.stop, dom_depth_, dom_up_) == old) return old;
+    const auto refuse = [&](DecisionContinuationError reason, std::uint32_t witness) {
+      // For this typed cause, current is the proposed arm and previous is the
+      // enclosing region, not a claim that either has already acquired nodes.
+      throw ControlFailure{Error::kCrossEntry, reason,
+          {Location(witness), {}, {Location(shared), Location(old)}, Bounds(task),
+           DecisionContinuationEvidence{Location(id), Location(tail.predicate.value), Location(shared),
+               Location(tail.fallback.value), Location(old), Location(task.stop), Location(witness)}}};
+    };
+    if (TreeCommon(task.stop, shared, post_depth_, post_up_) == task.stop) {
+      // Recheck each discovered condition's shared edge and the chain's final
+      // fallback before committing this maximal decision. Prefix ownership is
+      // certified independently by VerifyControlRegions before publication.
+      auto part = id;
+      while (decisions_[part]) {
+        quota_.Work(); const auto& d = *decisions_[part]; const auto b = graph_.Node({part});
+        if (graph_.Arc({b.first_arc.value + (d.evaluate_on_taken ? 1U : 0U)}).target.value != shared)
+          refuse(DecisionContinuationError::kPrefix, part);
+        const auto predicate = d.predicate.value_or(d.evaluate).value;
+        const auto p = graph_.Node({predicate});
+        if (p.arc_count != analysis::kMaxNormalSuccessors || indegree_[d.evaluate.value] != 1 ||
+            graph_.Arc({p.first_arc.value + (d.shared_on_taken ? 0U : 1U)}).target.value != shared)
+          refuse(DecisionContinuationError::kPrefix, predicate);
+        if (!decisions_[predicate] && (predicate != tail.predicate.value ||
+            graph_.Arc({p.first_arc.value + (d.shared_on_taken ? 1U : 0U)}).target.value != old))
+          refuse(DecisionContinuationError::kPrefix, predicate);
+        part = predicate;
+      }
+      return task.stop;
+    }
+    // Follow ancestry supplies a concrete reachable-stop witness, but does not
+    // prove all paths reach it. Never substitute it for actual postdominance.
+    if (Common(shared, task.stop) == task.stop) refuse(DecisionContinuationError::kPostdominator, task.stop);
+    return old;
   }
   ControlLocation Location(std::uint32_t id) const { return {id, ControlOriginKind::kBlock, id}; }
   ControlRegionBounds Bounds(const RegionTask& task) const {
@@ -406,6 +497,7 @@ class ControlBuilder {
       auto incoming = task.incoming;
       while (cursor != task.stop && cursor != exit_) {
         quota_.Work();
+        const auto decision_join = decisions_[cursor] ? DecisionJoin(cursor, task) : 0;
         Own(cursor, task, incoming);
         ++covered;
         auto& node = plan_.nodes[cursor];
@@ -413,7 +505,7 @@ class ControlBuilder {
         if (block.arc_count == analysis::kMaxNormalSuccessors) {
           auto join = parent_[cursor];
           if (decisions_[cursor]) {
-            join = decisions_[cursor]->join.value;
+            join = decision_join;
             auto part = cursor;
             const auto& first = *decisions_[cursor];
             const auto shared = graph_.Arc({block.first_arc.value + (first.evaluate_on_taken ? 1U : 0U)}).target.value;
@@ -425,6 +517,7 @@ class ControlBuilder {
               planned.arms = ControlArms{taken ? std::optional<ControlId>{{shared}} : std::nullopt,
                   taken ? std::nullopt : std::optional<ControlId>{{shared}}};
               planned.decision = decisions_[part];
+              if (planned.decision) planned.decision->join = {join};
               for (std::uint8_t e = 0; e < original.arc_count; ++e) {
                 quota_.Work(); const auto edge = original.first_arc.value + e;
                 plan_.edges[edge] = {{edge}, {part}, e == 0 ? EdgePlacement::kTaken : EdgePlacement::kFallthrough};
@@ -520,9 +613,11 @@ class ControlBuilder {
   std::size_t levels_;
   ControlPlan plan_;
   std::vector<std::uint32_t> indegree_, order_, parent_, depth_, up_;
+  std::vector<std::uint32_t> dom_depth_, dom_up_, post_depth_, post_up_;
   std::vector<std::uint8_t> owned_, private_terminal_, straight_terminal_, all_abrupt_;
   std::vector<RegionTask> tasks_, owners_;
   std::vector<std::optional<ControlDecision>> decisions_;
+  std::vector<DecisionTail> decision_tails_;
   std::vector<std::optional<ControlId>> shared_continuations_;
 };
 }  // namespace
@@ -554,7 +649,17 @@ ControlResult BuildControlPlan(
     quota.Work(std::get<std::uint64_t>(checked));
     plan.work = budget.work - quota.RemainingWork();
     return plan;
-  } catch (const ControlFailure& failure) { return failure;
+  } catch (ControlFailure failure) {
+    if (failure.control.decision) MapControlLocations(failure.control, [&](ControlLocation& location) {
+      if (location.origin != ControlOriginKind::kBlock || location.source >= graph.blocks.size()) return;
+      const auto& block = graph.blocks[location.source];
+      if (!block.op_count || block.first_op.value >= graph.ops.size()) return;
+      const auto& op = graph.ops[block.first_op.value];
+      if (op.origin.value >= graph.origins.size()) return;
+      const auto& origin = graph.origins[op.origin.value];
+      location.working_pc = origin.pc; location.pc = origin.original.value_or(origin.pc);
+    });
+    return failure;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

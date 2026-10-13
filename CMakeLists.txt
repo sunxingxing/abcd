@@ -502,6 +502,9 @@ if(BUILD_TESTING)
   add_executable(control_terminal_test tests/unit/source/control_terminal_test.cc)
   target_link_libraries(control_terminal_test PRIVATE abcd_source abcd_json)
   add_test(NAME control_terminal_test COMMAND control_terminal_test)
+  add_executable(control_decision_test tests/unit/source/control_decision_test.cc)
+  target_link_libraries(control_decision_test PRIVATE abcd_source abcd_json)
+  add_test(NAME control_decision_test COMMAND control_decision_test)
   add_executable(control_plan_test tests/unit/source/control_plan_test.cc)
   add_executable(exception_plan_test tests/unit/source/exception_plan_test.cc)
   target_link_libraries(exception_plan_test PRIVATE abcd_source)
@@ -2403,6 +2406,9 @@ if(BUILD_TESTING)
       add_test(NAME terminal_regions_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/terminal_regions.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/terminal_regions)
+      add_test(NAME decision_continuations_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_continuations.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_continuations)
       add_test(NAME phased_guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_guarded_captures.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/phased_guarded_captures)
