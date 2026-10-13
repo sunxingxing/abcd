@@ -38,6 +38,31 @@ struct FamilyTreeFailure {
   std::optional<abc::EntityOffset> method;
   std::optional<DeferredCellEvidence> deferred;
 };
+// Owns the final residual graphs and rebound occurrence demands, before any AST
+// exists. Only Prepare can construct it; Build consumes it without reprojection.
+class FamilyTreeInput {
+ public:
+  FamilyTreeInput(FamilyTreeInput&&) noexcept = default;
+  FamilyTreeInput& operator=(FamilyTreeInput&&) noexcept = delete;
+  const FileFamily& Input() const { return family_; }
+  std::size_t AllocatedBytes() const { return bytes_; }
+  std::uint64_t Work() const { return work_; }
+  static std::variant<FamilyTreeInput, FamilyTreeFailure> Prepare(
+      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+      FileFamily, const FunctionContext&, analysis::SemanticBudget,
+      const RecordModuleContext*, ModuleOwnerId, const abc::MethodLookup*,
+      RecoveryMode, const FileFunction* creator);
+  std::variant<ConstructedFamily, FamilyTreeFailure> Build(
+      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+      const FunctionContext&, analysis::SemanticBudget, const RecordModuleContext*,
+      ModuleOwnerId, const abc::MethodLookup*, RecoveryMode, const ExternalFamilyCapture*) &&;
+ private:
+  FamilyTreeInput(FileFamily family, std::size_t bytes, std::uint64_t work)
+      : family_(std::move(family)), bytes_(bytes), work_(work) {}
+  FileFamily family_;
+  std::size_t bytes_;
+  std::uint64_t work_;
+};
 // Consumes a fresh, unchanged ReadFunctionFamily result and actual root context.
 // Parent-first shared construction checks each incoming capture against the
 // actual parent tree. Complete-family write domains are checked against original

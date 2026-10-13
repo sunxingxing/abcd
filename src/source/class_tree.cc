@@ -166,14 +166,13 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     catch (const std::bad_alloc&) { return ClassTreeFailure{Error::kResourceLimit}; }
     catch (const std::length_error&) { return ClassTreeFailure{Error::kResourceLimit}; }
 }
-std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
+std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
     const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
-    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery, FunctionOwnerId first_owner,
-    const CaptureTree* parent) {
+    std::span<const ClassDefinitionSite> definitions, FunctionOwnerId first_owner, RecoveryMode recovery) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -184,9 +183,103 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       if (count > budget.work) throw ClassTreeFailure{Error::kWorkLimit};
       budget.work -= count;
     };
-    auto tree = Take<ClassTree>(BuildClassLayout(file, header, index, lookup, roles, classes,
+    ClassPreparation result;
+    result.recovery = recovery;
+    admit(1, sizeof(ClassPreparation));
+    result.layout = Take<ClassTree>(BuildClassLayout(file, header, index, lookup, roles, classes,
         creator, operation, identity, budget, initializer, definitions));
-    admit(tree.allocated_bytes, 1); step(tree.work);
+    admit(result.layout.allocated_bytes, 1); step(result.layout.work);
+    std::size_t count = 1 + result.layout.member_sites.size();
+    for (const auto& definition : result.layout.definitions)
+      for (const auto& method : definition.site.Methods()) { step(1); count += method.operation.has_value(); }
+    admit(count, sizeof(decltype(result.bodies)::value_type)); result.bodies.reserve(count);
+    admit(result.bodies.capacity() - count, sizeof(decltype(result.bodies)::value_type));
+    result.next_owner = first_owner.value;
+    const auto read = [&](ClassTreeContext context, bool member = true) {
+      if (result.next_owner > UINT32_MAX) throw ClassTreeFailure{Error::kResourceLimit};
+      FunctionContext root{std::move(context)};
+      const auto pc = root.ConstructorSite() ? root.ConstructorSite()->pc :
+          root.ClassSite() ? root.ClassSite()->pc : root.CreationSite()->pc;
+      const auto& instructions = creator.input.Input().instructions;
+      step(std::bit_width(instructions.size()) + 1);
+      const auto site = std::lower_bound(instructions.begin(), instructions.end(), pc,
+          [](const auto& instruction, auto pc) { return instruction.pc < pc; });
+      if (site == instructions.end() || site->pc != pc) throw ClassTreeFailure{Error::kCreation};
+      const ParentModuleInput modules{creator.input, {static_cast<std::uint32_t>(site-instructions.begin())}};
+      const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember,
+          {static_cast<std::uint32_t>(result.next_owner)}};
+      auto body = FamilyPreparation::Read(file, header, index, lookup, roles, functions,
+          std::move(root), destination, budget, recovery, &modules, &creator);
+      if (const auto* prepared = std::get_if<FamilyPreparation>(&body)) {
+        admit(prepared->AllocatedBytes(), 1); step(prepared->Work());
+        result.next_owner += prepared->MemberCount();
+      } else {
+        const auto& failure = std::get<FamilyPrepareFailure>(body);
+        const auto* family = std::get_if<FamilyFileFailure>(&failure.cause);
+        const auto* phase = family ? std::get_if<PhasedFileFailure>(&family->cause) : nullptr;
+        const auto* input = phase ? std::get_if<PhasedInputFailure>(phase) : nullptr;
+        const auto* normal = family ? std::get_if<FunctionFileFailure>(&family->cause) : nullptr;
+        const auto* normal_input = normal ? std::get_if<FunctionInputFailure>(normal) : nullptr;
+        const auto* proof = normal_input ? std::get_if<analysis::SemanticProofFailure>(&normal_input->cause) : nullptr;
+        const bool phased_gap = input && input->cause.kind == analysis::ExceptionInputError::kInternalValue &&
+            input->cause.node && input->cause.value;
+        const bool normal_gap = proof && proof->kind == analysis::SemanticProofError::kInternalValue;
+        if (!member || recovery != RecoveryMode::kAllowPartial || !family || !family->root || !family->method ||
+            family->parent.has_value() != family->creation_pc.has_value() || (!phased_gap && !normal_gap))
+          throw ClassTreeFailure{failure};
+        // A retained input gap consumed scratch/work too. Charge before reading
+        // the next member; the finishing stage must not charge it a second time.
+        admit(phased_gap ? input->allocated_bytes : proof->allocated_bytes, 1);
+        step(phased_gap ? input->work : proof->work_units);
+      }
+      // Preserve failure ordering and the existing partial-member policy in the
+      // finishing stage. A failed input never provides a deferred requirement.
+      result.bodies.push_back(std::move(body));
+    };
+    read(Take<ClassTreeContext>(ClassTreeContext::ResolveConstructor(file, header, index, lookup,
+        roles, creator, operation, identity, budget)), false);
+    for (const auto occurrence : result.layout.member_sites) {
+      step(1); read(Take<ClassTreeContext>(ClassTreeContext::Resolve(file, header, index, lookup,
+          roles, classes, occurrence, identity, budget)));
+    }
+    for (const auto& definition : result.layout.definitions)
+      for (const auto& method : definition.site.Methods()) if (method.operation) {
+        step(1); read(Take<ClassTreeContext>(ClassTreeContext::ResolveDefinedMember(file, header, index, lookup,
+            roles, functions, creator, definition.site.definition, method.kind, identity, budget)));
+      }
+    if (initializer) ++result.next_owner;
+    if (result.next_owner > std::uint64_t{UINT32_MAX} + 1) throw ClassTreeFailure{Error::kResourceLimit};
+    result.allocated_bytes = initial.bytes - budget.bytes; result.work = initial.work - budget.work;
+    return result;
+  } catch (const ClassTreeFailure& failure) { return failure; }
+    catch (const std::bad_alloc&) { return ClassTreeFailure{Error::kResourceLimit}; }
+    catch (const std::length_error&) { return ClassTreeFailure{Error::kResourceLimit}; }
+}
+std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
+    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
+    const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
+    const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
+    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
+    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery, FunctionOwnerId first_owner,
+    const CaptureTree* parent, ClassPreparation* preparation) {
+  const auto initial = budget;
+  try {
+    const auto admit = [&](std::size_t count, std::size_t width) {
+      if (count > budget.bytes / width) throw ClassTreeFailure{Error::kResourceLimit};
+      budget.bytes -= count * width;
+    };
+    const auto step = [&](std::uint64_t count) {
+      if (count > budget.work) throw ClassTreeFailure{Error::kWorkLimit};
+      budget.work -= count;
+    };
+    auto tree = preparation ? std::move(preparation->layout) : Take<ClassTree>(BuildClassLayout(file, header, index, lookup, roles, classes,
+        creator, operation, identity, budget, initializer, definitions));
+    if (!preparation) { admit(tree.allocated_bytes, 1); step(tree.work); }
+    if (preparation && preparation->recovery != recovery) throw ClassTreeFailure{Error::kCreation};
+    if (tree.identity != identity || tree.operation != operation || tree.creation.creator != creator.input.Method())
+      throw ClassTreeFailure{Error::kCreation};
+    std::size_t prepared_body = 0;
     std::uint64_t next_owner = first_owner.value;
     std::optional<ClassCaptureParent> source_parent;
     if (parent) source_parent.emplace(ClassCaptureParent{*parent, operation});
@@ -196,9 +289,17 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       return {Strictness::kStrict, globals, FunctionFragment::kClassMember,
           {static_cast<std::uint32_t>(next_owner)}, source_parent ? &*source_parent : nullptr};
     };
+    const auto finish = [&]() -> std::variant<PreparedFamily, FamilyPrepareFailure> {
+      if (!preparation || prepared_body >= preparation->bodies.size())
+        return FamilyPrepareFailure{FamilyPrepareError::kPlacement};
+      auto& input = preparation->bodies[prepared_body++];
+      if (auto* failure = std::get_if<FamilyPrepareFailure>(&input)) return *failure;
+      return PreparedFamily::Finish(file, header, index, lookup,
+          std::get<FamilyPreparation>(std::move(input)), destination(), budget, &creator);
+    };
     const ParentModuleInput modules{creator.input,
         {creator.values.graph.origins[creator.values.graph.ops[operation.value].origin.value].site.value}};
-    tree.constructor = Take<PreparedFamily>(PreparedFamily::PrepareConstructor(file, header, index, lookup,
+    tree.constructor = Take<PreparedFamily>(preparation ? finish() : PreparedFamily::PrepareConstructor(file, header, index, lookup,
         roles, functions, creator, operation, identity, destination(), budget, recovery));
     admit(tree.constructor->AllocatedBytes(), 1); step(tree.constructor->Work());
     next_owner += tree.constructor->Family().members.size();
@@ -220,8 +321,10 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       // The reader stamps the requested root before traversing validated
       // creation edges. Keep the entire member absent, never splice an unknown
       // child into a prepared family. Other failures cannot become omissions.
-      admit(phased_gap ? input->allocated_bytes : proof->allocated_bytes, 1);
-      step(phased_gap ? input->work : proof->work_units);
+      if (!preparation) {
+        admit(phased_gap ? input->allocated_bytes : proof->allocated_bytes, 1);
+        step(phased_gap ? input->work : proof->work_units);
+      }
       auto context = resolve();
       admit(context.AllocatedBytes(), 1); step(context.Work());
       ClassMemberOmission gap{std::move(context), phased_gap ? decltype(ClassMemberOmission::failure){input->cause} :
@@ -233,7 +336,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     admit(tree.members.capacity() - tree.member_sites.size(), sizeof(std::optional<PreparedFamily>));
     for (const auto occurrence : tree.member_sites) {
       step(1);
-      auto prepared = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
+      auto prepared = preparation ? finish() : PreparedFamily::PrepareClass(file, header, index, lookup, roles,
           functions, classes, occurrence, identity, destination(), budget, recovery, &modules, &creator);
       if (auto gap = omission(prepared, [&] {
             return Take<ClassTreeContext>(ClassTreeContext::Resolve(file, header, index, lookup,
@@ -261,7 +364,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       const auto methods = definition.site.Methods();
       for (std::size_t i = 0; i < methods.size(); ++i) {
         if (!methods[i].operation) continue;
-        auto prepared = PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles,
+        auto prepared = preparation ? finish() : PreparedFamily::PrepareDefinedMember(file, header, index, lookup, roles,
             functions, creator, definition.site.definition, methods[i].kind, identity, destination(), budget, recovery);
         if (auto gap = omission(prepared, [&] {
               return Take<ClassTreeContext>(ClassTreeContext::ResolveDefinedMember(file, header, index, lookup,
@@ -276,6 +379,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
         definition.bodies[i] = std::move(member);
       }
     }
+    if (preparation && prepared_body != preparation->bodies.size()) throw ClassTreeFailure{Error::kMember};
     std::optional<ClassStaticFields> fields;
     if (initializer) {
       if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};

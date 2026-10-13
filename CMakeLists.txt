@@ -915,6 +915,11 @@ if(BUILD_TESTING)
     add_test(NAME closure_schedule_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/closure_schedule.mjs $<TARGET_FILE:closure_schedule_test>)
   endif()
+  add_executable(class_deferred_test tests/unit/source/class_deferred_test.cc)
+  target_include_directories(class_deferred_test PRIVATE tests/support)
+  target_link_libraries(class_deferred_test PRIVATE abcd_source)
+  add_test(NAME class_deferred_test COMMAND class_deferred_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_deferred/self.abc)
   add_executable(capture_plan_test tests/unit/source/capture_plan_test.cc)
   target_link_libraries(capture_plan_test PRIVATE abcd_source)
   add_test(NAME capture_plan_test COMMAND capture_plan_test)
@@ -2415,6 +2420,9 @@ if(BUILD_TESTING)
       add_test(NAME guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_captures.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_captures)
+      add_test(NAME class_deferred_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_deferred.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_deferred)
     endif()
     if(ABCD_NODE_EXECUTABLE AND
        EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND

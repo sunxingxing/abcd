@@ -411,42 +411,6 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       return fail_from(Error::kValue, evaluated);
     }
     retain(evaluation->allocated_bytes);
-    if (family) {
-      // Root cells that direct children capture before their first store
-      // (deferred TDZ initializations): this entry tree must declare them there.
-      std::size_t count = 0;
-      for (const auto& member : family->members)
-        if (member.incoming && member.incoming->parent == FileFamily::kRoot) count += member.incoming->cells.deferred.size();
-      if (count) {
-        retain(count * sizeof(DeferredCellInitialization));
-        std::vector<DeferredCellInitialization> deferred;
-        deferred.reserve(count);
-        for (const auto& member : family->members)
-          if (member.incoming && member.incoming->parent == FileFamily::kRoot)
-            deferred.insert(deferred.end(), member.incoming->cells.deferred.begin(), member.incoming->cells.deferred.end());
-        const auto deferred_failure = [&](DeferredCellError reason, const DeferredCellInitialization* selected) {
-          auto failure = fail_with(Error::kFunction, FamilyTreeError::kDeferredCell);
-          failure.deferred = DeferredCellEvidence{reason}; failure.deferred->creator = function->input.Method();
-          for (const auto& member : family->members) {
-            if (!member.incoming || member.incoming->parent != FileFamily::kRoot) continue;
-            for (const auto& cell : member.incoming->cells.deferred) if (selected && cell == *selected) {
-              failure.deferred = DescribeDeferredFailure(reason, graph, function->values.cells ? &*function->values.cells : nullptr,
-                  member.incoming->cells, selected, member.function.Capture().Input().Captures());
-              break;
-            }
-            if (failure.deferred->child) break;
-          }
-          AppendFailureCause(failure.causes, reason);
-          failure.method = failure.deferred->creator;
-          return failure;
-        };
-        if (!evaluation->cells) return deferred_failure(DeferredCellError::kBinding, &deferred.front());
-        std::optional<std::size_t> rejected;
-        if (!MarkDeferredCells(graph, *evaluation->cells, deferred, {budget.bytes}, &rejected))
-          return deferred_failure(DeferredCellError::kPlacement, rejected ? &deferred[*rejected] : nullptr);
-        retain(evaluation->cells->deferred.capacity() * sizeof(std::optional<analysis::OpId>));
-      }
-    }
     // First-store declarations and slot/name correspondence above establish
     // the enclosing native record bindings before preparing class descendants.
     class_scope.module_local_names = std::span<const std::u16string>(names).subspan(external);
@@ -493,6 +457,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       analysis::OpId operation;
       std::shared_ptr<ClassTree> tree;
       std::span<const ClassDefinitionSite> definitions;
+      std::optional<ClassPreparation> preparation;
     };
     retain(function->values.classes.classes.size() * sizeof(PendingClass));
     std::vector<PendingClass> pending_classes;
@@ -514,6 +479,70 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       auto retained = std::make_shared<ClassTree>(std::move(definition));
       constants->operations[occurrence.operation.value] = retained;
       pending_classes.push_back({occurrence.operation, std::move(retained), std::span(first, last)});
+    }
+    // Discover complete member requirements before freezing this creator. Keep
+    // the same owner reservation and member order as final construction.
+    std::uint64_t prepared_owner = syntax.owner.value + static_cast<std::uint64_t>(family ? family->members.size() : 1);
+    for (auto& pending : pending_classes) {
+      if (prepared_owner > UINT32_MAX) return fail(Error::kResourceLimit);
+      auto prepared = PrepareClassTree(file, header, index, lookup, roles, *functions, *classes,
+          *function, pending.operation, identity, &class_scope, {budget.bytes},
+          initialization[pending.operation.value], pending.definitions,
+          {static_cast<std::uint32_t>(prepared_owner)}, RecoveryMode::kAllowPartial);
+      if (const auto* failure = std::get_if<ClassTreeFailure>(&prepared)) return class_failure(*failure, pending.operation);
+      pending.preparation.emplace(std::get<ClassPreparation>(std::move(prepared)));
+      retain(pending.preparation->allocated_bytes);
+      prepared_owner = pending.preparation->next_owner;
+    }
+    {
+      // Root cells that direct children capture before their first store
+      // (deferred TDZ initializations): this entry tree must declare them there.
+      std::size_t count = 0;
+      if (family) for (const auto& member : family->members)
+        if (member.incoming && member.incoming->parent == FileFamily::kRoot) count += member.incoming->cells.deferred.size();
+      for (const auto& pending : pending_classes) for (const auto& body : pending.preparation->bodies)
+        if (const auto* prepared = std::get_if<FamilyPreparation>(&body))
+          if (const auto* captures = prepared->RootCapture()) count += captures->deferred.size();
+      if (count) {
+        retain(count * sizeof(DeferredCellInitialization));
+        std::vector<DeferredCellInitialization> deferred;
+        deferred.reserve(count);
+        if (family) for (const auto& member : family->members)
+          if (member.incoming && member.incoming->parent == FileFamily::kRoot)
+            deferred.insert(deferred.end(), member.incoming->cells.deferred.begin(), member.incoming->cells.deferred.end());
+        for (const auto& pending : pending_classes) for (const auto& body : pending.preparation->bodies)
+          if (const auto* prepared = std::get_if<FamilyPreparation>(&body))
+            if (const auto* captures = prepared->RootCapture())
+              deferred.insert(deferred.end(), captures->deferred.begin(), captures->deferred.end());
+        const auto deferred_failure = [&](DeferredCellError reason, const DeferredCellInitialization* selected) {
+          auto failure = fail_with(Error::kFunction, FamilyTreeError::kDeferredCell);
+          failure.deferred = DeferredCellEvidence{reason}; failure.deferred->creator = function->input.Method();
+          // The merged storage list may contain equal cells for distinct child
+          // occurrences. Locate the request by ordinal, never by cell equality.
+          std::size_t ordinal = selected ? static_cast<std::size_t>(selected - deferred.data()) : count;
+          const auto locate = [&](const CaptureCells& captures, std::span<const CaptureUse> uses) {
+            if (failure.deferred->child) return;
+            if (ordinal < captures.deferred.size()) {
+              failure.deferred = DescribeDeferredFailure(reason, graph, function->values.cells ? &*function->values.cells : nullptr,
+                  captures, &captures.deferred[ordinal], uses);
+            } else ordinal -= captures.deferred.size();
+          };
+          if (family) for (const auto& member : family->members)
+            if (member.incoming && member.incoming->parent == FileFamily::kRoot)
+              locate(member.incoming->cells, member.function.Capture().Input().Captures());
+          for (const auto& pending : pending_classes) for (const auto& body : pending.preparation->bodies)
+            if (const auto* prepared = std::get_if<FamilyPreparation>(&body))
+              if (const auto* captures = prepared->RootCapture()) locate(*captures, prepared->RootUses());
+          AppendFailureCause(failure.causes, reason);
+          failure.method = failure.deferred->creator;
+          return failure;
+        };
+        if (!evaluation->cells) return deferred_failure(DeferredCellError::kBinding, &deferred.front());
+        std::optional<std::size_t> rejected;
+        if (!MarkDeferredCells(graph, *evaluation->cells, deferred, {budget.bytes}, &rejected))
+          return deferred_failure(DeferredCellError::kPlacement, rejected ? &deferred[*rejected] : nullptr);
+        retain(evaluation->cells->deferred.capacity() * sizeof(std::optional<analysis::OpId>));
+      }
     }
     const auto view = constants->View();
     syntax.names = std::move(constants->names); syntax.texts = std::move(constants->texts);
@@ -579,7 +608,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
           *function, pending.operation, identity, &class_scope, {budget.bytes},
           initialization[pending.operation.value], pending.definitions, RecoveryMode::kAllowPartial,
-          {static_cast<std::uint32_t>(next_class_owner)}, class_parent ? &*class_parent : nullptr);
+          {static_cast<std::uint32_t>(next_class_owner)}, class_parent ? &*class_parent : nullptr, &*pending.preparation);
       if (const auto* failure = std::get_if<ClassTreeFailure>(&built))
         return class_failure(*failure, pending.operation);
       auto definition = std::get<ClassTree>(std::move(built));

@@ -27,8 +27,8 @@ const ClassDefinedMember* PreparedFamily::DefinedMemberCreation() const {
 const analysis::FunctionCreationSite* PreparedFamily::FunctionCreation() const { return storage_->context.CreationSite(); }
 std::u16string_view PreparedFamily::Name() const { return storage_->context.Name(); }
 std::span<const MethodRouteReceipt> PreparedFamily::Receipts() const { return storage_->receipts; }
-std::size_t PreparedFamily::AllocatedBytes() const { return storage_->allocated_bytes; }
-std::uint64_t PreparedFamily::Work() const { return storage_->work; }
+std::size_t PreparedFamily::AllocatedBytes() const { return storage_->allocated_bytes + preparation_bytes_; }
+std::uint64_t PreparedFamily::Work() const { return storage_->work + preparation_work_; }
 namespace {
 using Error = FamilyPrepareError;
 void Require(bool ok, Error error) { if (!ok) throw FamilyPrepareFailure{error}; }
@@ -138,7 +138,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareConstr
     catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
     catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
 }
-std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
+std::variant<FamilyPreparation, FamilyPrepareFailure> FamilyPreparation::Read(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
@@ -149,7 +149,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     CheckPlacement(root, destination);
     Require(!file.CheckUnchanged(), Error::kFileChanged);
     Budget budget(allowance);
-    budget.Account(sizeof(Storage), 0);
+    budget.Account(sizeof(FamilyPreparation), 0);
     budget.Account(root.AllocatedBytes(), root.Work());
     const RecordModuleContext* modules = nullptr;
     ModuleOwnerId module_owner{};
@@ -180,6 +180,35 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     }
     auto input = Take<FileFamily, FamilyFileFailure>(std::move(read));
     budget.Account(input.allocated_bytes, input.work);
+    auto prepared = Take<FamilyTreeInput, FamilyTreeFailure>(FamilyTreeInput::Prepare(
+        file, header, index, std::move(input), root, budget.Left(), modules, module_owner, &lookup, recovery, creator));
+    budget.Account(prepared.AllocatedBytes(), prepared.Work());
+    return FamilyPreparation(std::move(root), std::move(prepared), recovery,
+        allowance.bytes - budget.Left().bytes, allowance.work - budget.Left().work);
+  } catch (const FamilyPrepareFailure& failure) { return failure;
+  } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
+  } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
+}
+std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Finish(
+    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
+    const abc::MethodLookup& lookup, FamilyPreparation preparation, FamilyDestination destination,
+    analysis::SemanticBudget allowance, const FileFunction* creator) {
+  try {
+    auto& root = preparation.root_;
+    const auto recovery = preparation.recovery_;
+    const auto& input = preparation.input_.Input();
+    Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
+    CheckPlacement(root, destination);
+    Require(input.first_owner == destination.first_owner, Error::kPlacement);
+    Require(!file.CheckUnchanged(), Error::kFileChanged);
+    Budget budget(allowance); budget.Account(sizeof(Storage), 0);
+    const RecordModuleContext* modules = nullptr;
+    ModuleOwnerId module_owner{};
+    if (destination.globals && destination.globals->module_enclosure) {
+      const auto& enclosure = *destination.globals->module_enclosure;
+      Require(enclosure.Identity() == root.Identity(), Error::kModules);
+      modules = &enclosure.Context(); module_owner = enclosure.Owner();
+    }
     Require(input.members.size() <= budget.Left().bytes / sizeof(MethodRouteReceipt), Error::kResourceLimit);
     std::vector<MethodRouteReceipt> receipts;
     budget.Account(input.members.size() * sizeof(MethodRouteReceipt), input.members.size());
@@ -196,8 +225,8 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
       Require(creator != nullptr, Error::kPlacement);
       external.emplace(ExternalFamilyCapture{*creator, *destination.captures});
     }
-    auto family = Take<ConstructedFamily, FamilyTreeFailure>(BuildFileFamilyTrees(
-        file, header, index, std::move(input), root, budget.Left(), modules, module_owner, &lookup, recovery,
+    auto family = Take<ConstructedFamily, FamilyTreeFailure>(std::move(preparation.input_).Build(
+        file, header, index, root, budget.Left(), modules, module_owner, &lookup, recovery,
         external ? &*external : nullptr));
     budget.Account(family.allocated_bytes, family.work);
     for (const auto& member : family.members) {
@@ -247,6 +276,26 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     // The factory's actual passes, not FamilyWriteFacts counters, authorize it.
     return PreparedFamily(std::make_unique<const Storage>(Storage{std::move(root), std::move(family), std::move(receipts),
         allowance.bytes - budget.Left().bytes, allowance.work - budget.Left().work}));
+  } catch (const FamilyPrepareFailure& failure) { return failure;
+  } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
+  } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
+}
+std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
+    FunctionContext root, FamilyDestination destination, analysis::SemanticBudget allowance,
+    RecoveryMode recovery, const ParentModuleInput* root_modules, const FileFunction* creator) {
+  try {
+    auto input = Take<FamilyPreparation, FamilyPrepareFailure>(FamilyPreparation::Read(file, header, index,
+        lookup, roles, sites, std::move(root), destination, allowance, recovery, root_modules, creator));
+    const auto bytes = input.AllocatedBytes(); const auto work = input.Work();
+    Budget budget(allowance); budget.Account(bytes, work);
+    auto result = Take<PreparedFamily, FamilyPrepareFailure>(Finish(file, header, index, lookup,
+        std::move(input), destination, budget.Left(), creator));
+    // Immediate callers own both phases; split callers account them separately.
+    result.preparation_bytes_ = bytes; result.preparation_work_ = work;
+    return result;
   } catch (const FamilyPrepareFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }

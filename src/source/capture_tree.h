@@ -45,6 +45,11 @@ struct IncomingCaptureTree {
   CaptureTree parent;
   std::optional<ClassCaptureAnchor> class_anchor;
 };
+// A checked creator flow, not an allow flag: each requested store must own the
+// real lexical declaration. Does not grant an activation proof to recovery.
+[[nodiscard]] bool HasDeferredDeclaration(CaptureTree, CellId);
+[[nodiscard]] std::variant<std::uint64_t, CaptureTreeError> VerifyDeferredCaptureTree(
+    const CaptureCells&, CaptureTree, analysis::SemanticBudget = {}, std::optional<std::size_t>* rejected = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, CaptureTreeError> VerifyClassCaptureAnchor(
     const CaptureCells& cells, CaptureTree parent, const ClassCaptureAnchor& anchor,
     analysis::SemanticBudget budget = {});

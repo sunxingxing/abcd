@@ -276,3 +276,73 @@ FamilyWrite/Control/PhasedMethod 门禁；不能把越过首个拒绝说成整�
 单文件复验显示该 record 在原 flags 下也完成。为避免用样本禁用规则压回合法结果，
 工作区保留通用算法，并暂不改 corpus 测试及 `language-source.md` 中此前的历史预期；
 其预期更新与这项自然覆盖收益一并交 cc 确认。未运行原 flags 全探索集或留出集。
+
+## 10. External class-root requirements (Round 43)
+
+Class members can capture a creator cell whose declaration cannot execute until
+its initializing store, including the class's separate self-binding cell. The
+member requirement must reach the creator **before** its tree is frozen. Preparing
+an input is not a fulfilment certificate and does not authorize guard erasure.
+
+`FamilyPreparation::Read` / `FamilyTreeInput::Prepare` retain the residual family,
+apply existing default projection and whole-family demand rebinding, and verify
+`root_capture` against the unchanged creator. `PrepareClassTree` visits the same
+constructor/member/defined-member order as final construction, reserving the same
+owner ranges without allocating AST symbols or names. Each prepared body keeps
+its own occurrence/context; equal `DeferredCellInitialization` storage entries
+are not request identities. Retained partial-input failures are charged before
+reading another member; resource/work failures are not deferred as omissions.
+
+The record adapter combines ordinary child requests and prepared class-root
+requests into one `MarkDeferredCells` input before `BuildFunctionTree`. The
+original declaration/store/scope proof decides placement. It does not move an
+already frozen declaration. Failure selection follows the request ordinal, so
+two members sharing storage cannot overwrite each other's diagnostic provenance.
+
+`FamilyTrees::Build` replaces the unconditional ExternalRoot refusal with
+`VerifyDeferredCaptureTree`: identity/revisions, cell symbol, the actual `let`
+with an initializer, scope, and the store-to-statement/initializer correspondence
+must match the independently checked creator flow. The declaration's missing
+activation evidence remains missing. Through `root_capture.targets`, the actual
+parent declaration seeds the root member's TDZ mask, then the existing family
+lattice and Round 38 per-occurrence read proof propagate it. Whole-family writes,
+class-anchor/self ordering, tree semantics and recovery checks still run. Neither
+an external request nor a TDZ mask substitutes for these proofs.
+
+This increment does not admit the cross-block CAPTURE cases, exceptional-parent
+deferral, a new static-field execution time, or inner/outer class-name merging.
+No source-language premise is added: Guarded uses the raw check, and SourceAccess
+still requires the approved LanguageSourceV1 premise. The exception boundary is
+unchanged: compare exception constructors and traces, never Node/Ark message or
+stack spelling.
+
+The preparation products are moved, not copied, into final construction. Arrays
+are reserved/charged before filling; requirements are scanned once per pass and
+existing sorted cell indexes perform O(log N) lookup. Total added work is bounded
+by O(N log N) in retained IR plus request size, with no per-cell CFG walk. Budget
+failures remain typed. More class inputs are live before the creator tree than in
+the old sequential build; their costs are admitted cumulatively.
+
+Tests: `class_deferred_test` (real-file preparation/root-obligation mutations,
+independent declaration fulfilment, owner/store/scope/activation mutations,
+copy/block splitting, 200/201/400/800 and byte/work boundaries) and
+`class_deferred_cli_test` ([fixture provenance](../../../tests/integration/fixtures/class_deferred/README.md))
+cover self-reference, forwarded reads, multiple creators sharing storage, early
+static-method reads, initializer re-entry/throw, heritage throw, instance construction re-entry and a member-owned catch. Static-field early read and loop-local class construction
+remain refusal tests. Existing capture/root-anchor/write/recovery tests are part
+of the targeted regression slice; positive loop/static-initializer recovery is
+not claimed.
+
+Round 43 workspace verification (2026-10-14, uncommitted): keep-going full build
+passed; fixed source-regression set 65/65; the class/capture/deferred/guarded/recovery
+slice passed 46/59, with the 13 failures already listed in status.md. Both new
+tests passed. A resource-gate ordering regression discovered in
+`deferred_capture_source_test` was corrected without changing its assertions;
+that test passes in the final slice. Against explore42/explore42s, completion is
+485/620 and 517/620 (six new records in each), with zero regressions and zero
+byte drift among previously complete outputs, including o32/49868. The three
+excluded cross-block CAPTURE records retain identical manifests in both modes.
+Of the ten ExternalRoot candidates, six complete; TimeUtils now reports an
+unsupported instruction, and the three KeyboardController records reach
+expression/evaluation ownership failures. The old-contract o15/37098 remains
+blocked by the lazy-import contract. These next failures are not completion.

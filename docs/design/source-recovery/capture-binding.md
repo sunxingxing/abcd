@@ -69,9 +69,13 @@ The record adapter prepares one parent flow before member bodies, not one graph
 walk per member. Parent tree/flow/context references are synchronous only.
 Class-layout structure alone does not check the newly recovered closure's lexical
 visibility: the eventual enclosing ClassExpr must carry/check those references.
-Whole-family writes and destination/printing still reject external roots until
-that source-scope and transitive-write integration is complete. These aliases
-are conditional AST evidence, not permission for standalone executable output.
+Whole-family writes and destination/printing must close that source-scope and
+transitive-write proof before publication. These aliases are conditional AST
+evidence, not permission for standalone executable output. External deferred
+requirements now return to the creator before its tree is frozen; see
+[guarded captures, Round 43](guarded-captures.md#10-external-class-root-requirements-round-43).
+The final class-root check verifies actual declaration fulfilment; it is not an
+allow-flag or a post-construction declaration move.
 
 FunctionInput now owns a same-body SemanticMethod and SemanticProof, with file
 identity, method, record and explicit Closed/Conditional capture mode. Its

@@ -20,6 +20,57 @@ SymbolId CellSymbol(CaptureTree function, CellId cell) {
 }
 }  // namespace
 
+static std::span<const OriginalCellBinding> CellBindings(const TreeFlow& flow) {
+  if (flow.original && flow.original->cells) return flow.original->cells->bindings;
+  return flow.cell_bindings;
+}
+bool HasDeferredDeclaration(CaptureTree parent, CellId cell) {
+  if (cell.value >= CellBindings(parent.flow).size() || cell.value >= parent.flow.cells.size() ||
+      !parent.flow.cells[cell.value]) return false;
+  const auto& binding = CellBindings(parent.flow)[cell.value];
+  if (binding.activation || !binding.declaration || binding.binding != *parent.flow.cells[cell.value] ||
+      binding.declaration->value >= parent.tree.statements.size() || binding.binding.value >= parent.tree.symbols.size()) return false;
+  const auto& symbol = parent.tree.symbols[binding.binding.value];
+  const auto* declaration = std::get_if<DeclarationStmt>(&parent.tree.statements[binding.declaration->value].statement);
+  return declaration && declaration->initializer && declaration->symbol == binding.binding &&
+      symbol.kind == BindingKind::kLocal && symbol.declaration == DeclarationKind::kLet &&
+      !symbol.temporary && symbol.scope == binding.scope;
+}
+std::variant<std::uint64_t, CaptureTreeError> VerifyDeferredCaptureTree(
+    const CaptureCells& cells, CaptureTree parent, analysis::SemanticBudget budget, std::optional<std::size_t>* rejected) {
+  if (rejected) rejected->reset();
+  try {
+    Require(parent.tree.identity == cells.identity && parent.tree.method == cells.parent, Error::kOwner);
+    Revision(parent, cells.parent_revision, cells.parent_cfg);
+    auto work = budget.work;
+    for (std::size_t i = 0; i < cells.deferred.size(); ++i) {
+      if (rejected) *rejected = i;
+      Require(work != 0, Error::kWorkLimit); --work;
+      const auto& entry = cells.deferred[i];
+      Require(HasDeferredDeclaration(parent, entry.cell), Error::kCell);
+      const auto& binding = CellBindings(parent.flow)[entry.cell.value];
+      Require(entry.store.value < parent.flow.statements.size() &&
+          parent.flow.statements[entry.store.value] == binding.declaration &&
+          entry.store.value < parent.flow.expressions.size(), Error::kTarget);
+      const auto& declaration = std::get<DeclarationStmt>(parent.tree.statements[binding.declaration->value].statement);
+      Require(parent.flow.expressions[entry.store.value] == declaration.initializer, Error::kTarget);
+      // TreeFlow independently checked this original store/declaration against
+      // the creator IR. Operand/recovery evidence is attached by the enclosing
+      // semantics pass; a construction-only flow need not own that later product.
+      if (parent.flow.original && parent.flow.original->cells) {
+        Require(entry.cell.value < parent.flow.original->cells->bindings.size(), Error::kCell);
+        const auto& original = parent.flow.original->cells->bindings[entry.cell.value];
+        Require(original.storage.environment == binding.storage.environment &&
+            original.storage.slot.value == binding.storage.slot.value && original.binding == binding.binding &&
+            original.scope == binding.scope && original.declaration == binding.declaration &&
+            original.activation == binding.activation, Error::kTarget);
+      }
+    }
+    if (rejected) rejected->reset();
+    return budget.work - work;
+  } catch (Error error) { return error; }
+}
+
 std::variant<std::uint64_t, CaptureTreeError> VerifyCaptureTree(
     const CaptureCells& cells, CaptureTree parent, CaptureTree child, analysis::SemanticBudget budget,
     const ClassCaptureAnchor* class_anchor) {
@@ -41,6 +92,9 @@ std::variant<std::uint64_t, CaptureTreeError> VerifyCaptureTree(
       const auto checked = VerifyClassCaptureAnchor(cells, parent, *class_anchor, {budget.bytes, work});
       if (const auto* error = std::get_if<Error>(&checked)) throw *error;
       step(std::get<std::uint64_t>(checked));
+      const auto deferred = VerifyDeferredCaptureTree(cells, parent, {budget.bytes, work});
+      if (const auto* error = std::get_if<Error>(&deferred)) throw *error;
+      step(std::get<std::uint64_t>(deferred));
     } else {
       Require(cells.creation.value < parent.flow.expressions.size() &&
           parent.flow.expressions[cells.creation.value], Error::kCreation);

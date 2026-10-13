@@ -84,6 +84,23 @@ using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, Famil
     const analysis::ClassMethodSites&, const FileFunction&, analysis::OpId,
     RouteInputIdentity, analysis::SemanticBudget = {},
     const ClassInitializerCall* = nullptr, std::span<const ClassDefinitionSite> = {});
+// Bodies' residual inputs are prepared in the original emission order. No
+// syntax owners/names are allocated here; member count reserves the same range.
+struct ClassPreparation {
+  ClassTree layout;
+  std::vector<std::variant<FamilyPreparation, FamilyPrepareFailure>> bodies;
+  RecoveryMode recovery = RecoveryMode::kCompleteOnly;
+  std::uint64_t next_owner = 0;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
+};
+[[nodiscard]] std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
+    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+    const abc::MethodLookup&, const analysis::MethodRoleIndex&,
+    const analysis::FunctionCreationSites&, const analysis::ClassMethodSites&,
+    const FileFunction&, analysis::OpId, RouteInputIdentity, const GlobalScope*,
+    analysis::SemanticBudget, const ClassInitializerCall*, std::span<const ClassDefinitionSite>,
+    FunctionOwnerId, RecoveryMode);
 // Fresh unchanged caller and same-file indexes are admitted by the caller.
 // Constructor and every member use the shared family pipeline. Refusal of any
 // member refuses this creation by default. Explicit AllowPartial may retain a
@@ -100,7 +117,7 @@ using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, Famil
     const ClassInitializerCall* initializer = nullptr,
     std::span<const ClassDefinitionSite> definitions = {},
     RecoveryMode recovery = RecoveryMode::kCompleteOnly, FunctionOwnerId first_owner = {},
-    const CaptureTree* parent = nullptr);
+    const CaptureTree* parent = nullptr, ClassPreparation* preparation = nullptr);
 struct PrintedClassTree {
   // Each member's positions remain relative to its own byte offset, preserving
   // the existing family source maps without expanding their origin graphs.
