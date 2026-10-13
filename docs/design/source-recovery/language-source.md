@@ -182,11 +182,36 @@ record.json 的格式不变。该标记不表示 Node 可执行。请求表畸�
 新增元数据变异最初发现 phased 模块错误折叠，保留 `PhasedModuleFailure` 叶子原因后通过，
 没有降低原因链断言。未运行探索集、留出集、全套测试或 RSS 基准；语料对照由 cc 执行。
 
-## 4. 数组展开（已批准，待下一轮实现）
+## 4. 数组展开（已批准；工作区仅完成原始语义，源码投影未实现）
 
 用户批准输出标准 `[...x]`，并接受锁定运行时与标准展开的全部已列差异：数组
 `.values`/直接迭代器到 `Symbol.iterator`、每步读取 next 到保存 next 方法、迭代结果
 自有且可枚举的 value 描述符复制到普通取值、字符串专用遍历及 [[Set]] 到标准
 迭代和自有数据属性定义，以及迭代期间 length 变化的行为。包括这些差异引起的
-getter/setter 调用与异常。本轮只登记谓词，不实现展开恢复；该前提不授权把任意
+getter/setter 调用与异常。Round 31 只登记谓词，没有实现展开恢复；该前提不授权把任意
 已有数组修改改为新数组，或丢弃可观察索引结果。
+
+**Round 32 工作区进度（未完成）。** 原始 `ArraySpread` / `ValueArraySpread` 已建模：
+destination、index、source 为三个独立输入；正常结果是 cursor，抛出前可有部分堆写入，
+异常 SSA 仅在成功 Commit 定义结果。尚未提交私有构造/cursor 投影，也未开放源码发射。
+空迭代返回原 index，因此在 cursor 输入尚未证明时保留 Unknown 域，不无条件标为 Number。
+新增原始 IR 单测覆盖输入、效果和结果变异、Before/Commit 及 200/201/400/800 规模。
+
+**待裁决边界。** 锁定 ets_runtime `RuntimeStArraySpread` 的通用迭代分支用
+`int tmp = indexHandle->GetInt(); tmp + 1` 推进（`runtime_stubs-inl.h:600–601`）。
+当前批准清单没有明确包含该整数范围与标准数组索引上限的差异；“无法证明回绕则拒绝”
+与接收任意无长度上界的 iterable 不能同时无条件成立。不得把通用未知 iterable 视为有界，
+也不得把 C++ 有符号溢出描述为已经证明的模数回绕。该问题确认之前保持源码拒绝。
+DevEco 的临时编译检查还显示，spread 后可以通过私有数组的 `length` 读取重建 cursor，
+混排元素使用 `stownbyvalue`。后续应由属性身份、私有性和 cursor 数据流证明处理；
+不能增加相邻 opcode 模板。
+
+**本增量验证。** `cmake --build build/regression -j 6 -- -k` 成功；
+`ctest --preset source-regression -j 1 --output-on-failure` 为 65/65。
+串行 `literal|array|object|language_source|source_route` 定向测试为 45/52，新增
+`array_spread_test` 通过。7 个失败已在 `/private/tmp` 内从 `da2cf105` 导出的未修改
+源码隔离构建中逐项复现，断言位置及原因相同：`literal_construct_test`、
+`mixed_literal_test`、`phased_literal_test`，以及 literal closure/derived receiver
+的 guarded/unguarded 四项集成测试。它们不是负载超时，本轮未修改其断言或生产实现。
+未实现源语言展开的 Node 差分、树变异和构造预算边界测试；未运行探索集、留出集、
+全套测试或 RSS 基准。原始 IR 测试通过不代表 D5 构造证明或 D6/D7 源码恢复完成。

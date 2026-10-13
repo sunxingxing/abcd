@@ -47,7 +47,8 @@ struct CfgRevision {
 enum class OperandRole : std::uint8_t {
   kInput, kBase, kKey, kStoredValue, kLeft, kRight, kCondition,
   kReturnValue, kGuardValue, kDiagnosticName, kPhiInput,
-  kCallee, kReceiver, kConstructor, kArgument, kHomeObject, kHeritage, kThrownValue, kGetter, kSetter, kNameFlag
+  kCallee, kReceiver, kConstructor, kArgument, kHomeObject, kHeritage, kThrownValue, kGetter, kSetter, kNameFlag,
+  kDestination, kIndex, kSource
 };
 enum class ReadPurpose : std::uint8_t { kOperand, kProtocol };
 enum class ValueLife : std::uint8_t { kLive, kRemoved };
@@ -101,6 +102,7 @@ struct ValueAwait { AwaitRegion origin; bool operator==(const ValueAwait&) const
 struct ValueYield { YieldRegion origin; bool operator==(const ValueYield&) const = default; };
 struct ValueUnary { UnaryOperator op; bool operator==(const ValueUnary&) const = default; };
 struct ValueBinary { BinaryOperator op; bool operator==(const ValueBinary&) const = default; };
+struct ValueArraySpread { bool operator==(const ValueArraySpread&) const = default; };
 struct ValueNamedRead { abc::PoolIndex name; bool operator==(const ValueNamedRead&) const = default; };
 struct ValueNamedWrite { abc::PoolIndex name; bool operator==(const ValueNamedWrite&) const = default; };
 // Own definition is not [[Set]]. Keep the pinned operation family and IC slot
@@ -283,7 +285,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueInvoke, ValueConstruct, ValueConstructApply, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

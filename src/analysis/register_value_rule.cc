@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "abcd/analysis/array_creation.h"
+#include "abcd/analysis/array_spread.h"
 #include "abcd/analysis/constant_object.h"
 #include "abcd/analysis/constructor_call.h"
 #include "abcd/analysis/class_creation.h"
@@ -207,6 +208,10 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
   if (std::holds_alternative<LoadHole>(
           LiftHoleInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Hole()};
+  if (std::holds_alternative<ArraySpread>(LiftArraySpread(instruction, frame_size)))
+    // The empty-iterator path returns the incoming index unchanged. Only a
+    // checked cursor proof may refine an arbitrary index operand to Number.
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
   if (std::holds_alternative<PushEnvironment>(
           LiftLexicalInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Environment()};

@@ -1,5 +1,6 @@
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/array_creation.h"
+#include "abcd/analysis/array_spread.h"
 
 #include <algorithm>
 
@@ -96,6 +97,14 @@ RegisterEffect EffectOf(const IndexedWrite& value) {
   RegisterEffect effect;
   effect.reads[effect.read_count++] = value.object;
   effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
+RegisterEffect EffectOf(const ArraySpread& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.destination;
+  effect.reads[effect.read_count++] = value.index;
+  effect.reads[effect.read_count++] = Accumulator{};
+  effect.write = Accumulator{};
   return effect;
 }
 RegisterEffect EffectOf(const OrdinaryCall& value) {
@@ -366,6 +375,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftIndexedWrite(instruction, frame_size));
+      !Unsupported(result))
+    return result;
+  if (auto result = Adapt(LiftArraySpread(instruction, frame_size));
       !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftOrdinaryCall(instruction, frame_size));

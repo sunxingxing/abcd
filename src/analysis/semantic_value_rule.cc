@@ -26,6 +26,9 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       // generic Language fact admit an escaping state or an unowned settle
       // into source recovery before the phased async owner is certified.
       return ScalarError::kUnsupportedOpcode;
+    } else if constexpr (std::is_same_v<T, ArraySpread>) {
+      // Empty iteration returns index unchanged; no input cursor proof here.
+      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
     } else if constexpr (std::is_same_v<T, LoadHole>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Hole()};
     } else if constexpr (std::is_same_v<T, PushEnvironment>) {

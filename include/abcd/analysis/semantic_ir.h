@@ -33,6 +33,7 @@
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/register_ssa.h"
 #include "abcd/analysis/rest_arguments.h"
+#include "abcd/analysis/array_spread.h"
 #include "abcd/analysis/scalar.h"
 #include "abcd/analysis/value_write.h"
 
@@ -155,7 +156,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot, AsyncEnter, AsyncSettle>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

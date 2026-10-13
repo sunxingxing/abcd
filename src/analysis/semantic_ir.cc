@@ -200,6 +200,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* write = std::get_if<OwnWrite>(&own_write)) return *write;
   if (std::get<OwnWriteError>(own_write) != OwnWriteError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto spread = LiftArraySpread(decoded, frame_size);
+  if (const auto* operation = std::get_if<ArraySpread>(&spread)) return *operation;
+  if (std::get<ArraySpreadError>(spread) != ArraySpreadError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto indexed_write = LiftIndexedWrite(decoded, frame_size);
   if (const auto* write = std::get_if<IndexedWrite>(&indexed_write)) return *write;
   if (std::get<IndexedWriteError>(indexed_write) != IndexedWriteError::kUnsupportedOpcode)
@@ -389,6 +393,11 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kHeapWrite |
                            LanguageEffect::kUserCode |
                            LanguageEffect::kAllocation;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, ArraySpread>) {
+          effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |
+                           LanguageEffect::kUserCode | LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, IndexedWrite>) {
