@@ -76,6 +76,16 @@ class ControlGraphView {
     }
     return std::get<ControlProjection>(source_).nodes[id.value];
   }
+  // Normal input may retain removed origin-only operations after a return.
+  // Consumers inspecting executable completion must skip those records. The
+  // projection owns its completion fact and has no borrowed operation range.
+  std::span<const analysis::ValueOp> Operations(ControlNodeId id) const {
+    if (const auto* graph = std::get_if<const analysis::ValueProgram*>(&source_)) {
+      const auto& block = (*graph)->blocks[id.value];
+      return std::span{(*graph)->ops}.subspan(block.first_op.value, block.op_count);
+    }
+    return {};
+  }
   ControlLink Arc(ControlArcId id) const {
     if (const auto* graph = std::get_if<const analysis::ValueProgram*>(&source_)) {
       const auto& edge = (*graph)->edges[id.value];

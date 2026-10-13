@@ -170,3 +170,95 @@ method 7559 remains Printed/complete METHOD at 286 bytes under rules 16; its
 enclosing record remains incomplete. T05 acceptance and broader T00-T12 work
 remain open, including real loop samples, multi-exit extension and behavior
 validation when authorized.
+
+## Private terminal regions and stable follows (Round 39)
+
+The shared `ControlGraphView` exposes normal adjacency or the independently
+checked exception/loop projection. The acyclic skeleton uses two separate trees:
+entry dominance certifies ownership; lexical follow ancestry chooses layout. A
+follow is not a postdominator of a path that has already returned or thrown.
+
+On the DAG, build entry dominators by predecessor LCA in topological order. A
+virtual entry precedes every scoped root, including handlers and loop bodies.
+In reverse order, compute:
+
+- `AllAbrupt(v)`: at a sink, the input/projection must certify abrupt completion;
+  otherwise all successors must satisfy `AllAbrupt`. A normal try-exit port or
+  unknown/nonterminating loop is not abrupt just because it has no outgoing arc.
+- `ReachMeet(v) = LCA_dom(v, ReachMeet(s) for each successor s)`. This is the
+  entry-dominator meet of every reachable vertex, not a normal follow.
+- `Private(v)`: v is not a scoped entry, has one incoming arc,
+  `AllAbrupt(v)`, and `ReachMeet(v) == v`. Thus every reachable vertex is dominated
+  by v, including internal joins; another arm cannot enter this owned region.
+
+First compute the existing straight-terminal follow preference unchanged. Freeze
+all its concrete follows. At a binary branch b with a virtual follow, the summary
+may supply the other arm c only if `AllAbrupt(b)`, `Private(t)`, and
+`LCA_dom(b, ReachMeet(c)) != b`. The latter proves that c reaches a normal successor
+also reachable from outside b's dominated region. The private t region cannot
+reach that shared successor. In a reverse pass, refined successor follow ancestry
+may also reveal a real common follow. No concrete old follow is replaced.
+Two privately terminal arms with no shared continuation retain the virtual exit;
+neither layout order nor a failed-layout retry selects an arm as a follow.
+
+This separates additional ownership evidence from layout preference. The earlier
+WIP changed the preference everywhere and moved an enclosing continuation under
+an if/else. In o32/49868 that moved the captured `searchResult` initialization into
+a branch, causing declaration recovery to emit `let searchResult;` plus assignment.
+That layout change is rejected, irrespective of completion counts. Compatibility
+requires byte-identical source for already-complete records under both flags.
+
+The independent region checker uses the original arcs, not the builder's
+summaries. It checks coverage, unique ownership, taken/fallthrough destinations,
+normal continuation, loop scope and transfer identity. A zero-arc normal port
+cannot end an arm whose lexical continuation still executes. For normal input,
+completion is checked against the last live operation: removed origin-only NOPs
+after a return do not turn it into normal completion. This scan is cached once
+per vertex and charged; it does not alter the legacy layout preference. Exception
+verification additionally reconstructs the projection and compares phase, try,
+try-exit, inactive-node and edge mappings against immutable input.
+
+The two ancestor tables need O(V log V) storage; predecessor CSR, work queues and
+ownership records need O(V+E). Topological dominance, ReachMeet and follow passes
+cost O((V+E) log V). The additional completion scan is O(I), over disjoint input
+operation ranges. `ControlQuota` charges every new buffer before allocation and
+every traversal/LCA step. There is no per-region reachable-set walk, recursive
+region expansion, depth threshold, instruction template, or sample dispatch.
+This is an independent implementation of standard DAG dominator/LCA recurrences,
+using the repository's existing binary-lifting approach; no external source or
+new dependency was copied. These bounds do not constitute an RSS benchmark.
+
+Tests: `control_terminal_test` covers internal joins, external entry, shared-tail
+ownership, a still-normal/unknown completion, loop/backedge mutations, swapped
+arms, missing/changed continuations, wrong edge ownership, dead origin tails, and
+the double-terminal virtual exit. Edge subdivision with copy operations is tested
+at 200/201/400/800 regions, with exact work and byte boundaries. Forged try-exit
+mapping tests remain in `exception_plan_test`. `terminal_regions_cli_test` uses
+real es2abc plus independent Node source execution, including getter/call effects,
+throws, receivers, return values and caller-finally traces, and rejects four
+semantic source mutations. See the fixture README for the precise oracle boundary.
+
+Under `--language-source`, Class B remains refused: a shared-decision
+continuation crosses its enclosing stop. The six o19 `stop` methods (7958/13192/18648/23270/29433/35440) and o26 method
+5088 now fail at original/working PC 239/234, with current region starting at
+210/205 and stopping at 147/144. Renderer method 11425 fails at 227/222, with
+current bounds 198/193 to 146/143. These are duplicate-ownership witnesses, not
+permission to extend a region across the stop; this round does not implement B.
+
+## Typed control failure evidence
+
+`ControlFailure` retains the existing `ControlError` plus a typed ownership cause,
+the duplicate node, the exact incoming projection arc when traversal has one,
+and current/previous region bounds. An absent stop means virtual exit; a lexical
+jump to a join has no invented incoming arc. `ControlLocation` distinguishes
+original blocks/phases from synthetic try, try-exit, loop and loop-transfer units.
+Synthetic units retain typed IDs and never acquire fabricated instruction PCs.
+
+`ExceptionControlFailure` maps real phase locations to original and working PCs.
+`PhasedControlFailure` adds the failing method, separately from parent creation
+location. The enum values and resource/work failure classes are unchanged. Family
+route receipts, record manifests and `abc_semantic --record-source` preserve the
+leaf chain and the structured `control` witness. Serialization rejects unknown
+origin tags and synthetic nodes carrying PCs. This is additional refusal evidence,
+not source admission or a promise that every control refusal has an ownership
+witness: other typed control failures retain their own enum without invented data.

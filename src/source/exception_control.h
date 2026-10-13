@@ -58,7 +58,11 @@ enum class ExceptionControlError : std::uint8_t {
 // Reducible projected loops use the same wrappers/transfers as normal control;
 // irreducible regions and more general completion transfers remain typed refusals.
 // Not source proof.
-[[nodiscard]] std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(
+struct ExceptionControlFailure {
+  ExceptionControlError kind;
+  ControlFailure cause;
+};
+[[nodiscard]] std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure> BuildExceptionControl(
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
     const analysis::PhasedValueInput& input, const ExceptionPlan& regions,
     analysis::SemanticBudget budget = {});

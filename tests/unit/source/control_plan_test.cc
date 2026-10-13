@@ -6,11 +6,15 @@
 #include <cstdlib>
 #include <span>
 #include <type_traits>
+#include <source_location>
+#include <cstdio>
 
 namespace {
 using namespace abcd;
 using namespace abcd::source;
-void Check(bool condition) { if (!condition) std::abort(); }
+void Check(bool condition, std::source_location location = std::source_location::current()) {
+  if (!condition) { std::fprintf(stderr, "%s:%u\n", location.file_name(), location.line()); std::abort(); }
+}
 struct Targets { std::optional<std::uint32_t> taken; std::optional<std::uint32_t> fallthrough; };
 analysis::ValueProgram Graph(std::span<const Targets> targets) {
   analysis::ValueProgram graph;
@@ -83,7 +87,7 @@ void Shapes() {
   changed = *plan; changed.nodes[3].decision = *changed.nodes[0].decision;
   Check(std::holds_alternative<ControlError>(VerifyControlPlan(Graph(cross_entry), changed)));
   const std::array<Targets, 6> overlapping{{{1, 2}, {3, 4}, {3, 4}, {5, {}}, {5, {}}, {}}};
-  Check(std::get<ControlError>(BuildControlPlan(Graph(overlapping))) == ControlError::kCrossEntry);
+  Check(ControlResultError(BuildControlPlan(Graph(overlapping))) == ControlError::kCrossEntry);
   const std::array<Targets, 2> cycle{{{1, {}}, {0, {}}}};
   built = BuildControlPlan(Graph(cycle));
   plan = std::get_if<ControlPlan>(&built);

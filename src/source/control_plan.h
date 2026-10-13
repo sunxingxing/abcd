@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/value_ir.h"
 #include "loop_forest.h"
+#include "abcd/source/control_failure.h"
 
 namespace abcd::source {
 struct ControlId { std::uint32_t value = 0; auto operator<=>(const ControlId&) const = default; };
@@ -71,12 +72,22 @@ enum class ControlError : std::uint8_t {
   kInvalidGraph, kRevision, kCycle, kCrossEntry, kUncoveredBlock, kWorkLimit, kResourceLimit,
   kIrreducible, kLoopExits
 };
+struct ControlFailure {
+  ControlError kind;
+  ControlOwnershipError cause;
+  ControlOwnershipEvidence control;
+};
+using ControlResult = std::variant<ControlPlan, ControlError, ControlFailure>;
+inline ControlError ControlResultError(const ControlResult& result) {
+  if (const auto* error = std::get_if<ControlError>(&result)) return *error;
+  return std::get<ControlFailure>(result).kind;
+}
 // Requires the verified normal ValueProgram, not old SemanticRegionTree/AST.
 // Single-entry regions and natural loops with at most one normal exit target.
 // Early function exits and single-entry shared-arm decision chains are allowed.
 // Irreducible/genuine cross-entry regions and multiple
 // loop exit targets are typed refusals, never duplicated source subgraphs.
-[[nodiscard]] std::variant<ControlPlan, ControlError> BuildControlPlan(
+[[nodiscard]] ControlResult BuildControlPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
 // Independent original-edge/region ownership check. Does not rerun discovery
 // or recompute postdominators. A checked plan is not an executable AST proof.

@@ -134,6 +134,10 @@ void ProjectedDecisions() {
     rejected = false;
     try { const auto invalid = BuildControlSkeleton(view, roots, quota); }
     catch (ControlError) { rejected = true; }
+    catch (const ControlFailure& failure) {
+      rejected = failure.kind == ControlError::kCrossEntry &&
+          failure.cause == ControlOwnershipError::kDuplicate;
+    }
     Check(rejected);
   }
 }

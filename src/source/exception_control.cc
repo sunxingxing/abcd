@@ -78,7 +78,7 @@ void CheckProjection(const ValueProgram& graph, ExceptionTopology& topology,
   Compare(mapping.inactive_phases, actual.inactive_phases, quota);
 }
 }
-std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(
+std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure> BuildExceptionControl(
     const abc::MethodBody& body, const ValueProgram& graph,
     const PhasedValueInput& input, const ExceptionPlan& regions, SemanticBudget budget) {
   try {
@@ -86,8 +86,33 @@ std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(
     CheckInput(body, graph, input, regions, quota);
     auto topology = ProjectExceptionControl(graph, regions, quota);
     const ControlGraphView view{ControlProjection{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}};
-    auto skeleton = topology.loops.loops.empty() ? BuildControlSkeleton(view, topology.entries, quota) :
-        BuildLoopControl(view, topology.scoped_entries, std::move(topology.loops), quota);
+    auto skeleton = [&] {
+      try { return topology.loops.loops.empty() ? BuildControlSkeleton(view, topology.entries, quota) :
+          BuildLoopControl(view, topology.scoped_entries, std::move(topology.loops), quota); }
+      catch (ControlFailure failure) {
+        const auto locate = [&](ControlLocation& location) {
+          if (location.origin != ControlOriginKind::kBlock) return;
+          if (location.node >= topology.mapping.units.size()) throw Error::kStructure;
+          std::visit([&](const auto& unit) {
+            using T = std::decay_t<decltype(unit)>;
+            if constexpr (std::is_same_v<T, PhaseControlUnit>) {
+              location.origin = ControlOriginKind::kPhase; location.source = unit.block.value;
+              const auto& phase = graph.phases[unit.block.value];
+              const auto& instruction = input.flow.instructions[phase.instruction.value];
+              location.working_pc = instruction.pc;
+              location.pc = instruction.origin.value_or(instruction.pc);
+            } else {
+              location.origin = std::is_same_v<T, TryControlUnit> ? ControlOriginKind::kTry : ControlOriginKind::kTryExit;
+              location.source = unit.region.value;
+            }
+          }, topology.mapping.units[location.node]);
+        };
+        locate(failure.control.node); locate(failure.control.current.first); locate(failure.control.previous.first);
+        if (failure.control.current.stop) locate(*failure.control.current.stop);
+        if (failure.control.previous.stop) locate(*failure.control.previous.stop);
+        throw ExceptionControlFailure{Translate(failure.kind), failure};
+      }
+    }();
     if (skeleton.loops.empty()) VerifyControlSkeleton(view, topology.entries, skeleton, quota);
     else {
       VerifyControlRegions(view, topology.scoped_entries, skeleton, quota);
@@ -100,6 +125,7 @@ std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(
         result.inactive_phases.capacity() * sizeof(WorkBlockId);
     result.work = budget.work - quota.RemainingWork();
     return result;
+  } catch (const ExceptionControlFailure& failure) { return failure;
   } catch (Error error) { return error;
   } catch (ControlError error) { return Translate(error);
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

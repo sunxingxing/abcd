@@ -1,6 +1,7 @@
 #include "abcd/source/source_route.h"
 
 #include <nlohmann/json.hpp>
+#include "control_failure_json.h"
 
 #include <algorithm>
 #include <array>
@@ -248,6 +249,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
+    if (receipt.failure->control) failure["control"] = ControlJson(*receipt.failure->control);
     if (receipt.failure->capture) {
       const auto& use = *receipt.failure->capture;
       auto& capture = failure["capture"];
@@ -427,6 +429,10 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     if (!location("method", typed.method) || !location("working_pc", typed.working_pc) ||
         !location("creation_method", typed.creation_method) || !location("creation_pc", typed.creation_pc))
       return RouteReceiptError::kFailure;
+    if (const auto item = failure->find("control"); item != failure->end()) {
+      typed.control = ParseControlJson(*item);
+      if (!typed.control) return RouteReceiptError::kFailure;
+    }
     if (const auto item = failure->find("capture"); item != failure->end()) {
       if (!item->is_object()) return RouteReceiptError::kFailure;
       const auto number = [&](const char* name) -> std::optional<std::uint32_t> {

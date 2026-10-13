@@ -1,4 +1,5 @@
 #include "value_source_inspect.h"
+#include "record_failure_json.h"
 #include "family_value_inspect.h"
 #include "tree_position_json.h"
 
@@ -238,6 +239,7 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       report["reason"] = ValueRouteErrorName(error->failure.reason);
       if (error->failure.pc) report["pc"] = error->failure.pc->value;
     } else report["error_variant"] = built.index();
+    abcd::tools::DescribeRecordFailure(built, report);
     output << report << '\n';
     return EXIT_FAILURE;
   }

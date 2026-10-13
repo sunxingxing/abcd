@@ -295,7 +295,7 @@ if(ABCD_BUILD_TOOLS)
   target_link_libraries(abcd_process PUBLIC abcd_json)
   target_compile_features(abcd_process PUBLIC cxx_std_20)
   add_executable(abc_semantic tools/abc_semantic.cc
-    tools/value_source_inspect.cc tools/family_value_inspect.cc tools/tree_position_json.cc)
+    tools/value_source_inspect.cc tools/record_failure_json.cc tools/family_value_inspect.cc tools/tree_position_json.cc)
   target_link_libraries(abc_semantic PRIVATE abcd_source abcd_json abcd_process)
   add_executable(abc_structure tools/abc_structure.cc tools/record_failure_json.cc)
   target_link_libraries(abc_structure PRIVATE abcd_structure abcd_corpus abcd_json abcd_process)
@@ -499,6 +499,9 @@ if(BUILD_TESTING)
   add_executable(value_simplify_test tests/unit/analysis/value_simplify_test.cc)
   add_executable(value_flow_test tests/unit/analysis/value_flow_test.cc)
   add_executable(value_phi_test tests/unit/analysis/value_phi_test.cc)
+  add_executable(control_terminal_test tests/unit/source/control_terminal_test.cc)
+  target_link_libraries(control_terminal_test PRIVATE abcd_source abcd_json)
+  add_test(NAME control_terminal_test COMMAND control_terminal_test)
   add_executable(control_plan_test tests/unit/source/control_plan_test.cc)
   add_executable(exception_plan_test tests/unit/source/exception_plan_test.cc)
   target_link_libraries(exception_plan_test PRIVATE abcd_source)
@@ -2397,6 +2400,9 @@ if(BUILD_TESTING)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_source_corpus.mjs
           $<TARGET_FILE:abc_structure> ${ABCD_LANGUAGE_SOURCE_SAMPLE})
       endif()
+      add_test(NAME terminal_regions_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/terminal_regions.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/terminal_regions)
       add_test(NAME phased_guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_guarded_captures.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/phased_guarded_captures)

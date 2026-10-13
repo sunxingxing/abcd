@@ -288,11 +288,11 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       // Binding topology alone does not authorize source cell reads/stores.
       // Evaluation remains gated until lifetime and AST correspondence close.
     }
-    std::optional<std::variant<ControlPlan, ControlError>> regions;
+    std::optional<ControlResult> regions;
     if (!phased) regions = BuildControlPlan(graph, budget.Remaining());
     const auto* control = phased ? &phased->Control() : std::get_if<ControlPlan>(&*regions);
     if (!control) {
-      const auto error = std::get<ControlError>(*regions);
+      const auto error = ControlResultError(*regions);
       if (error == ControlError::kResourceLimit) throw Error::kResourceLimit;
       if (error == ControlError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kControl;

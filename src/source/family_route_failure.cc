@@ -71,6 +71,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
         result.working_pc = error.occurrence->source->working_pc;
       }
     }
+    if constexpr (std::is_same_v<T, ControlFailure>) result.control = error.control;
     if constexpr (std::is_same_v<T, CallPlanFailure>) result.call_reference = error.reference;
     if constexpr (requires { error.working_pc; }) result.working_pc = error.working_pc;
     if constexpr (requires { error.method; }) if (!result.method) result.method = error.method;

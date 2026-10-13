@@ -32,8 +32,16 @@ int main() {
   chained.creation_pc = abc::CodeOffset{7};
   chained.call_reference = source::CallReferenceEvidence{source::CallReferenceError::kNotInline,
       {17}, analysis::OpId{4}, source::EvaluationKind::kRoot, source::TemporaryReason::kEffectSnapshot, {}};
+  chained.control = source::ControlOwnershipEvidence{
+      {17, source::ControlOriginKind::kPhase, 17, abc::CodeOffset{73}, abc::CodeOffset{31}}, 19,
+      {{5, source::ControlOriginKind::kPhase, 5}, source::ControlLocation{13, source::ControlOriginKind::kTryExit, 2}},
+      {{0, source::ControlOriginKind::kPhase, 0}, {}}};
   nlohmann::json with_causes;
   tools::DescribeRecordFailure(source::RouteRefusal{chained}, with_causes);
+  const auto& control = with_causes["source_failure"]["control"];
+  Check(control["node"]["pc"] == 73 && control["node"]["working_pc"] == 31 && control["arc"] == 19);
+  Check(control["current"]["stop"]["origin"] == static_cast<unsigned>(source::ControlOriginKind::kTryExit));
+  Check(!control["current"]["stop"].contains("pc") && control["previous"]["stop"].is_null());
   const auto& causes = with_causes["source_failure"]["causes"];
   Check(causes.size() == 2 && causes[1]["domain"] == "abcd::source::ValueRouteError" &&
         causes[1]["value"] == static_cast<unsigned>(source::ValueRouteError::kPrintStage));

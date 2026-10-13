@@ -111,7 +111,7 @@ ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
 std::size_t PhasedBody::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t PhasedBody::Work() const { return storage_->work; }
 
-std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure, PhasedImportFailure> PhasedBody::Build(
+std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure, PhasedImportFailure, PhasedControlFailure> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
@@ -326,8 +326,18 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFail
     auto regions = PhaseResult<ExceptionPlan>(BuildExceptionPlan(body, imported.graph, input,
         quota.Remaining()), Error::kRegion);
     quota.Admit(regions.allocated_bytes); quota.Step(regions.work);
-    auto control = PhaseResult<ExceptionControl>(BuildExceptionControl(body, imported.graph, input,
-        regions, quota.Remaining()), Error::kControl);
+    auto controlled = BuildExceptionControl(body, imported.graph, input, regions, quota.Remaining());
+    if (const auto* failure = std::get_if<ExceptionControlFailure>(&controlled))
+      return PhasedControlFailure{PhaseError(*failure, Error::kControl), *failure, context.Target(),
+          failure->cause.control.node.pc, failure->cause.control.node.working_pc};
+    if (const auto* error = std::get_if<ExceptionControlError>(&controlled)) {
+      const auto kind = PhaseError(*error, Error::kControl);
+      // Resource refusal keeps its established API alternative and class;
+      // ownership/location evidence describes semantic control refusals only.
+      if (kind == Error::kResourceLimit || kind == Error::kWorkLimit) return kind;
+      return PhasedControlFailure{kind, *error, context.Target()};
+    }
+    auto control = std::get<ExceptionControl>(std::move(controlled));
     quota.Admit(control.allocated_bytes); quota.Step(control.work);
     return PhasedBody(std::make_unique<Storage>(Storage{context.Identity(), context.Target(), frame, std::move(flow), std::move(ssa),
         std::move(environments), std::move(values), std::move(proof), std::move(initialized), std::move(imported.graph),
@@ -346,6 +356,7 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
   if (std::holds_alternative<PhasedInputFailure>(built)) return PhasedMethodError::kValues;
   if (const auto* failure = std::get_if<PhasedModuleFailure>(&built)) return failure->kind;
   if (const auto* failure = std::get_if<PhasedImportFailure>(&built)) return failure->kind;
+  if (const auto* failure = std::get_if<PhasedControlFailure>(&built)) return failure->kind;
   return Evaluate(std::get<PhasedBody>(std::move(built)), budget);
 }
 std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Evaluate(

@@ -928,3 +928,12 @@ and mixed module snapshots. The shared `FileFamily` DFS/tree factory and sealed
 publication have not yet adopted a mixed member variant; this owner is their
 required input boundary, not a second exceptional source writer. Rules 56 and
 the remaining loop/finally/suspension scope are unchanged.
+
+## Private terminal ownership and control failure locations (Round 39)
+
+The exception projection shares the [terminal-region proof and stable follow
+rule](loop-discovery.md#private-terminal-regions-and-stable-follows-round-39) with
+normal control. It adds internal-branch/merge ownership without changing try-exit,
+loop or completion semantics. The independent projection verifier remains the
+source of phase/handler/try-exit identity. See the same note's typed control failure
+section for method, original/working PC, synthetic-node and region-bound evidence.

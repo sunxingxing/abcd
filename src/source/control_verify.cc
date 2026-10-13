@@ -136,7 +136,16 @@ class ControlCheck {
           Require(!node.arms && (node.next || task.stop), Error::kInvalidGraph);
           Arc(id, 0, node.next ? *node.next : *task.stop, task.scope,
               node.next ? EdgePlacement::kNext : EdgePlacement::kJoin);
-        } else Require(!node.arms && !node.next, Error::kInvalidGraph);
+        } else {
+          Require(!node.arms && !node.next, Error::kInvalidGraph);
+          // Zero outgoing arcs are not necessarily an abrupt completion. An
+          // original normal/try-exit port ends this scoped entry; it cannot
+          // fall through to a lexical continuation of an enclosing branch.
+          // Synthetic loop wrappers/transfers retain their separate scope and
+          // exit proof; do not invent termination for an unknown loop.
+          if (id.value < graph_.NodeCount() && terminations_[id.value] == ControlTermination::kNormal)
+            Require(!task.stop, Error::kCrossEntry);
+        }
         cursor = node.next;
       }
     }
@@ -175,10 +184,24 @@ class ControlCheck {
     quota_.Size(exited_, plan_.loops.size());
     quota_.Size(headers_, blocks);
     quota_.Size(indegree_, blocks);
+    quota_.Size(terminations_, blocks);
     std::size_t next_edge = 0;
     for (std::size_t b = 0; b < blocks; ++b) {
       quota_.Work();
       const auto& block = graph_.Node({static_cast<std::uint32_t>(b)});
+      terminations_[b] = block.termination;
+      if (graph_.Kind() == ControlViewKind::kNormal) {
+        terminations_[b] = ControlTermination::kNormal;
+        const auto ops = graph_.Operations({static_cast<std::uint32_t>(b)});
+        for (auto i = ops.size(); i-- > 0;) {
+          quota_.Work(); const auto& op = ops[i];
+          if (op.life != analysis::ValueLife::kLive) continue;
+          if (std::holds_alternative<analysis::ValueReturn>(op.operation) ||
+              std::holds_alternative<analysis::ValueThrow>(op.operation))
+            terminations_[b] = ControlTermination::kAbrupt;
+          break;
+        }
+      }
       Require(!plan_.nodes[b].decision || block.arc_count == analysis::kMaxNormalSuccessors, Error::kInvalidGraph);
       Require(plan_.nodes[b].block.value == b && std::holds_alternative<std::monostate>(plan_.nodes[b].synthetic) &&
           block.first_arc.value == next_edge && block.arc_count <= analysis::kMaxNormalSuccessors &&
@@ -309,6 +332,7 @@ class ControlCheck {
   std::span<const ScopedControlEntry> entries_;
   const ControlPlan& plan_;
   std::vector<std::uint32_t> indegree_;
+  std::vector<ControlTermination> terminations_;
   ControlQuota& quota_;
   std::vector<std::uint8_t> visited_, entered_, continued_, exited_;
   std::vector<std::optional<LoopId>> scopes_, headers_;

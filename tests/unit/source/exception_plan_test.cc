@@ -50,6 +50,19 @@ void Control(const abc::MethodBody& body, const ValueProgram& graph,
   std::size_t expected = 0;
   for (const auto& transfer : regions.transfers) expected += !std::holds_alternative<RaiseTransfer>(transfer);
   test::Check(normal == expected);
+  for (std::size_t i = 0; i < control.units.size(); ++i) {
+    if (const auto* port = std::get_if<TryExitUnit>(&control.units[i])) {
+      auto forged = control;
+      // A normal port cannot be relabelled as an instruction/abrupt phase.
+      forged.units[i] = PhaseControlUnit{port->target};
+      test::Check(std::holds_alternative<ExceptionControlError>(
+          VerifyExceptionControl(body, graph, input, regions, forged)));
+      forged = control;
+      std::get<TryExitUnit>(forged.units[i]).target = WorkBlockId{static_cast<std::uint32_t>(graph.blocks.size())};
+      test::Check(std::holds_alternative<ExceptionControlError>(
+          VerifyExceptionControl(body, graph, input, regions, forged)));
+    }
+  }
   const auto checked = VerifyExceptionControl(body, graph, input, regions, control);
   test::Check(std::holds_alternative<std::uint64_t>(checked));
   test::Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, control.skeleton)));

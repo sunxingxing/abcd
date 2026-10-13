@@ -680,7 +680,7 @@ std::vector<std::optional<UseId>> FindLogicalLeftInputs(const ValueProgram& grap
   auto built = BuildControlPlan(graph, budget.Remaining());
   const auto* control = std::get_if<ControlPlan>(&built);
   if (!control) {
-    const auto error = std::get<ControlError>(built);
+    const auto error = ControlResultError(built);
     if (error == ControlError::kResourceLimit) throw TreeStructureError::kResourceLimit;
     if (error == ControlError::kWorkLimit) throw TreeStructureError::kWorkLimit;
     return inputs;

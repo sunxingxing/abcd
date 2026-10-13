@@ -79,7 +79,8 @@ bool SameReceipt(const MethodRouteReceipt& left,
            left.failure->creation_method == right.failure->creation_method &&
            left.failure->creation_pc == right.failure->creation_pc &&
            left.failure->call_reference == right.failure->call_reference &&
-           left.failure->capture == right.failure->capture));
+           left.failure->capture == right.failure->capture &&
+           left.failure->control == right.failure->control));
 }
 }  // namespace
 
@@ -191,6 +192,10 @@ int main() {
   caused.failure->working_pc = abc::CodeOffset{31};
   caused.failure->creation_method = abc::EntityOffset{13};
   caused.failure->creation_pc = abc::CodeOffset{7};
+  caused.failure->control = ControlOwnershipEvidence{
+      {17, ControlOriginKind::kPhase, 17, abc::CodeOffset{73}, abc::CodeOffset{31}}, 19,
+      {{5, ControlOriginKind::kPhase, 5}, ControlLocation{13, ControlOriginKind::kTryExit, 2}},
+      {{0, ControlOriginKind::kPhase, 0}, {}}};
   caused.failure->capture = CaptureOccurrence{3, {{2}, {7}}, analysis::CaptureDomain::kLanguage,
       CaptureOrigin{{456}, abc::CodeOffset{31}, abc::CodeOffset{17}}};
   caused.failure->call_reference = CallReferenceEvidence{CallReferenceError::kNotInline,

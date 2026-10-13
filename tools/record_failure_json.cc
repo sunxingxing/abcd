@@ -1,4 +1,5 @@
 #include "record_failure_json.h"
+#include "../src/source/control_failure_json.h"
 
 #include <type_traits>
 
@@ -34,6 +35,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.failure.working_pc) record["source_failure"]["working_pc"] = failure.failure.working_pc->value;
       if (failure.failure.creation_method) record["source_failure"]["creation_method"] = failure.failure.creation_method->value;
       if (failure.failure.creation_pc) record["source_failure"]["creation_pc"] = failure.failure.creation_pc->value;
+      if (failure.failure.control) record["source_failure"]["control"] = source::ControlJson(*failure.failure.control);
       if (failure.failure.capture) {
         const auto& use = *failure.failure.capture;
         auto& capture = record["source_failure"]["capture"];

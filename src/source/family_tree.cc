@@ -202,7 +202,10 @@ class FamilyTrees {
       const auto guards = derived ? std::span<const analysis::OpId>(derived->guards) :
           std::span<const analysis::OpId>(receiver_guards);
       std::optional<ControlPlan> normal_control;
-      if (!phase) { normal_control.emplace(Take<ControlPlan, ControlError>(BuildControlPlan(graph, left_))); Account(*normal_control); }
+      if (!phase) { auto built = BuildControlPlan(graph, left_);
+        if (const auto* failure = std::get_if<ControlFailure>(&built)) throw FamilyTreeFailure{member_, *failure};
+        if (const auto* error = std::get_if<ControlError>(&built)) throw FamilyTreeFailure{member_, *error};
+        normal_control.emplace(std::get<ControlPlan>(std::move(built))); Account(*normal_control); }
       const auto& control = phase ? phase->Phases().Control() : *normal_control;
       const auto module_evaluations = aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{};
       const auto entries = member.function.Cells() ? std::span<const IncomingCell>(member.function.Cells()->entry_demands) : std::span<const IncomingCell>{};

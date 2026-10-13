@@ -19,8 +19,23 @@ class LoopControlBuilder {
     IndexLoops();
     Exits();
     Units();
-    auto plan = BuildControlSkeleton(ControlGraphView{ControlProjection{
-        graph_.Revision(), graph_.CfgRevision(), vertices_, links_}}, entries_, quota_);
+    auto plan = [&] {
+      try { return BuildControlSkeleton(ControlGraphView{ControlProjection{
+          graph_.Revision(), graph_.CfgRevision(), vertices_, links_}}, entries_, quota_); }
+      catch (ControlFailure failure) {
+        const auto locate = [&](ControlLocation& location) {
+          if (const auto* loop = std::get_if<LoopControl>(&synthetic_[location.node])) {
+            location.origin = ControlOriginKind::kLoop; location.source = loop->loop.value;
+          } else if (const auto* transfer = std::get_if<LoopTransfer>(&synthetic_[location.node])) {
+            location.origin = ControlOriginKind::kLoopTransfer; location.source = transfer->loop.value;
+          }
+        };
+        locate(failure.control.node); locate(failure.control.current.first); locate(failure.control.previous.first);
+        if (failure.control.current.stop) locate(*failure.control.current.stop);
+        if (failure.control.previous.stop) locate(*failure.control.previous.stop);
+        throw failure;
+      }
+    }();
     // The skeleton's synthetic adjacency is projected, but its published plan
     // indexes this builder's input view, with original arcs as the prefix.
     plan.view = graph_.Kind();
