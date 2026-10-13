@@ -177,6 +177,15 @@ inline bool IsArrayInitialization(const EvaluationPlan& plan, analysis::OpId id)
   const auto* arrays = ArrayInitializations(plan);
   return arrays && id.value < arrays->owners.size() && arrays->owners[id.value].has_value();
 }
+inline bool IsArrayOperand(const EvaluationPlan& plan, analysis::OpId id) {
+  const auto* arrays = ArrayInitializations(plan);
+  return arrays && id.value < arrays->nested.size() && arrays->nested[id.value].has_value();
+}
+inline std::optional<analysis::UseId> NestedLiteralUse(const EvaluationPlan& plan, analysis::OpId id) {
+  if (const auto* arrays = ArrayInitializations(plan); arrays && id.value < arrays->nested.size() && arrays->nested[id.value])
+    return arrays->nested[id.value];
+  return plan.literals && id.value < plan.literals->nested.size() ? plan.literals->nested[id.value] : std::nullopt;
+}
 inline bool IsArrayCursor(const EvaluationPlan& plan, analysis::OpId id, const analysis::ValueProgram& graph) {
   return IsArrayInitialization(plan, id) &&
       !std::holds_alternative<analysis::ValueArraySpread>(graph.ops[id.value].operation) &&

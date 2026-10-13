@@ -234,7 +234,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     auto projected_literals = std::span<const std::optional<analysis::OpId>>(plan.class_projection.owners);
     if (has_spread) {
       auto built = BuildArrayInitializations(graph, array_source.contract, array_source.constants, array_source.names,
-          {bytes, work}, flow == EvaluationFlow::kPhased ? &plan : nullptr);
+          {bytes, work}, &plan);
       if (const auto* error = std::get_if<ArrayInitializationError>(&built)) {
         if (array_source.failure) *array_source.failure = *error;
         return *error == ArrayInitializationError::kResourceLimit ? Error::kResourceLimit :
@@ -279,6 +279,9 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       }
     }
     if (const auto* arrays = ArrayInitializations(plan)) {
+      for (std::size_t i = 0; i < arrays->nested.size(); ++i) {
+        step(); if (arrays->nested[i]) plan.operations[i] = {EvaluationKind::kNestedLiteral, arrays->nested[i], {}};
+      }
       for (const auto& array : arrays->arrays) {
         step(); literal_allocations[array.allocation.value] = 1; pinned[array.allocation.value] = 1;
       }

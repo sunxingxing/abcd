@@ -58,4 +58,17 @@ let setters = 0, result;
 Object.defineProperty(Array.prototype, '0', {configurable: true, set() { ++setters; }});
 try { result = m.only('xy'); } finally { delete Array.prototype[0]; }
 output.push(['prototype-setter', setters, result]);
+for (const name of ['rhs', 'rhscaught']) for (const fail of [null, 'call', 'item', 'method-get', 'method-call']) {
+  const events = []; let calls = 0;
+  const f = () => { events.push('call' + (++calls)); if (fail === 'call') throw Error('call'); return iterable(events, null); };
+  const o = {
+    get item() { events.push('item'); if (fail === 'item') throw Error('item'); return 7; },
+    get more() {
+      events.push('method-get'); if (fail === 'method-get') throw Error('method-get');
+      return function() { events.push(['method-call', this === o]); if (fail === 'method-call') throw Error('method-call'); return iterable(events, null); };
+    }
+  };
+  try { output.push([name, fail, m[name](f, o), events]); }
+  catch (e) { output.push([name, fail, e.name, e.message, events]); }
+}
 console.log(JSON.stringify(output));

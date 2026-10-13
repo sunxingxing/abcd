@@ -12,11 +12,11 @@ From the repository root, generated on 2026-10-13:
 
 SHA-256:
 
-- `spread.abc`: `80c7d5c969bad6a2434920842cf5d348a95123524688b99a7aee0b83832e36e9`
-- `spread.ts`: `addc57bd252320e90163d2f6b06f4f34fc5be24c8ddbf339d2716edc5f6ee8bd`
+- `spread.abc`: `21c9575918a1b3911df903ba4d5dbdb485739811204808a5de9270aee022dab3`
+- `spread.ts`: `a2d9ba94143f2b412b53ec47e0815f924b28758d2bf7a5d428e89e8fa1be7831`
 
-The CLI test independently decodes all methods: four `starrayspread` operations,
-including one covered by a handler, plus mixed-element `stownbyvalue` writes.
+The CLI test independently decodes all methods: eight `starrayspread` operations,
+including three covered by handlers, plus mixed-element `stownbyvalue` writes.
 The catch example assigns a result and returns at the join. An initial version
 with returns inside both arms generated unreachable trailing bytecode and hit
 the existing `ValueImportError::kUnreachableFlow` gate. That gate was not changed.
@@ -26,6 +26,12 @@ empty iterables, surrogate pairs, sparse arrays/inherited elements, multiple
 spreads mixed with elements, iterator/next/done/value exceptions (inside and
 outside a catch), and growth/shrinkage during iteration. Removing a spread or
 repeating iteration must change the oracle result.
+
+Round 34 adds late RHS calls, getters, and member calls between spreads and ordinary
+elements, both outside and inside a try. Event traces distinguish getter lookup,
+receiver identity, call/iteration order, and abrupt completion at each RHS. Moving
+the getter ahead of the preceding spread and reading the getter twice are additional
+mutations which must change the oracle result.
 
 This is a **source-language oracle**, not Ark runtime differential execution.
 The approved LanguageSourceV1 differences are tested intentionally: array

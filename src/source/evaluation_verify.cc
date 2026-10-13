@@ -158,7 +158,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     std::vector<std::optional<analysis::OpId>> literal_projection;
     auto projected_literals = std::span<const std::optional<analysis::OpId>>(plan.class_projection.owners);
     if (const auto* arrays = ArrayInitializations(plan)) {
-      const auto proof = VerifyArrayInitializationStructure(graph, *arrays, {bytes, work}, flow == EvaluationFlow::kPhased ? &plan : nullptr);
+      const auto proof = VerifyArrayInitializationStructure(graph, *arrays, {bytes, work}, &plan);
       if (const auto* error = std::get_if<ArrayInitializationError>(&proof)) return
           *error == ArrayInitializationError::kResourceLimit ? Error::kResourceLimit :
           *error == ArrayInitializationError::kWorkLimit ? Error::kWorkLimit : Error::kOwnership;
@@ -279,7 +279,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             placement.kind == EvaluationKind::kInline && placement.consumer == plan.closed_expressions[i] &&
             !placement.temporary, Error::kOwnership);
       }
-      const bool nested = plan.literals && !plan.literals->nested.empty() && plan.literals->nested[i].has_value();
+      const bool nested = NestedLiteralUse(plan, {static_cast<std::uint32_t>(i)}).has_value();
       Require(nested == (placement.kind == EvaluationKind::kNestedLiteral), Error::kOwnership);
       if (op.life != analysis::ValueLife::kLive) {
         Require(placement.kind == EvaluationKind::kRemoved && !placement.consumer && !placement.temporary,
@@ -358,8 +358,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone;
       } else if (placement.kind == EvaluationKind::kNestedLiteral) {
-        Require(plan.literals && plan.literals->nested.size() == graph.ops.size() &&
-            plan.literals->nested[i] && placement.consumer == plan.literals->nested[i] &&
+        Require(NestedLiteralUse(plan, {static_cast<std::uint32_t>(i)}) &&
+            placement.consumer == NestedLiteralUse(plan, {static_cast<std::uint32_t>(i)}) &&
             !placement.temporary && op.result, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone;
       } else if (placement.kind == EvaluationKind::kPhiInput) {

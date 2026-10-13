@@ -6,7 +6,7 @@ namespace abcd::source {
 struct EvaluationPlan;
 enum class ArrayInitializationError : std::uint8_t {
   kContract, kDestination, kEscape, kCursor, kDefinition, kOrder, kCatch,
-  kCorrespondence, kResourceLimit, kWorkLimit
+  kCorrespondence, kResourceLimit, kWorkLimit, kOperand, kSharedOperand, kCatchStaging
 };
 // A cursor is the end of a spread followed by a fixed number of own elements;
 // absent spread means an absolute index. It is not an executable source value.
@@ -42,6 +42,9 @@ struct ArrayInitializationPlan {
   std::vector<ArrayInitializationStep> steps;
   // OpId -> allocation, including private length/cursor calculations.
   std::vector<std::optional<analysis::OpId>> owners;
+  // Unique syntax consumers of late RHS expressions; guard peers retain their events.
+  std::vector<std::optional<analysis::UseId>> nested;
+  std::vector<std::optional<analysis::OpId>> guards;
   std::size_t allocated_bytes = 0, peak_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -49,8 +52,8 @@ struct ArrayInitializationPlan {
 // successors then prove once-per-allocation execution across arbitrary CFG
 // splits. One use census proves private identity and unobservable cursors.
 // Constants/names are the adapter's original pool evidence, checked again at
-// tree correspondence. RHS values must be available at allocation; late owned
-// operand forests remain a representation gap, not a language restriction.
+// tree correspondence. Late RHS forests use the same eager expression shapes as literal operands;
+// exact must-reach event successors prove each operand and commit in source order.
 [[nodiscard]] std::variant<ArrayInitializationPlan, ArrayInitializationError>
 BuildArrayInitializations(const analysis::ValueProgram&, SourceContract,
     ExpressionConstants, std::span<const std::u16string> names,

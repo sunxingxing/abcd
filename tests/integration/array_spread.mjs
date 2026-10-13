@@ -28,7 +28,7 @@ try {
       if (row.opcode === 0x78 || row.opcode === 0xc8) ++computed;
     }
   }
-  assert.equal(spreads, 4); assert.ok(caught > 0); assert.ok(computed >= 2);
+  assert.equal(spreads, 8); assert.ok(caught > 0); assert.ok(computed >= 2);
   for (const [i, flags] of [[], ['--language-numeric', '--language-constructors']].entries()) {
     const old = join(root, 'old' + i); run(structure, [input, old, '--value-source', ...flags]);
     const rejected = JSON.parse(readFileSync(join(old, 'manifest.json'))).records.find(r => r.source_status !== 2);
@@ -47,4 +47,9 @@ try {
   assert.notEqual(mutation, text); assert.notEqual(evaluate('no-spread', mutation), expected);
   const repeated = text.replace(/\.\.\.(\$\w+)/, '...$1, ...$1');
   assert.notEqual(repeated, text); assert.notEqual(evaluate('twice', repeated), expected);
+  // Moving a getter before the preceding iterator or evaluating it twice is observable.
+  const reordered = text.replace(/(\.\.\.\(0, \$\w+\)\(\)), (\$\w+\.item)/, '$2, $1');
+  assert.notEqual(reordered, text); assert.notEqual(evaluate('rhs-order', reordered), expected);
+  const getterTwice = text.replace(/(\$\w+\.item)/, '($1, $1)');
+  assert.notEqual(getterTwice, text); assert.notEqual(evaluate('getter-twice', getterTwice), expected);
 } finally { rmSync(root, {recursive: true, force: true}); }

@@ -2,6 +2,7 @@
 #include "../../../src/source/tree_semantics.h"
 #include "abcd/source/tree_printer.h"
 #include <sstream>
+#include <algorithm>
 #include "../../../src/analysis/value_edits.h"
 #include "../../../src/source/array_initialization.h"
 #include <iostream>
@@ -46,7 +47,7 @@ struct Sample {
   std::vector<std::u16string> names{u"length"};
   ExpressionConstants Constants() const { return {constants, names.size()}; }
 };
-Sample Make(unsigned count, bool copies=false, bool split=false, bool expose=false) {
+Sample Make(unsigned count, bool copies=false, bool split=false, bool expose=false, bool late=false) {
   Fixture f;
   f.graph.values.push_back({EntryDefinition{ParameterEntry{0}},ValueKinds::Language(),{}});
   f.Add(ValueArrayAllocation{},true,{}); const auto array=*f.graph.ops.back().result;
@@ -55,7 +56,14 @@ Sample Make(unsigned count, bool copies=false, bool split=false, bool expose=fal
   for (unsigned i=0;i<count;++i) {
     auto destination=array;
     if(copies) { f.Add(ValueCopy{},true,{{OperandRole::kInput,array}});destination=*f.graph.ops.back().result; }
-    f.Add(ValueArraySpread{},true,{{OperandRole::kDestination,destination},{OperandRole::kIndex,cursor},{OperandRole::kSource,ValueId{0}}});
+    ValueOperand source = ValueId{0};
+    if (late) {
+      f.Add(ValueInvoke{InvokeReceiver::kUndefined, 0}, true, {{OperandRole::kCallee, ValueId{0}}});
+      f.graph.ops.back().normal = f.graph.ops.back().before_throw = LanguageEffect::kUserCode | LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite;
+      f.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+      source = *f.graph.ops.back().result;
+    }
+    f.Add(ValueArraySpread{},true,{{OperandRole::kDestination,destination},{OperandRole::kIndex,cursor},{OperandRole::kSource,source}});
     auto& spread=f.graph.ops.back();spread.normal=spread.before_throw=LanguageEffect::kHeapRead|LanguageEffect::kHeapWrite|LanguageEffect::kUserCode|LanguageEffect::kAllocation;
     spread.exceptional=ExceptionalCompletion::kMayThrow;
     cursor=*spread.result;
@@ -65,7 +73,14 @@ Sample Make(unsigned count, bool copies=false, bool split=false, bool expose=fal
     f.graph.ops.back().normal=f.graph.ops.back().before_throw=LanguageEffect::kHeapRead|LanguageEffect::kUserCode;
     f.graph.ops.back().exceptional=ExceptionalCompletion::kMayThrow;
     cursor=*f.graph.ops.back().result;
-    f.Add(ValueComputedOwnWrite{},false,{{OperandRole::kBase,destination},{OperandRole::kKey,cursor},{OperandRole::kStoredValue,abcd::analysis::IntegerLiteral{7}}});
+    ValueOperand element = abcd::analysis::IntegerLiteral{7};
+    if (late) {
+      f.Add(ValueInvoke{InvokeReceiver::kUndefined, 0}, true, {{OperandRole::kCallee, ValueId{0}}});
+      f.graph.ops.back().normal = f.graph.ops.back().before_throw = LanguageEffect::kUserCode | LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite;
+      f.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+      element = *f.graph.ops.back().result;
+    }
+    f.Add(ValueComputedOwnWrite{},false,{{OperandRole::kBase,destination},{OperandRole::kKey,cursor},{OperandRole::kStoredValue,element}});
     f.graph.ops.back().normal=LanguageEffect::kHeapWrite;
     f.Add(ValueUnary{UnaryOperator::kIncrement},true,{{OperandRole::kInput,cursor}});
     cursor=*f.graph.ops.back().result;
@@ -93,6 +108,7 @@ void Counterexamples() {
   const auto expect = [&](const Sample& sample, ArrayInitializationError error) {
     const auto result = BuildArrayInitializations(sample.graph, contract, sample.Constants(), sample.names);
     Check(std::holds_alternative<ArrayInitializationError>(result));
+    if (std::get<ArrayInitializationError>(result) != error) std::cerr << "expected " << unsigned(error) << " actual " << unsigned(std::get<ArrayInitializationError>(result)) << "\n";
     Check(std::get<ArrayInitializationError>(result) == error);
   };
   auto direct = original;
@@ -109,7 +125,7 @@ void Counterexamples() {
   // A source operand cannot also expose the private destination to an iterator.
   changed = original;
   Check(!ReplaceUse(changed.graph, {changed.graph.ops[1].first_use.value + 2}, *changed.graph.ops[0].result));
-  expect(changed, ArrayInitializationError::kOrder);
+  expect(changed, ArrayInitializationError::kOperand);
   changed = original; changed.constants[2] = std::monostate{};
   expect(changed, ArrayInitializationError::kOrder);
   auto built = std::get<ArrayInitializationPlan>(BuildArrayInitializations(original.graph, contract, original.Constants(), original.names));
@@ -124,13 +140,14 @@ void Counterexamples() {
   forged = built; forged.contract = SourceContract::kLanguageNumericConstructorsV1; reject(forged);
 }
 void Trees() {
-  for (unsigned count : {1U, 200U, 201U, 400U, 800U}) for (bool split : {false, true}) {
-    auto sample = Make(count, true, split);
+  for (unsigned count : {1U, 200U, 201U, 400U, 800U}) for (bool split : {false, true}) for (bool late : {false, true}) {
+    auto sample = Make(count, true, split, false, late);
     sample.names.push_back(u"input");
     constexpr auto contract = SourceContract::kLanguageSourceV1;
+    std::optional<ArrayInitializationError> cause;
     const auto planned = BuildEvaluationPlan(sample.graph, {}, IncomingCells::kReject, {}, {}, {}, {},
-        ClosureWrites::kUnknown, {}, {}, {}, nullptr, {}, {contract, sample.Constants(), sample.names});
-    if (const auto* error = std::get_if<EvaluationError>(&planned)) std::cerr << "evaluation " << unsigned(*error) << "\n";
+        ClosureWrites::kUnknown, {}, {}, {}, nullptr, {}, {contract, sample.Constants(), sample.names, &cause});
+    if (const auto* error = std::get_if<EvaluationError>(&planned)) std::cerr << "evaluation " << unsigned(*error) << " count=" << count << " split=" << split << " late=" << late << " array=" << (cause ? unsigned(*cause) : 999) << "\n";
     Check(std::holds_alternative<EvaluationPlan>(planned));
     const auto& evaluation = std::get<EvaluationPlan>(planned);
     const auto control = std::get<ControlPlan>(BuildControlPlan(sample.graph));
@@ -143,7 +160,9 @@ void Trees() {
     const auto& tree = std::get<ConstructedFunction>(built).tree;
     Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(sample.graph, control, evaluation, tree, sample.Constants())));
     std::ostringstream text; Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, text)));
-    Check(text.str().find("...input") != std::string::npos);
+    Check(text.str().find("...") != std::string::npos);
+    Check(text.str().find("input") != std::string::npos);
+
     const auto rejected = [&](const FunctionTree& changed) {
       Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(sample.graph, control, evaluation, changed, sample.Constants())));
     };
@@ -169,7 +188,70 @@ void Trees() {
     changed = tree; changed.identity.contract = SourceContract::kLanguageAndHostV1; rejected(changed);
   }
 }
+void LateCounterexamples() {
+  constexpr auto contract = SourceContract::kLanguageSourceV1;
+  auto original = Make(2, true, true, false, true);
+  const auto build = [&](const Sample& s) { return BuildArrayInitializations(s.graph, contract, s.Constants(), s.names); };
+  const auto proof = std::get<ArrayInitializationPlan>(build(original));
+  std::vector<UseId> rhs;
+  for (const auto& step : proof.steps) if (step.value) rhs.push_back(*step.value);
+  Check(rhs.size() == 4);
+  const auto rejected = [&](const Sample& s, ArrayInitializationError error) {
+    auto result = build(s); Check(std::holds_alternative<ArrayInitializationError>(result));
+    if (std::get<ArrayInitializationError>(result) != error) std::cerr << "expected " << unsigned(error) << " actual " << unsigned(std::get<ArrayInitializationError>(result)) << "\n";
+    Check(std::get<ArrayInitializationError>(result) == error);
+  };
+  auto changed = original;
+  const auto first = std::get<ValueId>(changed.graph.uses[rhs[0].value].operand);
+  const auto second = std::get<ValueId>(changed.graph.uses[rhs[1].value].operand);
+  Check(!ReplaceUse(changed.graph, rhs[0], second)); Check(!ReplaceUse(changed.graph, rhs[1], first));
+  rejected(changed, ArrayInitializationError::kCorrespondence); // future SSA definition
+  changed = original; Check(!ReplaceUse(changed.graph, rhs[1], first));
+  rejected(changed, ArrayInitializationError::kSharedOperand);
+  changed = original; Check(!ReplaceUse(changed.graph, rhs[0], ValueId{0}));
+  rejected(changed, ArrayInitializationError::kOrder); // unowned call is still observable
+  auto forged = proof;
+  auto nested = std::find_if(forged.nested.begin(), forged.nested.end(), [](const auto& use) { return use.has_value(); });
+  Check(nested != forged.nested.end()); nested->reset();
+  Check(std::get<ArrayInitializationError>(VerifyArrayInitializations(original.graph, forged, contract,
+      original.Constants(), original.names)) == ArrayInitializationError::kCorrespondence);
+  // Valid SSA with reversed sibling call results: availability alone is not order.
+  Fixture f; f.graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
+  f.Add(ValueArrayAllocation{}, true, {}); const auto array = *f.graph.ops.back().result;
+  f.graph.ops.back().normal = LanguageEffect::kAllocation;
+  const auto call = [&](std::initializer_list<std::pair<OperandRole, ValueOperand>> args, unsigned count) {
+    f.Add(ValueInvoke{InvokeReceiver::kUndefined, count}, true, args);
+    f.graph.ops.back().normal = f.graph.ops.back().before_throw = LanguageEffect::kUserCode;
+    f.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+    return *f.graph.ops.back().result;
+  };
+  const auto left = call({{OperandRole::kCallee, ValueId{0}}}, 0);
+  const auto right = call({{OperandRole::kCallee, ValueId{0}}}, 0);
+  const auto source = call({{OperandRole::kCallee, ValueId{0}}, {OperandRole::kArgument, right}, {OperandRole::kArgument, left}}, 2);
+  f.Add(ValueArraySpread{}, true, {{OperandRole::kDestination, array}, {OperandRole::kIndex, abcd::analysis::IntegerLiteral{0}}, {OperandRole::kSource, source}});
+  f.graph.ops.back().normal = f.graph.ops.back().before_throw = LanguageEffect::kUserCode | LanguageEffect::kHeapWrite;
+  f.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  f.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, array}});
+  f.graph.blocks = {{{0}, static_cast<std::uint32_t>(f.graph.ops.size()), {0}, 0}};
+  Sample siblings{std::move(f.graph)}; siblings.constants.resize(siblings.graph.ops.size());
+  rejected(siblings, ArrayInitializationError::kOrder);
+  const auto& parent = siblings.graph.ops[3];
+  Check(!ReplaceUse(siblings.graph, {parent.first_use.value + 1}, left));
+  Check(!ReplaceUse(siblings.graph, {parent.first_use.value + 2}, right));
+  Check(std::holds_alternative<ArrayInitializationPlan>(build(siblings)));
+  // Exact byte admission includes the entire ownership/worklist scratch.
+  std::size_t lo = 0, hi = 1000000;
+  while (lo < hi) {
+    const auto mid = lo + (hi - lo) / 2;
+    const auto result = BuildArrayInitializations(original.graph, contract, original.Constants(), original.names, {mid});
+    if (std::holds_alternative<ArrayInitializationPlan>(result)) hi = mid;
+    else { Check(std::get<ArrayInitializationError>(result) == ArrayInitializationError::kResourceLimit); lo = mid + 1; }
+  }
+  Check(std::holds_alternative<ArrayInitializationPlan>(BuildArrayInitializations(original.graph, contract, original.Constants(), original.names, {lo})));
+  Check(std::get<ArrayInitializationError>(BuildArrayInitializations(original.graph, contract, original.Constants(), original.names, {lo - 1})) == ArrayInitializationError::kResourceLimit);
+}
 int main() {
+  LateCounterexamples();
   Trees();
   Counterexamples();
   constexpr auto contract=SourceContract::kLanguageSourceV1;

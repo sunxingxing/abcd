@@ -182,7 +182,7 @@ record.json 的格式不变。该标记不表示 Node 可执行。请求表畸�
 新增元数据变异最初发现 phased 模块错误折叠，保留 `PhasedModuleFailure` 叶子原因后通过，
 没有降低原因链断言。未运行探索集、留出集、全套测试或 RSS 基准；语料对照由 cc 执行。
 
-## 4. 数组展开（LanguageSourceV1，Round 33 工作区实现）
+## 4. 数组展开（LanguageSourceV1，Round 33–34）
 
 用户批准输出标准 `[...x]`，并接受锁定运行时与标准展开的全部已列差异：数组
 `.values`/直接迭代器到 `Symbol.iterator`、每步读取 next 到保存 next 方法、迭代结果
@@ -218,13 +218,26 @@ n 包含图、uses 和输出前缀元素。资源计费不是实测 RSS 证明�
 独立 evaluation/tree 检查重算图证明和常量证据，检查输入、精确元素序列、origin、
 原始作用域及 catch；phased 融合不能单独吸收这些初始化成员。
 
+**Round 34：allocation 之后的 RHS。** 构造证明复用 `DescribeEvaluation` 的 eager
+表达式能力、公共 copy/phi identity 与 `BuildEffectOrder` 的全路径顺序事实。
+每个晚求值节点记录唯一的语法 consumer；module read 的既有 guard 证明保留为同一读取
+的第二个事件。一次 use census 排除共享、逃逸和 catch/phi 观察；显式 receiver 经现有
+成员引用身份检查，不作为第二次求值。迭代式后序遍历按源码操作数顺序逐一对照原图
+must-reach 前驱/后继：前一元素提交 → RHS 全部事件 → 本元素提交。纯 RHS 节点也有执行
+锚点。无归属效果、遗漏、重复或重排均不能穿过此方程，没有新增块形状/相邻指令准入。
+
+晚 RHS 使用既有 `kNestedLiteral` 与 Kahn 构建队列；字面量打印器没有新语义判断。
+独立数组验证器重算归属和事件方程；树操作数验证核对原始 use，tree flow 核对实际
+catch 作用域，recovery flow 保留调用/getter/spread 各自的动作。后续 phased 融合不能
+重新吸收数组成员或已登记的 RHS 边。phased 死拷贝仅在公共 liveness 验证通过后才不算
+独立观察；catch 可见的拷贝不能这样消除。
+
 **本增量边界。** 已有目标、提前逃逸、handler 观察部分数组、独立使用 cursor、
-无法证明的写入/执行次序、错误 cursor 均拒绝。第一版只接受在 allocation 处已可用的
-元素/iterable 值（及原始常量）；allocation 之后新求值的 RHS 子树尚未与本证明组合，
-以 `kOrder` 拒绝，这是表示能力缺口，不是语言限制。原始 try 覆盖范围不同的 spread
-或需要 catch staging 的成员保持保守拒绝；最终树还独立检查实际 catch 作用域。
-错误枚举区分 `kContract/kDestination/kEscape/kCursor/kDefinition/kOrder/kCatch/kCorrespondence`
-及资源/工作预算失败，family/record 路由保留构造证明的类型化原因。
+无法证明的写入/执行次序、错误 cursor 均拒绝。尚不能作为唯一 eager 子树组合的
+选择/悬挂协议、共享 RHS，以及需 catch staging 的组合继续拒绝；不把这些实现缺口
+描述成语言限制。错误枚举保留原有数值，新增 `kOperand`（10）、`kSharedOperand`（11）、
+`kCatchStaging`（12）；`kOrder` 仍表示全路径事件顺序不成立，`kCatch` 表示抛出点
+dispatch 不一致。最终树还独立复验实际 catch 作用域。
 
 **D7 测试。** `array_initialization_test` 覆盖构造/树验证、copy、逐操作拆块、
 200/201/400/800、目标/cursor/步骤/元数据/契约伪造、spread 删除和顺序变异、精确预算边界；
@@ -245,3 +258,28 @@ Round 32 已在隔离基线复现，cc 另确认会话起点 22e7423a 也失败�
 `ctest --test-dir build/regression -R 'literal|array|object|language_source|source_route' -j 1 --output-on-failure`
 为 48/55；上述七项仍失败，失败位置和四项 family/tree 诊断与 Round 32 保存的基线日志相同。
 新增三个 CTest 目标和扩展的 `array_spread_test` 均通过。未执行探索集、留出集、全套 CTest 或 RSS。
+
+**Round 34 定向诊断（基线 ecdf20cc）。** 仅导出用户指定的两个 ABC 文件，未运行探索集
+或留出集。下列 record 的首个拒绝均来自“allocation 后的下一个效果必须是数组步骤”
+旧方程，均为 normal 路径：
+
+| record | method | allocation PC | 首个 RHS 效果 | spread PC |
+|---|---|---:|---|---:|
+| 34854 MonthViewItem | 35352 | 16 | pc 27 module read，随后 hole guard、属性读取和调用 | 58 |
+| 41894 WeekViewItem | 42310 | 12 | pc 23 module read，随后 hole guard、属性读取和调用 | 49 |
+| 14276 MusicVsGamePage | 14565、14621 | 12 | pc 23 captured lexical load，随后 pc 29 属性读取 | 33 |
+| 18376 MusicVsMusicPage | 18666、18722 | 12 | pc 23 captured lexical load，随后 pc 29 属性读取 | 33 |
+| 23033 MusicVsVideoPage | 23323、23379 | 12 | pc 23 captured lexical load，随后 pc 29 属性读取 | 33 |
+
+临时诊断已撤回；实现后在 `--language-source` 下上述五个 record 均 complete。
+这是定向导出结果，不是全探索集统计或配对应用执行验收。
+新增 IR 检查覆盖晚 RHS 调用/异常、混排、copy/拆块、200/201/400/800、顺序/归属
+变异、精确预算，以及正常/错误 catch 位置和必须 staging 的拒绝；Node fixture 增加
+RHS 调用、getter、receiver、抛出、顺序及重复读取变异。结果以本轮交付日志为准。
+
+**Round 34 最终自检。** `cmake --build build/regression -j 6 -- -k` 成功。
+`ctest --preset source-regression -j 1 --output-on-failure` 为 65/65。
+`ctest --test-dir build/regression -R 'literal|array|object|language_source' -j 1 --output-on-failure`
+在修改前后均为 46/53：上述七项失败名单、断言位置和 family/tree 诊断相同。
+扩展的 `array_initialization_test`、`array_phase_test`、`array_spread_cli_test` 全部通过。
+未提交；未运行探索集、留出集、全套 CTest 或 RSS 基准。

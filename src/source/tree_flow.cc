@@ -1113,8 +1113,7 @@ class FlowCheck {
         check({static_cast<std::uint32_t>(i)}, *flow_.expressions[i]);
     }
     for (const auto& module : evaluation_.modules) {
-      budget_.Step(); if (!evaluation_.literals->nested.empty() &&
-          evaluation_.literals->nested[module.pair.read.value])
+      budget_.Step(); if (NestedLiteralUse(evaluation_, module.pair.read) && module.pair.guard)
         check(*module.pair.guard, *flow_.expressions[module.pair.guard->value]);
     }
   }

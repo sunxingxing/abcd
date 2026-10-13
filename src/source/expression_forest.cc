@@ -601,7 +601,7 @@ class ForestBuilder {
     return true;
   }
   void NestedTrees() {
-    if (!evaluation_.literals || evaluation_.literals->nested.empty()) return;
+    if (!evaluation_.literals || (evaluation_.literals->nested.empty() && !ArrayInitializations(evaluation_))) return;
     // Each checked nested value has one syntax consumer. Redirect own-write
     // consumers to their allocation, then use Kahn's worklist over these
     // ownership edges. Read/call edges and aggregate/property edges may point
@@ -625,13 +625,17 @@ class ForestBuilder {
       Require(parent && parent->value < graph_.ops.size(), Error::kOwnership);
       auto target = *parent;
       if (evaluation_.operations[target.value].kind == EvaluationKind::kInitializer) {
-        const auto& definition = graph_.ops[target.value];
-        Require(definition.use_count == 2, Error::kOwnership);
-        const auto operand = ResolveEvaluationOperand(evaluation_, graph_.uses[definition.first_use.value].operand);
-        const auto* base = std::get_if<analysis::ValueId>(&operand);
-        const auto* allocation = base ? std::get_if<analysis::OpResult>(&graph_.values[base->value].origin) : nullptr;
-        Require(allocation && objects_[allocation->op.value], Error::kOwnership);
-        target = allocation->op;
+        if (const auto* arrays = ArrayInitializations(evaluation_); arrays && arrays->owners[target.value]) {
+          target = *arrays->owners[target.value];
+        } else {
+          const auto& definition = graph_.ops[target.value];
+          Require(definition.use_count == 2, Error::kOwnership);
+          const auto operand = ResolveEvaluationOperand(evaluation_, graph_.uses[definition.first_use.value].operand);
+          const auto* base = std::get_if<analysis::ValueId>(&operand);
+          const auto* allocation = base ? std::get_if<analysis::OpResult>(&graph_.values[base->value].origin) : nullptr;
+          Require(allocation && objects_[allocation->op.value], Error::kOwnership);
+          target = allocation->op;
+        }
       }
       if (evaluation_.operations[target.value].kind != EvaluationKind::kNestedLiteral) continue;
       parents[i] = target; ++pending[target.value];
