@@ -84,6 +84,14 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
     budget.Array(literal_ends_, graph.ops.size());
     // LiteralPlan already checked each complete laminar initializer interval.
     // Index once; native call arguments consume the entire creation subtree.
+    if (const auto* arrays = ArrayInitializations(plan)) for (const auto& array : arrays->arrays) {
+      budget.Step();
+      if (array.allocation.value >= graph.ops.size() || !array.count || array.first > arrays->steps.size() ||
+          array.count > arrays->steps.size() - array.first) throw EvaluationError::kOwnership;
+      const auto last = arrays->steps[array.first + array.count - 1].operation;
+      if (last.value >= graph.ops.size()) throw EvaluationError::kOwnership;
+      literal_ends_[array.allocation.value] = last;
+    }
     for (const auto& literal : plan.literals->objects) {
       budget.Step(); if (literal.form != LiteralForm::kExpression) continue;
       // This index is also constructed while independently checking a proposed
@@ -155,6 +163,7 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
     budget.Step(); const auto& use = graph.uses[i];
     if (use.life != ValueLife::kLive || IsIdentityPhiInput(plan,use)) continue;
     if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+      if (IsArrayInitialization(plan, *owner) && use.role != OperandRole::kSource && use.role != OperandRole::kStoredValue) continue;
       const auto kind = plan.operations[owner->value].kind;
       if (graph.ops[owner->value].life != ValueLife::kLive ||
           kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure || kind == EvaluationKind::kCellGuard) continue;
@@ -246,6 +255,7 @@ bool PhaseCorridors::HasCatchCopies(OpId operation) const {
   return bundle && plan_.phis->bundles[*bundle].count != 0;
 }
 std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, UseId use) const {
+  if (IsArrayInitialization(plan_, producer) || IsArrayInitialization(plan_, consumer) || ArrayLiteralFor(plan_, producer)) return {};
   const auto& child = graph_.ops[producer.value];
   const auto& parent = graph_.ops[consumer.value];
   // A language expression is pure here when its shared evaluation shape is

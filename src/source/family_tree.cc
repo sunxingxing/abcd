@@ -193,12 +193,16 @@ class FamilyTrees {
       const auto demands = member.function.Cells() ? std::span<const CellDemand>(member.function.Cells()->demands) : std::span<const CellDemand>{};
       // Preserve the phased file input's conditional write domain. The complete
       // family below still discharges every original store and capture barrier.
-      auto evaluation = Take<EvaluationPlan, EvaluationError>(phase ?
+      std::optional<ArrayInitializationError> array_error;
+      ArraySourceInput array_source{context.Identity().contract, syntax.View(), syntax.syntax.names, &array_error};
+      auto evaluated = phase ?
           BuildPhasedEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations, demands, {}, phase->Locals().writes) :
+              member.children, module_evaluations, demands, {}, phase->Locals().writes, array_source) :
           BuildEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
-              guards, entries));
+              guards, entries, nullptr, {}, array_source);
+      if (array_error) Fail(*array_error);
+      auto evaluation = Take<EvaluationPlan, EvaluationError>(std::move(evaluated));
       Account(evaluation);
       if (!deferred[i].empty()) {
         Require(!phase && evaluation.cells, FamilyTreeError::kDeferredCell);

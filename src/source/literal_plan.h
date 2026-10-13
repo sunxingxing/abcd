@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/value_ir.h"
 #include <span>
+#include "array_initialization.h"
 
 namespace abcd::source {
 struct EvaluationPlan;
@@ -43,6 +44,7 @@ struct ObjectInit {
 struct LiteralPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
+  std::optional<ArrayInitializationPlan> arrays;
   std::vector<ObjectInit> objects;
   std::vector<analysis::OpId> definitions;
   std::vector<std::uint8_t> staged;
@@ -117,10 +119,12 @@ enum class LiteralError : std::uint8_t {
 [[nodiscard]] std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     analysis::SemanticBudget budget = {},
-    std::span<const std::optional<analysis::OpId>> module_guards = {});
+    std::span<const std::optional<analysis::OpId>> module_guards = {},
+    std::span<const std::optional<analysis::OpId>> projected = {});
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const EvaluationPlan& evaluation, analysis::SemanticBudget budget = {},
-    std::span<const std::optional<analysis::OpId>> module_guards = {});
+    std::span<const std::optional<analysis::OpId>> module_guards = {},
+    std::span<const std::optional<analysis::OpId>> projected = {});
 }  // namespace abcd::source
 #endif

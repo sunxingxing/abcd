@@ -8,6 +8,7 @@ namespace abcd::analysis {
 // RuntimeStArraySpread. Acc is the iterable input, then the next index on
 // success. Destination may already be partly mutated when the operation throws.
 struct ArraySpread {
+  static constexpr std::uint8_t kCursorRead = 1;
   abc::RegisterId destination;
   abc::RegisterId index;
 };

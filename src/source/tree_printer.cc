@@ -857,6 +857,19 @@ class TreePrinter {
     }
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
+  void Expression(ArrayExpr node) {
+    Append("["); Push(std::string_view("]"));
+    if (node.elements.count && std::holds_alternative<ArrayElision>(
+        std::get<ArrayElement>(Tree().expressions[Tree().arguments[node.elements.first + node.elements.count - 1].value].expression).element))
+      Push(std::string_view(","));
+    Push(ArgumentCursor{node.elements, 0});
+  }
+  void Expression(const ArrayElement& node) {
+    if (const auto* value = std::get_if<ArrayValueElement>(&node.element)) Push(ExpressionOperand{value->value, {}});
+    else if (const auto* spread = std::get_if<ArraySpreadElement>(&node.element)) {
+      Append("..."); Push(ExpressionOperand{spread->iterable, {}});
+    }
+  }
   void Expression(EmptyObjectExpr, bool grouped = true) { Append(grouped ? "({})" : "{}"); }
   void Expression(const ClassExpr& node, ExprId expression, NameContext inferred_name = {}) {
     if (!node.definition) throw Error::kUnsupportedContext;

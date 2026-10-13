@@ -939,6 +939,19 @@ class FlowBuilder {
       Link(branch,context.next,right==FlowCompletion::kTaken?FlowCompletion::kNotTaken:FlowCompletion::kTaken);
       Link(branch,Expr(logical->right,context),right);return;
     }
+    if(const auto* array=std::get_if<ArrayExpr>(&node)) {
+      auto next=context.next;
+      for(std::uint32_t i=array->elements.count;i>0;--i) {
+        budget_.Step(); next=Expr(tree_.arguments[array->elements.first+i-1],context.Operand(next));
+      }
+      const auto allocation=New({FlowEventKind::kEvaluation,{},{},at.id});
+      const auto effects=NormalValueEffects(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract));
+      events_[allocation.value].effects=effects;events_[allocation.value].effect=effects.Evaluation();
+      Link(allocation,next);
+      if(effects.exceptional==analysis::ExceptionalCompletion::kMayThrow)Link(allocation,context.thrown,FlowCompletion::kThrow);
+      if(!result_.actions.empty())result_.actions[at.id.value]=FlowAction{allocation,next,{context.thrown,context.finalizer}};
+      Link(start,allocation);return;
+    }
     if(const auto* aggregate=std::get_if<ObjectExpr>(&node)) {
       const auto effects=NormalValueEffects(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract));
       const bool required=projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;

@@ -24,7 +24,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}) {
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput array_source = {}) {
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
     auto work = budget.work;
@@ -125,7 +125,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     std::vector<std::uint8_t> literal_allocations(graph.ops.size());
     std::vector<EvaluationUses> visible;
     admit(literal_allocations.capacity() - graph.ops.size(), sizeof(std::uint8_t));
-    bool has_definitions = false;
+    bool has_definitions = false, has_spread = false;
     bool has_cells = !demands.empty() || !entry_demands.empty();
     bool has_arguments = false;
     std::size_t next_function = 0;
@@ -133,6 +133,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       const auto& op = graph.ops[i];
       const auto shape = op.life == analysis::ValueLife::kLive ? DescribeEvaluation(op.operation) : std::nullopt;
       has_arguments |= shape && shape->NeedsArgumentFrame();
+      has_spread |= op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueArraySpread>(op.operation);
       step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&
           (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
@@ -228,9 +229,28 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     if (const auto* error = std::get_if<Error>(&aliases)) return *error;
     const auto alias_cost = std::get<EvaluationAliasCost>(aliases);
     admit(alias_cost.bytes, 1); step(alias_cost.work);
-    if (has_definitions) {
-      auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}, module_index.peers) :
-          BuildLiteralPlan(graph, {bytes, work}, module_index.peers, plan.class_projection.owners, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr);
+    std::optional<ArrayInitializationPlan> arrays;
+    std::vector<std::optional<analysis::OpId>> literal_projection;
+    auto projected_literals = std::span<const std::optional<analysis::OpId>>(plan.class_projection.owners);
+    if (has_spread) {
+      auto built = BuildArrayInitializations(graph, array_source.contract, array_source.constants, array_source.names,
+          {bytes, work}, flow == EvaluationFlow::kPhased ? &plan : nullptr);
+      if (const auto* error = std::get_if<ArrayInitializationError>(&built)) {
+        if (array_source.failure) *array_source.failure = *error;
+        return *error == ArrayInitializationError::kResourceLimit ? Error::kResourceLimit :
+            *error == ArrayInitializationError::kWorkLimit ? Error::kWorkLimit : Error::kUnsupportedOperation;
+      }
+      arrays = std::get<ArrayInitializationPlan>(std::move(built)); admit(arrays->allocated_bytes, 1); step(arrays->work);
+      admit(graph.ops.size(), sizeof(std::optional<analysis::OpId>)); literal_projection.resize(graph.ops.size());
+      for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+        step(); literal_projection[i] = arrays->owners[i] ? arrays->owners[i] :
+            (plan.class_projection.owners.empty() ? std::nullopt : plan.class_projection.owners[i]);
+      }
+      projected_literals = literal_projection;
+    }
+    if (has_definitions || has_spread) {
+      auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}, module_index.peers, projected_literals) :
+          BuildLiteralPlan(graph, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr);
       const auto* error = std::get_if<LiteralError>(&built);
       if (error) {
         if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
@@ -238,6 +258,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         return Error::kUnsupportedOperation;
       }
       plan.literals = std::get<LiteralPlan>(std::move(built));
+      plan.literals->arrays = std::move(arrays);
       admit(plan.literals->allocated_bytes, 1); step(plan.literals->work);
       for (const auto& object : plan.literals->objects) {
         step();
@@ -255,6 +276,19 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         if (const auto* value = std::get_if<analysis::ValueId>(&rhs))
           if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin))
             pinned[result->op.value] = 1;
+      }
+    }
+    if (const auto* arrays = ArrayInitializations(plan)) {
+      for (const auto& array : arrays->arrays) {
+        step(); literal_allocations[array.allocation.value] = 1; pinned[array.allocation.value] = 1;
+      }
+      for (const auto& item : arrays->steps) {
+        step(); plan.operations[item.operation.value] = {item.value ? EvaluationKind::kInitializer : EvaluationKind::kArrayCursor, {}, {}};
+        if (item.value) {
+          const auto operand = ResolveEvaluationOperand(plan, graph.uses[item.value->value].operand);
+          if (const auto* value = std::get_if<analysis::ValueId>(&operand))
+            if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin)) pinned[result->op.value] = 1;
+        }
       }
     }
     if (plan.literals && !plan.literals->nested.empty()) {
@@ -279,6 +313,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         const auto index = next_op + order;
         const auto& op = graph.ops[index];
         Require(op.block.value == b && op.order == order, Error::kInvalidGraph);
+        if (IsArrayInitialization(plan, {static_cast<std::uint32_t>(index)})) continue;
         if (op.life != analysis::ValueLife::kLive ||
             plan.operations[index].kind == EvaluationKind::kElidedPure ||
             plan.operations[index].kind == EvaluationKind::kAlias ||
@@ -467,7 +502,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
         plan.class_prototype_reads.capacity() * sizeof(ClassPrototypeRead) +
         plan.receiver_guards.capacity() * sizeof(analysis::OpId) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
-        (plan.literals ? plan.literals->allocated_bytes : 0);
+        (plan.literals ? plan.literals->allocated_bytes : 0) +
+        (ArrayInitializations(plan) ? ArrayInitializations(plan)->allocated_bytes : 0);
     for (const auto& call : plan.phase_selections) plan.allocated_bytes += call.prefix.capacity() * sizeof(analysis::OpId) + call.ancestors.capacity() * sizeof(PhaseCallReference);
     if (plan.self_order) plan.allocated_bytes += plan.self_order->AllocatedBytes();
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
@@ -487,13 +523,13 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands, const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads);
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands, const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads, ArraySourceInput arrays) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, arrays);
 }
 std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {});
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, ArraySourceInput arrays) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {}, nullptr, {}, arrays);
 }
 }  // namespace abcd::source

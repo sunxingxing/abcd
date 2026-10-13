@@ -161,7 +161,11 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
         nodes[i].normal_result = rule.seed.IsEmpty() ? ValueKinds::Language() : rule.seed;
         // Commit has no operand reads. Its value depends on the original
         // operation's Before reads, not the handler's overwritten accumulator.
-        const auto reads = ssa.Reads(*before[node.instruction.value]);
+        auto reads = ssa.Reads(*before[node.instruction.value]);
+        if (rule.input) {
+          if (*rule.input >= reads.size()) return invalid();
+          reads = reads.subspan(*rule.input, 1);
+        }
         if (reads.empty() || reads.size() > detail::kScalarInputs ||
             (rule.kind == Kind::kJoin && reads.size() != 1)) return invalid();
         for (const auto& read : reads) {

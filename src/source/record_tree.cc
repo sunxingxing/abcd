@@ -392,10 +392,15 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     // pass preparation and final verification before any record text is emitted.
     const auto closure_writes = function->values.classes.classes.empty()
         ? analysis::ClosureWrites::kUnknown : analysis::ClosureWrites::kLanguage;
+    std::optional<ArrayInitializationError> array_error;
     auto evaluated = BuildEvaluationPlan(graph, {budget.bytes}, IncomingCells::kReject, children, bindings->evaluations, demands,
-        function->values.initializers.calls, closure_writes, function->values.definitions.sites, {}, {}, function->self_order ? &*function->self_order : nullptr, prototype_reads->reads);
+        function->values.initializers.calls, closure_writes, function->values.definitions.sites, {}, {}, function->self_order ? &*function->self_order : nullptr, prototype_reads->reads,
+        {identity.contract, constants->View(), constants->names, &array_error});
     auto* evaluation = std::get_if<EvaluationPlan>(&evaluated);
-    if (!evaluation) return fail_from(Error::kValue, evaluated);
+    if (!evaluation) {
+      if (array_error) return fail_with(Error::kValue, *array_error);
+      return fail_from(Error::kValue, evaluated);
+    }
     retain(evaluation->allocated_bytes);
     if (family) {
       // Root cells that direct children capture before their first store

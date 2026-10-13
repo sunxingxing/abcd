@@ -200,6 +200,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* write = std::get_if<OwnWrite>(&own_write)) return *write;
   if (std::get<OwnWriteError>(own_write) != OwnWriteError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto computed = LiftComputedOwnWrite(decoded, frame_size);
+  if (const auto* operation = std::get_if<ComputedOwnWrite>(&computed)) return *operation;
+  if (std::get<OwnWriteError>(computed) != OwnWriteError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto spread = LiftArraySpread(decoded, frame_size);
   if (const auto* operation = std::get_if<ArraySpread>(&spread)) return *operation;
   if (std::get<ArraySpreadError>(spread) != ArraySpreadError::kUnsupportedOpcode)
@@ -400,7 +404,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kUserCode | LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
-        } else if constexpr (std::is_same_v<T, IndexedWrite>) {
+        } else if constexpr (std::is_same_v<T, IndexedWrite> || std::is_same_v<T, ComputedOwnWrite>) {
           // Own-index definition may inspect descriptors/array length, invoke
           // a proxy and allocate storage before success or abrupt completion.
           effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |

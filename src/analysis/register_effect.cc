@@ -99,6 +99,13 @@ RegisterEffect EffectOf(const IndexedWrite& value) {
   effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }
+RegisterEffect EffectOf(const ComputedOwnWrite& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.object;
+  effect.reads[effect.read_count++] = value.key;
+  effect.reads[effect.read_count++] = Accumulator{};
+  return effect;
+}
 RegisterEffect EffectOf(const ArraySpread& value) {
   RegisterEffect effect;
   effect.reads[effect.read_count++] = value.destination;
@@ -377,6 +384,8 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftIndexedWrite(instruction, frame_size));
       !Unsupported(result))
     return result;
+  if (auto result = Adapt(LiftComputedOwnWrite(instruction, frame_size));
+      !Unsupported(result)) return result;
   if (auto result = Adapt(LiftArraySpread(instruction, frame_size));
       !Unsupported(result))
     return result;

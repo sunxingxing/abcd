@@ -13,7 +13,7 @@
 | 捕获访问（读取与写入）按源语言 TDZ 解释 | `CaptureReads() == kSourceTdz` | 诊断涉及 24 个 record（不是当前新增完成数） | 无自身 handler 的访问及 Round A 转发已实现；Round B 待做 |
 | 原帧转发显式投影为 rest/spread；实例属性赋值保持 `[[Set]]` | `ConstructorForwarding() == kSourceRestSpread` | 16 个 record（`DerivedProjectionError`） | normal 路径显式 rest/spread 投影已实现；验证见 §2 |
 | 惰性导入输出 ArkTS `import lazy`，保持首次访问初始化与 live binding | `LazyImports() == kArkTsLazyImport` | 12 个 record（既有诊断，非新增完成数） | normal/phased 受保护读取已实现，见 §3 |
-| 数组展开 `starrayspread` 按源语言 `[...x]` 输出 | `ArraySpreads() == kSourceIterator` | 8 个 record | 未实现 |
+| 数组展开 `starrayspread` 按源语言 `[...x]` 输出 | `ArraySpreads() == kSourceIterator` | 8 个 record（历史诊断） | Round 33 私有构造投影；验收见 §4 |
 
 ## 1. 捕获访问的源语言 TDZ（CaptureReads）
 
@@ -182,36 +182,66 @@ record.json 的格式不变。该标记不表示 Node 可执行。请求表畸�
 新增元数据变异最初发现 phased 模块错误折叠，保留 `PhasedModuleFailure` 叶子原因后通过，
 没有降低原因链断言。未运行探索集、留出集、全套测试或 RSS 基准；语料对照由 cc 执行。
 
-## 4. 数组展开（已批准；工作区仅完成原始语义，源码投影未实现）
+## 4. 数组展开（LanguageSourceV1，Round 33 工作区实现）
 
 用户批准输出标准 `[...x]`，并接受锁定运行时与标准展开的全部已列差异：数组
 `.values`/直接迭代器到 `Symbol.iterator`、每步读取 next 到保存 next 方法、迭代结果
 自有且可枚举的 value 描述符复制到普通取值、字符串专用遍历及 [[Set]] 到标准
 迭代和自有数据属性定义，以及迭代期间 length 变化的行为。包括这些差异引起的
-getter/setter 调用与异常。Round 31 只登记谓词，没有实现展开恢复；该前提不授权把任意
-已有数组修改改为新数组，或丢弃可观察索引结果。
+getter/setter 调用与异常。该前提不授权把任意已有数组修改改为新数组，或丢弃
+可观察索引结果；仅 `ArraySpreads() == kSourceIterator` 开放源码投影。
 
-**Round 32 工作区进度（未完成）。** 原始 `ArraySpread` / `ValueArraySpread` 已建模：
-destination、index、source 为三个独立输入；正常结果是 cursor，抛出前可有部分堆写入，
-异常 SSA 仅在成功 Commit 定义结果。尚未提交私有构造/cursor 投影，也未开放源码发射。
-空迭代返回原 index，因此在 cursor 输入尚未证明时保留 Unknown 域，不无条件标为 Number。
-新增原始 IR 单测覆盖输入、效果和结果变异、Before/Commit 及 200/201/400/800 规模。
+**cursor 范围裁决（2026-10-13，Round 33）。** 锁定 ets_runtime
+`RuntimeStArraySpread` 通用迭代分支使用 `int tmp = indexHandle->GetInt(); tmp + 1`
+推进（`runtime_stubs-inl.h:600–601`）。cc 转达的裁决：超过 2^31 个元素的构造会先遇到
+内存资源耗尽，属于 V2 起 `ResourceFailures() == kExcluded` 的既有排除范围。
+本实现据此不另证 iterable 的整数上界；它不是一份证明 C++ 有符号溢出按模回绕的结论。
+构造中的已知覆盖、倒退、错误起点或独立可见 cursor 仍拒绝。
 
-**待裁决边界。** 锁定 ets_runtime `RuntimeStArraySpread` 的通用迭代分支用
-`int tmp = indexHandle->GetInt(); tmp + 1` 推进（`runtime_stubs-inl.h:600–601`）。
-当前批准清单没有明确包含该整数范围与标准数组索引上限的差异；“无法证明回绕则拒绝”
-与接收任意无长度上界的 iterable 不能同时无条件成立。不得把通用未知 iterable 视为有界，
-也不得把 C++ 有符号溢出描述为已经证明的模数回绕。该问题确认之前保持源码拒绝。
-DevEco 的临时编译检查还显示，spread 后可以通过私有数组的 `length` 读取重建 cursor，
-混排元素使用 `stownbyvalue`。后续应由属性身份、私有性和 cursor 数据流证明处理；
-不能增加相邻 opcode 模板。
+**D5。** 原始 `ArraySpread` / `ValueArraySpread` 的三个输入为 destination、index、source；
+正常结果为下一写入 cursor，抛出前可有部分堆写入，异常 SSA 仅在成功 Commit 定义结果。
+空迭代返回原 index，结果域由 index 的域与 Number 合并；未知 index 不被伪造为 Number。
+新增 `ComputedOwnWrite` 适配混排元素的普通/wide `stownbyvalue`，保留原始效果与 acc。
 
-**本增量验证。** `cmake --build build/regression -j 6 -- -k` 成功；
+`LiteralPlan::arrays` 保存类型化步骤：元素、spread、私有 length 读取、cursor 推进。
+`array_initialization` 使用公共 SSA copy/phi identity、支配可用性和 all-path effect order，
+一次建立 allocation/use/cursor 索引；执行锚点证明每个步骤与本次 allocation 的次数和次序。
+cursor 表达式是“某个 spread 的正常结果加固定元素数”，length 只在同一私有目标上重建
+当前 cursor。没有相邻 opcode、固定寄存器或同块准入。常量池密集前缀单独复核。
+全部候选缓冲在分配前计费；复杂度为公共分析成本加线性索引/步骤检查，至多 O(n log n)，
+n 包含图、uses 和输出前缀元素。资源计费不是实测 RSS 证明。
+
+**D6。** 新增 `ArrayExpr` 和带原始 origin 的 `ArrayElement`（Value / Spread / Elision）。
+当前构造器发射 Value / Spread；不把未证明的空位伪装成 undefined。无 spread 的数组继续
+走旧表示，打印文本不改。spread 在 recovery flow 中有自己的有序、可抛出 action，
+不等同于 iterable 子表达式。cursor 计算由验证后的投影消去，并保留零宽来源边界。
+独立 evaluation/tree 检查重算图证明和常量证据，检查输入、精确元素序列、origin、
+原始作用域及 catch；phased 融合不能单独吸收这些初始化成员。
+
+**本增量边界。** 已有目标、提前逃逸、handler 观察部分数组、独立使用 cursor、
+无法证明的写入/执行次序、错误 cursor 均拒绝。第一版只接受在 allocation 处已可用的
+元素/iterable 值（及原始常量）；allocation 之后新求值的 RHS 子树尚未与本证明组合，
+以 `kOrder` 拒绝，这是表示能力缺口，不是语言限制。原始 try 覆盖范围不同的 spread
+或需要 catch staging 的成员保持保守拒绝；最终树还独立检查实际 catch 作用域。
+错误枚举区分 `kContract/kDestination/kEscape/kCursor/kDefinition/kOrder/kCatch/kCorrespondence`
+及资源/工作预算失败，family/record 路由保留构造证明的类型化原因。
+
+**D7 测试。** `array_initialization_test` 覆盖构造/树验证、copy、逐操作拆块、
+200/201/400/800、目标/cursor/步骤/元数据/契约伪造、spread 删除和顺序变异、精确预算边界；
+`array_phase_test` 检查异常 SSA、catch 不可观察性和错误 catch 位置。
+`array_spread_test` 保留原始语义测试并增加普通/wide 混排写入检查。
+`array_spread_cli_test` 用实际包含 starrayspread 的 es2abc fixture 做 Node 源语言差分、
+事件轨迹与变异检测；覆盖范围和已批准差异见
+[fixture README](../../../tests/integration/fixtures/array_spread/README.md)。
+这不是与 Ark VM 的差分执行，也没有尝试探索集、留出集、全套测试或 RSS 基准。
+
+七项既有 literal 失败保持原断言：`literal_construct_test`、`mixed_literal_test`、
+`phased_literal_test`，以及 literal closure/derived receiver 的 guarded/unguarded 四项。
+Round 32 已在隔离基线复现，cc 另确认会话起点 22e7423a 也失败。本轮最终构建、固定集
+和串行定向集的实际结果随交付报告记录，不把原始 IR 单测代替端到端验收。
+
+**Round 33 最终自检。** `cmake --build build/regression -j 6 -- -k` 成功；
 `ctest --preset source-regression -j 1 --output-on-failure` 为 65/65。
-串行 `literal|array|object|language_source|source_route` 定向测试为 45/52，新增
-`array_spread_test` 通过。7 个失败已在 `/private/tmp` 内从 `da2cf105` 导出的未修改
-源码隔离构建中逐项复现，断言位置及原因相同：`literal_construct_test`、
-`mixed_literal_test`、`phased_literal_test`，以及 literal closure/derived receiver
-的 guarded/unguarded 四项集成测试。它们不是负载超时，本轮未修改其断言或生产实现。
-未实现源语言展开的 Node 差分、树变异和构造预算边界测试；未运行探索集、留出集、
-全套测试或 RSS 基准。原始 IR 测试通过不代表 D5 构造证明或 D6/D7 源码恢复完成。
+`ctest --test-dir build/regression -R 'literal|array|object|language_source|source_route' -j 1 --output-on-failure`
+为 48/55；上述七项仍失败，失败位置和四项 family/tree 诊断与 Round 32 保存的基线日志相同。
+新增三个 CTest 目标和扩展的 `array_spread_test` 均通过。未执行探索集、留出集、全套 CTest 或 RSS。

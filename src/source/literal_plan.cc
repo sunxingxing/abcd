@@ -887,12 +887,12 @@ std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
 }
 std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget,
-    Guards guards) {
-  return BuildLiterals(graph, &evaluation, budget, guards, {}, {}, nullptr);
+    Guards guards, Guards projected) {
+  return BuildLiterals(graph, &evaluation, budget, guards, projected, {}, nullptr);
 }
 std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan& evaluation,
-    analysis::SemanticBudget budget, Guards guards) {
-  return VerifyLiterals(graph, plan, &evaluation, budget, guards, {}, {}, nullptr);
+    analysis::SemanticBudget budget, Guards guards, Guards projected) {
+  return VerifyLiterals(graph, plan, &evaluation, budget, guards, projected, {}, nullptr);
 }
 }  // namespace abcd::source

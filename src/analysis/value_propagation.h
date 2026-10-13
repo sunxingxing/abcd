@@ -75,7 +75,8 @@ void PropagateValues(std::span<const ValueNode> nodes,
       charge();
       ++work.edge_visits;
       const auto target = targets[edge].value;
-      ValueKinds propagated = incoming;
+      ValueKinds propagated = nodes[target].kind == Kind::kArrayCursor
+          ? incoming.Join(ValueKinds::Number()) : incoming;
       if (nodes[target].kind == Kind::kLanguageOperation ||
           nodes[target].kind == Kind::kEquality ||
           nodes[target].kind == Kind::kAdd ||

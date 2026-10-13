@@ -211,12 +211,13 @@ class ForestBuilder {
     constexpr std::size_t kNodesPerPrefix = 2; // Optional snapshot assignment, then sequence.
     Require(prefixes <= (kMaxId - operation_nodes - copies * kNodesPerCopy) / kNodesPerPrefix, Error::kResourceLimit);
     const auto expression_nodes = operation_nodes + copies * kNodesPerCopy + prefixes * kNodesPerPrefix;
-    Require(buffered_properties <= kMaxId - expression_nodes, Error::kResourceLimit);
+    Require(buffered_properties <= (kMaxId - expression_nodes) / 2, Error::kResourceLimit);
     constexpr std::size_t kNodesPerIndexedArgument = 3; // Snapshot leaf, numeric key, member read.
-    Require(indexed_arguments <= (kMaxId - expression_nodes - buffered_properties) / kNodesPerIndexedArgument &&
-        indexed_arguments <= kMaxId - graph_.uses.size(), Error::kResourceLimit);
-    Reserve(forest_.expressions, expression_nodes + buffered_properties + indexed_arguments * kNodesPerIndexedArgument);
-    Reserve(forest_.arguments, graph_.uses.size() + indexed_arguments);
+    Require(indexed_arguments <= (kMaxId - expression_nodes - buffered_properties * 2) / kNodesPerIndexedArgument &&
+        indexed_arguments <= kMaxId - graph_.uses.size() &&
+        buffered_properties <= kMaxId - graph_.uses.size() - indexed_arguments, Error::kResourceLimit);
+    Reserve(forest_.expressions, expression_nodes + buffered_properties * 2 + indexed_arguments * kNodesPerIndexedArgument);
+    Reserve(forest_.arguments, graph_.uses.size() + indexed_arguments + buffered_properties);
     Reserve(forest_.origins, graph_.origins.size() + graph_.ops.size() + bundles + commits);
     Reserve(forest_.edge_assignments, normal_copies);
     Reserve(forest_.edges, bundles - staged_bundles);
@@ -322,7 +323,11 @@ class ForestBuilder {
         if (evaluation_.operations[i].kind == EvaluationKind::kInitializer ||
             evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment ||
-            evaluation_.operations[i].kind == EvaluationKind::kClassProjection) continue;
+            evaluation_.operations[i].kind == EvaluationKind::kClassProjection ||
+            evaluation_.operations[i].kind == EvaluationKind::kArrayCursor) continue;
+        if (const auto* array = ArrayLiteralFor(evaluation_, {static_cast<std::uint32_t>(i)})) {
+          forest_.operations[i] = Array(*array, origin); continue;
+        }
         if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard ||
             evaluation_.operations[i].kind == EvaluationKind::kCellGuard) continue;
         if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {
@@ -750,6 +755,36 @@ class ForestBuilder {
     }
     return Add(ObjectExpr{range, kind, prefix}, origin);
   }
+  ExprId Array(const ArrayInitialization& array, TreeOriginId origin) {
+    const auto* proof = ArrayInitializations(evaluation_);
+    Require(proof != nullptr, Error::kOwnership);
+    std::vector<ExprId> elements;
+    Reserve(elements, static_cast<std::size_t>(array.buffered) + array.count);
+    if (array.buffered) {
+      const auto* buffer = std::get_if<AggregateConstant>(&constants_.operations[array.allocation.value]);
+      Require(buffer && buffer->kind == AggregateKind::kArray && buffer->count == array.buffered,
+          Error::kConstant);
+      for (std::uint32_t i = 0; i < array.buffered; ++i) {
+        Step(); const auto value = Literal(constants_.properties[buffer->first + i].value, origin);
+        elements.push_back(Add(ArrayElement{ArrayValueElement{value}}, origin));
+      }
+    }
+    for (std::uint32_t i = 0; i < array.count; ++i) {
+      Step(); const auto& step = proof->steps[array.first + i];
+      if (!step.value) continue;
+      const TreeOriginId site{graph_.ops[step.operation.value].origin.value};
+      const auto value = Use(*step.value, site);
+      const auto element = step.kind == ArrayStepKind::kSpread
+          ? Add(ArrayElement{ArraySpreadElement{value}}, site)
+          : Add(ArrayElement{ArrayValueElement{value}}, site);
+      forest_.operations[step.operation.value] = element; elements.push_back(element);
+    }
+    const ArgumentRange range{static_cast<std::uint32_t>(forest_.arguments.size()),
+        static_cast<std::uint32_t>(elements.size())};
+    Require(elements.size() <= forest_.arguments.capacity() - forest_.arguments.size(), Error::kResourceLimit);
+    forest_.arguments.insert(forest_.arguments.end(), elements.begin(), elements.end());
+    return Add(ArrayExpr{range, array.buffered}, origin);
+  }
   ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {
     const bool member = std::holds_alternative<MemberCall>(binding);
     const auto callee = Use(op.first_use, origin);
@@ -1140,7 +1175,7 @@ class ForestBuilder {
         return Add(FieldDefinitionExpr{operands[0], *name, operands[1]}, origin);
       }
       else {
-        static_assert(std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueClassCreation> ||
+        static_assert(std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueClassCreation> ||
                       std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
                       std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                       std::is_same_v<T, analysis::ValueModuleRead> ||

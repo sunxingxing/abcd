@@ -54,7 +54,7 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
     const auto& op = graph.ops[i];
     auto expected = corridors.EffectsBefore(id);
     intervals[i] = corridors.Interval(id);
-    if (!Inputs(op, plan.operations[i])) continue;
+    if (IsArrayInitialization(plan, id) || !Inputs(op, plan.operations[i])) continue;
     const auto shape = DescribeEvaluation(op.operation);
     Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);
     // Consume an effect suffix in reverse syntax order. Failed choices keep
@@ -166,7 +166,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
       const auto& op = graph.ops[i];
       const auto end = corridors.EffectsBefore(id);
       intervals[i] = corridors.Interval(id);
-      if (in_composition(i) || !Inputs(op, BeforeLogicalFusion(graph, plan, i))) continue;
+      if (in_composition(i) || IsArrayInitialization(plan, {static_cast<std::uint32_t>(i)}) || !Inputs(op, BeforeLogicalFusion(graph, plan, i))) continue;
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);
       std::optional<EffectInterval> children;

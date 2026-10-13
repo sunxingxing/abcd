@@ -41,4 +41,26 @@ std::variant<OwnWrite, OwnWriteError> LiftOwnWrite(
       {static_cast<std::uint32_t>(instruction.operands[kObject].raw_bits)},
       static_cast<std::uint16_t>(instruction.operands[kCache].raw_bits)};
 }
+// Pinned v7.0 interpreter STOWNBYVALUE: IC slot, destination, key, acc value.
+std::variant<ComputedOwnWrite, OwnWriteError> LiftComputedOwnWrite(
+    const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
+  std::uint64_t maximum;
+  switch (instruction.opcode) {
+    case abc::Opcode::kSTOWNBYVALUE_IMM8_V8_V8: maximum = UINT8_MAX; break;
+    case abc::Opcode::kSTOWNBYVALUE_IMM16_V8_V8: maximum = UINT16_MAX; break;
+    default: return OwnWriteError::kUnsupportedOpcode;
+  }
+  constexpr std::size_t kCache = 0, kObject = 1, kKey = 2, kOperands = 3;
+  if (instruction.operand_count != kOperands || instruction.operands[kCache].kind != abc::OperandKind::kImmediate ||
+      instruction.operands[kCache].raw_bits > maximum) return OwnWriteError::kMalformedInstruction;
+  for (const auto i : {kObject, kKey}) {
+    const auto& operand = instruction.operands[i];
+    if (operand.kind != abc::OperandKind::kRegister || operand.raw_bits > UINT8_MAX)
+      return OwnWriteError::kMalformedInstruction;
+    if (operand.raw_bits >= frame_size) return OwnWriteError::kRegisterRange;
+  }
+  return ComputedOwnWrite{{static_cast<std::uint32_t>(instruction.operands[kObject].raw_bits)},
+      {static_cast<std::uint32_t>(instruction.operands[kKey].raw_bits)},
+      static_cast<std::uint16_t>(instruction.operands[kCache].raw_bits)};
+}
 }  // namespace abcd::analysis

@@ -207,7 +207,8 @@ target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
-target_sources(abcd_source PRIVATE src/source/literal_plan.cc)
+target_sources(abcd_source PRIVATE src/source/literal_plan.cc
+  src/source/array_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/phased_selections.cc
     src/source/phased_selection_paths.cc src/source/phase_selection_operands.cc src/source/phase_predicate_prefix.cc src/source/phased_object_operands.cc src/source/selection_truth.cc)
 target_sources(abcd_source PRIVATE src/source/scope_facts.cc src/source/exception_scope_facts.cc src/source/capture_plan.cc src/source/phased_capture_input.cc)
@@ -736,6 +737,13 @@ if(BUILD_TESTING)
   target_link_libraries(phi_call_test PRIVATE abcd_source)
   add_test(NAME phi_call_test COMMAND phi_call_test)
   add_executable(loop_forest_test tests/unit/source/loop_forest_test.cc)
+  add_executable(array_phase_test tests/unit/source/array_phase_test.cc)
+  target_include_directories(array_phase_test PRIVATE tests/support)
+  target_link_libraries(array_phase_test PRIVATE abcd_source)
+  add_test(NAME array_phase_test COMMAND array_phase_test)
+  add_executable(array_initialization_test tests/unit/source/array_initialization_test.cc)
+  target_link_libraries(array_initialization_test PRIVATE abcd_source)
+  add_test(NAME array_initialization_test COMMAND array_initialization_test)
   add_executable(literal_plan_test tests/unit/source/literal_plan_test.cc)
   target_link_libraries(literal_plan_test PRIVATE abcd_source)
   add_test(NAME literal_plan_test COMMAND literal_plan_test)
@@ -953,7 +961,11 @@ if(BUILD_TESTING)
   target_link_libraries(module_reads_test PRIVATE abcd_source)
   add_test(NAME module_reads_test COMMAND module_reads_test)
   if(ABCD_NODE_EXECUTABLE)
-    add_test(NAME lazy_import_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+    add_test(NAME array_spread_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/array_spread.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/array_spread)
+  add_test(NAME lazy_import_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lazy_import.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/lazy_import)

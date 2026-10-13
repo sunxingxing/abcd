@@ -83,6 +83,7 @@ class StructureCheck {
       : tree_(tree), budget_(budget), scopes_(tree, budget), expression_scopes_(expression_scopes), destination_(destination) {
     budget.Array(expression_scopes_, tree.expressions.size());
     budget.Array(expressions_, tree.expressions.size());
+    budget.Array(array_elements_, tree.expressions.size());
     budget.Array(statements_, tree.statements.size());
     budget.Array(children_, tree.children.size());
     budget.Array(arguments_, tree.arguments.size());
@@ -255,7 +256,7 @@ class StructureCheck {
     if (const auto* name = std::get_if<NameId>(&key))
       RequireTree(name->value < tree_.names.size(), Error::kRange);
   }
-  void Expression(const ExprNode& node) {
+  void Expression(const ExprNode& node, ExprId id) {
     RequireTree(node.origin.value < tree_.origins.size(), Error::kOrigin);
     std::visit([&](const auto& expression) {
       using T = std::decay_t<decltype(expression)>;
@@ -396,6 +397,14 @@ class StructureCheck {
         if (expression.reference == CallReference::kMember)
           RequireTree(expression.callee.value < tree_.expressions.size() &&
               std::holds_alternative<MemberExpr>(tree_.expressions[expression.callee.value].expression), Error::kUnsupportedSyntax);
+      } else if constexpr (std::is_same_v<T, ArrayExpr>) {
+        RequireTree(ArraySpreads(tree_.identity.contract) == ArraySpreadSemantics::kSourceIterator &&
+            ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kUnsupportedSyntax);
+        RequireTree(expression.elements.first <= tree_.arguments.size() &&
+            expression.elements.count <= tree_.arguments.size() - expression.elements.first &&
+            expression.buffered <= expression.elements.count, Error::kRange);
+      } else if constexpr (std::is_same_v<T, ArrayElement>) {
+        RequireTree(array_elements_[id.value], Error::kOwnership);
       } else if constexpr (std::is_same_v<T, ObjectExpr>) {
         RequireTree(expression.kind == AggregateKind::kObject || expression.kind == AggregateKind::kArray,
             Error::kUnsupportedSyntax);
@@ -433,7 +442,7 @@ class StructureCheck {
       RequireTree(!expressions_[expression->value], Error::kOwnership);
       expressions_[expression->value] = 1;
       expression_scopes_[expression->value] = frame.scope;
-      Expression(tree_.expressions[expression->value]);
+      Expression(tree_.expressions[expression->value], *expression);
       return;
     }
     const auto id = std::get<StmtId>(frame.node);
@@ -495,6 +504,22 @@ class StructureCheck {
     };
     if (const auto* expression = std::get_if<ExprId>(&frame.node)) {
       const auto& syntax = tree_.expressions[expression->value].expression;
+      if (const auto* array = std::get_if<ArrayExpr>(&syntax)) {
+        if (frame.next_child == array->elements.count) return {};
+        const auto slot = array->elements.first + frame.next_child++;
+        RequireTree(!arguments_[slot], Error::kOwnership); arguments_[slot] = 1;
+        const auto child = tree_.arguments[slot];
+        RequireTree(child.value < tree_.expressions.size() &&
+            std::holds_alternative<ArrayElement>(tree_.expressions[child.value].expression), Error::kOwnership);
+        RequireTree(!array_elements_[child.value], Error::kOwnership); array_elements_[child.value] = 1;
+        return child;
+      }
+      if (const auto* element = std::get_if<ArrayElement>(&syntax)) {
+        if (frame.next_child++) return {};
+        if (const auto* value = std::get_if<ArrayValueElement>(&element->element)) return value->value;
+        if (const auto* spread = std::get_if<ArraySpreadElement>(&element->element)) return spread->iterable;
+        return {};
+      }
       if (const auto* object = std::get_if<ObjectExpr>(&syntax)) {
         if (frame.next_child == object->properties.count) return {};
         const auto slot = object->properties.first + frame.next_child++;
@@ -560,7 +585,7 @@ class StructureCheck {
                         std::is_same_v<T, ArgumentSnapshotExpr> ||
                         std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr> || std::is_same_v<T, EmptyArrayExpr> ||
-                        std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, FunctionExpr>);
+                        std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, ArrayExpr> || std::is_same_v<T, ArrayElement> || std::is_same_v<T, FunctionExpr>);
         }
       }, tree_.expressions[expression->value].expression);
     } else {
@@ -672,7 +697,7 @@ class StructureCheck {
   std::vector<std::uint8_t> statements_;
   std::vector<std::uint8_t> children_;
   std::vector<std::uint8_t> arguments_;
-  std::vector<std::uint8_t> properties_;
+  std::vector<std::uint8_t> properties_, array_elements_;
   std::vector<SyntaxFrame> stack_;
   std::vector<FunctionOwnerId> functions_;
   std::vector<std::uint8_t> capture_edges_;

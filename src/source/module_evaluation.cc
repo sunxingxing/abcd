@@ -25,6 +25,7 @@ std::vector<EvaluationUses> IndexEvaluationUses(const analysis::ValueProgram& gr
     if (!producer) continue;
     const auto id = producer->op;
     if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+      if (IsArrayInitialization(plan, *owner) && use.role != OperandRole::kSource && use.role != OperandRole::kStoredValue) continue;
       if (plan.operations[owner->value].kind == EvaluationKind::kAlias ||
           plan.operations[owner->value].kind == EvaluationKind::kElidedPure) continue;
       if (!modules.peers.empty() && modules.peers[id.value] == *owner &&

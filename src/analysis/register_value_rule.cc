@@ -209,9 +209,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
           LiftHoleInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Hole()};
   if (std::holds_alternative<ArraySpread>(LiftArraySpread(instruction, frame_size)))
-    // The empty-iterator path returns the incoming index unchanged. Only a
-    // checked cursor proof may refine an arbitrary index operand to Number.
-    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+    // Empty iteration returns index; other normal paths return a Number.
+    return ValueRule{ValueRuleKind::kArrayCursor, {}, arithmetic, ArraySpread::kCursorRead};
   if (std::holds_alternative<PushEnvironment>(
           LiftLexicalInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Environment()};

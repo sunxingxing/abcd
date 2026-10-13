@@ -152,7 +152,11 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         // Refined normal results depend on checked input facts; seeding a
         // Boolean/String result early could certify an unproved input cycle.
         nodes[i].normal_result = rule.seed.IsEmpty() ? ValueKinds::Language() : rule.seed;
-        const auto reads = ssa.Reads(instruction);
+        auto reads = ssa.Reads(instruction);
+        if (rule.input) {
+          if (*rule.input >= reads.size()) return ValueFlowFailure{Error::kInvalidSsa, instruction, {}};
+          reads = reads.subspan(*rule.input, 1);
+        }
         if (reads.empty() || reads.size() > kScalarInputs ||
             (rule.kind == Kind::kJoin && reads.size() != 1))
           return ValueFlowFailure{Error::kInvalidSsa, instruction, {}};

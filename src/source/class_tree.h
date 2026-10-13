@@ -75,7 +75,7 @@ struct ClassParentScope { bool independent; std::uint64_t work; };
     const ClassTree&, std::uint64_t work = analysis::kDefaultSemanticWork);
 using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, FamilyPrepareFailure,
     abc::MetadataError, abc::LiteralFailure, abc::ClassBufferError, ClassInitializerReadFailure,
-    SyntaxResolutionFailure, EvaluationError, ControlError, FunctionTreeFailure, ModuleAliasFailure, ModuleAliasTreeError>;
+    SyntaxResolutionFailure, EvaluationError, ControlError, FunctionTreeFailure, ModuleAliasFailure, ModuleAliasTreeError, ArrayInitializationError>;
 // Resolve the actual creation and member inventory without preparing bodies.
 // This construction-only object may enter the parent's AST, but cannot print.
 [[nodiscard]] std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(

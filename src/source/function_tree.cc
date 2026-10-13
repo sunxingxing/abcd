@@ -790,7 +790,7 @@ class TreeBuilder {
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
       if (IsReceiverGuard(tree_, id) || evaluation.kind == EvaluationKind::kCellGuard || evaluation.kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
-          evaluation.kind == EvaluationKind::kEnvironment || evaluation.kind == EvaluationKind::kElidedPure ||
+          evaluation.kind == EvaluationKind::kEnvironment || evaluation.kind == EvaluationKind::kArrayCursor || evaluation.kind == EvaluationKind::kElidedPure ||
           evaluation.kind == EvaluationKind::kAlias) {
         // A projected pure elision keeps its PC at this lexical boundary, not
         // on an unrelated expression or a fabricated executable statement.
@@ -799,6 +799,10 @@ class TreeBuilder {
         tree_.operations.push_back({id, anchor});
         if (evaluation.kind == EvaluationKind::kEnvironment) EmitCells(id, draft, origin);
         continue;
+      }
+      if (evaluation.kind == EvaluationKind::kInitializer && IsArrayInitialization(evaluation_, id)) {
+        Require(expression.has_value(), Error::kOwnership);
+        tree_.operations.push_back({id, *expression}); continue;
       }
       if (evaluation.kind == EvaluationKind::kInitializer) {
         Require(forest_.initializers[id.value].has_value(), Error::kOwnership);

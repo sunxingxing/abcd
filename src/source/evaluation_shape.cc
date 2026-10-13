@@ -164,7 +164,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else {
       // Accessors require descriptor composition; spreads require a checked
       // private-array/cursor projection. Raw lifting never grants source syntax.
-      static_assert(std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
+      static_assert(std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
@@ -261,7 +261,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValuePropertyWrite> ||
                     std::is_same_v<T, analysis::ValueNamedWrite> ||
                     std::is_same_v<T, analysis::ValueOwnWrite> ||
-                    std::is_same_v<T, analysis::ValueIndexedWrite> || std::is_same_v<T, analysis::ValueArraySpread> ||
+                    std::is_same_v<T, analysis::ValueIndexedWrite> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> ||
                     std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperSpread> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> ||
                     std::is_same_v<T, analysis::ValueBranch> ||
                     std::is_same_v<T, analysis::ValueReturn> ||

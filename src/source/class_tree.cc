@@ -310,8 +310,13 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       const auto constants = syntax.View();
       auto control = Take<ControlPlan>(BuildControlPlan(body.function.values.graph, budget));
       admit(control.allocated_bytes, 1); step(control.work);
-      auto evaluation = Take<EvaluationPlan>(BuildEvaluationPlan(body.function.values.graph, budget, IncomingCells::kReject, {},
-          aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{}));
+      std::optional<ArrayInitializationError> array_error;
+      auto evaluated = BuildEvaluationPlan(body.function.values.graph, budget, IncomingCells::kReject, {},
+          aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{},
+          {}, {}, analysis::ClosureWrites::kUnknown, {}, {}, {}, nullptr, {},
+          {body.context.Identity().contract, constants, syntax.syntax.names, &array_error});
+      if (array_error) throw ClassTreeFailure{*array_error};
+      auto evaluation = Take<EvaluationPlan>(std::move(evaluated));
       admit(evaluation.allocated_bytes, 1); step(evaluation.work);
       auto built = Take<ConstructedFunction>(BuildFunctionTree(body.function.values.graph, control,
           evaluation, std::move(syntax.syntax), constants, budget));

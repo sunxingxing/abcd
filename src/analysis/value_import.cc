@@ -109,6 +109,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValuePropertyWrite{};
     } else if constexpr (std::is_same_v<T, DefineAccessor>) {
       return ValueDefineAccessor{};
+    } else if constexpr (std::is_same_v<T, ComputedOwnWrite>) {
+      return ValueComputedOwnWrite{};
     } else if constexpr (std::is_same_v<T, ArraySpread>) {
       return ValueArraySpread{};
     } else if constexpr (std::is_same_v<T, IndexedWrite>) {

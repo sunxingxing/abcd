@@ -30,6 +30,16 @@ class OperandCheck {
     RequireMeaning(constants_.operations.size() == graph_.ops.size() &&
                    constants_.name_count <= tree_.names.size() &&
                    constants_.text_count <= tree_.texts.size(), Error::kConstant);
+    if (const auto* arrays = ArrayInitializations(evaluation_)) {
+      const auto checked = VerifyArrayInitializations(graph_, *arrays, tree_.identity.contract,
+          constants_, tree_.names, budget_.Remaining(), &evaluation_);
+      if (const auto* error = std::get_if<ArrayInitializationError>(&checked)) {
+        if (*error == ArrayInitializationError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == ArrayInitializationError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kOperand;
+      }
+      budget_.Step(std::get<std::uint64_t>(checked));
+    }
     const auto indexed = IndexCallArgumentUses(graph_, evaluation_, budget_.Remaining());
     if (const auto* error = std::get_if<CallPlanError>(&indexed)) {
       if (*error == CallPlanError::kResourceLimit) throw Error::kResourceLimit;
@@ -189,7 +199,7 @@ class OperandCheck {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
-      if (evaluation_.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
+      if (evaluation_.operations[i].kind == EvaluationKind::kArrayCursor || evaluation_.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
           evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
           evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
       current_ = {static_cast<std::uint32_t>(i)};
@@ -243,6 +253,42 @@ class OperandCheck {
         const auto truth=PureBranchTruth(graph_,current_);
         RequireMeaning(truth.has_value(),Error::kOperator);
         original_.operations[i].control=OriginalControlInput{conditional.condition,OriginalControlKind::kPredicate,truth};
+        continue;
+      }
+      if (IsArrayInitialization(evaluation_, current_)) {
+        const auto& element = Node<ArrayElement>(expression);
+        const bool spread = std::holds_alternative<analysis::ValueArraySpread>(op.operation);
+        const auto value = spread ? std::get<ArraySpreadElement>(element.element).iterable :
+            std::get<ArrayValueElement>(element.element).value;
+        const auto role = spread ? analysis::OperandRole::kSource : analysis::OperandRole::kStoredValue;
+        bool found = false;
+        for (std::uint32_t u = 0; u < op.use_count; ++u) {
+          budget_.Step(); const analysis::UseId use{op.first_use.value + u};
+          if (graph_.uses[use.value].role == role) {
+            RequireMeaning(!found, Error::kOperand); found = true;
+            Input(graph_.uses[use.value].operand, value, use);
+          }
+        }
+        RequireMeaning(found, Error::kOperand);
+        original_.operations[i].intrinsic_expression = expression;
+        original_.operations[i].completion = OriginalCompletionBoundary::kIntrinsicAction;
+        continue;
+      }
+      if (const auto* array = ArrayLiteralFor(evaluation_, current_)) {
+        const auto& syntax = Node<ArrayExpr>(expression);
+        RequireMeaning(syntax.buffered == array->buffered, Error::kConstant);
+        if (array->buffered) {
+          const auto* buffer = std::get_if<AggregateConstant>(&constants_.operations[i]);
+          RequireMeaning(buffer && buffer->count == array->buffered, Error::kConstant);
+          for (std::uint32_t p = 0; p < array->buffered; ++p) {
+            budget_.Step(); const auto& element = Node<ArrayElement>(tree_.arguments[syntax.elements.first + p]);
+            BufferedLiteral(constants_.properties[buffer->first + p].value,
+                std::get<ArrayValueElement>(element.element).value);
+          }
+        }
+        original_.operations[i].intrinsic_expression = expression;
+        original_.operations[i].result_expression = expression;
+        original_.operations[i].completion = OriginalCompletionBoundary::kIntrinsicAction;
         continue;
       }
       const auto input = [&](std::uint32_t ordinal) -> const analysis::ValueOperand& {
@@ -695,7 +741,7 @@ class OperandCheck {
           if (created.heritage) InputAt(0, *created.heritage);
         } else {
           static_assert(
-                        std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
+                        std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||

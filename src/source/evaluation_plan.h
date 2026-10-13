@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_EVALUATION_PLAN_H_
 
 #include <span>
+#include <algorithm>
 #include <variant>
 #include "abcd/source/source_tree.h"
 #include "phi_copies.h"
@@ -26,8 +27,10 @@ enum class BranchPolarity : std::uint8_t { kTaken, kFallthrough };
 // one consumer saves the value, all remaining occurrences read its private slot.
 // Consumer syntax does not decide admission; reference/repeated-input boundaries
 // and the independently checked effect interval still own that permission.
+// kArrayCursor is a non-observable cursor/length step discharged by the
+// current ArrayInitializationPlan, never a general-purpose pure elision.
 enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kReceiverGuard, kCellGuard, kPhiInput, kLogicalLeft, kLogicalValue, kPredicateSnapshot
+  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kReceiverGuard, kCellGuard, kPhiInput, kLogicalLeft, kLogicalValue, kPredicateSnapshot, kArrayCursor
 };
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {
@@ -155,6 +158,31 @@ struct EvaluationPlan {
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];
 }
+struct ArraySourceInput {
+  SourceContract contract = kSourceContract;
+  ExpressionConstants constants;
+  std::span<const std::u16string> names;
+  std::optional<ArrayInitializationError>* failure = nullptr;
+};
+inline const ArrayInitializationPlan* ArrayInitializations(const EvaluationPlan& plan) {
+  return plan.literals && plan.literals->arrays ? &*plan.literals->arrays : nullptr;
+}
+inline const ArrayInitialization* ArrayLiteralFor(const EvaluationPlan& plan, analysis::OpId id) {
+  const auto* arrays = ArrayInitializations(plan); if (!arrays) return nullptr;
+  const auto found = std::lower_bound(arrays->arrays.begin(), arrays->arrays.end(), id,
+      [](const auto& array, auto target) { return array.allocation < target; });
+  return found != arrays->arrays.end() && found->allocation == id ? &*found : nullptr;
+}
+inline bool IsArrayInitialization(const EvaluationPlan& plan, analysis::OpId id) {
+  const auto* arrays = ArrayInitializations(plan);
+  return arrays && id.value < arrays->owners.size() && arrays->owners[id.value].has_value();
+}
+inline bool IsArrayCursor(const EvaluationPlan& plan, analysis::OpId id, const analysis::ValueProgram& graph) {
+  return IsArrayInitialization(plan, id) &&
+      !std::holds_alternative<analysis::ValueArraySpread>(graph.ops[id.value].operation) &&
+      !std::holds_alternative<analysis::ValueComputedOwnWrite>(graph.ops[id.value].operation) &&
+      !std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[id.value].operation);
+}
 // After VerifyEvaluationPlan: normal Hole transport is closed over copies and
 // absent class heritage only. It has source positions, but no JS value/binding.
 inline bool IsAbsentHeritageTransport(const analysis::ValueProgram& graph,
@@ -278,7 +306,7 @@ struct EvaluationShape {
     std::span<const ClassDefinitionSite> definitions = {},
     std::span<const analysis::OpId> receiver_guards = {},
     std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr,
-    std::span<const ClassPrototypeRead> prototype_reads = {});
+    std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput arrays = {});
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.
@@ -297,7 +325,7 @@ struct EvaluationShape {
     std::span<const FunctionBinding> functions = {},
     std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
     std::span<const ClassInitializerCall> initializers = {},
-    analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown);
+    analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown, ArraySourceInput arrays = {});
 [[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});

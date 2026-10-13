@@ -114,7 +114,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     Require(projection.owners == plan.class_projection.owners && projection.prototypes == plan.class_projection.prototypes,
         Error::kOwnership);
     const auto projected_op = [&](std::size_t i) { return !projection.owners.empty() && projection.owners[i].has_value(); };
-    bool has_definitions = false;
+    bool has_definitions = false, has_spread = false;
     bool has_cells = plan.cells && (!plan.cells->cells.demands.empty() || !plan.cells->cells.entry_demands.empty());
     bool has_arguments = false;
     std::size_t next_function = 0;
@@ -124,6 +124,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       has_arguments |= shape && shape->NeedsArgumentFrame();
       if (op.life == analysis::ValueLife::kLive && IsEnvironmentState(op.operation)) ++environment_epoch;
       environment_epochs[i] = environment_epoch;
+      has_spread |= op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueArraySpread>(op.operation);
       step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&
           (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
@@ -133,7 +134,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     }
     Require(next_function == plan.functions.size(), Error::kOwnership);
     Require(has_arguments == graph.arguments.has_value(), Error::kOwnership);
-    Require(has_definitions == plan.literals.has_value(), Error::kOwnership);
+    Require((has_definitions || has_spread) == plan.literals.has_value(), Error::kOwnership);
     Require(has_cells == plan.cells.has_value(), Error::kOwnership);
     if (plan.cells) {
       Require(plan.cells->initialization.closure_writes == (plan.functions.empty()
@@ -153,10 +154,34 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         step(); Require(plan.cells && cell.value < plan.cells->cells.cells.size(), Error::kOwnership);
       }
     }
+    Require(has_spread == (ArrayInitializations(plan) != nullptr), Error::kOwnership);
+    std::vector<std::optional<analysis::OpId>> literal_projection;
+    auto projected_literals = std::span<const std::optional<analysis::OpId>>(plan.class_projection.owners);
+    if (const auto* arrays = ArrayInitializations(plan)) {
+      const auto proof = VerifyArrayInitializationStructure(graph, *arrays, {bytes, work}, flow == EvaluationFlow::kPhased ? &plan : nullptr);
+      if (const auto* error = std::get_if<ArrayInitializationError>(&proof)) return
+          *error == ArrayInitializationError::kResourceLimit ? Error::kResourceLimit :
+          *error == ArrayInitializationError::kWorkLimit ? Error::kWorkLimit : Error::kOwnership;
+      step(std::get<std::uint64_t>(proof));
+      admit(graph.ops.size(), sizeof(std::optional<analysis::OpId>)); literal_projection.resize(graph.ops.size());
+      for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+        step(); literal_projection[i] = arrays->owners[i] ? arrays->owners[i] :
+            (plan.class_projection.owners.empty() ? std::nullopt : plan.class_projection.owners[i]);
+      }
+      projected_literals = literal_projection;
+      for (const auto& array : arrays->arrays) {
+        step(); literal_allocations[array.allocation.value] = 1; pinned[array.allocation.value] = 1;
+      }
+      for (const auto& item : arrays->steps) if (item.value) {
+        step(); const auto operand = ResolveEvaluationOperand(plan, graph.uses[item.value->value].operand);
+        if (const auto* value = std::get_if<analysis::ValueId>(&operand))
+          if (const auto* result = std::get_if<analysis::OpResult>(&graph.values[value->value].origin)) pinned[result->op.value] = 1;
+      }
+    }
     if (plan.literals) {
       const auto checked = flow == EvaluationFlow::kPhased ?
-          VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}, module_index.peers) :
-          VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers, plan.class_projection.owners, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr);
+          VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}, module_index.peers, projected_literals) :
+          VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr);
       if (const auto* error = std::get_if<LiteralError>(&checked)) {
         if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
         if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;
@@ -261,6 +286,12 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                 Error::kOwnership);
         continue;
       }
+      if (IsArrayInitialization(plan, {static_cast<std::uint32_t>(i)})) {
+        Require(placement.kind == (IsArrayCursor(plan, {static_cast<std::uint32_t>(i)}, graph) ?
+            EvaluationKind::kArrayCursor : EvaluationKind::kInitializer) && !placement.consumer && !placement.temporary, Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone; continue;
+      }
+      Require(placement.kind != EvaluationKind::kArrayCursor, Error::kOwnership);
       if (std::binary_search(plan.receiver_guards.begin(), plan.receiver_guards.end(), analysis::OpId{static_cast<std::uint32_t>(i)})) {
         Require(placement.kind == EvaluationKind::kReceiverGuard && !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone; continue;
@@ -391,6 +422,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           step(); ++expected; fused_guard.reset();
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kArrayCursor ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kClassProjection ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kReceiverGuard ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kCellGuard ||

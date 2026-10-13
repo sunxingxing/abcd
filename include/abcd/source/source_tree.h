@@ -189,6 +189,14 @@ struct ClassExpr {
 // Buffered elements, descriptors and own-defines need a separate initializer
 // proof before being folded into either node.
 struct EmptyArrayExpr {};
+// ArrayElement is syntax owned exclusively by an ArrayExpr. Each ExprNode
+// carries the original write/spread origin; spread's iterator protocol is an
+// intrinsic throwing action distinct from evaluating its iterable child.
+struct ArrayValueElement { ExprId value; };
+struct ArraySpreadElement { ExprId iterable; };
+struct ArrayElision {};
+struct ArrayElement { std::variant<ArrayValueElement, ArraySpreadElement, ArrayElision> element; };
+struct ArrayExpr { ArgumentRange elements; std::uint32_t buffered = 0; };
 struct EmptyObjectExpr {};
 struct PropertyRange { std::uint32_t first; std::uint32_t count; };
 enum class AggregateKind : std::uint8_t { kObject, kArray };
@@ -210,7 +218,7 @@ using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, Rea
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr, UpdateExpr, SequenceExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
 struct BlockStmt {

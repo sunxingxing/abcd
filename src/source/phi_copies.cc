@@ -97,6 +97,9 @@ std::vector<std::optional<analysis::OpId>> IndexPhiLiteralEnds(
   std::vector<std::optional<analysis::OpId>> ends;
   if (!graph.phases.empty()) return ends;
   budget.Array(ends, graph.ops.size());
+  if (literals.arrays) for (const auto& array : literals.arrays->arrays) {
+    budget.Step(); ends[array.allocation.value] = literals.arrays->steps[array.first + array.count - 1].operation;
+  }
   for (const auto& object : literals.objects) {
     budget.Step(); if (object.form != LiteralForm::kExpression) continue;
     const auto& allocation = graph.ops[object.allocation.value];

@@ -78,7 +78,7 @@ inline LexicalDependency IntrinsicLexicalDependency(const TreeExpression& expres
           std::is_same_v<T,UpdateExpr> || std::is_same_v<T,SequenceExpr> ||
           std::is_same_v<T,CallExpr> || std::is_same_v<T,ConstructExpr> ||
           std::is_same_v<T,EmptyArrayExpr> || std::is_same_v<T,EmptyObjectExpr> ||
-          std::is_same_v<T,ObjectExpr>);
+          std::is_same_v<T,ObjectExpr>||std::is_same_v<T,ArrayExpr>||std::is_same_v<T,ArrayElement>);
       return LexicalDependency::kReferences;
     }
   },expression);
@@ -157,7 +157,7 @@ inline analysis::ValueKinds NormalValueKinds(const TreeExpression& expression,
           std::is_same_v<T,ThisExpr>||std::is_same_v<T,MemberExpr>||std::is_same_v<T,AwaitExpr>||
           std::is_same_v<T,YieldExpr>||std::is_same_v<T,UpdateExpr>||std::is_same_v<T,CallExpr>||
           std::is_same_v<T,ConstructExpr>||std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,EmptyObjectExpr>||
-          std::is_same_v<T,ObjectExpr>||std::is_same_v<T,FunctionExpr>||std::is_same_v<T,ArgumentSnapshotExpr>||
+          std::is_same_v<T,ObjectExpr>||std::is_same_v<T,ArrayExpr>||std::is_same_v<T,ArrayElement>||std::is_same_v<T,FunctionExpr>||std::is_same_v<T,ArgumentSnapshotExpr>||
           std::is_same_v<T,ClassExpr>||std::is_same_v<T,FieldDefinitionExpr>||std::is_same_v<T,SuperCallExpr>);
       return K::Language();
     }
@@ -256,8 +256,10 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
       // Declarative PutValue has no callback; its success-only write belongs
       // to a FlowDefinition. Member PutValue may invoke a setter/proxy trap.
       return std::holds_alternative<SymbolTarget>(node.target)?guard:CallbackEffects();
+    } else if constexpr(std::is_same_v<T,ArrayElement>) {
+      return std::holds_alternative<ArraySpreadElement>(node.element) ? CallbackEffects() : allocation;
     } else if constexpr(std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,EmptyObjectExpr>||
-        std::is_same_v<T,ObjectExpr>||std::is_same_v<T,FunctionExpr>) {
+        std::is_same_v<T,ObjectExpr>||std::is_same_v<T,ArrayExpr>||std::is_same_v<T,FunctionExpr>) {
       // ObjectExpr contains static own data definitions on a fresh ordinary
       // aggregate. Children own callback effects; neither inherited setters
       // nor ToPropertyKey run for these already verified static keys.

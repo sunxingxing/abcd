@@ -1,4 +1,5 @@
 #include "abcd/analysis/array_spread.h"
+#include "abcd/analysis/own_write.h"
 #include "abcd/analysis/semantic_ir.h"
 #include "abcd/analysis/exception_ssa.h"
 #include "../../../src/analysis/value_operands.h"
@@ -14,6 +15,22 @@ void Check(bool value) { if (!value) std::abort(); }
 int main() {
   using namespace abcd;
   using namespace analysis;
+  for (const auto opcode : {abc::Opcode::kSTOWNBYVALUE_IMM8_V8_V8, abc::Opcode::kSTOWNBYVALUE_IMM16_V8_V8}) {
+    std::vector<std::uint8_t> bytes{static_cast<std::uint8_t>(opcode), 0};
+    if (opcode == abc::Opcode::kSTOWNBYVALUE_IMM16_V8_V8) bytes.push_back(0);
+    bytes.insert(bytes.end(), {2, 1});
+    const auto decoded = std::get<abc::DecodedInstruction>(abc::DecodeInstruction(bytes, abc::ProfileId::kDynamic2400));
+    const auto write = std::get<ComputedOwnWrite>(LiftComputedOwnWrite(decoded, 3));
+    Check(write.object == abc::RegisterId{2} && write.key == abc::RegisterId{1});
+    const auto semantic = std::get<SemanticInstruction>(LiftSemanticInstruction({{0}, decoded}, abc::ProfileId::kDynamic2400, 3));
+    const auto operands = std::get<ValueOperands>(DescribeValueOperands(semantic));
+    Check(operands.count == 3 && !operands.write && operands.operands[0].role == OperandRole::kBase &&
+        operands.operands[1].role == OperandRole::kKey && operands.operands[2].role == OperandRole::kStoredValue);
+    Check(semantic.effects.exceptional == ExceptionalCompletion::kMayThrow &&
+        semantic.effects.before_throw == semantic.effects.normal && !semantic.effects.normal_registers.write);
+    auto malformed = decoded; malformed.operands[1].kind = abc::OperandKind::kImmediate;
+    Check(std::holds_alternative<OwnWriteError>(LiftComputedOwnWrite(malformed, 3)));
+  }
   const std::uint8_t bytes[]{0xc6, 2, 1};
   const auto instruction = std::get<abc::DecodedInstruction>(
       abc::DecodeInstruction(bytes, abc::ProfileId::kDynamic2400));
@@ -47,7 +64,7 @@ int main() {
   Check(std::holds_alternative<ValueArraySpread>(ImportValueOperation(semantic.operation)));
   const auto rule = std::get<detail::ValueRule>(detail::DescribeRegisterValue(
       semantic, CallResultValues::kLanguage, FrameReceiver::kUnknown, ArithmeticSemantics::kPinnedRuntime));
-  Check(rule.seed == ValueKinds::Unknown());
+  Check(rule.kind == detail::ValueRuleKind::kArrayCursor && rule.input == 1);
   ValueOp forged{}; forged.operation = ValueArraySpread{};
   Check(!CanErasePureOp(forged));
   for (const unsigned count : {1U, 200U, 201U, 400U, 800U}) {
@@ -66,7 +83,7 @@ int main() {
     for (unsigned i = 0; i < count; ++i) {
       const auto& op = graph.ops[2 * i + 1];
       Check(std::holds_alternative<ValueArraySpread>(op.operation) && op.result && op.use_count == 3);
-      Check(graph.values[op.result->value].domain == ValueKinds::Unknown());
+      Check(graph.values[op.result->value].domain.IsLanguage() && !graph.values[op.result->value].domain.IsNumber());
     }
     for (unsigned role = 0; role < 3; ++role) {
       auto changed = graph;

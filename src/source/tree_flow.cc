@@ -197,7 +197,7 @@ class FlowCheck {
           if (IsReceiverGuard(tree_, id) || evaluation_.operations[id.value].kind == EvaluationKind::kCellGuard || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
               std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
               evaluation_.operations[id.value].kind == EvaluationKind::kElidedPure ||
-              evaluation_.operations[id.value].kind == EvaluationKind::kAlias) {
+              evaluation_.operations[id.value].kind == EvaluationKind::kAlias || evaluation_.operations[id.value].kind == EvaluationKind::kArrayCursor) {
             const auto* anchor = std::get_if<AnchorId>(&placement);
             Require(anchor != nullptr, Error::kPlacement);
             const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
@@ -296,6 +296,7 @@ class FlowCheck {
       Require(child == block.child_count, Error::kSequence);
     }
     edges_->Finish();
+    Arrays();
     Objects();
     ExpressionScopes();
     NumericUpdates();
@@ -441,7 +442,7 @@ class FlowCheck {
       if (IsReceiverGuard(tree_, id) || kind == EvaluationKind::kCellGuard ||
           kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
           std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
-          kind == EvaluationKind::kElidedPure || kind == EvaluationKind::kAlias) {
+          kind == EvaluationKind::kElidedPure || kind == EvaluationKind::kAlias || kind == EvaluationKind::kArrayCursor) {
         const auto* anchor = std::get_if<AnchorId>(&placement);
         Require(anchor, Error::kPlacement);
         const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
@@ -1029,7 +1030,7 @@ class FlowCheck {
   }
   void ExpressionScopes() {
     if (!exceptions_) return;
-    bool needed = false;
+    bool needed = ArrayInitializations(evaluation_) != nullptr;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step(); needed |= (evaluation_.operations[i].kind == EvaluationKind::kPhiInput ||
           ((!original_prefixes_.empty() && original_prefixes_[i]) ||
@@ -1092,6 +1093,13 @@ class FlowCheck {
       }
     }
     if (!evaluation_.literals) return;
+    if (const auto* arrays = ArrayInitializations(evaluation_)) for (const auto& array : arrays->arrays) {
+      check(array.allocation, *flow_.expressions[array.allocation.value]);
+      for (std::uint32_t i = 0; i < array.count; ++i) {
+        const auto& step = arrays->steps[array.first + i];
+        if (step.kind == ArrayStepKind::kSpread) check(step.operation, *flow_.expressions[step.operation.value]);
+      }
+    }
     for (const auto& object : evaluation_.literals->objects) {
       budget_.Step(); if (object.form != LiteralForm::kExpression) continue;
       check(object.allocation, *flow_.expressions[object.allocation.value]);
@@ -1109,6 +1117,41 @@ class FlowCheck {
           evaluation_.literals->nested[module.pair.read.value])
         check(*module.pair.guard, *flow_.expressions[module.pair.guard->value]);
     }
+  }
+  void Arrays() {
+    std::size_t arrays_seen = 0, elements_seen = 0;
+    if (const auto* proof = ArrayInitializations(evaluation_)) for (const auto& array : proof->arrays) {
+      budget_.Step(); const auto expression = flow_.expressions[array.allocation.value];
+      Require(expression.has_value(), Error::kPlacement);
+      const auto* syntax = std::get_if<ArrayExpr>(&tree_.expressions[expression->value].expression);
+      Require(syntax && syntax->buffered == array.buffered && syntax->elements.count >= array.buffered, Error::kPlacement);
+      ++arrays_seen; std::uint32_t next = array.buffered;
+      for (std::uint32_t i = 0; i < array.buffered; ++i) {
+        budget_.Step(); const auto id = tree_.arguments[syntax->elements.first + i];
+        const auto& node = tree_.expressions[id.value];
+        const auto* element = std::get_if<ArrayElement>(&node.expression);
+        Require(element && std::holds_alternative<ArrayValueElement>(element->element) &&
+            node.origin.value == graph_.ops[array.allocation.value].origin.value, Error::kPlacement);
+      }
+      for (std::uint32_t i = 0; i < array.count; ++i) {
+        budget_.Step(); const auto& step = proof->steps[array.first + i];
+        if (!step.value) continue;
+        Require(next < syntax->elements.count && flow_.expressions[step.operation.value] ==
+            tree_.arguments[syntax->elements.first + next], Error::kPlacement);
+        const auto& node = tree_.expressions[tree_.arguments[syntax->elements.first + next++].value];
+        const auto* element = std::get_if<ArrayElement>(&node.expression);
+        Require(element && node.origin.value == graph_.ops[step.operation.value].origin.value &&
+            (step.kind == ArrayStepKind::kSpread ? std::holds_alternative<ArraySpreadElement>(element->element) :
+                std::holds_alternative<ArrayValueElement>(element->element)), Error::kPlacement);
+      }
+      Require(next == syntax->elements.count, Error::kPlacement); elements_seen += next;
+    }
+    for (const auto& node : tree_.expressions) {
+      budget_.Step();
+      if (std::holds_alternative<ArrayExpr>(node.expression)) { Require(arrays_seen != 0, Error::kPlacement); --arrays_seen; }
+      if (std::holds_alternative<ArrayElement>(node.expression)) { Require(elements_seen != 0, Error::kPlacement); --elements_seen; }
+    }
+    Require(arrays_seen == 0 && elements_seen == 0, Error::kPlacement);
   }
   void Objects() {
     std::size_t count = 0;
@@ -1161,6 +1204,7 @@ class FlowCheck {
         count += object->properties.count;
         continue;
       }
+      if (ArrayLiteralFor(evaluation_, {static_cast<std::uint32_t>(i)})) continue;
       const auto* allocation = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
       const auto* array = std::get_if<analysis::ValueArrayAllocation>(&op.operation);
       if (op.life != analysis::ValueLife::kLive || !((allocation && allocation->literal) || (array && array->literal))) continue;
@@ -1311,9 +1355,15 @@ class FlowCheck {
             std::holds_alternative<AnchorId>(placement), Error::kPlacement);
         continue;
       }
-      if (evaluation_.operations[i].kind == EvaluationKind::kClassProjection) {
+      if (evaluation_.operations[i].kind == EvaluationKind::kClassProjection ||
+          evaluation_.operations[i].kind == EvaluationKind::kArrayCursor) {
         Require(std::holds_alternative<AnchorId>(placement), Error::kPlacement);
         continue;
+      }
+      if (IsArrayInitialization(evaluation_, {static_cast<std::uint32_t>(i)})) {
+        const auto* expression = std::get_if<ExprId>(&placement);
+        Require(expression != nullptr, Error::kPlacement);
+        flow_.expressions[i] = *expression; continue;
       }
       if (!IsReceiverField(graph_, op) && (!IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, {static_cast<std::uint32_t>(i)}) || evaluation_.operations[i].kind == EvaluationKind::kInitializer) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
         const auto* property = std::get_if<PropertyId>(&placement);

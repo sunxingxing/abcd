@@ -29,6 +29,7 @@ enum class ValueRuleKind {
   kIntegralExponent,
   kBitwise,
   kUnsignedShift,
+  kArrayCursor,
   kBitNot
 };
 struct ValueRule {
@@ -37,6 +38,8 @@ struct ValueRule {
   // this is a conditional normal result; input obligations still run first.
   ValueKinds seed;
   ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime;
+  // Some operations return a union of one selected read and an intrinsic value.
+  std::optional<std::uint8_t> input;
 };
 // Pinned JSTaggedValue::ToNumber maps Boolean/null to tagged 0/1. A
 // coercion fact never reclassifies the original value as Number or authorizes
