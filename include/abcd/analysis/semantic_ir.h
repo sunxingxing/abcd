@@ -59,6 +59,17 @@ constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
   return static_cast<LanguageEffect>(static_cast<std::uint16_t>(left) |
                                      static_cast<std::uint16_t>(right));
 }
+// A lazy binding read may run dependency code before returning or throwing.
+// This is a semantic effect contract, not permission to erase a Hole guard.
+constexpr LanguageEffect ModuleReadEffects(ModuleLoading loading) {
+  switch (loading) {
+    case ModuleLoading::kOrdinary: return LanguageEffect::kModuleRead;
+    case ModuleLoading::kLazy:
+      return LanguageEffect::kModuleRead | LanguageEffect::kHeapRead |
+          LanguageEffect::kHeapWrite | LanguageEffect::kUserCode | LanguageEffect::kAllocation;
+  }
+  std::terminate();
+}
 enum class ExceptionalCompletion : std::uint8_t {
   kImpossible, kMayThrow, kAlwaysThrow
 };

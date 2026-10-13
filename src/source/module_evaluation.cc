@@ -86,7 +86,7 @@ std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
             definition && definition->op == entry.pair.read &&
             graph.values[op.result->value].life == analysis::ValueLife::kLive &&
             graph.values[op.result->value].domain.IsLanguage() &&
-            op.normal == analysis::LanguageEffect::kModuleRead && op.before_throw == op.normal &&
+            op.normal == analysis::ModuleReadEffects(read->loading) && op.before_throw == op.normal &&
             op.exceptional == analysis::ExceptionalCompletion::kMayThrow, Error::kOwnership);
         continue;
       }
@@ -109,7 +109,7 @@ std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
         require(op.block == guard.block && std::uint64_t{op.order} + 1 == guard.order, Error::kOrder);
       // Exact imported effects. Original input correspondence is a separate
       // prerequisite; malformed effect tables cannot erase the second event.
-      require(op.normal == analysis::LanguageEffect::kModuleRead && op.before_throw == op.normal &&
+      require(op.normal == analysis::ModuleReadEffects(read->loading) && op.before_throw == op.normal &&
           guard.normal == analysis::LanguageEffect::kGuard && guard.before_throw == guard.normal &&
           op.exceptional == analysis::ExceptionalCompletion::kMayThrow &&
           guard.exceptional == analysis::ExceptionalCompletion::kMayThrow, Error::kOrder);

@@ -79,7 +79,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, IterResult>) {
       return ValueIterResult{};
     } else if constexpr (std::is_same_v<T, ModuleLoad>) {
-      return ValueModuleRead{op.space, op.slot};
+      return ValueModuleRead{op.space, op.slot, op.loading};
     } else if constexpr (std::is_same_v<T, ModuleStore>) {
       return ValueModuleWrite{op.slot};
     } else if constexpr (std::is_same_v<T, BufferedArrayCreation>) {

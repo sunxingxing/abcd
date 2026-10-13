@@ -12,8 +12,8 @@
 |---|---|---|---|
 | 捕获访问（读取与写入）按源语言 TDZ 解释 | `CaptureReads() == kSourceTdz` | 诊断涉及 24 个 record（不是当前新增完成数） | 无自身 handler 的访问及 Round A 转发已实现；Round B 待做 |
 | 原帧转发显式投影为 rest/spread；实例属性赋值保持 `[[Set]]` | `ConstructorForwarding() == kSourceRestSpread` | 16 个 record（`DerivedProjectionError`） | normal 路径显式 rest/spread 投影已实现；验证见 §2 |
-| 惰性导入 `callruntime.ldlazymodulevar` 按普通 import 绑定输出 | 待定 | 11 个 record | 未实现 |
-| 数组展开 `starrayspread` 按源语言 `[...x]` 输出 | 待定 | 7 个 record | 未实现 |
+| 惰性导入输出 ArkTS `import lazy`，保持首次访问初始化与 live binding | `LazyImports() == kArkTsLazyImport` | 12 个 record（既有诊断，非新增完成数） | normal/phased 受保护读取已实现，见 §3 |
+| 数组展开 `starrayspread` 按源语言 `[...x]` 输出 | `ArraySpreads() == kSourceIterator` | 8 个 record | 未实现 |
 
 ## 1. 捕获访问的源语言 TDZ（CaptureReads）
 
@@ -149,6 +149,44 @@ Node oracle 明确使用赋值而非原生类字段，不声称进行了 Ark VM 
 `GlobalScope` 后通过，没有放宽生产门禁。未运行全语料、RSS、留出集或探索集；
 旧 flags 的 467/620 和 `--language-source` 的不回退对照仍由 cc 完成。
 
-## 3–4. 其余两项
+## 3. 惰性导入（Round 31 用户裁决）
 
-批准范围已登记，实施时在此处补充各自的现象、前提、实现与测试。
+输出 ArkTS `import lazy`，不投影成普通静态 import。保持首次访问时初始化依赖、
+模块请求顺序及 live binding；读取仍可能执行模块代码并抛出，不假设已初始化。
+默认及其他契约不开放此源码准入，sendable 变体不在范围内。
+Node 测试机械删除 `lazy` 后只能验证值与 live binding，不能证明惰性初始化时机。
+
+**Round 31 实现。** `RecordModuleContext` 读取 request-phase 表，按请求索引记录 eager/lazy，
+并校验数量和读取边界；缺表按锁定运行时的 eager 默认处理。imm8 和 wide lazy load 共用
+`ModuleLoading::kLazy`，保留执行模块代码、读写堆和异常效果。异常路径先执行 Before，成功后
+才提交累加器；不把 lazy 标成 initialized，也不因模块绑定已知而擦除它的效果。
+normal/phased 的 guard 对应、slot→request→binding、加载方式及契约在绑定和树验证中复验。
+没有受保护读取证明的 lazy load 仍拒绝。共享或 TLA owner、namespace lazy、lazy re-export
+及无绑定 lazy 请求是首版输出覆盖限制；sendable 指令继续拒绝。
+
+声明按原请求顺序输出 `import lazy`，读取使用 live 标识符。带 lazy 请求的 SourceV1 record
+源码使用 `.ets`，manifest 增加 `source_language: "arkts"`；普通 record 保持 `.mjs`，结构
+record.json 的格式不变。该标记不表示 Node 可执行。请求表畸形保留 `ModuleError::kRequestPhases`，
+契约、绑定、读取证明、模块种类分别保留类型化原因，phased 的模块失败也保留叶子原因。
+
+**测试。** `module_info_test`、`module_load_test`、`module_reads_test` 和 `lazy_module_test`
+覆盖 phase 表边界、imm8/wide、效果及成功提交、normal/phased/handler、200/201/400/800 规模，
+以及加载方式伪造、guard 删除、树标签伪造。`lazy_import_cli_test` 验证真实 es2abc 输出、
+旧契约拒绝、元数据变异和 live binding 差分。来源、命令、哈希及 Node oracle 的局限见
+[fixture README](../../../tests/integration/fixtures/lazy_import/README.md)。
+
+**Round 31 验证（2026-10-13，工作区未提交）。** 各阶段相关单测先行通过；最终
+`cmake --build build/regression -j 6 -- -k` 成功，
+`ctest --test-dir build/regression -R 'module|language_source|source_route|lazy_' --output-on-failure -j 1`
+为 51/51，`ctest --preset source-regression -j 1 --output-on-failure` 为 65/65。
+新增元数据变异最初发现 phased 模块错误折叠，保留 `PhasedModuleFailure` 叶子原因后通过，
+没有降低原因链断言。未运行探索集、留出集、全套测试或 RSS 基准；语料对照由 cc 执行。
+
+## 4. 数组展开（已批准，待下一轮实现）
+
+用户批准输出标准 `[...x]`，并接受锁定运行时与标准展开的全部已列差异：数组
+`.values`/直接迭代器到 `Symbol.iterator`、每步读取 next 到保存 next 方法、迭代结果
+自有且可枚举的 value 描述符复制到普通取值、字符串专用遍历及 [[Set]] 到标准
+迭代和自有数据属性定义，以及迭代期间 length 变化的行为。包括这些差异引起的
+getter/setter 调用与异常。本轮只登记谓词，不实现展开恢复；该前提不授权把任意
+已有数组修改改为新数组，或丢弃可观察索引结果。

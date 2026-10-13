@@ -4,6 +4,7 @@
 #include "exception_tree.h"
 #include "function_context.h"
 #include "module_slot_set.h"
+#include "module_aliases.h"
 
 namespace abcd::source {
 struct PhasedModuleBinding;
@@ -19,6 +20,11 @@ struct PhasedInputFailure {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
+// Keep binding/guard leaves visible while preserving resource classification.
+struct PhasedModuleFailure {
+  PhasedMethodError kind;
+  std::variant<ModuleGuardError, ModuleAliasFailure> cause;
+};
 // Owns original exception analyses and the checked working body before child
 // evaluation. Family discovery must inspect actual creation operations here,
 // then discharge child/capture obligations before constructing source trees.
@@ -33,7 +39,7 @@ class PhasedBody {
   PhasedBody(PhasedBody&&) noexcept;
   PhasedBody& operator=(PhasedBody&&) noexcept;
   ~PhasedBody();
-  [[nodiscard]] static std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> Build(
+  [[nodiscard]] static std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure> Build(
       const FunctionContext& context, const abc::MethodBody& body,
       analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr,
       analysis::CapturedValues captures = analysis::CapturedValues::kReject,

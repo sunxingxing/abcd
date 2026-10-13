@@ -79,7 +79,9 @@ std::variant<std::uint64_t, ModuleGuardError> VerifyPhasedModuleGuards(
     Require(plan.pairs.size() == original.Count(), Error::kCoverage);
     for (std::size_t i = 0; i < plan.pairs.size(); ++i)
       Require(plan.pairs[i] == original.Pair(i), Error::kCoverage);
-    return original.Work();
+    const auto lazy=VerifyLazyModuleReads(graph,plan,original.Remaining());
+    if(const auto* error=std::get_if<Error>(&lazy))return *error;
+    return original.Work()+std::get<std::uint64_t>(lazy);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

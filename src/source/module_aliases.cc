@@ -51,7 +51,7 @@ class AliasBinder {
     if (const auto* error = std::get_if<ModuleGuardError>(&guards)) throw *error;
     Step(std::get<std::uint64_t>(guards));
     const auto module = context_.ForOwner(file_, input_.record);
-    auto resolved = ResolveModuleReads(file_, header_, module.get(), graph, {bytes_, work_});
+    auto resolved = ResolveModuleReads(file_, header_, module.get(), graph, {bytes_, work_}, identity.contract);
     if (const auto* error = std::get_if<ModuleReadFailure>(&resolved)) throw *error;
     const auto& reads = std::get<ModuleReads>(resolved);
     Admit(reads.allocated_bytes, 1); Step(reads.work);

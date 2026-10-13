@@ -111,7 +111,7 @@ struct IntegerLiteral { std::int32_t value; };
 struct NumberLiteral { std::uint64_t bits; };
 using TreeLiteral = std::variant<UndefinedLiteral, NullLiteral, BooleanLiteral,
                                  IntegerLiteral, NumberLiteral, TextId>;
-struct SymbolExpr { SymbolId symbol; };
+struct SymbolExpr { SymbolId symbol; analysis::ModuleLoading loading = analysis::ModuleLoading::kOrdinary; };
 // Free global-name lookup, not a lexical Symbol or globalThis property read.
 // Publication additionally requires an unshadowed enclosing source context.
 struct GlobalNameExpr { NameId name; };

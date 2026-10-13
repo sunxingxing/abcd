@@ -947,6 +947,16 @@ if(BUILD_TESTING)
   add_executable(module_reads_test tests/unit/source/module_reads_test.cc)
   target_link_libraries(module_reads_test PRIVATE abcd_source)
   add_test(NAME module_reads_test COMMAND module_reads_test)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME lazy_import_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lazy_import.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/lazy_import)
+  endif()
+  add_executable(lazy_module_test tests/unit/source/lazy_module_test.cc)
+  target_include_directories(lazy_module_test PRIVATE tests/support)
+  target_link_libraries(lazy_module_test PRIVATE abcd_source)
+  add_test(NAME lazy_module_test COMMAND lazy_module_test)
   add_executable(module_guards_test tests/unit/source/module_guards_test.cc)
   target_include_directories(module_guards_test PRIVATE tests/support)
   target_link_libraries(module_guards_test PRIVATE abcd_source)

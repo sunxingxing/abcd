@@ -61,7 +61,7 @@ class Correspondence {
     const auto& check = graph_.ops[guard.value];
     const auto* original = std::get_if<analysis::ModuleLoad>(&input_.Input().instructions[fact.instruction.value].operation);
     const auto* current = std::get_if<analysis::ValueModuleRead>(&load.operation);
-    Require(original && current && original->space == current->space && original->slot == current->slot &&
+    Require(original && current && original->space == current->space && original->slot == current->slot && original->loading == current->loading &&
         load.use_count == 0 && load.result && load.result->value < graph_.values.size(), Error::kRead);
     const auto* result = std::get_if<analysis::OpResult>(&graph_.values[load.result->value].origin);
     Require(result && result->op == read && graph_.values[load.result->value].life == analysis::ValueLife::kLive, Error::kRead);
@@ -128,6 +128,24 @@ class Correspondence {
   std::optional<analysis::ModuleInitialization> states_;
 };
 }  // namespace
+std::variant<std::uint64_t, ModuleGuardError> VerifyLazyModuleReads(
+    const analysis::ValueProgram& graph, const ModuleGuards& plan, analysis::SemanticBudget budget) {
+  // A discarded lazy result still runs dependency code. Require a source read
+  // proof for every live operation, not merely for reads with Language users.
+  // Both inputs are indexed by OpId: merge coverage without per-read scans.
+  const auto work=std::uint64_t{graph.ops.size()}+2*std::uint64_t{plan.pairs.size()};
+  if(work>budget.work)return Error::kWorkLimit;
+  for(std::size_t i=1;i<plan.pairs.size();++i)
+    if(plan.pairs[i-1].read>=plan.pairs[i].read)return Error::kCoverage;
+  std::size_t next=0;
+  for(std::size_t i=0;i<graph.ops.size();++i) {
+    while(next<plan.pairs.size()&&plan.pairs[next].read.value<i)++next;
+    const auto* read=std::get_if<analysis::ValueModuleRead>(&graph.ops[i].operation);
+    if(graph.ops[i].life!=analysis::ValueLife::kLive||!read||read->loading!=analysis::ModuleLoading::kLazy)continue;
+    if(next==plan.pairs.size()||plan.pairs[next].read.value!=i||!plan.pairs[next].guard)return Error::kReadProof;
+  }
+  return work;
+}
 std::variant<std::uint64_t, ModuleGuardError> VerifyModuleGuards(
     const FunctionInput& input, const analysis::ValueProgram& graph,
     const ModuleGuards& plan, analysis::SemanticBudget budget) {
@@ -141,7 +159,9 @@ std::variant<std::uint64_t, ModuleGuardError> VerifyModuleGuards(
       Require(i == 0 || facts[i - 1].instruction < facts[i].instruction, Error::kCoverage);
       Require(plan.pairs[i] == checked.Pair(facts[i]), Error::kCoverage);
     }
-    return budget.work - checked.Remaining();
+    const auto lazy=VerifyLazyModuleReads(graph,plan,{budget.bytes,checked.Remaining()});
+    if(const auto* error=std::get_if<Error>(&lazy))return *error;
+    return budget.work - checked.Remaining()+std::get<std::uint64_t>(lazy);
   } catch (Error error) { return error; }
 }
 std::variant<ModuleGuards, ModuleGuardError> BuildModuleGuards(

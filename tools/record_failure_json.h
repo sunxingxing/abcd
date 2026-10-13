@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include "abcd/source/record_source.h"
+#include "abcd/source/record_module_context.h"
 
 namespace abcd::tools {
 // Manifest (schema 2) fields for a record whose value-tree route produced no
@@ -17,6 +18,7 @@ namespace abcd::tools {
 // entry is the leaf used for capability (Pareto) aggregation.
 void DescribeRecordFailure(const source::RecordSourceResult& result,
                            nlohmann::json& record);
+void DescribeModuleContextFailure(const source::RecordModuleFailure&, nlohmann::json&);
 // Process-level failures stop the export. They are decided out of band, not
 // from the record's error code, because stages fold unrelated errors into
 // kRead/kWrite (e.g. malformed name strings into kRead, invalid literals into

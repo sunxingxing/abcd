@@ -27,6 +27,7 @@ struct IndirectExport {
   EntityOffset imported;
   ModuleRequestId request;
 };
+enum class ModuleRequestPhase : std::uint8_t { kEager, kLazy };
 struct ModuleInfo {
   // The pinned VM skips this leading word; it is not a trusted byte length.
   std::uint32_t encoded_count = 0;
@@ -37,6 +38,8 @@ struct ModuleInfo {
   std::vector<IndirectExport> indirect_exports;
   std::vector<ModuleRequestId> star_exports;
   EntityOffset end;
+  // Empty means the optional wire table is absent (all requests eager).
+  std::vector<ModuleRequestPhase> request_phases;
 };
 enum class ModuleError {
   kUnsupportedProfile,
@@ -46,6 +49,7 @@ enum class ModuleError {
   kReference,
   kRequestIndex,
   kResourceLimit,
+  kRequestPhases,
 };
 struct ModuleFailure {
   ModuleError kind;
@@ -62,7 +66,8 @@ using ModuleResult = std::variant<ModuleInfo, ModuleFailure>;
 [[nodiscard]] ModuleResult ReadModuleInfo(const corpus::AbcFile& file,
                                           const Header& header,
                                           EntityOffset offset,
-                                          ModuleBudget budget = {});
+                                          ModuleBudget budget = {},
+                                          std::optional<EntityOffset> phases = {});
 
 }  // namespace abcd::abc
 #endif  // ABCD_ABC_MODULE_INFO_H_

@@ -80,7 +80,7 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     if (modules) {
       if (modules->record() != method.owner_offset) throw Error::kIdentity;
       const auto module = modules->ForOwner(file, method.owner_offset);
-      auto resolved = ResolveModuleReads(file, header, module.get(), graph, {bytes, budget.work});
+      auto resolved = ResolveModuleReads(file, header, module.get(), graph, {bytes, budget.work}, identity.contract);
       if (const auto* error = std::get_if<ModuleReadFailure>(&resolved)) return FunctionFileFailure{*error};
       module_reads = std::get<ModuleReads>(std::move(resolved));
       admit(module_reads->allocated_bytes, 1);

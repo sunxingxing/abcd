@@ -23,6 +23,12 @@ class MetadataCursor {
   MetadataCursor(const corpus::AbcFile& file, std::uint32_t offset,
                  std::uint32_t limit);
   std::uint32_t Position() const;
+  // Reuse the bounded window for another already range-checked entity.
+  bool Seek(std::uint32_t offset) {
+    if (offset > limit_) return false;
+    position_ = offset; buffer_start_ = buffer_end_ = 0;
+    return true;
+  }
   std::variant<std::uint8_t, MetadataError> U8();
   std::variant<std::uint16_t, MetadataError> U16();
   std::variant<std::uint32_t, MetadataError> U32();

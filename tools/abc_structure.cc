@@ -330,7 +330,7 @@ int Export(const std::filesystem::path& input,
         continue;
       }
       const auto source_stem = std::filesystem::path("sources") / source_record_path->stem;
-      const auto source_path = source_stem.string() + ".mjs";
+      auto source_path = source_stem.string() + ".mjs";
       record_manifest["planned_source"] = source_path;
       record_manifest["source_path_origin"] =
           static_cast<unsigned>(source_record_path->origin);
@@ -348,6 +348,13 @@ int Export(const std::filesystem::path& input,
             record_manifest["source_status"] =
                 static_cast<unsigned>(SourceStatus::kNoModule);
           } else {
+            const bool arkts = source::LazyImports(identity.contract) == source::LazyImportSemantics::kArkTsLazyImport && std::find(module->request_phases.begin(), module->request_phases.end(),
+                abc::ModuleRequestPhase::kLazy) != module->request_phases.end();
+            if (arkts) {
+              source_path = source_stem.string() + ".ets";
+              record_manifest["planned_source"] = source_path;
+              record_manifest["source_language"] = "arkts";
+            }
             const auto built = source::BuildRecordSource(
                 file, *header, *index, *lookup, record, *ready, *roles, {}, identity,
                 functions ? &*functions : nullptr, classes ? &*classes : nullptr);
@@ -441,7 +448,7 @@ int Export(const std::filesystem::path& input,
           // rechecked out of band below.
           record_manifest["source_status"] =
               static_cast<unsigned>(SourceStatus::kModuleContext);
-          record_manifest["source_error"] = failure.reason.index();
+          tools::DescribeModuleContextFailure(failure, record_manifest);
         }
       }
     }

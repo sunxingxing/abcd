@@ -17,7 +17,8 @@ void Word(std::vector<std::uint8_t>& bytes, std::uint32_t value) {
     bytes.push_back(static_cast<std::uint8_t>(value >> (i * 8)));
 }
 abcd::abc::ModuleResult Read(std::vector<std::uint8_t> payload,
-                             std::size_t budget = 1024 * 1024) {
+                             std::size_t budget = 1024 * 1024,
+                             std::optional<std::size_t> phases = {}) {
   using namespace abcd::abc;
   std::vector<std::uint8_t> bytes(kDynamicHeaderSize);
   bytes.insert(bytes.end(), payload.begin(), payload.end());
@@ -35,7 +36,8 @@ abcd::abc::ModuleResult Read(std::vector<std::uint8_t> payload,
   header.layout = DynamicLayout{};
   header.file_size = bytes.size();
   const auto& file = *std::get<std::unique_ptr<abcd::corpus::AbcFile>>(opened);
-  auto result = ReadModuleInfo(file, header, {kDynamicHeaderSize}, {budget});
+  auto result = ReadModuleInfo(file, header, {kDynamicHeaderSize}, {budget},
+      phases ? std::optional{EntityOffset{static_cast<std::uint32_t>(kDynamicHeaderSize + *phases)}} : std::nullopt);
   Check(std::get<ModuleFailure>(ReadModuleInfo(file, header, {0})).kind ==
         ModuleError::kReference);
   header.profile = ProfileId::kStatic0107;
@@ -123,4 +125,23 @@ int main() {
     for (unsigned section = 0; section < 5; ++section) Word(many, 0);
     Check(std::get<ModuleInfo>(Read(many)).requests.size() == count);
   }
+  for (const std::uint32_t count : {200U, 201U, 400U, 800U}) {
+    std::vector<std::uint8_t> many;
+    Word(many, 0); Word(many, count);
+    for (std::uint32_t i = 0; i < count; ++i) Word(many, 60);
+    for (unsigned section = 0; section < 5; ++section) Word(many, 0);
+    const auto phases = many.size(); Word(many, count);
+    for (std::uint32_t i = 0; i < count; ++i) many.push_back(i % 2 ? 255 : 0);
+    const auto bytes = count * (sizeof(EntityOffset) + sizeof(ModuleRequestPhase));
+    const auto good = Read(many, bytes, phases);
+    Check(std::holds_alternative<ModuleInfo>(good));
+    const auto& flags = std::get<ModuleInfo>(good).request_phases;
+    Check(flags.size() == count && flags[0] == ModuleRequestPhase::kEager && flags[1] == ModuleRequestPhase::kLazy);
+    Check(std::get<ModuleFailure>(Read(many, bytes - 1, phases)).kind == ModuleError::kResourceLimit);
+    many.pop_back();
+    Check(std::get<ModuleFailure>(Read(many, bytes, phases)).kind == ModuleError::kTruncated);
+    many.push_back(1); many[phases] ^= 1;
+    Check(std::get<ModuleFailure>(Read(many, bytes, phases)).kind == ModuleError::kRequestPhases);
+  }
+
 }

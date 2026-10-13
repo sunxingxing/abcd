@@ -37,11 +37,19 @@ class ImportWriter {
  public:
   ImportWriter(const corpus::AbcFile& file, const abc::Header& header,
                const abc::ModuleInfo& module, EmitBudget budget,
-               abc::StringBudget strings, std::span<const std::string> names)
+               abc::StringBudget strings, std::span<const std::string> names, SourceContract contract)
       : file_(file), header_(header), module_(module), remaining_(budget.bytes),
-        strings_(strings), names_(names) {}
+        strings_(strings), names_(names), contract_(contract) {}
 
   void Write() {
+    if (!module_.request_phases.empty() && module_.request_phases.size() != module_.requests.size())
+      throw ModuleImportFailure{ModuleImportError::kRequestPhases, {}, {}};
+    for (const auto phase : module_.request_phases) {
+      if (phase == abc::ModuleRequestPhase::kLazy && LazyImports(contract_) != LazyImportSemantics::kArkTsLazyImport)
+        throw ModuleImportFailure{ModuleImportError::kContract, {}, {}};
+    }
+    for (const auto& entry : module_.indirect_exports) RejectLazy(entry.request);
+    for (const auto request : module_.star_exports) RejectLazy(request);
     std::size_t count = 0;
     const auto limit = strings_.bytes / sizeof(ModuleDirective);
     for (const auto size : {module_.imports.size(), module_.namespace_imports.size()}) {
@@ -73,6 +81,8 @@ class ImportWriter {
     std::size_t next = 0;
     for (std::size_t request = 0; request < module_.requests.size(); ++request) {
       if (next == directives.size() || directives[next].request.value != request) {
+        if (!module_.request_phases.empty() && module_.request_phases[request] == abc::ModuleRequestPhase::kLazy)
+          throw ModuleImportFailure{ModuleImportError::kModuleKind, {}, {}};
         Text("import ");
         Literal(module_.requests[request]);
         Text(";\n");
@@ -98,20 +108,29 @@ class ImportWriter {
   std::size_t Size() const { return used_; }
 
  private:
+  bool Lazy(abc::ModuleRequestId request) const {
+    if (request.value >= module_.requests.size()) throw ModuleImportFailure{ModuleImportError::kBinding, {}, {}};
+    return !module_.request_phases.empty() && module_.request_phases[request.value] == abc::ModuleRequestPhase::kLazy;
+  }
+  void RejectLazy(abc::ModuleRequestId request) const {
+    if (Lazy(request)) throw ModuleImportFailure{ModuleImportError::kModuleKind, {}, {}};
+  }
   void Import(std::size_t slot) {
     const auto& entry = module_.imports[slot];
     const auto imported = Read(entry.imported);
+    const bool lazy = Lazy(entry.request);
     switch (ClassifyImport(imported)) {
       case ImportForm::kNamespace:
+        RejectLazy(entry.request);
         Text("import * as ");
         Alias(slot);
         break;
       case ImportForm::kDefault:
-        Text("import ");
+        Text(lazy ? "import lazy " : "import ");
         Alias(slot);
         break;
       case ImportForm::kNamed:
-        Text("import { ");
+        Text(lazy ? "import lazy { " : "import { ");
         ModuleName(imported, entry.imported);
         if (slot >= names_.size() || names_[slot].empty() ||
             !std::equal(imported.begin(), imported.end(),
@@ -126,6 +145,7 @@ class ImportWriter {
   }
   void Namespace(std::size_t index) {
     const auto& entry = module_.namespace_imports[index];
+    RejectLazy(entry.request);
     Text("import * as ");
     Alias(module_.imports.size() + index);
     From(entry.request);
@@ -232,6 +252,7 @@ class ImportWriter {
   std::size_t remaining_;
   abc::StringBudget strings_;
   std::span<const std::string> names_;
+  SourceContract contract_;
   std::size_t used_ = 0;
   std::ostringstream stream_;
 };
@@ -242,9 +263,9 @@ ModuleImportResult WriteModuleImports(const corpus::AbcFile& file,
                                       const abc::ModuleInfo& module,
                                       std::ostream& output, EmitBudget budget,
                                       abc::StringBudget strings,
-                                      std::span<const std::string> names) {
+                                      std::span<const std::string> names, SourceContract contract) {
   try {
-    ImportWriter writer(file, header, module, budget, strings, names);
+    ImportWriter writer(file, header, module, budget, strings, names, contract);
     writer.Write();
     const auto size = writer.Size();
     if (size > static_cast<std::size_t>(

@@ -1,5 +1,6 @@
 #include "abcd/analysis/module_load.h"
 
+#include "abcd/analysis/semantic_ir.h"
 #include <cstdlib>
 #include <vector>
 namespace {
@@ -42,4 +43,23 @@ int main() {
   other.opcode = abc::Opcode::kLDGLOBAL;
   Check(std::get<ModuleLoadError>(LiftModuleLoad(other)) ==
         ModuleLoadError::kUnsupportedOpcode);
+  for (const auto bytes : {std::vector<std::uint8_t>{0xfb, 0x15, 201}, {0xfb, 0x16, 201, 0}}) {
+    auto decoded = std::get<abc::DecodedInstruction>(abc::DecodeInstruction(bytes, abc::ProfileId::kDynamic2400));
+    const auto load = std::get<ModuleLoad>(LiftModuleLoad(decoded));
+    Check(load.space == ModuleSpace::kExternal && load.slot.value == 201 && load.loading == ModuleLoading::kLazy);
+    const auto lifted = LiftSemanticInstruction({{}, decoded}, abc::ProfileId::kDynamic2400, 3);
+    const auto& semantic = std::get<SemanticInstruction>(lifted);
+    Check(semantic.effects.normal == ModuleReadEffects(ModuleLoading::kLazy));
+    Check(semantic.effects.before_throw == semantic.effects.normal);
+    Check(semantic.effects.exceptional == ExceptionalCompletion::kMayThrow);
+    Check(semantic.effects.normal_registers.write && std::holds_alternative<Accumulator>(*semantic.effects.normal_registers.write));
+    decoded.operand_count = 0;
+    Check(std::get<ModuleLoadError>(LiftModuleLoad(decoded)) == ModuleLoadError::kMalformedInstruction);
+  }
+  for (const auto opcode : {abc::Opcode::kCALLRUNTIME_LDLAZYSENDABLEMODULEVAR_PREF_IMM8,
+                           abc::Opcode::kCALLRUNTIME_WIDELDLAZYSENDABLEMODULEVAR_PREF_IMM16}) {
+    abc::DecodedInstruction decoded; decoded.opcode = opcode;
+    Check(std::get<ModuleLoadError>(LiftModuleLoad(decoded)) == ModuleLoadError::kUnsupportedOpcode);
+  }
+
 }

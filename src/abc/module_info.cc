@@ -19,7 +19,7 @@ class ModuleReader {
         limit_(header.file_size),
         budget_(budget.bytes) {}
 
-  ModuleResult Read() {
+  ModuleResult Read(std::optional<EntityOffset> phases) {
     ModuleInfo module;
     if (!Take(cursor_.U32(), &module.encoded_count)) return failure_;
     if (!Section(&module.requests, kEntityBytes,
@@ -49,6 +49,30 @@ class ModuleReader {
         }))
       return failure_;
     module.end.value = cursor_.Position();
+    if (phases) {
+      // f04900cf module_data_extractor.cpp:177: u32 count, then one byte
+      // per request (zero eager, any nonzero lazy), not tagged literal entries.
+      if (phases->value < kDynamicHeaderSize || phases->value >= limit_)
+        return ModuleFailure{ModuleError::kRequestPhases, *phases};
+      if (!cursor_.Seek(phases->value)) return ModuleFailure{ModuleError::kRequestPhases, *phases};
+      std::uint32_t count = 0;
+      if (!Take(cursor_.U32(), &count)) return failure_;
+      if (count != module.requests.size())
+        return ModuleFailure{ModuleError::kRequestPhases, *phases};
+      if (count > limit_ - cursor_.Position())
+        return ModuleFailure{ModuleError::kTruncated, *phases};
+      if (count > (budget_ - spent_) / sizeof(ModuleRequestPhase))
+        return ModuleFailure{ModuleError::kResourceLimit, *phases};
+      module.request_phases.reserve(count);
+      if (module.request_phases.capacity() > (budget_ - spent_) / sizeof(ModuleRequestPhase))
+        return ModuleFailure{ModuleError::kResourceLimit, *phases};
+      spent_ += module.request_phases.capacity() * sizeof(ModuleRequestPhase);
+      for (std::uint32_t i = 0; i < count; ++i) {
+        std::uint8_t flag = 0;
+        if (!Take(cursor_.U8(), &flag)) return failure_;
+        module.request_phases.push_back(flag ? ModuleRequestPhase::kLazy : ModuleRequestPhase::kEager);
+      }
+    }
     return module;
   }
 
@@ -119,7 +143,7 @@ bool Supported(ProfileId profile) {
 }  // namespace
 
 ModuleResult ReadModuleInfo(const corpus::AbcFile& file, const Header& header,
-                            EntityOffset offset, ModuleBudget budget) {
+                            EntityOffset offset, ModuleBudget budget, std::optional<EntityOffset> phases) {
   if (header.kind != AbcKind::kDynamic || !Supported(header.profile) ||
       !std::holds_alternative<DynamicLayout>(header.layout))
     return ModuleFailure{ModuleError::kUnsupportedProfile, offset};
@@ -129,7 +153,7 @@ ModuleResult ReadModuleInfo(const corpus::AbcFile& file, const Header& header,
     return ModuleFailure{ModuleError::kReference, offset};
   try {
     ModuleReader reader(file, header, offset, budget);
-    auto result = reader.Read();
+    auto result = reader.Read(phases);
     if (file.CheckUnchanged())
       return ModuleFailure{ModuleError::kFileChanged, offset};
     return result;

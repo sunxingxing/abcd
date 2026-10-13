@@ -58,6 +58,21 @@ std::variant<ModuleEnclosure, ModuleEnclosureError> ModuleEnclosure::Build(
     ModuleEnclosure result(context, identity, owner);
     const auto count = module->imports.size() + module->namespace_imports.size();
     budget.Reserve(result.names_, count); budget.Reserve(result.sorted_, count);
+    budget.Reserve(result.loadings_, count);
+    Require(module->request_phases.empty() || module->request_phases.size()==module->requests.size(), Error::kRequestPhases);
+    const auto loading = [&](abc::ModuleRequestId request) {
+      budget.Step();Require(request.value<module->requests.size(),Error::kBinding);
+      const bool lazy=!module->request_phases.empty()&&module->request_phases[request.value]==abc::ModuleRequestPhase::kLazy;
+      Require(!lazy||LazyImports(identity.contract)==LazyImportSemantics::kArkTsLazyImport,Error::kContract);
+      Require(!lazy||context.OrdinarySynchronous(file,context.record()),Error::kModuleKind);
+      result.has_lazy_ |= lazy;
+      return lazy?analysis::ModuleLoading::kLazy:analysis::ModuleLoading::kOrdinary;
+    };
+    for(const auto& entry:module->imports)result.loadings_.push_back(loading(entry.request));
+    for(const auto& entry:module->namespace_imports) {
+      const auto kind=loading(entry.request);Require(kind==analysis::ModuleLoading::kOrdinary,Error::kModuleKind);
+      result.loadings_.push_back(kind);
+    }
     const auto add = [&](abc::EntityOffset offset) {
       budget.Step();
       auto decoded = abc::ReadStringEntity(file, header, offset, {budget.remaining.bytes});
@@ -97,7 +112,7 @@ ModuleImportResult ModuleEnclosure::WriteImports(const corpus::AbcFile& file,
   const auto module = context_.ForOwner(file, context_.record());
   if (!module || !Matches(identity_, header) || file.CheckUnchanged())
     return ModuleImportFailure{ModuleImportError::kString, context_.record(), {}};
-  return WriteModuleImports(file, header, *module, output, budget, strings, names_);
+  return WriteModuleImports(file, header, *module, output, budget, strings, names_, identity_.contract);
 }
 
 std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
@@ -107,6 +122,10 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
     Budget budget(allowance); budget.Step();
     if (tree.modules.empty()) {
       Require(!tree.module_scope, Error::kBinding);
+      for(const auto& node:tree.expressions) {
+        budget.Step();if(const auto* read=std::get_if<SymbolExpr>(&node.expression))
+          Require(read->loading==analysis::ModuleLoading::kOrdinary,Error::kBinding);
+      }
       return ModuleDestination{allowance.work - budget.remaining.work};
     }
     Require(scope && scope->module_enclosure, Error::kMissingModule);
@@ -116,6 +135,8 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
         tree.scopes[tree.module_scope->value].kind == ScopeKind::kModule, Error::kBinding);
     Require(scope->module_local_evidence.empty() ||
         scope->module_local_evidence.size() == scope->module_local_names.size(), Error::kBinding);
+    std::vector<analysis::ModuleLoading> loadings;
+    if(enclosure.HasLazy()) {budget.Reserve(loadings,tree.symbols.size());loadings.resize(tree.symbols.size(),analysis::ModuleLoading::kOrdinary);}
     for (const auto& alias : tree.modules) {
       budget.Step();
       Require(alias.target.owner == enclosure.Owner() && alias.target.symbol.value < enclosure.Names().size() + scope->module_local_names.size() &&
@@ -123,6 +144,7 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
       const auto& symbol = tree.symbols[alias.symbol.value];
       const auto slot = alias.target.symbol.value;
       const bool local = slot >= enclosure.Names().size();
+      if(!local && enclosure.HasLazy()) {Require(slot<enclosure.Loadings().size(),Error::kBinding);loadings[alias.symbol.value]=enclosure.Loadings()[slot];}
       const auto evidence = local && !scope->module_local_evidence.empty()
           ? scope->module_local_evidence[slot - enclosure.Names().size()] : NameEvidence::kMetadata;
       Require(symbol.evidence == evidence && symbol.name.value < tree.names.size(), Error::kBinding);
@@ -146,6 +168,10 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
           (!scope->realm_binding || !budget.Equal(name, scope->realm_binding->name)) &&
           (!scope->symbol_binding || !budget.Equal(name, scope->symbol_binding->name)) &&
           (!scope->argument_snapshot_binding || !budget.Equal(name, scope->argument_snapshot_binding->name)), Error::kShadowed);
+    }
+    for(const auto& node:tree.expressions) {
+      budget.Step();if(const auto* read=std::get_if<SymbolExpr>(&node.expression))
+        Require(enclosure.HasLazy() ? read->symbol.value<loadings.size()&&read->loading==loadings[read->symbol.value] : read->loading==analysis::ModuleLoading::kOrdinary,Error::kBinding);
     }
     return ModuleDestination{allowance.work - budget.remaining.work};
   } catch (Error error) { return error;

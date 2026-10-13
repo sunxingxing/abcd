@@ -34,6 +34,24 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
   }, result);
 }
 
+void DescribeModuleContextFailure(const source::RecordModuleFailure& failure, nlohmann::json& record) {
+  source::FailureCauseChain chain;
+  std::visit([&](const auto& reason) {
+    using T=std::decay_t<decltype(reason)>;
+    if constexpr(std::is_enum_v<T>)source::AppendFailureCause(chain,reason);
+    else {
+      source::AppendFailureCause(chain,reason.kind);
+      if constexpr(std::is_same_v<T,abc::AttributeFailure>)
+        if(reason.metadata_error)source::AppendFailureCause(chain,*reason.metadata_error);
+    }
+  },failure.reason);
+  // Preserve the historical status/index fields, add the actual typed leaf.
+  record["source_error"]=failure.reason.index();
+  record["source_failure_domain"]="module_context";
+  record["source_causes"]=DescribeCauses(chain);
+  record["source_causes_truncated"]=chain.truncated;
+}
+
 bool RecordFailureIsFatal(const source::RecordSourceResult& result,
                           bool process_fault) {
   if (process_fault) return true;

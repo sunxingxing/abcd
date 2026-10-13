@@ -23,8 +23,12 @@ struct ModuleGuards {
 };
 enum class ModuleGuardError : std::uint8_t {
   kRevision, kOrigin, kCoverage, kRead, kGuard, kOrder, kEffects,
-  kUnsupportedProof, kResourceLimit, kWorkLimit
+  kUnsupportedProof, kResourceLimit, kWorkLimit, kReadProof
 };
+// Every effectful lazy read, including discarded results, needs a complete
+// load/guard proof. O(operations + pairs), no allocation; shared by verifiers.
+[[nodiscard]] std::variant<std::uint64_t, ModuleGuardError> VerifyLazyModuleReads(
+    const analysis::ValueProgram&, const ModuleGuards&, analysis::SemanticBudget);
 // Rebase immutable original guarded/initialized proofs onto working IR.
 // Language result facts from a guarded load are conditional on the WHOLE pair;
 // they never authorize removing the guard or exposing the raw pre-guard value.

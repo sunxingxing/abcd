@@ -111,7 +111,7 @@ ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
 std::size_t PhasedBody::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t PhasedBody::Work() const { return storage_->work; }
 
-std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Build(
+std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
@@ -285,8 +285,10 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
     if (!modules.reads.empty() || std::any_of(imported.graph.ops.begin(), imported.graph.ops.end(),
         [&](const auto& op) { quota.Step(1); return op.life == ValueLife::kLive &&
             std::holds_alternative<ValueModuleWrite>(op.operation); })) {
-      guards = PhaseResult<ModuleGuards>(BuildPhasedModuleGuards(input, imported.graph,
-          quota.Remaining()), Error::kImport);
+      auto guarded = BuildPhasedModuleGuards(input, imported.graph, quota.Remaining());
+      if (const auto* failure = std::get_if<ModuleGuardError>(&guarded))
+        return PhasedModuleFailure{PhaseError(*failure, Error::kImport), *failure};
+      guards = std::get<ModuleGuards>(std::move(guarded));
       quota.Admit(guards->allocated_bytes); quota.Step(guards->work);
       if (binding) {
         const auto position = context.Position().value;
@@ -296,8 +298,11 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure> PhasedBody::Buil
           return Error::kModules;
         const PhasedModuleInput selected{context.Identity(), method.offset, method.owner_offset,
             input, imported.graph, *guards, entry_modules};
-        aliases = PhaseResult<ModuleAliases>(BindPhasedModuleAliases(binding->file, binding->header,
-            binding->index, selected, binding->record, binding->owner, {}, quota.Remaining()), Error::kModules);
+        auto bound = BindPhasedModuleAliases(binding->file, binding->header,
+            binding->index, selected, binding->record, binding->owner, {}, quota.Remaining());
+        if (const auto* failure = std::get_if<ModuleAliasFailure>(&bound))
+          return PhasedModuleFailure{PhaseError(*failure, Error::kModules), *failure};
+        aliases = std::get<ModuleAliases>(std::move(bound));
         quota.Admit(aliases->allocated_bytes); quota.Step(aliases->work);
       }
     }
@@ -322,6 +327,7 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
   auto built = PhasedBody::Build(context, body, budget, binding);
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) return *error;
   if (std::holds_alternative<PhasedInputFailure>(built)) return PhasedMethodError::kValues;
+  if (const auto* failure = std::get_if<PhasedModuleFailure>(&built)) return failure->kind;
   return Evaluate(std::get<PhasedBody>(std::move(built)), budget);
 }
 std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Evaluate(

@@ -4,8 +4,16 @@ namespace abcd::analysis {
 std::variant<ModuleLoad, ModuleLoadError> LiftModuleLoad(
     const abc::DecodedInstruction& instruction) {
   ModuleSpace space;
+  ModuleLoading loading = ModuleLoading::kOrdinary;
   std::uint64_t limit = UINT8_MAX;
   switch (instruction.opcode) {
+    case abc::Opcode::kCALLRUNTIME_WIDELDLAZYMODULEVAR_PREF_IMM16:
+      limit = UINT16_MAX;
+      [[fallthrough]];
+    case abc::Opcode::kCALLRUNTIME_LDLAZYMODULEVAR_PREF_IMM8:
+      space = ModuleSpace::kExternal;
+      loading = ModuleLoading::kLazy;
+      break;
     case abc::Opcode::kWIDE_LDLOCALMODULEVAR_PREF_IMM16:
       limit = UINT16_MAX;
       [[fallthrough]];
@@ -28,6 +36,6 @@ std::variant<ModuleLoad, ModuleLoadError> LiftModuleLoad(
     return ModuleLoadError::kMalformedInstruction;
   return ModuleLoad{
       space,
-      {static_cast<std::uint16_t>(instruction.operands[kSlot].raw_bits)}};
+      {static_cast<std::uint16_t>(instruction.operands[kSlot].raw_bits)}, loading};
 }
 }  // namespace abcd::analysis

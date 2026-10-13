@@ -11,6 +11,7 @@
 #include "abcd/abc/module_info.h"
 #include "abcd/abc/string_entity.h"
 #include "abcd/source/emission.h"
+#include "abcd/source/source_contract.h"
 
 namespace abcd::source {
 
@@ -19,7 +20,7 @@ enum class ModuleImportError {
   kString,
   kResourceLimit,
   kOutputLimit,
-  kWrite
+  kWrite, kContract, kRequestPhases, kBinding, kModuleKind
 };
 struct ModuleImportFailure {
   ModuleImportError kind;
@@ -46,7 +47,7 @@ using ModuleImportResult = std::variant<std::size_t, ModuleImportFailure>;
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::ModuleInfo& module, std::ostream& output,
     EmitBudget budget = {}, abc::StringBudget strings = {},
-    std::span<const std::string> names = {});
+    std::span<const std::string> names = {}, SourceContract contract = kSourceContract);
 
 }  // namespace abcd::source
 

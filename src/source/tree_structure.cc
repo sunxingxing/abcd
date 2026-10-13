@@ -271,6 +271,13 @@ class StructureCheck {
         }
       } else if constexpr (std::is_same_v<T, SymbolExpr>) {
         scopes_.Reference(expression.symbol);
+        switch (expression.loading) {
+          case analysis::ModuleLoading::kOrdinary: break;
+          case analysis::ModuleLoading::kLazy:
+            RequireTree(LazyImports(tree_.identity.contract) == LazyImportSemantics::kArkTsLazyImport &&
+                tree_.symbols[expression.symbol.value].kind == BindingKind::kModule, Error::kBinding);
+            break;
+        }
       } else if constexpr (std::is_same_v<T, GlobalNameExpr>) {
         RequireTree(expression.name.value < tree_.names.size(), Error::kRange);
         // Publication resolves the actual active lexical scopes, including

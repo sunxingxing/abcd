@@ -406,7 +406,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, ModuleLoad>) {
-          effects.normal = LanguageEffect::kModuleRead;
+          effects.normal = ModuleReadEffects(value.loading);
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, ModuleStore>) {

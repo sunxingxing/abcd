@@ -15,9 +15,9 @@ class ReadResolver {
  public:
   ReadResolver(const corpus::AbcFile& file, const abc::Header& header,
       const abc::ModuleInfo* module, const analysis::ValueProgram& graph,
-      analysis::SemanticBudget budget)
+      analysis::SemanticBudget budget, SourceContract contract)
       : file_(file), header_(header), module_(module), graph_(graph),
-        budget_(budget), bytes_(budget.bytes), work_(budget.work) {}
+        budget_(budget), bytes_(budget.bytes), work_(budget.work), contract_(contract) {}
   ModuleReads Resolve() {
     if (file_.Size() != header_.file_size || file_.CheckUnchanged())
       throw abc::MetadataError::kFileChanged;
@@ -112,20 +112,33 @@ class ReadResolver {
     if (request.value >= module_->requests.size()) throw Error::kRequest;
     return module_->requests[request.value];
   }
+  void Loading(analysis::ValueModuleRead read, abc::ModuleRequestId request) const {
+    if (request.value >= module_->requests.size()) throw Error::kRequest;
+    if (!module_->request_phases.empty() && module_->request_phases.size() != module_->requests.size())
+      throw Error::kRequestPhases;
+    const bool lazy = !module_->request_phases.empty() &&
+        module_->request_phases[request.value] == abc::ModuleRequestPhase::kLazy;
+    if (lazy != (read.loading == analysis::ModuleLoading::kLazy)) throw Error::kBinding;
+    if (lazy && LazyImports(contract_) != LazyImportSemantics::kArkTsLazyImport) throw Error::kContract;
+  }
   ModuleReadTarget Target(analysis::ValueModuleRead read) const {
     const std::size_t slot = read.slot.value;
     switch (read.space) {
       case analysis::ModuleSpace::kLocal:
+        if (read.loading != analysis::ModuleLoading::kOrdinary) throw Error::kBinding;
         if (slot >= locals_.size()) throw Error::kSlot;
         return LocalModuleBinding{locals_[slot]};
       case analysis::ModuleSpace::kExternal:
         // ModuleDataAccessor::EnumerateImportEntry appends namespace entries.
         if (slot < module_->imports.size()) {
           const auto& entry = module_->imports[slot];
+          Loading(read, entry.request);
           return ImportedModuleBinding{entry.request, Request(entry.request), entry.local, entry.imported};
         }
         if (slot - module_->imports.size() >= module_->namespace_imports.size()) throw Error::kSlot;
         const auto& entry = module_->namespace_imports[slot - module_->imports.size()];
+        Loading(read, entry.request);
+        if (read.loading == analysis::ModuleLoading::kLazy) throw Error::kModuleKind;
         return NamespaceModuleBinding{entry.request, Request(entry.request), entry.local};
     }
     throw Error::kSlot;
@@ -137,6 +150,7 @@ class ReadResolver {
   analysis::SemanticBudget budget_;
   std::size_t bytes_;
   std::uint64_t work_;
+  SourceContract contract_;
   ModuleReads result_;
   std::vector<abc::EntityOffset> locals_;
 };
@@ -144,8 +158,8 @@ class ReadResolver {
 std::variant<ModuleReads, ModuleReadFailure> ResolveModuleReads(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::ModuleInfo* module, const analysis::ValueProgram& graph,
-    analysis::SemanticBudget budget) {
-  try { return ReadResolver(file, header, module, graph, budget).Resolve();
+    analysis::SemanticBudget budget, SourceContract contract) {
+  try { return ReadResolver(file, header, module, graph, budget, contract).Resolve();
   } catch (const ModuleReadFailure& error) { return error;
   } catch (Error error) { return ModuleReadFailure{error};
   } catch (abc::MetadataError error) { return ModuleReadFailure{error};

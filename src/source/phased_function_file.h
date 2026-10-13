@@ -11,7 +11,7 @@ enum class PhasedFileError : std::uint8_t {
   kIdentity, kMethod, kFrame, kChanged, kResourceLimit, kWorkLimit
 };
 using PhasedFileFailure = std::variant<PhasedFileError, abc::MetadataError,
-    abc::FrameError, abc::BodyFailure, PhasedMethodError, analysis::ExceptionLocalFailure, FunctionEmitError, PhasedInputFailure>;
+    abc::FrameError, abc::BodyFailure, PhasedMethodError, analysis::ExceptionLocalFailure, FunctionEmitError, PhasedInputFailure, PhasedModuleFailure>;
 // File-backed conditional method input, NOT a prepared source family. The
 // immutable heap owner keeps working body, phase analyses and capture scopes
 // together across moves/vector growth. Views never point into a moved envelope.

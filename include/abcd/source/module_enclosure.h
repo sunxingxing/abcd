@@ -9,7 +9,7 @@ namespace abcd::source {
 struct GlobalScope;
 enum class ModuleEnclosureError : std::uint8_t {
   kIdentity, kMissingModule, kName, kDuplicate, kBinding, kShadowed,
-  kResourceLimit, kWorkLimit, kFileChanged, kMetadata
+  kResourceLimit, kWorkLimit, kFileChanged, kMetadata, kContract, kModuleKind, kRequestPhases
 };
 enum class ModuleRole : std::uint8_t { kReader, kInitializer };
 struct ModuleDestination { std::uint64_t work; };
@@ -30,6 +30,8 @@ class ModuleEnclosure {
   const RouteInputIdentity& Identity() const { return identity_; }
   ModuleOwnerId Owner() const { return owner_; }
   std::span<const std::string> Names() const { return names_; }
+  bool HasLazy() const { return has_lazy_; }
+  std::span<const analysis::ModuleLoading> Loadings() const { return loadings_; }
   std::span<const std::string_view> SortedNames() const { return sorted_; }
   std::size_t AllocatedBytes() const { return allocated_bytes_; }
   std::uint64_t Work() const { return work_; }
@@ -44,6 +46,8 @@ class ModuleEnclosure {
   RouteInputIdentity identity_;
   ModuleOwnerId owner_;
   std::vector<std::string> names_;
+  std::vector<analysis::ModuleLoading> loadings_;
+  bool has_lazy_ = false;
   // Views point into the moved vector buffer. Copying this owner is forbidden.
   std::vector<std::string_view> sorted_;
   std::size_t allocated_bytes_ = 0;

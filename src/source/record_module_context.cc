@@ -23,7 +23,7 @@ RecordModuleResult ReadRecordModuleContext(
   if (!attributes.module)
     return RecordModuleContext(file, record.offset, {});
   auto decoded = abc::ReadModuleInfo(file, header, *attributes.module,
-                                     budget.module);
+                                     budget.module, attributes.request_phases);
   if (const auto* failure = std::get_if<abc::ModuleFailure>(&decoded))
     return RecordModuleFailure{*failure};
   try {

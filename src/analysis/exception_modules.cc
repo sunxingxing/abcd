@@ -127,8 +127,8 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
       if (!load_effect.normal_registers.write ||
           !std::holds_alternative<Accumulator>(*load_effect.normal_registers.write) ||
           guard_effect.normal_registers.write ||
-          load_effect.normal != LanguageEffect::kModuleRead ||
-          load_effect.before_throw != LanguageEffect::kModuleRead ||
+          load_effect.normal != ModuleReadEffects(std::get<ModuleLoad>(flow.instructions[i].operation).loading) ||
+          load_effect.before_throw != load_effect.normal ||
           guard_effect.normal != LanguageEffect::kGuard ||
           guard_effect.before_throw != LanguageEffect::kGuard) continue;
       if (!sites[i].before || !sites[i].commit || !sites[i + 1].before || !sites[i + 1].commit)

@@ -337,7 +337,9 @@ class OperandCheck {
           RequireMeaning(next_module < evaluation_.modules.size(), Error::kOperand);
           const OriginalActionRegionId region{static_cast<std::uint32_t>(next_module)};
           const auto& module = evaluation_.modules[next_module++];
-          const auto symbol = Node<SymbolExpr>(expression).symbol;
+          const auto& reference = Node<SymbolExpr>(expression);
+          RequireMeaning(reference.loading == operation.loading, Error::kOperand);
+          const auto symbol = reference.symbol;
           RequireMeaning(module.pair.read == current_ && module.read == operation &&
               symbol.value < module_aliases.size() && module_aliases[symbol.value] &&
               tree_.modules[*module_aliases[symbol.value]].target == module.target, Error::kOperand);

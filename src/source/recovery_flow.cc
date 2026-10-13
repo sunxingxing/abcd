@@ -1575,7 +1575,8 @@ FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const Functio
   }
   if(event.kind==FlowEventKind::kRead&&std::holds_alternative<UpdateExpr>(node))
     effects=NormalValueEffects(SymbolExpr{std::get<UpdateExpr>(node).symbol},{},resources);
-  if(event.kind==FlowEventKind::kRead&&event.read_completion==FlowReadCompletion::kInitialized) {
+  if(event.kind==FlowEventKind::kRead&&event.read_completion==FlowReadCompletion::kInitialized &&
+      !(std::get_if<SymbolExpr>(&node) && std::get<SymbolExpr>(node).loading==analysis::ModuleLoading::kLazy)) {
     required=false;effects=SourceEffects{};
   }
   if(event.original_effect_valid&&event.kind==FlowEventKind::kEvaluation&&!flow.original_effects.empty()) {

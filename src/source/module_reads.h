@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/value_ir.h"
 #include "abcd/abc/module_info.h"
+#include "abcd/source/source_contract.h"
 
 namespace abcd::source {
 struct ImportedModuleBinding {
@@ -34,7 +35,7 @@ struct ModuleReads {
   std::uint64_t work = 0;
 };
 enum class ModuleReadError : std::uint8_t {
-  kMissingModule, kSlot, kRequest, kResourceLimit, kWorkLimit
+  kMissingModule, kSlot, kRequest, kResourceLimit, kWorkLimit, kContract, kRequestPhases, kBinding, kModuleKind
 };
 struct ModuleReadFailure {
   std::variant<ModuleReadError, abc::MetadataError> reason;
@@ -48,6 +49,6 @@ struct ModuleReadFailure {
 [[nodiscard]] std::variant<ModuleReads, ModuleReadFailure> ResolveModuleReads(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::ModuleInfo* module, const analysis::ValueProgram& graph,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, SourceContract contract = kSourceContract);
 }  // namespace abcd::source
 #endif

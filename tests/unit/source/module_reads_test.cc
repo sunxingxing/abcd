@@ -91,6 +91,18 @@ int main() {
   const auto ns = ResolveModuleReads(file, header, &module, Reads(analysis::ModuleSpace::kExternal, 1));
   const auto& target = std::get<NamespaceModuleBinding>(std::get<ModuleReads>(ns).bindings[0].target);
   Check(target.request == abc::ModuleRequestId{0} && target.specifier == kOther && target.local == kOther);
+
+  module.request_phases={abc::ModuleRequestPhase::kEager,abc::ModuleRequestPhase::kLazy};
+  auto lazy=Reads(analysis::ModuleSpace::kExternal,0);
+  std::get<analysis::ValueModuleRead>(lazy.ops[0].operation).loading=analysis::ModuleLoading::kLazy;
+  Check(std::holds_alternative<ModuleReads>(ResolveModuleReads(file,header,&module,lazy,{},SourceContract::kLanguageSourceV1)));
+  Expect(ResolveModuleReads(file,header,&module,lazy),ModuleReadError::kContract);
+  Expect(ResolveModuleReads(file,header,&module,Reads(analysis::ModuleSpace::kExternal,0),{},SourceContract::kLanguageSourceV1),ModuleReadError::kBinding);
+  module.request_phases[1]=abc::ModuleRequestPhase::kEager;
+  Expect(ResolveModuleReads(file,header,&module,lazy,{},SourceContract::kLanguageSourceV1),ModuleReadError::kBinding);
+  module.request_phases.pop_back();
+  Expect(ResolveModuleReads(file,header,&module,lazy,{},SourceContract::kLanguageSourceV1),ModuleReadError::kRequestPhases);
+  module.request_phases.clear();
   module.imports[0].request = {2};
   Expect(ResolveModuleReads(file, header, &module, Reads(analysis::ModuleSpace::kExternal, 0)), ModuleReadError::kRequest);
   for (const auto count : {1U, 2U, 200U, 201U, 4096U}) {

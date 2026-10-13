@@ -245,7 +245,13 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
       // ECMA-262 13.4: GetValue and success-only PutValue belong to separate
       // flow phases. Only this captured operand proves conversion inert.
       return CoercionPrimitive(captured)?SourceEffects{}:CallbackEffects();
-    } else if constexpr(std::is_same_v<T,SymbolExpr>||std::is_same_v<T,ThisExpr>)return guard;
+    } else if constexpr(std::is_same_v<T,SymbolExpr>) {
+      if(node.loading==analysis::ModuleLoading::kLazy) {
+        const auto effects=analysis::ModuleReadEffects(node.loading)|L::kGuard;
+        return {effects,effects,X::kMayThrow};
+      }
+      return guard;
+    } else if constexpr(std::is_same_v<T,ThisExpr>)return guard;
     else if constexpr(std::is_same_v<T,AssignmentExpr>) {
       // Declarative PutValue has no callback; its success-only write belongs
       // to a FlowDefinition. Member PutValue may invoke a setter/proxy trap.

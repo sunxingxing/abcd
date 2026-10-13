@@ -570,7 +570,7 @@ class ForestBuilder {
     // FunctionTree appends module aliases in this supplied order after the
     // shared IR bindings. This is a source SymbolId, never an ABC slot.
     const SymbolId symbol{static_cast<std::uint32_t>(forest_.bindings.symbols.size() + *found)};
-    const auto read = Add(SymbolExpr{symbol}, origin);
+    const auto read = Add(SymbolExpr{symbol, module.read.loading}, origin);
     const auto expression = module.pair.guard
         ? Combine(read, {graph_.ops[module.pair.guard->value].origin.value}) : read;
     forest_.operations[i] = expression;

@@ -85,6 +85,13 @@ bool SameReceipt(const MethodRouteReceipt& left,
 // lifted.
 int main() {
   Check(kSourceContract == SourceContract::kLanguageAndHostV3);
+  for (unsigned i = 0; i <= static_cast<unsigned>(SourceContract::kLanguageSourceV1); ++i) {
+    const auto contract = static_cast<SourceContract>(i);
+    const bool source = contract == SourceContract::kLanguageSourceV1;
+    Check(LazyImports(contract) == (source ? LazyImportSemantics::kArkTsLazyImport : LazyImportSemantics::kPinnedRuntime));
+    Check(ArraySpreads(contract) == (source ? ArraySpreadSemantics::kSourceIterator : ArraySpreadSemantics::kPinnedRuntime));
+  }
+
   Check(Arithmetic(kSourceContract) == analysis::ArithmeticSemantics::kPinnedRuntime);
   Check(Arithmetic(SourceContract::kLanguageArithmeticV1) == analysis::ArithmeticSemantics::kSourceLanguage);
   Check(Arithmetic(SourceContract::kLanguageNumericV1) == analysis::ArithmeticSemantics::kSourceNumeric);

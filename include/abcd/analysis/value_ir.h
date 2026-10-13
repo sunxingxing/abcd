@@ -163,6 +163,7 @@ struct ValueGuard { std::optional<abc::PoolIndex> name; bool operator==(const Va
 struct ValueModuleRead {
   ModuleSpace space;
   ModuleSlot slot;
+  ModuleLoading loading = ModuleLoading::kOrdinary;
   bool operator==(const ValueModuleRead&) const = default;
 };
 // Store to this record's live local module cell. The stored-value operand is

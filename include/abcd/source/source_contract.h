@@ -187,6 +187,40 @@ constexpr CaptureReadSemantics CaptureReads(SourceContract contract) {
   return contract == SourceContract::kLanguageSourceV1 ? CaptureReadSemantics::kSourceTdz
                                                        : CaptureReadSemantics::kPinnedRuntime;
 }
+// Round 31: ArkTS preserves lazy initialization; array spread is a separate
+// approved premise whose lowering is not enabled by the lazy-import adapter.
+enum class LazyImportSemantics : std::uint8_t { kPinnedRuntime, kArkTsLazyImport };
+enum class ArraySpreadSemantics : std::uint8_t { kPinnedRuntime, kSourceIterator };
+constexpr LazyImportSemantics LazyImports(SourceContract contract) {
+  switch (contract) {
+    case SourceContract::kLanguageAndHostV1:
+    case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageAndHostV3:
+    case SourceContract::kLanguageArithmeticV1:
+    case SourceContract::kLanguageNumericV1:
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
+      return LazyImportSemantics::kPinnedRuntime;
+    case SourceContract::kLanguageSourceV1: return LazyImportSemantics::kArkTsLazyImport;
+  }
+  std::terminate();
+}
+constexpr ArraySpreadSemantics ArraySpreads(SourceContract contract) {
+  switch (contract) {
+    case SourceContract::kLanguageAndHostV1:
+    case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageAndHostV3:
+    case SourceContract::kLanguageArithmeticV1:
+    case SourceContract::kLanguageNumericV1:
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
+      return ArraySpreadSemantics::kPinnedRuntime;
+    case SourceContract::kLanguageSourceV1: return ArraySpreadSemantics::kSourceIterator;
+  }
+  std::terminate();
+}
 // Serialization boundary only. Never dispatch engine semantics on this label.
 constexpr std::string_view SourceContractName(SourceContract contract) {
   switch (contract) {

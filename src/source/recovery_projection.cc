@@ -159,7 +159,7 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
         const auto source = input.bindings.ReadBinding(id,read->symbol);
         result = source;
       }
-      if (literal || (!initialized.empty() && initialized[id.value]))
+      if (read->loading == analysis::ModuleLoading::kOrdinary && (literal || (!initialized.empty() && initialized[id.value])))
         evaluation = ExpressionEvaluation::kInert;
     } else if (const auto* assignment = std::get_if<AssignmentExpr>(&node)) {
       literal=facts.literals[assignment->value.value];

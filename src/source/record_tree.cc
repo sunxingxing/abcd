@@ -639,6 +639,10 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         case ModuleImportError::kOutputLimit: return fail_with(Error::kOutputLimit, import_error);
         case ModuleImportError::kResourceLimit: return fail_with(Error::kResourceLimit, import_error);
         case ModuleImportError::kWrite: return fail_with(Error::kWrite, import_error);
+        case ModuleImportError::kContract:
+        case ModuleImportError::kRequestPhases:
+        case ModuleImportError::kBinding:
+        case ModuleImportError::kModuleKind:
         case ModuleImportError::kRequestIndex:
         case ModuleImportError::kString: return fail_with(Error::kModule, import_error);
       }
