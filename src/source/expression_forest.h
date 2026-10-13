@@ -65,9 +65,9 @@ enum class ExpressionError : std::uint8_t {
 // kUnsupportedOperation). Compares equal to its kind; the cause is diagnostic.
 struct ExpressionFailure {
   ExpressionError kind;
-  std::variant<std::monostate, CallPlanError> cause;
+  std::variant<std::monostate, CallPlanFailure> cause;
   ExpressionFailure(ExpressionError value) : kind(value) {}  // NOLINT: implicit kind.
-  ExpressionFailure(ExpressionError value, CallPlanError plan) : kind(value), cause(plan) {}
+  ExpressionFailure(ExpressionError value, CallPlanFailure plan) : kind(value), cause(plan) {}
   bool operator==(ExpressionError value) const { return kind == value; }
 };
 // Inputs must have passed import/rewrite verification. Builds each owned tree

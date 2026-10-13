@@ -99,7 +99,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned depth, unsigned count, bool p
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
   const auto calls = BuildCallPlan(graph, evaluation);
-  if (barrier || shared) { test::Check(std::get<CallPlanError>(calls) == CallPlanError::kReference); return 0; }
+  if (barrier || shared) { test::Check(std::get<CallPlanFailure>(calls) == CallPlanError::kReference); return 0; }
   test::Check(std::holds_alternative<CallPlan>(calls));
   unsigned objects = 0;
   for (const auto& object : evaluation.logical_objects) objects += object.has_value();

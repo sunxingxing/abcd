@@ -1,5 +1,6 @@
 #include "integer_nan.h"
 #include "evaluation_plan.h"
+#include "assignment_values.h"
 #include "evaluation_flow.h"
 #include "evaluation_aliases.h"
 #include "module_evaluation.h"
@@ -206,6 +207,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     // Recompute actual observations after identity projection, including uses
     // transported through phi/copy aliases. Each original use is visited once.
     TreeCheckBudget use_budget({bytes,work});
+    VerifyAssignmentValues(graph, plan, use_budget);
     visible = IndexEvaluationUses(graph,plan,module_index,literal_allocations,projection.owners,
         flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr,plan.receiver_guards,use_budget);
     admit(use_budget.Bytes(),1); step(use_budget.Work());
@@ -371,7 +373,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             !logical_inputs.empty() && logical_inputs[i] == placement.consumer, Error::kOwnership);
       } else if (placement.kind == EvaluationKind::kInline) {
         Require(!pinned[i] || (cross(i) && PhaseCorridors::Aggregate(op.operation)), Error::kOwnership);
-        Require(op.result && placement.consumer && !placement.temporary, Error::kOwnership);
+        Require((op.result || (i < plan.assignment_consumers.size() && plan.assignment_consumers[i])) && placement.consumer && !placement.temporary, Error::kOwnership);
         Require(placement.consumer->value < graph.uses.size(), Error::kOwnership);
         const auto& use = graph.uses[placement.consumer->value];
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);
@@ -457,24 +459,19 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             const analysis::UseId use_id{op.first_use.value + frame.next_operand++};
             if (IsMemberReceiver(graph, plan, graph.uses[use_id.value]))
               continue;
-            const auto* value = std::get_if<analysis::ValueId>(&graph.uses[use_id.value].operand);
-            if (!value) continue;
-            const auto& definition = graph.values[ResolveEvaluationValue(plan, *value).value];
-            // The independently checked phi plan establishes incoming values.
-            // A phi use reads its binding; it never expands an input subtree.
-            const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
+            const auto result = EvaluationProducer(graph, plan, use_id);
             if (!result) continue;
-            const auto& producer = graph.ops[result->op.value];
-            const auto placement = BeforeLogicalFusion(graph, plan, result->op.value);
+            const auto& producer = graph.ops[result->value];
+            const auto placement = BeforeLogicalFusion(graph, plan, result->value);
             if (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kLogicalLeft) {
-              Require(placement.consumer == use_id && (producer.block == op.block || cross(result->op.value)) &&
-                      visits[result->op.value] == EvaluationVisit::kUnseen, Error::kOwnership);
+              Require(placement.consumer == use_id && (producer.block == op.block || cross(result->value)) &&
+                      visits[result->value] == EvaluationVisit::kUnseen, Error::kOwnership);
               Require(depth < stack.size(), Error::kResourceLimit);
-              visits[result->op.value] = EvaluationVisit::kActive;
-              stack[depth++] = {result->op, 0};
+              visits[result->value] = EvaluationVisit::kActive;
+              stack[depth++] = {*result, 0};
             } else {
               Require(placement.kind == EvaluationKind::kRoot, Error::kOwnership);
-              Require(producer.block != op.block || visits[result->op.value] == EvaluationVisit::kDone,
+              Require(producer.block != op.block || visits[result->value] == EvaluationVisit::kDone,
                       Error::kUnavailableValue);
             }
           } else {

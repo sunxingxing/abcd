@@ -1,4 +1,5 @@
 #include "phase_composition.h"
+#include "assignment_values.h"
 
 #include <algorithm>
 
@@ -334,9 +335,9 @@ class Composition {
       if (Committed(branch) && region_of_[branch.value] && plan_.operations[branch.value].consumer == use)
         return {branch};
     }
-    const auto* result = std::get_if<OpResult>(&graph_.values[value->value].origin);
+    const auto result = EvaluationProducer(graph_, plan_, use);
     if (!result) return {};
-    const auto producer = result->op;
+    const auto producer = *result;
     const auto placement = Placement(producer);
     if (placement.kind == EvaluationKind::kInline && placement.consumer == use) return {std::nullopt, producer};
     if (build && Eligible(producer, consumer, use)) return {std::nullopt, producer, true};

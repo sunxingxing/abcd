@@ -1,3 +1,4 @@
+#include "assignment_values.h"
 #include "integer_nan.h"
 #include "staged_literal_names.h"
 #include "expression_forest.h"
@@ -98,7 +99,7 @@ class ForestBuilder {
         : BuildPhasedCallPlan(graph_, evaluation_, {bytes_, work_});
     auto* call_plan = std::get_if<CallPlan>(&calls);
     if (!call_plan) {
-      const auto error = std::get<CallPlanError>(calls);
+      const auto error = std::get<CallPlanFailure>(calls);
       if (error == CallPlanError::kResourceLimit) throw Error::kResourceLimit;
       if (error == CallPlanError::kWorkLimit) throw Error::kWorkLimit;
       throw ExpressionFailure{Error::kUnsupportedOperation, error};
@@ -921,6 +922,10 @@ class ForestBuilder {
     }, ResolveEvaluationOperand(evaluation_, operand));
   }
   ExprId Use(analysis::UseId use, TreeOriginId origin) {
+    if (const auto assignment = AssignmentProducer(evaluation_, use)) {
+      Require(forest_.operations[assignment->value].has_value(), Error::kUnavailableValue);
+      return *forest_.operations[assignment->value];
+    }
     const auto& operand = graph_.uses[use.value].operand;
     const auto resolved = ResolveEvaluationOperand(evaluation_, operand);
     const auto* value = std::get_if<analysis::ValueId>(&resolved);

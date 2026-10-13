@@ -96,7 +96,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool aggregates, bool 
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
   const auto calls = BuildCallPlan(graph, evaluation);
-  if (barrier) { test::Check(std::get<CallPlanError>(calls) == CallPlanError::kReference); return 0; }
+  if (barrier) { test::Check(std::get<CallPlanFailure>(calls) == CallPlanError::kReference); return 0; }
   test::Check(std::holds_alternative<CallPlan>(calls));
   unsigned objects = 0;
   for (const auto& object : evaluation.logical_objects) objects += object.has_value();
@@ -111,7 +111,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool aggregates, bool 
       test::Check(!ReplaceUse(shared, operation.first_use, *graph.ops[allocation.value].result));
     test::Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(shared)));
     const auto retained = std::get<EvaluationPlan>(BuildEvaluationPlan(shared));
-    test::Check(std::get<CallPlanError>(BuildCallPlan(shared, retained)) == CallPlanError::kReference);
+    test::Check(std::get<CallPlanFailure>(BuildCallPlan(shared, retained)) == CallPlanError::kReference);
   }
   FunctionSyntax syntax{};
   syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};

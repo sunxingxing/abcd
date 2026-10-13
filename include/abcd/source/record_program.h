@@ -48,6 +48,9 @@ struct RecordProgramFailure {
   abc::CodeOffset pc;
   // Typed causes from the stage that produced this record failure (S2).
   FailureCauseChain causes = {};
+  std::optional<CallReferenceEvidence> call_reference;
+  std::optional<abc::EntityOffset> method;
+  std::optional<abc::CodeOffset> working_pc;
 };
 struct RecordProgramBudget {
   std::size_t bytes = 128 * 1024 * 1024;

@@ -96,7 +96,7 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
   const auto& evaluation = std::get<EvaluationPlan>(planned);
   if (form == Form::kBarrier || form == Form::kChangedBase || (form == Form::kReversed && arguments > 1)) {
     test::Check(evaluation.phase_selections.empty());
-    test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
+    test::Check(std::get<CallPlanFailure>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return evaluation.work;
   }
   test::Check(evaluation.phase_selections.size() == arguments);

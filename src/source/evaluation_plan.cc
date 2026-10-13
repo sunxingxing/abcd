@@ -1,4 +1,5 @@
 #include "evaluation_plan.h"
+#include "assignment_values.h"
 #include "evaluation_flow.h"
 #include "evaluation_liveness.h"
 #include "evaluation_aliases.h"
@@ -20,15 +21,15 @@ namespace {
 using Error = EvaluationError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
 struct EffectInterval { std::uint32_t count = 0; std::uint32_t end = 0; };
-std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
+std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput array_source = {}) {
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput array_source = {}, bool assignments = true, bool* proposed = nullptr) {
+  auto work = budget.work; auto bytes = budget.bytes;
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
-    auto work = budget.work;
-    auto bytes = budget.bytes;
+
     const auto step = [&](std::size_t count = 1) {
       Require(count <= work, Error::kWorkLimit);
       work -= count;
@@ -301,6 +302,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
       }
     }
     TreeCheckBudget use_budget({bytes,work});
+    if (assignments) BuildAssignmentValues(graph, plan, use_budget);
+    if (proposed) *proposed = !plan.assignment_values.empty();
     visible = IndexEvaluationUses(graph,plan,module_index,literal_allocations,plan.class_projection.owners,
         flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr,plan.receiver_guards,use_budget);
     admit(use_budget.Bytes(),1); step(use_budget.Work());
@@ -382,26 +385,23 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
           const analysis::UseId use{op.first_use.value + ordinal - 1};
           const auto& occurrence = graph.uses[use.value];
           if (const auto error = CheckEvaluationUse(graph, occurrence, *shape, ordinal - 1)) return *error;
-          const auto* value = std::get_if<analysis::ValueId>(&occurrence.operand);
-          if (!value) continue;
-          const auto& definition = graph.values[ResolveEvaluationValue(plan, *value).value];
-          const auto* result = std::get_if<analysis::OpResult>(&definition.origin);
-          if (!result || visible[result->op.value].first != use || visible[result->op.value].multiple) continue;
-          if (pinned[result->op.value]) continue;
+          const auto result = EvaluationProducer(graph, plan, use);
+          if (!result || visible[result->value].first != use || visible[result->value].multiple) continue;
+          if (pinned[result->value]) continue;
           // STOBJBYVALUE receives an already evaluated RHS. JS computes its
           // Reference (including key coercion) before evaluating RHS syntax.
           // Retain the producer snapshot, even for a pure parent of a getter.
           if (shape->NeedsSnapshot(occurrence.role)) continue;
           if (PredicateSnapshot(graph, op, occurrence.operand)) continue;
-          const auto& producer = graph.ops[result->op.value];
+          const auto& producer = graph.ops[result->value];
           if (producer.block != op.block) continue;
           Require(producer.order < order, Error::kUnavailableValue);
-          const auto interval = groups[result->op.value];
+          const auto interval = groups[result->value];
           if (interval.count != 0 && interval.end != expected) continue;
           Require(interval.count <= expected, Error::kInvalidGraph);
           expected -= interval.count;
           effects += interval.count;
-          auto& child = plan.operations[result->op.value];
+          auto& child = plan.operations[result->value];
           Require(child.kind == EvaluationKind::kRoot, Error::kOwnership);
           child = {EvaluationKind::kInline, use, {}};
         }
@@ -494,7 +494,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    plan.allocated_bytes = plan.phase_children.capacity() * sizeof(std::optional<analysis::OpId>) + plan.closed_expressions.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + plan.phase_compositions.capacity() * sizeof(analysis::OpId) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_selections.capacity() * sizeof(PhaseSelectionOperand) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
+    plan.allocated_bytes = plan.assignment_values.capacity() * sizeof(std::optional<analysis::OpId>) + plan.assignment_consumers.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_children.capacity() * sizeof(std::optional<analysis::OpId>) + plan.closed_expressions.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + plan.phase_compositions.capacity() * sizeof(analysis::OpId) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_selections.capacity() * sizeof(PhaseSelectionOperand) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.logical_objects.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.aliases.capacity() * sizeof(analysis::ValueId) +
@@ -521,6 +521,41 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(const analysis::ValueProgram& graph,
+    analysis::SemanticBudget budget, IncomingCells incoming,
+    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
+    EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions,
+    std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands,
+    const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads, ArraySourceInput array_source) {
+  // Reserve two disjoint work allowances before trying an optional projection.
+  // A failed subpass need not report partial work: its entire allowance remains
+  // charged. The byte allowance is reused only after the failed plan is gone.
+  std::uint64_t scan = 0;
+  bool has_write = false, has_call = false;
+  for (const auto& op : graph.ops) {
+    if (scan == budget.work) return Error::kWorkLimit;
+    ++scan;
+    const auto shape = DescribeEvaluation(op.operation);
+    has_write |= op.life == analysis::ValueLife::kLive && shape && shape->assignment_result.has_value();
+    const auto* call = std::get_if<analysis::ValueInvoke>(&op.operation);
+    has_call |= op.life == analysis::ValueLife::kLive && call && call->arguments != 0;
+  }
+  const bool attempt = has_write && has_call;
+  const auto allowance = attempt ? (budget.work - scan) / 2 : budget.work - scan;
+  bool proposed = false;
+  auto result = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, attempt, &proposed);
+  if (auto* plan = std::get_if<EvaluationPlan>(&result)) {
+    // Twice actual work also admits this same successful attempt at plan.work.
+    plan->work = scan + plan->work * (attempt ? 2 : 1);
+    return result;
+  }
+  const auto error = std::get<Error>(result);
+  if (!proposed || error == Error::kResourceLimit || error == Error::kWorkLimit) return result;
+  auto fallback = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, false);
+  if (auto* plan = std::get_if<EvaluationPlan>(&fallback)) plan->work += scan + allowance;
+  return fallback;
 }
 }  // namespace
 std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(

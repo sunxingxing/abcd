@@ -29,9 +29,6 @@ enum class BranchPolarity : std::uint8_t { kTaken, kFallthrough };
 // and the independently checked effect interval still own that permission.
 // kArrayCursor is a non-observable cursor/length step discharged by the
 // current ArrayInitializationPlan, never a general-purpose pure elision.
-enum class EvaluationKind : std::uint8_t {
-  kRemoved, kRoot, kInline, kInitializer, kEnvironment, kModuleGuard, kElidedPure, kAlias, kNestedLiteral, kClassProjection, kReceiverGuard, kCellGuard, kPhiInput, kLogicalLeft, kLogicalValue, kPredicateSnapshot, kArrayCursor
-};
 enum class EvaluationFlow : std::uint8_t { kNormal, kPhased };
 struct OpEvaluation {
   EvaluationKind kind = EvaluationKind::kRemoved;
@@ -111,6 +108,8 @@ struct EvaluationPlan {
   std::uint64_t work = 0;
   // Invocation count/tail obligation, not a native JS arguments binding.
   std::optional<analysis::ArgumentFrameFact> arguments;
+  std::vector<std::optional<analysis::OpId>> assignment_values;
+  std::vector<std::optional<analysis::UseId>> assignment_consumers;
   EvaluationFlow flow = EvaluationFlow::kNormal;
   std::optional<ExceptionCopies> exceptions;
   // Flat, independently checked copy/phi identities in either flow. Exact
@@ -251,6 +250,8 @@ struct EvaluationShape {
   SourceEvaluation source = SourceEvaluation::kDirect;
   ControlEvaluation control = ControlEvaluation::kNone;
   ReceiverValue receiver = ReceiverValue::kNone;
+  // Source [[Set]] expression yields the stored value only after successful write.
+  std::optional<analysis::OperandRole> assignment_result;
   [[nodiscard]] bool NeedsArgumentFrame() const {
     return inputs == InputEvaluation::kConditionalArgument || inputs == InputEvaluation::kInvocationConstructor;
   }

@@ -151,7 +151,7 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
   const auto calls = BuildCallPlan(graph, evaluation);
-  if (barrier) { test::Check(std::get<CallPlanError>(calls) == CallPlanError::kReference); return; }
+  if (barrier) { test::Check(std::get<CallPlanFailure>(calls) == CallPlanError::kReference); return; }
   test::Check(std::holds_alternative<CallPlan>(calls));
   unsigned logical = 0;
   for (const auto& placement : evaluation.operations) logical += placement.kind == EvaluationKind::kLogicalValue;
@@ -330,16 +330,16 @@ std::uint64_t RunPhased(unsigned count, bool direct, bool print, Selection selec
       graph, {}, IncomingCells::kReject, {}, bindings));
   if (effect_barrier) {
     test::Check(evaluation.phase_selections.empty());
-    test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
+    test::Check(std::get<CallPlanFailure>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return 0;
   }
   if (prefix == CallPrefix::kMemberBarrierNullish || prefix == CallPrefix::kRetainedBarrier) {
-    test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
+    test::Check(std::get<CallPlanFailure>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return 0;
   }
   if (prefix == CallPrefix::kEscapingNullish) {
     test::Check(evaluation.phase_selections.empty());
-    test::Check(std::get<CallPlanError>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
+    test::Check(std::get<CallPlanFailure>(BuildPhasedCallPlan(graph, evaluation)) == CallPlanError::kReference);
     return 0;
   }
   if (!Decision(selection) && !call_selection) {

@@ -1,4 +1,5 @@
 #include "phase_evaluation.h"
+#include "assignment_values.h"
 
 #include <new>
 #include <stdexcept>
@@ -13,17 +14,15 @@ using Error = EvaluationError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
 using EffectInterval = PhaseEffectInterval;
 std::optional<OpId> Producer(const ValueProgram& graph, const EvaluationPlan& plan, UseId use) {
-  const auto operand = ResolveEvaluationOperand(plan, graph.uses[use.value].operand);
-  const auto* value = std::get_if<ValueId>(&operand);
-  if (!value) return {};
-  const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
-  return result ? std::optional{result->op} : std::nullopt;
+  return EvaluationProducer(graph, plan, use);
 }
 bool Inputs(const ValueOp& op, const OpEvaluation& placement) {
+  const auto shape = DescribeEvaluation(op.operation);
+  const bool assignment = placement.kind == EvaluationKind::kInline && shape && shape->assignment_result;
   return op.life == ValueLife::kLive && placement.kind != EvaluationKind::kAlias &&
       placement.kind != EvaluationKind::kElidedPure &&
       (PhaseCorridors::Expression(op.operation) ||
-       (placement.kind == EvaluationKind::kRoot && PhaseCorridors::ConsumesOperands(op.operation)));
+       ((placement.kind == EvaluationKind::kRoot || assignment) && PhaseCorridors::ConsumesOperands(op.operation)));
 }
 std::vector<OpId> Roots(const ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget) {
   std::vector<OpId> roots;

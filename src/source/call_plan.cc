@@ -60,6 +60,24 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
 bool Property(const ValueOperation& operation) {
   return std::holds_alternative<ValueNamedRead>(operation) || std::holds_alternative<ValuePropertyRead>(operation);
 }
+[[noreturn]] void ReferenceFailure(const ValueProgram& graph, const EvaluationPlan& evaluation,
+    OpId call, std::optional<OpId> property, CallReferenceError reason) {
+  CallPlanFailure failure{Error::kReference};
+  failure.cause = reason;
+  failure.reference = CallReferenceEvidence{reason, call, property, {}, {}, {}};
+  if (property) {
+    const auto& placement = evaluation.operations[property->value];
+    failure.reference->placement = placement.kind;
+    failure.reference->temporary = placement.temporary;
+    failure.reference->consumer = placement.consumer;
+  }
+  const auto origin = graph.ops[call.value].origin;
+  if (origin.value < graph.origins.size()) {
+    const auto& site = graph.origins[origin.value];
+    failure.pc = site.original.value_or(site.pc); failure.working_pc = site.pc;
+  }
+  throw failure;
+}
 std::vector<std::size_t> ArrayUses(const ValueProgram& graph, const EvaluationPlan& evaluation,
     CallBudget& budget) {
   bool needed = false;
@@ -120,9 +138,9 @@ OpId ApplyConstructor(const ValueProgram& graph, const EvaluationPlan& evaluatio
       DirectFunctionObject(graph.ops[result->op.value].operation).has_value(), Error::kConstructorIdentity);
   return result->op;
 }
-std::variant<std::uint64_t, CallPlanError> VerifyCalls(const ValueProgram& graph,
+std::variant<std::uint64_t, CallPlanFailure> VerifyCalls(const ValueProgram& graph,
     const EvaluationPlan& evaluation, const CallPlan& plan, SemanticBudget budget, EvaluationFlow flow);
-std::variant<CallPlan, CallPlanError> BuildCalls(const analysis::ValueProgram& graph,
+std::variant<CallPlan, CallPlanFailure> BuildCalls(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, analysis::SemanticBudget budget, EvaluationFlow flow) {
   try {
     CallBudget checked(budget);
@@ -156,24 +174,27 @@ std::variant<CallPlan, CallPlanError> BuildCalls(const analysis::ValueProgram& g
       const auto* value = std::get_if<ValueId>(&resolved);
       Require(value != nullptr, Error::kCallee);
       const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
-      Require(result && Property(graph.ops[result->op.value].operation), Error::kReference);
+      if (!result || !Property(graph.ops[result->op.value].operation))
+        ReferenceFailure(graph, evaluation, {static_cast<std::uint32_t>(i)}, {},
+            CallReferenceError::kNotPropertyResult);
       const UseId receiver{op.first_use.value + 1};
       plan.operations[i] = MemberCall{result->op, receiver};
     }
     // Independent checking below validates the proposed property/receiver
     // association, including the suppressed raw receiver occurrence.
     const auto verified = VerifyCalls(graph, evaluation, plan, checked.Remaining(), flow);
-    if (const auto* error = std::get_if<Error>(&verified)) return *error;
+    if (const auto* error = std::get_if<CallPlanFailure>(&verified)) return *error;
     checked.Step(std::get<std::uint64_t>(verified));
     plan.allocated_bytes = sizeof(CallPlan) + plan.operations.capacity() * sizeof(CallBinding);
     plan.work = checked.Work();
     return plan;
+  } catch (const CallPlanFailure& failure) { return failure;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 
-std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProgram& graph,
+std::variant<std::uint64_t, CallPlanFailure> VerifyCalls(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget, EvaluationFlow flow) {
   try {
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
@@ -211,10 +232,14 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
       // Fresh evaluation verification owns availability and total effect order,
       // including selected regions and phases. CFG block placement is not a
       // Reference semantic: retain the original property result/base instead.
-      Require(property.life == ValueLife::kLive && Property(property.operation) && property.result, Error::kReference);
-      Require((placement.kind == EvaluationKind::kInline ||
+      if (!(property.life == ValueLife::kLive && Property(property.operation) && property.result))
+        ReferenceFailure(graph, evaluation, {static_cast<std::uint32_t>(i)}, {},
+            CallReferenceError::kNotPropertyResult);
+      if (!((placement.kind == EvaluationKind::kInline ||
           (placement.kind == EvaluationKind::kNestedLiteral && evaluation.operations[i].kind == EvaluationKind::kNestedLiteral)) &&
-          placement.consumer == op.first_use, Error::kReference);
+          placement.consumer == op.first_use))
+        ReferenceFailure(graph, evaluation, {static_cast<std::uint32_t>(i)}, member->property,
+            CallReferenceError::kNotInline);
       Require(SameValue(ResolveEvaluationOperand(evaluation, graph.uses[op.first_use.value].operand),
           *property.result), Error::kCallee);
       const auto base = ResolveEvaluationOperand(evaluation, graph.uses[property.first_use.value].operand);
@@ -223,6 +248,7 @@ std::variant<std::uint64_t, CallPlanError> VerifyCalls(const analysis::ValueProg
           Error::kReceiver);
     }
     return checked.Work();
+  } catch (const CallPlanFailure& failure) { return failure;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -239,19 +265,19 @@ std::variant<CallArgumentUses, CallPlanError> IndexCallArgumentUses(
   } catch (const std::bad_alloc&) { return CallPlanError::kResourceLimit;
   } catch (const std::length_error&) { return CallPlanError::kResourceLimit; }
 }
-std::variant<CallPlan, CallPlanError> BuildCallPlan(const analysis::ValueProgram& graph,
+std::variant<CallPlan, CallPlanFailure> BuildCallPlan(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
   return BuildCalls(graph, evaluation, budget, EvaluationFlow::kNormal);
 }
-std::variant<std::uint64_t, CallPlanError> VerifyCallPlan(const analysis::ValueProgram& graph,
+std::variant<std::uint64_t, CallPlanFailure> VerifyCallPlan(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget) {
   return VerifyCalls(graph, evaluation, plan, budget, EvaluationFlow::kNormal);
 }
-std::variant<CallPlan, CallPlanError> BuildPhasedCallPlan(const analysis::ValueProgram& graph,
+std::variant<CallPlan, CallPlanFailure> BuildPhasedCallPlan(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
   return BuildCalls(graph, evaluation, budget, EvaluationFlow::kPhased);
 }
-std::variant<std::uint64_t, CallPlanError> VerifyPhasedCallPlan(const analysis::ValueProgram& graph,
+std::variant<std::uint64_t, CallPlanFailure> VerifyPhasedCallPlan(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget) {
   return VerifyCalls(graph, evaluation, plan, budget, EvaluationFlow::kPhased);
 }

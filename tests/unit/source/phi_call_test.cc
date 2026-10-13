@@ -98,10 +98,10 @@ void PhiReceiver(bool computed) {
   const auto wrong = Graph(computed, true);
   const auto wrong_evaluation = BuildEvaluationPlan(wrong);
   Check(std::holds_alternative<EvaluationPlan>(wrong_evaluation));
-  Check(std::get<CallPlanError>(BuildCallPlan(wrong, std::get<EvaluationPlan>(wrong_evaluation))) == CallPlanError::kReceiver);
+  Check(std::get<CallPlanFailure>(BuildCallPlan(wrong, std::get<EvaluationPlan>(wrong_evaluation))) == CallPlanError::kReceiver);
   auto invalid = graph;
   invalid.values[2].domain = ValueKinds::Hole();
-  Check(std::get<CallPlanError>(BuildCallPlan(invalid, evaluation)) == CallPlanError::kEvaluation);
+  Check(std::get<CallPlanFailure>(BuildCallPlan(invalid, evaluation)) == CallPlanError::kEvaluation);
 }
 }  // namespace
 

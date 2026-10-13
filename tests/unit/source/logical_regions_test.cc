@@ -962,7 +962,7 @@ int main(int argc, char** argv) {
       }
       const auto blocked = ForwardedSelection(1, true, profile);
       const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(blocked));
-      Check(std::get<CallPlanError>(BuildCallPlan(blocked, plan)) == CallPlanError::kReference);
+      Check(std::get<CallPlanFailure>(BuildCallPlan(blocked, plan)) == CallPlanError::kReference);
       const auto late = Source(ForwardedSelection(1, false, profile, nullptr, true));
       Check(late.find("if (") == std::string::npos && late.find("$phi") != std::string::npos);
       if (emit) std::cout << ',' << late;
@@ -992,10 +992,10 @@ int main(int argc, char** argv) {
       if (emit) std::cout << ',' << shared_source;
       const auto interrupted = MemberChain(1, profile, nullptr, false, true);
       const auto interrupted_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(interrupted));
-      Check(std::get<CallPlanError>(BuildCallPlan(interrupted, interrupted_plan)) == CallPlanError::kReference);
+      Check(std::get<CallPlanFailure>(BuildCallPlan(interrupted, interrupted_plan)) == CallPlanError::kReference);
       const auto mismatched = MemberChain(1, profile, nullptr, false, false, true);
       const auto mismatched_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(mismatched));
-      Check(std::get<CallPlanError>(BuildCallPlan(mismatched, mismatched_plan)) == CallPlanError::kReceiver);
+      Check(std::get<CallPlanFailure>(BuildCallPlan(mismatched, mismatched_plan)) == CallPlanError::kReceiver);
     }
     if (emit) { std::cout << "]\n"; return 0; }
   }
@@ -1022,7 +1022,7 @@ int main(int argc, char** argv) {
       }
       const auto interrupted = DecisionCall(1, true, profile);
       const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(interrupted));
-      Check(std::get<CallPlanError>(BuildCallPlan(interrupted, plan)) == CallPlanError::kReference);
+      Check(std::get<CallPlanFailure>(BuildCallPlan(interrupted, plan)) == CallPlanError::kReference);
     }
     if (emit) { std::cout << "]\n"; return 0; }
   }
@@ -1088,7 +1088,7 @@ int main(int argc, char** argv) {
   const auto interrupted = BufferedSelections(2, true);
   const auto interrupted_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(interrupted));
   Check(interrupted_plan.logical_objects.empty());
-  Check(std::get<CallPlanError>(BuildCallPlan(interrupted, interrupted_plan)) == CallPlanError::kReference);
+  Check(std::get<CallPlanFailure>(BuildCallPlan(interrupted, interrupted_plan)) == CallPlanError::kReference);
   const auto multiple_fields = BufferedSelections();
   const auto multiple_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(multiple_fields));
   for (const auto& object : multiple_plan.literals->objects) {
@@ -1108,7 +1108,7 @@ int main(int argc, char** argv) {
   const auto suffix_gap = BufferedSelections(2, false, true, 2, true);
   const auto suffix_gap_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(suffix_gap));
   Check(suffix_gap_plan.logical_objects.empty());
-  Check(std::get<CallPlanError>(BuildCallPlan(suffix_gap, suffix_gap_plan)) == CallPlanError::kReference);
+  Check(std::get<CallPlanFailure>(BuildCallPlan(suffix_gap, suffix_gap_plan)) == CallPlanError::kReference);
   const auto suffix_graph = BufferedSelections(2, false, true, 2);
   const auto suffix_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(suffix_graph));
   for (const auto& object : suffix_plan.literals->objects) for (unsigned i = 0; i < object.count; ++i) {
@@ -1141,7 +1141,7 @@ int main(int argc, char** argv) {
   const auto getter_gap = GetterSelections(2, true);
   const auto getter_gap_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(getter_gap));
   for (const auto& operation : getter_gap_plan.operations) Check(operation.kind != EvaluationKind::kPredicateSnapshot);
-  Check(std::get<CallPlanError>(BuildCallPlan(getter_gap, getter_gap_plan)) == CallPlanError::kReference);
+  Check(std::get<CallPlanFailure>(BuildCallPlan(getter_gap, getter_gap_plan)) == CallPlanError::kReference);
   bool forged_gap = false;
   for (std::size_t i = 0; i < getter_gap.ops.size() && !forged_gap; ++i) {
     if (getter_gap_plan.operations[i].temporary != TemporaryReason::kMultipleUses ||
@@ -1174,12 +1174,12 @@ int main(int argc, char** argv) {
                             BufferedBarrier::kBeforeCall}) {
     const auto blocked = BufferedOptionalAccess(true, true, barrier);
     const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(blocked));
-    Check(std::get<CallPlanError>(BuildCallPlan(blocked, plan)) == CallPlanError::kReference);
+    Check(std::get<CallPlanFailure>(BuildCallPlan(blocked, plan)) == CallPlanError::kReference);
   }
   const auto shared_object = BufferedOptionalAccess(true, true, BufferedBarrier::kNone, true);
   const auto shared_plan = std::get<EvaluationPlan>(BuildEvaluationPlan(shared_object));
   Check(shared_plan.logical_objects.empty());
-  Check(std::get<CallPlanError>(BuildCallPlan(shared_object, shared_plan)) == CallPlanError::kReference);
+  Check(std::get<CallPlanFailure>(BuildCallPlan(shared_object, shared_plan)) == CallPlanError::kReference);
   Check(!buffered_evaluation.logical_objects.empty());
   for (std::size_t i = 0; i < buffered_evaluation.logical_objects.size(); ++i) {
     if (!buffered_evaluation.logical_objects[i]) continue;
@@ -1220,7 +1220,7 @@ int main(int argc, char** argv) {
       Check(Source(graph, true, &*input, false).find(" ? ") != std::string::npos);
       const auto blocked = ConditionalLiteralCall(getter, true, 1, profile);
       auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(blocked));
-      Check(std::get<CallPlanError>(BuildCallPlan(blocked, plan)) == CallPlanError::kReference);
+      Check(std::get<CallPlanFailure>(BuildCallPlan(blocked, plan)) == CallPlanError::kReference);
       for (std::size_t i = 0; i < blocked.ops.size(); ++i) {
         if (!std::holds_alternative<analysis::ValueObjectAllocation>(blocked.ops[i].operation)) continue;
         auto forged = plan;

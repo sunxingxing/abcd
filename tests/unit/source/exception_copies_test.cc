@@ -178,7 +178,7 @@ void Staging(std::uint32_t count) {
   test::Check(std::holds_alternative<CallPlan>(called));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedCallPlan(
       graph, evaluation, std::get<CallPlan>(called))));
-  test::Check(std::get<CallPlanError>(VerifyCallPlan(graph, evaluation, std::get<CallPlan>(called))) ==
+  test::Check(std::get<CallPlanFailure>(VerifyCallPlan(graph, evaluation, std::get<CallPlan>(called))) ==
       CallPlanError::kEvaluation);
   const std::vector<ExpressionConstant> constants{NameId{0}, std::monostate{}, std::monostate{}};
   const auto expressed = BuildPhasedExpressionForest(graph, evaluation, 1, {0}, {constants, 1});

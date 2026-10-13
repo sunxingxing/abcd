@@ -192,7 +192,7 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
   const auto calls = BuildPhasedCallPlan(graph, evaluation);
   test::Check(std::holds_alternative<CallPlan>(calls) == accepted);
   if (corridor == Corridor::kWrongReceiver)
-    test::Check(std::get<CallPlanError>(calls) == CallPlanError::kReceiver);
+    test::Check(std::get<CallPlanFailure>(calls) == CallPlanError::kReceiver);
   const auto checked = std::get<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(
       graph, evaluation, {SemanticBudget{}.bytes, checked})));

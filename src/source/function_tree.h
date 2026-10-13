@@ -25,7 +25,9 @@ struct FunctionTreeFailure {
   FunctionTreeError kind;
   std::variant<std::monostate, ExpressionFailure> cause;
   FunctionTreeFailure(FunctionTreeError value) : kind(value) {}  // NOLINT: implicit kind.
-  FunctionTreeFailure(FunctionTreeError value, ExpressionFailure expression) : kind(value), cause(expression) {}
+  std::optional<abc::EntityOffset> method;
+  FunctionTreeFailure(FunctionTreeError value, ExpressionFailure expression,
+      std::optional<abc::EntityOffset> target = {}) : kind(value), cause(expression), method(target) {}
   bool operator==(FunctionTreeError value) const { return kind == value; }
 };
 // Builds syntax checked against IR/control/evaluation and resolved constants.

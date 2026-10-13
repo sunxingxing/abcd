@@ -10,6 +10,14 @@ nlohmann::json DescribeCauses(const source::FailureCauseChain& chain) {
     causes.push_back({{"domain", cause.domain}, {"value", cause.value}});
   return causes;
 }
+nlohmann::json DescribeReference(const source::CallReferenceEvidence& evidence) {
+  nlohmann::json reference = {{"kind", static_cast<unsigned>(evidence.kind)}, {"call", evidence.call.value}};
+  if (evidence.property) reference["property"] = evidence.property->value;
+  if (evidence.placement) reference["placement"] = static_cast<unsigned>(*evidence.placement);
+  if (evidence.temporary) reference["temporary"] = static_cast<unsigned>(*evidence.temporary);
+  if (evidence.consumer) reference["consumer"] = evidence.consumer->value;
+  return reference;
+}
 }  // namespace
 
 void DescribeRecordFailure(const source::RecordSourceResult& result,
@@ -26,11 +34,17 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.failure.working_pc) record["source_failure"]["working_pc"] = failure.failure.working_pc->value;
       if (failure.failure.creation_method) record["source_failure"]["creation_method"] = failure.failure.creation_method->value;
       if (failure.failure.creation_pc) record["source_failure"]["creation_pc"] = failure.failure.creation_pc->value;
+      if (failure.failure.call_reference) {
+        record["source_failure"]["call_reference"] = DescribeReference(*failure.failure.call_reference);
+      }
       record["source_failure"]["causes"] = DescribeCauses(failure.failure.causes);
       record["source_failure"]["causes_truncated"] = failure.failure.causes.truncated;
     } else if constexpr (std::is_same_v<T, source::RecordProgramFailure>) {
       record["source_failure_domain"] = "record_program";
       record["source_error"] = static_cast<unsigned>(failure.kind);
+      if (failure.call_reference) record["source_call_reference"] = DescribeReference(*failure.call_reference);
+      if (failure.method) record["source_method"] = failure.method->value;
+      if (failure.working_pc) record["source_working_pc"] = failure.working_pc->value;
       record["source_pc"] = failure.pc.value;
       record["source_causes"] = DescribeCauses(failure.causes);
       record["source_causes_truncated"] = failure.causes.truncated;

@@ -42,6 +42,17 @@ void Failures() {
   projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{imported},
       abc::EntityOffset{91}, abc::EntityOffset{13}, abc::CodeOffset{7}}});
   Check(projected.failure_class == RouteFailureClass::kWorkLimit && !projected.pc && !projected.working_pc);
+  CallPlanFailure call{CallPlanError::kReference};
+  call.cause = CallReferenceError::kNotInline;
+  call.reference = CallReferenceEvidence{CallReferenceError::kNotInline, {17}, analysis::OpId{4},
+      EvaluationKind::kRoot, TemporaryReason::kEffectSnapshot, {}};
+  call.pc = abc::CodeOffset{73}; call.working_pc = abc::CodeOffset{31};
+  projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyTreeFailure{{2},
+      FunctionTreeFailure{FunctionTreeError::kExpression,
+          ExpressionFailure{ExpressionError::kUnsupportedOperation, call}, abc::EntityOffset{91}}}});
+  Check(projected.call_reference == call.reference && projected.pc == call.pc &&
+      projected.working_pc == call.working_pc && projected.method == abc::EntityOffset{91});
+  Check(projected.causes.View().back().domain == FailureDomain<TemporaryReason>());
   analysis::FunctionSiteFailure sites{abc::BodyFailure{abc::BodyError::kBranchBoundary, {19}}, {}, abc::CodeOffset{7}};
   projected = FamilyRouteFailure(sites);
   Check(projected.failure_class == RouteFailureClass::kInvalidInput && projected.pc == abc::CodeOffset{19});

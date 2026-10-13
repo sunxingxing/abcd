@@ -1,4 +1,5 @@
 #include "module_evaluation.h"
+#include "assignment_values.h"
 #include "phase_evaluation.h"
 #include "evaluation_aliases.h"
 #include "tree_checks.h"
@@ -19,11 +20,9 @@ std::vector<EvaluationUses> IndexEvaluationUses(const analysis::ValueProgram& gr
   for (std::size_t i=0;i<graph.uses.size();++i) {
     budget.Step(); const auto& use = graph.uses[i];
     if (use.life != ValueLife::kLive || IsIdentityPhiInput(plan,use)) continue;
-    const auto operand = ResolveEvaluationOperand(plan,use.operand);
-    const auto* value = std::get_if<ValueId>(&operand);
-    const auto* producer = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+    const auto producer = EvaluationProducer(graph, plan, UseId{static_cast<std::uint32_t>(i)});
     if (!producer) continue;
-    const auto id = producer->op;
+    const auto id = *producer;
     if (const auto* owner = std::get_if<OpId>(&use.owner)) {
       if (IsArrayInitialization(plan, *owner) && use.role != OperandRole::kSource && use.role != OperandRole::kStoredValue) continue;
       if (plan.operations[owner->value].kind == EvaluationKind::kAlias ||

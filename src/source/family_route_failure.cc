@@ -63,6 +63,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       if constexpr (requires { std::optional<abc::CodeOffset>{error.pc}; }) result.pc = error.pc;
       else if constexpr (requires { std::optional<abc::CodeOffset>{error.offset}; }) result.pc = error.offset;
     }
+    if constexpr (std::is_same_v<T, CallPlanFailure>) result.call_reference = error.reference;
     if constexpr (requires { error.working_pc; }) result.working_pc = error.working_pc;
     if constexpr (requires { error.method; }) if (!result.method) result.method = error.method;
     if constexpr (requires { error.creation_pc; error.parent; }) {
@@ -78,6 +79,7 @@ template<class T> RouteFailure ProjectWithCauses(const T& error, ValueRouteError
   return result;
 }
 }  // namespace
+RouteFailure FamilyRouteFailure(const FunctionTreeFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
 RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
 RouteFailure FamilyRouteFailure(const FamilyEmitFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kPrintStage); }
 RouteFailure FamilyRouteFailure(const analysis::FunctionSiteFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kContextStage); }

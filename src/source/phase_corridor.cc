@@ -1,4 +1,5 @@
 #include "phase_corridor.h"
+#include "assignment_values.h"
 #include "evaluation_liveness.h"
 #include "evaluation_aliases.h"
 
@@ -178,6 +179,7 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
           (std::holds_alternative<ValueOwnWrite>(graph.ops[owner->value].operation) ||
            std::holds_alternative<ValueIndexedWrite>(graph.ops[owner->value].operation))) continue;
     }
+    if (AssignmentProducer(plan, {static_cast<std::uint32_t>(i)})) continue;
     const auto operand = ResolveEvaluationOperand(plan, use.operand);
     const auto* value = std::get_if<ValueId>(&operand);
     if (!value) continue;
@@ -269,11 +271,15 @@ std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, 
       child.exceptional == ExceptionalCompletion::kImpossible && child.result &&
       graph_.values[child.result->value].domain.IsLanguage();
   const bool closed = pure && child.use_count == 0 && shape->Count() == 0;
+  const bool assignment = AssignmentProducer(plan_, use) == producer && shape && shape->assignment_result &&
+      producer.value < plan_.assignment_consumers.size() && plan_.assignment_consumers[producer.value] == use;
   if (producer.value >= consumer.value || child.life != ValueLife::kLive ||
-      !child.result || (!Expression(child.operation) && !closed) ||
+      (!child.result && !assignment) || (!Expression(child.operation) && !closed && !assignment) ||
       (!Expression(parent.operation) && !ConsumesOperands(parent.operation))) return std::nullopt;
-  const auto& uses = uses_[child.result->value];
-  if (uses.multiple || uses.first != use) return std::nullopt;
+  if (!assignment) {
+    const auto& uses = uses_[child.result->value];
+    if (uses.multiple || uses.first != use) return std::nullopt;
+  }
   // A pure language expression with only literal inputs has no binding state,
   // receiver identity or catch timing to preserve across a CFG split. Original
   // SSA availability still applies. Use shared evaluation semantics, never an

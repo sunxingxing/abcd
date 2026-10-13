@@ -1,6 +1,8 @@
 #ifndef ABCD_SOURCE_SOURCE_TREE_H_
 #define ABCD_SOURCE_SOURCE_TREE_H_
 
+#include "abcd/source/evaluation_kind.h"
+
 #include <string>
 #include <algorithm>
 #include <memory>
@@ -56,12 +58,6 @@ enum class SelfForm : std::uint8_t { kNamedFunction, kCreationBinding };
 enum class InvocationForm : std::uint8_t { kDeclared, kArrowMethod };
 enum class NameEvidence : std::uint8_t { kMetadata, kDebugRange, kSynthesized };
 enum class DeclarationKind : std::uint8_t { kParameter, kLet, kConst, kCatchParameter };
-enum class TemporaryReason : std::uint8_t {
-  kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
-  kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot,
-  kExceptionSnapshot, kPendingCompletion, kInternalSentinel, kNumericUpdate,
-  kDecisionPredicate
-};
 struct TreeScope {
   ScopeKind kind;
   std::optional<ScopeId> parent;

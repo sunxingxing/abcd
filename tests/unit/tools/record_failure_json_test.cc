@@ -30,6 +30,8 @@ int main() {
   chained.working_pc = abc::CodeOffset{31};
   chained.creation_method = abc::EntityOffset{13};
   chained.creation_pc = abc::CodeOffset{7};
+  chained.call_reference = source::CallReferenceEvidence{source::CallReferenceError::kNotInline,
+      {17}, analysis::OpId{4}, source::EvaluationKind::kRoot, source::TemporaryReason::kEffectSnapshot, {}};
   nlohmann::json with_causes;
   tools::DescribeRecordFailure(source::RouteRefusal{chained}, with_causes);
   const auto& causes = with_causes["source_failure"]["causes"];
@@ -42,6 +44,12 @@ int main() {
       with_causes["source_failure"]["working_pc"] == 31 &&
       with_causes["source_failure"]["creation_method"] == 13 &&
       with_causes["source_failure"]["creation_pc"] == 7);
+  Check(with_causes["source_failure"]["call_reference"]["kind"] == 1 &&
+      with_causes["source_failure"]["call_reference"]["call"] == 17 &&
+      with_causes["source_failure"]["call_reference"]["property"] == 4 &&
+      with_causes["source_failure"]["call_reference"]["placement"] == 1 &&
+      with_causes["source_failure"]["call_reference"]["temporary"] == 1 &&
+      !with_causes["source_failure"]["call_reference"].contains("consumer"));
   source::RouteFailure full{source::RouteFailureClass::kUnproved, source::ValueRouteError::kTreeStage, {}};
   for (std::size_t i = 0; i <= source::kMaxFailureCauses; ++i)
     source::AppendFailureCause(full.causes, source::ValueRouteError::kTreeStage);
@@ -58,6 +66,13 @@ int main() {
   Check(budget["source_error"] == static_cast<unsigned>(source::RecordProgramError::kResourceLimit));
   Check(budget["source_pc"] == 7 && !budget.contains("source_failure"));
   Check(budget["source_causes"].empty() && budget["source_causes_truncated"] == false);
+  source::RecordProgramFailure located{source::RecordProgramError::kValue, {73}};
+  located.method=abc::EntityOffset{91}; located.working_pc=abc::CodeOffset{31};
+  located.call_reference=chained.call_reference;
+  nlohmann::json record_reference;
+  tools::DescribeRecordFailure(located, record_reference);
+  Check(record_reference["source_method"]==91 && record_reference["source_working_pc"]==31 &&
+      record_reference["source_call_reference"]==with_causes["source_failure"]["call_reference"]);
   // Printed source is not a failure and adds no failure fields.
   nlohmann::json printed = nlohmann::json::object();
   tools::DescribeRecordFailure(source::PrintedSource{}, printed);

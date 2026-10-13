@@ -217,20 +217,20 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
   const auto evaluation = std::get<EvaluationPlan>(scheduled);
   const auto planned = phased ? BuildPhasedCallPlan(graph, evaluation) : BuildCallPlan(graph, evaluation);
   if (form == Form::kShared || form == Form::kParameter || form == Form::kObject) {
-    test::Check(std::get<CallPlanError>(planned) == CallPlanError::kArrayArguments); return;
+    test::Check(std::get<CallPlanFailure>(planned) == CallPlanError::kArrayArguments); return;
   }
   if (form == Form::kUnknownConstructor) {
-    test::Check(std::get<CallPlanError>(planned) == CallPlanError::kConstructorIdentity); return;
+    test::Check(std::get<CallPlanFailure>(planned) == CallPlanError::kConstructorIdentity); return;
   }
   test::Check(std::holds_alternative<CallPlan>(planned));
   const auto& plan = std::get<CallPlan>(planned);
   if (count <= 2) {
     auto wrong = plan; std::get<ConstructCall>(wrong.operations[calls.front().value]).array.reset();
     const auto checked = phased ? VerifyPhasedCallPlan(graph, evaluation, wrong) : VerifyCallPlan(graph, evaluation, wrong);
-    test::Check(std::holds_alternative<CallPlanError>(checked));
+    test::Check(std::holds_alternative<CallPlanFailure>(checked));
     wrong = plan; std::get<ConstructCall>(wrong.operations[calls.front().value]).constructor.reset();
     const auto missing_constructor = phased ? VerifyPhasedCallPlan(graph, evaluation, wrong) : VerifyCallPlan(graph, evaluation, wrong);
-    test::Check(std::get<CallPlanError>(missing_constructor) == CallPlanError::kConstructorIdentity);
+    test::Check(std::get<CallPlanFailure>(missing_constructor) == CallPlanError::kConstructorIdentity);
   }
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {256};
   // This synthetic caller encloses an independently prepared constructor.

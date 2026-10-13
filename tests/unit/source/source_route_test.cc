@@ -77,7 +77,8 @@ bool SameReceipt(const MethodRouteReceipt& left,
            left.failure->pc == right.failure->pc && left.failure->method == right.failure->method &&
            left.failure->working_pc == right.failure->working_pc &&
            left.failure->creation_method == right.failure->creation_method &&
-           left.failure->creation_pc == right.failure->creation_pc));
+           left.failure->creation_pc == right.failure->creation_pc &&
+           left.failure->call_reference == right.failure->call_reference));
 }
 }  // namespace
 
@@ -189,6 +190,8 @@ int main() {
   caused.failure->working_pc = abc::CodeOffset{31};
   caused.failure->creation_method = abc::EntityOffset{13};
   caused.failure->creation_pc = abc::CodeOffset{7};
+  caused.failure->call_reference = CallReferenceEvidence{CallReferenceError::kNotInline,
+      {17}, abcd::analysis::OpId{4}, EvaluationKind::kRoot, TemporaryReason::kCrossRegionValue, {}};
   AppendFailureCause(caused.failure->causes, RouteFailureClass::kUnproved);
   AppendFailureCause(caused.failure->causes, ValueRouteError::kTreeStage);
   auto deep = RefusedReceipt();

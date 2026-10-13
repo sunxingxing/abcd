@@ -1,3 +1,4 @@
+#include "assignment_values.h"
 #include "implicit_constructor.h"
 #include "derived_projection.h"
 #include "derived_value_states.h"
@@ -950,6 +951,12 @@ class OperandCheck {
   }
   void Input(const analysis::ValueOperand& operand, ExprId expression, std::optional<analysis::UseId> occurrence = {}) {
     budget_.Step();
+    if (occurrence) if (const auto assignment = AssignmentProducer(evaluation_, *occurrence)) {
+      RequireMeaning(!edge_input_ && flow_.expressions[assignment->value] == expression, Error::kOperand);
+      // The store's own operand check independently verifies this expression's
+      // reference and RHS; fresh evaluation proof ties RHS to this SSA use.
+      return;
+    }
     const auto resolved=ResolveEvaluationOperand(evaluation_,operand);
     std::visit([&](const auto& value) {
       using T = std::decay_t<decltype(value)>;

@@ -70,8 +70,16 @@ try {
     const {record} = exportRecord(name);
     assert.equal(record.source_status, 3, name);
     const causes = record.source_failure?.causes ?? record.source_causes;
-    assert.deepEqual(causes.map(cause => cause.domain.split('::').at(-1) + '=' + cause.value),
+    assert.deepEqual(causes.slice(0,3).map(cause => cause.domain.split('::').at(-1) + '=' + cause.value),
         ['FunctionTreeError=1', 'ExpressionError=4', 'CallPlanError=4'], name);
+    assert.deepEqual(causes.slice(3).map(cause=>cause.domain.split('::').at(-1)),
+      ['CallReferenceError','EvaluationKind','TemporaryReason'],name);
+    const evidence=record.source_failure?.call_reference ?? record.source_call_reference;
+    assert.equal(evidence.kind,1,name);
+    assert.equal(causes[3].value,evidence.kind);
+    assert.equal(causes[4].value,evidence.placement);
+    assert.equal(causes[5].value,evidence.temporary);
+    assert.ok(Number.isInteger(evidence.call) && Number.isInteger(evidence.property));
   }
 } finally {
   rmSync(directory, {recursive: true, force: true});

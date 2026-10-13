@@ -51,9 +51,12 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>) {
       EvaluationShape shape{kPropertyWrite, false};
       shape.reference = ReferenceBoundary::kBeforeStoredValue;
+      shape.assignment_result = Role::kStoredValue;
       return shape;
     }
-    else if constexpr (std::is_same_v<T, analysis::ValueNamedWrite>) return EvaluationShape{kNamedWrite, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueNamedWrite>) {
+      EvaluationShape shape{kNamedWrite, false}; shape.assignment_result = Role::kStoredValue; return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>)
       return EvaluationShape{kNamedWrite, false};
     else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {

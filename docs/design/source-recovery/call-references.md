@@ -317,3 +317,74 @@ reread 变异检测），以及 `phconcat` 拒绝类。
 
 **后续。** 按共识拆分选择验证器；支持嵌套选择、literal、模块与对象操作数；补充等价变体，
 以及深度与数量为 200、201 的规模检查。
+
+## 6. Round 37：赋值表达式作为调用实参（2026-10-13）
+
+基线 `c7e4fc1f`。原始 Value IR 的 `ValueNamedWrite` / `ValuePropertyWrite`
+没有结果，不能直接把其后调用的 RHS 用法当作写入结果，也不能跳过该写入。
+本增量新增独立的 assignment occurrence 证据，不改原始操作、SSA 定义或抛出效果。
+
+### 6.1 定位证据
+
+`CallPlanFailure` 包装 `CallPlanError`，将 `kReference` 细分为
+`CallReferenceError::kNotPropertyResult` 和 `kNotInline`。证据保留 call/property
+OpId、callee 的最终 placement、temporary reason 和 consumer，以及失败方法与原始/工作 PC。
+它沿 Expression/FunctionTree/Family 封装进入回执；record 入口失败同样保留证据。
+manifest 的 route refusal 使用 `source_failure.call_reference`，record-program 失败
+使用 `source_call_reference` / `source_method` / `source_working_pc`，原 `source_pc`
+为叶子原始 PC。资源类错误的分类不变。
+
+第 1 步的单文件导出（仅 o13/o36）确认全部是 `kNotInline`，不是非属性 callee：
+
+| record | 方法 | call / property OpId | 原始 / 工作 PC | placement / temporary |
+|---|---:|---:|---:|---|
+| o13 MultitonAbility 5312 | 5545 | 43 / 33 | 113 / 113 | Root / EffectSnapshot |
+| o13 SingletonAbility 15218 | 15453 | 30 / 20 | 75 / 75 | Root / EffectSnapshot |
+| o13 SpecifiedAbility 16255 | 16490 | 44 / 34 | 118 / 118 | Root / EffectSnapshot |
+| o13 SpecifiedFirstAbility 17005 | 17245 | 44 / 34 | 118 / 118 | Root / EffectSnapshot |
+| o13 SpecifiedSecondAbility 17762 | 18003 | 44 / 34 | 118 / 118 | Root / EffectSnapshot |
+| o36 ModeComponent 36985 | 37638 | 137 / 123 | 378 / 352 | Root / CrossRegionValue |
+
+五个 Ability 都是 definefunc 的同一 SSA 值先被 `[[Set]]` 写入、随后作为参数使用；
+ModeComponent 是属性读取、递增、写入后的同一值作为参数。该结论来自原始指令及
+类型化导出证据，不以应用名或 PC 作为生产准入。
+
+### 6.2 证明、发射与边界
+
+- `EvaluationShape::assignment_result` 只说明成功写入后可返回 stored-value；
+  原始 store 的 `result` 仍为空、`expression` 仍为 false。
+- `assignment_values` 以 alias-resolved SSA identity 建一次 use census，要求该值
+  有且只有一次 stored-value 观察和一次调用 argument 观察。常量已折叠为 immediate operand、没有可索引的 SSA ValueId 的情况暂不提议该投影。额外观察暂需保留快照，
+  不复制表达式。证据将这个 argument occurrence 指向原始 store，而不是改写 SSA。
+- normal 和 phased 共享该依赖边：逆序效果后缀消费及正序独立验证同时纳入
+  target/key、RHS、`[[Set]]`、参数结果。成员 receiver 规则、未知 computed key 的
+  RHS 快照、环境屏障、异常副本与最终执行根的 SameCatch 均保留。
+- 发射复用现有 AssignmentExpr；tree_operands 要求参数精确引用原 store 的表达式，
+  再分别核验 store 的 target/key/RHS。不增加打印期语义恢复，也不伪造 acc 提交。
+- 可选投影不成立时至多退回原计划一次。两个尝试预留互不重叠的工作额度，失败尝试
+  的整个额度计费，存储只在失败计划释放后复用。成功尝试按双倍实际工作计入预留；
+  这是保守资源策略，不是对失败工作量的测量。所有新索引预先计费；扫描/索引均线性，
+  总复杂度仍受原有 CFG/支配分析约束。
+- 已支持跨 fallthrough phase 的写入/调用及 copy 变体；现有 PhaseCorridors 不连接
+  taken jump，新增测试保留这一拒绝边界。本轮没有扩展此既有走廊限制。
+- computed key 若可能运行用户代码，现有 reference-before-RHS 检查仍要求 RHS 快照；
+  不以“都是赋值”放宽转换顺序。未知 catch staging 同样继续拒绝。
+
+### 6.3 结果与测试边界
+
+o13 五个 record 都已 complete，均通过 Node 语法检查。ModeComponent 的赋值结果
+投影已成功，但 Op127 的目标读取被属性读取和写入共同使用，仍需快照；它作为独立事件
+留在 callee 与参数之间。callee 区间 end=41，调用消费参数后 expected=42，因此仍以
+上述 `kNotInline` 拒绝。这需要后续共享引用/快照组合证明，不能在此跳过事件。
+
+`assignment_values_test` 覆盖生成、删除/替换证据、伪造 placement、替换 RHS identity、
+外部事件屏障、多实参写入顺序反例、phased catch 快照、copy、taken-jump 边界，以及 200/201/400/800 工作量
+和精确 work/byte 预算边界。`assignment_arguments_cli_test` 使用四个 es2abc fixture，
+逐次确认 `STOBJBYNAME`/`STOBJBYVALUE`，然后在两种 flags 下比较 Node 源码 oracle：
+setter、RHS、只读属性、callee 与 key 抛出，receiver、多个赋值实参、callee 改写与
+计算 key 的顺序；另保留行内 computed key + literal RHS 的类型化拒绝测试。替换 RHS 和解绑 receiver 的变异都必须被检出。
+编译命令、编译器和 SHA256 见 fixtures/assignment_arguments/README.md。
+
+本轮验证：keep-going 全目标构建成功；固定集 `ctest --preset source-regression -j 1`
+65/65；call/member/assignment/property 加求值/phase/回执定向组 42/42。
+未运行探索集、留出集、全套测试或 RSS 基准。

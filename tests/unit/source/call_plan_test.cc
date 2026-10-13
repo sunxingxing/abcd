@@ -1,11 +1,13 @@
 #include "../../../src/source/call_plan.h"
 
 #include <cstdlib>
+#include <cstdio>
+#include <source_location>
 
 namespace {
 using namespace abcd::analysis;
 using namespace abcd::source;
-void Check(bool value) { if (!value) std::abort(); }
+void Check(bool value, std::source_location where = std::source_location::current()) { if (!value) { std::fprintf(stderr, "call_plan_test:%u\n", where.line()); std::abort(); } }
 
 class Fixture {
  public:
@@ -21,6 +23,7 @@ class Fixture {
       value = ValueId{static_cast<std::uint32_t>(graph.values.size())};
       graph.values.push_back({OpResult{id}, ValueKinds::Language(), {}});
     }
+    graph.origins.push_back({{id.value}, {10 + id.value}, abcd::abc::CodeOffset{100 + id.value}});
     graph.ops.push_back({operation, {0}, id.value,
         {static_cast<std::uint32_t>(graph.uses.size())}, static_cast<std::uint32_t>(inputs.size()),
         value, LanguageEffect::kUserCode, LanguageEffect::kUserCode,
@@ -59,8 +62,16 @@ void Member(bool wrong_receiver, bool shared_callee) {
   const auto evaluation = fixture.Evaluation();
   auto result = BuildCallPlan(fixture.graph, evaluation);
   if (wrong_receiver || shared_callee) {
-    Check(std::get<CallPlanError>(result) ==
-        (shared_callee ? CallPlanError::kReference : CallPlanError::kReceiver));
+    const auto& failure = std::get<CallPlanFailure>(result);
+    Check(failure == (shared_callee ? CallPlanError::kReference : CallPlanError::kReceiver));
+    if (shared_callee) {
+      Check(failure.pc == abcd::abc::CodeOffset{101} && failure.working_pc == abcd::abc::CodeOffset{11});
+      Check(failure.reference && failure.reference->call == call && failure.reference->property == OpId{0});
+      Check(failure.reference->kind == CallReferenceError::kNotInline &&
+          failure.reference->placement == evaluation.operations[0].kind &&
+          failure.reference->temporary == evaluation.operations[0].temporary &&
+          failure.reference->consumer == evaluation.operations[0].consumer);
+    }
     return;
   }
   auto plan = std::get<CallPlan>(std::move(result));
@@ -68,23 +79,33 @@ void Member(bool wrong_receiver, bool shared_callee) {
   Check(std::holds_alternative<std::uint64_t>(VerifyCallPlan(fixture.graph, evaluation, plan)));
   auto forged = plan;
   std::get<MemberCall>(forged.operations[call.value]).property = call;
-  Check(std::get<CallPlanError>(VerifyCallPlan(fixture.graph, evaluation, forged)) == CallPlanError::kReference);
+  Check(std::get<CallPlanFailure>(VerifyCallPlan(fixture.graph, evaluation, forged)) == CallPlanError::kReference);
   forged = plan;
   ++std::get<MemberCall>(forged.operations[call.value]).receiver.value;
-  Check(std::get<CallPlanError>(VerifyCallPlan(fixture.graph, evaluation, forged)) == CallPlanError::kBinding);
+  Check(std::get<CallPlanFailure>(VerifyCallPlan(fixture.graph, evaluation, forged)) == CallPlanError::kBinding);
   forged = plan;
   ++forged.revision.value;
-  Check(std::get<CallPlanError>(VerifyCallPlan(fixture.graph, evaluation, forged)) == CallPlanError::kRevision);
+  Check(std::get<CallPlanFailure>(VerifyCallPlan(fixture.graph, evaluation, forged)) == CallPlanError::kRevision);
   SemanticBudget budget;
   budget.work = plan.work;
   Check(std::holds_alternative<CallPlan>(BuildCallPlan(fixture.graph, evaluation, budget)));
   --budget.work;
-  Check(std::get<CallPlanError>(BuildCallPlan(fixture.graph, evaluation, budget)) == CallPlanError::kWorkLimit);
+  Check(std::get<CallPlanFailure>(BuildCallPlan(fixture.graph, evaluation, budget)) == CallPlanError::kWorkLimit);
   budget = {};
   budget.bytes = 0;
-  Check(std::get<CallPlanError>(BuildCallPlan(fixture.graph, evaluation, budget)) == CallPlanError::kResourceLimit);
+  Check(std::get<CallPlanFailure>(BuildCallPlan(fixture.graph, evaluation, budget)) == CallPlanError::kResourceLimit);
 }
 
+void NonProperty() {
+  Fixture fixture;
+  const auto call = fixture.Add(ValueInvoke{InvokeReceiver::kExplicit, 0}, true,
+      {{OperandRole::kCallee, ValueId{0}}, {OperandRole::kReceiver, ValueId{1}}});
+  const auto evaluation = fixture.Evaluation();
+  const auto failure = std::get<CallPlanFailure>(BuildCallPlan(fixture.graph, evaluation));
+  Check(failure.kind == CallPlanError::kReference && failure.reference &&
+      failure.reference->kind == CallReferenceError::kNotPropertyResult &&
+      failure.reference->call == call && !failure.reference->property && !failure.reference->placement);
+}
 void ValueAndConstruction() {
   Fixture fixture;
   fixture.Add(ValueNamedRead{{0}}, true, {{OperandRole::kBase, ValueId{0}}});
@@ -99,7 +120,7 @@ void ValueAndConstruction() {
   Check(std::get<ValueCall>(plan.operations[call.value]).eval == EvalMode::kIndirect);
   Check(std::holds_alternative<ConstructCall>(plan.operations[construct.value]));
   plan.operations[call.value] = ConstructCall{};
-  Check(std::get<CallPlanError>(VerifyCallPlan(fixture.graph, evaluation, plan)) == CallPlanError::kBinding);
+  Check(std::get<CallPlanFailure>(VerifyCallPlan(fixture.graph, evaluation, plan)) == CallPlanError::kBinding);
 }
 }  // namespace
 
@@ -108,4 +129,5 @@ int main() {
   Member(true, false);
   Member(false, true);
   ValueAndConstruction();
+  NonProperty();
 }

@@ -12,6 +12,30 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 37：调用实参中的赋值表达式（待 cc 审查，未提交）
+
+- 基于 `c7e4fc1f`。`CallPlanFailure` 区分非属性 callee 与属性未内联，保留 call/property
+  OpId、placement/temporary、失败方法及原始/工作 PC；route 和 record-program 两种
+  失败出口均带诊断，资源分类不变。
+- 新增独立 assignment occurrence 证据，以同一 SSA 值的一次 store / 一次 argument
+  观察证明成功写入后的值身份；原 IR 的 store 无结果语义不变。normal/phased 的
+  效果顺序、reference/key/RHS、catch 和独立树验证贯通，打印复用 AssignmentExpr。
+  设计、逐 record 诊断和边界见 [call-references.md §6](call-references.md#6-round-37赋值表达式作为调用实参2026-10-13)。
+- o13 的 MultitonAbility、SingletonAbility、SpecifiedAbility、SpecifiedFirstAbility、
+  SpecifiedSecondAbility 均 complete，Node 语法检查通过。o36 ModeComponent 的赋值
+  投影成立，但共享目标读取仍需快照，callee 区间不能接续；仍以 `kNotInline` 拒绝。
+  仅单独导出所需 ABC；没有运行探索集或留出集。
+- 构建 `cmake --build build/regression -j 6 -- -k` 成功；固定集串行 **65/65**；
+  call/member/assignment/property 加求值、phase 与诊断定向组串行 **42/42**。
+  新 IR 测试覆盖伪造值身份/placement/顺序、catch 快照、copy、规模及预算边界；
+  四个完整 fixture 在两种 flags 下与 Node 源码 oracle 的轨迹一致，另有 computed
+  行内 key + literal RHS 的保守拒绝 fixture。命令及 SHA256 见 fixture README。
+- 剩余边界：额外 RHS 观察、immediate operand、computed key 的不明转换顺序、
+  需要新 catch staging 的移动均不放宽；现有 taken-jump 走廊限制也未扩展。
+  可选投影失败至多退回一次；分割的工作额度保守计费，cc 应审查其预算影响。
+- 下方 30 个既有失败的期望未更改；涉及旧 CallPlanError variant 的测试仅机械迁移
+  为 CallPlanFailure 访问。全套测试和 RSS 基准继续暂停。
+
 ## Round 36：phased 可达性投影（待 cc 审查，未提交）
 
 - 基于 `03b1681b`，从不可变 ExceptionFlow 的 normal/exception 后继证明可达性；
@@ -152,6 +176,7 @@
 | 数组展开：私有数组构造证明与 `[...x]` 投影（2026-10-13） | Codex 第三十三轮，cc 审查。新增 `array_initialization.{h,cc}`：用公共 SSA identity、支配可用性和全路径效果顺序，证明目标是私有数组，以及 cursor（直接得到，或由 length 重建）、混排元素的 `stownbyvalue`、执行次数和顺序。新增 `ArrayExpr` / `ArrayElement`；spread 是独立的有序可抛出 action；无 spread 的数组保持原表示。新增 `array_initialization_test`、`array_phase_test`、`array_spread.mjs`（Node 源语言差分，已登记批准的差异）。cc 审查结论：两种 flags 下探索集都没有回退，也没有文本变化（467 / 492）；Immersive 与 MultiCommunity 输出逐字节相同；固定集 65/65（一次负载下的偶发失败经重跑通过）。语料暂无新增完成：真实的 spread record 都在 allocation 之后才求值 RHS 子树，第一增量对此以 `kOrder` 保守拒绝，下一轮实现组合。7 个既有 literal 测试失败的情况不变 |
 | 数组构造：allocation 之后求值的 RHS 组合（2026-10-13） | Codex 第三十四轮，cc 审查。逐 record 诊断：5 个 spread record 在 allocation 与 spread 之间都有模块读取或捕获 cell 读取，以及 getter/调用子树。新增晚求值 RHS 的唯一消费者与 guard 证书：复用求值形状、SSA identity、可用性和 `BuildEffectOrder`，检查“前一提交 → RHS 事件 → 当前提交”的精确顺序，并由独立验证重算证书；后续融合不会重新吸收这些子树。新增类型化拒绝原因 kOperand、kSharedOperand、kCatchStaging。cc 审查结论：原 flags 下 467/620，逐 record 不变；`--language-source` 下 **497/620**（+5，正是这 5 个 record），没有回退，也没有文本漂移；固定集 65/65；Immersive 与 MultiCommunity 输出逐字节相同；7 个既有 literal 失败不变 |
 | phased 导入的通用可达性投影（2026-10-13） | 方案由 Codex 第三十五轮诊断并排序，第三十六轮实现，cc 审查。从 ExceptionFlow 入口遍历 normal 与 exception 后继，分别标记 Before、Commit、Catch 的可达性；不可达阶段只保留来源记录（`UnreachableInstruction`），不导入效果、读取、定义或异常出口；独立验证从不可变输入重算可达性；`inactive_commits` 推广为 `inactive_phases`，exception plan、control、topology 只消费活跃边。kImport 现在保留叶子原因（ValueImportFailure 的 kind 与 pc）、失败方法，以及原始 PC 和工作 PC，创建位置另行记录。新增 `phased_reachability_cli_test`（Node 差分）。cc 审查结论：**原 flags 下 471/620（+4），`--language-source` 下 501/620（+4）**，都没有回退，也没有文本漂移；固定集 65/65；配对样本输出逐字节相同。11 个 kImport record 中 4 个完成，7 个暴露出下一层原因（控制、捕获初始化、发射）|
+| 赋值表达式作为调用实参（2026-10-13） | Codex 第三十七轮，cc 审查。第一步补定位证据：`CallPlanFailure` 区分 kNotProperty 与 kNotInline，并携带调用与属性的 OpId、原始 PC 和工作 PC、placement 与 temporary reason，经回执和 manifest 可见。6 个候选 record 的首个拒绝点都是 kNotInline；5 个 Ability record 的根因是同一 SSA 值先被属性写入再作为实参，而原始 store 没有结果。新增 `assignment_values`：按 alias 解析后的 SSA identity 建立 store→argument 的映射，在 normal 与 phased 路径上共同验证 target/key、RHS、写入和参数结果的顺序，写入保持 [[Set]]，复用 `AssignmentExpr`。ModeComponent 的投影已成立，但仍因共享目标读取需要快照而拒绝。新增 `assignment_values_test` 与 `assignment_arguments.mjs`（Node 差分）。cc 审查结论：原 flags 下 471/620，不变；`--language-source` 下 **506/620**（+5），没有回退，也没有文本漂移；固定集 65/65；配对样本输出逐字节相同 |
 | 既有失败清单（2026-10-13 核实） | 以下 30 个测试在会话起点 22e7423a 上同样失败，不在定向集中（全套测试暂停），不属于本会话的回退：file_generator_return(_loop)_source_test；literal_construct、mixed_literal、phased_literal、literal_closure_source、unguarded_literal_closure_source、derived_literal_receiver_source、unguarded_derived_literal_receiver_source；boolean_context_source_test、captured_receiver_source_test、class_tree_source_test、decision_snapshots_source_test、derived_cells_source_test、family_source_cli_test、forwarded_receiver_source_test、phased_arm_selection_source_test、reversed_captured_receiver_source_test、reversed_forwarded_receiver_source_test、reversed_initialization_captured_receiver_source_test、reversed_initialization_forwarded_receiver_source_test、snapshot_syntax_source_test、try_tree_source_test、unguarded_captured_receiver_source_test、unguarded_derived_cells_source_test、unguarded_forwarded_receiver_source_test、unguarded_reversed_captured_receiver_source_test、unguarded_reversed_forwarded_receiver_source_test、unguarded_reversed_initialization_captured_receiver_source_test、unguarded_reversed_initialization_forwarded_receiver_source_test |
 | `window_navigation_graph_source_test`、`community_ability_graph_source_test` | 单独运行均通过（231s、205s）；与其他测试并行运行时，其 60 秒 worker 子进程会超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |

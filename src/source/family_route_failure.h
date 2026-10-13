@@ -24,6 +24,12 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     if constexpr (requires { error.cause; }) CollectFailureCauses(error.cause, out);
     else if constexpr (requires { error.error; }) CollectFailureCauses(error.error, out);
     else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);
+    if constexpr (std::is_same_v<T, CallPlanFailure>) {
+      if (error.reference) {
+        if (error.reference->placement) CollectFailureCauses(*error.reference->placement, out);
+        if (error.reference->temporary) CollectFailureCauses(*error.reference->temporary, out);
+      }
+    }
     if constexpr (std::is_same_v<T, analysis::SemanticFailure>) CollectFailureCauses(error.ssa_cause, out);
     if constexpr (std::is_same_v<T, analysis::RegisterUseFailure>)
       if (error.instruction) CollectFailureCauses(*error.instruction, out);
@@ -42,6 +48,7 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
 }
 // Preserve resource/work/output classes and available original PCs. Remaining
 // unclosed semantic premises map to Unproved, never successful source.
+RouteFailure FamilyRouteFailure(const FunctionTreeFailure& failure);
 RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure);
 RouteFailure FamilyRouteFailure(const FamilyEmitFailure& failure);
 RouteFailure FamilyRouteFailure(const analysis::FunctionSiteFailure& failure);

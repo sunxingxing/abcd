@@ -120,7 +120,7 @@ class TreeBuilder {
     if (const auto* error = std::get_if<ExpressionFailure>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;
-      throw FunctionTreeFailure{Error::kExpression, *error};
+      throw FunctionTreeFailure{Error::kExpression, *error, syntax_.method};
     }
     forest_ = std::get<ExpressionForest>(std::move(expressions));
     Admit(forest_.allocated_bytes, 1);

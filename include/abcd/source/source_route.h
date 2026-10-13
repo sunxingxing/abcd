@@ -14,6 +14,7 @@
 #include "abcd/abc/method_body.h"
 #include "abcd/corpus/abc_file.h"
 #include "abcd/source/source_contract.h"
+#include "abcd/source/call_reference.h"
 
 namespace abcd::source {
 // Source route identity (docs/design/source-recovery/acceptance.md §2).
@@ -97,6 +98,7 @@ struct RouteFailure {
   std::optional<abc::CodeOffset> working_pc = {};
   std::optional<abc::EntityOffset> creation_method = {};
   std::optional<abc::CodeOffset> creation_pc = {};
+  std::optional<CallReferenceEvidence> call_reference = {};
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

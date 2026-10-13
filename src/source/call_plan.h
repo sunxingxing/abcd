@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CALL_PLAN_H_
 
 #include "evaluation_plan.h"
+#include "abcd/source/call_reference.h"
 
 namespace abcd::source {
 struct NoCall {};
@@ -26,6 +27,14 @@ enum class CallPlanError : std::uint8_t {
   kRevision, kEvaluation, kCallee, kReceiver, kReference, kBinding,
   kResourceLimit, kWorkLimit, kArrayArguments, kConstructorIdentity
 };
+struct CallPlanFailure {
+  CallPlanError kind;
+  std::variant<std::monostate, CallReferenceError> cause;
+  std::optional<abc::CodeOffset> pc, working_pc;
+  std::optional<CallReferenceEvidence> reference;
+  CallPlanFailure(CallPlanError value) : kind(value) {}  // NOLINT: implicit error kind.
+  bool operator==(CallPlanError value) const { return kind == value; }
+};
 struct CallArgumentUses {
   std::vector<std::size_t> values;
   std::size_t allocated_bytes = 0;
@@ -39,20 +48,20 @@ struct CallArgumentUses {
 // Normal, verified IR only. Member syntax consumes an inlined property read
 // with exactly the same stable receiver value. No .call lookup or staged IIFE.
 // Value calls must print indirect-call syntax even if their identifier is eval.
-[[nodiscard]] std::variant<CallPlan, CallPlanError> BuildCallPlan(
+[[nodiscard]] std::variant<CallPlan, CallPlanFailure> BuildCallPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     analysis::SemanticBudget budget = {});
 // Checks supplied binding records, not a regenerated plan. Does not replace
 // final AST operand/receiver and generated-order correspondence checks.
-[[nodiscard]] std::variant<std::uint64_t, CallPlanError> VerifyCallPlan(
+[[nodiscard]] std::variant<std::uint64_t, CallPlanFailure> VerifyCallPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     const CallPlan& plan, analysis::SemanticBudget budget = {});
 // Same call/reference checks with verified phased evaluation. In particular,
 // an explicit receiver does not permit a .call lookup or getter re-evaluation.
-[[nodiscard]] std::variant<CallPlan, CallPlanError> BuildPhasedCallPlan(
+[[nodiscard]] std::variant<CallPlan, CallPlanFailure> BuildPhasedCallPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     analysis::SemanticBudget budget = {});
-[[nodiscard]] std::variant<std::uint64_t, CallPlanError> VerifyPhasedCallPlan(
+[[nodiscard]] std::variant<std::uint64_t, CallPlanFailure> VerifyPhasedCallPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     const CallPlan& plan, analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

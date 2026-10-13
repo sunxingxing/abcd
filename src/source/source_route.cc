@@ -248,6 +248,15 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
+    if (receipt.failure->call_reference) {
+      const auto& evidence = *receipt.failure->call_reference;
+      auto& reference = failure["call_reference"];
+      reference = Json{{"kind", static_cast<unsigned>(evidence.kind)}, {"call", evidence.call.value}};
+      if (evidence.property) reference["property"] = evidence.property->value;
+      if (evidence.placement) reference["placement"] = static_cast<unsigned>(*evidence.placement);
+      if (evidence.temporary) reference["temporary"] = static_cast<unsigned>(*evidence.temporary);
+      if (evidence.consumer) reference["consumer"] = evidence.consumer->value;
+    }
     if (receipt.failure->method) failure["method"] = receipt.failure->method->value;
     if (receipt.failure->working_pc) failure["working_pc"] = receipt.failure->working_pc->value;
     if (receipt.failure->creation_method) failure["creation_method"] = receipt.failure->creation_method->value;
@@ -407,6 +416,34 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     if (!location("method", typed.method) || !location("working_pc", typed.working_pc) ||
         !location("creation_method", typed.creation_method) || !location("creation_pc", typed.creation_pc))
       return RouteReceiptError::kFailure;
+    if (const auto item = failure->find("call_reference"); item != failure->end()) {
+      if (!item->is_object() || !item->contains("kind") || !item->contains("call"))
+        return RouteReceiptError::kFailure;
+      const auto kind = ParseUnsigned<std::uint32_t>((*item)["kind"]);
+      const auto call = ParseUnsigned<std::uint32_t>((*item)["call"]);
+      if (!kind || *kind > static_cast<unsigned>(CallReferenceError::kNotInline) || !call)
+        return RouteReceiptError::kFailure;
+      CallReferenceEvidence evidence{static_cast<CallReferenceError>(*kind), {*call}, {}, {}, {}, {}};
+      const auto field = [&](const char* name, auto& target) {
+        const auto value = item->find(name);
+        if (value == item->end()) return true;
+        const auto number = ParseUnsigned<std::uint32_t>(*value);
+        if (!number) return false;
+        using T = typename std::decay_t<decltype(target)>::value_type;
+        if constexpr (std::is_same_v<T, EvaluationKind>) {
+          if (*number > static_cast<unsigned>(EvaluationKind::kArrayCursor)) return false;
+          target = static_cast<T>(*number);
+        } else if constexpr (std::is_same_v<T, TemporaryReason>) {
+          if (*number > static_cast<unsigned>(TemporaryReason::kDecisionPredicate)) return false;
+          target = static_cast<T>(*number);
+        } else target = T{*number};
+        return true;
+      };
+      if (!field("property", evidence.property) || !field("placement", evidence.placement) ||
+          !field("temporary", evidence.temporary) || !field("consumer", evidence.consumer))
+        return RouteReceiptError::kFailure;
+      typed.call_reference = evidence;
+    }
     const auto pc = failure->find("pc");
     if (pc == failure->end()) return RouteReceiptError::kFailure;
     if (!pc->is_null()) {

@@ -48,6 +48,13 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       else if constexpr (requires { alternative.kind; })
         if constexpr (std::is_enum_v<std::decay_t<decltype(alternative.kind)>>)
           CollectFailureCauses(alternative, failure.causes);
+      if constexpr (std::is_same_v<T, FunctionTreeFailure>) {
+        const auto detail = FamilyRouteFailure(alternative);
+        failure.call_reference = detail.call_reference;
+        failure.method = detail.method;
+        failure.working_pc = detail.working_pc;
+        if (detail.pc) failure.pc = *detail.pc;
+      }
     }, result);
     return failure;
   };
