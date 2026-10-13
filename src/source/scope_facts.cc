@@ -46,7 +46,8 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
   switch (requirement) {
     case analysis::CaptureDomain::kLanguage:
     case analysis::CaptureDomain::kDefined:
-    case analysis::CaptureDomain::kGuarded: break;
+    case analysis::CaptureDomain::kGuarded:
+    case analysis::CaptureDomain::kSourceAccess: break;
     default: return Error::kDomain;
   }
   // Guarded weakens only the initialization premise; every Language proof
@@ -102,8 +103,10 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
          prefix.allocation.value>=block->first_instruction &&
          prefix.allocation.value<instruction && instruction<prefix.store.value);
   }
+  // Deferral: a Guarded read, or a source access under the approved premise.
+  // Language obligations (handler-covered accesses) stay strict.
   const bool deferrable = requirement == analysis::CaptureDomain::kGuarded ||
-      (requirement == analysis::CaptureDomain::kLanguage && source_tdz_);
+      (requirement == analysis::CaptureDomain::kSourceAccess && source_tdz_);
   if (!initialized && deferrable && deferred && allocation &&
       writes_ == analysis::ClosureWrites::kLanguage) {
     // The store must be the first write executed after this allocation. Its

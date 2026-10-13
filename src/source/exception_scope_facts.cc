@@ -48,7 +48,8 @@ std::variant<CaptureCell, ScopeError> ExceptionScopeFacts::Rebase(
   switch (domain) {
     case analysis::CaptureDomain::kLanguage:
     case analysis::CaptureDomain::kDefined:
-    case analysis::CaptureDomain::kGuarded: break;
+    case analysis::CaptureDomain::kGuarded:
+    case analysis::CaptureDomain::kSourceAccess: break;
     default: return Error::kDomain;
   }
   if (!Before(*this, site)) return Error::kSite;

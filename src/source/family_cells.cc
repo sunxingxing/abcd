@@ -1,4 +1,5 @@
 #include "family_cells.h"
+#include "capture_requirement.h"
 
 #include <bit>
 #include <limits>
@@ -6,6 +7,12 @@
 #include <stdexcept>
 
 namespace abcd::source {
+namespace {
+using Requirement = std::optional<analysis::CaptureDomain>;
+void Combine(Requirement& state, analysis::CaptureDomain domain) {
+  state = state ? JoinCaptureRequirement(*state, domain) : domain;
+}
+}  // namespace
 std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
     FileFamily& family, analysis::SemanticBudget budget) {
   using Error = CaptureCellError;
@@ -38,26 +45,23 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
         }
         auto cells = std::get<CellPlan>(std::move(result));
         admit(cells.allocated_bytes, 1); step(cells.work);
-        // Weakest descendant obligation per cell: Guarded only when every
-        // demand reaching it is Guarded (normal flow only; signature entry
-        // demands stay Language). 0: none, 1: Guarded, 2: Language. This holds
-        // for EVERY incoming cell, including ones this function accesses itself:
-        // a descendant's Language read or write must never be masked by this
-        // function's own Guarded read (it may run before initialization).
-        admit(cells.cells.size(), 1);
-        std::vector<std::uint8_t> weakest(cells.cells.size());
-        const auto combine = [](std::uint8_t& state, analysis::CaptureDomain domain) {
-          state = domain == analysis::CaptureDomain::kGuarded && state != 2 ? 1 : 2;
-        };
+        // Both routes resolve descendants against their verified WORKING
+        // environment, indexed by OpId. An exception-node or input-site index
+        // cannot stand in for it. Aggregate obligations, never access proofs.
+        admit(cells.cells.size(), sizeof(Requirement));
+        std::vector<Requirement> requirements(cells.cells.size());
+        admit(requirements.capacity() - requirements.size(), sizeof(Requirement));
         for (const auto& demand : demands[i]) {
           step(std::bit_width(cells.cells.size()) + std::numeric_limits<std::uint32_t>::digits);
-          const auto cell = function.Phase() ? std::nullopt :
-              FindDemandCell(function.Graph(), *base.Environments(), cells, demand);
-          if (cell) combine(weakest[cell->value], demand.domain);
+          const auto cell = FindDemandCell(function.Graph(), *base.Environments(), cells, demand);
+          require(cell.has_value(), Error::kCell);
+          Combine(requirements[cell->value], demand.domain);
         }
         for (const auto& entry : entries) {
           step(std::bit_width(cells.cells.size()) + 1);
-          if (const auto cell = FindCell(cells, entry)) weakest[cell->value] = 2;
+          const auto cell = FindCell(cells, entry);
+          require(cell.has_value(), Error::kCell);
+          Combine(requirements[cell->value], analysis::CaptureDomain::kLanguage);
         }
         const auto original = base.Input().Captures();
         std::size_t forwarded = 0;
@@ -67,23 +71,23 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
         admit(original.size() + forwarded, sizeof(CaptureUse));
         CaptureStorage storage{std::move(cells), {}};
         storage.uses.reserve(original.size() + forwarded);
+        admit(storage.uses.capacity() - (original.size() + forwarded), sizeof(CaptureUse));
         for (const auto& use : original) {
-          // Strengthen (never weaken) an own Guarded use when a descendant or
-          // entry demand on the same cell requires Language.
+          // Preserve the original per-instruction ledger; only the family
+          // obligation is strengthened by descendant/signature requirements.
           step(std::bit_width(storage.cells.cells.size()) + 1);
           auto strengthened = use;
-          if (use.domain == analysis::CaptureDomain::kGuarded) {
-            const auto cell = FindCell(storage.cells, IncomingCell{use.cell.depth, use.cell.slot});
-            require(cell.has_value(), Error::kCoverage);
-            if (weakest[cell->value] == 2) strengthened.domain = analysis::CaptureDomain::kLanguage;
-          }
+          const auto cell = FindCell(storage.cells, IncomingCell{use.cell.depth, use.cell.slot});
+          require(cell.has_value(), Error::kCoverage);
+          strengthened.domain = JoinCaptureRequirement(use.domain, requirements[cell->value].value_or(use.domain));
+          require(StrengthensCaptureRequirement(use.domain, strengthened.domain), Error::kBinding);
           storage.uses.push_back(strengthened);
         }
         for (std::size_t c = 0; c < storage.cells.cells.size(); ++c) {
           step(); const auto& cell = storage.cells.cells[c];
           if (const auto* incoming = std::get_if<IncomingCell>(&cell.storage); incoming && cell.count == 0)
-            storage.uses.push_back({{incoming->depth, incoming->slot}, weakest[c] == 1 ?
-                analysis::CaptureDomain::kGuarded : analysis::CaptureDomain::kLanguage});
+            storage.uses.push_back({{incoming->depth, incoming->slot},
+                requirements[c].value_or(analysis::CaptureDomain::kLanguage)});
         }
         function.SetStorage(std::move(storage));
       }
@@ -102,14 +106,14 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
         auto& destination = demands[edge.parent.value];
         // This child's weakest use of each incoming cell, over its own accesses
         // and its already forwarded descendant obligations.
-        admit(cells->cells.size(), 1);
-        std::vector<std::uint8_t> weakest(cells->cells.size());
+        admit(cells->cells.size(), sizeof(Requirement));
+        std::vector<Requirement> requirements(cells->cells.size());
+        admit(requirements.capacity() - requirements.size(), sizeof(Requirement));
         for (const auto& use : function.Capture().Input().Captures()) {
           step(std::bit_width(cells->cells.size()) + 1);
           const auto cell = FindCell(*cells, IncomingCell{use.cell.depth, use.cell.slot});
           require(cell.has_value(), Error::kCoverage);
-          auto& state = weakest[cell->value];
-          state = use.domain == analysis::CaptureDomain::kGuarded && state != 2 ? 1 : 2;
+          Combine(requirements[cell->value], use.domain);
         }
         for (std::size_t c = 0; c < cells->cells.size(); ++c) {
           step(); const auto& cell = cells->cells[c];
@@ -122,8 +126,8 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
             require(capacity > destination.size(), Error::kResourceLimit);
             admit(capacity, sizeof(CellDemand)); destination.reserve(capacity);
           }
-          destination.push_back({*creation, {incoming->depth, incoming->slot}, weakest[c] == 1 ?
-              analysis::CaptureDomain::kGuarded : analysis::CaptureDomain::kLanguage});
+          destination.push_back({*creation, {incoming->depth, incoming->slot},
+              requirements[c].value_or(analysis::CaptureDomain::kLanguage)});
         }
       }
     }

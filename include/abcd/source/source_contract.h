@@ -157,10 +157,11 @@ constexpr CallableTextPolicy CallableText(SourceContract contract) {
 // LanguageSourceV1 = LanguageNumericConstructorsV1 plus four source premises
 // explicitly approved by the user on 2026-10-13 (language-source.md). Each
 // premise has its own predicate; never test the enum value directly.
-// Captured reads compiled without a hole check are source identifier reads:
+// Captured accesses (unguarded reads, writes) are source identifier accesses:
 // a function may be created before the binding's first store (es2panda omits
-// the check by textual order), and only an early call differs (runtime reads
-// the hole, source throws ReferenceError).
+// the check by textual order), and only an early call differs (the runtime
+// reads the hole or writes the slot, the source throws ReferenceError).
+// Reads approved 2026-10-13, extended to writes the same day.
 constexpr CaptureReadSemantics CaptureReads(SourceContract contract) {
   return contract == SourceContract::kLanguageSourceV1 ? CaptureReadSemantics::kSourceTdz
                                                        : CaptureReadSemantics::kPinnedRuntime;

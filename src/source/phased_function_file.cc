@@ -239,6 +239,12 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     uses.reserve(capture_count); accesses.reserve(capture_count);
     admit(uses.capacity() - capture_count, sizeof(CaptureUse));
     admit(accesses.capacity() - capture_count, sizeof(InputCaptureAccess));
+    // Under the approved source TDZ premise, an access is a source access when
+    // the normalized body keeps no handler: only the proven async/generator
+    // completion protocol remains, which turns an early TDZ throw into the
+    // same rejection or throw as the source. User handlers keep the strict rule.
+    const auto domain = body.tries.empty() && CaptureReads(identity.contract) == CaptureReadSemantics::kSourceTdz
+        ? analysis::CaptureDomain::kSourceAccess : analysis::CaptureDomain::kLanguage;
     for (const auto& binding : input.environments.bindings) {
       step(1);
       const auto* depth = std::get_if<analysis::CapturedDepth>(&binding.binding.environment);
@@ -251,7 +257,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       const bool load = std::holds_alternative<analysis::LexicalLoad>(operation);
       Require(load || std::holds_alternative<analysis::LexicalStore>(operation), Error::kMethod);
       Require(accesses.empty() || accesses.back().instruction < before.instruction, Error::kMethod);
-      uses.push_back({{*depth, binding.binding.slot}, analysis::CaptureDomain::kLanguage});
+      uses.push_back({{*depth, binding.binding.slot}, domain});
       accesses.push_back({before.instruction, load ? analysis::LocalAccessKind::kLoad : analysis::LocalAccessKind::kStore});
     }
     Require(!file.CheckUnchanged(), Error::kChanged);

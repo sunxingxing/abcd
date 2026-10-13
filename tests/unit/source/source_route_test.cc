@@ -106,6 +106,14 @@ int main() {
   Check(NormalCallResults(kSourceContract) == NormalCallResults(SourceContract::kLanguageAndHostV2));
   Check(RealmBinding(kSourceContract) == RealmBinding(SourceContract::kLanguageAndHostV2));
   Check(ResourceFailures(kSourceContract) == ResourceFailures(SourceContract::kLanguageAndHostV2));
+  // LanguageSourceV1 extends numeric+constructors; its own premises are
+  // reachable only through their predicates.
+  Check(Arithmetic(SourceContract::kLanguageSourceV1) == analysis::ArithmeticSemantics::kSourceNumeric);
+  Check(Constructors(SourceContract::kLanguageSourceV1) == ConstructorSemantics::kSourceLanguage);
+  Check(WithLanguageConstructors(SourceContract::kLanguageSourceV1) == SourceContract::kLanguageSourceV1);
+  Check(CaptureReads(SourceContract::kLanguageSourceV1) == CaptureReadSemantics::kSourceTdz);
+  Check(CaptureReads(SourceContract::kLanguageNumericConstructorsV1) == CaptureReadSemantics::kPinnedRuntime);
+  Check(CaptureReads(kSourceContract) == CaptureReadSemantics::kPinnedRuntime);
   // Central validation (R2): each state below is checked against the stages
   // that could actually prove it.
   const auto valid = [](MethodRouteReceipt receipt) {
@@ -187,10 +195,9 @@ int main() {
     Check(recovered != nullptr);
     Check(SameReceipt(receipt, *recovered));
   }
-  for (const auto contract : {SourceContract::kLanguageAndHostV1,
-                              SourceContract::kLanguageAndHostV2,
-                              SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1, SourceContract::kLanguageConstructorsV1,
-                              SourceContract::kLanguageArithmeticConstructorsV1, SourceContract::kLanguageNumericConstructorsV1}) {
+  // Every contract that can be written can be read back (dense enum range).
+  for (std::size_t raw = 0; raw <= static_cast<std::size_t>(SourceContract::kLanguageSourceV1); ++raw) {
+    const auto contract = static_cast<SourceContract>(raw);
     auto receipt = RefusedReceipt();
     receipt.identity.contract = contract;
     Check(!ValidateRouteReceipt(receipt));

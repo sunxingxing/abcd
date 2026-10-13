@@ -41,8 +41,8 @@ class NormalScopeFacts {
   // the cell's first store share one block in that order. `deferred` then
   // receives that store; the owner must declare the binding exactly there.
   // Under the approved source TDZ premise (CaptureReads, language-source.md)
-  // a Language read is deferred by the same rule: it is a source identifier
-  // read of the binding that the owner declares at that store.
+  // a kSourceAccess use is deferred by the same rule: it is a source identifier
+  // access of the binding that the owner declares at that store.
   [[nodiscard]] std::variant<CaptureCell, ScopeError> Rebase(
       analysis::InstructionId creation, analysis::CapturedSlot capture,
       analysis::CaptureDomain requirement,

@@ -28,8 +28,8 @@ struct Cell {
 struct CellDemand {
   analysis::OpId creation;
   analysis::CapturedSlot captured;
-  // The descendant's weakest use of that slot: kGuarded only when every use
-  // it (transitively) makes of the cell is a Guarded read; topology ignores it.
+  // Joined descendant requirement for that slot, including forwarded and entry
+  // obligations. This is not an instruction access proof; topology ignores it.
   analysis::CaptureDomain domain = analysis::CaptureDomain::kLanguage;
 };
 struct CellPlan {
@@ -58,8 +58,8 @@ struct DeferredCellInitialization {
 };
 // Query an unchanged verified plan. O(log(cells + 1)); no allocation.
 [[nodiscard]] std::optional<CellId> FindCell(const CellPlan& plan, const CellStorage& storage);
-// The verified normal-flow plan's cell for one descendant demand, resolved at
-// its creation's environment. O(ancestry + log cells); nothing on mismatch.
+// The verified normal or phased plan's cell for one descendant demand, resolved
+// at its working creation environment. O(ancestry + log cells); nothing on mismatch.
 [[nodiscard]] std::optional<CellId> FindDemandCell(const analysis::ValueProgram& graph,
     const analysis::ValueEnvironments& environments, const CellPlan& plan, const CellDemand& demand);
 enum class CellError : std::uint8_t {

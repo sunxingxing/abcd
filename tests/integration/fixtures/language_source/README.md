@@ -6,11 +6,20 @@ DevEco Studio's bundled es2abc (`--bc-version` 24.0.0.0), command
 
 | Fixture | Premise | Expected |
 |---|---|---|
-| `hoisted` | Hoisted functions read a later `const`/`let` (textually after the declaration, so compiled without a hole check); one also writes it | complete under `--language-source`, Node-equal; refused otherwise with `CaptureCellError::kInput → CaptureError::kScope → ScopeError::kInitialization` |
+| `earlywrite` | A hoisted function writes the binding before its declaration runs (the VM write completes; the source throws) | complete under `--language-source`: source and output both throw `ReferenceError`; refused otherwise with the `ScopeError` chain |
+| `hoisted` | Hoisted functions read later `const`/`let` bindings while a host callback runs before the stores | complete under `--language-source`, Node-equal (standalone es2abc may guard these reads, so the previous contract's outcome is not pinned) |
 
-`harness.mjs` defines `globalThis.SCALE` and `globalThis.OFFSET` and reports the
+`harness.mjs` defines `globalThis.SCALE`, `globalThis.OFFSET` and `globalThis.CALL` and reports the
 exported values.
 
+Handler-covered reads and writes are tested in `family_cells_test` with
+successfully imported file-backed phased IR. It asserts the access is Language,
+is forwarded across the phased middle function, and causes the normal parent to
+refuse with `CaptureCellError::kInput > CaptureError::kScope > ScopeError::kInitialization`.
+The previous `tryread` compiler fixture stopped at phased import, so it was
+removed from the acceptance test; that unrelated failure did not prove this gate.
+
 ```
-2a6f1c60bc8e413a033cc6187ce6696083145106067f7e665aecd3ab665fc603  hoisted.abc
+70459539c015f1a5f4096ddf55c8453ac86028b551704b8e87132725e1f0daa0  hoisted.abc
+82d17e4642189de9e0b75b4c6d4bdfca0798eed2bbfbead0d8ec2b71743f35d4  earlywrite.abc
 ```

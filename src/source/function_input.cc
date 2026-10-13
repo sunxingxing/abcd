@@ -309,8 +309,13 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       const auto* depth = std::get_if<analysis::CapturedDepth>(&binding.binding.environment);
       if (!depth) continue;
       const auto kind = Access(*input, binding.instruction);
+      // Under the approved source TDZ premise an unguarded load or a store is a
+      // source access. Only when no handler of this method covers it: an early
+      // TDZ throw then leaves the child, through a call already modeled as throwing.
       const auto domain = kind == analysis::LocalAccessKind::kLoad && guarded_load(binding.instruction)
-          ? analysis::CaptureDomain::kGuarded : analysis::CaptureDomain::kLanguage;
+          ? analysis::CaptureDomain::kGuarded
+          : body.tries.empty() && CaptureReads(identity.contract) == CaptureReadSemantics::kSourceTdz
+          ? analysis::CaptureDomain::kSourceAccess : analysis::CaptureDomain::kLanguage;
       uses.push_back({{*depth, binding.binding.slot}, domain});
       accesses.push_back({{binding.instruction}, kind});
     }

@@ -895,6 +895,10 @@ if(BUILD_TESTING)
   add_executable(capture_plan_test tests/unit/source/capture_plan_test.cc)
   target_link_libraries(capture_plan_test PRIVATE abcd_source)
   add_test(NAME capture_plan_test COMMAND capture_plan_test)
+  add_executable(family_cells_test tests/unit/source/family_cells_test.cc)
+  target_include_directories(family_cells_test PRIVATE tests/support)
+  target_link_libraries(family_cells_test PRIVATE abcd_source)
+  add_test(NAME family_cells_test COMMAND family_cells_test)
   add_executable(phased_capture_plan_test tests/unit/source/phased_capture_plan_test.cc)
   target_include_directories(phased_capture_plan_test PRIVATE tests/support)
   target_link_libraries(phased_capture_plan_test PRIVATE abcd_source)
@@ -2333,6 +2337,12 @@ if(BUILD_TESTING)
       add_test(NAME language_source_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_source.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/language_source)
+      set(ABCD_LANGUAGE_SOURCE_SAMPLE "${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/DocsSample/Media/Audio/AudioRoutingManagerSampleJS/artifacts/entry/default/default/modules/modules.abc")
+      if(EXISTS "${ABCD_LANGUAGE_SOURCE_SAMPLE}")
+        add_test(NAME language_source_corpus_test COMMAND ${ABCD_NODE_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_source_corpus.mjs
+          $<TARGET_FILE:abc_structure> ${ABCD_LANGUAGE_SOURCE_SAMPLE})
+      endif()
       add_test(NAME guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_captures.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_captures)

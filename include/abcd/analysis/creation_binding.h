@@ -27,7 +27,13 @@ struct CapturedSlot {
 // method's own Hole guard before that guard completes. Its uninitialized
 // observation is the guard's ReferenceError, so a parent may discharge it with
 // a native TDZ declaration at the initializing store instead of initialization.
-enum class CaptureDomain : std::uint8_t { kLanguage, kDefined, kGuarded };
+// kSourceAccess: an unguarded captured load, or a captured store, outside
+// every handler of its own method, recorded only under the approved source
+// TDZ premise (language-source.md; reads approved 2026-10-13, extended to
+// writes the same day). Its value is Language; the parent may defer the
+// binding's declaration to its first store, as for kGuarded. Handler-covered
+// accesses keep kLanguage.
+enum class CaptureDomain : std::uint8_t { kLanguage, kDefined, kGuarded, kSourceAccess };
 enum class CaptureRebaseError { kSendableEnvironment };
 
 // One ordinary creation edge: input is a target-method captured binding;

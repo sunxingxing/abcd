@@ -11,10 +11,22 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const [structure, fixtures] = process.argv.slice(2);
+const scope = ['CaptureCellError=3', 'CaptureError=1', 'ScopeError=3'];
+// Complete and Node-equal under --language-source. The standalone es2abc may
+// still guard these reads (its elision differs from the DevEco pipeline), so
+// the previous contract's outcome is only pinned where `refused` is given;
+// language_source_corpus_test pins the unguarded corpus shape.
 const cases = [
-  // Hoisted functions read later let/const bindings without a hole check.
-  {name: 'hoisted', refused: ['CaptureCellError=3', 'CaptureError=1', 'ScopeError=3']},
+  {name: 'hoisted', refused: null},
+  // An early call writes the binding before its declaration runs: the source
+  // and the output both throw ReferenceError (the VM write would complete).
+  {name: 'earlywrite', refused: scope},
 ];
+// Handler-covered reads AND writes are checked by family_cells_test using
+// successfully imported file-backed phased inputs. Their strict Language
+// obligation must reach the normal parent and refuse with
+// CaptureCellError::kInput > CaptureError::kScope > ScopeError::kInitialization.
+// The old tryread fixture stopped at kImport and did not exercise this gate.
 const directory = mkdtempSync(join(tmpdir(), 'abcd-language-source-'));
 try {
   const exportRecord = (name, flags) => {
@@ -38,6 +50,7 @@ try {
     const original = join(directory, name + '.orig.mjs');
     copyFileSync(join(fixtures, name + '.js'), original);
     assert.equal(evaluate(join(output, record.source)), evaluate(original), name);
+    if (!refused) continue;
     const previous = exportRecord(name, ['--language-numeric', '--language-constructors']).record;
     assert.equal(previous.source_status, 3, name);
     const causes = previous.source_failure?.causes ?? previous.source_causes;

@@ -2,6 +2,7 @@
 #include "default_body.h"
 #include "class_self_order.h"
 #include "capture_cell_targets.h"
+#include "capture_requirement.h"
 #include "phased_function_file.h"
 #include "function_file.h"
 
@@ -132,11 +133,11 @@ void Owner(CaptureChild function, Quota& quota, bool check_uses = true) {
   Require(uses.size() >= original.size(), Error::kCoverage);
   for (std::size_t i = 0; check_uses && i < original.size(); ++i) {
     quota.Step();
-    // A family may only strengthen an own Guarded use to Language (a
-    // descendant demands it); it never weakens an original obligation.
+    // Cell-level family obligations may strengthen the three TDZ/Language
+    // requirements. Original per-instruction proofs remain untouched.
     Require(uses[i].cell.depth == original[i].cell.depth &&
-        uses[i].cell.slot.value == original[i].cell.slot.value && (uses[i].domain == original[i].domain ||
-        (original[i].domain == analysis::CaptureDomain::kGuarded && uses[i].domain == analysis::CaptureDomain::kLanguage)),
+        uses[i].cell.slot.value == original[i].cell.slot.value &&
+        StrengthensCaptureRequirement(original[i].domain, uses[i].domain),
         Error::kBinding);
   }
   const auto* cells = function.Cells(); const auto* environments = function.Environments();
@@ -306,10 +307,10 @@ std::vector<DeferredCellInitialization> Deferred(const CaptureParent& parent, co
   for (const auto& binding : input.bindings) {
     quota.Step();
     if (!binding.deferred) continue;
-    // Guarded reads, or Language reads under the approved source TDZ premise.
+    // Guarded reads, or source accesses under the approved source TDZ premise.
     Require(std::holds_alternative<analysis::LocalCell>(binding.cell) &&
         (binding.domain == analysis::CaptureDomain::kGuarded ||
-         (binding.domain == analysis::CaptureDomain::kLanguage &&
+         (binding.domain == analysis::CaptureDomain::kSourceAccess &&
           CaptureReads(parent.identity.contract) == CaptureReadSemantics::kSourceTdz)), Error::kCell);
     const auto target = Project(parent, binding.cell, quota);
     const auto* cell = std::get_if<ParentCell>(&target);
@@ -444,7 +445,8 @@ std::variant<std::uint64_t, CaptureCellFailure> VerifyCaptureTargets(
       const auto& storage = std::get<IncomingCell>(incoming.cells[i].storage);
       // Forwarded obligations keep their descendants' weakest Language domain.
       Require(use.cell.depth == storage.depth && use.cell.slot.value == storage.slot.value &&
-          (use.domain == analysis::CaptureDomain::kLanguage || use.domain == analysis::CaptureDomain::kGuarded),
+          (use.domain == analysis::CaptureDomain::kLanguage || use.domain == analysis::CaptureDomain::kGuarded ||
+           use.domain == analysis::CaptureDomain::kSourceAccess),
           Error::kBinding);
       Require(plan.targets[i].target == Project(parent, plan.input.bindings[next++].cell, quota), Error::kBinding);
     }

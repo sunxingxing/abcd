@@ -23,12 +23,14 @@ constexpr std::array kProfiles{
     abc::ProfileId::kDynamic1102, abc::ProfileId::kDynamic1202,
     abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301,
     abc::ProfileId::kDynamic2400, abc::ProfileId::kStatic0107};
-constexpr std::string_view kContractNames[]{"language_and_host_v1",
-                                            "language_and_host_v2",
-                                            "language_and_host_v3", "language_arithmetic_v1",
-                                            "language_numeric_v1", "language_constructors_v1",
-                                            "language_arithmetic_constructors_v1",
-                                            "language_numeric_constructors_v1"};
+// Derived from the single serialization map, indexed by the dense enum, so
+// every contract that can be written can also be read back.
+constexpr std::size_t kContractCount = static_cast<std::size_t>(SourceContract::kLanguageSourceV1) + 1;
+constexpr auto kContractNames = [] {
+  std::array<std::string_view, kContractCount> names{};
+  for (std::size_t i = 0; i < kContractCount; ++i) names[i] = SourceContractName(static_cast<SourceContract>(i));
+  return names;
+}();
 constexpr std::string_view kRouteNames[]{"value_tree"};
 constexpr std::string_view kStageNames[]{
     "decoded", "input_verified", "values_imported", "values_verified",
@@ -60,6 +62,12 @@ std::optional<UInt> ParseUnsigned(const Json& value) {
 template <typename Enum, std::size_t kCount>
 std::optional<Enum> ParseLabel(std::string_view label,
                                const std::string_view (&names)[kCount]) {
+  for (std::size_t i = 0; i < kCount; ++i)
+    if (names[i] == label) return static_cast<Enum>(i);
+  return {};
+}
+template <typename Enum, std::size_t kCount>
+std::optional<Enum> ParseLabel(std::string_view label, const std::array<std::string_view, kCount>& names) {
   for (std::size_t i = 0; i < kCount; ++i)
     if (names[i] == label) return static_cast<Enum>(i);
   return {};
