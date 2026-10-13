@@ -1,5 +1,7 @@
 #include "phase_composition.h"
 #include "assignment_values.h"
+#include "checked_read_event.h"
+#include "call_plan.h"
 
 #include <algorithm>
 
@@ -35,9 +37,10 @@ struct Frame {
 enum class Mode : std::uint8_t { kBuild, kVerify };
 class Composition {
  public:
-  Composition(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget)
+  Composition(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget, bool checked = false)
       : graph_(graph), plan_(plan), budget_(budget), phase_budget_(budget.Remaining()),
-        corridors_(graph, plan, phase_budget_) {
+        corridors_(graph, plan, phase_budget_, PhaseLiteralIntervals::kInclude,
+            checked ? CheckedReadFusion::kCompose : CheckedReadFusion::kStandalone), checked_mode_(checked) {
     budget.Admit(phase_budget_.Cost().bytes, 1);
     accounted_work_ = phase_budget_.Cost().work; budget.Step(accounted_work_);
     regions_ = FindPhasedPhiSelections(graph, plan, budget);
@@ -64,15 +67,20 @@ class Composition {
     if (plan.phis) for (const auto& bundle : plan.phis->bundles) {
       budget.Step(); if (const auto* edge = std::get_if<EdgeId>(&bundle.incoming)) copied_[edge->value] |= !bundle.schedule.steps.empty();
     }
-    // Literal intervals, guarded module pairs and phased object operands own
-    // other composite events; this first increment leaves those trees alone.
+    // Literal intervals and phased object operands retain their own proofs.
+    // Checked-call composition can consume an already-inline module read's
+    // verified pair as an atom; it never changes module-read admission.
     budget.Array(excluded_, graph.ops.size());
     if (plan.literals) for (const auto& literal : plan.literals->objects) {
       budget.Step(); if (literal.allocation.value < excluded_.size()) excluded_[literal.allocation.value] = 1;
     }
-    for (const auto& pair : plan.guarded_reads) { budget.Step(); excluded_[pair.read.value] = excluded_[pair.guard.value] = 1; }
+    for (const auto& pair : plan.guarded_reads) { budget.Step(); excluded_[pair.read.value] = !checked_mode_; excluded_[pair.guard.value] = 1; }
+    budget.Array(module_ends_, checked_mode_ && !plan.modules.empty() ? graph.ops.size() : 0);
     for (const auto& module : plan.modules) {
-      budget.Step(); excluded_[module.pair.read.value] = 1;
+      budget.Step();
+      const bool retained = checked_mode_ && plan.operations[module.pair.read.value].kind == EvaluationKind::kInline;
+      excluded_[module.pair.read.value] = !retained;
+      if (retained) module_ends_[module.pair.read.value] = module.pair.guard;
       if (module.pair.guard) excluded_[module.pair.guard->value] = 1;
     }
     for (std::size_t i = 0; i < plan.logical_objects.size(); ++i) { budget.Step(); if (plan.logical_objects[i]) excluded_[i] = 1; }
@@ -84,7 +92,7 @@ class Composition {
       std::optional<OpId> owner;
       if (root.value < plan.phase_prefixes.size() && plan.phase_prefixes[root.value]) owner = plan.phase_prefixes[root.value];
       else if (region_of_[root.value] && Committed(root)) owner = root;
-      if (!owner || !PhaseCorridors::Event(graph.ops[i], plan.operations[i])) continue;
+      if (!owner || !Event(OpId{static_cast<std::uint32_t>(i)})) continue;
       owner_[i] = owner; ++owned_count_[owner->value];
     }
     budget.Array(latest_, graph.ops.size());
@@ -92,7 +100,7 @@ class Composition {
       std::optional<std::uint32_t> latest;
       for (std::uint32_t i = 0; i < work.op_count; ++i) {
         budget.Step(); const auto& item = graph.ops[work.first_op.value + i];
-        if (item.life == ValueLife::kLive && PhaseCorridors::Event(item, plan.operations[work.first_op.value + i])) latest = i;
+        if (item.life == ValueLife::kLive && Event(OpId{work.first_op.value + i})) latest = i;
         latest_[work.first_op.value + i] = latest;
       }
     }
@@ -103,6 +111,16 @@ class Composition {
     budget.Array(overlay_, graph.ops.size()); budget.Array(added_, graph.ops.size());
     budget.Array(valid_, graph.ops.size()); budget.Array(events_, graph.ops.size());
     budget.Array(selection_, graph.ops.size()); budget.Array(fresh_, graph.ops.size());
+    budget.Array(checked_tree_, checked_mode_ ? graph.ops.size() : 0);
+    budget.Array(repaired_, checked_mode_ ? graph.ops.size() : 0);
+    budget.Array(seed_, checked_mode_ ? graph.ops.size() : 0);
+    budget.Array(checked_source_, checked_mode_ ? graph.ops.size() : 0);
+    budget.Array(failures_, checked_mode_ ? graph.ops.size() : 0);
+    if (checked_mode_) for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      budget.Step(); const OpId call{static_cast<std::uint32_t>(i)};
+      if (const auto property = MemberProperty(graph, plan, call);
+          property && !MemberReferenceInline(graph, plan, call, *property)) seed_[i] = property;
+    }
     budget.Array(begin_, graph.ops.size()); budget.Array(last_, graph.ops.size());
     budget.Array(region_state_, regions_.size()); budget.Array(region_throw_, regions_.size());
     budget.Admit(graph.ops.size(), sizeof(Frame)); stack_.reserve(graph.ops.size());
@@ -119,7 +137,7 @@ class Composition {
   bool Compose(OpId consumer, Mode mode) {
     budget_.Step();
     const auto& op = graph_.ops[consumer.value];
-    const bool may_throw = op.exceptional == ExceptionalCompletion::kMayThrow;
+    const bool may_throw = EvaluationMayThrow(graph_, plan_, consumer);
     const auto fail = [&]() -> bool {
       Require(mode == Mode::kBuild);
       for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
@@ -129,6 +147,20 @@ class Composition {
       }
       return false;
     };
+    const auto module_end = module_ends_.empty() ? std::optional<OpId>{} : module_ends_[consumer.value];
+    if (checked_mode_ && (GuardedInput(plan_, consumer) || module_end)) {
+      // Consume BOTH original events. Next proves execution count and no
+      // intervening events/copies, independently of numeric OpId/PC adjacency.
+      if (!module_end) checked_source_[consumer.value] = consumer;
+      const auto guard = module_end.value_or(GuardedPeer(plan_, consumer).value_or(consumer));
+      if (module_end && (!corridors_.SameCatch(consumer, guard) || corridors_.HasCatchCopies(guard))) return fail();
+      const auto& end = graph_.ops[guard.value];
+      const auto preceding = Next({end.block, end.order});
+      if (preceding.kind != Stop::Kind::kEvent || preceding.op != consumer) return fail();
+      valid_[consumer.value] = events_[consumer.value] = 1; checked_tree_[consumer.value] = !module_end;
+      last_[consumer.value] = guard; begin_[consumer.value] = preceding.after;
+      return true;
+    }
     if (op.life != ValueLife::kLive || excluded_[consumer.value] ||
         (!PhaseCorridors::Expression(op.operation) && !PhaseCorridors::ConsumesOperands(op.operation))) return fail();
     // A moved throw point keeps this consumer's handler and needs no staging.
@@ -138,10 +170,21 @@ class Composition {
     auto cursor = Cursor{op.block, consumer.value - graph_.blocks[op.block.value].first_op.value};
     auto stop = Next(cursor);
     std::optional<OpId> last;
-    bool events = false, selection = false, fresh = false;
+    bool events = false, selection = false, fresh = false, checked = false, repaired = false, checked_argument = false;
     for (std::uint32_t ordinal = op.use_count; ordinal != 0; --ordinal) {
       budget_.Step(); const UseId use{op.first_use.value + ordinal - 1};
       const auto link = Edge(consumer, use, mode == Mode::kBuild);
+      if (checked_mode_ && !link.producer) {
+        // Retain the rejected occurrence too: uniqueness/reference failures
+        // must not lose their read/guard identity just because no edge was proposed.
+        if (const auto producer = EvaluationProducer(graph_, plan_, use);
+            producer && checked_source_[producer->value]) {
+          const auto read = *checked_source_[producer->value];
+          checked_source_[consumer.value] = read;
+          failures_[consumer.value] = GuardedCallFailure{GuardedCallError::kUse, consumer, read,
+              *GuardedPeer(plan_, read), use};
+        }
+      }
       if (link.selection) {
         const auto& region = regions_[*region_of_[link.selection->value]];
         if (stop.kind != Stop::Kind::kJoin || stop.region != *region_of_[link.selection->value]) return fail();
@@ -156,7 +199,7 @@ class Composition {
         for (std::size_t owned = 0; owned < owned_count_[link.selection->value]; ++owned) {
           const auto event = Next(inner);
           if (event.kind != Stop::Kind::kEvent || owner_[event.op.value] != *link.selection ||
-              (graph_.ops[event.op.value].exceptional == ExceptionalCompletion::kMayThrow && !fits_catch(event.op))) return fail();
+              (EvaluationMayThrow(graph_, plan_, event.op) && !fits_catch(event.op))) return fail();
           inner = event.after;
         }
         if (!last) last = *link.selection;
@@ -165,6 +208,15 @@ class Composition {
       }
       if (!link.producer) continue;
       const auto producer = *link.producer;
+      if (checked_mode_ && checked_source_[producer.value]) {
+        checked_source_[consumer.value] = checked_source_[producer.value];
+        if (failures_[producer.value]) failures_[consumer.value] = failures_[producer.value];
+        else {
+          const auto read = *checked_source_[producer.value];
+          failures_[consumer.value] = GuardedCallFailure{GuardedCallError::kOrder, consumer, read,
+              *GuardedPeer(plan_, read), use};
+        }
+      }
       if (excluded_[producer.value] || Owned(producer) || !valid_[producer.value] ||
           (!Transport(producer) && !Fusable(producer, consumer, use))) {
         if (link.added) continue;  // An eligible root keeps its snapshot.
@@ -175,10 +227,18 @@ class Composition {
       // none. Checking the child itself therefore covers its whole subtree.
       bool fits = !events_[producer.value] ||
           (stop.kind == Stop::Kind::kEvent && last_[producer.value] && stop.op == *last_[producer.value]);
-      if (fits && graph_.ops[producer.value].exceptional == ExceptionalCompletion::kMayThrow) fits = fits_catch(producer);
+      if (fits && EvaluationMayThrow(graph_, plan_, producer)) {
+        fits = fits_catch(producer);
+        if (!fits && checked_mode_ && failures_[consumer.value]) failures_[consumer.value]->kind = GuardedCallError::kCatchState;
+      }
       if (!fits) {
         if (link.added) continue;
         return fail();
+      }
+      if (checked_mode_) {
+        checked |= checked_tree_[producer.value] != 0;
+        repaired |= repaired_[producer.value] != 0;
+        if (graph_.uses[use.value].role == OperandRole::kArgument) checked_argument |= checked_tree_[producer.value] != 0;
       }
       if (link.added) { overlay_[producer.value] = use; added_[producer.value] = 1; fresh = true; }
       fresh |= fresh_[producer.value] != 0; selection |= selection_[producer.value] != 0;
@@ -187,7 +247,15 @@ class Composition {
         events = true; cursor = begin_[producer.value]; stop = Next(cursor);
       }
     }
-    if (PhaseCorridors::Event(op, Placement(consumer))) { last = consumer; events = true; }
+    if (Event(consumer)) { last = consumer; events = true; }
+    if (checked_mode_) {
+      const auto property = mode == Mode::kBuild ? seed_[consumer.value] : MemberProperty(graph_, plan_, consumer);
+      if (property && checked_argument) {
+        const auto placement = Placement(*property);
+        repaired |= placement.kind == EvaluationKind::kInline && placement.consumer == op.first_use;
+      }
+      checked_tree_[consumer.value] = checked; repaired_[consumer.value] = repaired;
+    }
     valid_[consumer.value] = 1; events_[consumer.value] = events; selection_[consumer.value] = selection;
     fresh_[consumer.value] = fresh; begin_[consumer.value] = cursor; last_[consumer.value] = last;
     return true;
@@ -206,7 +274,7 @@ class Composition {
       // Every final root decides, valid or not: a failed root may still hold
       // new edges below existing inline edges of its tree.
       if (Placement(id).kind == EvaluationKind::kInline) continue;
-      if (valid_[i] && fresh_[i] && selection_[i] && StatementRoot(id)) { roots.push_back(id); continue; }
+      if (valid_[i] && fresh_[i] && (checked_mode_ ? checked_tree_[i] && repaired_[i] : selection_[i]) && StatementRoot(id)) { roots.push_back(id); continue; }
       Withdraw(id);
     }
     // Closure: every surviving new edge is reachable from a registered root.
@@ -240,12 +308,43 @@ class Composition {
       stack_.push_back({*link.producer});
     }
     for (const auto node : nodes_) Compose(node, Mode::kVerify);
-    Require(selection_[root.value] != 0);
+    Require(checked_mode_ ? checked_tree_[root.value] && repaired_[root.value] : selection_[root.value] != 0);
     return nodes_;
+  }
+  void Failures(std::vector<GuardedCallFailure>& output) {
+    if (!checked_mode_) return;
+    std::size_t count = 0;
+    const auto failed = [&](std::size_t i) {
+      return seed_[i] && failures_[i] && !(Placement(*seed_[i]).kind == EvaluationKind::kInline &&
+          Placement(*seed_[i]).consumer == graph_.ops[i].first_use);
+    };
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) { budget_.Step(); count += failed(i); }
+    budget_.Admit(count, sizeof(GuardedCallFailure)); output.reserve(count);
+    budget_.Admit(output.capacity() - count, sizeof(GuardedCallFailure));
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step(); if (!failed(i)) continue;
+      auto failure = *failures_[i]; failure.call = OpId{static_cast<std::uint32_t>(i)};
+      const auto& read = graph_.origins[graph_.ops[failure.read.value].origin.value];
+      const auto& guard = graph_.origins[graph_.ops[failure.guard.value].origin.value];
+      failure.read_pc = read.original.value_or(read.pc); failure.read_working_pc = read.pc;
+      failure.guard_pc = guard.original.value_or(guard.pc); failure.guard_working_pc = guard.pc;
+      output.push_back(failure);
+    }
   }
   void Account() { budget_.Step(phase_budget_.Cost().work - accounted_work_); accounted_work_ = phase_budget_.Cost().work; }
 
  private:
+  bool Event(OpId id) const {
+    const auto& op = graph_.ops[id.value];
+    const auto shape = DescribeEvaluation(op.operation);
+    // Input-free normal control contributes an edge, not a source effect.
+    // Entry still proves that the traversed edge is single-entry, unconditional
+    // and copy-free. This is not an opcode/adjacency exception for a split block.
+    if (checked_mode_ && shape && shape->control == ControlEvaluation::kNormal &&
+        shape->Count() == 0 && !op.result && op.normal == LanguageEffect::kNone &&
+        op.before_throw == LanguageEffect::kNone && !EvaluationMayThrow(graph_, plan_, id)) return false;
+    return PhaseCorridors::Event(op, plan_.operations[id.value]);
+  }
   // An unregistered root keeps its original placements: walk its tree through
   // existing edges and undo every new edge met. Each child cut off this way is
   // a root again (a smaller OpId), decided later by the same loop.
@@ -326,6 +425,7 @@ class Composition {
   // producer (actual inline edge, or in kBuild a newly eligible root), or
   // external (receiver, snapshot, constant).
   Link Edge(OpId consumer, UseId use, bool build) const {
+    if (plan_.operations[consumer.value].kind == EvaluationKind::kGuardedCellRead) return {};
     const auto& occurrence = graph_.uses[use.value];
     if (IsMemberReceiver(graph_, plan_, occurrence)) return {};
     const auto operand = ResolveEvaluationOperand(plan_, occurrence.operand);
@@ -414,7 +514,7 @@ class Composition {
       for (std::uint32_t i = 0; i < work.op_count; ++i) {
         budget_.Step(); const OpId id{work.first_op.value + i};
         const auto& op = graph_.ops[id.value];
-        if (op.life != ValueLife::kLive || op.exceptional != ExceptionalCompletion::kMayThrow) continue;
+        if (op.life != ValueLife::kLive || !EvaluationMayThrow(graph_, plan_, id)) continue;
         if (corridors_.HasCatchCopies(id) || (thrower && !corridors_.SameCatch(id, *thrower))) return std::nullopt;
         if (!thrower) thrower = id;
       }
@@ -437,6 +537,10 @@ class Composition {
   PhaseBudget phase_budget_;
   PhaseCorridors corridors_;
   std::uint64_t accounted_work_ = 0;
+  bool checked_mode_;
+  std::vector<std::uint8_t> checked_tree_, repaired_;
+  std::vector<std::optional<OpId>> seed_, checked_source_, module_ends_;
+  std::vector<std::optional<GuardedCallFailure>> failures_;
   std::vector<SelectionRegion> regions_;
   std::vector<std::optional<std::size_t>> region_of_, join_of_;
   std::vector<std::uint32_t> incoming_, outgoing_, visited_;
@@ -482,11 +586,38 @@ void ComposePhaseExpressions(const ValueProgram& graph, EvaluationPlan& plan, Tr
   for (std::size_t i = 0; i < edges.size(); ++i) { budget.Step(); plan.operations[edges[i].first.value] = original[i]; }
   plan.phase_compositions.clear();
 }
+void ComposeCheckedCalls(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+  if (plan.flow != EvaluationFlow::kPhased || plan.guarded_reads.empty()) return;
+  bool needed = false;
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); const OpId call{static_cast<std::uint32_t>(i)};
+    if (const auto property = MemberProperty(graph, plan, call)) needed |= !MemberReferenceInline(graph, plan, call, *property);
+  }
+  if (!needed) return; // Stable plans never acquire new names or placements.
+  std::vector<std::pair<OpId, UseId>> edges;
+  budget.Admit(graph.ops.size(), sizeof(std::pair<OpId, UseId>)); edges.reserve(graph.ops.size());
+  budget.Admit(edges.capacity() - graph.ops.size(), sizeof(std::pair<OpId, UseId>));
+  Composition proof(graph, plan, budget, true);
+  auto roots = proof.Build(edges); proof.Failures(plan.checked_failures); proof.Account();
+  if (roots.empty()) return;
+  std::vector<OpEvaluation> original;
+  budget.Admit(edges.size(), sizeof(OpEvaluation)); original.reserve(edges.size());
+  budget.Admit(original.capacity() - edges.size(), sizeof(OpEvaluation));
+  for (const auto& [producer, use] : edges) {
+    budget.Step(); original.push_back(plan.operations[producer.value]);
+    plan.operations[producer.value] = {EvaluationKind::kInline, use, {}};
+  }
+  plan.checked_compositions = std::move(roots);
+  if (RefreshPhaseSelectionExecutions(graph, plan, budget)) return;
+  for (std::size_t i = 0; i < edges.size(); ++i) { budget.Step(); plan.operations[edges[i].first.value] = original[i]; }
+  plan.checked_compositions.clear();
+}
 std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, const EvaluationPlan& plan,
     TreeCheckBudget& budget) {
   std::vector<std::uint8_t> mask;
-  if (plan.phase_compositions.empty()) return mask;
-  Require(plan.flow == EvaluationFlow::kPhased && !plan.phase_selections.empty());
+  if (plan.phase_compositions.empty() && plan.checked_compositions.empty()) return mask;
+  Require(plan.flow == EvaluationFlow::kPhased);
+  Require(plan.phase_compositions.empty() || !plan.phase_selections.empty());
   budget.Array(mask, graph.ops.size());
   Composition proof(graph, plan, budget);
   for (std::size_t i = 0; i < plan.phase_compositions.size(); ++i) {
@@ -495,6 +626,25 @@ std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, con
     for (const auto node : proof.Verify(root)) { budget.Step(); Require(!mask[node.value]); mask[node.value] = 1; }
   }
   proof.Account();
+  if (!plan.checked_compositions.empty()) {
+    Composition checked(graph, plan, budget, true);
+    for (std::size_t i = 0; i < plan.checked_compositions.size(); ++i) {
+      budget.Step(); const auto root = plan.checked_compositions[i];
+      Require(!i || plan.checked_compositions[i - 1] < root);
+      for (const auto node : checked.Verify(root)) {
+        budget.Step(); Require(!mask[node.value]); mask[node.value] = 1;
+        if (GuardedInput(plan, node)) {
+          const auto guard = *GuardedPeer(plan, node);
+          Require(!mask[guard.value]); mask[guard.value] = 1;
+        }
+      }
+    }
+    checked.Account();
+  }
+  for (const auto& pair : plan.guarded_reads) {
+    budget.Step();
+    if (plan.operations[pair.read.value].kind == EvaluationKind::kInline) Require(mask[pair.read.value] && mask[pair.guard.value]);
+  }
   return mask;
 }
 }  // namespace abcd::source

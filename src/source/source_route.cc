@@ -1,3 +1,4 @@
+#include "guarded_call_json.h"
 #include "abcd/source/source_route.h"
 
 #include <nlohmann/json.hpp>
@@ -272,6 +273,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       if (evidence.placement) reference["placement"] = static_cast<unsigned>(*evidence.placement);
       if (evidence.temporary) reference["temporary"] = static_cast<unsigned>(*evidence.temporary);
       if (evidence.consumer) reference["consumer"] = evidence.consumer->value;
+      if (evidence.checked) reference["checked"] = GuardedCallJson(*evidence.checked);
     }
     if (receipt.failure->method) failure["method"] = receipt.failure->method->value;
     if (receipt.failure->working_pc) failure["working_pc"] = receipt.failure->working_pc->value;
@@ -494,6 +496,10 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
       if (!field("property", evidence.property) || !field("placement", evidence.placement) ||
           !field("temporary", evidence.temporary) || !field("consumer", evidence.consumer))
         return RouteReceiptError::kFailure;
+      if (const auto checked = item->find("checked"); checked != item->end()) {
+        evidence.checked = ParseGuardedCall(*checked);
+        if (!evidence.checked || evidence.checked->call != evidence.call) return RouteReceiptError::kFailure;
+      }
       typed.call_reference = evidence;
     }
     const auto pc = failure->find("pc");

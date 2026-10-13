@@ -4,6 +4,14 @@
 #include "abcd/source/evaluation_kind.h"
 namespace abcd::source {
 enum class CallReferenceError : std::uint8_t { kNotPropertyResult, kNotInline };
+enum class GuardedCallError : std::uint8_t { kIdentity, kUse, kOrder, kReference, kCatchState, kCorrespondence };
+struct GuardedCallFailure {
+  GuardedCallError kind = GuardedCallError::kOrder;
+  analysis::OpId call, read, guard;
+  analysis::UseId use;
+  std::optional<abc::CodeOffset> read_pc, read_working_pc, guard_pc, guard_working_pc;
+  bool operator==(const GuardedCallFailure&) const = default;
+};
 // Diagnostic evidence only; never an admission certificate or a rewrite hint.
 struct CallReferenceEvidence {
   CallReferenceError kind;
@@ -12,6 +20,7 @@ struct CallReferenceEvidence {
   std::optional<EvaluationKind> placement;
   std::optional<TemporaryReason> temporary;
   std::optional<analysis::UseId> consumer;
+  std::optional<GuardedCallFailure> checked;
   bool operator==(const CallReferenceEvidence&) const = default;
 };
 }  // namespace abcd::source

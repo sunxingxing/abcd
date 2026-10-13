@@ -5,10 +5,34 @@
 #include "logical_evaluation.h"
 
 #include <new>
+#include <algorithm>
 #include <stdexcept>
 #include <type_traits>
 
 namespace abcd::source {
+std::optional<analysis::OpId> MemberProperty(const analysis::ValueProgram& graph,
+    const EvaluationPlan& plan, analysis::OpId call) {
+  const auto& op = graph.ops[call.value];
+  const auto* invoke = std::get_if<analysis::ValueInvoke>(&op.operation);
+  if (op.life != analysis::ValueLife::kLive || plan.operations[call.value].kind == EvaluationKind::kClassProjection ||
+      !invoke || invoke->receiver != analysis::InvokeReceiver::kExplicit || !op.use_count) return {};
+  const auto operand = ResolveEvaluationOperand(plan, graph.uses[op.first_use.value].operand);
+  const auto* value = std::get_if<analysis::ValueId>(&operand);
+  const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
+  if (!result) return {};
+  const auto& property = graph.ops[result->op.value];
+  if (property.life != analysis::ValueLife::kLive || !property.result ||
+      (!std::holds_alternative<analysis::ValueNamedRead>(property.operation) &&
+       !std::holds_alternative<analysis::ValuePropertyRead>(property.operation))) return {};
+  return result->op;
+}
+bool MemberReferenceInline(const analysis::ValueProgram& graph, const EvaluationPlan& plan,
+    analysis::OpId call, analysis::OpId property) {
+  const auto& placement = plan.operations[property.value];
+  return (placement.kind == EvaluationKind::kInline ||
+      (placement.kind == EvaluationKind::kNestedLiteral && plan.operations[call.value].kind == EvaluationKind::kNestedLiteral)) &&
+      placement.consumer == graph.ops[call.value].first_use;
+}
 namespace {
 using namespace analysis;
 using Error = CallPlanError;
@@ -71,6 +95,9 @@ bool Property(const ValueOperation& operation) {
     failure.reference->temporary = placement.temporary;
     failure.reference->consumer = placement.consumer;
   }
+  const auto detail = std::lower_bound(evaluation.checked_failures.begin(), evaluation.checked_failures.end(), call,
+      [](const GuardedCallFailure& value, OpId id) { return value.call < id; });
+  if (detail != evaluation.checked_failures.end() && detail->call == call) failure.reference->checked = *detail;
   const auto origin = graph.ops[call.value].origin;
   if (origin.value < graph.origins.size()) {
     const auto& site = graph.origins[origin.value];
@@ -228,16 +255,13 @@ std::variant<std::uint64_t, CallPlanFailure> VerifyCalls(const analysis::ValuePr
       Require(member && member->property.value < graph.ops.size() &&
           member->receiver.value == op.first_use.value + 1, Error::kBinding);
       const auto& property = graph.ops[member->property.value];
-      const auto& placement = evaluation.operations[member->property.value];
       // Fresh evaluation verification owns availability and total effect order,
       // including selected regions and phases. CFG block placement is not a
       // Reference semantic: retain the original property result/base instead.
       if (!(property.life == ValueLife::kLive && Property(property.operation) && property.result))
         ReferenceFailure(graph, evaluation, {static_cast<std::uint32_t>(i)}, {},
             CallReferenceError::kNotPropertyResult);
-      if (!((placement.kind == EvaluationKind::kInline ||
-          (placement.kind == EvaluationKind::kNestedLiteral && evaluation.operations[i].kind == EvaluationKind::kNestedLiteral)) &&
-          placement.consumer == op.first_use))
+      if (!MemberReferenceInline(graph, evaluation, {static_cast<std::uint32_t>(i)}, member->property))
         ReferenceFailure(graph, evaluation, {static_cast<std::uint32_t>(i)}, member->property,
             CallReferenceError::kNotInline);
       Require(SameValue(ResolveEvaluationOperand(evaluation, graph.uses[op.first_use.value].operand),

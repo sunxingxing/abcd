@@ -346,3 +346,67 @@ Of the ten ExternalRoot candidates, six complete; TimeUtils now reports an
 unsupported instruction, and the three KeyboardController records reach
 expression/evaluation ownership failures. The old-contract o15/37098 remains
 blocked by the lazy-import contract. These next failures are not completion.
+
+## 11. Checked capture arguments (Round 44)
+
+A verified Round 38 pair has two original operations but one source read. The
+load owns the value identity; the named guard owns the exceptional exit and
+success Commit. `checked_read_event` exposes this ordered, MayThrow evaluation
+without changing raw `ValueLexicalLoad` semantics or granting `kCellGuard`.
+The message boundary remains the one above: compare exception constructors and
+control/value/log traces, not Node/Ark message or stack spelling.
+
+Only an unmet typed member-reference obligation seeds `ComposeCheckedCalls`.
+Already-satisfied references and standalone checked reads retain their plans;
+proofs allocate no AST symbols, names or owners. The existing composition pass
+is reused in a separate checked-call mode. An atom consumes the exact read and
+guard events over independently proved single-entry, copy-free normal edges.
+Input-free, effect-free normal control contributes an edge, not a source event;
+this permits block splitting without recognizing an opcode sequence. Existing
+inlined module pairs may retain their already-proved atomic interval, including
+both throw identities; this does not admit new module projections.
+
+The forest invariant remains: every absorbed throw point has its execution
+owner's handler and needs no catch copies; a nonthrowing node absorbs no throwing
+subtree. SameCatch/HasCatchCopies use the guard's exception identity for checked
+reads. New catch staging is not synthesized. A rejected proof carries typed
+`GuardedCallError` with call/read/guard/use and original/working read/guard PCs
+through CallPlan, route receipts, record-entry failures and manifests. Existing
+failure enum values and resource/work classes are unchanged.
+
+The evaluation verifier accepts exactly standalone-root or uniquely-consumed
+inline-with-composition states. It re-proves raw guarded evidence before checking
+the complete composition membership and before producing an equation-replacement
+mask. The guard remains `kGuardedCellRead`. Tree construction emits the shared
+SymbolExpr in the argument, without a duplicate guard statement. Tree operands
+and recovery preserve `OriginalActionRegion::kCapture`: load Before, guard
+success Commit, cell reference, and the guard's exceptional completion are
+recomputed rather than borrowed from the final call's action.
+
+Complexity is O(N log N) in the original operations/edges/uses/copies, bounded by
+existing dominance analysis. Pair, use, path-stop, root and diagnostic indexes
+are built once, with precharged arrays. No per-call CFG walk or repeated whole-
+method retry is used. Family requirements, activation/declaration placement,
+normal-flow capture handling and unguarded handler accesses are unchanged. No
+new source-language premise is introduced.
+
+Tests: `guarded_call_test` covers atomic membership and success/catch mutations,
+receiver mutation, foreign events, catch staging, a call outside the guard's
+handler, a nonthrowing wrapper, multiple checked arguments, duplicate consumers,
+copy/block splitting, 200/201/400/800 and precise work/byte boundaries. Existing
+standalone checks remain in `phased_guarded_reads_test`. `guarded_calls_cli_test`
+uses the [real es2abc fixture](../../../tests/integration/fixtures/guarded_calls/README.md)
+for Node differential and source mutations. Receipt and both manifest paths
+have diagnostic round-trip tests, including PC zero and absent locations.
+
+Round 44 workspace evidence (2026-10-14, uncommitted): keep-going full build
+passed; the first fixed-set run was 64/65 with a rich-text worker failure, its
+isolated retry passed, and the complete serial fixed-set rerun passed 65/65.
+The targeted slice passed 50/59; all nine failures are on the pre-existing list.
+The new unit and Node differential tests passed. Final exploration comparison
+against explore43/explore43s is 486/620 and 517/620, with zero regressions and
+zero byte drift. o16/8916 completes under the old flags. All three o19 target
+calls pass their former reference refusal, but the records remain incomplete
+at stop methods 7958/23270/35440, ExpressionOwnership PC 88/85. Old-flags
+coverageCollect reaches DecisionPrefix PC 347/342 instead of its former call
+refusal. No holdout or RSS run was performed.

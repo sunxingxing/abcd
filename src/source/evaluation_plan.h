@@ -14,6 +14,7 @@
 #include "class_initializers.h"
 #include "class_self_order.h"
 #include "../analysis/guarded_reads.h"
+#include "abcd/source/call_reference.h"
 
 namespace abcd::source {
 enum class BranchPolarity : std::uint8_t { kTaken, kFallthrough };
@@ -153,6 +154,11 @@ struct EvaluationPlan {
   // Ascending execution roots whose final-ownership trees were composed across
   // committed selections (phase_composition.h). Each is independently re-proved.
   std::vector<analysis::OpId> phase_compositions;
+  // Whole trees repairing unmet member references with checked capture events.
+  // Separate from selection-only composition; every member is independently
+  // re-proved before this certificate can replace corridor equations.
+  std::vector<analysis::OpId> checked_compositions;
+  std::vector<GuardedCallFailure> checked_failures; // Sorted by call; diagnostics only.
   // Buffered allocations own a chain of staged definitions across source operands.
   // Indexed by allocation, pointing to the last definition. Normal selected
   // objects and phased operand composition share the native forest/placement.

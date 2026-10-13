@@ -2266,6 +2266,11 @@ if(BUILD_TESTING)
   target_link_libraries(exception_arguments_test PRIVATE abcd_analysis)
   target_include_directories(exception_arguments_test PRIVATE tests/support)
   add_test(NAME exception_arguments_test COMMAND exception_arguments_test)
+  add_executable(guarded_call_test tests/unit/source/guarded_call_test.cc)
+  target_link_libraries(guarded_call_test PRIVATE abcd_source abcd_json)
+  target_include_directories(guarded_call_test PRIVATE tests/support)
+  add_test(NAME guarded_call_test COMMAND guarded_call_test)
+
   add_executable(phased_guarded_reads_test tests/unit/source/phased_guarded_reads_test.cc)
   target_link_libraries(phased_guarded_reads_test PRIVATE abcd_source)
   target_include_directories(phased_guarded_reads_test PRIVATE tests/support)
@@ -2414,6 +2419,9 @@ if(BUILD_TESTING)
       add_test(NAME decision_continuations_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_continuations.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_continuations)
+      add_test(NAME guarded_calls_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_calls.mjs
+        $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_calls)
       add_test(NAME phased_guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_guarded_captures.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/phased_guarded_captures)

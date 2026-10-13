@@ -204,7 +204,9 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kNestedLiteral ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInitializer ||
               evaluation_.operations[id.value].kind == EvaluationKind::kClassProjection ||
-              evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard || GuardedInput(evaluation_, id)) continue;
+              evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard || GuardedInput(evaluation_, id) ||
+              (evaluation_.operations[id.value].kind == EvaluationKind::kGuardedCellRead &&
+               evaluation_.operations[GuardedPeer(evaluation_, id)->value].kind == EvaluationKind::kInline)) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
           if (IsReceiverGuard(tree_, id) || evaluation_.operations[id.value].kind == EvaluationKind::kCellGuard || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
               std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||

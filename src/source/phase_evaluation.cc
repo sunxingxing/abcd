@@ -4,6 +4,7 @@
 #include <new>
 #include <stdexcept>
 #include "phase_corridor.h"
+#include "checked_read_event.h"
 #include "logical_evaluation.h"
 #include "phase_composition.h"
 
@@ -85,7 +86,7 @@ void Schedule(const ValueProgram& graph, EvaluationPlan& plan, PhaseCorridors& c
       // its root's catch signature by induction; require the same signature at
       // each new parent. Pure roots lacking dispatch evidence keep snapshots.
       // Single-use producers bound these comparisons by original copy volume.
-      if (retry && child.count && graph.ops[producer->value].exceptional == ExceptionalCompletion::kMayThrow &&
+      if (retry && child.count && EvaluationMayThrow(graph, plan, *producer) &&
           !corridors.SameCatch(*producer, id)) continue;
       Require(child.count <= expected, Error::kInvalidGraph);
       expected -= child.count; intervals[i].count += child.count;
@@ -127,7 +128,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
       if (plan.operations[i].kind == EvaluationKind::kInline &&
           PhaseCorridors::Event(graph.ops[i], plan.operations[i]) &&
           (std::holds_alternative<ValueBranch>(graph.ops[roots[i].value].operation) ||
-           (graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow &&
+           (EvaluationMayThrow(graph, plan, OpId{static_cast<std::uint32_t>(i)}) &&
             !corridors.SameCatch(id, roots[i])))) rejected[roots[i].value] = 1;
     }
     // Restore only rejected trees, then partition them in one constrained pass.
@@ -206,7 +207,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
       if (plan.operations[i].kind == EvaluationKind::kInline && !in_composition(i) &&
           !CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)}) &&
           PhaseCorridors::Event(graph.ops[i], plan.operations[i]) &&
-          graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow)
+          EvaluationMayThrow(graph, plan, OpId{static_cast<std::uint32_t>(i)}))
         Require(corridors.SameCatch(OpId{static_cast<std::uint32_t>(i)}, roots[i]), Error::kOrder);
     }
     const auto cost = budget.Cost();

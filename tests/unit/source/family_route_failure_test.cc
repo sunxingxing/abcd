@@ -53,6 +53,13 @@ void Failures() {
   Check(projected.call_reference == call.reference && projected.pc == call.pc &&
       projected.working_pc == call.working_pc && projected.method == abc::EntityOffset{91});
   Check(projected.causes.View().back().domain == FailureDomain<TemporaryReason>());
+  call.reference->checked = GuardedCallFailure{GuardedCallError::kCatchState, {17}, {5}, {6}, {9}};
+  projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyTreeFailure{{2},
+      FunctionTreeFailure{FunctionTreeError::kExpression,
+          ExpressionFailure{ExpressionError::kUnsupportedOperation, call}, abc::EntityOffset{91}}}});
+  Check(projected.failure_class == RouteFailureClass::kUnproved && projected.call_reference == call.reference);
+  Check(projected.causes.View().back().domain == FailureDomain<GuardedCallError>() &&
+      projected.causes.View().back().value == static_cast<unsigned>(GuardedCallError::kCatchState));
   analysis::FunctionSiteFailure sites{abc::BodyFailure{abc::BodyError::kBranchBoundary, {19}}, {}, abc::CodeOffset{7}};
   projected = FamilyRouteFailure(sites);
   Check(projected.failure_class == RouteFailureClass::kInvalidInput && projected.pc == abc::CodeOffset{19});

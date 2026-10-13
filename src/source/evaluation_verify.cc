@@ -28,6 +28,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     analysis::SemanticBudget budget, EvaluationFlow flow) {
   try {
     Require(plan.flow == flow, Error::kUnsupportedOperation);
+    Require(flow == EvaluationFlow::kPhased || (plan.checked_compositions.empty() && plan.checked_failures.empty()), Error::kOwnership);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Require(plan.operations.size() == graph.ops.size(), Error::kInvalidGraph);
     Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size(), Error::kOwnership);
@@ -66,7 +67,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         const auto cell = plan.cells->cells.operations[pair.read.value];
         Require(cell && std::holds_alternative<IncomingCell>(plan.cells->cells.cells[cell->value].storage), Error::kOwnership);
         const auto& read = plan.operations[pair.read.value]; const auto& guard = plan.operations[pair.guard.value];
-        Require(read.kind == EvaluationKind::kRoot && read.temporary == TemporaryReason::kCrossRegionValue && !read.consumer &&
+        Require(((read.kind == EvaluationKind::kRoot && read.temporary == TemporaryReason::kCrossRegionValue && !read.consumer) ||
+            (read.kind == EvaluationKind::kInline && read.consumer && !read.temporary && !plan.checked_compositions.empty())) &&
             guard.kind == EvaluationKind::kGuardedCellRead && !guard.consumer && !guard.temporary, Error::kOwnership);
       }
       for (const auto& peer : plan.guarded_peers) { step(); peers += peer.has_value(); }

@@ -1,4 +1,5 @@
 #include "phase_corridor.h"
+#include "checked_read_event.h"
 #include "assignment_values.h"
 #include "evaluation_liveness.h"
 #include "evaluation_aliases.h"
@@ -71,8 +72,8 @@ bool PhaseCorridors::Event(const ValueOp& op, const OpEvaluation& placement) {
       placement.kind != EvaluationKind::kElidedPure && placement.kind != EvaluationKind::kCellGuard && OrderedEvaluation(op);
 }
 PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget,
-    PhaseLiteralIntervals literals)
-    : graph_(graph), plan_(plan), budget_(budget) {
+    PhaseLiteralIntervals literals, CheckedReadFusion checked)
+    : graph_(graph), plan_(plan), budget_(budget), checked_(checked) {
   std::vector<std::size_t> incoming;
   std::vector<std::optional<EdgeId>> next;
   std::vector<std::uint8_t> previous, copied;
@@ -172,6 +173,8 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
       // snapshots and every other canonical use still prevent duplication.
       if (kind == EvaluationKind::kModuleGuard && !module_peers_.empty() &&
           module_peers_[owner->value]) continue;
+      if (checked_ == CheckedReadFusion::kCompose && kind == EvaluationKind::kGuardedCellRead &&
+          GuardedPeer(plan, *owner)) continue;
       if (IsMemberReceiver(graph, plan, use)) continue;
       // Owned definitions consume the allocation as their implicit literal
       // base, not as a second source value. LiteralPlan proved that ownership.
@@ -230,6 +233,7 @@ std::size_t PhaseCorridors::EffectCount(OpId op) const {
   return 1;
 }
 bool PhaseCorridors::SameCatch(OpId producer, OpId consumer) {
+  producer = EvaluationThrowSite(plan_, producer); consumer = EvaluationThrowSite(plan_, consumer);
   if (!exits_[producer.value] || !exits_[consumer.value] ||
       graph_.exceptional_exits[*exits_[producer.value]].handler !=
       graph_.exceptional_exits[*exits_[consumer.value]].handler) return false;
@@ -253,11 +257,13 @@ bool PhaseCorridors::SameCatch(OpId producer, OpId consumer) {
   return true;
 }
 bool PhaseCorridors::HasCatchCopies(OpId operation) const {
-  const auto bundle = throws_[operation.value];
+  const auto bundle = throws_[EvaluationThrowSite(plan_, operation).value];
   return bundle && plan_.phis->bundles[*bundle].count != 0;
 }
 std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, UseId use) const {
-  if (GuardedPeer(plan_, producer) || GuardedPeer(plan_, consumer)) return {};
+  if (GuardedPeer(plan_, consumer)) return {};
+  if (GuardedPeer(plan_, producer) &&
+      (checked_ != CheckedReadFusion::kCompose || !GuardedInput(plan_, producer))) return {};
   if (IsArrayInitialization(plan_, producer) || IsArrayInitialization(plan_, consumer) ||
       IsArrayOperand(plan_, producer) || IsArrayOperand(plan_, consumer) || ArrayLiteralFor(plan_, producer)) return {};
   const auto& child = graph_.ops[producer.value];
@@ -269,7 +275,7 @@ std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, 
   const auto shape = DescribeEvaluation(child.operation);
   const bool pure = shape && shape->expression && shape->inputs == InputEvaluation::kEager &&
       child.normal == LanguageEffect::kNone && child.before_throw == LanguageEffect::kNone &&
-      child.exceptional == ExceptionalCompletion::kImpossible && child.result &&
+      !EvaluationMayThrow(graph_, plan_, producer) && child.result &&
       graph_.values[child.result->value].domain.IsLanguage();
   const bool closed = pure && child.use_count == 0 && shape->Count() == 0;
   const bool assignment = AssignmentProducer(plan_, use) == producer && shape && shape->assignment_result &&

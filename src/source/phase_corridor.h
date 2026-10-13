@@ -28,13 +28,15 @@ struct PhasePosition {
 };
 struct PhaseUse { std::optional<analysis::UseId> first; bool multiple = false; };
 struct PhaseEffectInterval { std::size_t count = 0, end = 0; };
+enum class CheckedReadFusion : std::uint8_t { kStandalone, kCompose };
 enum class PhaseLiteralIntervals : std::uint8_t { kExclude, kInclude };
 // O(B+E+I+V+U+P+S) indexing. Slot comparisons are charged to uniquely consumed
 // producers; never perform a fresh graph walk per expression or operand.
 class PhaseCorridors {
  public:
   PhaseCorridors(const analysis::ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget,
-      PhaseLiteralIntervals literals = PhaseLiteralIntervals::kInclude);
+      PhaseLiteralIntervals literals = PhaseLiteralIntervals::kInclude,
+      CheckedReadFusion checked = CheckedReadFusion::kStandalone);
   bool CanFuse(analysis::OpId producer, analysis::OpId consumer, analysis::UseId use) const;
   // The coordinate-free part of CanFuse: nullopt rejects; true means an
   // invariant pure value needing no corridor; false needs an ordering proof
@@ -62,6 +64,7 @@ class PhaseCorridors {
   const analysis::ValueProgram& graph_;
   const EvaluationPlan& plan_;
   PhaseBudget& budget_;
+  CheckedReadFusion checked_;
   std::vector<PhasePosition> positions_;
   std::vector<PhaseUse> uses_;
   std::vector<std::optional<std::size_t>> exits_, throws_, staged_;

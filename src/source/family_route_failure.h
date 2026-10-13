@@ -32,6 +32,7 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
       if (error.reference) {
         if (error.reference->placement) CollectFailureCauses(*error.reference->placement, out);
         if (error.reference->temporary) CollectFailureCauses(*error.reference->temporary, out);
+        if (error.reference->checked) CollectFailureCauses(error.reference->checked->kind, out);
       }
     }
     if constexpr (std::is_same_v<T, analysis::SemanticFailure>) CollectFailureCauses(error.ssa_cause, out);

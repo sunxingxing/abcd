@@ -878,7 +878,11 @@ class TreeBuilder {
       if (evaluation.kind == EvaluationKind::kGuardedCellRead) {
         Require(expression.has_value() && GuardedPeer(evaluation_, id), Error::kOwnership);
         tree_.operations.push_back({id, *expression});
-        Append(draft, Statement(ExpressionStmt{RootExpression(*GuardedPeer(evaluation_, id), *expression)}, origin));
+        const auto read = *GuardedPeer(evaluation_, id);
+        if (evaluation_.operations[read.value].kind == EvaluationKind::kRoot)
+          Append(draft, Statement(ExpressionStmt{RootExpression(read, *expression)}, origin));
+        else Require(evaluation_.operations[read.value].kind == EvaluationKind::kInline &&
+            !evaluation_.checked_compositions.empty(), Error::kOwnership);
         continue;
       }
       if (evaluation.kind == EvaluationKind::kModuleGuard) {

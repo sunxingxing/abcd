@@ -32,12 +32,20 @@ int main() {
   chained.creation_pc = abc::CodeOffset{7};
   chained.call_reference = source::CallReferenceEvidence{source::CallReferenceError::kNotInline,
       {17}, analysis::OpId{4}, source::EvaluationKind::kRoot, source::TemporaryReason::kEffectSnapshot, {}};
+  chained.call_reference->checked = source::GuardedCallFailure{source::GuardedCallError::kCatchState, {17}, {5}, {6}, {9}};
+  chained.call_reference->checked->read_pc = abc::CodeOffset{0};
+  chained.call_reference->checked->guard_pc = abc::CodeOffset{73};
+  chained.call_reference->checked->guard_working_pc = abc::CodeOffset{31};
   chained.control = source::ControlOwnershipEvidence{
       {17, source::ControlOriginKind::kPhase, 17, abc::CodeOffset{73}, abc::CodeOffset{31}}, 19,
       {{5, source::ControlOriginKind::kPhase, 5}, source::ControlLocation{13, source::ControlOriginKind::kTryExit, 2}},
       {{0, source::ControlOriginKind::kPhase, 0}, {}}};
   nlohmann::json with_causes;
   tools::DescribeRecordFailure(source::RouteRefusal{chained}, with_causes);
+  const auto& checked_read = with_causes["source_failure"]["call_reference"]["checked"];
+  Check(checked_read["call"] == 17 && checked_read["read"] == 5 && checked_read["guard"] == 6 &&
+      checked_read["use"] == 9 && checked_read["read_pc"] == 0 && checked_read["guard_pc"] == 73 &&
+      checked_read["guard_working_pc"] == 31 && !checked_read.contains("read_working_pc"));
   const auto& control = with_causes["source_failure"]["control"];
   Check(control["node"]["pc"] == 73 && control["node"]["working_pc"] == 31 && control["arc"] == 19);
   Check(control["current"]["stop"]["origin"] == static_cast<unsigned>(source::ControlOriginKind::kTryExit));

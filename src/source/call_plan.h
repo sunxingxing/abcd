@@ -5,6 +5,10 @@
 #include "abcd/source/call_reference.h"
 
 namespace abcd::source {
+[[nodiscard]] std::optional<analysis::OpId> MemberProperty(const analysis::ValueProgram&,
+    const EvaluationPlan&, analysis::OpId);
+[[nodiscard]] bool MemberReferenceInline(const analysis::ValueProgram&, const EvaluationPlan&,
+    analysis::OpId call, analysis::OpId property);
 struct NoCall {};
 enum class EvalMode : std::uint8_t { kIndirect };
 struct ValueCall { EvalMode eval = EvalMode::kIndirect; };

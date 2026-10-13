@@ -20,6 +20,10 @@ namespace abcd::source {
 // except for its execution owner.
 void ComposePhaseExpressions(const analysis::ValueProgram& graph, EvaluationPlan& plan,
     TreeCheckBudget& budget);
+// Repair only unmet member references, treating a verified capture load/guard
+// as an atomic throwing operand. Already valid call plans keep every placement.
+// It uses the same path/ownership proof without requiring a selection region.
+void ComposeCheckedCalls(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
 // Independently re-proves every listed composition. Returns an OpId-indexed
 // mask of operations owned by a composed tree (roots and inline members); the
 // ordinary corridor equations do not apply to them. Throws EvaluationError.

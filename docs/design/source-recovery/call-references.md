@@ -388,3 +388,11 @@ setter、RHS、只读属性、callee 与 key 抛出，receiver、多个赋值实
 本轮验证：keep-going 全目标构建成功；固定集 `ctest --preset source-regression -j 1`
 65/65；call/member/assignment/property 加求值/phase/回执定向组 42/42。
 未运行探索集、留出集、全套测试或 RSS 基准。
+
+## 7. Checked capture arguments
+
+Round 44 adds an obligation-driven entry to the common phased composition proof.
+It only repairs unmet member references using a verified read + named HoleGuard
+atom; already-valid reference plans keep their placements. See
+[guarded-captures.md §11](guarded-captures.md#11-checked-capture-arguments-round-44)
+for event identity, catch-state limits, independent verification and tests.

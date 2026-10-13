@@ -12,6 +12,29 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 44：checked capture 调用参数（工作区完成，未提交）
+
+- 基线 `6f1138a7`。仅从未满足的成员引用义务启动组合；checked read 保留
+  read 的值身份和 guard 的异常身份，仍为 ordered/MayThrow，不能降为 kCellGuard。
+  原始 guarded 证明、家族需求格、声明/activation 与无 guard 的访问准入不变。
+- 独立验证覆盖完整原子事件及唯一外部消费，再发布 composition mask；tree/recovery
+  保留 read Before、guard success Commit 和异常映射。新增 catch staging 仍拒绝，
+  `GuardedCallError` 携带 call/read/guard/use 与原始/工作 PC，经两条失败输出路径保留。
+- 完整 keep-going 构建成功。`ctest --preset source-regression` 首次 64/65，rich-text
+  worker 调用失败（stderr 为空；该调用配置了 60 秒 timeout）；独立重跑通过，随后
+  `ctest --preset source-regression -j 1` **65/65**。定向 59 项 **50/59**，9 个失败
+  全在下方既有清单中；新增 guarded_call / guarded_calls_cli 均通过。receipt、两条
+  manifest 路径与原因链测试通过。日志在 `/private/tmp/r44-*.log`。
+- 对 `explore43/explore43s` 的最终逐 record 比较：旧 flags **486/620**（+1，
+  o16/8916 FindAndListenAudioOutputDevice），source **517/620**；两组 **0 回退、
+  0 已完成文本漂移**。结果目录 `/private/tmp/r44-final-cohort/`。
+- 三个主候选 o19/7617、22760、35025 都越过原 CALL 拒绝，下一层分别为 stop
+  方法 7958、23270、35440 的 `kOwnership > kExpressionOwnership`，原始/工作
+  PC 88/85。旧 flags 旁侧 o32/49116 则到达 method 49302 的
+  `kControl > kDecisionPrefix`，PC 347/342。未把解除首错计为 record 完成。
+- 设计与验证边界见 [guarded-captures.md §11](guarded-captures.md#11-checked-capture-arguments-round-44)。
+  未运行留出集、全套测试或 RSS 基准；没有提交。
+
 ## Round 42：拒绝义务与位置（工作区完成，未提交）
 
 - 基线 `1c8dee55`。只增加诊断：FunctionTree 的义务、实际下层 verifier 原因，
@@ -202,6 +225,7 @@
 | decision continuation 与外围 stop 相容（2026-10-14） | Codex 第四十轮，cc 审查。Class B：`Decisions()` 在共同祖先为虚拟出口时把私有 return 臂选为 decision join，共享臂因此越过外围 stop，尾部被重复认领。两组 flags 下同根因共 11 个 record（normal 3：o1 CardCalc/Index、o5 YearView；phased 8：o19/o26 的 7 个 `stop` 与 renderer.stop）。o38 SendCommandComponent 与 o18 handleMessage 是另外的 duplicate，单列。修复：decision 发现与最终 join 分开，在 `Regions()` 已知 enclosing stop T、提交归属前一次性确定。新增真实 normal postdominator 树，与 lexical follow 树、entry dominance 树分开（loop-discovery.md 记录三棵树的分工）。只有当 T 是有界区域的真实 stop、J₀ == R、Private(R)、T 后支配 S、R 不支配 T，且 prefix/作用域/边对应成立时，才以 T 替换 J₀；否则保留 J₀，或以新增 `DecisionContinuationError::{kPostdominator,kPrefix}` 拒绝。独立验证器从原始边复核。新增 `control_decision_test`、`decision_continuations.mjs`（真实 es2abc，两组 flags 各 2016 个 Node 场景，7 种变异全部检出）。11 个原拒绝全部消失：YearView 完成（cc 对照原源码核对 onAnimationStart 的语义一致；`||` 链以 phi 赋值形式输出，可读性另议）；其余 10 个暴露下一层（3 个 FunctionTreeError::kOwnership，2 个 kControl，3 个 CallReferenceError::kNotInline，1 个另一方法的 duplicate，1 个捕获初始化）。cc 审查结论：原 flags 478 → **479/620**，`--language-source` 510 → **511/620**；0 回退，0 文本漂移；固定集 65/65；配对样本逐字节相同；control 定向测试 9/9 |
 | 拒绝义务与位置贯通（2026-10-14） | Codex 第四十二轮（只加诊断），cc 审查。`tree_failure.h` 定义固定大小的义务与位置证据：FunctionTreeFailure 保留原有枚举，新增 decision copies/prefix、catch scope/staging、expression ownership、deferred declaration 等义务，并保留底层 verifier 原因；原始/工作 PC 分开发布，缺失 PC 不再输出为 0，synthetic 节点保留类型与 ID。`deferred_failure.h` 记录真实 creator、child occurrence、cell、domain、allocation、initializing store，以及 ExternalRoot/PhasedParent/Placement/Binding 子原因。PhasedMethod kInput 保留 ExceptionFlowResult 的真实失败；LruCache 的空链补为 `RecordModuleKindError::kShared`；两处 SemanticProof PC 实为方法归属错误（o0 m5040、o20 m8556），已修正。两条发布路径与 `abc_semantic --record-source` 一致。重分类结果（round-42-refusals.md，`--language-source`）：kControl 拆为 DecisionPrefix 9 与 DecisionEdgeCopies 2；kOwnership 3 都是 ExpressionOwnership；kDeferredCell 10 都是 ExternalRoot；kInput 拆为 iterator 4、属性枚举 3、delete 1。新增 `tree_failure_test`、`tree_failure_cli_test`。cc 审查结论：479/620、511/620 都不变，0 状态变化，0 文本变化；固定集 65/65；配对样本逐字节相同 |
 | 外部类根延迟需求回传 creator（2026-10-14） | Codex 第四十三轮，cc 审查。10 个 `FamilyTreeError::kDeferredCell > kExternalRoot` 属于同一机制：类成员通过捕获槽读取本次类定义的名字（Guarded，d0/s0）。creator 先建树、后准备类成员，需求无法回传。两阶段家族准备（`prepared_family`）：先完成默认参数投影、需求汇总和 root capture 重绑，按原 constructor/member 顺序收集外部需求，与普通子函数需求在 creator 建树前合并、一次 `MarkDeferredCells`，然后再建成员树。存储身份与请求身份分开。`family_tree.cc` 的 ExternalRoot 拒绝改为履约验证（identity/revision、cell、实际 `let` 声明、scope、store→初始化表达式），没有 allow-flag；root 的 TDZ 状态经 `root_capture.targets` 从已验证声明映射。不改激活边界，静态初始化时机、内外类绑定合并、异常父函数延期也不变。3 个跨块 CAPTURE（o3/o10/o29）不在范围内，manifest 逐字段不变。新增 `class_deferred_test`、`class_deferred.mjs`（真实 es2abc，Node 差分覆盖 self 引用、多创建点、初始化前/中读取、抛出后逃逸闭包、heritage 抛出、重入）。完成 6 个（o8/o15/o28 的 StyleConfiguration 与 Log）；其余 4 个暴露下一层（TimeUtils 是 phased 不支持的指令；三个 KeyboardController 是 kOwnership）。cc 对照原源码核对 Log 的语义：静态方法经 `$local2` 读取类绑定，TDZ 保持一致。可读性待改进：一个类以 `$value0`/`$local2`/`Log` 三个名字出现，合并需证明外层绑定不被重写。cc 审查结论：原 flags 479 → **485/620**，`--language-source` 511 → **517/620**；0 回退，0 文本漂移；固定集 65/65；配对样本逐字节相同 |
+| checked capture read 组合进成员调用实参（2026-10-14） | Codex 第四十四轮，cc 审查。Round 38 把已验证的 read+HoleGuard 投影保留为独立 root，导致成员调用实参中出现 checked read 时引用无法内联（`CallReferenceError::kNotInline > kRoot > kCrossRegionValue`）。新增 `checked_read_event.h`，以 guard 作为原子读取事件的异常身份；`phase_corridor`/`phase_evaluation`/`phase_composition` 统一消费该视图，事件有序且 MayThrow。`ComposeCheckedCalls` 只从未满足的成员引用义务启动，已满足的调用与独立 checked read 保持原计划（零漂移规则）；证明期间不分配符号、名字或 owner。evaluation verifier 只接受两种互斥状态（独立 root，或有完整组合证据且外部消费唯一的 inline）；guard 始终是 `kGuardedCellRead`；`VerifyPhaseCompositions` 先复核成员、消费、catch 条件，再生成掩码。不支持的 catch staging 报 `kCatchState`。可消费已验证 inline 的模块读取 pair，但没有新增准入。新增 `guarded_call_test`、`guarded_calls_cli_test`（真实 es2abc，14 个 Node 场景，每组 5 种变异）。结果：3 个目标的 CALL 拒绝消失，但都停在各自 `stop` 的 `kExpressionOwnership`（88/85，op 33 对 owner op 31）；旧 flags 下 o16 FindAndListenAudioOutputDevice 完成，输出与 `--language-source` 逐字节相同；o32/49116 暴露 DecisionPrefix（m49302 347/342）。cc 审查结论：原 flags 485 → **486/620**，`--language-source` **517/620** 不变；0 回退，0 文本漂移；固定集 65/65；配对样本逐字节相同 |
 | 既有失败清单（2026-10-13 核实） | 以下 30 个测试在会话起点 22e7423a 上同样失败，不在定向集中（全套测试暂停），不属于本会话的回退：file_generator_return(_loop)_source_test；literal_construct、mixed_literal、phased_literal、literal_closure_source、unguarded_literal_closure_source、derived_literal_receiver_source、unguarded_derived_literal_receiver_source；boolean_context_source_test、captured_receiver_source_test、class_tree_source_test、decision_snapshots_source_test、derived_cells_source_test、family_source_cli_test、forwarded_receiver_source_test、phased_arm_selection_source_test、reversed_captured_receiver_source_test、reversed_forwarded_receiver_source_test、reversed_initialization_captured_receiver_source_test、reversed_initialization_forwarded_receiver_source_test、snapshot_syntax_source_test、try_tree_source_test、try_tree_test（2026-10-14 补登，bc0b1dee 上复现）、unguarded_captured_receiver_source_test、unguarded_derived_cells_source_test、unguarded_forwarded_receiver_source_test、unguarded_reversed_captured_receiver_source_test、unguarded_reversed_forwarded_receiver_source_test、unguarded_reversed_initialization_captured_receiver_source_test、unguarded_reversed_initialization_forwarded_receiver_source_test |
 | `window_navigation_graph_source_test`、`community_ability_graph_source_test` | 单独运行均通过（231s、205s）；与其他测试并行运行时，其 60 秒 worker 子进程会超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |

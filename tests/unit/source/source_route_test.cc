@@ -205,6 +205,10 @@ int main() {
       CaptureOrigin{{456}, abc::CodeOffset{31}, abc::CodeOffset{17}}};
   caused.failure->call_reference = CallReferenceEvidence{CallReferenceError::kNotInline,
       {17}, abcd::analysis::OpId{4}, EvaluationKind::kRoot, TemporaryReason::kCrossRegionValue, {}};
+  caused.failure->call_reference->checked = GuardedCallFailure{GuardedCallError::kCatchState, {17}, {5}, {6}, {9}};
+  caused.failure->call_reference->checked->read_pc = abc::CodeOffset{0};
+  caused.failure->call_reference->checked->guard_pc = abc::CodeOffset{73};
+  caused.failure->call_reference->checked->guard_working_pc = abc::CodeOffset{31};
   AppendFailureCause(caused.failure->causes, RouteFailureClass::kUnproved);
   AppendFailureCause(caused.failure->causes, ValueRouteError::kTreeStage);
   auto deep = RefusedReceipt();
@@ -219,6 +223,11 @@ int main() {
   for (const auto& [field, invalid] : std::vector<std::pair<std::string, nlohmann::json>>{
       {"requested", 256}, {"requested", 4}, {"slot", 65536}, {"ordinal", -1}, {"depth", "zero"}}) {
     auto malformed = capture_json; malformed["failure"]["capture"][field] = invalid;
+    Check(std::holds_alternative<RouteReceiptError>(ParseRouteReceipt(malformed.dump())));
+  }
+  for (const auto& [field, invalid] : std::vector<std::pair<std::string, nlohmann::json>>{
+      {"kind", 255}, {"call", 18}, {"read", -1}, {"guard_pc", "zero"}}) {
+    auto malformed = capture_json; malformed["failure"]["call_reference"]["checked"][field] = invalid;
     Check(std::holds_alternative<RouteReceiptError>(ParseRouteReceipt(malformed.dump())));
   }
   auto no_method = capture_json; no_method["failure"]["capture"].erase("method");

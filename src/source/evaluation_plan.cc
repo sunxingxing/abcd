@@ -507,6 +507,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
       BuildPhaseSelectionOperands(graph, plan, selection_budget);
       BuildPhasedObjectOperands(graph, plan, selection_budget);
       ComposePhaseExpressions(graph, plan, selection_budget);
+      ComposeCheckedCalls(graph, plan, selection_budget);
       admit(selection_budget.Bytes(), 1); step(selection_budget.Work());
     }
     const auto normalized = BuildIntegerNaNs(graph, plan, {bytes, work});
@@ -516,7 +517,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
     if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    plan.allocated_bytes = plan.assignment_values.capacity() * sizeof(std::optional<analysis::OpId>) + plan.assignment_consumers.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_children.capacity() * sizeof(std::optional<analysis::OpId>) + plan.closed_expressions.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + plan.phase_compositions.capacity() * sizeof(analysis::OpId) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_selections.capacity() * sizeof(PhaseSelectionOperand) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
+    plan.allocated_bytes = plan.checked_failures.capacity() * sizeof(GuardedCallFailure) + plan.assignment_values.capacity() * sizeof(std::optional<analysis::OpId>) + plan.assignment_consumers.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_children.capacity() * sizeof(std::optional<analysis::OpId>) + plan.closed_expressions.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + (plan.phase_compositions.capacity() + plan.checked_compositions.capacity()) * sizeof(analysis::OpId) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_selections.capacity() * sizeof(PhaseSelectionOperand) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.logical_objects.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.aliases.capacity() * sizeof(analysis::ValueId) +

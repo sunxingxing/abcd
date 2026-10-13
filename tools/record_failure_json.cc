@@ -1,4 +1,5 @@
 #include "record_failure_json.h"
+#include "../src/source/guarded_call_json.h"
 #include "../src/source/control_failure_json.h"
 #include "../src/source/tree_failure_json.h"
 
@@ -18,6 +19,7 @@ nlohmann::json DescribeReference(const source::CallReferenceEvidence& evidence) 
   if (evidence.placement) reference["placement"] = static_cast<unsigned>(*evidence.placement);
   if (evidence.temporary) reference["temporary"] = static_cast<unsigned>(*evidence.temporary);
   if (evidence.consumer) reference["consumer"] = evidence.consumer->value;
+  if (evidence.checked) reference["checked"] = source::GuardedCallJson(*evidence.checked);
   return reference;
 }
 }  // namespace
