@@ -34,7 +34,7 @@ std::optional<EvaluationStorageLifetime> RetainedEvaluationLifetime(const analys
     return {};
   }, value.origin);
 }
-std::variant<std::uint64_t, EvaluationError> VerifyElidedPureEvaluations(
+std::variant<std::uint64_t, EvaluationFailure> VerifyElidedPureEvaluations(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {
   using namespace analysis;
   using Error = EvaluationError;
@@ -68,7 +68,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyElidedPureEvaluations(
   } catch (Error error) { return error; }
 }
 
-std::variant<EvaluationLivenessCost, EvaluationError> ElidePureEvaluations(
+std::variant<EvaluationLivenessCost, EvaluationFailure> ElidePureEvaluations(
     const analysis::ValueProgram& graph, EvaluationPlan& plan, analysis::SemanticBudget budget) {
   using namespace analysis;
   using Error = EvaluationError;

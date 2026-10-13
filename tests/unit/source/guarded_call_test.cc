@@ -19,7 +19,7 @@ auto Run(std::size_t count, bool copies = false, bool split = false) {
           {}, {}, {}, {}, ClosureWrites::kLanguage, {}, reads.reads);
     };
     const auto built = build();
-    if (const auto* e = std::get_if<EvaluationError>(&built)) std::cerr << "build " << count << " copies=" << copies << " split=" << split << " error=" << unsigned(*e) << "\n";
+    if (const auto* e = std::get_if<EvaluationFailure>(&built)) std::cerr << "build " << count << " copies=" << copies << " split=" << split << " error=" << unsigned(e->kind) << "\n";
     test::Check(std::holds_alternative<EvaluationPlan>(built));
     const auto& plan = std::get<EvaluationPlan>(built);
     for (const auto& pair : reads.reads) {
@@ -29,7 +29,7 @@ auto Run(std::size_t count, bool copies = false, bool split = false) {
     }
     test::Check(plan.checked_compositions.size() == count);
     test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, plan)));
-    const auto rejected = [&](const auto& changed) { test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed))); };
+    const auto rejected = [&](const auto& changed) { test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed))); };
     const auto& pair = reads.reads.front();
     auto changed = plan; changed.checked_compositions.clear(); rejected(changed);
     changed = plan; changed.checked_compositions.push_back(changed.checked_compositions.front()); rejected(changed);
@@ -40,7 +40,7 @@ auto Run(std::size_t count, bool copies = false, bool split = false) {
     changed = plan; changed.operations[pair.read.value].consumer = graph.ops[pair.guard.value].first_use; rejected(changed);
     auto wrong = graph;
     for (auto& exit : wrong.exceptional_exits) if (exit.op == pair.guard) exit.handler.reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(wrong, plan)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(wrong, plan)));
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       if (!std::holds_alternative<ValueInvoke>(graph.ops[i].operation)) continue;
       auto wrong_receiver = graph;
@@ -69,13 +69,13 @@ auto Run(std::size_t count, bool copies = false, bool split = false) {
       test::Check(std::holds_alternative<TreeSemanticError>(VerifyExceptionTreeSemantics(graph, exceptions, plan, changed_tree, {constants, 2})));
     }
     test::Check(std::holds_alternative<EvaluationPlan>(build({SemanticBudget{}.bytes, plan.work})));
-    test::Check(std::get<EvaluationError>(build({SemanticBudget{}.bytes, plan.work - 1})) == EvaluationError::kWorkLimit);
+    test::Check(std::get<EvaluationFailure>(build({SemanticBudget{}.bytes, plan.work - 1})) == EvaluationError::kWorkLimit);
     std::size_t low = 0, high = SemanticBudget{}.bytes;
     while (low + 1 < high) {
       const auto mid = low + (high - low) / 2;
       if (std::holds_alternative<EvaluationPlan>(build({mid, SemanticBudget{}.work}))) high = mid; else low = mid;
     }
-    test::Check(std::get<EvaluationError>(build({high - 1, SemanticBudget{}.work})) == EvaluationError::kResourceLimit);
+    test::Check(std::get<EvaluationFailure>(build({high - 1, SemanticBudget{}.work})) == EvaluationError::kResourceLimit);
     return std::pair{plan.work, high};
   }, false, true);
 }
@@ -122,7 +122,7 @@ void Negative(test::GuardedCallCase variant) {
             UseId{graph.ops[i].first_use.value + 2}, {}};
       }
     }
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
   }, false, true, variant);
 }
 

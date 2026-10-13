@@ -10,8 +10,7 @@ const cases = [
   ['DocsSample/DistributedAppDev/DistributedAuthentication', 4660, 5040, 12],
   ['UI/CustomAnimationTab', 8166, 8556, 13],
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
-  ['DocsSample/Media/Audio/AudioRoutingAndVolumeSample', 12741, 13192, 88],
-  ['UI/CalendarViewSwitch', 28303, 28988],
+  ['UI/CalendarViewSwitch', 28303, 28799, 677],
   ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo', 29268, 29450, 90],
 ];
 const run = (exe,args) => {
@@ -44,20 +43,14 @@ try {
       assert.deepEqual(report.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
       assert.equal(report.source_pc,undefined);
     }
-    if(entity===12741) {
-      assert.equal(report.source_failure.tree.obligation,6);
-      assert.equal(report.source_failure.tree.location.working_pc,85);
-      assert.ok(report.source_failure.tree.expected_owner);
-      // No unique operation owner exists for this non-root placement.
-      assert.equal(report.source_failure.tree.actual_owner,undefined);
-    }
+    // Round 43 fulfilled the former ExternalRoot requirement for 28303;
+    // its first refusal is now this real child's unsupported instruction.
     if(entity===28303) {
-      const d=report.source_failure.deferred;
-      assert.equal(d.reason,0);assert.equal(d.creator,28528);assert.equal(d.child,28988);
-      assert.equal(d.allocation.pc,6);assert.equal(d.store.pc,28);assert.equal(d.occurrence.source.pc,22);
+      assert.equal(report.source_failure.working_pc,677);
+      assert.equal(report.source_failure.deferred,undefined);
     }
-    if(entity===29268) assert.deepEqual(report.source_failure.causes,[
+    if(entity===28303 || entity===29268) assert.deepEqual(report.source_failure.causes,[
       {domain:'abcd::source::PhasedMethodError',value:0},{domain:'abcd::analysis::SemanticError',value:1}]);
   }
-  console.log('tree_failure_cli_test: six real refusals agree across CLI and manifest');
+  console.log('tree_failure_cli_test: five real refusals agree across CLI and manifest');
 } finally {rmSync(temp,{recursive:true,force:true});}

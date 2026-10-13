@@ -280,7 +280,7 @@ int main() {
     test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan)));
     auto changed = plan;
     changed.closed_expressions[source.value].reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, changed)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, changed)));
     changed = plan;
     const auto field = std::find_if(graph.ops.begin(), graph.ops.end(), [](const ValueOp& op) {
       return std::holds_alternative<ValueOwnWrite>(op.operation);
@@ -288,18 +288,18 @@ int main() {
     test::Check(field != graph.ops.end() && field->first_use != changed.closed_expressions[source.value]);
     changed.closed_expressions[source.value] = field->first_use;
     changed.operations[source.value].consumer = changed.closed_expressions[source.value];
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, changed)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, changed)));
     graph.ops[source.value].normal = LanguageEffect::kHeapRead;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, plan)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, plan)));
     test::Check(std::holds_alternative<ClosedClassFieldError>(ClosedClassFields::Build(graph)));
     graph.ops[source.value].normal = LanguageEffect::kNone;
     graph.ops[source.value].operation = ValueFrameThis{};
     // Even a no-throw frame read depends on its original implicit context.
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, plan)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, plan)));
     test::Check(std::holds_alternative<ClosedClassFieldError>(ClosedClassFields::Build(graph)));
     graph.ops[source.value].operation = ValueString{{0}};
     graph.values[1].domain = ValueKinds::Unknown();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, plan)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, plan)));
     test::Check(std::holds_alternative<ClosedClassFieldError>(ClosedClassFields::Build(graph)));
   }
   for (const bool string : {false, true}) for (const bool reverse : {false, true}) {

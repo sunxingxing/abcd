@@ -1,5 +1,6 @@
 #include "integer_nan.h"
 #include "evaluation_plan.h"
+#include "evaluation_failure.h"
 #include "assignment_values.h"
 #include "evaluation_flow.h"
 #include "evaluation_aliases.h"
@@ -23,9 +24,11 @@ struct EvaluationFrame { analysis::OpId op; std::uint32_t next_operand = 0; };
 enum class EvaluationVisit : std::uint8_t { kUnseen, kActive, kDone };
 }  // namespace
 
-std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
+std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget, EvaluationFlow flow) {
+  EvaluationEvidence witness;
+  const auto Require = [&](bool condition, Error error) { if (!condition) throw EvaluationFailure{error, witness}; };
   try {
     Require(plan.flow == flow, Error::kUnsupportedOperation);
     Require(flow == EvaluationFlow::kPhased || (plan.checked_compositions.empty() && plan.checked_failures.empty()), Error::kOwnership);
@@ -75,7 +78,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
       Require(peers == 2 * plan.guarded_reads.size(), Error::kOwnership);
     }
     const auto availability = CheckEvaluationFlow(graph, flow, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&availability)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&availability)) return *error;
     step(std::get<std::uint64_t>(availability));
     admit(graph.uses.size(), sizeof(std::uint8_t));
     step(graph.values.size()); step(graph.ops.size());
@@ -117,13 +120,13 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
           Error::kOwnership);
     }
     const auto aliases = VerifyEvaluationAliases(graph, plan, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&aliases)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&aliases)) return *error;
     step(std::get<std::uint64_t>(aliases));
     const auto normalized = VerifyIntegerNaNs(graph, plan, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&normalized)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&normalized)) return *error;
     step(std::get<std::uint64_t>(normalized));
     auto indexed_modules = IndexModuleEvaluations(graph, plan.modules, {bytes, work});
-    if (const auto* error = std::get_if<EvaluationError>(&indexed_modules)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&indexed_modules)) return *error;
     auto module_index = std::get<ModuleEvaluationIndex>(std::move(indexed_modules));
     admit(module_index.allocated_bytes, 1); step(module_index.work);
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
@@ -286,10 +289,10 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     VerifyLogicalValues(graph, plan, fusion_budget);
     admit(fusion_budget.Bytes(), 1); step(fusion_budget.Work());
     const auto module_copies = VerifyModuleCatchCopies(graph, plan, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&module_copies)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&module_copies)) return *error;
     step(std::get<std::uint64_t>(module_copies));
     const auto expressions = VerifyPhaseExpressions(graph, plan, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&expressions)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
     admit(phase_cost.bytes, 1); step(phase_cost.work);
     // Cross-block events are not erased: the independent corridor certificate
@@ -307,6 +310,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step();
       const auto& op = graph.ops[i];
+      witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kPlan);
       const auto placement = BeforeLogicalFusion(graph, plan, i);
       if (!plan.closed_expressions.empty() && plan.closed_expressions[i]) {
         Require(IsClosedPureValue(graph, {static_cast<std::uint32_t>(i)}) &&
@@ -402,13 +406,16 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
             !placement.temporary && op.result, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone;
       } else if (placement.kind == EvaluationKind::kPhiInput) {
+        witness.obligation = EvaluationObligation::kPhiInput;
         Require(!pinned[i] && op.result && !placement.temporary && placement.consumer &&
             !phi_inputs.empty() && phi_inputs[i] == placement.consumer && visible[i].first == placement.consumer &&
             !visible[i].multiple, Error::kOwnership);
       } else if (placement.kind == EvaluationKind::kLogicalLeft) {
+        witness.obligation = EvaluationObligation::kLogicalInput;
         Require(!pinned[i] && op.result && !placement.temporary && placement.consumer &&
             !logical_inputs.empty() && logical_inputs[i] == placement.consumer, Error::kOwnership);
       } else if (placement.kind == EvaluationKind::kInline) {
+        witness.obligation = EvaluationObligation::kInlineConsumer;
         Require(!pinned[i] || (cross(i) && PhaseCorridors::Aggregate(op.operation)), Error::kOwnership);
         Require((op.result || (i < plan.assignment_consumers.size() && plan.assignment_consumers[i])) && placement.consumer && !placement.temporary, Error::kOwnership);
         Require(placement.consumer->value < graph.uses.size(), Error::kOwnership);
@@ -426,9 +433,12 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         const auto consumer_shape = DescribeEvaluation(graph.ops[owner->value].operation);
         Require(consumer_shape && !consumer_shape->NeedsSnapshot(use.role), Error::kOrder);
       } else {
+        witness.obligation = EvaluationObligation::kRootTemporary;
         Require(placement.kind == EvaluationKind::kRoot && !placement.consumer, Error::kOwnership);
+        witness.obligation = EvaluationObligation::kTemporaryPresence;
         const auto visible_uses = visible[i];
         const bool used = visible_uses.first.has_value();
+        witness.expected_consumer = visible_uses.first;
         Require(used == placement.temporary.has_value(), Error::kOwnership);
         if (used) {
           const auto& use = graph.uses[visible_uses.first->value];
@@ -437,6 +447,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
               : !owner || graph.ops[owner->value].block != op.block ? TemporaryReason::kCrossRegionValue
               : PredicateSnapshot(graph, graph.ops[owner->value], use.operand)
                   ? TemporaryReason::kPredicateSnapshot : TemporaryReason::kEffectSnapshot;
+          witness.obligation = EvaluationObligation::kTemporaryReason;
+          witness.expected_temporary = reason;
           Require(placement.temporary == reason, Error::kOwnership);
         }
       }
@@ -446,6 +458,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         if (const auto error = CheckEvaluationUse(graph, use, *shape, ordinal)) return *error;
       }
     }
+    witness = {};
     std::size_t next_op = 0;
     std::optional<analysis::OpId> fused_guard;
     for (std::size_t b = 0; b < graph.blocks.size(); ++b) {
@@ -485,6 +498,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         // Expanding it here checks its subtree's original effect order exactly.
         if (BeforeLogicalFusion(graph, plan, i).kind != EvaluationKind::kRoot &&
             BeforeLogicalFusion(graph, plan, i).kind != EvaluationKind::kPhiInput) continue;
+        witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kDuplicateVisit);
         Require(visits[i] == EvaluationVisit::kUnseen, Error::kOwnership);
         std::size_t depth = 1;
         stack[0] = {{static_cast<std::uint32_t>(i)}, 0};
@@ -499,6 +513,9 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
               continue;
             const auto result = EvaluationProducer(graph, plan, use_id);
             if (!result) continue;
+            witness = EvaluationAt(graph, plan, *result, EvaluationObligation::kOperandOwnership);
+            witness.use = witness.expected_consumer = use_id;
+            witness.expected_owner = OperationLocation(graph, frame.op);
             const auto& producer = graph.ops[result->value];
             const auto placement = BeforeLogicalFusion(graph, plan, result->value);
             if (placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kLogicalLeft) {
@@ -513,6 +530,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                       Error::kUnavailableValue);
             }
           } else {
+            witness = EvaluationAt(graph, plan, frame.op, EvaluationObligation::kPlan);
             // Check the final expression root, not only the immediate
             // consumer: a pure wrapper must not carry a closure past pop/push.
             if (std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) ||
@@ -544,27 +562,32 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         }
       }
       skip_pure();
+      witness = {}; witness.location.block = analysis::WorkBlockId{static_cast<std::uint32_t>(b)};
+      if (expected < end) witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(expected)}, EvaluationObligation::kPlan);
       Require(expected == end, Error::kOrder);
       next_op = end;
     }
+    witness = {};
     Require(next_op == graph.ops.size() && !fused_guard, Error::kInvalidGraph);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step();
+      witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kLiveCoverage);
       Require(graph.ops[i].life != analysis::ValueLife::kLive || visits[i] == EvaluationVisit::kDone,
               Error::kOwnership);
     }
     return budget.work - work;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
-  } catch (Error error) { return error;
+  } catch (const EvaluationFailure& error) { return error;
+  } catch (Error error) { return EvaluationFailure{error, witness};
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
-std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
+std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {
   return VerifyEvaluationForFlow(graph, plan, budget, EvaluationFlow::kNormal);
 }
-std::variant<std::uint64_t, EvaluationError> VerifyPhasedEvaluationPlan(
+std::variant<std::uint64_t, EvaluationFailure> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {
   return VerifyEvaluationForFlow(graph, plan, budget, EvaluationFlow::kPhased);
 }

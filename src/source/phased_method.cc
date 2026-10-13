@@ -374,7 +374,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
-std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
+std::variant<PhasedMethod, PhasedMethodError, EvaluationFailure> PhasedMethod::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding) {
   auto built = PhasedBody::Build(context, body, budget, binding);
@@ -386,16 +386,21 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
   if (const auto* failure = std::get_if<PhasedControlFailure>(&built)) return failure->kind;
   return Evaluate(std::get<PhasedBody>(std::move(built)), budget);
 }
-std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Evaluate(
+std::variant<PhasedMethod, PhasedMethodError, EvaluationFailure> PhasedMethod::Evaluate(
     PhasedBody body, analysis::SemanticBudget budget) {
   try {
     PhaseBudget quota(budget);
     quota.Admit(sizeof(Storage)); quota.Admit(body.AllocatedBytes()); quota.Step(body.Work());
     const auto* aliases = body.Modules();
-    auto evaluation = PhaseResult<EvaluationPlan>(BuildPhasedEvaluationPlan(body.Graph(),
-        quota.Remaining(), IncomingCells::kReject, {},
-        aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{}),
-        Error::kEvaluation);
+    auto evaluated = BuildPhasedEvaluationPlan(body.Graph(), quota.Remaining(), IncomingCells::kReject, {},
+        aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{});
+    if (auto* failure = std::get_if<EvaluationFailure>(&evaluated)) {
+      failure->evaluation.location.method = body.Target();
+      if (failure->kind == EvaluationError::kResourceLimit) return Error::kResourceLimit;
+      if (failure->kind == EvaluationError::kWorkLimit) return Error::kWorkLimit;
+      return *failure;
+    }
+    auto evaluation = std::get<EvaluationPlan>(std::move(evaluated));
     quota.Admit(evaluation.allocated_bytes); quota.Step(evaluation.work);
     return PhasedMethod(std::make_unique<Storage>(Storage{std::move(body), std::move(evaluation),
         quota.Bytes(), quota.Work()}));

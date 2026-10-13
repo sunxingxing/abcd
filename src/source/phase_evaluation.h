@@ -10,11 +10,11 @@ struct PhaseEvaluationCost {
 };
 // Requires fresh availability, aliases, LiteralPlan and exceptional copy validation.
 // Discard the candidate plan on failure; original phases/SSA are never edited.
-[[nodiscard]] std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
+[[nodiscard]] std::variant<PhaseEvaluationCost, EvaluationFailure> BuildPhaseExpressions(
     const analysis::ValueProgram& graph, EvaluationPlan& plan, analysis::SemanticBudget budget);
 // Checks proposed forest edges and ordered interval equations independently;
 // does not rerun the builder's choice of which operands to retain as snapshots.
-[[nodiscard]] std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
+[[nodiscard]] std::variant<PhaseEvaluationCost, EvaluationFailure> VerifyPhaseExpressions(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget);
 // Source occurrence projection on an already validated graph and alias map.
 [[nodiscard]] bool IsMemberReceiver(const analysis::ValueProgram& graph,

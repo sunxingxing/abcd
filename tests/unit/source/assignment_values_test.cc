@@ -78,11 +78,11 @@ std::uint64_t Assignments(std::uint32_t count) {
     auto forged = plan;
     const auto use = *forged.assignment_consumers[store.value];
     forged.assignment_values[use.value] = OpId{store.value - 1};
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, forged)));
     forged = plan; forged.assignment_values[use.value].reset();
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, forged)));
     forged = plan; forged.operations[store.value] = {EvaluationKind::kRoot, {}, {}};
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, forged)));
     auto changed = fixture.graph;
     changed.uses[use.value].operand = ValueId{0};
     bool refused = false;
@@ -94,7 +94,7 @@ std::uint64_t Assignments(std::uint32_t count) {
   SemanticBudget budget; budget.work = plan.work;
   Check(std::holds_alternative<EvaluationPlan>(BuildEvaluationPlan(fixture.graph,budget)));
   --budget.work;
-  Check(std::get<EvaluationError>(BuildEvaluationPlan(fixture.graph,budget)) == EvaluationError::kWorkLimit);
+  Check(std::get<EvaluationFailure>(BuildEvaluationPlan(fixture.graph,budget)) == EvaluationError::kWorkLimit);
   if (count == 1) {
     std::size_t lo=0, hi=1<<20;
     while (lo<hi) { const auto mid=lo+(hi-lo)/2; SemanticBudget b; b.bytes=mid;
@@ -102,7 +102,7 @@ std::uint64_t Assignments(std::uint32_t count) {
     budget={}; budget.bytes=lo;
     Check(std::holds_alternative<EvaluationPlan>(BuildEvaluationPlan(fixture.graph,budget)));
     --budget.bytes;
-    Check(std::get<EvaluationError>(BuildEvaluationPlan(fixture.graph,budget)) == EvaluationError::kResourceLimit);
+    Check(std::get<EvaluationFailure>(BuildEvaluationPlan(fixture.graph,budget)) == EvaluationError::kResourceLimit);
   }
   return plan.work;
 }
@@ -137,7 +137,7 @@ void MultipleArguments(bool reversed) {
     auto forged=plan;
     const auto first=fixture.graph.ops[call.value].first_use.value+2;
     std::swap(forged.assignment_values[first],forged.assignment_values[first+1]);
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph,forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph,forged)));
   }
 }
 void Phased(bool snapshot, bool split, std::uint32_t copies) {
@@ -184,7 +184,7 @@ void Phased(bool snapshot, bool split, std::uint32_t copies) {
     auto forged=plan;
     for(std::size_t i=0;i<forged.assignment_consumers.size();++i) if(forged.assignment_consumers[i]){
       forged.operations[i]={EvaluationKind::kRoot,{}, {}};break;}
-    Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph,forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,forged)));
   }
 }
 } // namespace

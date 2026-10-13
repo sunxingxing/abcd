@@ -59,7 +59,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool buffered = f
     const auto blocked_input = std::get<FunctionInput>(FunctionInput::Build(identity, {300}, {100}, blocked_body, frame,
         InputCaptureMode::kClosed));
     const auto blocked_values = std::get<FunctionValues>(BuildFunctionValues(blocked_input, blocked_body, frame));
-    test::Check(std::get<EvaluationError>(BuildEvaluationPlan(blocked_values.graph)) == EvaluationError::kUnsupportedOperation);
+    test::Check(std::get<EvaluationFailure>(BuildEvaluationPlan(blocked_values.graph)) == EvaluationError::kUnsupportedOperation);
     auto unsupported = graph;
     std::get<ValueGlobalRead>(unsupported.ops[global_reads.front().value].operation).lookup = GlobalLookup::kVar;
     test::Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(unsupported)));
@@ -70,7 +70,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool buffered = f
     test::Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(shared)));
     auto forged = evaluation;
     forged.literals->nested[global_reads.front().value].reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   }
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   FunctionSyntax syntax{};

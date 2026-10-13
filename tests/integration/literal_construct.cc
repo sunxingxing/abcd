@@ -138,7 +138,7 @@ void Run(std::uint32_t count, bool print, bool aggregates = false) {
   for (const auto constructor : constructors) test::Check(flow.expressions[constructor.value].has_value());
   auto forged = evaluation;
   forged.literals->nested[constructors.front().value].reset();
-  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   std::ostringstream output;
   test::Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output, {}, {}, nullptr, verified->original.get())));
   if (print) std::cout << output.str();

@@ -5,7 +5,7 @@
 #include "../analysis/value_flow.h"
 
 namespace abcd::source {
-inline std::variant<std::uint64_t, EvaluationError> CheckEvaluationFlow(
+inline std::variant<std::uint64_t, EvaluationFailure> CheckEvaluationFlow(
     const analysis::ValueProgram& graph, EvaluationFlow flow, analysis::SemanticBudget budget) {
   switch (flow) {
     case EvaluationFlow::kNormal:
@@ -25,7 +25,7 @@ inline std::variant<std::uint64_t, EvaluationError> CheckEvaluationFlow(
 }
 // Explicit entry points share planning/verification, but never turn a phased
 // graph into a normal graph by dropping its phase or exception information.
-std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
+std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget, EvaluationFlow flow);
 }  // namespace abcd::source

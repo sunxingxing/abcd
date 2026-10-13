@@ -97,7 +97,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
   }
   const auto built = BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, {}, bindings);
   if ((split_dispatch && !array) || snapshot) {
-    test::Check(std::get<EvaluationError>(built) == EvaluationError::kUnsupportedOperation);
+    test::Check(std::get<EvaluationFailure>(built) == EvaluationError::kUnsupportedOperation);
     return 0;
   }
   test::Check(std::holds_alternative<EvaluationPlan>(built));
@@ -122,21 +122,21 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t fields, bool caught,
   test::Check(std::get<LiteralError>(BuildPhasedLiteralPlan(graph, evaluation)) == LiteralError::kLateValue);
   auto changed = evaluation;
   changed.modules.front().pair.guard.reset();
-  test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
   changed = evaluation; ++changed.modules.front().read.slot.value;
-  test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
   changed = evaluation; changed.operations[guards.pairs.front().guard->value].kind = EvaluationKind::kRemoved;
-  test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
   changed = evaluation; changed.literals->nested[guards.pairs.front().read.value].reset();
-  test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
   changed = evaluation;
   std::swap(changed.literals->definitions.front(), changed.literals->definitions.back());
-  test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
   if (caught) {
     auto rerouted = graph;
     for (auto& exit : rerouted.exceptional_exits)
       if (exit.op == guards.pairs.front().guard) exit.handler.reset();
-    test::Check(std::holds_alternative<EvaluationError>(BuildPhasedEvaluationPlan(
+    test::Check(std::holds_alternative<EvaluationFailure>(BuildPhasedEvaluationPlan(
         rerouted, {}, IncomingCells::kReject, {}, bindings)));
     // Independently check the guard itself, without relying on the evaluation
     // verifier's earlier read/guard-dispatch comparison to reject this mutation.

@@ -48,12 +48,12 @@ bool SameOperand(const ValueOperand& a, const ValueOperand& b) {
   }, a);
 }
 }  // namespace
-std::variant<std::uint64_t, EvaluationError> VerifyModulePhaseOrder(
+std::variant<std::uint64_t, EvaluationFailure> VerifyModulePhaseOrder(
     const ValueProgram& graph, std::span<const ModuleEvaluation> modules, SemanticBudget allowance) {
   try {
     ModuleBudget budget(allowance);
     const auto flow = CheckEvaluationFlow(graph, EvaluationFlow::kPhased, budget.Remaining());
-    if (const auto* error = std::get_if<Error>(&flow)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&flow)) return *error;
     budget.Step(std::get<std::uint64_t>(flow));
     std::vector<std::uint32_t> incoming;
     std::vector<std::optional<std::size_t>> exits;
@@ -98,7 +98,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyModulePhaseOrder(
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
-std::variant<std::uint64_t, EvaluationError> VerifyModuleCatchCopies(
+std::variant<std::uint64_t, EvaluationFailure> VerifyModuleCatchCopies(
     const ValueProgram& graph, const EvaluationPlan& plan, SemanticBudget allowance) {
   try {
     if (plan.modules.empty() || plan.flow != EvaluationFlow::kPhased || !plan.phis) return std::uint64_t{0};

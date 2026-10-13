@@ -354,8 +354,8 @@ void ForwardingAndChildren() {
       evaluation.cells->cells.accesses.empty());
   test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(parent_values.graph, evaluation)));
   auto no_demand = evaluation; no_demand.cells->cells.demands.clear();
-  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(parent_values.graph, no_demand)));
-  test::Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(parent_values.graph, {},
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(parent_values.graph, no_demand)));
+  test::Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(parent_values.graph, {},
       IncomingCells::kReject, functions, {}, demands)));
   // An overlay cannot erase/rewrite genuine original capture occurrences.
   CaptureStorage changed{*child_values.cells,
@@ -592,7 +592,7 @@ void CreationEvaluation(bool pop) {
     // out of the implicit lexical environment in which ABC executed it.
     evaluation.operations[operation.value] = {EvaluationKind::kInline,
         parent_values.graph.ops.back().first_use, {}};
-    test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(parent_values.graph, evaluation)) == EvaluationError::kOrder);
+    test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(parent_values.graph, evaluation)) == EvaluationError::kOrder);
   }
 }
 }  // namespace

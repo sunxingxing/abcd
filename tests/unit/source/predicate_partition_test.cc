@@ -85,7 +85,7 @@ std::string Source(abc::ProfileId profile, unsigned locals, unsigned count, Shap
         if(!value||*value!=*graph.ops[i].result)continue;
         ++mutations;
         auto forged=evaluation;forged.operations[i]={EvaluationKind::kInline,use,{}};
-        test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph,forged)));
+        test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,forged)));
       }
     }
     test::Check(mutations==1);

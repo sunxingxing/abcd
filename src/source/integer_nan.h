@@ -10,9 +10,9 @@ struct IntegerNaNCost { std::size_t bytes; std::uint64_t work; };
 constexpr std::uint64_t CanonicalNaNBits() {
   return std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN());
 }
-[[nodiscard]] std::variant<IntegerNaNCost, EvaluationError> BuildIntegerNaNs(
+[[nodiscard]] std::variant<IntegerNaNCost, EvaluationFailure> BuildIntegerNaNs(
     const analysis::ValueProgram&, EvaluationPlan&, analysis::SemanticBudget);
-[[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyIntegerNaNs(
+[[nodiscard]] std::variant<std::uint64_t, EvaluationFailure> VerifyIntegerNaNs(
     const analysis::ValueProgram&, const EvaluationPlan&, analysis::SemanticBudget);
 }
 #endif

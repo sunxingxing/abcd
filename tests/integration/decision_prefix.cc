@@ -118,7 +118,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print, bool arm =
     for (std::size_t i = 0; i < evaluation.logical_values.size(); ++i) {
       if (!evaluation.logical_values[i]) continue;
       auto forged = evaluation; forged.logical_values[i].reset();
-      test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged))); break;
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged))); break;
     }
     for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
       if (!std::holds_alternative<ConditionalExpr>(tree.expressions[i].expression)) continue;

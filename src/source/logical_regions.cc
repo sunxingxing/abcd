@@ -578,7 +578,7 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
   const auto indexed = IndexModuleEvaluations(graph, evaluation.modules, budget.Remaining());
   const auto* modules = std::get_if<ModuleEvaluationIndex>(&indexed);
   if (!modules) {
-    const auto error = std::get<EvaluationError>(indexed);
+    const auto error = std::get<EvaluationFailure>(indexed);
     if (error == EvaluationError::kResourceLimit) throw TreeStructureError::kResourceLimit;
     if (error == EvaluationError::kWorkLimit) throw TreeStructureError::kWorkLimit;
     return {};

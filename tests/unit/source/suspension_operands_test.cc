@@ -51,12 +51,12 @@ std::uint64_t Run(unsigned splits, bool yield, Boundary boundary) {
   test::Check(std::holds_alternative<PhaseEvaluationCost>(VerifyPhaseExpressions(graph,plan,{})));
   auto moved = plan;
   moved.operations[suspension.value] = {EvaluationKind::kInline, graph.ops[after.value].first_use, {}};
-  test::Check(std::holds_alternative<EvaluationError>(VerifyPhaseExpressions(graph, moved, {})));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhaseExpressions(graph, moved, {})));
   // A fabricated fusion across an intervening effect, handler change or extra
   // observation must fail the independent interval/identity/catch equations.
   if(boundary!=Boundary::kShared) {
     auto altered=plan;altered.operations[read.value]={EvaluationKind::kInline,graph.ops[suspension.value].first_use,{}};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhaseExpressions(graph,altered,{})));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhaseExpressions(graph,altered,{})));
   }
   return std::get<PhaseEvaluationCost>(built).work;
 }

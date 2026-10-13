@@ -23,6 +23,7 @@ struct FunctionPrepareFailure {
   FunctionPrepareError kind;
   std::optional<MethodRouteReceipt> values;
   std::optional<abc::CodeOffset> pc;
+  std::optional<EvaluationFailure> evaluation;
 };
 // Owned immutable syntax plus same-input creation/ABI/source evidence. No public
 // constructor accepts a raw tree or a mutable verification report. The factory

@@ -87,12 +87,12 @@ void Creations(std::uint32_t count) {
     test::Check(fixture.tree.expressions[expression.value].origin.value == fixture.graph.ops[op].origin.value);
   }
   if (count == 0) return;
-  test::Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph, TreeBudget())));
+  test::Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(fixture.graph, TreeBudget())));
   test::Check(fixture.evaluation.cells->initialization.closure_writes == ClosureWrites::kLanguage);
   auto plan = fixture.evaluation; plan.functions.clear();
-  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan, TreeBudget())));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan, TreeBudget())));
   plan = fixture.evaluation; plan.cells->initialization.closure_writes = ClosureWrites::kUnknown;
-  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan, TreeBudget())));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan, TreeBudget())));
   const auto first = *fixture.flow.expressions[fixture.evaluation.functions[0].creation.value];
   auto changed = fixture.tree;
   std::get<FunctionExpr>(changed.expressions[first.value].expression).child = kParent;
@@ -126,7 +126,7 @@ void SharedValue() {
   auto plan = fixture.evaluation;
   plan.operations[operation] = {EvaluationKind::kInline,
       fixture.graph.values[fixture.graph.ops[operation].result->value].first_use, {}};
-  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan, TreeBudget())));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan, TreeBudget())));
 }
 void CreationScopes() {
   constexpr std::uint8_t kJumpNonzero = 0x51;

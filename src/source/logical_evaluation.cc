@@ -1,4 +1,5 @@
 #include "logical_evaluation.h"
+#include "evaluation_failure.h"
 #include "evaluation_aliases.h"
 #include "logical_regions.h"
 #include "phase_evaluation.h"
@@ -260,7 +261,11 @@ SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& 
           placement.temporary == TemporaryReason::kEffectSnapshot;
       const bool owned = placement.kind == EvaluationKind::kInline && placement.consumer == use;
       if (root || owned) {
-        Require(!index.expressions[result->op.value]);
+        if (index.expressions[result->op.value]) {
+          auto evidence = EvaluationAt(graph, plan, result->op, EvaluationObligation::kProducerOwnership);
+          evidence.expected_consumer = use; evidence.expected_owner = OperationLocation(graph, {static_cast<std::uint32_t>(i)});
+          throw EvaluationFailure{EvaluationError::kOwnership, evidence};
+        }
         index.expressions[result->op.value] = index.expressions[i];
       }
     }
@@ -448,6 +453,20 @@ OpId InlineAncestors(const ValueProgram& graph, const EvaluationPlan& plan, OpId
     if (chain) { budget.Admit(1, sizeof(OpId)); chain->push_back(consumer); }
   }
 }
+// A missing consumer is a missing proof, not operation zero. Keep the
+// selected branch as the obligation owner; never dereference absent evidence
+// while constructing a diagnostic (an empty optional previously leaked PC 0).
+OpId LogicalOwner(const ValueProgram& graph, const EvaluationPlan& plan,
+    std::optional<UseId> use, OpId branch) {
+  auto evidence = EvaluationAt(graph, plan, branch, EvaluationObligation::kLogicalInput);
+  evidence.expected_consumer = use;
+  if (!use || use->value >= graph.uses.size())
+    throw EvaluationFailure{EvaluationError::kOwnership, evidence};
+  const auto* owner = std::get_if<OpId>(&graph.uses[use->value].owner);
+  if (!owner || owner->value >= graph.ops.size())
+    throw EvaluationFailure{EvaluationError::kOwnership, evidence};
+  return *owner;
+}
 // Contract selections with their linear execution prefixes and final join.
 // Each selection is one conditional event; its arms remain independently checked. A private
 // object interval grows at each own definition and is consumed exactly once.
@@ -458,8 +477,9 @@ class Domain {
       std::span<const SelectionRegion* const> route, std::vector<Interval>& intervals,
       DomainIndex& index, const std::vector<SelectionBlock>& used, TreeCheckBudget& budget, std::optional<SelectedObject> object = {})
       : graph_(graph), plan_(plan), selections_(selections), route_(route), intervals_(intervals), index_(index), budget_(budget), object_(object),
-        last_owner_(std::get<OpId>(graph.uses[(object ? object->consumer :
-            *selections.consumers[route.back()->branch.value]).value].owner)) {
+        last_owner_(LogicalOwner(graph, plan, object ? std::optional{object->consumer} :
+            selections.consumers[route.back()->branch.value], route.back()->branch)) {
+    witness_ = EvaluationAt(graph_, plan_, last_owner_, EvaluationObligation::kLogicalJoin);
     Require(graph.ops[last_owner_.value].block == route.back()->join);
     // Object routes keep their literal consumer as the final consumer.
     if (!object_) {
@@ -488,7 +508,10 @@ class Domain {
     index_.order.push_back(route.back()->join); index_.starts[route.back()->join.value] = 0;
     // Prepay the nonthrowing cleanup as well as index construction.
     budget_.Step(2 * (index_.order.size() + route.size() + (object_ ? object_->definitions.size() : 0)));
-    for (const auto id : index_.order) { Require(!index_.blocks[id.value]); index_.blocks[id.value] = 1; }
+    for (const auto id : index_.order) {
+      witness_ = {}; witness_.obligation = EvaluationObligation::kDuplicateVisit; witness_.location.block = id;
+      Require(!index_.blocks[id.value]); index_.blocks[id.value] = 1;
+    }
     for (const auto* region : route) {
       index_.values[region->merged.value] = region->branch;
       index_.branches[region->branch.value] = selections.consumers[region->branch.value];
@@ -524,6 +547,7 @@ class Domain {
       const auto& range = Block(b);
       for (auto j = Start(b); j < Count(b); ++j) {
         budget_.Step(); const OpId id{range.first_op.value + j}; const auto& op = graph_.ops[id.value];
+        witness_ = EvaluationAt(graph_, plan_, id, EvaluationObligation::kLogicalInterval);
         if (op.life != ValueLife::kLive) continue;
         const bool field = object_ && definition < object_->definitions.size() && id == object_->definitions[definition];
         const auto count = Event(id); intervals_[id.value] = {count, serial + count};
@@ -561,6 +585,7 @@ class Domain {
       const auto& range = Block(b);
       for (auto j = Start(b); j < Count(b); ++j) {
         budget_.Step(); const OpId id{range.first_op.value + j}; const auto& op = graph_.ops[id.value];
+        witness_ = EvaluationAt(graph_, plan_, id, EvaluationObligation::kLogicalInterval);
         if (op.life != ValueLife::kLive) continue;
         const bool field = object_ && definition < object_->definitions.size() && id == object_->definitions[definition];
         const auto count = Event(id); intervals_[id.value] = {count, serial + count};
@@ -575,6 +600,8 @@ class Domain {
           if (placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kLogicalLeft &&
               placement.kind != EvaluationKind::kLogicalValue && placement.kind != EvaluationKind::kPredicateSnapshot) continue;
           const bool base = field && selections_.fields[id.value] == *producer;
+          witness_ = EvaluationAt(graph_, plan_, *producer, EvaluationObligation::kOperandOwnership);
+          witness_.use = witness_.expected_consumer = use; witness_.expected_owner = OperationLocation(graph_, id);
           Require(base || placement.consumer == use);
           if (!base && (placement.kind == EvaluationKind::kLogicalValue || CrossLogicalInline(graph_, plan_, *producer) || FieldValue(graph_, plan_, *producer))) {
             Require(index_.owners[id.value] && !consumed[producer->value]);
@@ -601,6 +628,8 @@ class Domain {
     Require(!object_ || definition == object_->definitions.size());
   }
  private:
+  EvaluationEvidence witness_;
+  void Require(bool ok) const { if (!ok) throw EvaluationFailure{EvaluationError::kOwnership, witness_}; }
   bool Candidate(OpId id, const OperandUse& occurrence, OpId producer, bool field) const {
     const auto& op = graph_.ops[id.value]; const auto& placement = plan_.operations[producer.value];
     const auto shape = DescribeEvaluation(op.operation);
@@ -791,6 +820,8 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
   }
 }
 void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
+  EvaluationEvidence witness; witness.obligation = EvaluationObligation::kLogicalInput;
+  const auto Require = [&](bool ok) { if (!ok) throw EvaluationFailure{EvaluationError::kOwnership, witness}; };
   VerifyPredicateSnapshots(graph, plan, budget);
   if (plan.flow == EvaluationFlow::kPhased) {
     VerifyPhaseSelectionOperands(graph, plan, budget);
@@ -802,7 +833,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
   if (plan.logical_values.empty()) {
     Require(plan.logical_objects.empty());
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      budget.Step(); Require(plan.operations[i].kind != EvaluationKind::kLogicalValue &&
+      budget.Step(); witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kLogicalCoverage); Require(plan.operations[i].kind != EvaluationKind::kLogicalValue &&
           !(plan.operations[i].kind == EvaluationKind::kInitializer &&
             IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, OpId{static_cast<std::uint32_t>(i)})) &&
           !FieldValue(graph, plan, OpId{static_cast<std::uint32_t>(i)}) &&
@@ -821,6 +852,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
   budget.Admit(route.capacity() - regions.size(), sizeof(const SelectionRegion*));
   for (const auto r : SelectionOrder(graph, regions, budget)) {
     budget.Step(); const auto& region = regions[r];
+    witness = EvaluationAt(graph, plan, region.branch, EvaluationObligation::kLogicalInput);
     if (!index.consumers[region.branch.value]) continue;
     if (!plan.logical_values[region.merged.value] || values[region.merged.value]) continue;
     Require(Available(graph, region, used) && index.consumers[region.branch.value]);
@@ -871,9 +903,15 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
         placement.consumer == region.forwarded && !placement.temporary);
     values[region.merged.value] = 1; consumed[region.branch.value] = 1;
   }
-  for (std::size_t i = 0; i < values.size(); ++i) { budget.Step(); Require(plan.logical_values[i].has_value() == (values[i] != 0)); }
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    budget.Step(); witness = {}; witness.obligation = EvaluationObligation::kLogicalCoverage;
+    if (plan.logical_values[i]) witness = EvaluationAt(graph, plan, *plan.logical_values[i], EvaluationObligation::kLogicalCoverage);
+    witness.value = ValueId{static_cast<std::uint32_t>(i)};
+    Require(plan.logical_values[i].has_value() == (values[i] != 0));
+  }
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step();
+    witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kLogicalCoverage);
     if (!plan.logical_objects.empty() && plan.logical_objects[i]) {
       Require(objects[i] && consumed[i] && plan.logical_objects[i]->value < graph.ops.size() && consumed[plan.logical_objects[i]->value]);
     }

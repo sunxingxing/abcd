@@ -108,11 +108,11 @@ std::uint64_t Run(abc::ProfileId profile, unsigned depth, unsigned count, bool p
     const auto outer = evaluation.literals->objects[0].allocation;
     const auto inner = evaluation.literals->objects[1].allocation;
     auto forged = evaluation; forged.logical_objects[inner.value].reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     forged = evaluation; forged.operations[inner.value].consumer = evaluation.operations[outer.value].consumer;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     forged = evaluation; forged.logical_objects[inner.value] = evaluation.logical_objects[outer.value];
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   }
   FunctionSyntax syntax{};
   syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};

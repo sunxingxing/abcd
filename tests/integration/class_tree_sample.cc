@@ -44,8 +44,8 @@ int main(int argc, char** argv) {
   // The unchanged full record graph must also schedule this creation. A
   // detached class body alone does not exercise heritage or surrounding order.
   const auto evaluated = BuildEvaluationPlan(function.values.graph);
-  if (const auto* error = std::get_if<EvaluationError>(&evaluated)) {
-    std::cerr << "caller evaluation failure " << static_cast<unsigned>(*error) << '\n'; return 1;
+  if (const auto* error = std::get_if<EvaluationFailure>(&evaluated)) {
+    std::cerr << "caller evaluation failure " << static_cast<unsigned>(error->kind) << '\n'; return 1;
   }
   const auto& evaluation = std::get<EvaluationPlan>(evaluated);
   Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(function.values.graph, evaluation)));

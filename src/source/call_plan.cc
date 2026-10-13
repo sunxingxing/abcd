@@ -50,7 +50,7 @@ class CallBudget {
     const auto checked = flow == EvaluationFlow::kNormal ? VerifyEvaluationPlan(graph, evaluation, remaining_)
         : VerifyPhasedEvaluationPlan(graph, evaluation, remaining_);
     if (const auto* work = std::get_if<std::uint64_t>(&checked)) { Step(*work); return; }
-    const auto error = std::get<EvaluationError>(checked);
+    const auto error = std::get<EvaluationFailure>(checked);
     if (error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
     if (error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
     throw Error::kEvaluation;

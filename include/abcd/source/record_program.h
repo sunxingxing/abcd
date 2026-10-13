@@ -56,6 +56,7 @@ struct RecordProgramFailure {
   std::optional<abc::EntityOffset> method;
   std::optional<abc::CodeOffset> working_pc;
   std::optional<TreeFailureEvidence> tree;
+  std::optional<EvaluationEvidence> evaluation;
   std::optional<DeferredCellEvidence> deferred;
 };
 struct RecordProgramBudget {

@@ -136,10 +136,10 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     test::Check(evaluation.holes.has_value());
     auto altered = evaluation;
     altered.holes.reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, altered)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, altered)));
     altered = evaluation;
     altered.holes->comparisons.front().equal = !altered.holes->comparisons.front().equal;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, altered)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, altered)));
     return; // Raw VM transport is not a source or finalizer completion claim.
   }
   const auto regions = Take<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
@@ -160,8 +160,8 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
         VerifyExceptionControl(body, graph, input, regions, changed)));
   }
   const auto planned = BuildPhasedEvaluationPlan(graph);
-  if (const auto* error = std::get_if<EvaluationError>(&planned))
-    std::cerr << "composition evaluation error " << static_cast<unsigned>(*error) << '\n';
+  if (const auto* error = std::get_if<EvaluationFailure>(&planned))
+    std::cerr << "composition evaluation error " << static_cast<unsigned>(error->kind) << '\n';
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
   const auto completions = Take<CompletionPlan>(BuildCompletionPlan(graph, regions, control, evaluation));

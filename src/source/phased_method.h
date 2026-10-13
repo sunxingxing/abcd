@@ -13,12 +13,12 @@ class PhasedMethod {
   PhasedMethod(PhasedMethod&&) noexcept;
   PhasedMethod& operator=(PhasedMethod&&) noexcept;
   ~PhasedMethod();
-  [[nodiscard]] static std::variant<PhasedMethod, PhasedMethodError> Build(
+  [[nodiscard]] static std::variant<PhasedMethod, PhasedMethodError, EvaluationFailure> Build(
       const FunctionContext& context, const abc::MethodBody& body,
       analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr);
   // Total allowance includes the body's retained storage and recorded work.
   // Missing child ownership still rejects; staged discovery cannot publish.
-  [[nodiscard]] static std::variant<PhasedMethod, PhasedMethodError> Evaluate(
+  [[nodiscard]] static std::variant<PhasedMethod, PhasedMethodError, EvaluationFailure> Evaluate(
       PhasedBody body, analysis::SemanticBudget budget = {});
   const analysis::ValueProgram& Graph() const;
   const EvaluationPlan& Evaluation() const;

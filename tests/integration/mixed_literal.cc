@@ -105,7 +105,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool aggregates, bool 
     const auto allocation = evaluation.literals->objects.front().allocation;
     auto forged = evaluation;
     forged.logical_objects[allocation.value] = allocation;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     auto shared = graph;
     for (const auto& operation : graph.ops) if (std::holds_alternative<ValueReturn>(operation.operation))
       test::Check(!ReplaceUse(shared, operation.first_use, *graph.ops[allocation.value].result));

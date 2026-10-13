@@ -20,7 +20,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
   using namespace analysis;
   using Error = BindingError;
   const auto verified = VerifyEvaluationForFlow(graph, evaluation, budget, flow);
-  if (const auto* error = std::get_if<EvaluationError>(&verified)) {
+  if (const auto* error = std::get_if<EvaluationFailure>(&verified)) {
     if (*error == EvaluationError::kResourceLimit) return Error::kResourceLimit;
     if (*error == EvaluationError::kWorkLimit) return Error::kWorkLimit;
     return Error::kEvaluation;

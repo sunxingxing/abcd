@@ -81,6 +81,11 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     if constexpr (std::is_same_v<T, PhasedFlowFailure>) {
       result.method = error.method; result.pc = error.pc; result.working_pc = error.working_pc;
     }
+    if constexpr (std::is_same_v<T, EvaluationFailure>) {
+      result.evaluation = error.evaluation;
+      result.method = error.evaluation.location.method;
+      result.pc = error.evaluation.location.pc; result.working_pc = error.evaluation.location.working_pc;
+    }
     if constexpr (requires { error.tree; }) if (error.tree) {
       result.tree = error.tree;
       result.method = error.tree->location.method;
@@ -98,6 +103,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       result.creation_pc = error.creation_pc;
       result.creation_method = error.parent;
     }
+    if (result.evaluation && !result.evaluation->location.method) result.evaluation->location.method = result.method;
     // Newly exposed tree-verifier leaves are diagnostic. Their historical
     // outer classification remains authoritative (including completion's
     // TreeFlow catch); expression causes retain their pre-existing policy.
@@ -112,6 +118,7 @@ template<class T> RouteFailure ProjectWithCauses(const T& error, ValueRouteError
   return result;
 }
 }  // namespace
+RouteFailure FamilyRouteFailure(const EvaluationFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
 RouteFailure FamilyRouteFailure(const FunctionTreeFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
 RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
 RouteFailure FamilyRouteFailure(const FamilyEmitFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kPrintStage); }

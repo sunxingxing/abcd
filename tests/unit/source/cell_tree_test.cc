@@ -105,7 +105,7 @@ void InitializedGuards() {
       test::Check(IsInitializedCellGuard(fixture.graph, *fixture.evaluation.cells, OpId{static_cast<std::uint32_t>(i)}));
       auto forged = fixture.evaluation;
       forged.operations[i].kind = EvaluationKind::kRoot;
-      test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, forged)));
       if (guards == 1) {
         const auto& use = fixture.graph.uses[fixture.graph.ops[i].first_use.value];
         const auto load = std::get<OpResult>(fixture.graph.values[std::get<ValueId>(use.operand).value].origin).op;
@@ -114,15 +114,15 @@ void InitializedGuards() {
         uninitialized.values[std::get<ValueId>(use.operand).value].domain = ValueKinds::Hole();
         test::Check(!IsInitializedCellGuard(uninitialized, *fixture.evaluation.cells,
             OpId{static_cast<std::uint32_t>(i)}));
-        test::Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(uninitialized)));
+        test::Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(uninitialized)));
         forged = fixture.evaluation;
         forged.cells->initialization.reads[load.value] = NotCellRead{};
         test::Check(!IsInitializedCellGuard(fixture.graph, *forged.cells, OpId{static_cast<std::uint32_t>(i)}));
-        test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+        test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, forged)));
         forged=fixture.evaluation;
         forged.cells->identities.canonical[std::get<ValueId>(use.operand).value]=ValueId{static_cast<unsigned>(fixture.graph.values.size())};
         test::Check(std::get<CellEvaluationError>(VerifyCellEvaluation(fixture.graph,*forged.cells))==CellEvaluationError::kInternalIdentity);
-        test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph,forged)));
+        test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph,forged)));
       }
     }
     test::Check(guards == count);

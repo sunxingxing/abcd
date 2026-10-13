@@ -90,9 +90,9 @@ void ConstructorProtocol() {
     Check(plan.operations[call.value].kind == EvaluationKind::kRoot);
     Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(fixture.graph, plan)));
     auto erased = plan; erased.operations[guard.value].kind = EvaluationKind::kElidedPure;
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, erased)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, erased)));
     fixture.graph.uses[fixture.graph.ops[guard.value].first_use.value].purpose = ReadPurpose::kOperand;
-    Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
+    Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(fixture.graph)));
   }
 }
 
@@ -110,7 +110,7 @@ void OrderedOperands(bool reverse) {
   if (reverse) Check(plan.operations[0].temporary == TemporaryReason::kEffectSnapshot);
   Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(fixture.graph, plan)));
   ++plan.revision.value;
-  Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kRevision);
+  Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kRevision);
 }
 void Barrier(bool pure_parent) {
   Fixture fixture;
@@ -126,7 +126,7 @@ void Barrier(bool pure_parent) {
   // Forge the very motion the planner refused. The verifier must discover the
   // changed effect sequence independently, including effects in a pure subtree.
   plan.operations[kept] = {EvaluationKind::kInline, fixture.graph.ops.back().first_use, {}};
-  Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOrder);
+  Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOrder);
 }
 void SharedValue() {
   Fixture fixture;
@@ -141,10 +141,10 @@ void SharedValue() {
   Check(plan.operations[0].consumer == fixture.graph.ops[1].first_use);
   auto late = plan;
   late.operations[0].consumer = analysis::UseId{fixture.graph.ops[1].first_use.value + 1};
-  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, late)));
+  Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, late)));
   analysis::SemanticBudget budget;
   budget.work = plan.work - 1;
-  Check(std::get<EvaluationError>(BuildEvaluationPlan(fixture.graph, budget)) == EvaluationError::kWorkLimit);
+  Check(std::get<EvaluationFailure>(BuildEvaluationPlan(fixture.graph, budget)) == EvaluationError::kWorkLimit);
   budget.work = plan.work;
   Check(std::holds_alternative<EvaluationPlan>(BuildEvaluationPlan(fixture.graph, budget)));
 }
@@ -185,7 +185,12 @@ void PredicateReads() {
   Check(plan.operations[0].temporary == TemporaryReason::kPredicateSnapshot);
   Check(plan.operations[1].kind == EvaluationKind::kInline);
   plan.operations[0] = {EvaluationKind::kInline, fixture.graph.ops[1].first_use, {}};
-  Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOwnership);
+  const auto failure = std::get<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan));
+  Check(failure == EvaluationError::kOwnership);
+  Check(failure.evaluation.obligation == EvaluationObligation::kInlineConsumer);
+  Check(failure.evaluation.location.operation == analysis::OpId{0});
+  Check(failure.evaluation.actual_consumer == fixture.graph.ops[1].first_use);
+  Check(failure.evaluation.actual_owner && failure.evaluation.actual_owner->operation == analysis::OpId{1});
 }
 void CallOrder(bool reverse, bool barrier) {
   Fixture fixture;
@@ -203,7 +208,7 @@ void CallOrder(bool reverse, bool barrier) {
   if (barrier) {
     const analysis::UseId callee{fixture.graph.ops[call.value].first_use.value};
     plan.operations[reverse ? 1 : 0] = {EvaluationKind::kInline, callee, {}};
-    Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOrder);
+    Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOrder);
   }
 }
 void SharedAndUnusedCalls() {
@@ -239,7 +244,7 @@ void CallRanges() {
     constexpr std::uint64_t kWorkPerUseBound = 128;
     Check(plan.work <= kWorkPerUseBound * fixture.graph.uses.size());
     fixture.graph.uses[2].role = analysis::OperandRole::kReceiver;
-    Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kInvalidGraph);
+    Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kInvalidGraph);
   }
 }
 void ComputedStore(bool pure_parent) {
@@ -264,7 +269,7 @@ void ComputedStore(bool pure_parent) {
   constexpr std::uint32_t kStoredOperand = 2;
   plan.operations[producer] = {EvaluationKind::kInline,
       UseId{fixture.graph.ops[write.value].first_use.value + kStoredOperand}, {}};
-  Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOrder);
+  Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan)) == EvaluationError::kOrder);
 }
 void GlobalReads() {
   for (const auto lookup : {analysis::GlobalLookup::kName, analysis::GlobalLookup::kVar}) {
@@ -278,7 +283,7 @@ void GlobalReads() {
     Check(plan.operations[0].temporary == TemporaryReason::kEffectSnapshot);
     auto forged = plan;
     forged.operations[0] = {EvaluationKind::kInline, fixture.graph.ops.back().first_use, {}};
-    Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)) == EvaluationError::kOrder);
+    Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, forged)) == EvaluationError::kOrder);
     Fixture unused;
     unused.Add(analysis::ValueGlobalRead{lookup, {0}}, true, {});
     unused.Return({0});
@@ -336,17 +341,17 @@ void ClassCreation(unsigned count, bool absent, bool barrier) {
   if (barrier) {
     auto forged = plan;
     forged.operations[last.value] = {EvaluationKind::kInline, fixture.graph.ops.back().first_use, {}};
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, forged)));
   }
   auto& use = fixture.graph.uses[fixture.graph.ops[last.value].first_use.value];
   use.purpose = analysis::ReadPurpose::kOperand;
-  Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
+  Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(fixture.graph)));
   use.purpose = analysis::ReadPurpose::kProtocol;
   use.role = analysis::OperandRole::kInput;
-  Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
+  Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(fixture.graph)));
   use.role = analysis::OperandRole::kHeritage;
   fixture.graph.values[1].domain = analysis::ValueKinds::Language().Join(analysis::ValueKinds::Hole());
-  Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
+  Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(fixture.graph)));
   fixture.graph.values[1].domain = analysis::ValueKinds::Hole();
   // A missing extends clause never permits the sentinel to escape as a return.
   use.role = analysis::OperandRole::kReturnValue;
@@ -376,9 +381,9 @@ int main() {
     Check(plan.operations[0].temporary == TemporaryReason::kEffectSnapshot);
     Check(plan.operations[1].kind == EvaluationKind::kRoot);
     fixture.graph.phases.push_back({{0}, {0}, analysis::ExceptionPhase::kBefore, {}});
-    Check(std::get<EvaluationError>(BuildEvaluationPlan(fixture.graph)) ==
+    Check(std::get<EvaluationFailure>(BuildEvaluationPlan(fixture.graph)) ==
         EvaluationError::kUnsupportedOperation);
-    Check(std::get<EvaluationError>(VerifyEvaluationPlan(fixture.graph, plan)) ==
+    Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, plan)) ==
         EvaluationError::kUnsupportedOperation);
   }
   OrderedOperands(false); OrderedOperands(true);
@@ -405,7 +410,7 @@ int main() {
       {0}, 0, analysis::HomeObjectInput::kCurrentFunction, 0}, true, {});
   creation.graph.blocks = {{{0}, 1, {0}, 0}};
   Check(OrderedEvaluation(creation.graph.ops[0]));
-  Check(std::get<EvaluationError>(BuildEvaluationPlan(creation.graph)) == EvaluationError::kOwnership);
+  Check(std::get<EvaluationFailure>(BuildEvaluationPlan(creation.graph)) == EvaluationError::kOwnership);
   // Both are allocation leaves. Buffer syntax additionally requires resolved
   // properties and the independent tree operand/origin checks.
   Check(DescribeEvaluation(analysis::ValueObjectAllocation{}).has_value());

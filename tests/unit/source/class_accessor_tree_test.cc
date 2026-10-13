@@ -387,7 +387,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
         call.creation, identity, &globals, {}, &call, {}, RecoveryMode::kCompleteOnly, {37}, self_initializer ? &parent_capture : nullptr);
     if (const auto* failure = std::get_if<ClassTreeFailure>(&prepared)) {
       std::cerr << "initializer tree failure " << failure->index();
-      if (const auto* error = std::get_if<EvaluationError>(failure)) std::cerr << " evaluation " << static_cast<unsigned>(*error);
+      if (const auto* error = std::get_if<EvaluationFailure>(failure)) std::cerr << " evaluation " << static_cast<unsigned>(error->kind);
       std::cerr << '\n';
     }
     Check(std::holds_alternative<ClassTree>(prepared)); *layout = std::get<ClassTree>(std::move(prepared));
@@ -728,7 +728,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     Check(prototype_reads.size() == 2); // Original method home plus the new discarded read.
   }
   auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, definitions, {}, {}, nullptr, prototype_reads);
-  if (const auto* error = std::get_if<EvaluationError>(&evaluated)) std::cerr << "evaluation " << static_cast<unsigned>(*error) << '\n';
+  if (const auto* error = std::get_if<EvaluationFailure>(&evaluated)) std::cerr << "evaluation " << static_cast<unsigned>(error->kind) << '\n';
   Check(std::holds_alternative<EvaluationPlan>(evaluated)); const auto& evaluation = std::get<EvaluationPlan>(evaluated);
   GlobalScope globals{};
   auto layout = BuildClassLayout(file, header, index, lookup, roles, classes, creator,

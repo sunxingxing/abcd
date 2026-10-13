@@ -71,7 +71,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, Form form, bool print)
   const auto& graph = values.graph;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
-  test::Check(!std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
+  test::Check(!std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, evaluation)));
   FunctionSyntax syntax; syntax.identity = identity; syntax.method = {300};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"object", u"selected", u"fallback", u"probe"};
@@ -95,7 +95,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, Form form, bool print)
     const auto use = graph.uses[graph.ops[i].first_use.value];
     const auto load = std::get<analysis::OpResult>(graph.values[std::get<analysis::ValueId>(use.operand).value].origin).op;
     false_fact.cells->initialization.reads[load.value] = NotCellRead{};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, false_fact)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, false_fact)));
     auto changed = tree;
     const auto placement = std::find_if(changed.operations.begin(), changed.operations.end(), [&](const auto& p) { return p.operation.value == i; });
     test::Check(placement != changed.operations.end());

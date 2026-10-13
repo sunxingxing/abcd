@@ -1,4 +1,5 @@
 #include "phase_evaluation.h"
+#include "evaluation_failure.h"
 #include "assignment_values.h"
 
 #include <new>
@@ -35,9 +36,10 @@ std::vector<OpId> Roots(const ValueProgram& graph, const EvaluationPlan& plan, P
     roots[i] = OpId{static_cast<std::uint32_t>(i)};
     const auto& placement = plan.operations[i];
     if (placement.kind != EvaluationKind::kInline || CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)})) continue;
-    Require(placement.consumer && placement.consumer->value < graph.uses.size(), Error::kOwnership);
+    const auto require_owner = [&](bool ok) { if (!ok) throw EvaluationFailure{Error::kOwnership, EvaluationAt(graph, plan, roots[i], EvaluationObligation::kPhaseRoot)}; };
+    require_owner(placement.consumer && placement.consumer->value < graph.uses.size());
     const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
-    Require(owner && owner->value > i && owner->value < roots.size(), Error::kOwnership);
+    require_owner(owner && owner->value > i && owner->value < roots.size());
     roots[i] = roots[owner->value];
   }
   return roots;
@@ -106,7 +108,7 @@ bool CrossEvaluationInline(const ValueProgram& graph, const EvaluationPlan& plan
   const auto* owner = std::get_if<OpId>(&graph.uses[placement.consumer->value].owner);
   return owner && graph.ops[owner->value].block != graph.ops[producer.value].block;
 }
-std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
+std::variant<PhaseEvaluationCost, EvaluationFailure> BuildPhaseExpressions(
     const ValueProgram& graph, EvaluationPlan& plan, SemanticBudget allowance) {
   try {
     if (plan.flow != EvaluationFlow::kPhased) return PhaseEvaluationCost{};
@@ -140,11 +142,12 @@ std::variant<PhaseEvaluationCost, EvaluationError> BuildPhaseExpressions(
     const RetryPartition retry{roots, rejected};
     Schedule(graph, plan, corridors, intervals, budget, &retry);
     return budget.Cost();
+  } catch (const EvaluationFailure& error) { return error;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
-std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
+std::variant<PhaseEvaluationCost, EvaluationFailure> VerifyPhaseExpressions(
     const ValueProgram& graph, const EvaluationPlan& plan, SemanticBudget allowance) {
   try {
     if (plan.flow != EvaluationFlow::kPhased) return PhaseEvaluationCost{};
@@ -202,8 +205,9 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
     }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
-      Require(plan.operations[i].kind != EvaluationKind::kInline || consumed[i] || in_composition(i) ||
-          CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)}), Error::kOwnership);
+      if (!(plan.operations[i].kind != EvaluationKind::kInline || consumed[i] || in_composition(i) ||
+          CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)})))
+        throw EvaluationFailure{Error::kOwnership, EvaluationAt(graph, plan, OpId{static_cast<std::uint32_t>(i)}, EvaluationObligation::kPhaseConsumption)};
       if (plan.operations[i].kind == EvaluationKind::kInline && !in_composition(i) &&
           !CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)}) &&
           PhaseCorridors::Event(graph.ops[i], plan.operations[i]) &&
@@ -214,6 +218,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
     return PhaseEvaluationCost{selected_budget.Bytes() + cost.bytes, selected_budget.Work() + cost.work};
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
+  } catch (const EvaluationFailure& error) { return error;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

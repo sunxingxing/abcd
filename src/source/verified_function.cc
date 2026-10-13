@@ -17,6 +17,7 @@
 #include "cell_initialization.h"
 #include "default_signature.h"
 #include "function_tree.h"
+#include "family_route_failure.h"
 #include "function_abi.h"
 #include "syntax_resolution.h"
 #include "phased_method.h"
@@ -216,6 +217,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       auto built = PhasedMethod::Build(*context, *body, budget.Remaining(), modules ? &*modules : nullptr);
       auto* result = std::get_if<PhasedMethod>(&built);
       if (!result) {
+        if (const auto* failure = std::get_if<EvaluationFailure>(&built)) throw *failure;
         const auto error = std::get<PhasedMethodError>(built);
         const auto category = error == PhasedMethodError::kResourceLimit ? RouteFailureClass::kMemoryLimit
             : error == PhasedMethodError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kUnproved;
@@ -312,14 +314,13 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       lifetimes = std::move(*scopes);
     }
     receipt->stage = SourceStage::kControlFrozen;
-    std::optional<std::variant<EvaluationPlan, EvaluationError>> evaluated;
+    std::optional<std::variant<EvaluationPlan, EvaluationFailure>> evaluated;
     if (!phased) evaluated = BuildEvaluationPlan(graph, budget.Remaining());
     const auto* evaluation = phased ? &phased->Evaluation() : std::get_if<EvaluationPlan>(&*evaluated);
     if (!evaluation) {
-      const auto error = std::get<EvaluationError>(*evaluated);
-      if (error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
-      if (error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kEvaluation;
+      auto error = std::get<EvaluationFailure>(*evaluated);
+      error.evaluation.location.method = context->Target();
+      throw error;
     }
     // Standalone preparation has no enclosing capture-tree certificate.
     // Conditional child evaluation must never be promoted through this route.
@@ -498,6 +499,17 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     storage->flow = std::move(*function->flow);
     storage->abi = std::move(abi->abi); storage->allocated_bytes = retained_bytes;
     return VerifiedFunction(std::move(storage));
+  } catch (const EvaluationFailure& error) {
+    const auto kind = error.kind == EvaluationError::kResourceLimit ? Error::kResourceLimit :
+        error.kind == EvaluationError::kWorkLimit ? Error::kWorkLimit : Error::kEvaluation;
+    if (receipt) {
+      receipt->failure = FamilyRouteFailure(error);
+      // Standalone phased preparation retains only its decoded receipt on
+      // refusal. Preserve that stage contract while retaining the typed leaf.
+      if (receipt->stage == SourceStage::kDecoded)
+        receipt->failure->reason = ValueRouteError::kInputStage;
+    }
+    return FunctionPrepareFailure{kind, receipt, error.evaluation.location.pc, error};
   } catch (Error error) { return FunctionPrepareFailure{error, receipt, {}};
   } catch (const std::bad_alloc&) { return FunctionPrepareFailure{Error::kResourceLimit, receipt, {}};
   } catch (const std::length_error&) { return FunctionPrepareFailure{Error::kResourceLimit, receipt, {}}; }

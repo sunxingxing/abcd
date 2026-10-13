@@ -47,7 +47,7 @@ test::ActionRegionCost Run(std::uint32_t count, bool external, bool barrier = tr
   for (const auto& pair : values.modules.pairs)
     modules.push_back({pair, std::get<ValueModuleRead>(graph.ops[pair.read.value].operation), {{7}, {0}}});
   test::Check(modules.size() == count);
-  if (count) test::Check(std::get<EvaluationError>(BuildEvaluationPlan(graph, fixture_budget)) == EvaluationError::kUnsupportedOperation);
+  if (count) test::Check(std::get<EvaluationFailure>(BuildEvaluationPlan(graph, fixture_budget)) == EvaluationError::kUnsupportedOperation);
   const auto plan = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, fixture_budget, IncomingCells::kReject, {}, modules));
   const auto checked = VerifyEvaluationPlan(graph, plan, fixture_budget);
   test::Check(std::holds_alternative<std::uint64_t>(checked));
@@ -89,7 +89,7 @@ test::ActionRegionCost Run(std::uint32_t count, bool external, bool barrier = tr
   budget.work = std::get<std::uint64_t>(checked);
   test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan, budget)));
   --budget.work;
-  test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, plan, budget)) == EvaluationError::kWorkLimit);
+  test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, plan, budget)) == EvaluationError::kWorkLimit);
   if (!count) return cost;
   const auto reject_tree = [&](const FunctionTree& candidate) {
     test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, plan, candidate, constants, fixture_budget)));
@@ -110,24 +110,24 @@ test::ActionRegionCost Run(std::uint32_t count, bool external, bool barrier = tr
   reject_tree(changed_tree);
   auto changed = plan;
   changed.modules.clear();
-  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, changed, fixture_budget)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, changed, fixture_budget)));
   changed = plan; changed.operations[modules[0].pair.guard->value].kind = EvaluationKind::kRemoved;
-  test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, changed, fixture_budget)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, changed, fixture_budget)) == EvaluationError::kOwnership);
   changed = plan; changed.modules[0].read.space = external ? ModuleSpace::kLocal : ModuleSpace::kExternal;
-  test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, changed, fixture_budget)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, changed, fixture_budget)) == EvaluationError::kOwnership);
   changed = plan; ++changed.modules[0].pair.guard->value;
-  test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, changed, fixture_budget)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, changed, fixture_budget)) == EvaluationError::kOwnership);
   auto broken = graph;
   broken.ops[modules[0].pair.guard->value].exceptional = ExceptionalCompletion::kImpossible;
-  test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(broken, plan, fixture_budget)) == EvaluationError::kOrder);
+  test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(broken, plan, fixture_budget)) == EvaluationError::kOrder);
   broken = graph;
   std::get<ValueGuard>(broken.ops[modules[0].pair.guard->value].operation).name.reset();
-  test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(broken, plan, fixture_budget)) == EvaluationError::kInvalidGraph);
+  test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(broken, plan, fixture_budget)) == EvaluationError::kInvalidGraph);
   budget = {}; budget.bytes = 0;
-  test::Check(std::get<EvaluationError>(IndexModuleEvaluations(graph, modules, budget)) == EvaluationError::kResourceLimit);
+  test::Check(std::get<EvaluationFailure>(IndexModuleEvaluations(graph, modules, budget)) == EvaluationError::kResourceLimit);
   // Extra/repeated entries do not silently change source binding ownership.
   modules.push_back(modules.front());
-  test::Check(std::get<EvaluationError>(IndexModuleEvaluations(graph, modules, fixture_budget)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(IndexModuleEvaluations(graph, modules, fixture_budget)) == EvaluationError::kOwnership);
   return cost;
 }
 void Initialized() {

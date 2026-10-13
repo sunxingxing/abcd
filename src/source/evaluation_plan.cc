@@ -1,4 +1,5 @@
 #include "evaluation_plan.h"
+#include "evaluation_failure.h"
 #include "assignment_values.h"
 #include "evaluation_flow.h"
 #include "evaluation_liveness.h"
@@ -21,11 +22,13 @@ namespace {
 using Error = EvaluationError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
 struct EffectInterval { std::uint32_t count = 0; std::uint32_t end = 0; };
-std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
+std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
     analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput array_source = {}, bool assignments = true, bool* proposed = nullptr, std::span<const analysis::GuardedRead> guarded = {}) {
+  EvaluationEvidence witness;
+  const auto Require = [&](bool condition, Error error) { if (!condition) throw EvaluationFailure{error, witness}; };
   auto work = budget.work; auto bytes = budget.bytes;
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
@@ -39,7 +42,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
       bytes -= count * width;
     };
     const auto availability = CheckEvaluationFlow(graph, flow, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&availability)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&availability)) return *error;
     step(std::get<std::uint64_t>(availability));
     Require(graph.ops.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     admit(graph.uses.size(), sizeof(std::uint8_t));
@@ -130,7 +133,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
     admit(plan.modules.capacity() - modules.size(), sizeof(ModuleEvaluation));
     for (const auto& module : modules) { step(); plan.modules.push_back(module); }
     auto indexed_modules = IndexModuleEvaluations(graph, plan.modules, {bytes, work});
-    if (const auto* error = std::get_if<EvaluationError>(&indexed_modules)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&indexed_modules)) return *error;
     auto module_index = std::get<ModuleEvaluationIndex>(std::move(indexed_modules));
     admit(module_index.allocated_bytes, 1); step(module_index.work);
     admit(graph.ops.size(), sizeof(std::uint8_t)); step(graph.ops.size());
@@ -234,7 +237,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
       // Normal inputs already use verified IR simplification. Phase inputs
       // keep exact import correspondence; elide only in the source projection.
       const auto live = ElidePureEvaluations(graph, plan, {bytes, work});
-      if (const auto* error = std::get_if<Error>(&live)) return *error;
+      if (const auto* error = std::get_if<EvaluationFailure>(&live)) return *error;
       const auto cost = std::get<EvaluationLivenessCost>(live);
       admit(cost.bytes, 1); step(cost.work);
     }
@@ -242,7 +245,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
     // imports retain transport anchors; simplification is an optimization,
     // never a prerequisite for assigning one computation its original site.
     const auto aliases = BuildEvaluationAliases(graph, plan, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&aliases)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&aliases)) return *error;
     const auto alias_cost = std::get<EvaluationAliasCost>(aliases);
     admit(alias_cost.bytes, 1); step(alias_cost.work);
     std::optional<ArrayInitializationPlan> arrays;
@@ -332,6 +335,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
       for (std::uint32_t order = 0; order < block.op_count; ++order) {
         step();
         const auto index = next_op + order;
+        witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(index)}, EvaluationObligation::kPlan);
         const auto& op = graph.ops[index];
         Require(op.block.value == b && op.order == order, Error::kInvalidGraph);
         if (IsArrayInitialization(plan, {static_cast<std::uint32_t>(index)})) continue;
@@ -424,6 +428,8 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
           expected -= interval.count;
           effects += interval.count;
           auto& child = plan.operations[result->value];
+          witness = EvaluationAt(graph, plan, *result, EvaluationObligation::kProducerOwnership);
+          witness.expected_consumer = use; witness.expected_owner = OperationLocation(graph, {static_cast<std::uint32_t>(index)});
           Require(child.kind == EvaluationKind::kRoot, Error::kOwnership);
           child = {EvaluationKind::kInline, use, {}};
         }
@@ -438,6 +444,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
       }
       next_op += block.op_count;
     }
+    witness = {};
     Require(next_op == graph.ops.size(), Error::kInvalidGraph);
     if (plan.phis) {
       // Every producer uses the same original-edge ownership proof, including
@@ -460,6 +467,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
       // Use-site assignments are independent of phi/predicate syntax. A later
       // logical LHS proof may supersede the provisional snapshot using the
       // original forest, without losing any other retained observation.
+      witness = {}; witness.obligation = EvaluationObligation::kProjection;
       BuildPredicateSnapshots(graph, plan, logical_budget);
       const auto inputs = FindLogicalLeftInputs(graph, plan, logical_budget);
       admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
@@ -470,6 +478,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
     }
     if (flow == EvaluationFlow::kNormal && plan.phis) {
       TreeCheckBudget logical_budget({bytes, work});
+      witness = {}; witness.obligation = EvaluationObligation::kProjection;
       BuildLogicalValues(graph, plan, logical_budget);
       admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
     }
@@ -499,23 +508,25 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
       }
     }
     const auto expressions = BuildPhaseExpressions(graph, plan, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&expressions)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
     admit(phase_cost.bytes, 1); step(phase_cost.work);
     if (flow == EvaluationFlow::kPhased) {
       TreeCheckBudget selection_budget({bytes, work});
       BuildPhaseSelectionOperands(graph, plan, selection_budget);
       BuildPhasedObjectOperands(graph, plan, selection_budget);
+      witness = {}; witness.obligation = EvaluationObligation::kProjection;
       ComposePhaseExpressions(graph, plan, selection_budget);
+      witness = {}; witness.obligation = EvaluationObligation::kProjection;
       ComposeCheckedCalls(graph, plan, selection_budget);
       admit(selection_budget.Bytes(), 1); step(selection_budget.Work());
     }
     const auto normalized = BuildIntegerNaNs(graph, plan, {bytes, work});
-    if (const auto* error = std::get_if<Error>(&normalized)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&normalized)) return *error;
     const auto normalization_cost = std::get<IntegerNaNCost>(normalized);
     admit(normalization_cost.bytes, 1); step(normalization_cost.work);
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
-    if (const auto* error = std::get_if<EvaluationError>(&checked)) return *error;
+    if (const auto* error = std::get_if<EvaluationFailure>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = plan.checked_failures.capacity() * sizeof(GuardedCallFailure) + plan.assignment_values.capacity() * sizeof(std::optional<analysis::OpId>) + plan.assignment_consumers.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_children.capacity() * sizeof(std::optional<analysis::OpId>) + plan.closed_expressions.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + (plan.phase_compositions.capacity() + plan.checked_compositions.capacity()) * sizeof(analysis::OpId) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_selections.capacity() * sizeof(PhaseSelectionOperand) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
@@ -541,11 +552,12 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
     return plan;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
-  } catch (Error error) { return error;
+  } catch (const EvaluationFailure& error) { return error;
+  } catch (Error error) { return EvaluationFailure{error, witness};
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
-std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(const analysis::ValueProgram& graph,
+std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(const analysis::ValueProgram& graph,
     analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
@@ -574,20 +586,20 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(const analysis::Va
     plan->work = scan + plan->work * (attempt ? 2 : 1);
     return result;
   }
-  const auto error = std::get<Error>(result);
+  const auto error = std::get<EvaluationFailure>(result);
   if (!proposed || error == Error::kResourceLimit || error == Error::kWorkLimit) return result;
   auto fallback = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, false, nullptr, guarded);
   if (auto* plan = std::get_if<EvaluationPlan>(&fallback)) plan->work += scan + allowance;
   return fallback;
 }
 }  // namespace
-std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
+std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
     std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands, const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads, ArraySourceInput arrays) {
   return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, arrays);
 }
-std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
+std::variant<EvaluationPlan, EvaluationFailure> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
     std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, ArraySourceInput arrays, std::span<const analysis::GuardedRead> guarded) {

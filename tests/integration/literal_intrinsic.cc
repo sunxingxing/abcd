@@ -106,7 +106,7 @@ std::uint64_t Run(std::uint32_t count, bool print, bool copies = false, bool bar
   const auto& values = std::get<FunctionValues>(imported);
   const auto& graph = values.graph;
   const auto built_plan = BuildEvaluationPlan(graph);
-  if (barrier) { test::Check(std::holds_alternative<EvaluationError>(built_plan)); return 0; }
+  if (barrier) { test::Check(std::holds_alternative<EvaluationFailure>(built_plan)); return 0; }
   test::Check(std::holds_alternative<EvaluationPlan>(built_plan));
   const auto& plan = std::get<EvaluationPlan>(built_plan);
   test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan)));
@@ -123,7 +123,7 @@ std::uint64_t Run(std::uint32_t count, bool print, bool copies = false, bool bar
         test::Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(shared)));
         test::Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(shared)));
         auto forged = plan; forged.literals->nested[i].reset();
-        test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+        test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
       }
     }
   }

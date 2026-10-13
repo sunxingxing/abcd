@@ -4,6 +4,7 @@
 #include "abcd/source/control_failure.h"
 #include "abcd/source/capture_occurrence.h"
 #include "abcd/analysis/value_ir.h"
+#include "abcd/source/evaluation_kind.h"
 namespace abcd::source {
 // Diagnostic obligations only: these tags never grant recovery admission.
 enum class TreeObligation : std::uint8_t {
@@ -28,10 +29,14 @@ struct TreeLocation {
   std::optional<abc::CodeOffset> pc, working_pc;
   bool operator==(const TreeLocation&) const = default;
 };
+enum class ExpressionOwnershipError : std::uint8_t { kMissingExpression, kPlacement };
 struct TreeFailureEvidence {
   TreeObligation obligation = TreeObligation::kExpressionOwnership;
   TreeLocation location;
   std::optional<TreeLocation> expected_owner, actual_owner;
+  std::optional<ExpressionOwnershipError> ownership;
+  std::optional<EvaluationKind> placement;
+  std::optional<TreeLocation> decision_entry;
   bool operator==(const TreeFailureEvidence&) const = default;
 };
 enum class DeferredCellError : std::uint8_t { kExternalRoot, kPhasedParent, kPlacement, kBinding };

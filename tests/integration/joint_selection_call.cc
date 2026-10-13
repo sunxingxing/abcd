@@ -113,7 +113,7 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
       identity_phi = true;
       auto forged_alias = evaluation;
       forged_alias.aliases[i] = ValueId{static_cast<std::uint32_t>(i)};
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph,forged_alias)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,forged_alias)));
       break;
     }
     if (ReferenceCopies(form) || form == Form::kDualCopies || form == Form::kDualCopiesPrefix || form == Form::kDualCopiesWrapped) test::Check(identity_phi);
@@ -127,16 +127,16 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
     SemanticBudget exact; exact.work = work;
     test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation, exact)));
     --exact.work;
-    test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, evaluation, exact)) == EvaluationError::kWorkLimit);
+    test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, evaluation, exact)) == EvaluationError::kWorkLimit);
     SemanticBudget no_bytes; no_bytes.bytes = 0;
-    test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, evaluation, no_bytes)) == EvaluationError::kResourceLimit);
+    test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, evaluation, no_bytes)) == EvaluationError::kResourceLimit);
     auto forged = evaluation; forged.phase_selections.pop_back();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     if (arguments > 1) {
       forged = evaluation; std::swap(forged.phase_selections[0].input, forged.phase_selections[1].input);
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
       forged = evaluation; std::get<PhaseCallReference>(forged.phase_selections[1].owner).callee = forged.phase_selections[1].branch;
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
   }
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));

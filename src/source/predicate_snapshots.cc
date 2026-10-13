@@ -1,4 +1,5 @@
 #include "logical_evaluation.h"
+#include "evaluation_failure.h"
 #include "cell_evaluation.h"
 
 namespace abcd::source {
@@ -12,6 +13,8 @@ struct Interval { std::size_t count = 0, end = 0; };
 // Each operation/use is visited once. The same index is rebuilt by verification.
 std::vector<UseId> OrderedUses(const ValueProgram& graph, const EvaluationPlan& plan,
     TreeCheckBudget& budget, bool projected = false) {
+  EvaluationEvidence witness;
+  const auto Require = [&](bool ok) { if (!ok) throw EvaluationFailure{EvaluationError::kOwnership, witness}; };
   struct Frame { OpId operation; std::uint32_t next = 0; };
   enum class Visit : std::uint8_t { kUnseen, kActive, kDone };
   std::vector<Frame> stack; std::vector<Visit> visits; std::vector<UseId> ordered;
@@ -28,18 +31,22 @@ std::vector<UseId> OrderedUses(const ValueProgram& graph, const EvaluationPlan& 
     budget.Step();
     if (graph.ops[i].life != ValueLife::kLive ||
         owned(placement_at(i).kind)) continue;
+    witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kDuplicateVisit);
     Require(visits[i] == Visit::kUnseen);
     std::size_t depth = 1; stack[0] = {OpId{static_cast<std::uint32_t>(i)}, 0}; visits[i] = Visit::kActive;
     while (depth) {
       budget.Step(); auto& frame = stack[depth - 1]; const auto& op = graph.ops[frame.operation.value];
       if (frame.next == op.use_count) { visits[frame.operation.value] = Visit::kDone; --depth; continue; }
-      const UseId use{op.first_use.value + frame.next}; Require(use.value < graph.uses.size());
+      witness = EvaluationAt(graph, plan, frame.operation, EvaluationObligation::kUse);
+      const UseId use{op.first_use.value + frame.next}; witness.use = use; Require(use.value < graph.uses.size());
       const auto& occurrence = graph.uses[use.value];
       const auto* value = std::get_if<ValueId>(&occurrence.operand);
       const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
       if (source) {
         const auto placement = placement_at(source->op.value);
         if (owned(placement.kind) && placement.consumer == use && visits[source->op.value] != Visit::kDone) {
+          witness = EvaluationAt(graph, plan, source->op, EvaluationObligation::kDuplicateVisit);
+          witness.use = witness.expected_consumer = use; witness.expected_owner = OperationLocation(graph, frame.operation);
           Require(visits[source->op.value] == Visit::kUnseen && depth < stack.size());
           visits[source->op.value] = Visit::kActive; stack[depth++] = {source->op, 0}; continue;
         }
@@ -156,6 +163,8 @@ std::size_t Events(const ValueOp& op, OpEvaluation placement) {
 }
 }  // namespace
 void BuildPredicateSnapshots(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+  EvaluationEvidence witness;
+  const auto Require = [&](bool ok) { if (!ok) throw EvaluationFailure{EvaluationError::kOwnership, witness}; };
   const auto candidates = Candidates(graph, plan, budget);
   bool any = false; for (const auto candidate : candidates) { budget.Step(); any |= candidate.has_value(); }
   if (!any) return;
@@ -164,6 +173,7 @@ void BuildPredicateSnapshots(const ValueProgram& graph, EvaluationPlan& plan, Tr
     std::size_t serial = 0;
     for (std::uint32_t j = 0; j < block.op_count; ++j) {
       budget.Step(); const OpId id{block.first_op.value + j}; const auto& op = graph.ops[id.value];
+      witness = EvaluationAt(graph, plan, id, EvaluationObligation::kOperandOwnership);
       if (op.life != ValueLife::kLive) continue;
       const auto count = Events(op, plan.operations[id.value]); intervals[id.value] = {count, serial + count};
       auto expected = serial;
@@ -188,11 +198,15 @@ void BuildPredicateSnapshots(const ValueProgram& graph, EvaluationPlan& plan, Tr
   if (!rejected.empty()) RetainSnapshotInputs(graph, plan, rejected, budget);
 }
 void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
+  EvaluationEvidence witness; witness.obligation = EvaluationObligation::kProjection;
+  const auto Require = [&](bool ok) { if (!ok) throw EvaluationFailure{EvaluationError::kOwnership, witness}; };
   bool any = false;
   for (const auto& placement : plan.operations) { budget.Step(); any |= placement.kind == EvaluationKind::kPredicateSnapshot; }
   if (!any) return;
   Require(plan.flow == EvaluationFlow::kNormal);
-  Require(UninitializedSnapshots(graph, plan, budget).empty());
+  const auto uninitialized = UninitializedSnapshots(graph, plan, budget);
+  if (!uninitialized.empty()) witness = EvaluationAt(graph, plan, uninitialized.front(), EvaluationObligation::kRootTemporary);
+  Require(uninitialized.empty());
   std::vector<std::uint8_t> blocks; budget.Array(blocks, graph.blocks.size());
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (plan.operations[i].kind == EvaluationKind::kPredicateSnapshot) blocks[graph.ops[i].block.value] = 1;
@@ -204,6 +218,8 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); const auto actual = plan.operations[i];
     if (actual.kind != EvaluationKind::kPredicateSnapshot) continue;
+    witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kSnapshotCandidate);
+    witness.expected_consumer = candidates[i];
     Require(actual.consumer && candidates[i] == actual.consumer && actual.temporary == TemporaryReason::kMultipleUses);
     needed[std::get<OpId>(graph.uses[actual.consumer->value].owner).value] = 1;
   }
@@ -237,6 +253,7 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
     std::size_t serial = 0;
     for (std::uint32_t j = 0; j < block.op_count; ++j) {
       budget.Step(); const OpId id{block.first_op.value + j}; const auto& op = graph.ops[id.value];
+      witness = EvaluationAt(graph, plan, id, EvaluationObligation::kOperandOwnership);
       if (op.life != ValueLife::kLive) continue;
       const auto count = Events(op, BeforeLogicalFusion(graph, plan, id.value));
       intervals[id.value] = {count, serial + count};
@@ -265,7 +282,8 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
     }
   }
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-    budget.Step(); Require((plan.operations[i].kind == EvaluationKind::kPredicateSnapshot) == (consumed[i] != 0));
+    budget.Step(); witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kLiveCoverage);
+    Require((plan.operations[i].kind == EvaluationKind::kPredicateSnapshot) == (consumed[i] != 0));
   }
 }
 }  // namespace abcd::source

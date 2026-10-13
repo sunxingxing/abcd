@@ -148,7 +148,7 @@ void EntryAndScaling() {
       }
       auto missing = evaluation;
       missing.phis.reset();
-      Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, missing, budget)) == EvaluationError::kLivePhi);
+      Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, missing, budget)) == EvaluationError::kLivePhi);
       const auto same = Graph(count, loop, true);
       const auto identity_plan = Plan(same, PhiBudget(same));
       for (const auto& bundle : identity_plan.bundles)
@@ -224,10 +224,10 @@ void PhiInputSnapshot() {
       changed, {constants, 2})) == TreeSemanticError::kFlow);
   auto forged = evaluation;
   forged.operations[0] = {EvaluationKind::kInline, UseId{3}, {}};
-  Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
+  Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
   forged = evaluation;
   forged.phis->bundles[0].schedule.steps.clear();
-  Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kLivePhi);
+  Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kLivePhi);
 }
 // A getter may cross an inert decision only when every normal path reaches
 // the same original phi observation. This diamond is an algorithm fixture;

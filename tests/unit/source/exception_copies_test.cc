@@ -148,11 +148,11 @@ void Staging(std::uint32_t count) {
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
   test::Check(std::holds_alternative<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {SemanticBudget{}.bytes, evaluation.work})));
-  test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(
+  test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(
       graph, {SemanticBudget{}.bytes, evaluation.work - 1})) == EvaluationError::kWorkLimit);
-  test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(graph, {0})) ==
+  test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(graph, {0})) ==
       EvaluationError::kResourceLimit);
-  test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)) ==
+  test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, evaluation)) ==
       EvaluationError::kUnsupportedOperation);
   test::Check(std::holds_alternative<BindingError>(BuildBindingPlan(graph, evaluation, 1)));
   const auto bound = BuildPhasedBindingPlan(graph, evaluation, 1);
@@ -221,13 +221,13 @@ void Staging(std::uint32_t count) {
   }
   if (count) {
     auto missing = evaluation; missing.exceptions.reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, missing)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, missing)));
     auto forged = evaluation;
     forged.exceptions->placements[0] = NormalCopies{{1}};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     auto unavailable = graph;
     test::Check(!ReplaceUse(unavailable, {2}, ValueId{1}));
-    test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(unavailable)) ==
+    test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(unavailable)) ==
         EvaluationError::kUnavailableValue);
   }
 }

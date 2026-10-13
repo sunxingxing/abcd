@@ -410,3 +410,48 @@ calls pass their former reference refusal, but the records remain incomplete
 at stop methods 7958/23270/35440, ExpressionOwnership PC 88/85. Old-flags
 coverageCollect reaches DecisionPrefix PC 347/342 instead of its former call
 refusal. No holdout or RSS run was performed.
+
+## 12. Initialized guards in decision prefixes (Round 45 WIP)
+
+This change consumes an already verified evaluation placement. `kCellGuard`
+means `IsInitializedCellGuard` proved a lexical read's initialized premise;
+it owns only a zero-width `BlockBoundary` anchor. It is not an expression, a
+comma operand, a consumer update or a new symbol. `kGuardedCellRead` remains an
+ordered throwing event and cannot take the anchor disposition.
+
+`evaluation_disposition.h` provides the common disposition used by ordinary
+blocks and decision prefixes. Environment declarations and enclosing
+class/array projections retain their block-owner paths; the new decision
+admission is the initialized guard only. Existing catch-scope and catch-copy
+checks still precede decision emission. Control joins/follows, declaration
+placement and naming are unchanged. The independent tree-flow index rechecks
+original guards against cell initialization facts, requires an anchor and
+checks its exact block boundary; recovery still records
+`OriginalInitializedGuard`. It does not trust the emitter's disposition.
+
+Evaluation failures now carry fixed-size typed obligations and optional
+operation/block/use/value/owner locations. Original and working PCs come only
+from input origins. Nested logical/snapshot checks retain their own failing
+witness, including the actual final assignment-fallback attempt. Missing
+logical consumers refuse at the selected branch, rather than dereferencing an
+empty optional and publishing spurious Op0/PC0. Resource and work enum values
+and classification are unchanged. Receipts, record-entry JSON and
+`abc_semantic --record-source` retain the same evidence. Tree ownership records
+`decision_entry` separately from an actual `expected_owner` consumer.
+
+Before changing emission, all seven T candidates were re-exported: all were
+`kMissingExpression` with `kCellGuard`; none was a `kGuardedCellRead`. The new IR
+fixture checks actual decision discovery, initialized anchors, real guarded
+read refusal, missing/duplicate/expression/incorrect-boundary anchor mutations,
+removed initialization premises, identity copies and split blocks. Sizes
+200/201/400/800 exercise scaling and exact byte/work boundaries. Production
+classification is O(1) per operation, without new indexes or buffer allocation;
+the diagnostic witnesses are fixed-size. No source-language premise is added.
+
+The real es2abc fixture and Node oracle are documented in
+[decision_guards/README.md](../../../tests/integration/fixtures/decision_guards/README.md).
+Its finally-throw case uses the ABC-handler oracle: es2abc leaves the inlined
+finalizers in protected ranges (m473 PC170 → H247, PC325 → H337, PC377 → caller).
+The repeated finally trace is bytecode-faithful, not an engine bug. Original
+Node source is used for the remaining modes; exception messages/stacks remain
+outside the comparison. See the exception-control oracle boundary.

@@ -352,3 +352,9 @@ is 479/620 (old flags) and 511/620 (source), up one each: o5/44477 YearView. All
 11 source-flag Class B first refusals are gone, but ten records expose later
 control/tree/capture/reference gaps. o18/57687 and o38/13920 retain byte-equivalent
 failure objects under their respective flags. No holdout, full-suite or RSS run.
+
+Round 45 does not change these control boundaries. Decision-prefix emission now
+consumes the same verified placement disposition as ordinary blocks; initialized
+cell guards become boundary anchors, while throwing checked reads remain
+separate events. See [guarded-captures.md §12](guarded-captures.md#12-initialized-guards-in-decision-prefixes-round-45-wip)
+for refusal-location evidence and independent anchor checks.

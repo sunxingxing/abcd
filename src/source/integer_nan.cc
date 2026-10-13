@@ -99,7 +99,7 @@ bool Candidate(const analysis::ValueProgram& graph, const EvaluationPlan& plan, 
       op.first_use.value < graph.uses.size() && ErasableNaN(graph.uses[op.first_use.value].operand);
 }
 }
-std::variant<IntegerNaNCost, EvaluationError> BuildIntegerNaNs(const analysis::ValueProgram& graph,
+std::variant<IntegerNaNCost, EvaluationFailure> BuildIntegerNaNs(const analysis::ValueProgram& graph,
     EvaluationPlan& plan, analysis::SemanticBudget budget) {
   try {
     Quota quota(budget); Require(plan.operations.size() == graph.ops.size() && plan.integer_nans.empty());
@@ -118,7 +118,7 @@ std::variant<IntegerNaNCost, EvaluationError> BuildIntegerNaNs(const analysis::V
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
-std::variant<std::uint64_t, EvaluationError> VerifyIntegerNaNs(const analysis::ValueProgram& graph,
+std::variant<std::uint64_t, EvaluationFailure> VerifyIntegerNaNs(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, analysis::SemanticBudget budget) {
   try {
     if (plan.integer_nans.empty()) return std::uint64_t{0};

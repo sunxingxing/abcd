@@ -86,7 +86,7 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
     const auto read = plan.pairs.back().read;
     const auto consumer = plan.pairs.back().guard->value + 1;
     forged.operations[read.value] = {EvaluationKind::kInline, graph.ops[consumer].first_use, {}};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     return;
   }
   if (count == 1) {
@@ -100,21 +100,21 @@ void Run(std::uint32_t count, bool caught, bool wide, bool external, abc::Profil
       escaped.aliases[graph.ops[stored].result->value] =
           std::get<ValueId>(graph.uses[graph.ops[stored].first_use.value].operand);
       escaped.aliases[graph.ops[loaded].result->value] = escaped.aliases[graph.ops[stored].result->value];
-      test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, escaped)) == EvaluationError::kOwnership);
+      test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, escaped)) == EvaluationError::kOwnership);
     }
     const auto verified = std::get<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation));
     test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(
         graph, evaluation, {SemanticBudget{}.bytes, verified})));
-    test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(
+    test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(
         graph, evaluation, {SemanticBudget{}.bytes, verified - 1})) == EvaluationError::kWorkLimit);
     auto omitted = evaluation;
     omitted.operations[plan.pairs.front().guard->value].kind = EvaluationKind::kRemoved;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, omitted)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, omitted)));
     if (caught) {
       auto rerouted = graph;
       for (auto& exit : rerouted.exceptional_exits)
         if (exit.op == plan.pairs.front().guard) exit.handler.reset();
-      test::Check(std::holds_alternative<EvaluationError>(BuildPhasedEvaluationPlan(
+      test::Check(std::holds_alternative<EvaluationFailure>(BuildPhasedEvaluationPlan(
           rerouted, {}, IncomingCells::kReject, {}, bindings)));
     }
     const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
@@ -251,14 +251,14 @@ void Snapshots(abc::ProfileId profile, std::ostream* output) {
   // Alias spelling is legal for a captured phi; replacing that identity by
   // one predecessor's module value is not. Check the semantic counterexample.
   mutable_alias.aliases[graph.ops[phi_read].result->value] = *graph.ops[guards.pairs.front().read.value].result;
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, mutable_alias)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, mutable_alias)) == EvaluationError::kOwnership);
   // A producer used by catch staging cannot be elided even if its normal
   // consumers disappear. Preserve the old value when the next module read throws.
   auto discarded_snapshot = evaluation;
   constexpr std::size_t kInitialStore = 1;
   discarded_snapshot.operations[kInitialStore] = {EvaluationKind::kElidedPure};
   discarded_snapshot.aliases[graph.ops[kInitialStore].result->value] = *graph.ops[kInitialStore].result;
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, discarded_snapshot)) ==
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, discarded_snapshot)) ==
       EvaluationError::kOwnership);
   auto changed = graph;
   bool mutated = false;
@@ -272,7 +272,7 @@ void Snapshots(abc::ProfileId profile, std::ostream* output) {
     mutated = true; break;
   }
   test::Check(mutated);
-  test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(
+  test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(
       changed, {}, IncomingCells::kReject, {}, bindings)) == EvaluationError::kOrder);
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));

@@ -404,10 +404,10 @@ void SourceTree(bool buffered, bool array = false, bool print = false) {
     }
     auto invalid_plan = *evaluation;
     invalid_plan.literals.reset();
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, invalid_plan)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, invalid_plan)));
     invalid_plan = *evaluation;
     invalid_plan.operations[1].kind = EvaluationKind::kRoot;
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, invalid_plan)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, invalid_plan)));
     auto changed = result->tree;
     changed.properties[0].origin = {0};
     Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(
@@ -519,9 +519,9 @@ void LiteralConsumers(bool print = false) {
     const auto consumer = mode == ConsumerCase::kShared ? graph.ops[count + 1].first_use : graph.ops.back().first_use;
     forged.operations[0] = {EvaluationKind::kInline, consumer, {}};
     if (mode != ConsumerCase::kUnique)
-      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     forged.operations[0].consumer = graph.ops[1].first_use; // Internal receiver is never the escaping value.
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
     FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction;
     syntax.strictness = Strictness::kStrict;
@@ -584,7 +584,7 @@ void LateMemberCalls(bool print = false) {
     if (print) std::cout << source.str();
     auto forged = evaluation;
     forged.literals->nested[2].reset();
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     if (count == 1) {
       // An explicit receiver different from the property base cannot become a
       // native member Reference, even though both values are available.
@@ -679,11 +679,11 @@ void LateModuleProperties(bool print = false) {
     if (print) std::cout << output.str() << ",\n";
     auto forged = evaluation;
     forged.literals->nested[1].reset();
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     if (count > 1) {
       forged = evaluation;
       std::swap(forged.literals->definitions[0], forged.literals->definitions[1]);
-      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     }
   }
 }
@@ -731,7 +731,7 @@ void LateStringLeaves(bool print = false) {
     Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(effectful)));
     auto forged = evaluation;
     forged.literals->nested[2].reset();
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   }
 }
 void NestedLiterals() {
@@ -767,13 +767,13 @@ void NestedLiterals() {
     Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(tree, output)));
     auto forged = evaluation;
     forged.literals->nested[depth].reset();
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     forged = evaluation; forged.operations[depth].kind = EvaluationKind::kRoot;
     forged.operations[depth].consumer.reset();
     forged.operations[depth].temporary = TemporaryReason::kEffectSnapshot;
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     forged = evaluation; forged.literals->nested.resize(1);
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   }
   for (const bool observe : {false, true}) {
     Fixture fixture;
@@ -873,7 +873,7 @@ void ReceiverGuardBoundaries() {
   auto evaluation = std::get<EvaluationPlan>(evaluated);
   Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, evaluation)));
   evaluation.receiver_guards.clear();
-  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
+  Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, evaluation)));
   for (const std::vector<OpId> invalid : {std::vector<OpId>{{1}, {1}}, {{2}}, {{99}}, {{2}, {1}}})
     Check(std::get<LiteralError>(BuildLiteralPlan(graph, {}, {}, {}, invalid)) == LiteralError::kReceiver);
   std::get<ValueSuperCheck>(graph.ops[1].operation).kind = SuperCheckKind::kRequireUninitialized;
@@ -915,7 +915,7 @@ void RhsSnapshot() {
   forged.operations[0].kind = EvaluationKind::kInline;
   forged.operations[0].temporary.reset();
   forged.operations[0].consumer = UseId{graph.ops[2].first_use.value + 1};
-  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+  Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
 }
 enum class PredicateInput { kParameter, kBoolean, kLateRead, kEarlyRead };
 ValueProgram PredicateGraph(PredicateInput kind) {

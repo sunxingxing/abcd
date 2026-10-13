@@ -75,7 +75,7 @@ class Construction {
     Require(metadata_.buffers.size() == g_.ops.size() && metadata_.length_reads.size() == g_.ops.size(), Error::kCorrespondence);
     if (evaluation_ && !g_.phases.empty()) {
       const auto live = VerifyElidedPureEvaluations(g_, *evaluation_, b_.Remaining());
-      if (const auto* error = std::get_if<EvaluationError>(&live))
+      if (const auto* error = std::get_if<EvaluationFailure>(&live))
         throw *error == EvaluationError::kResourceLimit ? Error::kResourceLimit :
             *error == EvaluationError::kWorkLimit ? Error::kWorkLimit : Error::kCorrespondence;
       b_.Step(std::get<std::uint64_t>(live));

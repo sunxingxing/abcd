@@ -47,7 +47,7 @@ std::vector<EvaluationUses> IndexEvaluationUses(const analysis::ValueProgram& gr
   }
   return result;
 }
-std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
+std::variant<ModuleEvaluationIndex, EvaluationFailure> IndexModuleEvaluations(
     const analysis::ValueProgram& graph, std::span<const ModuleEvaluation> modules,
     analysis::SemanticBudget budget) {
   using Error = EvaluationError;
@@ -120,7 +120,7 @@ std::variant<ModuleEvaluationIndex, EvaluationError> IndexModuleEvaluations(
     if (!graph.phases.empty() && !modules.empty()) {
       const auto checked = VerifyModulePhaseOrder(graph, modules,
           {budget.bytes - result.allocated_bytes, work});
-      if (const auto* failure = std::get_if<Error>(&checked)) return *failure;
+      if (const auto* failure = std::get_if<EvaluationFailure>(&checked)) return *failure;
       work -= std::get<std::uint64_t>(checked);
     }
     result.work = budget.work - work;

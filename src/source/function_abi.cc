@@ -20,7 +20,7 @@ class AbiBuilder {
     Require(graph_.revision == tree_.value_revision && graph_.cfg_revision == tree_.cfg_revision, Error::kRevision);
     if (evaluation_) {
       const auto verified = VerifyPhasedEvaluationPlan(graph_, *evaluation_, remaining_);
-      if (const auto* error = std::get_if<EvaluationError>(&verified)) {
+      if (const auto* error = std::get_if<EvaluationFailure>(&verified)) {
         if (*error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
         if (*error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
         throw Error::kEvaluation;

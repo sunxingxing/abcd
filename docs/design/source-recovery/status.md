@@ -12,7 +12,29 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
-## Round 44：checked capture 调用参数（工作区完成，未提交）
+## Round 45：decision prefix 消费初始化 guard（cc 审查通过）
+
+- 基线 `fa9dfbd9`。先贯通固定大小的 `EvaluationFailure` 义务与真实位置，保留最终
+  失败尝试、资源分类和两条 JSON 路径；再让普通块和 decision prefix 共用 disposition。
+  7 个 T 目标均经实际诊断确认是 `kCellGuard`，只生成边界 anchor；真实 throwing
+  `kGuardedCellRead` 仍拒绝，未改声明、控制边界或 catch staging。
+- 完整 keep-going 构建成功；串行固定集 **65/65**。最终探索比较为 **486/620**、
+  **520/620**，对 `explore44/explore44s` 均为 **0 回退、0 文本漂移**。
+- 审查前定向 **44/56**：10 个已登记的既有失败，另两项是过期的 ExternalRoot 期望和
+  不适用的 finally-throw 源码 oracle。cc 核实 ABC 的内联 finally 仍在保护区间内：
+  m473 PC170 → H247，PC325 → H337，PC377 → caller；重复 finally 轨迹忠实于字节码，
+  **不是引擎缺陷**。现仅该模式改用完整的 ABC handler 轨迹期望，其他模式继续源代码差分；
+  o5/28303 更新为 m28799 PC677 的真实 unsupported-instruction 原因链。生产代码不变。
+- 审查修订后定向 **7/7**；22 次源码 oracle、2 次 ABC handler 严格期望和 6 个变异全部通过。
+  本次固定集重跑 **64/65**，仅 rich-text worker 调用失败（stderr 空）；不改代码单独重跑
+  **1/1 通过**，耗时 13.76 秒。此前的完整 65/65 仍是前一轮运行结果，不混记为本次全绿。
+- 新 IR/规模/预算/JSON/CLI 定位测试通过。7 个 T 与 8 个 E 的逐项结果、完整定向名单
+  及日志见 [Round 45 证据](round-45-results.md)。未提交、未运行留出集或 RSS。
+- cc 独立审查：完整构建通过；固定集串行 **65/65**；配对样本逐字节相同；原 flags 486/620 不变，
+  `--language-source` 517 → **520/620**（新完成 o19 AudioInputDeviceManagement、
+  AudioInputDeviceSwitcher、AudioOutputDeviceSwitcher）；两组 0 回退、0 文本漂移；新增与修订的定向测试 7/7。
+
+## Round 44：checked capture 调用参数（已提交 fa9dfbd9）
 
 - 基线 `6f1138a7`。仅从未满足的成员引用义务启动组合；checked read 保留
   read 的值身份和 guard 的异常身份，仍为 ordered/MayThrow，不能降为 kCellGuard。

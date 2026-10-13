@@ -100,7 +100,7 @@ void SpreadProtocolEntry() {
       Check(!std::get<BindingPlan>(built).self);
     } else Check(std::get<BindingError>(built) == BindingError::kUnsupportedEntry);
     graph.uses[1].role = OperandRole::kArgument;
-    Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(graph)));
+    Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(graph)));
   }
 }
 }  // namespace

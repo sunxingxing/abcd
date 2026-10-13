@@ -63,7 +63,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, Form form, bool print)
   const auto planned = BuildEvaluationPlan(graph);
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
-  test::Check(!std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
+  test::Check(!std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, evaluation)));
   if (count == 2) {
     test::Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(graph)));
     test::Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph, {}, {}, {}, {}, &*evaluation.cells)));

@@ -147,7 +147,7 @@ void Trees() {
     std::optional<ArrayInitializationError> cause;
     const auto planned = BuildEvaluationPlan(sample.graph, {}, IncomingCells::kReject, {}, {}, {}, {},
         ClosureWrites::kUnknown, {}, {}, {}, nullptr, {}, {contract, sample.Constants(), sample.names, &cause});
-    if (const auto* error = std::get_if<EvaluationError>(&planned)) std::cerr << "evaluation " << unsigned(*error) << " count=" << count << " split=" << split << " late=" << late << " array=" << (cause ? unsigned(*cause) : 999) << "\n";
+    if (const auto* error = std::get_if<EvaluationFailure>(&planned)) std::cerr << "evaluation " << unsigned(error->kind) << " count=" << count << " split=" << split << " late=" << late << " array=" << (cause ? unsigned(*cause) : 999) << "\n";
     Check(std::holds_alternative<EvaluationPlan>(planned));
     const auto& evaluation = std::get<EvaluationPlan>(planned);
     const auto control = std::get<ControlPlan>(BuildControlPlan(sample.graph));

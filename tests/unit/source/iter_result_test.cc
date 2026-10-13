@@ -130,7 +130,7 @@ void Run(abc::ProfileId profile, bool phased, std::uint32_t count, bool computed
   test::Check(creations.size() == count);
   const auto scheduled = phased ? BuildPhasedEvaluationPlan(graph) : BuildEvaluationPlan(graph);
   if (composition == Composition::kShared) {
-    test::Check(std::holds_alternative<EvaluationError>(scheduled)); return;
+    test::Check(std::holds_alternative<EvaluationFailure>(scheduled)); return;
   }
   test::Check(std::holds_alternative<EvaluationPlan>(scheduled));
   const auto evaluation = std::get<EvaluationPlan>(scheduled);
@@ -141,7 +141,7 @@ void Run(abc::ProfileId profile, bool phased, std::uint32_t count, bool computed
       if (count <= 2) {
         auto wrong = evaluation; wrong.literals->nested[creation.value].reset();
         const auto checked = phased ? VerifyPhasedEvaluationPlan(graph, wrong) : VerifyEvaluationPlan(graph, wrong);
-        test::Check(std::holds_alternative<EvaluationError>(checked));
+        test::Check(std::holds_alternative<EvaluationFailure>(checked));
       }
     }
   }

@@ -712,12 +712,23 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       // guarded pair is valid. Names alone must not open publication.
       auto staged = PhasedBody::Build(owner, decoded);
       Check(std::holds_alternative<PhasedBody>(staged));
-      Check(std::get<PhasedMethodError>(PhasedMethod::Evaluate(
-          std::get<PhasedBody>(std::move(staged)))) == PhasedMethodError::kEvaluation);
-      Check(std::get<PhasedMethodError>(analyzed) == PhasedMethodError::kEvaluation);
+      const auto failure = std::get<EvaluationFailure>(PhasedMethod::Evaluate(
+          std::get<PhasedBody>(std::move(staged))));
+      Check(failure.kind == EvaluationError::kUnsupportedOperation);
+      Check(std::get<EvaluationFailure>(analyzed).kind == failure.kind);
+      Check(failure.evaluation.location.method == owner.Target());
       auto refused = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites,
           range.first, identity, {});
-      Check(std::get<FunctionPrepareFailure>(refused).kind == FunctionPrepareError::kEvaluation);
+      const auto& prepare_failure = std::get<FunctionPrepareFailure>(refused);
+      Check(prepare_failure.kind == FunctionPrepareError::kEvaluation);
+      Check(prepare_failure.evaluation && prepare_failure.evaluation->kind == failure.kind);
+      Check(prepare_failure.values && prepare_failure.values->failure &&
+          prepare_failure.values->failure->evaluation == prepare_failure.evaluation->evaluation);
+      const auto encoded_failure = SerializeRouteReceipt(*prepare_failure.values);
+      Check(std::holds_alternative<std::string>(encoded_failure));
+      const auto decoded_failure = ParseRouteReceipt(std::get<std::string>(encoded_failure));
+      Check(std::holds_alternative<MethodRouteReceipt>(decoded_failure));
+      Check(std::get<MethodRouteReceipt>(decoded_failure).failure->evaluation == prepare_failure.values->failure->evaluation);
       Check(std::holds_alternative<FamilyPrepareFailure>(PreparedFamily::PrepareClass(
           file, header, index, lookup, roles, functions, sites, range.first, identity,
           {Strictness::kStrict, nullptr, FunctionFragment::kClassMember})));

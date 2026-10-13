@@ -112,7 +112,7 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
       auto& evaluation = std::get<EvaluationPlan>(evaluated);
       test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, evaluation)));
       evaluation.class_projection.owners[result.sites.front().definition.value].reset();
-      test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, evaluation)));
       auto forged = result.sites; ++forged.front().key.value;
       test::Check(std::get<ClassDefinitionError>(ProjectClassDefinitions(graph, forged)) == ClassDefinitionError::kInput);
       forged = result.sites; ++forged.front().order.value;
@@ -300,7 +300,7 @@ void Run(abc::ProfileId profile, unsigned count, Case kind, std::uint64_t* proje
   auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, calls.calls));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, evaluation)));
   evaluation.class_projection.owners[calls.calls.front().call.value].reset();
-  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, evaluation)));
   auto forged = calls.calls; ++forged.front().call.value;
   test::Check(std::holds_alternative<ClassInitializerError>(ProjectClassMembers(graph, forged)));
 

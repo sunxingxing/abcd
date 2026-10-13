@@ -75,7 +75,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode comparison, Form form, uns
   const auto& graph = values.graph;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
-  test::Check(!std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
+  test::Check(!std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, evaluation)));
   if (count == 2) {
     unsigned snapshots = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -84,20 +84,20 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode comparison, Form form, uns
         ++snapshots;
         auto invalid = evaluation;
         invalid.operations[i].consumer.reset();
-        test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, invalid)));
+        test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, invalid)));
       }
       if (form == Form::kCells && std::holds_alternative<analysis::ValueLexicalLoad>(graph.ops[i].operation)) {
         test::Check(placement.kind == EvaluationKind::kPredicateSnapshot && evaluation.cells);
         auto invalid = evaluation;
         invalid.cells->initialization.reads[i] = NotCellRead{};
-        test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, invalid)));
+        test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, invalid)));
       }
       if (!std::holds_alternative<analysis::ValueNamedRead>(graph.ops[i].operation) ||
           std::get<analysis::ValueNamedRead>(graph.ops[i].operation).name.value != 0) continue;
       test::Check(placement.kind == EvaluationKind::kInline && placement.consumer);
       auto invalid = evaluation;
       invalid.operations[i].consumer = analysis::UseId{graph.ops[i].first_use.value};
-      test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, invalid)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, invalid)));
     }
     test::Check(snapshots == (form == Form::kCells ? count : 0));
   }

@@ -107,7 +107,7 @@ std::uint64_t Run(abc::ProfileId profile, Case kind, unsigned count) {
       auto plan = std::get<EvaluationPlan>(std::move(evaluated));
       test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan)));
       plan.class_projection.owners[reads.reads.front().read.value].reset();
-      test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, plan)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, plan)));
     }
   }
   if (candidate) {

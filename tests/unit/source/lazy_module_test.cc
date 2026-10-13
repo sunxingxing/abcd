@@ -83,9 +83,9 @@ void Phased(const abc::MethodBody& body,std::uint32_t count) {
   }
   auto forged=graph;
   std::get<ValueModuleRead>(forged.ops[guards.pairs[0].read.value].operation).loading=ModuleLoading::kOrdinary;
-  test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(forged,plan)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(forged,plan)));
   auto omitted=plan;omitted.operations[guards.pairs[0].guard->value].kind=EvaluationKind::kRemoved;
-  test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph,omitted)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,omitted)));
 }
 }
 int main() {

@@ -1666,9 +1666,9 @@ void ConstructorGuardAnchors() {
   const std::array<OpId, 2> guards{{{1}, {2}}};
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(fixture.graph, {}, IncomingCells::kReject, {}, {}, {}, {}, ClosureWrites::kUnknown, {}, guards));
   auto missing = evaluation; missing.receiver_guards.pop_back();
-  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, missing)));
+  Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, missing)));
   auto unprojected = evaluation; unprojected.operations[guards.front().value].kind = EvaluationKind::kRoot;
-  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, unprojected)));
+  Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, unprojected)));
   auto syntax = fixture.Syntax(); syntax.callable = CallableKind::kDerivedConstructor;
   ExpressionConstants constants{fixture.constants, 2, 0, {}}; constants.receiver_guards = guards;
   const auto built = BuildFunctionTree(fixture.graph, control, evaluation, syntax, constants);
@@ -1937,7 +1937,7 @@ void OwnDefinitionRefusal() {
     fixture.graph.blocks = {{{0}, 2, {0}, 0}};
     // A typed imported definition cannot acquire assignment semantics through
     // the ordinary property writer without a separate descriptor/identity proof.
-    Check(std::get<EvaluationError>(BuildEvaluationPlan(fixture.graph)) ==
+    Check(std::get<EvaluationFailure>(BuildEvaluationPlan(fixture.graph)) ==
         EvaluationError::kUnsupportedOperation);
   }
 }

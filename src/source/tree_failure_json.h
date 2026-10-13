@@ -53,6 +53,9 @@ inline nlohmann::json TreeFailureJson(const TreeFailureEvidence& v) {
   nlohmann::json j{{"obligation", static_cast<unsigned>(v.obligation)}, {"location", TreeLocationJson(v.location)}};
   if (v.expected_owner) j["expected_owner"] = TreeLocationJson(*v.expected_owner);
   if (v.actual_owner) j["actual_owner"] = TreeLocationJson(*v.actual_owner);
+  if (v.ownership) j["ownership"] = static_cast<unsigned>(*v.ownership);
+  if (v.placement) j["placement"] = static_cast<unsigned>(*v.placement);
+  if (v.decision_entry) j["decision_entry"] = TreeLocationJson(*v.decision_entry);
   return j;
 }
 inline std::optional<TreeFailureEvidence> ParseTreeFailure(const nlohmann::json& j) {
@@ -62,6 +65,9 @@ inline std::optional<TreeFailureEvidence> ParseTreeFailure(const nlohmann::json&
   TreeFailureEvidence v{static_cast<TreeObligation>(kind), *location};
   if (j.contains("expected_owner")) { v.expected_owner = ParseTreeLocation(j["expected_owner"]); if (!v.expected_owner) return {}; }
   if (j.contains("actual_owner")) { v.actual_owner = ParseTreeLocation(j["actual_owner"]); if (!v.actual_owner) return {}; }
+  if (j.contains("ownership")) { std::uint32_t n; if (!FailureNumber(j,"ownership",n) || n > static_cast<unsigned>(ExpressionOwnershipError::kPlacement)) return {}; v.ownership = static_cast<ExpressionOwnershipError>(n); }
+  if (j.contains("placement")) { std::uint32_t n; if (!FailureNumber(j,"placement",n) || n > static_cast<unsigned>(EvaluationKind::kGuardedCellRead)) return {}; v.placement = static_cast<EvaluationKind>(n); }
+  if (j.contains("decision_entry")) { v.decision_entry = ParseTreeLocation(j["decision_entry"]); if (!v.decision_entry) return {}; }
   return v;
 }
 inline nlohmann::json DeferredCellJson(const DeferredCellEvidence& v) {

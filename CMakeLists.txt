@@ -2266,6 +2266,16 @@ if(BUILD_TESTING)
   target_link_libraries(exception_arguments_test PRIVATE abcd_analysis)
   target_include_directories(exception_arguments_test PRIVATE tests/support)
   add_test(NAME exception_arguments_test COMMAND exception_arguments_test)
+  add_executable(decision_guard_test tests/unit/source/decision_guard_test.cc)
+  target_link_libraries(decision_guard_test PRIVATE abcd_source)
+  target_include_directories(decision_guard_test PRIVATE tests/support)
+  add_test(NAME decision_guard_test COMMAND decision_guard_test)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME decision_guards_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_guards.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_guards)
+  endif()
   add_executable(guarded_call_test tests/unit/source/guarded_call_test.cc)
   target_link_libraries(guarded_call_test PRIVATE abcd_source abcd_json)
   target_include_directories(guarded_call_test PRIVATE tests/support)
@@ -2496,6 +2506,10 @@ if(BUILD_TESTING)
     target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME tree_failure_test COMMAND tree_failure_test)
     if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME evaluation_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/evaluation_failure.mjs
+        $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
+        ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects)
       add_test(NAME tree_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tree_failure.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

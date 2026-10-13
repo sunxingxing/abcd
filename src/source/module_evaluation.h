@@ -15,7 +15,7 @@ struct ModuleEvaluationIndex {
 // This checks conditional evaluation structure, NOT original proof/record identity.
 // Guards retain their exceptional effects. Normal-flow reads stay pinned;
 // phased expression composition may move the proven pair as one effect subtree.
-[[nodiscard]] std::variant<ModuleEvaluationIndex, EvaluationError>
+[[nodiscard]] std::variant<ModuleEvaluationIndex, EvaluationFailure>
 IndexModuleEvaluations(const analysis::ValueProgram& graph,
     std::span<const ModuleEvaluation> modules, analysis::SemanticBudget budget = {});
 // Conditional phased fusion: identical dispatch, unique load-Commit->guard
@@ -23,10 +23,10 @@ IndexModuleEvaluations(const analysis::ValueProgram& graph,
 // remains mandatory at publication. No IR edges or staging writes are erased.
 // Internal prerequisites: PhaseOrder follows the indexed pair shape checks;
 // CatchCopies follows independent phase, module, phi and staging validation.
-std::variant<std::uint64_t, EvaluationError> VerifyModulePhaseOrder(
+std::variant<std::uint64_t, EvaluationFailure> VerifyModulePhaseOrder(
     const analysis::ValueProgram& graph, std::span<const ModuleEvaluation> modules,
     analysis::SemanticBudget budget);
-std::variant<std::uint64_t, EvaluationError> VerifyModuleCatchCopies(
+std::variant<std::uint64_t, EvaluationFailure> VerifyModuleCatchCopies(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget);
 struct EvaluationUses {

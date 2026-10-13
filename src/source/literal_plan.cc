@@ -88,14 +88,14 @@ analysis::DominatorTree Flow(const analysis::ValueProgram& graph, LiteralBudget&
       budget.Step(std::get<std::uint64_t>(cells));
     }
     const auto aliases = VerifyEvaluationAliases(graph, *evaluation, budget.Remaining());
-    if (const auto* error = std::get_if<EvaluationError>(&aliases)) {
+    if (const auto* error = std::get_if<EvaluationFailure>(&aliases)) {
       if (*error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kFlow;
     }
     budget.Step(std::get<std::uint64_t>(aliases));
     const auto elided = VerifyElidedPureEvaluations(graph, *evaluation, budget.Remaining());
-    if (const auto* error = std::get_if<EvaluationError>(&elided)) {
+    if (const auto* error = std::get_if<EvaluationFailure>(&elided)) {
       if (*error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
       throw Error::kFlow;
     }
@@ -133,7 +133,7 @@ class LiteralPath {
     if (!evaluation) {
       budget.Size(normal_aliases_.operations, graph.ops.size());
       const auto aliases = BuildEvaluationAliases(graph, normal_aliases_, budget.Remaining());
-      if (const auto* error = std::get_if<EvaluationError>(&aliases)) {
+      if (const auto* error = std::get_if<EvaluationFailure>(&aliases)) {
         if (*error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
         if (*error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
         throw Error::kFlow;

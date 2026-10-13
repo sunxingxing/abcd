@@ -16,11 +16,11 @@ std::optional<analysis::ValueId> SourcePhiAlias(const analysis::ValueProgram& gr
     std::span<const analysis::ValueId> identities, analysis::ValueId value);
 // Internal, after fresh availability/use checking and liveness projection.
 // Changes only the local plan under construction; discard it on failure.
-[[nodiscard]] std::variant<EvaluationAliasCost, EvaluationError> BuildEvaluationAliases(
+[[nodiscard]] std::variant<EvaluationAliasCost, EvaluationFailure> BuildEvaluationAliases(
     const analysis::ValueProgram& graph, EvaluationPlan& plan, analysis::SemanticBudget budget);
 // Checks local copy equations/flat roots and independently recomputes anchored
 // phi/copy SCC identities against the original graph. No layout certificates.
-[[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyEvaluationAliases(
+[[nodiscard]] std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationAliases(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget);
 }  // namespace abcd::source
 #endif

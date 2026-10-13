@@ -524,7 +524,7 @@ void CapturedBoundary() {
       IncomingCells::kConditional, {}, {}, {}, {}, ClosureWrites::kLanguage, {}, {}, signature_cells.entry_demands));
   Check(signature_evaluation.cells && signature_evaluation.cells->cells.entry_demands.size() == 1);
   Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(body.Graph(), signature_evaluation)));
-  Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(body.Graph(), {},
+  Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(body.Graph(), {},
       IncomingCells::kReject, {}, {}, {}, {}, ClosureWrites::kLanguage, {}, {}, signature_cells.entry_demands)));
   const auto control = std::get<ControlPlan>(BuildControlPlan(body.Graph()));
   FunctionSyntax syntax{{}, {1}, {1}, CallableKind::kFunction, Strictness::kStrict,

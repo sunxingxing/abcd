@@ -60,13 +60,13 @@ void Run(bool observe, bool outside = false, bool rhs = false, bool staging = fa
   std::optional<ArrayInitializationError> cause;
   const auto result=BuildPhasedEvaluationPlan(graph,{},IncomingCells::kReject,{},{},{},{},ClosureWrites::kUnknown,
       {SourceContract::kLanguageSourceV1,resolved,names,&cause});
-  if(staging) { test::Check(cause==ArrayInitializationError::kCatchStaging); test::Check(std::holds_alternative<EvaluationError>(result)); return; }
+  if(staging) { test::Check(cause==ArrayInitializationError::kCatchStaging); test::Check(std::holds_alternative<EvaluationFailure>(result)); return; }
   if(observe) {
     test::Check(cause==ArrayInitializationError::kEscape||cause==ArrayInitializationError::kCatch||cause==ArrayInitializationError::kCatchStaging);
-    test::Check(std::holds_alternative<EvaluationError>(result));return;
+    test::Check(std::holds_alternative<EvaluationFailure>(result));return;
   }
   if(cause)std::cerr<<"array cause "<<unsigned(*cause)<<'\n';
-  if(const auto* error=std::get_if<EvaluationError>(&result))std::cerr<<"eval "<<unsigned(*error)<<'\n';
+  if(const auto* error=std::get_if<EvaluationFailure>(&result))std::cerr<<"eval "<<unsigned(error->kind)<<'\n';
   test::Check(std::holds_alternative<EvaluationPlan>(result));
   const auto& evaluation=std::get<EvaluationPlan>(result);
   const auto regions=std::get<ExceptionPlan>(BuildExceptionPlan(body,graph,input));

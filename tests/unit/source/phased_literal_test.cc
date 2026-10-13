@@ -433,13 +433,13 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     anchors[read->value] = anchors[decision->value] = ExecutionAnchor::kRequired;
     const auto order = std::get<EffectOrder>(BuildEffectOrder(graph, {}, {}, anchors));
     test::Check(order.after[read->value] != decision);
-    test::Check(std::get<EvaluationError>(result) == EvaluationError::kUnsupportedOperation);
+    test::Check(std::get<EvaluationFailure>(result) == EvaluationError::kUnsupportedOperation);
     return 0;
   }
   if (all_path_negative || late_phi || shape == Shape::kStagedObserve || shape == Shape::kStagedCatchObserve || shape == Shape::kObserve || shape == Shape::kBranch || shape == Shape::kCatchObserve ||
       shape == Shape::kNestedCatchObserve || shape == Shape::kNestedDispatch || shape == Shape::kNestedShared || shape == Shape::kNestedSnapshot ||
       shape == Shape::kUnaryShared || shape == Shape::kGlobalDispatch) {
-    test::Check(std::get<EvaluationError>(result) == EvaluationError::kUnsupportedOperation);
+    test::Check(std::get<EvaluationFailure>(result) == EvaluationError::kUnsupportedOperation);
     return 0;
   }
   test::Check(std::holds_alternative<EvaluationPlan>(result));
@@ -461,25 +461,25 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   if (!evaluation.phase_selections.empty()) {
     auto forged = evaluation;
     forged.phase_selections.front().input = UseId{0};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation; forged.phase_selections.front().execution = OpId{0};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation; forged.phase_selections.front().owner = OpId{0};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     if (!evaluation.phase_children.empty()) {
       for (std::size_t i = 0; i < evaluation.phase_children.size(); ++i) {
         if (!evaluation.phase_children[i]) continue;
         forged = evaluation; forged.phase_children[i].reset();
-        test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+        test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
         break;
       }
     }
     if (!evaluation.phase_selections.front().prefix.empty()) {
       forged = evaluation; forged.phase_selections.front().prefix.clear();
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
       forged = evaluation;
       forged.phase_prefixes[evaluation.phase_selections.front().prefix.front().value].reset();
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
   }
   if (read) for (std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -490,7 +490,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       const auto use = *evaluation.operations[i].consumer;
       test::Check(graph.uses[use.value].role == OperandRole::kStoredValue);
       auto forged = evaluation; forged.operations[i].consumer = UseId{0};
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
   }
   if (selection_predicate && shape != Shape::kSelectionPredicateDispatch) {
@@ -510,7 +510,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       // those observations; the producer need not be pure.
       auto forged = evaluation;
       forged.operations[i].consumer = UseId{0};
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
   }
   test::Check(evaluation.literals && evaluation.literals->objects.size() == (nested ? fields + 1 : 1));
@@ -520,9 +520,9 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
     auto forged = evaluation;
     const auto allocation = literal.objects.front().allocation;
     forged.logical_objects[allocation.value] = allocation;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation; forged.logical_objects.clear();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
   }
   if (all_path) test::Check(literal.objects.front().form == LiteralForm::kExpression);
   if (selected_unary || shape == Shape::kStagedSelection || shape == Shape::kStagedComputed || shape == Shape::kStagedCall) {
@@ -545,7 +545,7 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
       auto invalid = evaluation;
       invalid.cells->initialization.reads[i] = NotCellRead{};
       test::Check(std::holds_alternative<LiteralError>(VerifyPhasedLiteralPlan(graph, literal, invalid)));
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, invalid)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, invalid)));
       break;
     }
     test::Check(checked);

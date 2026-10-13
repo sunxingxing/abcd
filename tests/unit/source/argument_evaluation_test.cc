@@ -38,17 +38,17 @@ void CheckPlan(const abc::MethodBody& body, std::uint32_t parameters,
   test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan, budget)));
   auto forged = plan;
   forged.arguments.reset();
-  test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged, budget)) ==
+  test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, forged, budget)) ==
       EvaluationError::kOwnership);
   auto unowned = graph;
   unowned.arguments.reset();
-  test::Check(std::get<EvaluationError>(BuildEvaluationPlan(unowned, budget)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(BuildEvaluationPlan(unowned, budget)) == EvaluationError::kOwnership);
   auto limited = budget;
   limited.work = 0;
-  test::Check(std::get<EvaluationError>(BuildEvaluationPlan(graph, limited)) == EvaluationError::kWorkLimit);
+  test::Check(std::get<EvaluationFailure>(BuildEvaluationPlan(graph, limited)) == EvaluationError::kWorkLimit);
   limited = budget;
   limited.bytes = 0;
-  test::Check(std::get<EvaluationError>(BuildEvaluationPlan(graph, limited)) == EvaluationError::kResourceLimit);
+  test::Check(std::get<EvaluationFailure>(BuildEvaluationPlan(graph, limited)) == EvaluationError::kResourceLimit);
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     const auto& op = graph.ops[i];
     if (!std::holds_alternative<ValueArgumentSnapshot>(op.operation)) continue;
@@ -57,30 +57,30 @@ void CheckPlan(const abc::MethodBody& body, std::uint32_t parameters,
         shape->NeedsSnapshot(OperandRole::kArgument));
     auto changed = graph;
     ++std::get<ValueArgumentSnapshot>(changed.ops[i].operation).slots;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(changed, plan, budget)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(changed, plan, budget)));
     changed = graph;
     changed.ops[i].before_throw = LanguageEffect::kNone;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(changed, plan, budget)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(changed, plan, budget)));
     if (op.use_count == 0) continue;
     changed = graph;
     changed.uses[op.first_use.value].purpose = ReadPurpose::kOperand;
-    test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(changed, plan, budget)) ==
+    test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(changed, plan, budget)) ==
         EvaluationError::kProtocolOperand);
     changed = graph;
     ++changed.uses[op.first_use.value].input->ordinal;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(changed, plan, budget)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(changed, plan, budget)));
     const auto& use = graph.uses[op.first_use.value];
     const auto value = std::get<ValueId>(use.operand);
     changed = graph;
     changed.values[value.value].domain = ValueKinds::Hole();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(changed, plan, budget)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(changed, plan, budget)));
     // Even a single-use pure wrapper must not carry its effectful subtree into
     // a conditional slot. Forge that exact motion for the independent checker.
     if (const auto* result = std::get_if<OpResult>(&graph.values[value.value].origin)) {
       test::Check(plan.operations[result->op.value].kind == EvaluationKind::kRoot);
       forged = plan;
       forged.operations[result->op.value] = {EvaluationKind::kInline, op.first_use, {}};
-      test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged, budget)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged, budget)));
     }
   }
 }

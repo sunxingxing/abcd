@@ -125,7 +125,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print) {
       const auto evaluation = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, bindings, {}, demands, {},
           analysis::ClosureWrites::kLanguage);
       if (fault != BindingFault::kSelfOwner) {
-        test::Check(std::holds_alternative<EvaluationError>(evaluation)); continue;
+        test::Check(std::holds_alternative<EvaluationFailure>(evaluation)); continue;
       }
       test::Check(std::holds_alternative<EvaluationPlan>(evaluation));
       std::vector<ExpressionConstant> constants(graph.ops.size());

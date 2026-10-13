@@ -173,10 +173,10 @@ int main(int argc, char** argv) {
       prepared.input, prepared.values.graph, changed)));
   auto schedule = aliases.evaluations;
   schedule[0].pair.guard = schedule[0].pair.read;
-  test::Check(std::holds_alternative<EvaluationError>(IndexModuleEvaluations(prepared.values.graph, schedule)));
+  test::Check(std::holds_alternative<EvaluationFailure>(IndexModuleEvaluations(prepared.values.graph, schedule)));
   auto wrong_graph = prepared.values.graph;
   std::get<ValueModuleRead>(wrong_graph.ops[schedule[0].pair.read.value].operation).space = ModuleSpace::kExternal;
-  test::Check(std::holds_alternative<EvaluationError>(IndexModuleEvaluations(wrong_graph, aliases.evaluations)));
+  test::Check(std::holds_alternative<EvaluationFailure>(IndexModuleEvaluations(wrong_graph, aliases.evaluations)));
   const auto family = std::get<FileFamily>(ReadFunctionFamily(file, header, index, lookup, roles, sites,
       creator_position, identity, {}, &module_context, nullptr, {record->offset.value}, FamilyClassMode::kRetainRoot));
   const auto actual_child = std::find_if(family.members.begin(), family.members.end(), [&](const auto& member) {

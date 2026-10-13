@@ -58,8 +58,8 @@ int main(int argc, char** argv) {
         function.values, modules, {owner->offset.value}));
     auto planned = BuildEvaluationPlan(function.values.graph, {}, IncomingCells::kConditional, {}, aliases.evaluations,
         {}, {}, analysis::ClosureWrites::kLanguage);
-    if (const auto* error = std::get_if<EvaluationError>(&planned))
-      std::cerr << "literal callback evaluation failure " << static_cast<unsigned>(*error) << '\n';
+    if (const auto* error = std::get_if<EvaluationFailure>(&planned))
+      std::cerr << "literal callback evaluation failure " << static_cast<unsigned>(error->kind) << '\n';
     Check(std::holds_alternative<EvaluationPlan>(planned));
     const auto& evaluation = std::get<EvaluationPlan>(planned);
     Check(std::holds_alternative<CallPlan>(BuildCallPlan(function.values.graph, evaluation)));
@@ -162,8 +162,8 @@ int main(int argc, char** argv) {
     Check(std::holds_alternative<DerivedProjection>(projected_constructor));
     const auto& protocol = std::get<DerivedProjection>(projected_constructor);
     const auto scheduled_constructor = BuildEvaluationPlan(derived.values.graph);
-    if (const auto* error = std::get_if<EvaluationError>(&scheduled_constructor))
-      std::cerr << "derived evaluation failure " << static_cast<unsigned>(*error) << '\n';
+    if (const auto* error = std::get_if<EvaluationFailure>(&scheduled_constructor))
+      std::cerr << "derived evaluation failure " << static_cast<unsigned>(error->kind) << '\n';
     Check(std::holds_alternative<EvaluationPlan>(scheduled_constructor));
     Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(derived.values.graph,
         std::get<EvaluationPlan>(scheduled_constructor))));
@@ -414,7 +414,7 @@ int main(int argc, char** argv) {
           projected = true;
         }
         Check(projected);
-        Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(function.values.graph, {},
+        Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(function.values.graph, {},
             IncomingCells::kReject, child.children, {}, {}, {}, analysis::ClosureWrites::kLanguage)));
       }
       Check(guarded_child && logical_child);
@@ -496,7 +496,7 @@ int main(int argc, char** argv) {
     Check(std::holds_alternative<EvaluationPlan>(bound_evaluation));
     const auto evaluation = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {},
         analysis::ClosureWrites::kUnknown, parent.values.definitions.sites);
-    Check(std::get<EvaluationError>(evaluation) == EvaluationError::kOwnership);
+    Check(std::get<EvaluationFailure>(evaluation) == EvaluationError::kOwnership);
     const unsigned pcs[] = {137, 160, 183, 206};
     std::ostringstream definitions;
     definitions << "class Accessors {\n";
@@ -634,10 +634,10 @@ int main(int argc, char** argv) {
       const auto constants_view = syntax.View();
       const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
       const auto evaluated = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, bound.evaluations);
-      if (const auto* error = std::get_if<EvaluationError>(&evaluated)) {
+      if (const auto* error = std::get_if<EvaluationFailure>(&evaluated)) {
         const auto literal = BuildLiteralPlan(graph);
         if (const auto* error = std::get_if<LiteralError>(&literal)) std::cerr << "literal failure=" << static_cast<unsigned>(*error) << '\n';
-        std::cerr << "evaluation failure=" << static_cast<unsigned>(*error) << '\n'; return 1;
+        std::cerr << "evaluation failure=" << static_cast<unsigned>(error->kind) << '\n'; return 1;
       }
       const auto& evaluation = std::get<EvaluationPlan>(evaluated);
       const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax.syntax), constants_view);

@@ -224,7 +224,7 @@ int main(int argc, char**) {
                   if (evaluation.aliases[i] == value) continue;
                   auto wrong = evaluation;
                   wrong.aliases[i] = value;
-                  Check(std::holds_alternative<EvaluationError>(
+                  Check(std::holds_alternative<EvaluationFailure>(
                       VerifyEvaluationPlan(graph, wrong)));
                   // Redirect to a different, well-formed canonical root.
                   for (std::size_t j = 0; j < evaluation.aliases.size(); ++j) {
@@ -232,7 +232,7 @@ int main(int argc, char**) {
                     if (evaluation.aliases[j] != root || root == evaluation.aliases[i]) continue;
                     wrong = evaluation;
                     wrong.aliases[i] = root;
-                    Check(std::holds_alternative<EvaluationError>(
+                    Check(std::holds_alternative<EvaluationFailure>(
                         VerifyEvaluationPlan(graph, wrong)));
                     break;
                   }
@@ -257,7 +257,7 @@ int main(int argc, char**) {
                 ++snapshots;
                 auto wrong = evaluation;
                 wrong.operations[i].consumer.reset();
-                Check(std::holds_alternative<EvaluationError>(
+                Check(std::holds_alternative<EvaluationFailure>(
                     VerifyEvaluationPlan(graph, wrong)));
               }
               const unsigned expected =
@@ -293,7 +293,7 @@ int main(int argc, char**) {
                   wrong.operations[i] = {EvaluationKind::kPredicateSnapshot,
                                          first_use,
                                          TemporaryReason::kMultipleUses};
-                  Check(std::holds_alternative<EvaluationError>(
+                  Check(std::holds_alternative<EvaluationFailure>(
                       VerifyEvaluationPlan(graph, wrong)));
                   forged = true;
                 }
@@ -309,7 +309,7 @@ int main(int argc, char**) {
                 Check(std::holds_alternative<EvaluationPlan>(
                     BuildEvaluationPlan(graph, exact)));
                 --exact.work;
-                Check(std::get<EvaluationError>(BuildEvaluationPlan(
+                Check(std::get<EvaluationFailure>(BuildEvaluationPlan(
                           graph, exact)) == EvaluationError::kWorkLimit);
               }
               const auto text = Source(fixture, evaluation);

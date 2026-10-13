@@ -23,18 +23,18 @@ auto Run(std::size_t count, bool copies = false, bool split = false, bool reorde
     test::Check(plan.operations[pair.read.value].kind == EvaluationKind::kRoot &&
         plan.operations[pair.guard.value].kind == EvaluationKind::kGuardedCellRead);
     auto changed = plan; changed.operations[pair.guard.value].kind = EvaluationKind::kCellGuard;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
     changed = plan; changed.guarded_reads.front().value.value++;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
     changed = plan; changed.guarded_reads.front().success = graph.ops[pair.read.value].block;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
     changed = plan; changed.guarded_peers[pair.guard.value].reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
     changed = plan; changed.operations[pair.read.value] = {EvaluationKind::kInline, graph.ops[pair.guard.value].first_use, {}};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
     auto wrong = graph;
     for (auto& exit : wrong.exceptional_exits) if (exit.op == pair.guard) exit.handler.reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(wrong, plan)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(wrong, plan)));
     const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
     const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
     const ExceptionTreeInput exceptions{body, input, regions, control};
@@ -56,12 +56,12 @@ auto Run(std::size_t count, bool copies = false, bool split = false, bool reorde
       test::Check(std::holds_alternative<TreeSemanticError>(VerifyExceptionTreeSemantics(graph, exceptions, plan, tree, {constants, 1})));
       // No independent root can silently turn into a composed operand.
       changed = plan; changed.phase_compositions.push_back(pair.read);
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
     }
     // Actual returned work admits the pass; one fewer unit refuses. Byte
     // boundary is found by a slow test-only oracle, never production retries.
     test::Check(std::holds_alternative<EvaluationPlan>(build({SemanticBudget{}.bytes, plan.work})));
-    test::Check(std::get<EvaluationError>(build({SemanticBudget{}.bytes, plan.work - 1})) == EvaluationError::kWorkLimit);
+    test::Check(std::get<EvaluationFailure>(build({SemanticBudget{}.bytes, plan.work - 1})) == EvaluationError::kWorkLimit);
     std::size_t low = 0, high = SemanticBudget{}.bytes;
     while (low + 1 < high) {
       const auto mid = low + (high - low) / 2;
@@ -69,7 +69,7 @@ auto Run(std::size_t count, bool copies = false, bool split = false, bool reorde
       else low = mid;
     }
     test::Check(std::holds_alternative<EvaluationPlan>(build({high, SemanticBudget{}.work})));
-    test::Check(std::get<EvaluationError>(build({high - 1, SemanticBudget{}.work})) == EvaluationError::kResourceLimit);
+    test::Check(std::get<EvaluationFailure>(build({high - 1, SemanticBudget{}.work})) == EvaluationError::kResourceLimit);
     return std::pair{plan.work, high};
   }, reordered);
 }

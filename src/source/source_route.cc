@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include "control_failure_json.h"
 #include "tree_failure_json.h"
+#include "evaluation_failure_json.h"
 
 #include <algorithm>
 #include <array>
@@ -251,6 +252,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
+    if (receipt.failure->evaluation) failure["evaluation"] = EvaluationFailureJson(*receipt.failure->evaluation);
     if (receipt.failure->tree) failure["tree"] = TreeFailureJson(*receipt.failure->tree);
     if (receipt.failure->deferred) failure["deferred"] = DeferredCellJson(*receipt.failure->deferred);
     if (receipt.failure->control) failure["control"] = ControlJson(*receipt.failure->control);
@@ -434,6 +436,9 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     if (!location("method", typed.method) || !location("working_pc", typed.working_pc) ||
         !location("creation_method", typed.creation_method) || !location("creation_pc", typed.creation_pc))
       return RouteReceiptError::kFailure;
+    if (const auto item = failure->find("evaluation"); item != failure->end()) {
+      typed.evaluation = ParseEvaluationFailure(*item); if (!typed.evaluation) return RouteReceiptError::kFailure;
+    }
     if (const auto item = failure->find("tree"); item != failure->end()) {
       typed.tree = ParseTreeFailure(*item); if (!typed.tree) return RouteReceiptError::kFailure;
     }

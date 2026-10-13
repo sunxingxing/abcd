@@ -6,6 +6,18 @@ The original phased `ValueProgram` and `ExceptionPlan` remain authoritative.
 Current publication boundary is documented in **Native Module Enclosure** below;
 earlier checkpoints record how the shared path reached that boundary.
 
+## Finally-throw oracle boundary
+
+Emitted source must preserve the ABC's actual handler ranges, including
+es2abc's inlined finalizers that remain inside a protected range. Dispatch
+uses the pinned interpreter's first matching try in file order; a finalizer
+throw can therefore enter a user catch and another inlined finalizer. The
+original JS executed in Node is not an oracle for finally-throw scenarios:
+use an explicit bytecode-derived handler/trace expectation (or the pinned VM),
+while retaining source oracles for scenarios where the lowering agrees. See
+[Round 45 fixture evidence](../../../tests/integration/fixtures/decision_guards/README.md)
+for m473 PC170 → H247, PC325 → H337, and PC377 → caller.
+
 ## Same-File Module Context
 
 `PhasedMethod::Build` optionally borrows a `PhasedModuleBinding` during construction.

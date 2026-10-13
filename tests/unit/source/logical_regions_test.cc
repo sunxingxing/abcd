@@ -664,19 +664,19 @@ void CallArguments() {
       Check(evaluation.operations[producer.value].kind == EvaluationKind::kInline);
       auto forged = evaluation;
       forged.operations[producer.value].consumer = graph.ops[logicals.front().boolean.value].first_use;
-      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     }
     SemanticBudget allowance{}; allowance.work = evaluation.work;
     Check(std::holds_alternative<EvaluationPlan>(BuildEvaluationPlan(graph, allowance)));
     --allowance.work;
-    Check(std::get<EvaluationError>(BuildEvaluationPlan(graph, allowance)) == EvaluationError::kWorkLimit);
+    Check(std::get<EvaluationFailure>(BuildEvaluationPlan(graph, allowance)) == EvaluationError::kWorkLimit);
     allowance = {}; allowance.bytes = 0;
-    Check(std::get<EvaluationError>(BuildEvaluationPlan(graph, allowance)) == EvaluationError::kResourceLimit);
+    Check(std::get<EvaluationFailure>(BuildEvaluationPlan(graph, allowance)) == EvaluationError::kResourceLimit);
     auto wrong_value = evaluation;
     wrong_value.logical_values[logicals.front().left.value] = logicals.front().branch;
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, wrong_value)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, wrong_value)));
     auto missing = evaluation; missing.logical_values.clear();
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, missing)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, missing)));
     const auto late_graph = CallDiamond(negate, false);
     const auto late_control = std::get<ControlPlan>(BuildControlPlan(late_graph));
     const auto late_region = FindLogicalRegions(late_graph, late_control).front();
@@ -686,7 +686,7 @@ void CallArguments() {
     late.logical_values[late_region.merged.value] = late_region.branch;
     late.operations[late_region.branch.value] = {EvaluationKind::kLogicalValue,
         late_graph.values[late_region.merged.value].first_use, {}};
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(late_graph, late)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(late_graph, late)));
     // The later member getter already has a legal same-block reference; retain
     // the logical argument snapshot so its effects still precede that getter.
     Check(Source(CallDiamond(negate, false)).find("$value") == std::string::npos);
@@ -704,10 +704,10 @@ void LogicalLefts() {
     Check(!evaluation.operations[left.value].temporary);
     auto forged = evaluation;
     forged.operations[left.value].consumer = graph.ops[region.branch.value].first_use;
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     forged = evaluation;
     forged.operations[left.value].kind = EvaluationKind::kInline;
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     for (const bool shared : {false, true}) {
       const auto excluded = CallDiamond(negate, false, !shared, shared);
       const auto excluded_control = std::get<ControlPlan>(BuildControlPlan(excluded));
@@ -719,7 +719,7 @@ void LogicalLefts() {
       Check(Source(excluded).find("$value") != std::string::npos);
       plan.operations[producer.value] = {EvaluationKind::kLogicalLeft,
           excluded.ops[excluded_region.boolean.value].first_use, {}};
-      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(excluded, plan)));
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(excluded, plan)));
     }
   }
   for (const unsigned count : {1U, 200U, 201U, 402U}) {
@@ -775,7 +775,7 @@ void PhiInputs() {
   const auto value = std::get<ValueId>(region.right);
   const auto producer = std::get<OpResult>(graph.values[value.value].origin).op;
   auto forged = plan; ++forged.operations[producer.value].consumer->value;
-  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+  Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   // Decode a real intervening debugger event instead of forging graph state.
   graph = Diamond(false, 1, true, false, true);
   plan = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
@@ -786,7 +786,7 @@ void PhiInputs() {
   Check(plan.operations[allocation.value].kind == EvaluationKind::kRoot);
   forged = plan;
   forged.operations[allocation.value] = {EvaluationKind::kPhiInput, graph.values[rhs.value].first_use, {}};
-  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+  Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
 }
 void Negatives() {
   using namespace analysis;
@@ -911,7 +911,7 @@ int main(int argc, char** argv) {
       Check(HasRetainedEvaluationValue(graph, plan, value)); ++retained;
       auto invalid = plan; invalid.phis.reset();
       Check(!HasRetainedEvaluationValue(graph, invalid, value));
-      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, invalid)));
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, invalid)));
     }
     Check(retained >= 2);
   }
@@ -927,7 +927,7 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < graph.ops.size(); ++i)
       if (evaluation.operations[i].kind == EvaluationKind::kPredicateSnapshot) {
         auto forged = evaluation; forged.operations[i].consumer.reset();
-        Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+        Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
         break;
       }
   }
@@ -950,10 +950,10 @@ int main(int argc, char** argv) {
           if (count != 1) continue;
           auto forged = evaluation;
           forged.logical_values[selection.merged.value].reset();
-          Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+          Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
           forged = evaluation;
           forged.operations[selection.branch.value].consumer = graph.ops[selection.boolean.value].first_use;
-          Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+          Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
         }
         Check(forwarded == count);
         const auto source = Source(graph, true, &*input, false);
@@ -1096,9 +1096,9 @@ int main(int argc, char** argv) {
     auto wrong = multiple_plan;
     const auto first = wrong.literals->definitions[object.first];
     wrong.operations[first.value] = {EvaluationKind::kRoot, {}, {}};
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(multiple_fields, wrong)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(multiple_fields, wrong)));
     wrong = multiple_plan; wrong.logical_objects[object.allocation.value] = first;
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(multiple_fields, wrong)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(multiple_fields, wrong)));
   }
   for (unsigned depth : {1U, 2U, 16U, 64U, 200U, 201U}) {
     const auto text = Source(BufferedSelections(2, false, true, depth));
@@ -1116,9 +1116,9 @@ int main(int argc, char** argv) {
     const auto value = std::get<analysis::ValueId>(suffix_graph.uses[suffix_graph.ops[field.value].first_use.value + 1].operand);
     const auto producer = std::get<analysis::OpResult>(suffix_graph.values[value.value].origin).op;
     auto wrong = suffix_plan; wrong.operations[producer.value].consumer = suffix_graph.ops[field.value].first_use;
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(suffix_graph, wrong)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(suffix_graph, wrong)));
     wrong = suffix_plan; wrong.operations[producer.value] = {EvaluationKind::kRoot, {}, TemporaryReason::kEffectSnapshot};
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(suffix_graph, wrong)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(suffix_graph, wrong)));
   }
   for (unsigned count : {2U, 3U, 16U, 64U, 200U, 201U}) {
     const auto getters = GetterSelections(count);
@@ -1131,9 +1131,9 @@ int main(int argc, char** argv) {
       ++snapshots;
       if (count != 2) continue;
       auto wrong = plan; wrong.operations[i].temporary = TemporaryReason::kEffectSnapshot;
-      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(getters, wrong)));
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(getters, wrong)));
       wrong = plan; wrong.operations[i].consumer.reset();
-      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(getters, wrong)));
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(getters, wrong)));
     }
     Check(snapshots == count);
   }
@@ -1156,7 +1156,7 @@ int main(int argc, char** argv) {
       auto wrong = getter_gap_plan;
       wrong.operations[i] = {EvaluationKind::kPredicateSnapshot,
           analysis::UseId{static_cast<std::uint32_t>(j)}, TemporaryReason::kMultipleUses};
-      Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(getter_gap, wrong)));
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(getter_gap, wrong)));
       forged_gap = true; break;
     }
   }
@@ -1186,15 +1186,15 @@ int main(int argc, char** argv) {
     const auto field = *buffered_evaluation.logical_objects[i];
     auto forged = buffered_evaluation;
     forged.logical_objects.clear();
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(buffered_call, forged)));
     forged = buffered_evaluation; forged.logical_objects.resize(1);
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(buffered_call, forged)));
     forged = buffered_evaluation; forged.logical_objects[i] = analysis::OpId{static_cast<std::uint32_t>(i)};
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(buffered_call, forged)));
     forged = buffered_evaluation; forged.operations[i].consumer = buffered_call.ops[field.value].first_use;
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(buffered_call, forged)));
     forged = buffered_evaluation; forged.operations[field.value] = {EvaluationKind::kRoot, {}, {}};
-    Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(buffered_call, forged)));
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(buffered_call, forged)));
   }
   for (unsigned count : {2U, 3U, 200U, 201U}) {
     const auto text = Source(ConditionalDiamond(false, count));
@@ -1228,7 +1228,7 @@ int main(int argc, char** argv) {
         for (auto at = blocked.values[value.value].first_use; at; at = blocked.uses[at->value].next) {
           if (!std::holds_alternative<analysis::ValueId>(blocked.uses[at->value].owner)) continue;
           forged.operations[i] = {EvaluationKind::kPhiInput, *at, {}};
-          Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(blocked, forged)));
+          Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(blocked, forged)));
         }
       }
     }
@@ -1257,7 +1257,7 @@ int main(int argc, char** argv) {
   optional_evaluation.logical_values[partial.merged.value] = partial.branch;
   optional_evaluation.operations[partial.branch.value] = {EvaluationKind::kLogicalValue,
       optional.values[partial.merged.value].first_use, {}};
-  Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(optional, optional_evaluation)));
+  Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(optional, optional_evaluation)));
   Check(Source(OptionalAccess(false, 1, true)).find(" ? ") != std::string::npos);
   const auto corridor = Source(OptionalAccess(false, 1, false, true));
   Check(corridor.find("debugger;") != std::string::npos && corridor.find(" ? ") == std::string::npos);

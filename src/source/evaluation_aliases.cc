@@ -81,7 +81,7 @@ std::optional<analysis::ValueId> SourcePhiAlias(const analysis::ValueProgram& gr
   return root != value && SourceIdentityRoot(graph, root) ? std::optional{root} : std::nullopt;
 }
 
-std::variant<EvaluationAliasCost, EvaluationError> BuildEvaluationAliases(
+std::variant<EvaluationAliasCost, EvaluationFailure> BuildEvaluationAliases(
     const analysis::ValueProgram& graph, EvaluationPlan& plan, analysis::SemanticBudget budget) {
   try {
     Require(plan.operations.size() == graph.ops.size() &&
@@ -147,7 +147,7 @@ std::variant<EvaluationAliasCost, EvaluationError> BuildEvaluationAliases(
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 
-std::variant<std::uint64_t, EvaluationError> VerifyEvaluationAliases(
+std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationAliases(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {
   try {
     Require(plan.aliases.size() == graph.values.size(), Error::kOwnership);

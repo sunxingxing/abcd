@@ -52,7 +52,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool print = fals
   const auto& graph = values.graph;
   const auto planned = BuildEvaluationPlan(graph);
   if (barrier) {
-    test::Check(std::holds_alternative<EvaluationError>(planned)); return 0;
+    test::Check(std::holds_alternative<EvaluationFailure>(planned)); return 0;
   }
   test::Check(std::holds_alternative<EvaluationPlan>(planned));
   const auto& evaluation = std::get<EvaluationPlan>(planned);
@@ -70,7 +70,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool print = fals
     test::Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(shared)));
     auto forged = evaluation;
     forged.literals->nested[static_cast<std::size_t>(binary - graph.ops.begin())].reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   }
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   FunctionSyntax syntax{};
@@ -131,7 +131,7 @@ void OrderedRefusals(abc::ProfileId profile) {
     test::Check(std::holds_alternative<FunctionInput>(prepared));
     const auto& input = std::get<FunctionInput>(prepared);
     const auto values = std::get<FunctionValues>(BuildFunctionValues(input,body,frame));
-    test::Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(values.graph)));
+    test::Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(values.graph)));
   }
 }
 std::uint64_t Ordered(abc::ProfileId profile, std::uint32_t count, OrderedLayout layout, bool print = false) {

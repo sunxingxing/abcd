@@ -6,6 +6,7 @@
 #include <variant>
 #include "abcd/source/source_tree.h"
 #include "phi_copies.h"
+#include "abcd/source/evaluation_failure.h"
 #include "exception_copies.h"
 #include "literal_plan.h"
 #include "cell_evaluation.h"
@@ -231,10 +232,7 @@ inline analysis::ValueOperand ResolveEvaluationOperand(
   if (const auto* value = std::get_if<analysis::ValueId>(&operand)) return ResolveEvaluationValue(plan, *value);
   return operand;
 }
-enum class EvaluationError : std::uint8_t {
-  kRevision, kInvalidGraph, kUnsupportedOperation, kProtocolOperand, kLivePhi,
-  kOwnership, kOrder, kUnavailableValue, kWorkLimit, kResourceLimit, kCatchState
-};
+
 enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
 // ConditionalArgument reads a declared slot only when ordinal < actual count.
 // A later AST must bind that count and the extra tail to this invocation; this
@@ -299,9 +297,9 @@ struct EvaluationShape {
 [[nodiscard]] bool IsClosedPureValue(const analysis::ValueProgram&, analysis::OpId);
 // Constant-time semantic checks. Conditional slot uses remain protocol reads:
 // their producers execute at the original point, never inside a count predicate.
-[[nodiscard]] std::optional<EvaluationError> CheckArgumentSnapshot(
+[[nodiscard]] std::optional<EvaluationFailure> CheckArgumentSnapshot(
     const analysis::ValueProgram& graph, const analysis::ValueOp& operation);
-[[nodiscard]] std::optional<EvaluationError> CheckEvaluationUse(
+[[nodiscard]] std::optional<EvaluationFailure> CheckEvaluationUse(
     const analysis::ValueProgram& graph, const analysis::OperandUse& use,
     const EvaluationShape& shape, std::uint32_t ordinal);
 [[nodiscard]] bool BooleanEvaluation(const analysis::ValueProgram& graph,
@@ -327,7 +325,7 @@ struct EvaluationShape {
 // including primitive buffered objects without actual child functions.
 // Family demands retain forwarded storage even without local lexical accesses;
 // they must come from these actual child occurrences, not arbitrary slots.
-[[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
+[[nodiscard]] std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     std::span<const FunctionBinding> functions = {},
@@ -341,7 +339,7 @@ struct EvaluationShape {
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.
-[[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyEvaluationPlan(
+[[nodiscard]] std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});
 // Same expression planner with phase availability and staged exceptional phi
@@ -350,7 +348,7 @@ struct EvaluationShape {
 // scope and exceptional placement separately.
 // Explicit closure_writes retains the same complete-family write obligation as
 // normal evaluation, including buffered allocations with no child functions.
-[[nodiscard]] std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
+[[nodiscard]] std::variant<EvaluationPlan, EvaluationFailure> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     std::span<const FunctionBinding> functions = {},
@@ -358,7 +356,7 @@ struct EvaluationShape {
     std::span<const ClassInitializerCall> initializers = {},
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown, ArraySourceInput arrays = {},
     std::span<const analysis::GuardedRead> guarded = {});
-[[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyPhasedEvaluationPlan(
+[[nodiscard]] std::variant<std::uint64_t, EvaluationFailure> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});
 }  // namespace abcd::source

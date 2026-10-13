@@ -78,13 +78,13 @@ void Run(std::uint32_t count, abc::ProfileId profile,
   const auto checked = std::get<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(
       graph, evaluation, {SemanticBudget{}.bytes, checked})));
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(
       graph, evaluation, {SemanticBudget{}.bytes, checked - 1})) == EvaluationError::kWorkLimit);
   test::Check(std::holds_alternative<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {SemanticBudget{}.bytes, evaluation.work})));
-  test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(
+  test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(
       graph, {SemanticBudget{}.bytes, evaluation.work - 1})) == EvaluationError::kWorkLimit);
-  test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(graph, {0})) == EvaluationError::kResourceLimit);
+  test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(graph, {0})) == EvaluationError::kResourceLimit);
   auto changed = evaluation;
   const auto load = prologue, getter = load + 1;
   test::Check(evaluation.operations[load].kind == EvaluationKind::kAlias);
@@ -92,22 +92,22 @@ void Run(std::uint32_t count, abc::ProfileId profile,
   const auto root = evaluation.aliases[load_result.value];
   test::Check(std::holds_alternative<EntryDefinition>(graph.values[root.value].origin));
   changed.aliases[load_result.value] = *graph.ops[getter].result;
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
   changed = evaluation; changed.aliases[load_result.value] = load_result;
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
   changed = evaluation; changed.aliases.pop_back();
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
   auto narrowed = graph;
   narrowed.values[load_result.value].domain = ValueKinds::String();
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(narrowed, evaluation)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(narrowed, evaluation)) == EvaluationError::kOwnership);
   changed = evaluation;
   test::Check(changed.operations[getter].kind == EvaluationKind::kRoot);
   changed.operations[getter] = {EvaluationKind::kElidedPure};
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
   changed = evaluation; changed.operations[load] = {EvaluationKind::kElidedPure};
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
   changed = evaluation; changed.operations.back() = {EvaluationKind::kElidedPure};
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)) == EvaluationError::kOwnership);
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   const ExceptionTreeInput context{body, input, regions, control};

@@ -1713,7 +1713,7 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     }
     const auto verify = exceptions ? VerifyPhasedEvaluationPlan : VerifyEvaluationPlan;
     const auto effects = verify(graph, evaluation, checked.Remaining());
-    if (const auto* error = std::get_if<EvaluationError>(&effects)) {
+    if (const auto* error = std::get_if<EvaluationFailure>(&effects)) {
       if (*error == EvaluationError::kResourceLimit) return Error::kResourceLimit;
       if (*error == EvaluationError::kWorkLimit) return Error::kWorkLimit;
       return Error::kEvaluation;

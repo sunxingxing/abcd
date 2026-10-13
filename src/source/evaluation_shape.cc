@@ -177,7 +177,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
   }, operation);
 }
 
-std::optional<EvaluationError> CheckArgumentSnapshot(
+std::optional<EvaluationFailure> CheckArgumentSnapshot(
     const analysis::ValueProgram& graph, const analysis::ValueOp& operation) {
   const auto* snapshot = std::get_if<analysis::ValueArgumentSnapshot>(&operation.operation);
   if (!snapshot) return {};
@@ -193,7 +193,7 @@ std::optional<EvaluationError> CheckArgumentSnapshot(
   return {};
 }
 
-std::optional<EvaluationError> CheckEvaluationUse(
+std::optional<EvaluationFailure> CheckEvaluationUse(
     const analysis::ValueProgram& graph, const analysis::OperandUse& use,
     const EvaluationShape& shape, std::uint32_t ordinal) {
   const bool conditional = shape.inputs == InputEvaluation::kConditionalArgument;

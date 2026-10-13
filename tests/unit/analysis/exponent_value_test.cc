@@ -86,7 +86,7 @@ void Phased(const abc::MethodBody& original, bool admitted, bool representable =
       if (!std::holds_alternative<ValueCopy>(op.operation) || op.use_count != 1 ||
           !ErasableNaN(graph.uses[op.first_use.value].operand)) continue;
       forged.integer_nans[i] = NaNProjection::kIntegerCoercion; checked = true;
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
       break;
     }
     test::Check(checked);

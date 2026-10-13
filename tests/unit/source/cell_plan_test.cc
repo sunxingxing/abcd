@@ -54,9 +54,9 @@ void Run(std::uint32_t count) {
     test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, *evaluation)));
     test::Check(evaluation->operations[0].kind == EvaluationKind::kEnvironment);
     auto forged = *evaluation; forged.cells.reset();
-    test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
+    test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
     forged = *evaluation; forged.operations[0].kind = EvaluationKind::kRoot;
-    test::Check(std::get<EvaluationError>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
+    test::Check(std::get<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)) == EvaluationError::kOwnership);
     auto observed = graph;
     // A fabricated Language tag on the otherwise unused environment result
     // must not allow it to become a printable source value.

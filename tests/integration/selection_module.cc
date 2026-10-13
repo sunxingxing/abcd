@@ -187,9 +187,9 @@ void Run(unsigned count, bool direct, bool print, bool barrier = false,
   }
   if (count <= 2) {
     auto forged = evaluation; forged.modules.front().pair.guard.reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     forged = evaluation; forged.operations[modules.front().pair.guard->value].kind = EvaluationKind::kRemoved;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
     if (Decision(selection)) {
       const auto guard = *modules.front().pair.guard;
       std::optional<ExprId> other;
@@ -347,7 +347,7 @@ std::uint64_t RunPhased(unsigned count, bool direct, bool print, Selection selec
     test::Check(evaluation.phase_selections.size() == count);
     if (count == 1) {
       auto missing = evaluation; missing.phase_selections.clear();
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, missing)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, missing)));
     }
   }
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
@@ -370,30 +370,30 @@ std::uint64_t RunPhased(unsigned count, bool direct, bool print, Selection selec
     test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, evaluation)));
     test::Check(evaluation.phase_selections.size() == count);
     auto forged = evaluation; forged.phase_selections.clear();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
-    if (count == 1) test::Check(std::holds_alternative<EvaluationError>(VerifyPhaseExpressions(graph, forged, {})));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
+    if (count == 1) test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhaseExpressions(graph, forged, {})));
     forged = evaluation; forged.phase_transports.clear();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation; forged.phase_prefixes.clear();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation; forged.phase_references.clear();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     if (prefix == CallPrefix::kMemberWrappedNullish) {
       test::Check(evaluation.phase_selections.front().ancestors.size() == depth);
       forged = evaluation; forged.phase_selections.front().ancestors.clear();
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
       forged = evaluation; ++forged.phase_selections.front().ancestors.front().call.value;
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
     if (prefix != CallPrefix::kNone && prefix != CallPrefix::kRetainedInput && prefix != CallPrefix::kRetainedGetter && prefix != CallPrefix::kRetainedLiteralArgs) {
       test::Check(!evaluation.phase_selections.front().prefix.empty());
       forged = evaluation; forged.phase_selections.front().prefix.clear();
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
     forged = evaluation; forged.phase_selections.front().input = graph.ops[std::get<PhaseCallReference>(forged.phase_selections.front().owner).callee.value].first_use;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation; forged.operations[std::get<PhaseCallReference>(forged.phase_selections.front().owner).callee.value].consumer = UseId{static_cast<std::uint32_t>(graph.uses.size())};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
   }
   syntax.modules = {{{{7}, {0}}, NameId{5}, ModuleAccess::kReadOnly, NameEvidence::kMetadata}};
   std::vector<ExpressionConstant> constants(graph.ops.size());
@@ -466,7 +466,7 @@ std::uint64_t RunPhased(unsigned count, bool direct, bool print, Selection selec
   }
   if (count == 1 && !bindings.empty()) {
     auto forged = evaluation; forged.modules.front().pair.guard.reset();
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     auto wrong = tree;
     const auto guard = *bindings.front().pair.guard;
     for (auto& placement : wrong.operations) if (placement.operation == guard) placement.node = AnchorId{0};

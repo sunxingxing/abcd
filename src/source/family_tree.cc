@@ -263,7 +263,7 @@ class FamilyTrees {
               member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
               guards, entries, nullptr, {}, array_source);
       if (array_error) Fail(*array_error);
-      auto evaluation = Take<EvaluationPlan, EvaluationError>(std::move(evaluated));
+      auto evaluation = Take<EvaluationPlan, EvaluationFailure>(std::move(evaluated));
       Account(evaluation);
       if (!deferred[i].empty()) {
         if (phase || !evaluation.cells)

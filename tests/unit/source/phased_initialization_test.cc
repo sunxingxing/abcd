@@ -119,13 +119,13 @@ void Run(abc::ProfileId profile, StoreOrder order, std::size_t count = 1,
   auto built = BuildPhasedCellInitializations(graph, environments, cells);
   if (buffered_capture) {
     test::Check(std::get<CellInitializationError>(built) == CellInitializationError::kClosure);
-    test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(graph)) == EvaluationError::kUnsupportedOperation);
+    test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(graph)) == EvaluationError::kUnsupportedOperation);
     const auto conditional = BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject,
         {}, {}, {}, {}, ClosureWrites::kLanguage);
     if (order == StoreOrder::kAfterCall) {
       // Language descendant writes never initialize a cell on a missing
       // store-Commit path into catch. Keep that independent dominance check.
-      test::Check(std::get<EvaluationError>(conditional) == EvaluationError::kUnsupportedOperation);
+      test::Check(std::get<EvaluationFailure>(conditional) == EvaluationError::kUnsupportedOperation);
       return;
     }
     test::Check(std::holds_alternative<EvaluationPlan>(conditional));
@@ -134,10 +134,10 @@ void Run(abc::ProfileId profile, StoreOrder order, std::size_t count = 1,
     test::Check(evaluation.cells && evaluation.cells->initialization.closure_writes == ClosureWrites::kLanguage);
     test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
     auto forged = evaluation; forged.closure_writes = ClosureWrites::kUnknown;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged.cells->initialization.closure_writes = ClosureWrites::kUnknown;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
-    test::Check(std::holds_alternative<EvaluationError>(BuildPhasedEvaluationPlan(graph, {},
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(BuildPhasedEvaluationPlan(graph, {},
         IncomingCells::kReject, {}, {}, {}, {}, static_cast<ClosureWrites>(255))));
     return;
   }
@@ -151,7 +151,7 @@ void Run(abc::ProfileId profile, StoreOrder order, std::size_t count = 1,
     test::Check(std::get<CellInitializationError>(VerifyPhasedCellInitializations(
         graph, environments, cells, ClosureWrites::kUnknown, forged)) == CellInitializationError::kUninitialized);
     test::Check(std::get<CellEvaluationError>(BuildPhasedCellEvaluation(graph)) == CellEvaluationError::kInitialization);
-    test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(graph)) == EvaluationError::kUnsupportedOperation);
+    test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(graph)) == EvaluationError::kUnsupportedOperation);
     return;
   }
   test::Check(std::holds_alternative<CellInitializations>(built));

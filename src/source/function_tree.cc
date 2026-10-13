@@ -1,4 +1,5 @@
 #include "function_tree.h"
+#include "evaluation_disposition.h"
 #include "completion_tree.h"
 #include "exception_tree.h"
 
@@ -851,9 +852,10 @@ class TreeBuilder {
       }
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
-      if (IsReceiverGuard(tree_, id) || evaluation.kind == EvaluationKind::kCellGuard || evaluation.kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
-          evaluation.kind == EvaluationKind::kEnvironment || evaluation.kind == EvaluationKind::kArrayCursor || evaluation.kind == EvaluationKind::kElidedPure ||
-          evaluation.kind == EvaluationKind::kAlias) {
+      const auto disposition = Disposition(evaluation.kind);
+      if (IsReceiverGuard(tree_, id) || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+          disposition == EvaluationDisposition::kAnchor || disposition == EvaluationDisposition::kEnclosingAnchor ||
+          disposition == EvaluationDisposition::kEnvironment) {
         // A projected pure elision keeps its PC at this lexical boundary, not
         // on an unrelated expression or a fabricated executable statement.
         const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};
@@ -971,11 +973,12 @@ class TreeBuilder {
     for (std::uint32_t i = 0; i < path.op_count; ++i) {
       Step(); const analysis::OpId id{path.first_op.value + i};
       WitnessScope witness(*this, TreeObligation::kExpressionOwnership, At(id));
-      witness_.expected_owner = At(root);
+      witness_.decision_entry = At(root);
+      witness_.placement = evaluation_.operations[id.value].kind;
       const auto& owner = evaluation_.operations[id.value];
       if (owner.consumer && owner.consumer->value < graph_.uses.size()) {
         if (const auto* operation = std::get_if<analysis::OpId>(&graph_.uses[owner.consumer->value].owner))
-          witness_.actual_owner = At(*operation);
+          witness_.actual_owner = witness_.expected_owner = At(*operation);
       } else if (owner.kind == EvaluationKind::kRoot) witness_.actual_owner = At(id);
       const auto& op = graph_.ops[id.value];
       if (op.life != analysis::ValueLife::kLive) continue;
@@ -997,14 +1000,18 @@ class TreeBuilder {
           continue;
         }
       }
-      if (placement.kind == EvaluationKind::kAlias || placement.kind == EvaluationKind::kElidedPure ||
+      // An initialized guard owns only its original boundary. The checked,
+      // possibly-throwing read disposition deliberately cannot enter this path.
+      if (Disposition(placement.kind) == EvaluationDisposition::kAnchor ||
           std::holds_alternative<analysis::ValueJump>(op.operation)) {
         const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};
         tree_.anchors.push_back({BlockBoundary{drafts_[draft].statement, drafts_[draft].count}, TreeOriginId{op.origin.value}});
         tree_.operations.push_back({id, anchor}); continue;
       }
       const auto expression = forest_.operations[id.value];
+      witness_.ownership = ExpressionOwnershipError::kMissingExpression;
       Require(expression.has_value(), Error::kOwnership);
+      witness_.ownership = ExpressionOwnershipError::kPlacement;
       // Module read and TDZ guard share the verified read expression. Its
       // root is already scheduled in this RHS; recording the guard must not
       // evaluate the live binding twice. Scope/catch-copy checks above still

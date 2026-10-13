@@ -115,10 +115,10 @@ void Cells(std::uint8_t count, CallableKind kind) {
   }
   test::Check(incoming_references==2U*count);
   if (count == 0) return;
-  test::Check(std::holds_alternative<EvaluationError>(BuildEvaluationPlan(fixture.graph)));
+  test::Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(fixture.graph)));
   auto evaluation = fixture.evaluation;
   evaluation.cells->incoming = IncomingCells::kReject;
-  test::Check(std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(fixture.graph, evaluation)));
+  test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(fixture.graph, evaluation)));
   auto missing = fixture.syntax; missing.captures.clear();
   test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(fixture.graph, fixture.control,
       fixture.evaluation, std::move(missing), fixture.Constants())));

@@ -104,14 +104,14 @@ std::uint64_t Run(abc::ProfileId profile, Variant variant, std::uint32_t chain =
   test::Check((evaluation.operations[callee->value].kind == EvaluationKind::kInline) == composed);
   test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, evaluation)) == composed);
   const auto checked = std::get<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation));
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(
       graph, evaluation, {SemanticBudget{}.bytes, checked - 1})) == EvaluationError::kWorkLimit);
   test::Check(std::holds_alternative<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {SemanticBudget{}.bytes, evaluation.work}, IncomingCells::kReject)));
-  test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(
+  test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(
       graph, {SemanticBudget{}.bytes, evaluation.work - 1}, IncomingCells::kReject)) == EvaluationError::kWorkLimit);
   const auto rejected = [&](const EvaluationPlan& forged) {
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
   };
   if (!composed) {
     // The builder's refusal is not a verifier gap: claiming the composition fails.
@@ -147,7 +147,7 @@ std::uint64_t Run(abc::ProfileId profile, Variant variant, std::uint32_t chain =
     if (std::holds_alternative<EvaluationPlan>(BuildPhasedEvaluationPlan(graph, {middle, evaluation.work},
         IncomingCells::kReject))) high = middle; else low = middle;
   }
-  test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(graph, {high - 1, evaluation.work},
+  test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(graph, {high - 1, evaluation.work},
       IncomingCells::kReject)) == EvaluationError::kResourceLimit);
   return evaluation.work;
 }

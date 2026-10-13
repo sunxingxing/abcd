@@ -127,7 +127,7 @@ Generated Source(unsigned count, Form form, abc::ProfileId profile) {
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation_result = BuildEvaluationPlan(graph);
   Check(std::holds_alternative<EvaluationPlan>(evaluation_result)); const auto& evaluation = std::get<EvaluationPlan>(evaluation_result);
-  Check(!std::holds_alternative<EvaluationError>(VerifyEvaluationPlan(graph, evaluation)));
+  Check(!std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, evaluation)));
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.callable = CallableKind::kFunction;
   syntax.strictness = Strictness::kStrict; syntax.names = {u"value", u"probe", u"fallback", u"other", u"field", u"argument", u"key"};
   syntax.texts = {u"field"};

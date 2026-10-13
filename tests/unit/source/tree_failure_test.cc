@@ -25,14 +25,16 @@ void RoundTrip(const RouteFailure& failure) {
   Check(std::holds_alternative<MethodRouteReceipt>(decoded));
   const auto& actual=*std::get<MethodRouteReceipt>(decoded).failure;
   Check(actual.tree==failure.tree);
+  Check(actual.evaluation==failure.evaluation);
   Check(actual.pc==failure.pc && actual.working_pc==failure.working_pc && actual.method==failure.method);
   if(failure.deferred) Check(DeferredCellJson(*actual.deferred)==DeferredCellJson(*failure.deferred));
   Check(actual.causes.count==failure.causes.count);
   nlohmann::json routed; tools::DescribeRecordFailure(RouteRefusal{failure},routed);
   RecordProgramFailure entry{RecordProgramError::kFunction, failure.pc};
-  entry.tree=failure.tree;entry.deferred=failure.deferred;entry.causes=failure.causes;
+  entry.evaluation=failure.evaluation;entry.tree=failure.tree;entry.deferred=failure.deferred;entry.causes=failure.causes;
   entry.method=failure.method;entry.working_pc=failure.working_pc;
   nlohmann::json recorded; tools::DescribeRecordFailure(entry,recorded);
+  if(failure.evaluation) Check(recorded["source_evaluation"]==routed["source_failure"]["evaluation"]);
   if(failure.tree) {
     Check(recorded["source_tree"]==routed["source_failure"]["tree"]);
     const auto parsed=ParseTreeFailure(nlohmann::json::parse(recorded["source_tree"].dump()));
@@ -44,6 +46,10 @@ void RoundTrip(const RouteFailure& failure) {
 }
 }
 int main() {
+  static_assert(std::is_trivially_copyable_v<EvaluationFailure>);
+  static_assert(static_cast<unsigned>(EvaluationError::kOwnership)==5);
+  static_assert(static_cast<unsigned>(EvaluationError::kWorkLimit)==8);
+  static_assert(static_cast<unsigned>(EvaluationError::kResourceLimit)==9);
   // Every obligation travels through both publication paths. Zero is a real
   // PC/ID; absence and synthetic origins must survive independently.
   for(unsigned tag=0;tag<=static_cast<unsigned>(TreeObligation::kPlacement);++tag) {
@@ -52,11 +58,13 @@ int main() {
     auto& loc=f.tree->location;loc.method=abc::EntityOffset{77};loc.operation=analysis::OpId{0};
     loc.block=analysis::WorkBlockId{0};loc.edge=analysis::EdgeId{0};loc.expression=ExprId{0};loc.statement=StmtId{0};
     loc.control=ControlId{0};loc.pc=abc::CodeOffset{0};loc.working_pc=abc::CodeOffset{17};
+    f.tree->ownership=ExpressionOwnershipError::kMissingExpression;
+    f.tree->placement=EvaluationKind::kCellGuard;f.tree->decision_entry=TreeLocation{};
     f.tree->expected_owner=loc;f.tree->actual_owner=TreeLocation{};
     f.cause=ControlError::kUncoveredBlock;
     auto projected=FamilyRouteFailure(f);
     Check(projected.pc==abc::CodeOffset{0} && projected.working_pc==abc::CodeOffset{17});
-    Check(projected.causes.count==3 && projected.failure_class==RouteFailureClass::kUnproved);
+    Check(projected.causes.count==4 && projected.failure_class==RouteFailureClass::kUnproved);
     RoundTrip(projected);
     f.tree->location={};f.tree->location.method=abc::EntityOffset{77};
     f.tree->location.synthetic=TreeSyntheticLocation{ControlOriginKind::kTryExit,0};
@@ -72,6 +80,22 @@ int main() {
     d.occurrence=CaptureOccurrence{0,{{0},{0}},analysis::CaptureDomain::kGuarded,CaptureOrigin{{77},abc::CodeOffset{0},abc::CodeOffset{5}}};
     d.allocation.operation=analysis::OpId{0};d.store.operation=analysis::OpId{3};d.creation.operation=analysis::OpId{1};
     RoundTrip(f);
+  }
+  for(unsigned tag=0;tag<=static_cast<unsigned>(EvaluationObligation::kUse);++tag) {
+    EvaluationFailure f{EvaluationError::kOwnership}; auto& e=f.evaluation;
+    e.obligation=static_cast<EvaluationObligation>(tag);e.location.method=abc::EntityOffset{77};
+    e.location.operation=analysis::OpId{0};e.location.pc=abc::CodeOffset{0};e.location.working_pc=abc::CodeOffset{17};
+    e.use=analysis::UseId{0};e.value=analysis::ValueId{0};e.expected_consumer=analysis::UseId{1};
+    e.actual_consumer=analysis::UseId{2};e.placement=EvaluationKind::kInline;e.temporary=TemporaryReason::kCrossRegionValue;
+    e.expected_owner=e.location;e.actual_owner=TreeLocation{};
+    RoundTrip(FamilyRouteFailure(f));
+    e.location={};e.location.synthetic=TreeSyntheticLocation{ControlOriginKind::kTryExit,0};
+    RoundTrip(FamilyRouteFailure(f));
+    for(auto kind:{EvaluationError::kResourceLimit,EvaluationError::kWorkLimit}) {
+      f.kind=kind;const auto route=FamilyRouteFailure(f);
+      Check(route.failure_class==(kind==EvaluationError::kResourceLimit?RouteFailureClass::kMemoryLimit:RouteFailureClass::kWorkLimit));
+      Check(route.causes.count==2);RoundTrip(route);
+    }
   }
   // The original leaf is retained, including resource/work classification.
   for(auto cause:{ControlError::kUncoveredBlock,ControlError::kResourceLimit,ControlError::kWorkLimit}) {

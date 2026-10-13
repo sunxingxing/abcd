@@ -49,11 +49,14 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       else if constexpr (requires { alternative.kind; })
         if constexpr (std::is_enum_v<std::decay_t<decltype(alternative.kind)>>)
           CollectFailureCauses(alternative, failure.causes);
-      if constexpr (std::is_same_v<T, FunctionTreeFailure>) {
+      if constexpr ((std::is_same_v<T, FunctionTreeFailure> || std::is_same_v<T, EvaluationFailure>)) {
         const auto detail = FamilyRouteFailure(alternative);
         failure.call_reference = detail.call_reference;
+        failure.evaluation = detail.evaluation;
         failure.tree = detail.tree; failure.deferred = detail.deferred;
-        failure.method = detail.method;
+        failure.method = detail.method.value_or(index.methods[entry.value].offset);
+        if (failure.evaluation && !failure.evaluation->location.method)
+          failure.evaluation->location.method = failure.method;
         failure.working_pc = detail.working_pc;
         if (detail.pc) failure.pc = *detail.pc;
       }

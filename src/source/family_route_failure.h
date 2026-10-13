@@ -24,8 +24,12 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     if constexpr (requires { error.cause; }) CollectFailureCauses(error.cause, out);
     else if constexpr (requires { error.error; }) CollectFailureCauses(error.error, out);
     else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);
+    if constexpr (std::is_same_v<T, EvaluationFailure>) CollectFailureCauses(error.evaluation.obligation, out);
     if constexpr (requires { error.tree; })
-      if (error.tree) CollectFailureCauses(error.tree->obligation, out);
+      if (error.tree) {
+        CollectFailureCauses(error.tree->obligation, out);
+        if (error.tree->ownership) CollectFailureCauses(*error.tree->ownership, out);
+      }
     if constexpr (requires { error.deferred; })
       if (error.deferred) CollectFailureCauses(error.deferred->reason, out);
     if constexpr (std::is_same_v<T, CallPlanFailure>) {
@@ -54,6 +58,7 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
 // Preserve resource/work/output classes and available original PCs. Remaining
 // unclosed semantic premises map to Unproved, never successful source.
 RouteFailure FamilyRouteFailure(const FunctionTreeFailure& failure);
+RouteFailure FamilyRouteFailure(const EvaluationFailure& failure);
 RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure);
 RouteFailure FamilyRouteFailure(const FamilyEmitFailure& failure);
 RouteFailure FamilyRouteFailure(const analysis::FunctionSiteFailure& failure);

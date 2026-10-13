@@ -196,23 +196,23 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
   const auto checked = std::get<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(
       graph, evaluation, {SemanticBudget{}.bytes, checked})));
-  test::Check(std::get<EvaluationError>(VerifyPhasedEvaluationPlan(
+  test::Check(std::get<EvaluationFailure>(VerifyPhasedEvaluationPlan(
       graph, evaluation, {SemanticBudget{}.bytes, checked - 1})) == EvaluationError::kWorkLimit);
   test::Check(std::holds_alternative<EvaluationPlan>(BuildPhasedEvaluationPlan(
       graph, {SemanticBudget{}.bytes, evaluation.work}, IncomingCells::kReject, functions)));
-  test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(
+  test::Check(std::get<EvaluationFailure>(BuildPhasedEvaluationPlan(
       graph, {SemanticBudget{}.bytes, evaluation.work - 1}, IncomingCells::kReject, functions)) == EvaluationError::kWorkLimit);
-  test::Check(std::get<EvaluationError>(VerifyPhaseExpressions(graph, evaluation, {0})) == EvaluationError::kResourceLimit);
+  test::Check(std::get<EvaluationFailure>(VerifyPhaseExpressions(graph, evaluation, {0})) == EvaluationError::kResourceLimit);
   if (!fused) {
     auto forged = evaluation;
     const auto call = snapshot ? graph.ops.size() - 4 : graph.ops.size() - 3;
     forged.operations[kProperty.value] = {EvaluationKind::kInline, graph.ops[call].first_use, {}};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     for (const auto& function : functions) {
       forged = evaluation;
       forged.operations[function.creation.value] = {EvaluationKind::kInline,
           UseId{graph.ops[call].first_use.value + 2}, {}}; // callee, receiver, callback.
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
   } else {
     auto malformed = graph;
@@ -226,17 +226,17 @@ std::uint64_t Run(std::uint32_t count, abc::ProfileId profile, Corridor corridor
       test::Check(std::holds_alternative<ValueUnary>(wrapper.operation));
       auto forged = evaluation;
       forged.operations[call.value] = {EvaluationKind::kInline, wrapper.first_use, {}};
-      test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+      test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     }
     malformed.ops[call.value].use_count = 0;
-    test::Check(std::get<EvaluationError>(VerifyPhaseExpressions(malformed, evaluation, {})) ==
+    test::Check(std::get<EvaluationFailure>(VerifyPhaseExpressions(malformed, evaluation, {})) ==
         EvaluationError::kInvalidGraph);
     auto forged = evaluation;
     forged.operations[kProperty.value].consumer = graph.ops[kProperty.value].first_use;
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
     forged = evaluation;
     forged.operations[kProperty.value].consumer = UseId{static_cast<std::uint32_t>(graph.uses.size())};
-    test::Check(std::holds_alternative<EvaluationError>(VerifyPhasedEvaluationPlan(graph, forged)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, forged)));
   }
   // Include the planner's bounded retry, not just independent verification.
   return evaluation.work + std::get<PhaseEvaluationCost>(VerifyPhaseExpressions(graph, evaluation, {})).work;
