@@ -192,7 +192,7 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kNestedLiteral ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInitializer ||
               evaluation_.operations[id.value].kind == EvaluationKind::kClassProjection ||
-              evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard) continue;
+              evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard || GuardedInput(evaluation_, id)) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
           if (IsReceiverGuard(tree_, id) || evaluation_.operations[id.value].kind == EvaluationKind::kCellGuard || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
               std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
@@ -279,7 +279,9 @@ class FlowCheck {
           } else {
             const auto* expression = std::get_if<ExpressionStmt>(&syntax);
             Require(expression != nullptr, Error::kSequence);
-            RootExpression(id, expression->expression);
+            const auto owner = evaluation_.operations[id.value].kind == EvaluationKind::kGuardedCellRead
+                ? *GuardedPeer(evaluation_, id) : id;
+            RootExpression(owner, expression->expression);
           }
         }
         if (!node.arms) {
@@ -904,6 +906,11 @@ class FlowCheck {
     tasks_[pending++] = {planned.body, syntax->body, 0};
   }
   void ModulePairs() {
+    for (const auto& pair : evaluation_.guarded_reads) {
+      budget_.Step();
+      Require(flow_.expressions[pair.read.value] &&
+          flow_.expressions[pair.read.value] == flow_.expressions[pair.guard.value], Error::kPlacement);
+    }
     for (const auto& module : evaluation_.modules) {
       budget_.Step();
       const auto read = module.pair.read.value;

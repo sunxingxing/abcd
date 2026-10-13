@@ -190,6 +190,15 @@ FamilyCellCost Forwarding(bool phase, Access own, Access child, bool caught, Cap
     test::Check(error.kind == CaptureCellError::kInput);
     const auto& cause = std::get<CaptureFailure>(error.cause);
     test::Check(cause.kind == CaptureError::kScope && std::get<ScopeError>(cause.cause) == ScopeError::kInitialization);
+    test::Check(cause.occurrence && cause.occurrence->ordinal == 0 &&
+        cause.occurrence->requested == CaptureDomain::kLanguage && cause.occurrence->source);
+    // A pure forward or strengthened local use points to its strict descendant,
+    // never to the parent's creation PC or the forwarding function's entry.
+    if (original.empty() || original.front().domain != CaptureDomain::kLanguage) {
+      test::Check(cause.occurrence->source->method == abc::EntityOffset{kChild} &&
+          cause.occurrence->source->pc && cause.occurrence->source->working_pc);
+    }
+
   } else {
     const auto& cells = std::get<CaptureCells>(bound);
     test::Check(cells.deferred.size() == 1);

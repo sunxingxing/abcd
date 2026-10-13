@@ -32,6 +32,8 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     Require(plan.operations.size() == graph.ops.size(), Error::kInvalidGraph);
     Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size(), Error::kOwnership);
     Require(plan.arguments == graph.arguments, Error::kOwnership);
+    Require(plan.guarded_peers.empty() == plan.guarded_reads.empty() &&
+        (plan.guarded_peers.empty() || plan.guarded_peers.size() == graph.ops.size()), Error::kOwnership);
     Require(plan.closed_expressions.empty() || (flow == EvaluationFlow::kNormal &&
         plan.closed_expressions.size() == graph.ops.size()), Error::kOwnership);
     auto work = budget.work;
@@ -42,6 +44,34 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
     const auto admit = [&](std::size_t count, std::size_t width) {
       Require(count <= bytes / width, Error::kResourceLimit); bytes -= count * width;
     };
+    if (!plan.guarded_reads.empty()) {
+      Require(flow == EvaluationFlow::kPhased && plan.cells, Error::kOwnership);
+      auto proof = analysis::ProveGuardedReads(graph, {bytes, work});
+      if (const auto* error = std::get_if<analysis::GuardedReadError>(&proof)) {
+        if (*error == analysis::GuardedReadError::kResourceLimit) return Error::kResourceLimit;
+        if (*error == analysis::GuardedReadError::kWorkLimit) return Error::kWorkLimit;
+        if (*error == analysis::GuardedReadError::kCatchState) return Error::kCatchState;
+        return Error::kOwnership;
+      }
+      const auto& evidence = std::get<analysis::GuardedReads>(proof);
+      admit(evidence.allocated_bytes, 1); step(evidence.work);
+      std::size_t found = 0, peers = 0;
+      for (std::size_t i = 0; i < plan.guarded_reads.size(); ++i) {
+        step(); const auto& pair = plan.guarded_reads[i];
+        Require(i == 0 || plan.guarded_reads[i - 1].read < pair.read, Error::kOwnership);
+        while (found < evidence.reads.size() && evidence.reads[found].read < pair.read) { step(); ++found; }
+        Require(found < evidence.reads.size() && evidence.reads[found] == pair &&
+            GuardedPeer(plan, pair.read) == pair.guard && GuardedPeer(plan, pair.guard) == pair.read &&
+            GuardedInput(plan, pair.read) && plan.guarded_peers[pair.guard.value]->role == GuardedReadRole::kGuard, Error::kOwnership);
+        const auto cell = plan.cells->cells.operations[pair.read.value];
+        Require(cell && std::holds_alternative<IncomingCell>(plan.cells->cells.cells[cell->value].storage), Error::kOwnership);
+        const auto& read = plan.operations[pair.read.value]; const auto& guard = plan.operations[pair.guard.value];
+        Require(read.kind == EvaluationKind::kRoot && read.temporary == TemporaryReason::kCrossRegionValue && !read.consumer &&
+            guard.kind == EvaluationKind::kGuardedCellRead && !guard.consumer && !guard.temporary, Error::kOwnership);
+      }
+      for (const auto& peer : plan.guarded_peers) { step(); peers += peer.has_value(); }
+      Require(peers == 2 * plan.guarded_reads.size(), Error::kOwnership);
+    }
     const auto availability = CheckEvaluationFlow(graph, flow, {bytes, work});
     if (const auto* error = std::get_if<Error>(&availability)) return *error;
     step(std::get<std::uint64_t>(availability));
@@ -299,6 +329,11 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
         visits[i] = EvaluationVisit::kDone; continue;
       }
       Require(placement.kind != EvaluationKind::kReceiverGuard, Error::kOwnership);
+      if (const auto peer = GuardedPeer(plan, {static_cast<std::uint32_t>(i)})) {
+        if (!GuardedInput(plan, {static_cast<std::uint32_t>(i)})) visits[i] = EvaluationVisit::kDone;
+        continue;
+      }
+      Require(placement.kind != EvaluationKind::kGuardedCellRead, Error::kOwnership);
       const bool cell_guard = plan.cells &&
           IsInitializedCellGuard(graph, *plan.cells, analysis::OpId{static_cast<std::uint32_t>(i)});
       Require(cell_guard == (placement.kind == EvaluationKind::kCellGuard), Error::kOwnership);
@@ -428,6 +463,7 @@ std::variant<std::uint64_t, EvaluationError> VerifyEvaluationForFlow(
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kClassProjection ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kReceiverGuard ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kCellGuard ||
+                                  BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kGuardedCellRead ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kElidedPure ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kAlias ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kInitializer ||

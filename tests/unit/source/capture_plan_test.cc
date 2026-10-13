@@ -22,7 +22,7 @@ void Deferred() {
     const auto proof = std::get<SemanticProof>(VerifySemanticSource(body, method, 3, 0,
         {}, {}, {}, ClosureWrites::kLanguage));
     const ScopeFacts scopes(method, proof);
-    const CaptureUse use{{{0}, {0}}, CaptureDomain::kLanguage};
+    const CaptureUse use{{{0}, {0}}, CaptureDomain::kLanguage, CaptureOrigin{{77}, abc::CodeOffset{91}, abc::CodeOffset{83}}};
     const CreationBinding creation{{2}, std::get<FunctionCreation>(method.instructions[1].operation),
         {{0}, {}}, OrdinaryCapture{EnvironmentId{0}}};
     const auto result = BuildCapturePlan(scopes, {1}, creation, {&use, 1});
@@ -52,7 +52,11 @@ void Deferred() {
       Check(std::get<CaptureFailure>(BuildCapturePlan(scopes, {1}, creation, {&defined, 1})) == CaptureError::kScope);
       const ScopeFacts unknown(method, proof.environments, proof.locals, proof.defined_captures, ClosureWrites::kUnknown);
       Check(std::get<CaptureFailure>(BuildCapturePlan(unknown, {1}, creation, {&use, 1})) == CaptureError::kScope);
-    } else Check(std::get<CaptureFailure>(result) == CaptureError::kScope);
+    } else {
+      const auto& failure = std::get<CaptureFailure>(result);
+      Check(failure == CaptureError::kScope && failure.occurrence.has_value());
+      Check(*failure.occurrence == CaptureOccurrence{0, use.cell, use.domain, use.source});
+    }
   }
 }
 SemanticMethod Owner() {

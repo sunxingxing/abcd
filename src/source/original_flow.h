@@ -66,11 +66,13 @@ struct OriginalActionRegionId {
 // successful exit have physical source boundaries; internal VM states (such
 // as a pre-guard Hole) must never masquerade as completed language values.
 // The adapter proves membership/order and the native binding reference once.
+enum class OriginalReadKind : std::uint8_t { kModule, kCapture };
 struct OriginalActionRegion {
   ExprId expression;
   analysis::OpId entry, exit, result;
   SymbolId reference;
   std::optional<analysis::WorkBlockId> commit;
+  OriginalReadKind kind = OriginalReadKind::kModule;
 };
 using OriginalWriteSite=std::variant<ExprId,StmtId>;
 enum class OriginalCompletionBoundary : std::uint8_t { kProjectedResult, kIntrinsicAction, kInvocationBinding, kUnmodeled };

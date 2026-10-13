@@ -70,6 +70,7 @@ class Composition {
     if (plan.literals) for (const auto& literal : plan.literals->objects) {
       budget.Step(); if (literal.allocation.value < excluded_.size()) excluded_[literal.allocation.value] = 1;
     }
+    for (const auto& pair : plan.guarded_reads) { budget.Step(); excluded_[pair.read.value] = excluded_[pair.guard.value] = 1; }
     for (const auto& module : plan.modules) {
       budget.Step(); excluded_[module.pair.read.value] = 1;
       if (module.pair.guard) excluded_[module.pair.guard->value] = 1;

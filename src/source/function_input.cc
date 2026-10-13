@@ -316,7 +316,9 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
           ? analysis::CaptureDomain::kGuarded
           : body.tries.empty() && CaptureReads(identity.contract) == CaptureReadSemantics::kSourceTdz
           ? analysis::CaptureDomain::kSourceAccess : analysis::CaptureDomain::kLanguage;
-      uses.push_back({{*depth, binding.binding.slot}, domain});
+      const auto& instruction = input->instructions[binding.instruction];
+      uses.push_back({{*depth, binding.binding.slot}, domain,
+          CaptureOrigin{method, instruction.origin.value_or(instruction.pc), instruction.pc}});
       accesses.push_back({{binding.instruction}, kind});
     }
     // Independently match the verifier's conditional read ledger. Stores are

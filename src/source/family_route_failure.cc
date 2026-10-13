@@ -63,6 +63,14 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       if constexpr (requires { std::optional<abc::CodeOffset>{error.pc}; }) result.pc = error.pc;
       else if constexpr (requires { std::optional<abc::CodeOffset>{error.offset}; }) result.pc = error.offset;
     }
+    if constexpr (std::is_same_v<T, CaptureFailure>) {
+      result.capture = error.occurrence;
+      if (error.occurrence && error.occurrence->source) {
+        result.method = error.occurrence->source->method;
+        result.pc = error.occurrence->source->pc;
+        result.working_pc = error.occurrence->source->working_pc;
+      }
+    }
     if constexpr (std::is_same_v<T, CallPlanFailure>) result.call_reference = error.reference;
     if constexpr (requires { error.working_pc; }) result.working_pc = error.working_pc;
     if constexpr (requires { error.method; }) if (!result.method) result.method = error.method;

@@ -78,7 +78,8 @@ bool SameReceipt(const MethodRouteReceipt& left,
            left.failure->working_pc == right.failure->working_pc &&
            left.failure->creation_method == right.failure->creation_method &&
            left.failure->creation_pc == right.failure->creation_pc &&
-           left.failure->call_reference == right.failure->call_reference));
+           left.failure->call_reference == right.failure->call_reference &&
+           left.failure->capture == right.failure->capture));
 }
 }  // namespace
 
@@ -190,6 +191,8 @@ int main() {
   caused.failure->working_pc = abc::CodeOffset{31};
   caused.failure->creation_method = abc::EntityOffset{13};
   caused.failure->creation_pc = abc::CodeOffset{7};
+  caused.failure->capture = CaptureOccurrence{3, {{2}, {7}}, analysis::CaptureDomain::kLanguage,
+      CaptureOrigin{{456}, abc::CodeOffset{31}, abc::CodeOffset{17}}};
   caused.failure->call_reference = CallReferenceEvidence{CallReferenceError::kNotInline,
       {17}, abcd::analysis::OpId{4}, EvaluationKind::kRoot, TemporaryReason::kCrossRegionValue, {}};
   AppendFailureCause(caused.failure->causes, RouteFailureClass::kUnproved);
@@ -202,6 +205,14 @@ int main() {
   Check(deep.failure->causes.count == kMaxFailureCauses && deep.failure->causes.truncated);
   Check(deep.failure->causes.View().back().value == 5 &&
         deep.failure->causes.View().back().domain == "abcd::source::ValueRouteError");
+  const auto capture_json = nlohmann::json::parse(std::get<std::string>(SerializeRouteReceipt(caused)));
+  for (const auto& [field, invalid] : std::vector<std::pair<std::string, nlohmann::json>>{
+      {"requested", 256}, {"requested", 4}, {"slot", 65536}, {"ordinal", -1}, {"depth", "zero"}}) {
+    auto malformed = capture_json; malformed["failure"]["capture"][field] = invalid;
+    Check(std::holds_alternative<RouteReceiptError>(ParseRouteReceipt(malformed.dump())));
+  }
+  auto no_method = capture_json; no_method["failure"]["capture"].erase("method");
+  Check(std::holds_alternative<RouteReceiptError>(ParseRouteReceipt(no_method.dump())));
   const auto samples = {RefusedReceipt(), caused, deep, complete_value};
   for (const auto& receipt : samples) {
     const auto serialized = SerializeRouteReceipt(receipt);

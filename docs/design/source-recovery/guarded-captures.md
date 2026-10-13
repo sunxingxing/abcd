@@ -79,8 +79,10 @@
 
 - **错误消息**：运行时只在 Hole 路径读取 guard 名字，并把它拼进错误消息
   （`interpreter-inl.cpp:4107`、`runtime_stubs-inl.h:1727`）。原生 TDZ 不保证 `e.message` 与 Ark
-  一致。若验收合同把消息字符串算作可观察行为，就必须保留诊断语义或拒绝。现有模块读取设计也
-  没有声称消息等价。
+  一致。Round 38 的裁决：es2abc 会把原生 `let` TDZ 访问编译为同样的 throwing hole-check，
+  输出源码在 Ark 上遵循这一异常协议。Node 差分只比较异常构造器（`ReferenceError`）、控制流、
+  返回值和日志轨迹，不比较 `e.message` 或 stack；不以 Node 的消息验证 Ark 的消息。现有模块读取
+  设计也没有声称跨运行时消息等价。
 - **sendable 环境**：保持现有的排除。
 
 ## 5. 已实施的第一个增量：同块延迟 TDZ 声明
@@ -227,3 +229,50 @@ Language 读取或写入没有进入它的 `storage.uses`。因此，中间函�
   Guarded，必须被拒绝。
 - 补单元测试：同一 cell 同时收到 guarded、Language 和 entry 三类需求，以及不同子级顺序下的
   汇总结果。
+
+
+## 9. Round 38：phased guarded capture occurrence
+
+`CaptureFailure.occurrence` 保留 use ordinal、cell、请求域以及最深的子函数方法/原始 PC/工作 PC。
+家族需求加强和无本地访问的转发保留实际后代来源；父创建位置仍是独立的诊断字段。
+
+原始证据由 `analysis/guarded_reads` 计算：SSA copy/phi 恒等式给出 load 与 guard 的同一值；
+共享的“上一个有序事件”数据流证明二者之间没有其他可观察事件；guard 成功 Commit 支配所有
+非恒等传输的使用。异常出口、Catch 入口和成功 Commit 逐一核对。这里的事实不声称 cell 在
+创建时已初始化，也不单独授权源码发射。候选读取必须是原始 named HoleGuard 的操作数；
+没有引入相邻 opcode、固定寄存器或同块识别。
+
+phased 输入只将获得完整证据的严格 Language 读取 occurrence 改为 Guarded。原有无 handler
+`kSourceAccess` 路径保留。家族仍使用 Guarded < SourceAccess < Language 的需求格，写入和
+未经保护的 handler 读取保持严格；异常父函数和外部类根的延迟声明准入不变。
+
+只有绑定到实际 deferred cell 的 occurrence 才启用新投影。load 与 guard 共用一个带两个
+origin 的标识符读取，但在原 guard 处发射并保存成功结果；catch staging 保持原位置。
+`kGuardedCellRead` 与非抛出的 `kCellGuard` 分开；第一增量不允许 phase corridor 或
+phase_composition 吸收该读取。树和 recovery 的 `OriginalActionRegion::kCapture` 验证
+动态 cell 身份、guard 异常对应以及成功值的 Commit，不借用模块绑定或初始化事实。
+
+复杂度：共享 SSA 恒等式、支配树和有限格数据流，索引/扫描线性，受支配算法约束不超过
+O(N log N)；不为每个 cell 重走 CFG。新增数组/工作队列在使用前计费；资源与工作失败保持
+原分类。`GuardedReadError::kCatchState` / `EvaluationError::kCatchState` 区分不一致的异常证据。
+
+测试由 `guarded_reads_test`、`phased_guarded_reads_test` 和
+`phased_guarded_captures_cli_test` 覆盖：copy/块拆分、catch 原始值泄漏、删除 guard/成功值/
+异常出口、伪造 placement/composition、recovery literal 替换、200/201/400/800 与预算边界；
+真实 es2abc fixture 验证提前读取、正常读取、catch 本地状态、finally 轨迹、多层转发，handler
+中的写入继续拒绝。fixture 中的前移声明、删除读取和错误 catch staging 变异必须改变 oracle。
+
+**Round 38 工作区验证（2026-10-14，尚未提交）。** 最终 keep-going 构建成功；固定集
+65/65；三个新增测试通过（含 read OpId 大于 guard OpId 的等价块重排）。定向 12 项为
+11/12，唯一失败是 `language_source_corpus_test` 的旧拒绝预期。`--language-source`
+探索集为 510/620，相比 c329fd2d 的 506 个已完成 record，没有回退或输出文本变化。
+指定的 12 个 record 全部越过原首个 capture 初始化拒绝，3 个完成，9 个停在后续
+FamilyWrite/Control/PhasedMethod 门禁；不能把越过首个拒绝说成整个 record 已验证完成。
+
+**范围待 cc 确认。** 第四个新增完成的是原先排除的 o16 record 14751
+`InputDeviceRoutingSwitching`。method 16458 的 slot 2/3 读取已有 named hole-check，
+本轮仅对这些 occurrence 建立 Guarded 证据；无 guard 的 slot 6/7/8/9 仍为 Language，
+通过原有初始化证明。因此该结果没有开放未经保护的 handler 访问，也没有实现 Round B。
+单文件复验显示该 record 在原 flags 下也完成。为避免用样本禁用规则压回合法结果，
+工作区保留通用算法，并暂不改 corpus 测试及 `language-source.md` 中此前的历史预期；
+其预期更新与这项自然覆盖收益一并交 cc 确认。未运行原 flags 全探索集或留出集。

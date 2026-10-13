@@ -34,6 +34,8 @@ struct FamilyTreeFailure {
   // Discovery evidence only; no source initializer or erasure is authorized.
   std::optional<std::size_t> cell_default_candidates;
   bool cell_defaults_proved = false;
+  // Resolved while the owned family is still alive; never a creation PC.
+  std::optional<abc::EntityOffset> method;
 };
 // Consumes a fresh, unchanged ReadFunctionFamily result and actual root context.
 // Parent-first shared construction checks each incoming capture against the

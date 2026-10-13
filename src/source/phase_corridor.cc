@@ -257,6 +257,7 @@ bool PhaseCorridors::HasCatchCopies(OpId operation) const {
   return bundle && plan_.phis->bundles[*bundle].count != 0;
 }
 std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, UseId use) const {
+  if (GuardedPeer(plan_, producer) || GuardedPeer(plan_, consumer)) return {};
   if (IsArrayInitialization(plan_, producer) || IsArrayInitialization(plan_, consumer) ||
       IsArrayOperand(plan_, producer) || IsArrayOperand(plan_, consumer) || ArrayLiteralFor(plan_, producer)) return {};
   const auto& child = graph_.ops[producer.value];

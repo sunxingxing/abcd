@@ -129,6 +129,22 @@ class FamilyTrees {
         Step(1); deferred[member.incoming->parent.value].push_back(cell);
       }
     }
+    std::vector<std::vector<std::uint8_t>> tdz;
+    Reserve(tdz, family.members.size()); tdz.resize(family.members.size());
+    for (std::size_t i = 0; i < family.members.size(); ++i) {
+      Step(1); const auto& member = family.members[i]; const auto* cells = member.function.Cells();
+      if (!cells) continue;
+      Reserve(tdz[i], cells->cells.size()); tdz[i].resize(cells->cells.size());
+      for (const auto& cell : deferred[i]) { Step(1); tdz[i][cell.cell.value] = 1; }
+      if (member.incoming) for (const auto& binding : member.incoming->cells.targets) {
+        Step(1); const auto parent = member.incoming->parent.value;
+        Require(parent < i && binding.child.value < tdz[i].size(), FamilyTreeError::kDeferredCell);
+        if (const auto* cell = std::get_if<ParentCell>(&binding.target)) {
+          Require(cell->cell.value < tdz[parent].size(), FamilyTreeError::kDeferredCell);
+          tdz[i][binding.child.value] = tdz[parent][cell->cell.value];
+        }
+      }
+    }
     std::vector<FamilyMember> trees;
     bool incomplete = false;
     Reserve(trees, family.members.size());
@@ -195,9 +211,25 @@ class FamilyTrees {
       // family below still discharges every original store and capture barrier.
       std::optional<ArrayInitializationError> array_error;
       ArraySourceInput array_source{context.Identity().contract, syntax.View(), syntax.syntax.names, &array_error};
+      std::vector<analysis::GuardedRead> guarded;
+      if (phase && function.Cells()) {
+        Reserve(guarded, phase->GuardedReads().reads.size());
+        std::size_t occurrence = 0;
+        const auto accesses = phase->CaptureAccesses();
+        const auto uses = phase->Captures();
+        for (const auto& pair : phase->GuardedReads().reads) {
+          Step(1); const analysis::InstructionId site{graph.origins[graph.ops[pair.read.value].origin.value].site.value};
+          while (occurrence < accesses.size() && accesses[occurrence].instruction < site) { Step(1); ++occurrence; }
+          const auto cell = function.Cells()->operations[pair.read.value];
+          // Keep pre-existing SourceAccess and discharged Language paths byte
+          // identical. A family join never fabricates this per-access proof.
+          if (occurrence < accesses.size() && accesses[occurrence].instruction == site &&
+              uses[occurrence].domain == analysis::CaptureDomain::kGuarded && cell && tdz[i][cell->value]) guarded.push_back(pair);
+        }
+      }
       auto evaluated = phase ?
           BuildPhasedEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations, demands, {}, phase->Locals().writes, array_source) :
+              member.children, module_evaluations, demands, {}, phase->Locals().writes, array_source, guarded) :
           BuildEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
               guards, entries, nullptr, {}, array_source);
@@ -623,7 +655,12 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner,
     const abc::MethodLookup* lookup, RecoveryMode recovery, const ExternalFamilyCapture* external) {
   try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup, recovery).Build(family, &root, {}, external);
-  } catch (const FamilyTreeFailure& error) { return error;
+  } catch (const FamilyTreeFailure& error) {
+    auto located = error;
+    const auto member = std::get_if<FamilyWriteFailure>(&error.cause)
+        ? std::get<FamilyWriteFailure>(error.cause).member : error.member;
+    if (member.value < family.members.size()) located.method = family.members[member.value].function.Method();
+    return located;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }
 }
@@ -634,7 +671,12 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildRecordFamilyTrees(
     const abc::MethodLookup* lookup) {
   try { return FamilyTrees(file, header, index, budget, modules, module_owner, lookup,
       RecoveryMode::kCompleteOnly).Build(family, nullptr, std::move(entry));
-  } catch (const FamilyTreeFailure& error) { return error;
+  } catch (const FamilyTreeFailure& error) {
+    auto located = error;
+    const auto member = std::get_if<FamilyWriteFailure>(&error.cause)
+        ? std::get<FamilyWriteFailure>(error.cause).member : error.member;
+    if (member.value < family.members.size()) located.method = family.members[member.value].function.Method();
+    return located;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }
 }

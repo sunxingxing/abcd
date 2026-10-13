@@ -129,8 +129,9 @@ class OperandCheck {
     }
     std::size_t next_function = 0;
     std::size_t next_module = 0;
-    if(!evaluation_.modules.empty()) {
-      budget_.Array(original_.action_regions,evaluation_.modules.size());
+    std::size_t next_capture = evaluation_.modules.size();
+    if(!evaluation_.modules.empty() || !evaluation_.guarded_reads.empty()) {
+      budget_.Array(original_.action_regions,evaluation_.modules.size() + evaluation_.guarded_reads.size());
       budget_.Array(original_.action_region_members,graph_.ops.size());
     }
     std::vector<std::optional<std::size_t>> module_aliases;
@@ -426,10 +427,18 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueGuard>) {
           // Flow independently proved this placement is the checked read's
           // same expression; combined-origin checking covers both original PCs.
-          RequireMeaning(evaluation_.operations[i].kind == EvaluationKind::kModuleGuard, Error::kUnsupportedOperation);
+          RequireMeaning((evaluation_.operations[i].kind == EvaluationKind::kModuleGuard ||
+              evaluation_.operations[i].kind == EvaluationKind::kGuardedCellRead), Error::kUnsupportedOperation);
         } else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>) {
-          RequireMeaning(Node<SymbolExpr>(expression).symbol == CellSymbol(expression,CellAccessKind::kLoad), Error::kOperand);
-          original_.operations[i].intrinsic_expression=expression;
+          const auto symbol = CellSymbol(expression,CellAccessKind::kLoad);
+          RequireMeaning(Node<SymbolExpr>(expression).symbol == symbol, Error::kOperand);
+          if (GuardedInput(evaluation_, current_)) {
+            const auto exit = *GuardedPeer(evaluation_, current_);
+            RequireMeaning(next_capture < original_.action_regions.size() && flow_.expressions[exit.value] == expression, Error::kOperand);
+            const OriginalActionRegionId region{static_cast<std::uint32_t>(next_capture++)};
+            original_.action_regions[region.value] = {expression,current_,exit,current_,symbol,{},OriginalReadKind::kCapture};
+            original_.action_region_members[i] = original_.action_region_members[exit.value] = region;
+          } else original_.operations[i].intrinsic_expression=expression;
         } else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) {
           if (const auto cell = DeferredCell()) {
             // Deferred TDZ initialization: the cell's own declaration statement

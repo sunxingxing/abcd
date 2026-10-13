@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_PHASED_FUNCTION_FILE_H_
 
 #include "phased_body.h"
+#include "../analysis/guarded_reads.h"
 #include "function_input.h"
 #include "abcd/analysis/exception_locals.h"
 #include "abcd/source/async_completion.h"
@@ -11,7 +12,7 @@ enum class PhasedFileError : std::uint8_t {
   kIdentity, kMethod, kFrame, kChanged, kResourceLimit, kWorkLimit
 };
 using PhasedFileFailure = std::variant<PhasedFileError, abc::MetadataError,
-    abc::FrameError, abc::BodyFailure, PhasedMethodError, analysis::ExceptionLocalFailure, FunctionEmitError, PhasedInputFailure, PhasedModuleFailure, PhasedImportFailure>;
+    abc::FrameError, abc::BodyFailure, PhasedMethodError, analysis::ExceptionLocalFailure, FunctionEmitError, PhasedInputFailure, PhasedModuleFailure, PhasedImportFailure, analysis::GuardedReadError>;
 // File-backed conditional method input, NOT a prepared source family. The
 // immutable heap owner keeps working body, phase analyses and capture scopes
 // together across moves/vector growth. Views never point into a moved envelope.
@@ -32,6 +33,7 @@ class FilePhasedFunction {
   const abc::MethodBody& OriginalBody() const;
   const PhasedBody& Phases() const;
   const analysis::ExceptionLocals& Locals() const;
+  const analysis::GuardedReads& GuardedReads() const;
   std::span<const analysis::InstructionId> Children() const;
   InputCaptureMode Mode() const;
   std::span<const CaptureUse> Captures() const;

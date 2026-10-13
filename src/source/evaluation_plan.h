@@ -13,6 +13,7 @@
 #include "hole_protocol.h"
 #include "class_initializers.h"
 #include "class_self_order.h"
+#include "../analysis/guarded_reads.h"
 
 namespace abcd::source {
 enum class BranchPolarity : std::uint8_t { kTaken, kFallthrough };
@@ -92,6 +93,8 @@ struct PhaseSelectionOperand {
   }
   bool operator==(const PhaseSelectionOperand&) const = default;
 };
+enum class GuardedReadRole : std::uint8_t { kRead, kGuard };
+struct GuardedReadPeer { analysis::OpId operation; GuardedReadRole role; };
 struct EvaluationPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -104,6 +107,10 @@ struct EvaluationPlan {
   std::optional<CellEvaluation> cells;
   std::vector<FunctionBinding> functions;
   std::vector<ModuleEvaluation> modules;
+  // Native checked cell reads execute at the original guard, independently
+  // rooted. The raw load is not an initialized/nonthrowing access proof.
+  std::vector<analysis::GuardedRead> guarded_reads;
+  std::vector<std::optional<GuardedReadPeer>> guarded_peers;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   // Invocation count/tail obligation, not a native JS arguments binding.
@@ -156,6 +163,14 @@ struct EvaluationPlan {
 };
 inline analysis::ValueId ResolveEvaluationValue(const EvaluationPlan& plan, analysis::ValueId value) {
   return plan.aliases.empty() ? value : plan.aliases[value.value];
+}
+inline std::optional<analysis::OpId> GuardedPeer(const EvaluationPlan& plan, analysis::OpId id) {
+  if (id.value >= plan.guarded_peers.size() || !plan.guarded_peers[id.value]) return {};
+  return plan.guarded_peers[id.value]->operation;
+}
+inline bool GuardedInput(const EvaluationPlan& plan, analysis::OpId id) {
+  return id.value < plan.guarded_peers.size() && plan.guarded_peers[id.value] &&
+      plan.guarded_peers[id.value]->role == GuardedReadRole::kRead;
 }
 struct ArraySourceInput {
   SourceContract contract = kSourceContract;
@@ -212,7 +227,7 @@ inline analysis::ValueOperand ResolveEvaluationOperand(
 }
 enum class EvaluationError : std::uint8_t {
   kRevision, kInvalidGraph, kUnsupportedOperation, kProtocolOperand, kLivePhi,
-  kOwnership, kOrder, kUnavailableValue, kWorkLimit, kResourceLimit
+  kOwnership, kOrder, kUnavailableValue, kWorkLimit, kResourceLimit, kCatchState
 };
 enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
 // ConditionalArgument reads a declared slot only when ordinal < actual count.
@@ -335,7 +350,8 @@ struct EvaluationShape {
     std::span<const FunctionBinding> functions = {},
     std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
     std::span<const ClassInitializerCall> initializers = {},
-    analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown, ArraySourceInput arrays = {});
+    analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown, ArraySourceInput arrays = {},
+    std::span<const analysis::GuardedRead> guarded = {});
 [[nodiscard]] std::variant<std::uint64_t, EvaluationError> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {});

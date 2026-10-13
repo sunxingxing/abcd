@@ -809,6 +809,16 @@ class TreeBuilder {
         tree_.operations.push_back({id, *forest_.initializers[id.value]});
         continue;
       }
+      if (GuardedInput(evaluation_, id)) {
+        Require(expression.has_value(), Error::kOwnership);
+        tree_.operations.push_back({id, *expression}); continue;
+      }
+      if (evaluation.kind == EvaluationKind::kGuardedCellRead) {
+        Require(expression.has_value() && GuardedPeer(evaluation_, id), Error::kOwnership);
+        tree_.operations.push_back({id, *expression});
+        Append(draft, Statement(ExpressionStmt{RootExpression(*GuardedPeer(evaluation_, id), *expression)}, origin));
+        continue;
+      }
       if (evaluation.kind == EvaluationKind::kModuleGuard) {
         Require(expression.has_value(), Error::kOwnership);
         tree_.operations.push_back({id, *expression});

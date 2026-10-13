@@ -8,9 +8,15 @@
 
 namespace abcd::source {
 namespace {
-using Requirement = std::optional<analysis::CaptureDomain>;
-void Combine(Requirement& state, analysis::CaptureDomain domain) {
-  state = state ? JoinCaptureRequirement(*state, domain) : domain;
+struct Requirement {
+  std::optional<analysis::CaptureDomain> domain;
+  std::optional<CaptureOrigin> source;
+  analysis::CaptureDomain value_or(analysis::CaptureDomain fallback) const { return domain.value_or(fallback); }
+};
+void Combine(Requirement& state, analysis::CaptureDomain domain, std::optional<CaptureOrigin> source) {
+  const auto joined = state.domain ? JoinCaptureRequirement(*state.domain, domain) : domain;
+  if (!state.domain || joined != *state.domain) state.source = source;
+  state.domain = joined;
 }
 }  // namespace
 std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
@@ -55,13 +61,14 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
           step(std::bit_width(cells.cells.size()) + std::numeric_limits<std::uint32_t>::digits);
           const auto cell = FindDemandCell(function.Graph(), *base.Environments(), cells, demand);
           require(cell.has_value(), Error::kCell);
-          Combine(requirements[cell->value], demand.domain);
+          Combine(requirements[cell->value], demand.domain, demand.source);
         }
         for (const auto& entry : entries) {
           step(std::bit_width(cells.cells.size()) + 1);
           const auto cell = FindCell(cells, entry);
           require(cell.has_value(), Error::kCell);
-          Combine(requirements[cell->value], analysis::CaptureDomain::kLanguage);
+          Combine(requirements[cell->value], analysis::CaptureDomain::kLanguage,
+              CaptureOrigin{function.Method(), {}, {}});
         }
         const auto original = base.Input().Captures();
         std::size_t forwarded = 0;
@@ -80,6 +87,7 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
           const auto cell = FindCell(storage.cells, IncomingCell{use.cell.depth, use.cell.slot});
           require(cell.has_value(), Error::kCoverage);
           strengthened.domain = JoinCaptureRequirement(use.domain, requirements[cell->value].value_or(use.domain));
+          if (strengthened.domain != use.domain) strengthened.source = requirements[cell->value].source;
           require(StrengthensCaptureRequirement(use.domain, strengthened.domain), Error::kBinding);
           storage.uses.push_back(strengthened);
         }
@@ -87,7 +95,7 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
           step(); const auto& cell = storage.cells.cells[c];
           if (const auto* incoming = std::get_if<IncomingCell>(&cell.storage); incoming && cell.count == 0)
             storage.uses.push_back({{incoming->depth, incoming->slot},
-                requirements[c].value_or(analysis::CaptureDomain::kLanguage)});
+                requirements[c].value_or(analysis::CaptureDomain::kLanguage), requirements[c].source});
         }
         function.SetStorage(std::move(storage));
       }
@@ -113,7 +121,7 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
           step(std::bit_width(cells->cells.size()) + 1);
           const auto cell = FindCell(*cells, IncomingCell{use.cell.depth, use.cell.slot});
           require(cell.has_value(), Error::kCoverage);
-          Combine(requirements[cell->value], use.domain);
+          Combine(requirements[cell->value], use.domain, use.source);
         }
         for (std::size_t c = 0; c < cells->cells.size(); ++c) {
           step(); const auto& cell = cells->cells[c];
@@ -127,7 +135,7 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
             admit(capacity, sizeof(CellDemand)); destination.reserve(capacity);
           }
           destination.push_back({*creation, {incoming->depth, incoming->slot},
-              requirements[c].value_or(analysis::CaptureDomain::kLanguage)});
+              requirements[c].value_or(analysis::CaptureDomain::kLanguage), requirements[c].source});
         }
       }
     }

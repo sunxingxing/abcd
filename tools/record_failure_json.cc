@@ -34,6 +34,17 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.failure.working_pc) record["source_failure"]["working_pc"] = failure.failure.working_pc->value;
       if (failure.failure.creation_method) record["source_failure"]["creation_method"] = failure.failure.creation_method->value;
       if (failure.failure.creation_pc) record["source_failure"]["creation_pc"] = failure.failure.creation_pc->value;
+      if (failure.failure.capture) {
+        const auto& use = *failure.failure.capture;
+        auto& capture = record["source_failure"]["capture"];
+        capture = {{"ordinal", use.ordinal}, {"depth", use.cell.depth.value},
+            {"slot", use.cell.slot.value}, {"requested", static_cast<unsigned>(use.requested)}};
+        if (use.source) {
+          capture["method"] = use.source->method.value;
+          if (use.source->pc) capture["pc"] = use.source->pc->value;
+          if (use.source->working_pc) capture["working_pc"] = use.source->working_pc->value;
+        }
+      }
       if (failure.failure.call_reference) {
         record["source_failure"]["call_reference"] = DescribeReference(*failure.failure.call_reference);
       }

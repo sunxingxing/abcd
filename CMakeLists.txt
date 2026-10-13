@@ -76,7 +76,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/exception_inputs.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_regions.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_locals.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_modules.cc)
-target_sources(abcd_analysis PRIVATE src/analysis/exception_captures.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/exception_captures.cc src/analysis/guarded_reads.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_validation.cc
   src/analysis/semantic_locals.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)
@@ -2255,6 +2255,14 @@ if(BUILD_TESTING)
   target_link_libraries(exception_arguments_test PRIVATE abcd_analysis)
   target_include_directories(exception_arguments_test PRIVATE tests/support)
   add_test(NAME exception_arguments_test COMMAND exception_arguments_test)
+  add_executable(phased_guarded_reads_test tests/unit/source/phased_guarded_reads_test.cc)
+  target_link_libraries(phased_guarded_reads_test PRIVATE abcd_source)
+  target_include_directories(phased_guarded_reads_test PRIVATE tests/support)
+  add_test(NAME phased_guarded_reads_test COMMAND phased_guarded_reads_test)
+  add_executable(guarded_reads_test tests/unit/analysis/guarded_reads_test.cc)
+  target_link_libraries(guarded_reads_test PRIVATE abcd_analysis)
+  target_include_directories(guarded_reads_test PRIVATE tests/support)
+  add_test(NAME guarded_reads_test COMMAND guarded_reads_test)
   add_executable(phased_value_flow_test tests/unit/analysis/phased_value_flow_test.cc)
   target_link_libraries(phased_value_flow_test PRIVATE abcd_analysis)
   target_include_directories(phased_value_flow_test PRIVATE tests/support)
@@ -2389,6 +2397,9 @@ if(BUILD_TESTING)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_source_corpus.mjs
           $<TARGET_FILE:abc_structure> ${ABCD_LANGUAGE_SOURCE_SAMPLE})
       endif()
+      add_test(NAME phased_guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_guarded_captures.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/phased_guarded_captures)
       add_test(NAME guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_captures.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_captures)

@@ -35,6 +35,7 @@ struct FilePhasedFunction::Storage {
   std::optional<abc::MethodBody> original;
   PhasedBody phases;
   analysis::ExceptionLocals locals;
+  analysis::GuardedReads guarded;
   std::vector<analysis::InstructionId> children;
   InputCaptureMode mode;
   std::vector<CaptureUse> captures;
@@ -56,6 +57,7 @@ const abc::MethodBody& FilePhasedFunction::OriginalBody() const {
 }
 const PhasedBody& FilePhasedFunction::Phases() const { return storage_->phases; }
 const analysis::ExceptionLocals& FilePhasedFunction::Locals() const { return storage_->locals; }
+const analysis::GuardedReads& FilePhasedFunction::GuardedReads() const { return storage_->guarded; }
 std::span<const analysis::InstructionId> FilePhasedFunction::Children() const { return storage_->children; }
 InputCaptureMode FilePhasedFunction::Mode() const { return storage_->mode; }
 std::span<const CaptureUse> FilePhasedFunction::Captures() const { return storage_->captures; }
@@ -207,6 +209,15 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     auto phases = Take<PhasedBody>(std::move(analyzed));
     admit(phases.AllocatedBytes()); step(phases.Work());
     const auto input = phases.TreeInput(body).input;
+    auto guarded_result = analysis::ProveGuardedReads(phases.Graph(), left);
+    if (const auto* error = std::get_if<analysis::GuardedReadError>(&guarded_result)) {
+      if (*error == analysis::GuardedReadError::kResourceLimit) throw PhasedFileFailure{Error::kResourceLimit};
+      if (*error == analysis::GuardedReadError::kWorkLimit) throw PhasedFileFailure{Error::kWorkLimit};
+      throw PhasedFileFailure{*error};
+    }
+    auto guarded = std::get<analysis::GuardedReads>(std::move(guarded_result));
+    admit(guarded.allocated_bytes); step(guarded.work);
+    std::size_t next_guarded = 0;
     // Retain the conditional scope proof once per method. This does NOT
     // discharge descendants' writes or admit source publication on its own.
     auto locals = Take<analysis::ExceptionLocals>(analysis::ProveExceptionLocals(input.flow,
@@ -261,12 +272,20 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       const bool load = std::holds_alternative<analysis::LexicalLoad>(operation);
       Require(load || std::holds_alternative<analysis::LexicalStore>(operation), Error::kMethod);
       Require(accesses.empty() || accesses.back().instruction < before.instruction, Error::kMethod);
-      uses.push_back({{*depth, binding.binding.slot}, domain});
+      const auto& instruction = input.flow.instructions[before.instruction.value];
+      const auto working = phases.Graph().input.sites[before.instruction.value];
+      while (working && next_guarded < guarded.reads.size() && guarded.reads[next_guarded].read < *working) {
+        step(1); ++next_guarded;
+      }
+      const bool checked = load && working && next_guarded < guarded.reads.size() &&
+          guarded.reads[next_guarded].read == *working;
+      uses.push_back({{*depth, binding.binding.slot}, checked && domain == analysis::CaptureDomain::kLanguage ? analysis::CaptureDomain::kGuarded : domain,
+          CaptureOrigin{method.offset, instruction.origin.value_or(instruction.pc), instruction.pc}});
       accesses.push_back({before.instruction, load ? analysis::LocalAccessKind::kLoad : analysis::LocalAccessKind::kStore});
     }
     Require(!file.CheckUnchanged(), Error::kChanged);
     return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(original), std::move(phases),
-        std::move(locals), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), std::move(entry_modules), std::move(module_reads), method.owner_offset,
+        std::move(locals), std::move(guarded), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), std::move(entry_modules), std::move(module_reads), method.owner_offset,
         budget.bytes - left.bytes, budget.work - left.work}));
   } catch (const PhasedFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return PhasedFileFailure{Error::kResourceLimit};

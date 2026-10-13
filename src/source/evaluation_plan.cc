@@ -25,7 +25,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput array_source = {}, bool assignments = true, bool* proposed = nullptr) {
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput array_source = {}, bool assignments = true, bool* proposed = nullptr, std::span<const analysis::GuardedRead> guarded = {}) {
   auto work = budget.work; auto bytes = budget.bytes;
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
@@ -55,6 +55,21 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
     plan.flow = flow;
+    if (!guarded.empty()) {
+      Require(flow == EvaluationFlow::kPhased, Error::kOwnership);
+      admit(guarded.size(), sizeof(analysis::GuardedRead));
+      admit(graph.ops.size(), sizeof(std::optional<GuardedReadPeer>));
+      plan.guarded_reads.assign(guarded.begin(), guarded.end());
+      plan.guarded_peers.resize(graph.ops.size());
+      admit(plan.guarded_reads.capacity() - guarded.size(), sizeof(analysis::GuardedRead));
+      admit(plan.guarded_peers.capacity() - graph.ops.size(), sizeof(std::optional<GuardedReadPeer>));
+      for (const auto& pair : guarded) {
+        step(); Require(pair.read != pair.guard && pair.read.value < graph.ops.size() && pair.guard.value < graph.ops.size() &&
+            !plan.guarded_peers[pair.read.value] && !plan.guarded_peers[pair.guard.value], Error::kOwnership);
+        plan.guarded_peers[pair.read.value] = GuardedReadPeer{pair.guard, GuardedReadRole::kRead};
+        plan.guarded_peers[pair.guard.value] = GuardedReadPeer{pair.read, GuardedReadRole::kGuard};
+      }
+    }
     plan.closure_writes = closure_writes;
     plan.arguments = graph.arguments;
     Require(receiver_guards.empty() || flow == EvaluationFlow::kNormal, Error::kOwnership);
@@ -208,7 +223,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
       // Phased initialization uses completed-store facts, including catch paths.
       for (std::size_t i = 0; i < graph.ops.size(); ++i) {
         step();
-        if (IsInitializedCellGuard(graph, *plan.cells, analysis::OpId{static_cast<std::uint32_t>(i)}))
+        if (!GuardedPeer(plan, {static_cast<std::uint32_t>(i)}) && IsInitializedCellGuard(graph, *plan.cells, analysis::OpId{static_cast<std::uint32_t>(i)}))
           plan.operations[i].kind = EvaluationKind::kCellGuard;
       }
     }
@@ -326,6 +341,13 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationAttempt(
             plan.operations[index].kind == EvaluationKind::kNestedLiteral) continue;
         if (std::binary_search(plan.receiver_guards.begin(), plan.receiver_guards.end(), analysis::OpId{static_cast<std::uint32_t>(index)})) {
           plan.operations[index].kind = EvaluationKind::kReceiverGuard;
+          continue;
+        }
+        if (const auto peer = GuardedPeer(plan, {static_cast<std::uint32_t>(index)})) {
+          plan.operations[index] = GuardedInput(plan, {static_cast<std::uint32_t>(index)})
+              ? OpEvaluation{EvaluationKind::kRoot, {}, TemporaryReason::kCrossRegionValue}
+              : OpEvaluation{EvaluationKind::kGuardedCellRead, {}, {}};
+          ++serial;
           continue;
         }
         if (plan.cells &&
@@ -528,7 +550,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(const analysis::Va
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
     analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions,
     std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands,
-    const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads, ArraySourceInput array_source) {
+    const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads, ArraySourceInput array_source, std::span<const analysis::GuardedRead> guarded = {}) {
   // Reserve two disjoint work allowances before trying an optional projection.
   // A failed subpass need not report partial work: its entire allowance remains
   // charged. The byte allowance is reused only after the failed plan is gone.
@@ -545,7 +567,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(const analysis::Va
   const bool attempt = has_write && has_call;
   const auto allowance = attempt ? (budget.work - scan) / 2 : budget.work - scan;
   bool proposed = false;
-  auto result = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, attempt, &proposed);
+  auto result = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, attempt, &proposed, guarded);
   if (auto* plan = std::get_if<EvaluationPlan>(&result)) {
     // Twice actual work also admits this same successful attempt at plan.work.
     plan->work = scan + plan->work * (attempt ? 2 : 1);
@@ -553,7 +575,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluation(const analysis::Va
   }
   const auto error = std::get<Error>(result);
   if (!proposed || error == Error::kResourceLimit || error == Error::kWorkLimit) return result;
-  auto fallback = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, false);
+  auto fallback = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, false, nullptr, guarded);
   if (auto* plan = std::get_if<EvaluationPlan>(&fallback)) plan->work += scan + allowance;
   return fallback;
 }
@@ -567,7 +589,7 @@ std::variant<EvaluationPlan, EvaluationError> BuildEvaluationPlan(
 std::variant<EvaluationPlan, EvaluationError> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, ArraySourceInput arrays) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {}, nullptr, {}, arrays);
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, ArraySourceInput arrays, std::span<const analysis::GuardedRead> guarded) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {}, nullptr, {}, arrays, guarded);
 }
 }  // namespace abcd::source

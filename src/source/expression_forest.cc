@@ -329,6 +329,14 @@ class ForestBuilder {
         if (const auto* array = ArrayLiteralFor(evaluation_, {static_cast<std::uint32_t>(i)})) {
           forest_.operations[i] = Array(*array, origin); continue;
         }
+        if (GuardedInput(evaluation_, {static_cast<std::uint32_t>(i)})) {
+          const auto peer = *GuardedPeer(evaluation_, {static_cast<std::uint32_t>(i)});
+          const auto expression = Combine(Add(SymbolExpr{CellSymbol({static_cast<std::uint32_t>(i)})}, origin),
+              {graph_.ops[peer.value].origin.value});
+          forest_.operations[i] = forest_.operations[peer.value] = expression;
+          continue;
+        }
+        if (evaluation_.operations[i].kind == EvaluationKind::kGuardedCellRead) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kModuleGuard ||
             evaluation_.operations[i].kind == EvaluationKind::kCellGuard) continue;
         if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) {

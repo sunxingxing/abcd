@@ -481,7 +481,17 @@ class FlowBuilder {
       // the same external unit before borrowing this composition's facts.
       if(native&&result.events[native->before.value].kind==FlowEventKind::kRead) {
         const auto binding=result.events[native->before.value].read;
-        if(binding&&projection_.cells->SameModuleUnit(region.reference,*binding))current=native;
+        if(binding) {
+          switch (region.kind) {
+            case OriginalReadKind::kModule:
+              if (projection_.cells->SameModuleUnit(region.reference,*binding)) current=native;
+              break;
+            case OriginalReadKind::kCapture:
+              if (const auto* reference = FindFlowOriginalCellReference(result, region.entry);
+                  reference && reference->binding == *binding && reference->site == FlowReferenceSite{region.expression}) current=native;
+              break;
+          }
+        }
       }
     }
     // Publish each native action once. Phase and exception consumers use this

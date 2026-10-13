@@ -1,12 +1,13 @@
 // Corpus shape of the source TDZ premise (language-source.md §1), from the
-// exploration cohort (DevEco build; the standalone es2abc guards these reads).
-// Hoisted top-level functions read a later module-scope binding without a hole
-// check, while a callback capturing the environment escapes to a host call
-// before the store. The previous contract refuses all five pages with the
-// initialization cause chain; --language-source completes four after Round A's
-// forwarding fix. InputDeviceRoutingSwitching contains an async captured access
-// with a user try (method 16458), which remains strict until Round B's typed
-// source-TDZ exception projection (language-source.md).
+// exploration cohort (DevEco build). Hoisted top-level functions read later
+// module-scope bindings, and a callback capturing the environment escapes to a
+// host call before the store. Round 38's guarded capture-read proof completes
+// the pages whose early reads carry a named hole check under the previous
+// contract too (FindAndListenAudioInputDevice, InputDeviceRoutingSwitching,
+// ListenDeviceByAudioSession). OutputDeviceChangePause still needs the premise
+// and keeps the initialization cause chain; FindAndListenAudioOutputDevice
+// passes initialization but stops at a later call-plan cause. With
+// --language-source all five pages complete.
 //
 // usage: node language_source_corpus.mjs ABC_STRUCTURE INPUT.abc
 import assert from 'node:assert/strict';
@@ -38,12 +39,13 @@ try {
     assert.deepEqual(causes.map(cause => cause.domain.split('::').at(-1) + '=' + cause.value),
         ['CaptureCellError=3', 'CaptureError=1', 'ScopeError=3'], page);
   };
-  for (const [page, record] of statuses(['--language-numeric', '--language-constructors']))
-    refused(page, record);
-  for (const [page, record] of statuses(['--language-source'])) {
-    if (page === 'InputDeviceRoutingSwitching') refused(page, record);
-    else assert.equal(record.source_status, 0, page + ' ' + JSON.stringify(record));
-  }
+  const strict = statuses(['--language-numeric', '--language-constructors']);
+  for (const page of ['FindAndListenAudioInputDevice', 'InputDeviceRoutingSwitching', 'ListenDeviceByAudioSession'])
+    assert.equal(strict.get(page).source_status, 0, page + ' ' + JSON.stringify(strict.get(page)));
+  refused('OutputDeviceChangePause', strict.get('OutputDeviceChangePause'));
+  assert.equal(strict.get('FindAndListenAudioOutputDevice').source_status, 3);
+  for (const [page, record] of statuses(['--language-source']))
+    assert.equal(record.source_status, 0, page + ' ' + JSON.stringify(record));
 } finally {
   rmSync(directory, {recursive: true, force: true});
 }

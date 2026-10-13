@@ -248,6 +248,17 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
+    if (receipt.failure->capture) {
+      const auto& use = *receipt.failure->capture;
+      auto& capture = failure["capture"];
+      capture = Json{{"ordinal", use.ordinal}, {"depth", use.cell.depth.value},
+          {"slot", use.cell.slot.value}, {"requested", static_cast<unsigned>(use.requested)}};
+      if (use.source) {
+        capture["method"] = use.source->method.value;
+        if (use.source->pc) capture["pc"] = use.source->pc->value;
+        if (use.source->working_pc) capture["working_pc"] = use.source->working_pc->value;
+      }
+    }
     if (receipt.failure->call_reference) {
       const auto& evidence = *receipt.failure->call_reference;
       auto& reference = failure["call_reference"];
@@ -416,6 +427,32 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     if (!location("method", typed.method) || !location("working_pc", typed.working_pc) ||
         !location("creation_method", typed.creation_method) || !location("creation_pc", typed.creation_pc))
       return RouteReceiptError::kFailure;
+    if (const auto item = failure->find("capture"); item != failure->end()) {
+      if (!item->is_object()) return RouteReceiptError::kFailure;
+      const auto number = [&](const char* name) -> std::optional<std::uint32_t> {
+        const auto value = item->find(name);
+        return value == item->end() ? std::nullopt : ParseUnsigned<std::uint32_t>(*value);
+      };
+      const auto ordinal = number("ordinal"), depth = number("depth"), slot = number("slot"), domain = number("requested");
+      if (!ordinal || !depth || !slot || !domain || *slot > std::numeric_limits<std::uint16_t>::max())
+        return RouteReceiptError::kFailure;
+      const auto requested = static_cast<analysis::CaptureDomain>(*domain);
+      switch (requested) {
+        case analysis::CaptureDomain::kLanguage: case analysis::CaptureDomain::kDefined:
+        case analysis::CaptureDomain::kGuarded: case analysis::CaptureDomain::kSourceAccess: break;
+        default: return RouteReceiptError::kFailure;
+      }
+      if (*domain != static_cast<unsigned>(requested)) return RouteReceiptError::kFailure;
+      CaptureOccurrence use{*ordinal, {{*depth}, {static_cast<std::uint16_t>(*slot)}}, requested, {}};
+      if (item->contains("method")) {
+        const auto method = number("method"); if (!method) return RouteReceiptError::kFailure;
+        CaptureOrigin source{{*method}, {}, {}};
+        if (item->contains("pc")) { const auto pc = number("pc"); if (!pc) return RouteReceiptError::kFailure; source.pc = abc::CodeOffset{*pc}; }
+        if (item->contains("working_pc")) { const auto pc = number("working_pc"); if (!pc) return RouteReceiptError::kFailure; source.working_pc = abc::CodeOffset{*pc}; }
+        use.source = source;
+      } else if (item->contains("pc") || item->contains("working_pc")) return RouteReceiptError::kFailure;
+      typed.capture = use;
+    }
     if (const auto item = failure->find("call_reference"); item != failure->end()) {
       if (!item->is_object() || !item->contains("kind") || !item->contains("call"))
         return RouteReceiptError::kFailure;
@@ -431,7 +468,7 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
         if (!number) return false;
         using T = typename std::decay_t<decltype(target)>::value_type;
         if constexpr (std::is_same_v<T, EvaluationKind>) {
-          if (*number > static_cast<unsigned>(EvaluationKind::kArrayCursor)) return false;
+          if (*number > static_cast<unsigned>(EvaluationKind::kGuardedCellRead)) return false;
           target = static_cast<T>(*number);
         } else if constexpr (std::is_same_v<T, TemporaryReason>) {
           if (*number > static_cast<unsigned>(TemporaryReason::kDecisionPredicate)) return false;

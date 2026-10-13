@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/value_environment.h"
 #include "abcd/analysis/creation_binding.h"
+#include "abcd/source/capture_occurrence.h"
 
 namespace abcd::source {
 struct CellId { std::uint32_t value; auto operator<=>(const CellId&) const = default; };
@@ -31,6 +32,7 @@ struct CellDemand {
   // Joined descendant requirement for that slot, including forwarded and entry
   // obligations. This is not an instruction access proof; topology ignores it.
   analysis::CaptureDomain domain = analysis::CaptureDomain::kLanguage;
+  std::optional<CaptureOrigin> source = {};
 };
 struct CellPlan {
   analysis::IrRevision revision;

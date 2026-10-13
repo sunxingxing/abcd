@@ -2,11 +2,13 @@
 #define ABCD_SOURCE_CAPTURE_PLAN_H_
 
 #include "scope_facts.h"
+#include "abcd/source/capture_occurrence.h"
 
 namespace abcd::source {
 struct CaptureUse {
   analysis::CapturedSlot cell;
   analysis::CaptureDomain domain;
+  std::optional<CaptureOrigin> source = {};
 };
 struct CaptureBinding {
   CaptureCell cell;
@@ -34,8 +36,11 @@ enum class CaptureError : std::uint8_t {
 struct CaptureFailure {
   CaptureError kind;
   std::variant<std::monostate, ScopeError> cause;
+  std::optional<CaptureOccurrence> occurrence = {};
   CaptureFailure(CaptureError value) : kind(value) {}  // NOLINT: implicit kind.
   CaptureFailure(CaptureError value, ScopeError scope) : kind(value), cause(scope) {}
+  CaptureFailure(CaptureError value, ScopeError scope, CaptureOccurrence use)
+      : kind(value), cause(scope), occurrence(use) {}
   bool operator==(CaptureError value) const { return kind == value; }
 };
 // One genuine function/class capture point in the SAME owner as ScopeFacts.
