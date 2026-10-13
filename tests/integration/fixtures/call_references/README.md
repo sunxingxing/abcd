@@ -28,6 +28,7 @@ DevEco Studio's bundled es2abc (`--bc-version` 24.0.0.0), command
 | `phassign` | `r = 'a' + S1 + 'b' + S2` (no call root) | complete, Node-equal trace |
 | `phthrowarm` | The selected arm's getter throws inside a concatenation | complete, Node-equal trace |
 | `phnested` | A selection nested in another selection's arm inside a concatenation | refused, same chain as `optarg` |
+| `phorphan` | One call fails at a pure `typeof` wrapper over a selection Binary while a sibling call composes | refused, same chain as `optarg` (an orphaned new edge would instead give `EvaluationError::kOrder`) |
 | `phcomma` | `obj.f('a' + (G(0), H ? x.g.h : 1) + 'b')`: a comma side effect is a root event inside the span | refused, same chain as `optarg` |
 | `optarg` | `o.f(G(x.g?.h))`: the member callee is read before an argument whose optional chain splits the call's region | refused (its nested `??` selection has no single consumer) with `FunctionTreeError::kExpression → ExpressionError::kUnsupportedOperation → CallPlanError::kReference` |
 
@@ -64,4 +65,5 @@ b06ec12a00a23686fca81bda3de1bbf8eb39f5441e88aadc8e24516f7553cddd  phassign.abc
 ef51949b0c8e20a27d3428d8a36ae31a9a2d6936d043cc004b071ad8d81abf0c  phthrowarm.abc
 72305260de912a7634d863363b0a966417a39b7164ab9d7edc3371c3e0b606a3  phnested.abc
 da94432a52211d17c8177aa2db0eeafe19b02bad608420363a505e4ad729104c  phcomma.abc
+15a2fabc92e4114520fa3224a053c1442c8f398e742943d4371ed204c199952b  phorphan.abc
 ```

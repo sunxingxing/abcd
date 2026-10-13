@@ -85,6 +85,19 @@ class Composition {
       if (!owner || !PhaseCorridors::Event(graph.ops[i], plan.operations[i])) continue;
       owner_[i] = owner; ++owned_count_[owner->value];
     }
+    budget.Array(latest_, graph.ops.size());
+    for (const auto& work : graph.blocks) {
+      std::optional<std::uint32_t> latest;
+      for (std::uint32_t i = 0; i < work.op_count; ++i) {
+        budget.Step(); const auto& item = graph.ops[work.first_op.value + i];
+        if (item.life == ValueLife::kLive && PhaseCorridors::Event(item, plan.operations[work.first_op.value + i])) latest = i;
+        latest_[work.first_op.value + i] = latest;
+      }
+    }
+    budget.Array(entry_state_, graph.blocks.size()); budget.Array(entry_stop_, graph.blocks.size());
+    budget.Admit(graph.blocks.size(), sizeof(WorkBlockId)); chain_.reserve(graph.blocks.size());
+    budget.Admit(chain_.capacity() - graph.blocks.size(), sizeof(WorkBlockId));
+    budget.Array(reached_, graph.ops.size());
     budget.Array(overlay_, graph.ops.size()); budget.Array(added_, graph.ops.size());
     budget.Array(valid_, graph.ops.size()); budget.Array(events_, graph.ops.size());
     budget.Array(selection_, graph.ops.size()); budget.Array(fresh_, graph.ops.size());
@@ -109,11 +122,8 @@ class Composition {
       Require(mode == Mode::kBuild);
       for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
         budget_.Step(); const UseId use{op.first_use.value + ordinal};
-        const auto* value = std::get_if<ValueId>(&graph_.uses[use.value].operand);
-        const auto* result = value ? std::get_if<OpResult>(&graph_.values[value->value].origin) : nullptr;
-        if (result && added_[result->op.value] && overlay_[result->op.value] == use) {
-          overlay_[result->op.value].reset(); added_[result->op.value] = 0;
-        }
+        const auto link = Edge(consumer, use, false);  // Canonical, alias-resolved operand.
+        if (link.producer && added_[link.producer->value]) Undo(*link.producer);
       }
       return false;
     };
@@ -191,9 +201,16 @@ class Composition {
     budget_.Admit(roots.capacity() - graph_.ops.size(), sizeof(OpId));
     for (std::size_t i = graph_.ops.size(); i-- > 0;) {
       budget_.Step(); const OpId id{static_cast<std::uint32_t>(i)};
-      if (!valid_[i] || !fresh_[i] || Placement(id).kind == EvaluationKind::kInline) continue;
-      if (selection_[i] && StatementRoot(id)) { roots.push_back(id); continue; }
+      // Every final root decides, valid or not: a failed root may still hold
+      // new edges below existing inline edges of its tree.
+      if (Placement(id).kind == EvaluationKind::kInline) continue;
+      if (valid_[i] && fresh_[i] && selection_[i] && StatementRoot(id)) { roots.push_back(id); continue; }
       Withdraw(id);
+    }
+    // Closure: every surviving new edge is reachable from a registered root.
+    for (const auto root : roots) Reach(root);
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step(); if (added_[i] && !reached_[i]) Undo(OpId{static_cast<std::uint32_t>(i)});
     }
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step(); if (added_[i]) edges.push_back({OpId{static_cast<std::uint32_t>(i)}, *overlay_[i]});
@@ -240,8 +257,22 @@ class Composition {
         const auto link = Edge(node, use, false);
         if (!link.producer) continue;
         const auto producer = *link.producer;
-        if (added_[producer.value]) { overlay_[producer.value].reset(); added_[producer.value] = 0; continue; }
+        if (added_[producer.value]) { Undo(producer); continue; }
         Require(stack_.size() < stack_.capacity()); stack_.push_back({producer});
+      }
+    }
+  }
+  void Undo(OpId producer) { overlay_[producer.value].reset(); added_[producer.value] = 0; }
+  void Reach(OpId root) {
+    stack_.clear(); stack_.push_back({root});
+    while (!stack_.empty()) {
+      budget_.Step(); const auto node = stack_.back().op; stack_.pop_back();
+      reached_[node.value] = 1;
+      const auto& op = graph_.ops[node.value];
+      for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
+        budget_.Step(); const auto link = Edge(node, UseId{op.first_use.value + ordinal}, false);
+        if (!link.producer) continue;
+        Require(stack_.size() < stack_.capacity()); stack_.push_back({*link.producer});
       }
     }
   }
@@ -311,29 +342,50 @@ class Composition {
     if (build && Eligible(producer, consumer, use)) return {std::nullopt, producer, true};
     return {};
   }
-  Stop Next(Cursor at) const {
-    for (std::size_t steps = 0; steps <= graph_.blocks.size(); ++steps) {
-      budget_.Step();
+  // Nearest stop at or before a cursor. Event status is static (composition
+  // only turns roots into inline members), so per-block event prefixes and
+  // memoized block-entry stops make every query O(1) amortized.
+  Stop Next(Cursor at) {
+    budget_.Step();
+    if (at.end) {
       const auto& work = graph_.blocks[at.block.value];
-      for (auto i = at.end; i-- > 0;) {
-        budget_.Step(); const OpId id{work.first_op.value + i};
-        if (graph_.ops[id.value].life == ValueLife::kLive && PhaseCorridors::Event(graph_.ops[id.value], Placement(id)))
-          return {Stop::Kind::kEvent, id, 0, {at.block, i}};
-      }
-      if (graph_.phases[at.block.value].phase == ExceptionPhase::kCatch) return {};
-      if (join_of_[at.block.value]) {
-        if (shared_join_[at.block.value]) return {};
-        return {Stop::Kind::kJoin, {}, *join_of_[at.block.value], {at.block, 0}};
+      if (const auto index = latest_[work.first_op.value + at.end - 1])
+        return {Stop::Kind::kEvent, OpId{work.first_op.value + *index}, 0, {at.block, *index}};
+    }
+    return Entry(at.block);
+  }
+  Stop Entry(WorkBlockId start) {
+    // Resolve the chain of pass-through blocks once; all share one stop.
+    chain_.clear();
+    auto block = start;
+    Stop stop;
+    for (;;) {
+      budget_.Step();
+      if (entry_state_[block.value] == 2) { stop = entry_stop_[block.value]; break; }
+      if (entry_state_[block.value] == 1) { stop = {}; break; }  // A pass-through cycle blocks.
+      entry_state_[block.value] = 1; chain_.push_back(block);
+      if (graph_.phases[block.value].phase == ExceptionPhase::kCatch) { stop = {}; break; }
+      if (join_of_[block.value]) {
+        stop = shared_join_[block.value] ? Stop{} : Stop{Stop::Kind::kJoin, {}, *join_of_[block.value], {block, 0}};
+        break;
       }
       // An ordinary step: one normal entry, copy-free, whose source always
       // continues here. Exceptional edges are covered by the catch checks.
-      if (incoming_[at.block.value] != 1 || !predecessor_[at.block.value]) return {};
-      const auto edge = *predecessor_[at.block.value];
+      if (incoming_[block.value] != 1 || !predecessor_[block.value]) { stop = {}; break; }
+      const auto edge = *predecessor_[block.value];
       const auto source = graph_.edges[edge.value].source;
-      if (copied_[edge.value] || outgoing_[source.value] != 1) return {};
-      at = {source, graph_.blocks[source.value].op_count};
+      if (copied_[edge.value] || outgoing_[source.value] != 1) { stop = {}; break; }
+      const auto& work = graph_.blocks[source.value];
+      if (work.op_count) {
+        if (const auto index = latest_[work.first_op.value + work.op_count - 1]) {
+          stop = {Stop::Kind::kEvent, OpId{work.first_op.value + *index}, 0, {source, *index}};
+          break;
+        }
+      }
+      block = source;
     }
-    return {};
+    for (const auto member : chain_) { budget_.Step(); entry_state_[member.value] = 2; entry_stop_[member.value] = stop; }
+    return stop;
   }
   // Every throw point between a committed selection's header and its join:
   // nullopt if they disagree or carry catch copies; otherwise one
@@ -387,7 +439,11 @@ class Composition {
   std::vector<std::optional<std::size_t>> region_of_, join_of_;
   std::vector<std::uint32_t> incoming_, outgoing_, visited_;
   std::vector<std::optional<EdgeId>> predecessor_;
-  std::vector<std::uint8_t> copied_, excluded_, shared_join_, added_, valid_, events_, selection_, fresh_, region_state_;
+  std::vector<std::uint8_t> copied_, excluded_, shared_join_, added_, valid_, events_, selection_, fresh_, region_state_,
+      reached_, entry_state_;
+  std::vector<std::optional<std::uint32_t>> latest_;
+  std::vector<Stop> entry_stop_;
+  std::vector<WorkBlockId> chain_;
   std::vector<std::optional<OpId>> owner_, last_, region_throw_;
   std::vector<std::size_t> owned_count_;
   std::vector<std::optional<UseId>> overlay_;

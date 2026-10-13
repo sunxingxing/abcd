@@ -64,7 +64,9 @@ try {
   // Still refused with the same typed chain: a selection nested inside another
   // selection's arm of a concatenation, and a comma side effect inside the
   // argument (a root event outside the call tree breaks the order proof).
-  for (const name of ['optarg', 'phnested', 'phcomma']) {
+  // phorphan: one call fails at a pure typeof wrapper while a sibling composes;
+  // the failed tree's new edge must be withdrawn (else EvaluationError=6).
+  for (const name of ['optarg', 'phnested', 'phcomma', 'phorphan']) {
     const {record} = exportRecord(name);
     assert.equal(record.source_status, 3, name);
     const causes = record.source_failure?.causes ?? record.source_causes;

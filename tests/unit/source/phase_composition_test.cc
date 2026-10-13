@@ -14,7 +14,8 @@ using namespace abcd::source;
 enum class Variant {
   kBase, kForeignBefore, kForeignAfterJoin, kCallOutsideTry, kCatchCopies,
   kExtraUse,  // The callee value is observed again after the call.
-  kChain      // A chain of Binaries over the selection, each split by a foreign getter.
+  kChain,     // A chain of Binaries over the selection, each split by a foreign getter.
+  kPureChain  // A run of pure (non-event) typeof wrappers over the selection's Binary.
 };
 // Returns the planner's work, for linear-scaling checks.
 std::uint64_t Run(abc::ProfileId profile, Variant variant, std::uint32_t chain = 0) {
@@ -44,11 +45,13 @@ std::uint64_t Run(abc::ProfileId profile, Variant variant, std::uint32_t chain =
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kArgument});
   }
   bytes.insert(bytes.end(), {op(abc::Opcode::kADD2_IMM8_V8), 0, kLeft});
-  for (std::uint32_t i = 0; i < chain; ++i) {
+  for (std::uint32_t i = 0; variant == Variant::kChain && i < chain; ++i) {
     bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), kArgument});
     foreign();
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kArgument, op(abc::Opcode::kADD2_IMM8_V8), 0, kLeft});
   }
+  if (variant == Variant::kPureChain)
+    for (std::uint32_t i = 0; i < chain; ++i) bytes.insert(bytes.end(), {op(abc::Opcode::kTYPEOF_IMM8), 0});
   bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), kArgument});
   const auto before_call = static_cast<std::uint32_t>(bytes.size());
   bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kCallee,
@@ -156,10 +159,13 @@ int main() {
                                Variant::kCallOutsideTry, Variant::kCatchCopies, Variant::kExtraUse})
       Run(profile, variant);
   // A failing chain must not be re-expanded per candidate: linear planner work.
-  std::uint64_t previous = 0;
-  for (const auto count : {200U, 201U, 400U, 800U}) {
-    const auto work = Run(abc::ProfileId::kDynamic1206, Variant::kChain, count);
-    if (count == 400 || count == 800) test::Check(work < 3 * previous);
-    previous = work;
+  // A run of pure wrappers is not rescanned per consumer either.
+  for (const auto variant : {Variant::kChain, Variant::kPureChain}) {
+    std::uint64_t previous = 0;
+    for (const auto count : {200U, 201U, 400U, 800U}) {
+      const auto work = Run(abc::ProfileId::kDynamic1206, variant, count);
+      if (count == 400 || count == 800) test::Check(work < 3 * previous);
+      previous = work;
+    }
   }
 }
