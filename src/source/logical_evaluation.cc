@@ -2,6 +2,7 @@
 #include "evaluation_failure.h"
 #include "evaluation_aliases.h"
 #include "logical_regions.h"
+#include "selection_consumer.h"
 #include "phase_evaluation.h"
 
 namespace abcd::source {
@@ -45,29 +46,6 @@ std::size_t Events(const ValueOp& op, const OpEvaluation& placement, OpId id, Op
       shape->control == ControlEvaluation::kNormal && shape->Count() == 0) return 0;
   return OrderedEvaluation(op) || IsEnvironmentState(op.operation);
 }
-std::optional<UseId> Consumer(const ValueProgram& graph, const SelectionRegion& region, TreeCheckBudget& budget,
-    const SelectionRegion* logical_left = nullptr) {
-  std::optional<UseId> found;
-  bool keep = false;
-  for (auto use = graph.values[region.merged.value].first_use; use; use = graph.uses[use->value].next) {
-    budget.Step(); const auto& occurrence = graph.uses[use->value];
-    if (occurrence.life != ValueLife::kLive) continue;
-    if (logical_left && occurrence.owner == decltype(occurrence.owner){logical_left->merged}) {
-      const auto* edge = occurrence.incoming ? std::get_if<EdgeId>(&*occurrence.incoming) : nullptr;
-      if (keep || !edge || logical_left->keep_input != *edge || occurrence.role != OperandRole::kPhiInput) return {};
-      keep = true; continue;
-    }
-    const auto* owner = std::get_if<OpId>(&occurrence.owner);
-    if (found || !owner || graph.ops[owner->value].block != region.join) return {};
-    if (logical_left && *use != graph.ops[logical_left->boolean.value].first_use) return {};
-    const auto shape = DescribeEvaluation(graph.ops[owner->value].operation);
-    if (!shape || shape->NeedsSnapshot(occurrence.role) || occurrence.role == OperandRole::kReceiver ||
-        PredicateSnapshot(graph, graph.ops[owner->value], occurrence.operand)) return {};
-    found = use;
-  }
-  if (logical_left && !keep) return {};
-  return found;
-}
 // A selected initializer may own its previously pinned local RHS. Restore that
 // exact snapshot for the original local proof; the domain separately proves its
 // movement and unique consumption into the property definition.
@@ -102,7 +80,7 @@ struct ObjectRange {
 };
 struct SelectionIndex {
   std::vector<std::optional<std::size_t>> headers, objects;
-  std::vector<std::optional<UseId>> consumers;
+  std::vector<SelectionConsumer> consumers;
   std::vector<std::optional<OpId>> fields, expressions;
   std::vector<std::optional<std::size_t>> field_regions;
   std::vector<std::optional<std::size_t>> continuations;
@@ -216,7 +194,7 @@ SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& 
     budget.Step(); if (region.parent || !region.complete_phi) continue;
     const auto next = index.headers[region.join.value];
     const auto* logical_left = next && !regions[*next].consequent && regions[*next].left == region.merged ? &regions[*next] : nullptr;
-    index.consumers[region.branch.value] = Consumer(graph, region, budget, logical_left);
+    index.consumers[region.branch.value] = FindSelectionConsumer(graph, region, budget, logical_left);
   }
   if (plan.literals) for (std::size_t i = 0; i < plan.literals->objects.size(); ++i) {
     budget.Step(); const auto& object = plan.literals->objects[i];
@@ -237,7 +215,7 @@ SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& 
       expression_roots[i] = expression_roots[owner->value];
   }
   for (const auto& region : regions) {
-    budget.Step(); const auto use = index.consumers[region.branch.value];
+    budget.Step(); const auto use = index.consumers[region.branch.value].InlineUse();
     const auto next = index.headers[region.join.value];
     if (!use || !next) continue;
     const auto owner = std::get<OpId>(graph.uses[use->value].owner);
@@ -275,7 +253,7 @@ SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& 
   // later selection. Multiple selections within one RHS need another domain.
   for (std::size_t i = 0; i < regions.size(); ++i) {
     budget.Step(); const auto& region = regions[i];
-    const auto use = index.consumers[region.branch.value];
+    const auto use = index.consumers[region.branch.value].InlineUse();
     if (!use) continue;
     const auto owner = std::get<OpId>(graph.uses[use->value].owner);
     const auto field = index.expressions[owner.value];
@@ -345,7 +323,7 @@ struct SelectedObject { OpId allocation; std::span<const OpId> allocations, defi
 std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const EvaluationPlan& plan,
     std::span<const SelectionRegion> regions, const SelectionIndex& index,
     const std::vector<SelectionBlock>& used, std::vector<const SelectionRegion*>& route, TreeCheckBudget& budget) {
-  const auto first_use = index.consumers[route.front()->branch.value];
+  const auto first_use = index.consumers[route.front()->branch.value].InlineUse();
   if (!first_use || !plan.literals) return {};
   if (!index.selection_fields[route.front()->branch.value]) return {};
   const auto first = *index.selection_fields[route.front()->branch.value];
@@ -478,7 +456,7 @@ class Domain {
       DomainIndex& index, const std::vector<SelectionBlock>& used, TreeCheckBudget& budget, std::optional<SelectedObject> object = {})
       : graph_(graph), plan_(plan), selections_(selections), route_(route), intervals_(intervals), index_(index), budget_(budget), object_(object),
         last_owner_(LogicalOwner(graph, plan, object ? std::optional{object->consumer} :
-            selections.consumers[route.back()->branch.value], route.back()->branch)) {
+            selections.consumers[route.back()->branch.value].InlineUse(), route.back()->branch)) {
     witness_ = EvaluationAt(graph_, plan_, last_owner_, EvaluationObligation::kLogicalJoin);
     Require(graph.ops[last_owner_.value].block == route.back()->join);
     // Object routes keep their literal consumer as the final consumer.
@@ -514,7 +492,7 @@ class Domain {
     }
     for (const auto* region : route) {
       index_.values[region->merged.value] = region->branch;
-      index_.branches[region->branch.value] = selections.consumers[region->branch.value];
+      index_.branches[region->branch.value] = selections.consumers[region->branch.value].InlineUse();
       const auto owner = std::get<OpId>(graph.uses[index_.branches[region->branch.value]->value].owner);
       index_.owners[owner.value] = 1;
     }
@@ -768,7 +746,7 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
   budget.Admit(route.capacity() - regions.size(), sizeof(const SelectionRegion*));
   for (const auto r : SelectionOrder(graph, regions, budget)) {
     budget.Step(); const auto& region = regions[r];
-    if (!index.consumers[region.branch.value]) continue;
+    if (!index.consumers[region.branch.value].InlineUse()) continue;
     if (!Available(graph, region, used)) continue;
     selected.clear(); route.clear(); route.push_back(&region);
     auto object = ObjectRoute(graph, plan, regions, index, used, route, budget);
@@ -779,7 +757,8 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
         attempted_chains[region.branch.value] = 1;
         while (const auto next = index.continuations[route.back()->branch.value]) {
           budget.Step(); const auto& following = regions[*next];
-          if (attempted_chains[following.branch.value] || !Available(graph, following, used)) break;
+          if (!index.consumers[following.branch.value].InlineUse() ||
+              attempted_chains[following.branch.value] || !Available(graph, following, used)) break;
           attempted_chains[following.branch.value] = 1; route.push_back(&following);
         }
       }
@@ -801,10 +780,10 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
     if (plan.logical_values.empty()) budget.Array(plan.logical_values, graph.values.size());
     for (const auto* selected_region : route) {
       budget.Step(); plan.logical_values[selected_region->merged.value] = selected_region->branch;
-      plan.operations[selected_region->branch.value] = {EvaluationKind::kLogicalValue, index.consumers[selected_region->branch.value], {}};
+      plan.operations[selected_region->branch.value] = {EvaluationKind::kLogicalValue, index.consumers[selected_region->branch.value].InlineUse(), {}};
       used[selected_region->header.value].header = true;
       const auto consumer = selected_region == route.back() && object ? object->consumer :
-          *index.consumers[selected_region->branch.value];
+          *index.consumers[selected_region->branch.value].InlineUse();
       // The consumed join prefix ends at the domain's final consumer.
       used[selected_region->join.value].prefix_end = selected_region == route.back() && !object
           ? InlineAncestors(graph, plan, std::get<OpId>(graph.uses[consumer.value].owner), budget)
@@ -853,9 +832,20 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
   for (const auto r : SelectionOrder(graph, regions, budget)) {
     budget.Step(); const auto& region = regions[r];
     witness = EvaluationAt(graph, plan, region.branch, EvaluationObligation::kLogicalInput);
-    if (!index.consumers[region.branch.value]) continue;
+    if (!index.consumers[region.branch.value].InlineUse()) {
+      // Child/partial selections have their own phi or parent proof below;
+      // they are not entries in this top-level continuation index.
+      if (region.parent || !region.complete_phi || region.forwarded) continue;
+      const auto& exit = index.consumers[region.branch.value];
+      witness.selection_exit = exit.reason; witness.selection_edge = exit.edge;
+      witness.use = exit.witness; witness.expected_consumer = exit.use;
+      if (exit.witness) if (const auto* owner = std::get_if<OpId>(&graph.uses[exit.witness->value].owner))
+        witness.actual_owner = EvaluationAt(graph, plan, *owner, EvaluationObligation::kLogicalInput).location;
+      Require(!plan.logical_values[region.merged.value]);
+      continue;
+    }
     if (!plan.logical_values[region.merged.value] || values[region.merged.value]) continue;
-    Require(Available(graph, region, used) && index.consumers[region.branch.value]);
+    Require(Available(graph, region, used) && index.consumers[region.branch.value].InlineUse());
     route.clear(); route.push_back(&region);
     auto object = ObjectRoute(graph, plan, regions, index, used, route, budget);
     if (object && (plan.logical_objects.empty() || !plan.logical_objects[object->allocation.value])) object.reset();
@@ -863,7 +853,8 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
       route.resize(1);
       while (const auto next = index.continuations[route.back()->branch.value]) {
         budget.Step(); const auto& following = regions[*next];
-        if (plan.logical_values[following.merged.value] != following.branch || values[following.merged.value]) break;
+        if (!index.consumers[following.branch.value].InlineUse() ||
+            plan.logical_values[following.merged.value] != following.branch || values[following.merged.value]) break;
         Require(Available(graph, following, used)); route.push_back(&following);
       }
     }
@@ -884,14 +875,14 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
     for (const auto* selected_region : route) {
       budget.Step(); const auto& placement = plan.operations[selected_region->branch.value];
       Require(plan.logical_values[selected_region->merged.value] == selected_region->branch &&
-          placement.kind == EvaluationKind::kLogicalValue && placement.consumer == index.consumers[selected_region->branch.value] && !placement.temporary);
+          placement.kind == EvaluationKind::kLogicalValue && placement.consumer == index.consumers[selected_region->branch.value].InlineUse() && !placement.temporary);
       values[selected_region->merged.value] = 1;
     }
     Domain(graph, plan, index, route, intervals, domain_index, used, budget, object).Verify(consumed);
     for (const auto* selected_region : route) {
       budget.Step(); used[selected_region->header.value].header = true;
       const auto consumer = selected_region == route.back() && object ? object->consumer :
-          *index.consumers[selected_region->branch.value];
+          *index.consumers[selected_region->branch.value].InlineUse();
       used[selected_region->join.value].prefix_end = std::get<OpId>(graph.uses[consumer.value].owner);
     }
   }

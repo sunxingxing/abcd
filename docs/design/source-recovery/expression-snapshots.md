@@ -83,3 +83,10 @@ call arguments and computed-write refusal cases. It observes Proxy/getter/key
 conversion events, original receiver, shared-value identity, mutation and
 injected throws. These are generated-source behavior checks on Node, not pinned
 Ark VM execution or whole-record semantic/style acceptance.
+
+## Selection route exits (Round 46)
+
+See [selection-consumers.md](selection-consumers.md) for typed exit evidence,
+materialization boundaries, independent route verification and the deferred
+joint predicate/keep-edge projection. A materialized selected value remains one
+stored result; later reads do not replay either arm or merge independent getters.

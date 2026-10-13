@@ -12,6 +12,13 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 46：选择路线终点资格（cc 审查通过）
+
+- 基线 `a83a8319`。5 个 `EvaluationObligation::kLogicalInput`“缺少 consumer”的根因是：融合路线延伸到出口证据不完整的下一个选择，路线失败被升级为整个 evaluation 的 ownership 拒绝。`selection_consumer` 给出类型化 consumer 结果与物化原因（UseId/keep-edge 证据）。路线只延伸到出口证据完整的选择，否则终止，保留原有 phi/临时值/控制表示；不捕获失败后重试；验证器独立重算路线边界。
+- step 4（predicate + keep-edge 联合 consumer 准入）已撤回：它对所有顶层选择生效，导致已完成的 o8/65146 HardKeyUtils 回退（m65316 PC1871 TreeFlow kPlacement）。延后理由见 selection-consumers.md，将来须与树 truth-event 所有权一起设计。
+- 结果：StyleUtils、isPromiseLike 完成（cc 核对 isPromiseLike 输出为 `return !!obj && isFunction_(obj.then)`）；o18 两个 TLS 页面转为 `CallReferenceError::kNotInline`（PC212）；o23 转为 TreePrint 资源限制。新增 `selection_consumer_test`、`selection_consumers.mjs`（42 次 Node 差分、8 种变异）。
+- cc 独立审查：原 flags 486 → **488/620**，`--language-source` 520 → **522/620**；0 回退，0 文本漂移（HardKeyUtils 逐字节恢复）；固定集串行 65/65；配对样本逐字节相同；定向测试 5/5。
+
 ## Round 45：decision prefix 消费初始化 guard（cc 审查通过）
 
 - 基线 `fa9dfbd9`。先贯通固定大小的 `EvaluationFailure` 义务与真实位置，保留最终

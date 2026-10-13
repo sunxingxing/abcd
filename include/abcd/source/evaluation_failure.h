@@ -14,11 +14,16 @@ enum class EvaluationObligation : std::uint8_t {
   kRootTemporary, kDuplicateVisit, kOperandOwnership, kLiveCoverage,
   kPhaseRoot, kPhaseConsumption, kProjection, kTemporaryPresence, kTemporaryReason, kLogicalJoin, kLogicalInterval, kSnapshotCandidate, kLogicalCoverage, kUse
 };
+enum class SelectionExitReason : std::uint8_t {
+  kNone, kNoUse, kMultipleUses, kPhiUse, kCrossBlock, kProtocolRole, kSnapshot, kKeepEdge
+};
 struct EvaluationEvidence {
   EvaluationObligation obligation = EvaluationObligation::kPlan;
   TreeLocation location;
   std::optional<analysis::UseId> use, expected_consumer, actual_consumer;
   std::optional<analysis::ValueId> value;
+  std::optional<SelectionExitReason> selection_exit;
+  std::optional<analysis::EdgeId> selection_edge;
   std::optional<EvaluationKind> placement;
   std::optional<TemporaryReason> temporary, expected_temporary;
   std::optional<TreeLocation> expected_owner, actual_owner;

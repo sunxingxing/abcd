@@ -88,6 +88,7 @@ int main() {
     e.use=analysis::UseId{0};e.value=analysis::ValueId{0};e.expected_consumer=analysis::UseId{1};
     e.actual_consumer=analysis::UseId{2};e.placement=EvaluationKind::kInline;e.temporary=TemporaryReason::kCrossRegionValue;
     e.expected_owner=e.location;e.actual_owner=TreeLocation{};
+    e.selection_exit=SelectionExitReason::kCrossBlock;e.selection_edge=analysis::EdgeId{0};
     RoundTrip(FamilyRouteFailure(f));
     e.location={};e.location.synthetic=TreeSyntheticLocation{ControlOriginKind::kTryExit,0};
     RoundTrip(FamilyRouteFailure(f));

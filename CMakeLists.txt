@@ -183,7 +183,7 @@ target_sources(abcd_source PRIVATE
 )
 target_sources(abcd_source PRIVATE src/source/source_route.cc)
 target_sources(abcd_source PRIVATE src/source/value_stage.cc)
-target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_verify.cc src/source/logical_regions.cc src/source/logical_evaluation.cc src/source/predicate_snapshots.cc)
+target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_verify.cc src/source/logical_regions.cc src/source/logical_evaluation.cc src/source/selection_consumer.cc src/source/predicate_snapshots.cc)
 target_sources(abcd_source PRIVATE src/source/control_skeleton_verify.cc)
 target_sources(abcd_source PRIVATE src/source/exception_plan.cc)
 target_sources(abcd_source PRIVATE src/source/phased_method.cc)
@@ -623,6 +623,9 @@ if(BUILD_TESTING)
   add_executable(module_family_print_test tests/unit/source/module_family_print_test.cc)
   target_link_libraries(module_family_print_test PRIVATE abcd_source abcd_json)
   add_test(NAME module_family_print_test COMMAND module_family_print_test)
+  add_executable(selection_consumer_test tests/unit/source/selection_consumer_test.cc)
+  target_link_libraries(selection_consumer_test PRIVATE abcd_source abcd_json)
+  add_test(NAME selection_consumer_test COMMAND selection_consumer_test)
   add_executable(logical_regions_test tests/unit/source/logical_regions_test.cc)
   target_link_libraries(logical_regions_test PRIVATE abcd_source abcd_json)
   add_test(NAME logical_regions_test COMMAND logical_regions_test)
@@ -2271,6 +2274,10 @@ if(BUILD_TESTING)
   target_include_directories(decision_guard_test PRIVATE tests/support)
   add_test(NAME decision_guard_test COMMAND decision_guard_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME selection_consumers_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_consumers.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/selection_consumers)
     add_test(NAME decision_guards_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_guards.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
