@@ -111,7 +111,7 @@ ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
 std::size_t PhasedBody::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t PhasedBody::Work() const { return storage_->work; }
 
-std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure> PhasedBody::Build(
+std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure, PhasedImportFailure> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
@@ -256,7 +256,24 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFail
     auto proof = std::get<ExceptionInputProof>(std::move(verified));
     quota.Step(proof.work_units);
     const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
-    auto imported = PhaseResult<ImportedPhases>(BuildPhasedValues(input, quota.Remaining()), Error::kImport);
+    auto built_import = BuildPhasedValues(input, quota.Remaining());
+    if (const auto* failure = std::get_if<ValueImportFailure>(&built_import)) {
+      auto original = *failure;
+      // Import PCs belong to the working body. A creation PC is never a
+      // substitute for a failed child site, including site-less quota errors.
+      if (failure->pc) {
+        for (const auto& instruction : flow.instructions) {
+          quota.Step();
+          if (instruction.pc == *failure->pc) {
+            original.pc = instruction.origin.value_or(instruction.pc);
+            break;
+          }
+        }
+      }
+      return PhasedImportFailure{PhaseError(*failure, Error::kImport), original,
+          context.Target(), failure->pc};
+    }
+    auto imported = std::get<ImportedPhases>(std::move(built_import));
     quota.Admit(imported.allocated_bytes); quota.Step(imported.work);
     bool needs_cells = false;
     for (const auto& op : imported.graph.ops) {
@@ -328,6 +345,7 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) return *error;
   if (std::holds_alternative<PhasedInputFailure>(built)) return PhasedMethodError::kValues;
   if (const auto* failure = std::get_if<PhasedModuleFailure>(&built)) return failure->kind;
+  if (const auto* failure = std::get_if<PhasedImportFailure>(&built)) return failure->kind;
   return Evaluate(std::get<PhasedBody>(std::move(built)), budget);
 }
 std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Evaluate(

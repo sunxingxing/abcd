@@ -75,7 +75,7 @@ void CheckProjection(const ValueProgram& graph, ExceptionTopology& topology,
   Compare(mapping.units, actual.units, quota);
   Compare(mapping.arcs, actual.arcs, quota);
   Compare(mapping.regions, actual.regions, quota);
-  Compare(mapping.inactive_commits, actual.inactive_commits, quota);
+  Compare(mapping.inactive_phases, actual.inactive_phases, quota);
 }
 }
 std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(
@@ -97,7 +97,7 @@ std::variant<ExceptionControl, ExceptionControlError> BuildExceptionControl(
     result.skeleton = std::move(skeleton);
     result.allocated_bytes = result.skeleton.allocated_bytes + result.units.capacity() * sizeof(ExceptionControlUnit) +
         result.arcs.capacity() * sizeof(ControlArc) + result.regions.capacity() * sizeof(TryControlRegion) +
-        result.inactive_commits.capacity() * sizeof(WorkBlockId);
+        result.inactive_phases.capacity() * sizeof(WorkBlockId);
     result.work = budget.work - quota.RemainingWork();
     return result;
   } catch (Error error) { return error;

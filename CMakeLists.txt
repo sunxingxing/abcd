@@ -961,6 +961,10 @@ if(BUILD_TESTING)
   target_link_libraries(module_reads_test PRIVATE abcd_source)
   add_test(NAME module_reads_test COMMAND module_reads_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME phased_reachability_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_reachability.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/phased_reachability)
     add_test(NAME array_spread_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/array_spread.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>

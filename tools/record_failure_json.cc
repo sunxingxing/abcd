@@ -22,6 +22,10 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
           {"class", source::RouteFailureClassName(failure.failure.failure_class)},
           {"reason", source::ValueRouteErrorName(failure.failure.reason)}};
       if (failure.failure.pc) record["source_failure"]["pc"] = failure.failure.pc->value;
+      if (failure.failure.method) record["source_failure"]["method"] = failure.failure.method->value;
+      if (failure.failure.working_pc) record["source_failure"]["working_pc"] = failure.failure.working_pc->value;
+      if (failure.failure.creation_method) record["source_failure"]["creation_method"] = failure.failure.creation_method->value;
+      if (failure.failure.creation_pc) record["source_failure"]["creation_pc"] = failure.failure.creation_pc->value;
       record["source_failure"]["causes"] = DescribeCauses(failure.failure.causes);
       record["source_failure"]["causes_truncated"] = failure.failure.causes.truncated;
     } else if constexpr (std::is_same_v<T, source::RecordProgramFailure>) {

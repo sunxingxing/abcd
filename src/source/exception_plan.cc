@@ -45,6 +45,7 @@ ExceptionRegions Layout(const abc::MethodBody& body, const ValueProgram& graph,
     }
   }
   quota.Work(std::get<PhasedImportProof>(verified).work);
+  quota.Admit(std::get<PhasedImportProof>(verified).allocated_bytes, 1);
   auto built = BuildExceptionRegions(body, input.flow, quota.Remaining());
   if (const auto* error = std::get_if<CatchRegionFailure>(&built))
     throw error->kind == CatchRegionError::kResourceLimit ? Error::kResourceLimit : Error::kLayout;
@@ -101,7 +102,9 @@ class RegionIndex {
         case ExceptionPhase::kBefore:
           Require(!site.before, Error::kInput); site.before = block; break;
         case ExceptionPhase::kCatch:
-          Require(!site.caught, Error::kBinding); site.caught = block; break;
+          Require(!site.caught, Error::kBinding);
+          if (phase.reachability == PhaseReachability::kReachable) site.caught = block;
+          break;
         case ExceptionPhase::kCommit: break;
       }
     }
@@ -121,7 +124,8 @@ class RegionIndex {
     }
     for (std::size_t b = 0; b < graph.phases.size(); ++b) {
       quota.Work();
-      if (graph.phases[b].phase == ExceptionPhase::kCatch)
+      if (graph.phases[b].phase == ExceptionPhase::kCatch &&
+          graph.phases[b].reachability == PhaseReachability::kReachable)
         Require(owners_[b] && payloads_[b], Error::kBinding);
     }
     for (const auto& exit : graph.exceptional_exits) {

@@ -248,6 +248,10 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
+    if (receipt.failure->method) failure["method"] = receipt.failure->method->value;
+    if (receipt.failure->working_pc) failure["working_pc"] = receipt.failure->working_pc->value;
+    if (receipt.failure->creation_method) failure["creation_method"] = receipt.failure->creation_method->value;
+    if (receipt.failure->creation_pc) failure["creation_pc"] = receipt.failure->creation_pc->value;
   }
   Json version = Json::array();
   for (const auto byte : receipt.identity.abc_version.bytes)
@@ -391,6 +395,18 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
         reason->get<std::string>(), kFailureReasonNames);
     if (!parsed_class || !parsed_reason) return RouteReceiptError::kFailure;
     RouteFailure typed{*parsed_class, *parsed_reason, {}};
+    const auto location = [&](const char* name, auto& target) {
+      const auto field = failure->find(name);
+      if (field == failure->end()) return true;
+      const auto value = ParseUnsigned<std::uint32_t>(*field);
+      if (!value) return false;
+      using Id = typename std::decay_t<decltype(target)>::value_type;
+      target = Id{*value};
+      return true;
+    };
+    if (!location("method", typed.method) || !location("working_pc", typed.working_pc) ||
+        !location("creation_method", typed.creation_method) || !location("creation_pc", typed.creation_pc))
+      return RouteReceiptError::kFailure;
     const auto pc = failure->find("pc");
     if (pc == failure->end()) return RouteReceiptError::kFailure;
     if (!pc->is_null()) {

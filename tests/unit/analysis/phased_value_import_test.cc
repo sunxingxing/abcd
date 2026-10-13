@@ -7,7 +7,7 @@
 namespace {
 using namespace abcd;
 using namespace abcd::analysis;
-enum class SnapshotShape { kSeparateReturns, kHandlerJoin, kLexicalPrelude };
+enum class SnapshotShape { kSeparateReturns, kHandlerJoin, kLexicalPrelude, kDeadCode, kDeadHandler, kDeadLoop };
 void Snapshot(std::uint32_t parameters, abc::ProfileId profile,
               SnapshotShape shape = SnapshotShape::kSeparateReturns) {
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(
@@ -30,9 +30,36 @@ void Snapshot(std::uint32_t parameters, abc::ProfileId profile,
         static_cast<std::uint8_t>(abc::Opcode::kRETURN),
         static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
     snapshot_pc = {2}; handler_pc = {5}; snapshot_index = 1;
+  } else if (shape == SnapshotShape::kDeadHandler) {
+    body = test::Body({static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS),
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN),
+        static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS),
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+    handler_pc = {3};
+  } else if (shape == SnapshotShape::kDeadLoop) {
+    body = test::Body({static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS),
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN),
+        static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), 0,
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+    handler_pc = {4};
+  } else if (shape == SnapshotShape::kDeadCode) {
+    // Dead reads/writes and a dead predecessor of the live handler must not
+    // acquire SSA definitions, operands, edges or catch payloads.
+    std::vector<std::uint8_t> bytes{static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS),
+        static_cast<std::uint8_t>(abc::Opcode::kRETURN)};
+    for (std::uint32_t i = 0; i < parameters; ++i) {
+      bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kLDA_V8)); bytes.push_back(0);
+      bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kSTA_V8)); bytes.push_back(0);
+      bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kGETUNMAPPEDARGS));
+    }
+    bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8)); bytes.push_back(2);
+    handler_pc = {static_cast<std::uint32_t>(bytes.size())};
+    bytes.push_back(static_cast<std::uint8_t>(abc::Opcode::kRETURN));
+    body = test::Body(bytes);
   }
   abc::TryRegion region;
   region.offset = snapshot_pc;
+  if (shape == SnapshotShape::kDeadHandler) region.offset = {2};
   region.length = 1;
   region.handler_count = 1;
   body.tries.push_back(region);
@@ -71,6 +98,11 @@ void Snapshot(std::uint32_t parameters, abc::ProfileId profile,
   const auto& snapshot = graph.ops[snapshot_index];
   test::Check(std::holds_alternative<ValueArgumentSnapshot>(snapshot.operation));
   test::Check(snapshot.use_count == parameters);
+  auto missing_environment = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  missing_environment.before[snapshot.block.value].reset();
+  const PhasedValueInput missing{flow, ssa, missing_environment, values, proof, frame};
+  test::Check(std::get<ValueImportFailure>(ImportPhasedValues(missing)).kind == ValueImportError::kInputMismatch);
+  test::Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(graph, missing)));
   test::Check(std::holds_alternative<PhasedValueFlowProof>(VerifyPhasedValueFlow(graph)));
   const auto verified = VerifyImportedPhases(graph, input);
   test::Check(std::holds_alternative<PhasedImportProof>(verified));
@@ -89,7 +121,55 @@ void Snapshot(std::uint32_t parameters, abc::ProfileId profile,
       test::Check(graph.phases[caught->block.value].phase == ExceptionPhase::kCatch);
     }
   }
+  if (shape == SnapshotShape::kDeadHandler) {
+    test::Check(catches == 0 && graph.phases.back().phase == ExceptionPhase::kCatch &&
+        graph.phases.back().reachability == PhaseReachability::kUnreachable &&
+        graph.blocks.back().edge_count == 0 && graph.ops[2].life == ValueLife::kRemoved);
+    auto changed = graph; changed.phases.back().reachability = PhaseReachability::kReachable;
+    test::Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(changed, input)));
+    return;
+  }
   test::Check(catches == 1);
+  if (shape == SnapshotShape::kDeadLoop)
+    test::Check(graph.ops[2].life == ValueLife::kRemoved && graph.blocks[graph.ops[2].block.value].edge_count == 0);
+  if (shape == SnapshotShape::kDeadCode) {
+    test::Check(graph.ops[2].life == ValueLife::kRemoved && graph.ops[2].use_count == 0 &&
+        !graph.ops[2].result && graph.ops[3].life == ValueLife::kRemoved);
+    auto changed = graph;
+    changed.phases[graph.ops[2].block.value].reachability = PhaseReachability::kReachable;
+    test::Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(changed, input)));
+    changed = graph; changed.ops[2].normal = LanguageEffect::kHeapWrite;
+    test::Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(changed, input)));
+    changed = graph; changed.ops[0].life = ValueLife::kRemoved;
+    test::Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(changed, input)));
+    changed = graph;
+    const auto value = *graph.ops[0].result;
+    changed.values[value.value].origin = OpResult{{2}, WorkBlockId{graph.ops[2].block.value + 1}};
+    changed.ops[2].result = value;
+    test::Check(std::holds_alternative<ValueImportFailure>(VerifyImportedPhases(changed, input)));
+    const auto built = std::get<ImportedPhases>(BuildPhasedValues(input));
+    static std::uint64_t previous_work = 0;
+    static std::size_t previous_bytes = 0;
+    if (parameters >= 200) {
+      if (previous_work) {
+        test::Check(built.work < previous_work * 3);
+        test::Check(built.allocated_bytes < previous_bytes * 3);
+      }
+      previous_work = built.work; previous_bytes = built.allocated_bytes;
+    }
+    // Upstream dominators may reserve a conservative admission ceiling larger
+    // than the consumed charge. Find the exact composed admission boundary.
+    std::size_t low = 0, bytes = SemanticBudget{}.bytes;
+    while (low < bytes) {
+      const auto mid = low + (bytes - low) / 2;
+      const auto result = BuildPhasedValues(input, {mid, kDefaultSemanticWork});
+      if (std::holds_alternative<ImportedPhases>(result)) bytes = mid;
+      else { test::Check(std::get<ValueImportFailure>(result).kind == ValueImportError::kResourceLimit); low = mid + 1; }
+    }
+    test::Check(bytes >= built.allocated_bytes);
+    test::Check(std::get<ValueImportFailure>(BuildPhasedValues(input, {bytes - 1, kDefaultSemanticWork})).kind ==
+        ValueImportError::kResourceLimit);
+  }
   if (shape == SnapshotShape::kHandlerJoin) {
     test::Check(!ssa.AllInputs().empty());
     const auto& returned = graph.ops.back();
@@ -207,5 +287,9 @@ int main() {
     for (const std::uint32_t count : {0U, 1U, 200U, 201U, 402U}) Snapshot(count, profile);
   Snapshot(1, abcd::abc::ProfileId::kDynamic1301, SnapshotShape::kHandlerJoin);
   Snapshot(1, abcd::abc::ProfileId::kDynamic1301, SnapshotShape::kLexicalPrelude);
+  Snapshot(1, abcd::abc::ProfileId::kDynamic1301, SnapshotShape::kDeadHandler);
+  Snapshot(1, abcd::abc::ProfileId::kDynamic1301, SnapshotShape::kDeadLoop);
+  for (const auto count : {1U, 200U, 201U, 400U, 800U})
+    Snapshot(count, abcd::abc::ProfileId::kDynamic1301, SnapshotShape::kDeadCode);
   ReadOldLocal();
 }

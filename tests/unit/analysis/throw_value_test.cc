@@ -46,10 +46,6 @@ void ThrowParameter(abc::ProfileId profile, bool caught, bool unreachable = fals
   const auto& proof = std::get<ExceptionInputProof>(checked);
   const PhasedValueInput input{flow, ssa, environments, values, proof, frame};
   const auto imported = ImportPhasedValues(input);
-  if (unreachable) {
-    test::Check(std::get<ValueImportFailure>(imported).kind == ValueImportError::kUnreachableFlow);
-    return;
-  }
   test::Check(std::holds_alternative<ValueProgram>(imported));
   const auto& graph = std::get<ValueProgram>(imported);
   test::Check(graph.ops.size() == body.instructions.size());
@@ -65,11 +61,15 @@ void ThrowParameter(abc::ProfileId profile, bool caught, bool unreachable = fals
   for (std::size_t i = 0; i < flow.nodes.size(); ++i) {
     if (environments.before[i]) continue;
     ++dead_commits;
-    test::Check(graph.phases[i].phase == ExceptionPhase::kCommit &&
-        graph.phases[i].operation == OpId{throw_index});
-    test::Check(graph.blocks[i].op_count == 0 && graph.blocks[i].edge_count == 0);
+    test::Check(graph.phases[i].reachability == PhaseReachability::kUnreachable && graph.blocks[i].edge_count == 0);
+    if (graph.phases[i].operation == OpId{throw_index}) {
+      test::Check(graph.phases[i].phase == ExceptionPhase::kCommit && graph.blocks[i].op_count == 0);
+    } else {
+      test::Check(unreachable && graph.phases[i].operation == OpId{throw_index + 1} &&
+          graph.ops[throw_index + 1].life == ValueLife::kRemoved);
+    }
   }
-  test::Check(dead_commits == 1);
+  test::Check(dead_commits == (unreachable ? 3U : 1U));
   auto changed = graph;
   changed.ops[throw_index].exceptional = ExceptionalCompletion::kMayThrow;
   test::Check(std::holds_alternative<ValueAvailabilityError>(VerifyPhasedValueFlow(changed)));

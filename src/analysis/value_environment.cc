@@ -133,10 +133,8 @@ std::variant<std::uint64_t, ValueEnvironmentError> VerifyEnvironments(
       const auto& entry = kind == EnvironmentGraph::kPhased ? phases[b] : flow.before[block.first_op.value];
       if (kind == EnvironmentGraph::kPhased) {
         const auto& phase = graph.phases[b];
-        if (phase.phase == ExceptionPhase::kCommit && phase.operation &&
-            std::holds_alternative<ValueThrow>(graph.ops[phase.operation->value].operation)) {
-          // Fresh flow verification admits this provenance-only unreachable
-          // Commit, never a live environment or a dynamic transition there.
+        if (phase.reachability == PhaseReachability::kUnreachable) {
+          // Fresh flow verification admits only provenance in a dead phase.
           Require(!entry, Error::kState);
           continue;
         }

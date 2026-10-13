@@ -62,16 +62,20 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     if (!result.pc) {
       if constexpr (requires { std::optional<abc::CodeOffset>{error.pc}; }) result.pc = error.pc;
       else if constexpr (requires { std::optional<abc::CodeOffset>{error.offset}; }) result.pc = error.offset;
-      else if constexpr (requires { std::optional<abc::CodeOffset>{error.creation_pc}; }) result.pc = error.creation_pc;
+    }
+    if constexpr (requires { error.working_pc; }) result.working_pc = error.working_pc;
+    if constexpr (requires { error.method; }) if (!result.method) result.method = error.method;
+    if constexpr (requires { error.creation_pc; error.parent; }) {
+      result.creation_pc = error.creation_pc;
+      result.creation_method = error.parent;
     }
     return result;
   }
 }
 template<class T> RouteFailure ProjectWithCauses(const T& error, ValueRouteError stage) {
   auto result = Project(error, stage);
-  RouteFailure chain{result.failure_class, result.reason, result.pc};
-  CollectFailureCauses(error, chain.causes);
-  return chain;
+  CollectFailureCauses(error, result.causes);
+  return result;
 }
 }  // namespace
 RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }

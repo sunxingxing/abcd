@@ -247,7 +247,7 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     // A construction-local reuse must not turn independent entry points into
     // trusting consumers of a changed control projection.
     auto changed_control = control;
-    changed_control.inactive_commits.push_back(WorkBlockId{0});
+    changed_control.inactive_phases.push_back(WorkBlockId{0});
     const ExceptionTreeInput changed_context{body, input, regions, changed_control};
     const auto changed_flow = VerifyExceptionTreeFlow(graph, changed_context, evaluation, tree);
     test::Check(std::get_if<TreeFlowError>(&changed_flow) &&

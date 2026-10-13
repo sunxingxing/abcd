@@ -23,10 +23,25 @@ void Failures() {
   Check(projected.failure_class == RouteFailureClass::kMemoryLimit && projected.pc == abc::CodeOffset{17});
   projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{
       BufferedArrayError::kResourceLimit, {}, {}, abc::CodeOffset{85}}});
-  Check(projected.failure_class == RouteFailureClass::kMemoryLimit && projected.pc == abc::CodeOffset{85});
+  Check(projected.failure_class == RouteFailureClass::kMemoryLimit && !projected.pc &&
+      projected.creation_pc == abc::CodeOffset{85});
   projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{
       abc::LiteralFailure{abc::LiteralError::kTruncated, {160}}, {}, {}, abc::CodeOffset{85}}});
-  Check(projected.pc == abc::CodeOffset{85});  // Entity offsets must not become bytecode PCs.
+  Check(!projected.pc && projected.creation_pc == abc::CodeOffset{85});
+  PhasedImportFailure imported{PhasedMethodError::kImport,
+      {analysis::ValueImportError::kInputMismatch, abc::CodeOffset{73}}, {91}, abc::CodeOffset{31}};
+  projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{
+      PhasedFileFailure{imported}, abc::EntityOffset{91}, abc::EntityOffset{13}, abc::CodeOffset{7}}});
+  Check(projected.pc == abc::CodeOffset{73} && projected.working_pc == abc::CodeOffset{31} &&
+      projected.method == abc::EntityOffset{91} && projected.creation_method == abc::EntityOffset{13} &&
+      projected.creation_pc == abc::CodeOffset{7});
+  Check(projected.causes.View().back().domain == FailureDomain<analysis::ValueImportError>());
+  imported.kind = PhasedMethodError::kWorkLimit;
+  imported.cause = {analysis::ValueImportError::kWorkLimit, {}};
+  imported.working_pc.reset();
+  projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{imported},
+      abc::EntityOffset{91}, abc::EntityOffset{13}, abc::CodeOffset{7}}});
+  Check(projected.failure_class == RouteFailureClass::kWorkLimit && !projected.pc && !projected.working_pc);
   analysis::FunctionSiteFailure sites{abc::BodyFailure{abc::BodyError::kBranchBoundary, {19}}, {}, abc::CodeOffset{7}};
   projected = FamilyRouteFailure(sites);
   Check(projected.failure_class == RouteFailureClass::kInvalidInput && projected.pc == abc::CodeOffset{19});

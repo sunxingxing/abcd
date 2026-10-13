@@ -25,6 +25,12 @@ struct PhasedModuleFailure {
   PhasedMethodError kind;
   std::variant<ModuleGuardError, ModuleAliasFailure> cause;
 };
+struct PhasedImportFailure {
+  PhasedMethodError kind;
+  analysis::ValueImportFailure cause;
+  abc::EntityOffset method;
+  std::optional<abc::CodeOffset> working_pc;
+};
 // Owns original exception analyses and the checked working body before child
 // evaluation. Family discovery must inspect actual creation operations here,
 // then discharge child/capture obligations before constructing source trees.
@@ -39,7 +45,7 @@ class PhasedBody {
   PhasedBody(PhasedBody&&) noexcept;
   PhasedBody& operator=(PhasedBody&&) noexcept;
   ~PhasedBody();
-  [[nodiscard]] static std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure> Build(
+  [[nodiscard]] static std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure, PhasedImportFailure> Build(
       const FunctionContext& context, const abc::MethodBody& body,
       analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr,
       analysis::CapturedValues captures = analysis::CapturedValues::kReject,

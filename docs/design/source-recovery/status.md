@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-10-12。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-13。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
@@ -11,6 +11,25 @@
 - 不按文件数、提交数或 complete 数量宣布完成；通用性以冻结留出集为准，见
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
+
+## Round 36：phased 可达性投影（待 cc 审查，未提交）
+
+- 基于 `03b1681b`，从不可变 ExceptionFlow 的 normal/exception 后继证明可达性；
+  保留死 Before/Commit/Catch 的身份与来源，去除其工作图边、操作效果和活跃定义。
+  独立导入验证、异常区域/控制和来源对应已贯通。不是 return/NOP 模板。
+- `kImport` 保留 `ValueImportError` 叶子原因；回执区分失败方法、原始/工作 PC 与父创建位置。
+  资源/工作预算分类保持不变。设计、边界与逐 record 结果见
+  [phased-reachability.md](phased-reachability.md)。
+- 构建 `cmake --build build/regression -j 6 -- -k` 成功；固定集串行 **65/65**；
+  直接相关 7 项 **7/7**。phase/exception/source 等定向串行批次 **293/324**：
+  指定的 7 个 literal 和 2 个 generator 失败前后不变；额外 21 项在 `/private/tmp`
+  从精确基线 `03b1681b` 构建的工具上逐项复现。community graph 两次 worker 失败，
+  第三次带进程错误诊断的串行复跑通过；前两次错误未报告退出原因，不断言为超时。
+- 授权的 11 个 record 全部越过旧 import 门禁：4 complete（Node 语法检查通过），
+  7 个暴露下一层类型化原因。没有运行探索集、留出集、全套测试或 RSS 基准。
+- 仍有保守边界：完全不可达的 handler 可导入，但对应空 try 包装的消除尚未实现，
+  exception control 可继续拒绝。新 Node fixture 覆盖正常/异常/finally 轨迹；
+  编译器对 return-in-try + throwing-finally 的差异已在 fixture README 单独记录。
 
 ## 架构事实
 
@@ -132,6 +151,8 @@
 | 数组展开：原始语义增量（2026-10-13） | LanguageSourceV1 第四项的第一步（Codex 第三十二轮）。新增类型化的 `ArraySpread` / `ValueArraySpread`：三个输入角色为 destination、index、source；结果是成功后的 cursor；建模抛出前的效果，acc 只在 Commit 时写入；不能按纯操作删除。源码投影仍然拒绝，私有数组构造证明与 `[...x]` 树表示留待下一轮。cursor 的 int32 回绕需要超过 2^31（约二十一亿）个元素，已由既有的资源前提（`ResourceFailures()==kExcluded`）覆盖，不需要证明上界。cc 审查结论：两种 flags 下探索集逐 record 状态与文本均无变化（467 / 492）；固定集 65/65。另外发现 7 个与 literal 相关的测试失败（literal_construct、mixed_literal、phased_literal、literal_closure_source、unguarded_literal_closure_source、derived_literal_receiver_source、unguarded_derived_literal_receiver_source），它们不在定向集中；在会话起点 22e7423a 上同样失败，属于既有失败，已列入待办 |
 | 数组展开：私有数组构造证明与 `[...x]` 投影（2026-10-13） | Codex 第三十三轮，cc 审查。新增 `array_initialization.{h,cc}`：用公共 SSA identity、支配可用性和全路径效果顺序，证明目标是私有数组，以及 cursor（直接得到，或由 length 重建）、混排元素的 `stownbyvalue`、执行次数和顺序。新增 `ArrayExpr` / `ArrayElement`；spread 是独立的有序可抛出 action；无 spread 的数组保持原表示。新增 `array_initialization_test`、`array_phase_test`、`array_spread.mjs`（Node 源语言差分，已登记批准的差异）。cc 审查结论：两种 flags 下探索集都没有回退，也没有文本变化（467 / 492）；Immersive 与 MultiCommunity 输出逐字节相同；固定集 65/65（一次负载下的偶发失败经重跑通过）。语料暂无新增完成：真实的 spread record 都在 allocation 之后才求值 RHS 子树，第一增量对此以 `kOrder` 保守拒绝，下一轮实现组合。7 个既有 literal 测试失败的情况不变 |
 | 数组构造：allocation 之后求值的 RHS 组合（2026-10-13） | Codex 第三十四轮，cc 审查。逐 record 诊断：5 个 spread record 在 allocation 与 spread 之间都有模块读取或捕获 cell 读取，以及 getter/调用子树。新增晚求值 RHS 的唯一消费者与 guard 证书：复用求值形状、SSA identity、可用性和 `BuildEffectOrder`，检查“前一提交 → RHS 事件 → 当前提交”的精确顺序，并由独立验证重算证书；后续融合不会重新吸收这些子树。新增类型化拒绝原因 kOperand、kSharedOperand、kCatchStaging。cc 审查结论：原 flags 下 467/620，逐 record 不变；`--language-source` 下 **497/620**（+5，正是这 5 个 record），没有回退，也没有文本漂移；固定集 65/65；Immersive 与 MultiCommunity 输出逐字节相同；7 个既有 literal 失败不变 |
+| phased 导入的通用可达性投影（2026-10-13） | 方案由 Codex 第三十五轮诊断并排序，第三十六轮实现，cc 审查。从 ExceptionFlow 入口遍历 normal 与 exception 后继，分别标记 Before、Commit、Catch 的可达性；不可达阶段只保留来源记录（`UnreachableInstruction`），不导入效果、读取、定义或异常出口；独立验证从不可变输入重算可达性；`inactive_commits` 推广为 `inactive_phases`，exception plan、control、topology 只消费活跃边。kImport 现在保留叶子原因（ValueImportFailure 的 kind 与 pc）、失败方法，以及原始 PC 和工作 PC，创建位置另行记录。新增 `phased_reachability_cli_test`（Node 差分）。cc 审查结论：**原 flags 下 471/620（+4），`--language-source` 下 501/620（+4）**，都没有回退，也没有文本漂移；固定集 65/65；配对样本输出逐字节相同。11 个 kImport record 中 4 个完成，7 个暴露出下一层原因（控制、捕获初始化、发射）|
+| 既有失败清单（2026-10-13 核实） | 以下 30 个测试在会话起点 22e7423a 上同样失败，不在定向集中（全套测试暂停），不属于本会话的回退：file_generator_return(_loop)_source_test；literal_construct、mixed_literal、phased_literal、literal_closure_source、unguarded_literal_closure_source、derived_literal_receiver_source、unguarded_derived_literal_receiver_source；boolean_context_source_test、captured_receiver_source_test、class_tree_source_test、decision_snapshots_source_test、derived_cells_source_test、family_source_cli_test、forwarded_receiver_source_test、phased_arm_selection_source_test、reversed_captured_receiver_source_test、reversed_forwarded_receiver_source_test、reversed_initialization_captured_receiver_source_test、reversed_initialization_forwarded_receiver_source_test、snapshot_syntax_source_test、try_tree_source_test、unguarded_captured_receiver_source_test、unguarded_derived_cells_source_test、unguarded_forwarded_receiver_source_test、unguarded_reversed_captured_receiver_source_test、unguarded_reversed_forwarded_receiver_source_test、unguarded_reversed_initialization_captured_receiver_source_test、unguarded_reversed_initialization_forwarded_receiver_source_test |
 | `window_navigation_graph_source_test`、`community_ability_graph_source_test` | 单独运行均通过（231s、205s）；与其他测试并行运行时，其 60 秒 worker 子进程会超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |
 | 探索集：40 个应用，`--value-source --language-numeric --language-constructors`，按元数据统一分类口径，模块 record 完整恢复 | `f0028f54`：81/611，整文件失败 1。S2–S4 后：430/620。受保护捕获的三个增量之后：**448/620**，整文件失败 **0**，无逐 record 回退 |

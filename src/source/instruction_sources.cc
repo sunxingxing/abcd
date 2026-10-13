@@ -68,7 +68,9 @@ class SourceIndex {
       Require(origin.pc == instruction.pc && origin.original == instruction.origin, Error::kOrigin);
       auto& target = targets[i];
       const auto& tree_origin = tree.origins[op.origin.value];
-      if (!before.empty() && !before[origin.site.value]) {
+      const bool dead_phase = !graph.phases.empty() &&
+          graph.phases[op.block.value].reachability == analysis::PhaseReachability::kUnreachable;
+      if ((!before.empty() && !before[origin.site.value]) || dead_phase) {
         // Normal input reachability, not optimizer purity or a recovery gap.
         // Its original PC remains evidence without any generated syntax range.
         Require(origin.disposition == analysis::OriginDisposition::kRetained &&

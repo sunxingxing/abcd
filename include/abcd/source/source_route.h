@@ -93,6 +93,10 @@ struct RouteFailure {
   ValueRouteError reason;
   std::optional<abc::CodeOffset> pc = {};
   FailureCauseChain causes = {};
+  std::optional<abc::EntityOffset> method = {};
+  std::optional<abc::CodeOffset> working_pc = {};
+  std::optional<abc::EntityOffset> creation_method = {};
+  std::optional<abc::CodeOffset> creation_pc = {};
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

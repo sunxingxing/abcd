@@ -140,9 +140,9 @@ class Planner {
     std::vector<std::uint8_t> inactive;
     if (exceptions_) {
       Size(inactive, graph_.blocks.size());
-      // Fresh control verification certifies exactly these empty disconnected
-      // explicit-throw Commit nodes. No reachable declaration/access is skipped.
-      for (const auto block : exceptions_->control.inactive_commits) {
+      // Fresh control verification certifies disconnected provenance-only
+      // phases. No reachable declaration/access is skipped.
+      for (const auto block : exceptions_->control.inactive_phases) {
         Step(); inactive[block.value] = 1;
       }
     }

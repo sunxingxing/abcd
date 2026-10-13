@@ -22,6 +22,7 @@ void CheckAvailability(const ValueProgram& graph, PhaseQuota& quota) {
   const auto checked = VerifyPhasedValueFlow(graph, quota.Remaining());
   if (const auto* proof = std::get_if<PhasedValueFlowProof>(&checked)) {
     quota.Work(proof->work);
+    quota.Admit(proof->allocated_bytes, 1);
     return;
   }
   auto error = Error::kInvalidGraph;
@@ -37,7 +38,8 @@ void CheckAvailability(const ValueProgram& graph, PhaseQuota& quota) {
   }
   throw ValueImportFailure{error, {}};
 }
-void CheckPhases(const ValueProgram& graph, const ExceptionFlow& flow, PhaseQuota& quota) {
+void CheckPhases(const ValueProgram& graph, const ExceptionFlow& flow,
+                 std::span<const PhaseReachability> reachable, PhaseQuota& quota) {
   std::size_t exits = 0;
   std::size_t operations = 0;
   for (std::size_t b = 0; b < flow.nodes.size(); ++b) {
@@ -45,11 +47,13 @@ void CheckPhases(const ValueProgram& graph, const ExceptionFlow& flow, PhaseQuot
     const auto& node = flow.nodes[b];
     const auto& phase = graph.phases[b];
     const auto& block = graph.blocks[b];
+    const bool live = reachable[b] == PhaseReachability::kReachable;
     RequirePhase(phase.input.value == b && phase.instruction.value == node.instruction.value &&
-        phase.phase == node.phase && block.edge_count == node.successor_count &&
+        phase.phase == node.phase && phase.reachability == reachable[b] &&
+        block.edge_count == (live ? node.successor_count : 0) &&
         node.successor_count <= node.successors.size(), Error::kInputMismatch);
     std::optional<WorkBlockId> caught;
-    for (std::uint8_t e = 0; e < node.successor_count; ++e) {
+    for (std::uint8_t e = 0; live && e < node.successor_count; ++e) {
       quota.Work();
       const auto& arc = node.successors[e];
       const auto& edge = graph.edges[block.first_edge.value + e];
@@ -68,6 +72,7 @@ void CheckPhases(const ValueProgram& graph, const ExceptionFlow& flow, PhaseQuot
         node.instruction.value == operations, Error::kInputMismatch);
     const auto& instruction = flow.instructions[operations];
     const auto& op = graph.ops[operations];
+    if (!live) { ++operations; continue; }
     RequirePhase(node.exception.has_value() ==
         (instruction.effects.exceptional != ExceptionalCompletion::kImpossible), Error::kInputMismatch);
     if (node.exception) {
@@ -106,6 +111,7 @@ void CheckDefinitions(const ValueProgram& graph, const PhasedValueInput& input, 
     if (const auto* result = std::get_if<InstructionValue>(&source.origin)) {
       RequirePhase(result->instruction.value < input.flow.nodes.size(), Error::kInputMismatch);
       const auto& phase = graph.phases[result->instruction.value];
+      RequirePhase(phase.reachability == PhaseReachability::kReachable, Error::kInputMismatch);
       if (phase.phase == ExceptionPhase::kCatch) {
         const auto* caught = std::get_if<CatchDefinition>(&target.origin);
         RequirePhase(caught && caught->block.value == result->instruction.value &&
@@ -119,7 +125,9 @@ void CheckDefinitions(const ValueProgram& graph, const PhasedValueInput& input, 
       }
     } else if (const auto* phi = std::get_if<PhiValue>(&source.origin)) {
       const auto* joined = std::get_if<PhiDefinition>(&target.origin);
-      RequirePhase(joined && joined->block.value == phi->block.value, Error::kInputMismatch);
+      RequirePhase(joined && joined->block.value == phi->block.value &&
+          joined->block.value < graph.phases.size() &&
+          graph.phases[joined->block.value].reachability == PhaseReachability::kReachable, Error::kInputMismatch);
     } else {
       const auto* entry = std::get_if<EntryDefinition>(&target.origin);
       RequirePhase(entry && MatchesEntryValue(*entry, source.slot, input.frame), Error::kInputMismatch);
@@ -139,7 +147,15 @@ void CheckOperands(const ValueProgram& graph, const PhasedValueInput& input, Pha
     RequirePhase(graph.input.sites[i] == OpId{static_cast<std::uint32_t>(i)} &&
         origin.site.value == i && origin.pc == instruction.pc && origin.original == instruction.origin &&
         origin.disposition == OriginDisposition::kRetained && op.origin.value == i &&
-        op.operation == ImportValueOperation(instruction.operation) &&
+        op.first_use.value == uses, Error::kInputMismatch, instruction.pc);
+    if (graph.phases[op.block.value].reachability == PhaseReachability::kUnreachable) {
+      RequirePhase(op.life == ValueLife::kRemoved && std::holds_alternative<ValueNop>(op.operation) &&
+          !op.result && op.use_count == 0 && op.normal == LanguageEffect::kNone &&
+          op.before_throw == LanguageEffect::kNone && op.exceptional == ExceptionalCompletion::kImpossible &&
+          op.exception_cause == ExceptionCause::kUnclassified, Error::kInputMismatch, instruction.pc);
+      continue;
+    }
+    RequirePhase(op.life == ValueLife::kLive && op.operation == ImportValueOperation(instruction.operation) &&
         op.normal == instruction.effects.normal && op.before_throw == instruction.effects.before_throw &&
         op.exceptional == instruction.effects.exceptional && op.exception_cause == instruction.effects.exception_cause && op.first_use.value == uses,
         Error::kInputMismatch, instruction.pc);
@@ -200,7 +216,7 @@ std::variant<PhasedImportProof, ValueImportFailure> VerifyImportedPhases(
     const ValueProgram& graph, const PhasedValueInput& input, SemanticBudget budget) {
   try {
     PhaseQuota quota{budget};
-    CheckPhaseInput(input, quota);
+    const auto reachable = CheckPhaseInput(input, quota);
     RequirePhase(graph.revision.value == 0 && graph.cfg_revision.value == 0 &&
         graph.phases.size() == input.flow.nodes.size() && graph.blocks.size() == graph.phases.size() &&
         graph.ops.size() == input.flow.instructions.size() && graph.origins.size() == graph.ops.size() &&
@@ -209,10 +225,10 @@ std::variant<PhasedImportProof, ValueImportFailure> VerifyImportedPhases(
         Error::kInputMismatch);
     quota.Admit(1, sizeof(OperandView));
     CheckAvailability(graph, quota);
-    CheckPhases(graph, input.flow, quota);
+    CheckPhases(graph, input.flow, reachable, quota);
     CheckDefinitions(graph, input, quota);
     CheckOperands(graph, input, quota);
-    return PhasedImportProof{budget.work - quota.Remaining().work};
+    return PhasedImportProof{budget.work - quota.Remaining().work, budget.bytes - quota.Remaining().bytes};
   } catch (const ValueImportFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return ValueImportFailure{Error::kResourceLimit, {}};
   } catch (const std::length_error&) { return ValueImportFailure{Error::kResourceLimit, {}}; }

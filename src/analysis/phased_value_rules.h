@@ -39,7 +39,9 @@ inline bool SameSlot(const ScalarSlot& a, const ScalarSlot& b) {
 }
 FlowEdgeKind PhaseEdgeKind(ExceptionArcKind kind);
 OperandView PhaseOperands(const SemanticInstruction& instruction, PhaseQuota& quota);
-void CheckPhaseInput(const PhasedValueInput& input, PhaseQuota& quota);
+// Traverses every kind of successor from entry; environment absence is checked
+// against this topology, never used as a reachability oracle.
+std::vector<PhaseReachability> CheckPhaseInput(const PhasedValueInput& input, PhaseQuota& quota);
 ValueOperand PhaseLiteral(const ScalarValue& value);
 }  // namespace abcd::analysis::detail
 #endif

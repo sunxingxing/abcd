@@ -219,13 +219,17 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
           std::holds_alternative<analysis::BufferedArrayCreation>(op);
     };
     std::size_t count = 0;
-    for (const auto& instruction : input.flow.instructions) { step(1); count += captures(instruction.operation); }
+    for (std::size_t i = 0; i < input.flow.instructions.size(); ++i) {
+      step(1); count += phases.Graph().ops[i].life == analysis::ValueLife::kLive &&
+          captures(input.flow.instructions[i].operation);
+    }
     std::vector<analysis::InstructionId> children;
     admit(count, sizeof(analysis::InstructionId)); children.reserve(count);
     admit(children.capacity() - count, sizeof(analysis::InstructionId));
     for (std::size_t i = 0; i < input.flow.instructions.size(); ++i) {
       step(1);
-      if (captures(input.flow.instructions[i].operation)) children.push_back({static_cast<std::uint32_t>(i)});
+      if (phases.Graph().ops[i].life == analysis::ValueLife::kLive &&
+          captures(input.flow.instructions[i].operation)) children.push_back({static_cast<std::uint32_t>(i)});
     }
     // Exception bindings name Before nodes, not instruction IDs. Record both
     // reads and writes in original instruction order for the common binder.

@@ -35,6 +35,8 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
       spent += items.capacity() * sizeof(T);
     };
     std::vector<TryId> stack;
+    std::vector<std::uint8_t> reachable;
+    std::vector<ExceptionNodeId> pending;
     std::vector<std::optional<CatchScope>> entry_parents;
     auto& order = result.source_order;
     reserve(result.regions, body.tries.size());
@@ -42,6 +44,20 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
     reserve(order, body.tries.size());
     reserve(stack, body.tries.size());
     reserve(entry_parents, body.tries.size());
+    reserve(reachable, flow.nodes.size()); reserve(pending, flow.nodes.size());
+    reachable.resize(flow.nodes.size());
+    if (reachable.empty()) return fail(Error::kInvalidFlow);
+    reachable[0] = 1; pending.push_back({0});
+    for (std::size_t head = 0; head < pending.size(); ++head) {
+      charge(); const auto& node = flow.nodes[pending[head].value];
+      if (node.successor_count > node.successors.size()) return fail(Error::kInvalidFlow);
+      for (const auto& arc : std::span(node.successors).first(node.successor_count)) {
+        charge();
+        if (arc.target.value >= reachable.size()) return fail(Error::kInvalidFlow);
+        if (reachable[arc.target.value]) continue;
+        reachable[arc.target.value] = 1; pending.push_back(arc.target);
+      }
+    }
     entry_parents.resize(body.tries.size());
     result.scopes.resize(count);
     const auto code_end = std::uint64_t(body.instructions.back().offset.value) +
@@ -146,6 +162,9 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
       const auto source = node.instruction.value;
       if (source >= count || node.successor_count > node.successors.size())
         return fail(Error::kInvalidFlow);
+      // Layout/provenance remains complete. Only executable arcs impose
+      // lexical entry and dispatch obligations; dead predecessors do not.
+      if (!reachable[&node - flow.nodes.data()]) continue;
       const auto pc = body.instructions[source].offset;
       if (node.phase == ExceptionPhase::kBefore && node.exception) {
         std::optional<TryId> selected;

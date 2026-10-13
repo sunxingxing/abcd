@@ -7,6 +7,7 @@
 #include "analysis/ssa_fixture.h"
 
 #include <sstream>
+#include <algorithm>
 #include <string_view>
 
 namespace {
@@ -69,8 +70,8 @@ void Control(const abc::MethodBody& body, const ValueProgram& graph,
   test::Check(std::holds_alternative<ExceptionControlError>(
       VerifyExceptionControl(body, graph, input, regions, changed)));
   changed = control;
-  if (!changed.inactive_commits.empty()) {
-    changed.inactive_commits.clear();
+  if (!changed.inactive_phases.empty()) {
+    changed.inactive_phases.clear();
     test::Check(std::holds_alternative<ExceptionControlError>(
         VerifyExceptionControl(body, graph, input, regions, changed)));
   }
@@ -365,7 +366,8 @@ void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
           graph, context, evaluation, changed, {constants, 1})) == TreeSemanticError::kOperand);
       break;
     }
-    test::Check(tree.operations.size() == graph.ops.size());
+    test::Check(tree.operations.size() == static_cast<std::size_t>(std::count_if(
+        graph.ops.begin(), graph.ops.end(), [](const auto& op) { return op.life == ValueLife::kLive; })));
     const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{tree, {}, {}}}, tree.owner));
     std::ostringstream text;
     const auto printed = PrintFamilyDraft(family, text);
@@ -499,6 +501,20 @@ void RetryTry(abc::ProfileId profile, std::ostream* output = nullptr) {
   body.tries = {region}; body.handlers = {handler};
   DecodedControl(body, profile, {}, output);
 }
+void DeadPredecessor(abc::ProfileId profile) {
+  auto body = test::Body({static_cast<std::uint8_t>(abc::Opcode::kLDA_V8), 0,
+      static_cast<std::uint8_t>(abc::Opcode::kLDOBJBYNAME_IMM8_ID16), 0, 0, 0,
+      static_cast<std::uint8_t>(abc::Opcode::kRETURN),
+      static_cast<std::uint8_t>(abc::Opcode::kSTA_V8), 0,
+      static_cast<std::uint8_t>(abc::Opcode::kJMP_IMM8), 2,
+      static_cast<std::uint8_t>(abc::Opcode::kRETURN)});
+  abc::TryRegion region; region.length = 7; region.handler_count = 1;
+  abc::CatchHandler handler; handler.offset = {11}; handler.length = 1;
+  body.tries = {region}; body.handlers = {handler};
+  // A dead write/jump into catch code neither creates a normal catch entry
+  // nor competes with its live exception payload. Exercise tree verification.
+  DecodedControl(body, profile);
+}
 }  // namespace
 int main(int argc, char** argv) {
   const bool emit = argc == 2 && std::string_view(argv[1]) == "--emit";
@@ -512,6 +528,7 @@ int main(int argc, char** argv) {
     HandlerLoop(profile, emit ? &std::cout : nullptr);
     RetryTry(profile, emit ? &std::cout : nullptr);
     HandlerNestedTry(profile, emit ? &std::cout : nullptr);
+    DeadPredecessor(profile);
   }
   for (const std::uint32_t depth : {200U, 201U, 402U})
     Nested(abc::ProfileId::kDynamic1301, 1, depth);

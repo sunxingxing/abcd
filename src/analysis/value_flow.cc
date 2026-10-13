@@ -82,7 +82,8 @@ NormalFlow ReadFlow(const ValueProgram& graph, FlowQuota& quota,
       }
       if (phase->operation) {
         const auto& op = graph.ops[phase->operation->value];
-        Require(op.life == ValueLife::kLive && op.origin.value < graph.origins.size() &&
+        Require((op.life == ValueLife::kLive || phase->reachability == PhaseReachability::kUnreachable) &&
+            op.origin.value < graph.origins.size() &&
             graph.origins[op.origin.value].site == phase->instruction &&
             op.block.value < graph.phases.size(), Error::kInvalidGraph);
         const auto& before = graph.phases[op.block.value];
@@ -124,6 +125,11 @@ NormalFlow ReadFlow(const ValueProgram& graph, FlowQuota& quota,
       adapted.successors[adapted.successor_count++] = {{edge.target.value},
           edge.kind == FlowEdgeKind::kException ? FlowEdgeKind::kTaken : edge.kind};
       ++predecessors[edge.target.value];
+    }
+    if (phase && phase->reachability == PhaseReachability::kUnreachable) {
+      Require(block.edge_count == 0 && !last, Error::kUnreachableBlock);
+      flow.blocks.push_back(adapted);
+      continue;
     }
     if (phase && phase->phase == ExceptionPhase::kBefore) {
       const auto& op = graph.ops[phase->operation->value];
@@ -247,17 +253,10 @@ static std::variant<ValueFlowProof, ValueAvailabilityError> VerifyAvailability(
     quota.Admit(dominators->work.allocated_bytes, 1);
     for (std::size_t b = 0; b < dominators->nodes.size(); ++b) {
       quota.Work();
-      if (dominators->nodes[b].begin != 0) continue;
-      // An explicit throw has no normal Commit. Retain its provenance-only
-      // phase, but never admit an arbitrary unreachable operation or value.
-      Require(!graph.phases.empty(), Error::kUnreachableBlock);
-      const auto& phase = graph.phases[b];
-      Require(phase.phase == ExceptionPhase::kCommit && phase.operation,
+      const bool reachable = dominators->nodes[b].begin != 0;
+      if (graph.phases.empty()) Require(reachable, Error::kUnreachableBlock);
+      else Require(reachable == (graph.phases[b].reachability == PhaseReachability::kReachable),
           Error::kUnreachableBlock);
-      const auto& op = graph.ops[phase.operation->value];
-      Require(std::holds_alternative<ValueThrow>(op.operation) &&
-          op.exceptional == ExceptionalCompletion::kAlwaysThrow &&
-          dominators->nodes[op.block.value].begin != 0, Error::kUnreachableBlock);
     }
     std::vector<PhiKey> keys;
     std::vector<std::size_t> counts;

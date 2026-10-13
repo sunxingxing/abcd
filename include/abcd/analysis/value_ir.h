@@ -333,11 +333,13 @@ struct InputCorrespondence {
 // All arrays are owned. IDs never point into source body/SSA or vector storage.
 // Input identity and proof envelopes are supplied by the import boundary;
 // this mutable graph alone is not a source/publication certificate.
+enum class PhaseReachability : std::uint8_t { kReachable, kUnreachable };
 struct ValuePhaseSite {
   ExceptionNodeId input;
   InputSiteId instruction;
   ExceptionPhase phase;
   std::optional<OpId> operation;
+  PhaseReachability reachability = PhaseReachability::kReachable;
 };
 struct ValueProgram {
   IrRevision revision;

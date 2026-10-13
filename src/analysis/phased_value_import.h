@@ -16,7 +16,7 @@ struct PhasedValueInput {
   const ExceptionInputProof& proof;
   const abc::FrameLayout& frame;
 };
-struct PhasedImportProof { std::uint64_t work; };
+struct PhasedImportProof { std::uint64_t work; std::size_t allocated_bytes = 0; };
 struct ImportedPhases {
   ValueProgram graph;
   std::size_t allocated_bytes = 0;

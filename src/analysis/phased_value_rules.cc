@@ -25,7 +25,7 @@ OperandView PhaseOperands(const SemanticInstruction& instruction, PhaseQuota& qu
   }
   throw ValueImportFailure{error, instruction.pc};
 }
-void CheckPhaseInput(const PhasedValueInput& input, PhaseQuota& quota) {
+std::vector<PhaseReachability> CheckPhaseInput(const PhasedValueInput& input, PhaseQuota& quota) {
   const auto& frame = input.frame;
   RequirePhase(frame.locals <= frame.registers, PhaseError::kInputMismatch);
   const auto built = abc::BuildFrameLayout(frame.locals, frame.registers - frame.locals,
@@ -45,16 +45,33 @@ void CheckPhaseInput(const PhasedValueInput& input, PhaseQuota& quota) {
   quota.Work(proof.work_units);
   RequirePhase(proof.arguments == input.proof.arguments && proof.reads == input.proof.reads &&
       proof.work_units == input.proof.work_units, PhaseError::kInputMismatch);
-  for (std::size_t i = 0; i < input.environments.before.size(); ++i) {
+  const auto& nodes = input.flow.nodes;
+  RequirePhase(!nodes.empty() && input.environments.before.size() == nodes.size(), PhaseError::kInputMismatch);
+  std::vector<PhaseReachability> reachable;
+  std::vector<ExceptionNodeId> queue;
+  quota.Reserve(reachable, nodes.size()); quota.Reserve(queue, nodes.size());
+  quota.Work(nodes.size()); reachable.resize(nodes.size(), PhaseReachability::kUnreachable);
+  reachable[0] = PhaseReachability::kReachable; queue.push_back({0});
+  for (std::size_t cursor = 0; cursor < queue.size(); ++cursor) {
     quota.Work();
-    if (input.environments.before[i]) continue;
-    const auto& node = input.flow.nodes[i];
-    const auto& instruction = input.flow.instructions[node.instruction.value];
-    RequirePhase(node.phase == ExceptionPhase::kCommit &&
-        std::holds_alternative<ThrowOperation>(instruction.operation) &&
-        instruction.effects.exceptional == ExceptionalCompletion::kAlwaysThrow,
-        PhaseError::kUnreachableFlow);
+    const auto& node = nodes[queue[cursor].value];
+    RequirePhase(node.successor_count <= node.successors.size(), PhaseError::kInvalidGraph);
+    for (const auto& edge : std::span(node.successors).first(node.successor_count)) {
+      quota.Work(); RequirePhase(edge.target.value < nodes.size(), PhaseError::kInvalidGraph);
+      if (reachable[edge.target.value] == PhaseReachability::kReachable) continue;
+      reachable[edge.target.value] = PhaseReachability::kReachable; queue.push_back(edge.target);
+    }
   }
+  for (std::size_t i = 0; i < nodes.size(); ++i) {
+    quota.Work();
+    const auto& node = nodes[i];
+    RequirePhase(node.instruction.value < input.flow.instructions.size() &&
+        node.successor_count <= node.successors.size(), PhaseError::kInputMismatch);
+    const auto& instruction = input.flow.instructions[node.instruction.value];
+    RequirePhase(input.environments.before[i].has_value() ==
+        (reachable[i] == PhaseReachability::kReachable), PhaseError::kInputMismatch, instruction.pc);
+  }
+  return reachable;
 }
 ValueOperand PhaseLiteral(const ScalarValue& value) {
   return std::visit([](const auto& literal) -> ValueOperand {

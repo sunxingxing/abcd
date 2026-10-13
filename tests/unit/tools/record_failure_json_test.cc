@@ -25,6 +25,11 @@ int main() {
       source::ValueRouteError::kTreeStage, {}};
   source::AppendFailureCause(chained.causes, source::RouteFailureClass::kUnproved);
   source::AppendFailureCause(chained.causes, source::ValueRouteError::kPrintStage);
+  chained.method = abc::EntityOffset{91};
+  chained.pc = abc::CodeOffset{73};
+  chained.working_pc = abc::CodeOffset{31};
+  chained.creation_method = abc::EntityOffset{13};
+  chained.creation_pc = abc::CodeOffset{7};
   nlohmann::json with_causes;
   tools::DescribeRecordFailure(source::RouteRefusal{chained}, with_causes);
   const auto& causes = with_causes["source_failure"]["causes"];
@@ -32,6 +37,11 @@ int main() {
         causes[1]["value"] == static_cast<unsigned>(source::ValueRouteError::kPrintStage));
   Check(causes[0]["domain"] == "abcd::source::RouteFailureClass");
   Check(with_causes["source_failure"]["causes_truncated"] == false);
+  Check(with_causes["source_failure"]["method"] == 91 &&
+      with_causes["source_failure"]["pc"] == 73 &&
+      with_causes["source_failure"]["working_pc"] == 31 &&
+      with_causes["source_failure"]["creation_method"] == 13 &&
+      with_causes["source_failure"]["creation_pc"] == 7);
   source::RouteFailure full{source::RouteFailureClass::kUnproved, source::ValueRouteError::kTreeStage, {}};
   for (std::size_t i = 0; i <= source::kMaxFailureCauses; ++i)
     source::AppendFailureCause(full.causes, source::ValueRouteError::kTreeStage);

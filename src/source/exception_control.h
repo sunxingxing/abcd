@@ -41,9 +41,9 @@ struct ExceptionControl {
   std::vector<ExceptionControlUnit> units;
   std::vector<ControlArc> arcs;
   std::vector<TryControlRegion> regions;
-  // Only empty disconnected Commit nodes of explicit throw are inert; never
-  // discard arbitrary unreachable operations. Retained for provenance census.
-  std::vector<analysis::WorkBlockId> inactive_commits;
+  // Disconnected phases certified unreachable by original ExceptionFlow.
+  // Removed Before operations retain sites but no effects/reads/definitions.
+  std::vector<analysis::WorkBlockId> inactive_phases;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

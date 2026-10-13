@@ -19,7 +19,9 @@ The CLI test independently decodes all methods: eight `starrayspread` operations
 including three covered by handlers, plus mixed-element `stownbyvalue` writes.
 The catch example assigns a result and returns at the join. An initial version
 with returns inside both arms generated unreachable trailing bytecode and hit
-the existing `ValueImportError::kUnreachableFlow` gate. That gate was not changed.
+the then-existing `ValueImportError::kUnreachableFlow` gate. Round 36 adds general
+[phased reachability](../../../../docs/design/source-recovery/phased-reachability.md)
+separately; this array fixture and its oracle are unchanged.
 
 Node compares the original source and engine output, including event traces:
 empty iterables, surrogate pairs, sparse arrays/inherited elements, multiple

@@ -31,8 +31,9 @@ struct PhasedValueFlowProof {
     const DominatorTree& dominators, ValueId value, WorkBlockId block,
     std::uint32_t order);
 // Availability across Before/Commit/Catch, not input/handler correspondence or
-// permission to publish source. Only explicit throw's unreachable, valueless
-// Commit is admitted; other unreachable phases still reject.
+// permission to publish source. Disconnected phases must be marked dead and
+// have no executable operations or edges; original reachability is separately
+// checked by VerifyImportedPhases against immutable ExceptionFlow.
 [[nodiscard]] std::variant<PhasedValueFlowProof, ValueAvailabilityError> VerifyPhasedValueFlow(
     const ValueProgram& graph, SemanticBudget budget = {});
 // Normal-flow availability only, not an effects/input-identity certificate.

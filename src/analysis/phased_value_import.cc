@@ -24,7 +24,7 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
     const PhasedValueInput& input, SemanticBudget budget) {
   try {
     PhaseQuota quota{budget};
-    CheckPhaseInput(input, quota);
+    const auto reachable = CheckPhaseInput(input, quota);
     const auto& flow = input.flow;
     const auto values = input.ssa.Values();
     RequirePhase(!flow.instructions.empty(), Error::kInvalidGraph);
@@ -50,8 +50,11 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
       RequirePhase(node.successor_count <= node.successors.size(), Error::kInvalidGraph);
       edges += node.successor_count;
     }
-    for (const auto& instruction : flow.instructions) {
+    for (const auto& node : flow.nodes) {
       quota.Work();
+      if (node.phase != ExceptionPhase::kBefore ||
+          reachable[&node - flow.nodes.data()] == PhaseReachability::kUnreachable) continue;
+      const auto& instruction = flow.instructions[node.instruction.value];
       const auto operands = PhaseOperands(instruction, quota);
       RequirePhase(operands.Count() <= std::numeric_limits<std::uint32_t>::max() - uses,
           Error::kResourceLimit);
@@ -66,12 +69,13 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
       const auto& instruction = flow.instructions[node.instruction.value];
       const WorkBlockId block{static_cast<std::uint32_t>(b)};
       const OpId op{node.instruction.value};
+      const bool live = reachable[b] == PhaseReachability::kReachable;
       graph.blocks.push_back({{static_cast<std::uint32_t>(graph.ops.size())},
           node.phase == ExceptionPhase::kBefore ? 1U : 0U,
-          {static_cast<std::uint32_t>(graph.edges.size())}, node.successor_count});
+          {static_cast<std::uint32_t>(graph.edges.size())}, live ? node.successor_count : std::uint8_t{0}});
       graph.phases.push_back({{block.value}, {op.value}, node.phase,
-          node.phase == ExceptionPhase::kCatch ? std::nullopt : std::optional{op}});
-      for (std::uint8_t e = 0; e < node.successor_count; ++e) {
+          node.phase == ExceptionPhase::kCatch ? std::nullopt : std::optional{op}, reachable[b]});
+      for (std::uint8_t e = 0; live && e < node.successor_count; ++e) {
         quota.Work();
         const auto& edge = node.successors[e];
         RequirePhase(edge.target.value < flow.nodes.size(), Error::kInvalidGraph);
@@ -83,10 +87,14 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
       // Normalized async retains file provenance independently of working PC.
       // This does not admit raw suspension: operation import still controls it.
       graph.origins.push_back({{op.value}, instruction.pc, instruction.origin});
-      graph.ops.push_back({ImportValueOperation(instruction.operation), block, 0, {}, 0, {},
-          instruction.effects.normal, instruction.effects.before_throw,
-          instruction.effects.exceptional, {op.value}, ValueLife::kLive, instruction.effects.exception_cause});
-      if (node.exception) {
+      graph.ops.push_back({live ? ImportValueOperation(instruction.operation) : ValueOperation{ValueNop{}},
+          block, 0, {}, 0, {},
+          live ? instruction.effects.normal : LanguageEffect::kNone,
+          live ? instruction.effects.before_throw : LanguageEffect::kNone,
+          live ? instruction.effects.exceptional : ExceptionalCompletion::kImpossible, {op.value},
+          live ? ValueLife::kLive : ValueLife::kRemoved,
+          live ? instruction.effects.exception_cause : ExceptionCause::kUnclassified});
+      if (live && node.exception) {
         std::optional<ValueHandler> handler;
         if (node.exception->target) {
           for (const auto& edge : std::span(node.successors).first(node.successor_count)) {
@@ -107,6 +115,7 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
       ValueDefinition definition{ImportEntryValue(value.slot, input.frame), input.values.Facts()[v], {}};
       if (const auto* result = std::get_if<InstructionValue>(&value.origin)) {
         RequirePhase(result->instruction.value < flow.nodes.size(), Error::kInputMismatch);
+        RequirePhase(reachable[result->instruction.value] == PhaseReachability::kReachable, Error::kInputMismatch);
         const auto& phase = graph.phases[result->instruction.value];
         const WorkBlockId block{result->instruction.value};
         if (phase.phase == ExceptionPhase::kCatch) {
@@ -120,6 +129,8 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
           op.result = ValueId{static_cast<std::uint32_t>(v)};
         }
       } else if (const auto* phi = std::get_if<PhiValue>(&value.origin)) {
+        RequirePhase(phi->block.value < reachable.size() &&
+            reachable[phi->block.value] == PhaseReachability::kReachable, Error::kInvalidPhi);
         definition.origin = PhiDefinition{{phi->block.value}};
       }
       graph.values.push_back(definition);
@@ -131,8 +142,9 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
       quota.Work();
       auto& op = graph.ops[i];
       const auto& instruction = flow.instructions[i];
-      const auto operands = PhaseOperands(instruction, quota);
       op.first_use = {static_cast<std::uint32_t>(graph.uses.size())};
+      if (op.life == ValueLife::kRemoved) continue;
+      const auto operands = PhaseOperands(instruction, quota);
       for (std::uint32_t ordinal = 0; ordinal < operands.Count(); ++ordinal) {
         quota.Work();
         const auto operand = operands.At(ordinal);
@@ -169,6 +181,7 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
     const auto verified = VerifyImportedPhases(graph, input, quota.Remaining());
     if (const auto* error = std::get_if<ValueImportFailure>(&verified)) return *error;
     quota.Work(std::get<PhasedImportProof>(verified).work);
+    quota.Admit(std::get<PhasedImportProof>(verified).allocated_bytes, 1);
     return ImportedPhases{std::move(graph), budget.bytes - quota.Remaining().bytes,
         budget.work - quota.Remaining().work};
   } catch (const ValueImportFailure& failure) { return failure;

@@ -33,7 +33,7 @@ class Projection {
     Require(blocks != 0 && blocks < kMaxId && regions < kMaxId - blocks, Error::kResourceLimit);
     quota_.Size(result_.mapping.regions, regions);
     quota_.Size(result_.entries, 1 + 2 * regions + blocks);
-    quota_.Size(result_.mapping.inactive_commits, blocks);
+    quota_.Size(result_.mapping.inactive_phases, blocks);
     quota_.Size(owners_, blocks);
     quota_.Size(exits_, regions);
     quota_.Size(result_.ports, regions);
@@ -99,7 +99,7 @@ class Projection {
     for (std::size_t u = blocks + regions; u < unit_count_; ++u) {
       quota_.Work(); result_.blocks[u].first_arc = {edge_count_};
     }
-    for (const auto block : result_.mapping.inactive_commits) {
+    for (const auto block : result_.mapping.inactive_phases) {
       quota_.Work(); result_.entries[root_count++] = {block.value};
     }
     result_.blocks.resize(unit_count_); result_.mapping.units.resize(unit_count_);
@@ -200,12 +200,12 @@ class Projection {
     for (std::uint32_t b = 1; b < graph_.blocks.size(); ++b) {
       quota_.Work(); if (incoming[b] != 0) continue;
       const auto& phase = graph_.phases[b]; const auto& block = graph_.blocks[b];
-      Require(phase.phase == ExceptionPhase::kCommit && phase.operation &&
-          std::holds_alternative<ValueThrow>(graph_.ops[phase.operation->value].operation) &&
-          block.op_count == 0 && block.edge_count == 0, Error::kInput);
-      result_.mapping.inactive_commits[inactive++] = {b};
+      Require(phase.reachability == PhaseReachability::kUnreachable && block.edge_count == 0 &&
+          (block.op_count == 0 || (block.op_count == 1 &&
+              graph_.ops[block.first_op.value].life == ValueLife::kRemoved)), Error::kInput);
+      result_.mapping.inactive_phases[inactive++] = {b};
     }
-    result_.mapping.inactive_commits.resize(inactive);
+    result_.mapping.inactive_phases.resize(inactive);
   }
   bool Inside(TryId region, WorkBlockId block) const {
     if (!owners_[block.value]) return false;
