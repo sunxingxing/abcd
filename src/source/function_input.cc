@@ -161,7 +161,10 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     auto lifted = analysis::BuildSemanticMethod(body, identity.profile,
         frame.registers, quota.Remaining(), {}, &frame);
     auto* input = std::get_if<analysis::SemanticMethod>(&lifted);
-    if (!input) return FunctionInputFailure{std::get<analysis::SemanticFailure>(lifted)};
+    if (!input) {
+      const auto failure = std::get<analysis::SemanticFailure>(lifted);
+      return FunctionInputFailure{failure, method, failure.pc};
+    }
     // An initialized entry premise is not a proof across receiver-changing
     // protocols. Super/resume ownership must supply a phase-specific proof.
     for (const auto& instruction : input->instructions) {
@@ -225,7 +228,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       auto failure = std::get<analysis::SemanticProofFailure>(verified);
       failure.allocated_bytes += budget.bytes - quota.Remaining().bytes;
       failure.work_units += budget.work - quota.Remaining().work;
-      return FunctionInputFailure{failure};
+      return FunctionInputFailure{failure, method, failure.pc};
     }
     quota.Admit(proof->allocated_bytes, 1);
     // Normal entry dominates all reachable blocks. Its completed Language

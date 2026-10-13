@@ -13,10 +13,10 @@
 #include "abcd/analysis/value_ir.h"
 #include "abcd/source/source_route.h"
 
+#include "abcd/source/source_ids.h"
+
 namespace abcd::source {
-struct ExprId { std::uint32_t value = 0; auto operator<=>(const ExprId&) const = default; };
 struct PropertyId { std::uint32_t value = 0; auto operator<=>(const PropertyId&) const = default; };
-struct StmtId { std::uint32_t value = 0; auto operator<=>(const StmtId&) const = default; };
 struct SymbolId { std::uint32_t value = 0; auto operator<=>(const SymbolId&) const = default; };
 struct ParameterId { std::uint32_t value = 0; auto operator<=>(const ParameterId&) const = default; };
 struct ScopeId { std::uint32_t value = 0; auto operator<=>(const ScopeId&) const = default; };

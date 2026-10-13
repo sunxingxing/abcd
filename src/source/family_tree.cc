@@ -1,5 +1,6 @@
 #include "family_tree.h"
 #include "family_cells.h"
+#include "deferred_failure.h"
 #include "derived_projection.h"
 #include "abcd/analysis/dominators.h"
 
@@ -107,7 +108,14 @@ class FamilyTrees {
     // cannot honor them here and refuses.
     std::vector<std::vector<DeferredCellInitialization>> deferred;
     Reserve(deferred, family.members.size()); deferred.resize(family.members.size());
-    Require(!family.root_capture || family.root_capture->deferred.empty(), FamilyTreeError::kDeferredCell);
+    if (family.root_capture && !family.root_capture->deferred.empty()) {
+      auto failure = FamilyTreeFailure{FileFamily::kRoot, FamilyTreeError::kDeferredCell};
+      failure.deferred = DescribeDeferredFailure(DeferredCellError::kExternalRoot,
+          external->creator.values.graph, external->creator.values.cells ? &*external->creator.values.cells : nullptr,
+          *family.root_capture, &family.root_capture->deferred.front(), family.members.front().function.Capture().Input().Captures());
+      failure.method = failure.deferred->creator;
+      throw failure;
+    }
     std::vector<std::size_t> counts;
     Reserve(counts, family.members.size()); counts.resize(family.members.size());
     for (std::size_t i = 1; i < family.members.size(); ++i) {
@@ -115,7 +123,7 @@ class FamilyTrees {
       const auto& member = family.members[i];
       if (!member.incoming || member.incoming->cells.deferred.empty()) continue;
       const auto parent = member.incoming->parent.value;
-      Require(parent < i, FamilyTreeError::kDeferredCell);
+      if (!(parent < i)) DeferredFailure(family, parent, DeferredCellError::kBinding, &member.incoming->cells.deferred.front());
       counts[parent] += member.incoming->cells.deferred.size();
     }
     // Reserve once per parent, then fill: linear in the total demand.
@@ -138,9 +146,9 @@ class FamilyTrees {
       for (const auto& cell : deferred[i]) { Step(1); tdz[i][cell.cell.value] = 1; }
       if (member.incoming) for (const auto& binding : member.incoming->cells.targets) {
         Step(1); const auto parent = member.incoming->parent.value;
-        Require(parent < i && binding.child.value < tdz[i].size(), FamilyTreeError::kDeferredCell);
+        if (!(parent < i && binding.child.value < tdz[i].size())) DeferredFailure(family, parent, DeferredCellError::kBinding, nullptr);
         if (const auto* cell = std::get_if<ParentCell>(&binding.target)) {
-          Require(cell->cell.value < tdz[parent].size(), FamilyTreeError::kDeferredCell);
+          if (!(cell->cell.value < tdz[parent].size())) DeferredFailure(family, parent, DeferredCellError::kBinding, nullptr);
           tdz[i][binding.child.value] = tdz[parent][cell->cell.value];
         }
       }
@@ -240,9 +248,12 @@ class FamilyTrees {
       auto evaluation = Take<EvaluationPlan, EvaluationError>(std::move(evaluated));
       Account(evaluation);
       if (!deferred[i].empty()) {
-        Require(!phase && evaluation.cells, FamilyTreeError::kDeferredCell);
-        const auto marked = MarkDeferredCells(graph, *evaluation.cells, deferred[i], left_);
-        if (!marked) Fail(FamilyTreeError::kDeferredCell);
+        if (phase || !evaluation.cells)
+          DeferredFailure(family, i, phase ? DeferredCellError::kPhasedParent : DeferredCellError::kBinding, &deferred[i].front());
+        std::optional<std::size_t> rejected;
+        const auto marked = MarkDeferredCells(graph, *evaluation.cells, deferred[i], left_, &rejected);
+        if (!marked) DeferredFailure(family, i, DeferredCellError::kPlacement,
+            rejected ? &deferred[i][*rejected] : nullptr);
         Step(*marked);
       }
       std::optional<IncomingCaptureTree> incoming;
@@ -619,6 +630,31 @@ class FamilyTrees {
       edge.cells = std::move(cells);
     }
   }
+  [[noreturn]] void DeferredFailure(const FileFamily& family, std::size_t parent,
+      DeferredCellError reason, const DeferredCellInitialization* entry) const {
+    FamilyTreeFailure failure{{static_cast<std::uint32_t>(parent)}, FamilyTreeError::kDeferredCell};
+    failure.deferred = DeferredCellEvidence{reason};
+    if (parent < family.members.size()) {
+      const auto& function = family.members[parent].function;
+      failure.method = function.Method(); failure.deferred->creator = function.Method();
+      if (entry) {
+        failure.deferred->cell = entry->cell;
+        failure.deferred->store = OperationLocation(function.Graph(), entry->store, function.Method());
+      }
+      // Only executed once, on refusal. Find the actual incoming edge that
+      // carries this store; unrelated siblings never become diagnostic owners.
+      for (const auto& child : family.members) {
+        if (!child.incoming || child.incoming->parent.value != parent) continue;
+        const auto& cells = child.incoming->cells;
+        for (const auto& cell : cells.deferred) if (entry && cell == *entry) {
+          failure.deferred = DescribeDeferredFailure(reason, function.Graph(), function.Cells(), cells,
+              entry, child.function.Capture().Input().Captures());
+          throw failure;
+        }
+      }
+    }
+    throw failure;
+  }
   template<class T> [[noreturn]] void Fail(T error) const {
     throw FamilyTreeFailure{member_, std::move(error), default_candidates_, defaults_proved_};
   }
@@ -662,7 +698,7 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     auto located = error;
     const auto member = std::get_if<FamilyWriteFailure>(&error.cause)
         ? std::get<FamilyWriteFailure>(error.cause).member : error.member;
-    if (member.value < family.members.size()) located.method = family.members[member.value].function.Method();
+    if (!located.method && member.value < family.members.size()) located.method = family.members[member.value].function.Method();
     return located;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }
@@ -678,7 +714,7 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildRecordFamilyTrees(
     auto located = error;
     const auto member = std::get_if<FamilyWriteFailure>(&error.cause)
         ? std::get<FamilyWriteFailure>(error.cause).member : error.member;
-    if (member.value < family.members.size()) located.method = family.members[member.value].function.Method();
+    if (!located.method && member.value < family.members.size()) located.method = family.members[member.value].function.Method();
     return located;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }

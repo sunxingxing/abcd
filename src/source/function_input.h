@@ -17,6 +17,8 @@ enum class FunctionInputError : std::uint8_t {
 };
 struct FunctionInputFailure {
   std::variant<analysis::SemanticFailure, analysis::SemanticProofFailure, FunctionInputError> cause;
+  std::optional<abc::EntityOffset> method;
+  std::optional<abc::CodeOffset> working_pc;
 };
 struct InputCaptureAccess {
   analysis::InstructionId instruction;

@@ -233,7 +233,7 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
     nlohmann::json report{{"route", "value_tree"}, {"record", owner->offset.value},
         {"source_complete", false}, {"executable", false}};
     if (const auto* error = std::get_if<RecordProgramFailure>(&built)) {
-      report["error"] = static_cast<unsigned>(error->kind); report["pc"] = error->pc.value;
+      report["error"] = static_cast<unsigned>(error->kind); if (error->pc) report["pc"] = error->pc->value;
     } else if (const auto* error = std::get_if<RouteRefusal>(&built)) {
       report["failure_class"] = RouteFailureClassName(error->failure.failure_class);
       report["reason"] = ValueRouteErrorName(error->failure.reason);

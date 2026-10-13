@@ -14,15 +14,17 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     ExpressionConstants constants, analysis::SemanticBudget budget,
     const ExceptionTreeInput* exceptions,
-    TreeControlCheck control_check = TreeControlCheck::kFresh) {
+    TreeControlCheck control_check, TreeSemanticFailure* failure) {
+  if (failure) *failure = {};
   using Error = TreeSemanticError;
   try {
     auto checked_flow = exceptions
-        ? VerifyExceptionTreeFlow(graph, *exceptions, evaluation, tree, budget, control_check)
-        : VerifyTreeFlow(graph, control, evaluation, tree, budget);
+        ? VerifyExceptionTreeFlow(graph, *exceptions, evaluation, tree, budget, control_check, failure ? &failure->location : nullptr)
+        : VerifyTreeFlow(graph, control, evaluation, tree, budget, failure ? &failure->location : nullptr);
     auto* flow = std::get_if<TreeFlow>(&checked_flow);
     if (!flow) {
       const auto error = std::get<TreeFlowError>(checked_flow);
+      if (failure) failure->cause = error;
       if (error == TreeFlowError::kResourceLimit) return Error::kResourceLimit;
       if (error == TreeFlowError::kWorkLimit) return Error::kWorkLimit;
       return Error::kFlow;
@@ -54,14 +56,18 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
 std::variant<TreeSemantics, TreeSemanticError> VerifyTreeSemantics(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    ExpressionConstants constants, analysis::SemanticBudget budget) {
-  return VerifySemantics(graph, control, evaluation, tree, constants, budget, nullptr);
+    ExpressionConstants constants, analysis::SemanticBudget budget, TreeSemanticFailure* failure) {
+  auto result = VerifySemantics(graph, control, evaluation, tree, constants, budget, nullptr, TreeControlCheck::kFresh, failure);
+  if (failure) if (const auto* error = std::get_if<TreeSemanticError>(&result)) failure->kind = *error;
+  return result;
 }
 std::variant<TreeSemantics, TreeSemanticError> VerifyExceptionTreeSemantics(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    ExpressionConstants constants, analysis::SemanticBudget budget, TreeControlCheck control_check) {
-  return VerifySemantics(graph, exceptions.control.skeleton, evaluation, tree, constants, budget, &exceptions,
-      control_check);
+    ExpressionConstants constants, analysis::SemanticBudget budget, TreeControlCheck control_check, TreeSemanticFailure* failure) {
+  auto result = VerifySemantics(graph, exceptions.control.skeleton, evaluation, tree, constants, budget, &exceptions,
+      control_check, failure);
+  if (failure) if (const auto* error = std::get_if<TreeSemanticError>(&result)) failure->kind = *error;
+  return result;
 }
 }  // namespace abcd::source

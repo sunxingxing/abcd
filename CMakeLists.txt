@@ -2476,6 +2476,15 @@ if(BUILD_TESTING)
     target_include_directories(record_failure_json_test PRIVATE tools)
     target_link_libraries(record_failure_json_test PRIVATE abcd_source abcd_json)
     add_test(NAME record_failure_json_test COMMAND record_failure_json_test)
+    add_executable(tree_failure_test tests/unit/source/tree_failure_test.cc tools/record_failure_json.cc)
+    target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
+    add_test(NAME tree_failure_test COMMAND tree_failure_test)
+    if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME tree_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tree_failure.mjs
+        $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
+        ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects)
+    endif()
     add_executable(process_limit_test tests/unit/tools/process_limit_test.cc)
     target_include_directories(process_limit_test PRIVATE tools)
     target_link_libraries(process_limit_test PRIVATE abcd_process)

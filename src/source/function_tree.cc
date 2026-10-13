@@ -20,7 +20,6 @@
 namespace abcd::source {
 namespace {
 using Error = FunctionTreeError;
-void Require(bool condition, Error error) { if (!condition) throw error; }
 struct ChildLink { StmtId statement; std::optional<std::size_t> next; };
 struct BlockDraft {
   StmtId statement;
@@ -75,7 +74,7 @@ class TreeBuilder {
       if (const auto* error = std::get_if<ExceptionControlError>(&checked)) {
         if (*error == ExceptionControlError::kResourceLimit) throw Error::kResourceLimit;
         if (*error == ExceptionControlError::kWorkLimit) throw Error::kWorkLimit;
-        throw Error::kControl;
+        Fail(Error::kControl, *error, TreeObligation::kControlVerification);
       }
       Step(std::get<std::uint64_t>(checked));
     } else {
@@ -83,7 +82,7 @@ class TreeBuilder {
       if (const auto* error = std::get_if<ControlError>(&control)) {
         if (*error == ControlError::kResourceLimit) throw Error::kResourceLimit;
         if (*error == ControlError::kWorkLimit) throw Error::kWorkLimit;
-        throw Error::kControl;
+        Fail(Error::kControl, *error, TreeObligation::kControlVerification);
       }
       Step(std::get<std::uint64_t>(control));
     }
@@ -212,7 +211,7 @@ class TreeBuilder {
     if (const auto* error = std::get_if<TreeStructureError>(&labels)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kStructure;
+      Fail(Error::kStructure, *error, TreeObligation::kStructure);
     }
     Admit(std::get<TreeStorage>(labels).bytes, 1); Step(std::get<TreeStorage>(labels).work);
     if (forest_.recovery_stop) {
@@ -220,7 +219,7 @@ class TreeBuilder {
       if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
         if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
         if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
-        throw Error::kStructure;
+        Fail(Error::kStructure, *error, TreeObligation::kStructure);
       }
     } else {
       RecoverCompletions();
@@ -230,14 +229,67 @@ class TreeBuilder {
   }
 
  private:
+  // A scoped witness prevents nested emission from leaking a stale PC/owner.
+  // It is fixed-size stack state; no indexing or admission decisions change.
+  struct WitnessScope {
+    const TreeBuilder& builder;
+    TreeFailureEvidence previous;
+    WitnessScope(const TreeBuilder& owner, TreeObligation obligation, TreeLocation location)
+        : builder(owner), previous(owner.witness_) {
+      location.method = owner.syntax_.method;
+      owner.witness_ = {obligation, location, {}, {}};
+    }
+    ~WitnessScope() { builder.witness_ = previous; }
+  };
+  TreeLocation At(analysis::OpId id) const { return OperationLocation(graph_, id, syntax_.method); }
+  TreeLocation At(const ControlNode& node) const {
+    TreeLocation result; result.method = syntax_.method; result.block = node.block;
+    result.control = ControlId{static_cast<std::uint32_t>(&node - control_.nodes.data())};
+    if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
+      result.synthetic = TreeSyntheticLocation{ControlOriginKind::kLoop, loop->loop.value}; result.block.reset();
+    } else if (const auto* transfer = std::get_if<LoopTransfer>(&node.synthetic)) {
+      result.synthetic = TreeSyntheticLocation{ControlOriginKind::kLoopTransfer, transfer->loop.value}; result.block.reset();
+    } else if (exceptions_ && result.control->value < exceptions_->control.units.size()) {
+      std::visit([&](const auto& unit) {
+        using T = std::decay_t<decltype(unit)>;
+        if constexpr (std::is_same_v<T, PhaseControlUnit>) {
+          result.block = unit.block;
+          if (unit.block.value < graph_.phases.size())
+            if (const auto operation = graph_.phases[unit.block.value].operation) {
+              const auto control = result.control; result = At(*operation); result.control = control;
+            }
+        } else {
+          result.block.reset();
+          result.synthetic = TreeSyntheticLocation{std::is_same_v<T, TryControlUnit>
+              ? ControlOriginKind::kTry : ControlOriginKind::kTryExit, unit.region.value};
+        }
+      }, exceptions_->control.units[result.control->value]);
+    }
+    return result;
+  }
+  void Require(bool condition, Error error, std::optional<TreeObligation> obligation = {}) const {
+    if (condition) return;
+    FunctionTreeFailure failure{error}; failure.method = syntax_.method;
+    failure.tree = witness_; failure.tree->location.method = syntax_.method;
+    if (obligation) failure.tree->obligation = *obligation;
+    throw failure;
+  }
+  template<class Cause> [[noreturn]] void Fail(Error kind, Cause cause, TreeObligation obligation) const {
+    FunctionTreeFailure failure{kind}; failure.method = syntax_.method;
+    failure.cause = cause; failure.tree = witness_;
+    failure.tree->location.method = syntax_.method; failure.tree->obligation = obligation;
+    throw failure;
+  }
+  mutable TreeFailureEvidence witness_{TreeObligation::kPlacement, {}};
   void RecoverCompletions() {
+    WitnessScope witness(*this, TreeObligation::kCompletion, {});
     if (!exceptions_) return;
     auto result = BuildCompletionPlan(graph_, exceptions_->regions, exceptions_->control,
         evaluation_, {bytes_, work_});
     if (const auto* error = std::get_if<CompletionError>(&result)) {
       if (*error == CompletionError::kWorkLimit) throw Error::kWorkLimit;
       if (*error == CompletionError::kResourceLimit) throw Error::kResourceLimit;
-      throw Error::kControl;
+      Fail(Error::kControl, *error, TreeObligation::kCompletion);
     }
     const auto& plan = std::get<CompletionPlan>(result);
     if (plan.finalizers.empty() && plan.yield_returns.empty()) return;
@@ -254,12 +306,12 @@ class TreeBuilder {
       const auto error = std::get<TreeFlowError>(checked);
       if (error == TreeFlowError::kWorkLimit) throw Error::kWorkLimit;
       if (error == TreeFlowError::kResourceLimit) throw Error::kResourceLimit;
-      throw Error::kSemantics;
+      Fail(Error::kSemantics, error, TreeObligation::kFlow);
     }
     Step(flow->work); Admit(flow->allocated_bytes - storage->bytes, 1);
     TreeCheckBudget recovery({bytes_, work_});
     try { RecoverFinalizers(plan, *flow, tree_, recovery);
-    } catch (TreeFlowError) { throw Error::kSemantics;
+    } catch (TreeFlowError error) { Fail(Error::kSemantics, error, TreeObligation::kFlow);
     } catch (TreeStructureError error) {
       throw error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
     }
@@ -270,11 +322,12 @@ class TreeBuilder {
     if (const auto* error = std::get_if<TreeStructureError>(&labels)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kStructure;
+      Fail(Error::kStructure, *error, TreeObligation::kStructure);
     }
     Admit(std::get<TreeStorage>(labels).bytes, 1); Step(std::get<TreeStorage>(labels).work);
   }
   void CheckCellLifetimes() {
+    WitnessScope witness(*this, TreeObligation::kBindings, {});
     Require(evaluation_.cells && evaluation_.cells->environments, Error::kBinding);
     const auto& states = *evaluation_.cells->environments;
     const auto lifetimes = BuildPhasedCellLifetimes(graph_, states, evaluation_.cells->cells,
@@ -282,7 +335,7 @@ class TreeBuilder {
     if (const auto* error = std::get_if<CellLifetimeError>(&lifetimes)) {
       if (*error == CellLifetimeError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == CellLifetimeError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kBinding;
+      Fail(Error::kBinding, std::monostate{}, TreeObligation::kBindings);
     }
     const auto& scopes = std::get<CellLifetimes>(lifetimes);
     Admit(scopes.allocated_bytes, 1); Step(scopes.work);
@@ -524,6 +577,7 @@ class TreeBuilder {
     return true;
   }
   void Bindings() {
+    WitnessScope witness(*this, TreeObligation::kBindings, {});
     for (std::size_t i = 0; i < syntax_.locals.size(); ++i) {
       Step(); const auto& hint = syntax_.locals[i];
       Require(hint.allocation.value < graph_.ops.size() && hint.name.value < constants_.name_count, Error::kName);
@@ -650,7 +704,7 @@ class TreeBuilder {
         if (unary->op == analysis::UnaryOperator::kToNumeric)
           Require(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
         reason = TemporaryReason::kNumericUpdate; prefix = u"$update";
-      } else throw Error::kBinding;
+      } else Fail(Error::kBinding, std::monostate{}, TreeObligation::kBindings);
       tree_.symbols.push_back({kBodyScope, SyntheticName(prefix, i),
           BindingKind::kCompilerTemporary, tree_.hole == SymbolId{static_cast<std::uint32_t>(i)} ? DeclarationKind::kConst : DeclarationKind::kLet,
           NameEvidence::kSynthesized, reason});
@@ -663,7 +717,7 @@ class TreeBuilder {
       switch (alias.access) {
         case ModuleAccess::kReadOnly: declaration = DeclarationKind::kConst; break;
         case ModuleAccess::kMutable: declaration = DeclarationKind::kLet; break;
-        default: throw Error::kBinding;
+        default: Fail(Error::kBinding, std::monostate{}, TreeObligation::kBindings);
       }
       const SymbolId symbol{static_cast<std::uint32_t>(tree_.symbols.size())};
       Require(!alias.local || alias.access == ModuleAccess::kMutable, Error::kBinding);
@@ -730,6 +784,12 @@ class TreeBuilder {
     if (first) tasks_.push_back({*first, draft});
     return draft;
   }
+  void RequireNoCopies(analysis::EdgeId edge) const {
+    if (!HasCopies(edge)) return;
+    auto location = witness_.location; location.edge = edge;
+    WitnessScope witness(*this, TreeObligation::kDecisionEdgeCopies, location);
+    Require(false, Error::kControl);
+  }
   bool HasCopies(analysis::EdgeId edge) const {
     return !edge_ranges_.empty() && edge_ranges_[edge.value] &&
         forest_.edges[*edge_ranges_[edge.value]].count != 0;
@@ -762,6 +822,8 @@ class TreeBuilder {
     for (std::uint32_t j = 0; j < block.op_count; ++j) {
       Step();
       const analysis::OpId id{block.first_op.value + j};
+      WitnessScope witness(*this, TreeObligation::kExpressionOwnership, At(id));
+      witness_.actual_owner = TreeLocation{}; witness_.actual_owner->statement = drafts_[draft].statement;
       const auto& op = graph_.ops[id.value];
       if (forest_.recovery_stop && id == *forest_.recovery_stop) {
         Grow(tree_.recovery_issues, 1);
@@ -904,6 +966,13 @@ class TreeBuilder {
     const auto& path = DecisionBlock(linear);
     for (std::uint32_t i = 0; i < path.op_count; ++i) {
       Step(); const analysis::OpId id{path.first_op.value + i};
+      WitnessScope witness(*this, TreeObligation::kExpressionOwnership, At(id));
+      witness_.expected_owner = At(root);
+      const auto& owner = evaluation_.operations[id.value];
+      if (owner.consumer && owner.consumer->value < graph_.uses.size()) {
+        if (const auto* operation = std::get_if<analysis::OpId>(&graph_.uses[owner.consumer->value].owner))
+          witness_.actual_owner = At(*operation);
+      } else if (owner.kind == EvaluationKind::kRoot) witness_.actual_owner = At(id);
       const auto& op = graph_.ops[id.value];
       if (op.life != analysis::ValueLife::kLive) continue;
       Require(!forest_.recovery_stop || id != *forest_.recovery_stop, Error::kOwnership);
@@ -914,10 +983,10 @@ class TreeBuilder {
         const auto& scope = exceptions_->regions.layout.scopes[site];
         const auto& enclosing = exceptions_->regions.layout.scopes[parent];
         Require(scope.has_value() == enclosing.has_value() &&
-            (!scope || (scope->region == enclosing->region && scope->part == enclosing->part)), Error::kOwnership);
+            (!scope || (scope->region == enclosing->region && scope->part == enclosing->part)), Error::kOwnership, TreeObligation::kCatchScope);
         // Catch copies are still statements. Never move them before the LHS or
         // after a throwing RHS; a nonempty staging bundle remains unsupported.
-        Require(!throw_ranges_[id.value] || forest_.throws[*throw_ranges_[id.value]].count == 0, Error::kOwnership);
+        Require(!throw_ranges_[id.value] || forest_.throws[*throw_ranges_[id.value]].count == 0, Error::kOwnership, TreeObligation::kCatchStaging);
         if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
           Require(placement.kind == EvaluationKind::kRoot && path.edge_count == 1 &&
               !HasCopies(path.first_edge), Error::kControl);
@@ -955,6 +1024,7 @@ class TreeBuilder {
     }
   }
   const analysis::WorkBlock& DecisionBlock(const ControlNode& node) const {
+    WitnessScope witness(*this, TreeObligation::kDecisionPrefix, At(node));
     Require(std::holds_alternative<std::monostate>(node.synthetic), Error::kControl);
     if (exceptions_) {
       const auto index = static_cast<std::size_t>(&node - control_.nodes.data());
@@ -966,6 +1036,7 @@ class TreeBuilder {
     return graph_.blocks[node.block.value];
   }
   analysis::OpId DecisionPredicate(const ControlNode& node) const {
+    WitnessScope witness(*this, TreeObligation::kDecisionPrefix, At(node));
     const auto& block = DecisionBlock(node);
     if (exceptions_) {
       const auto& phase = graph_.phases[node.block.value];
@@ -979,6 +1050,7 @@ class TreeBuilder {
     return op;
   }
   void OrientBranches() {
+    WitnessScope witness(*this, TreeObligation::kDecisionPrefix, {});
     Grow(branch_polarity_, graph_.ops.size()); branch_polarity_.resize(graph_.ops.size()); Step(graph_.ops.size());
     std::vector<std::uint8_t> copied;
     Grow(copied, graph_.edges.size()); copied.resize(graph_.edges.size()); Step(graph_.edges.size());
@@ -995,7 +1067,12 @@ class TreeBuilder {
         const auto orient = [&](const ControlNode& condition, bool taken) {
           const auto branch = DecisionPredicate(condition);
           const auto& block = DecisionBlock(condition);
-          Require(!copied[block.first_edge.value] && !copied[block.first_edge.value + 1], Error::kControl);
+          if (copied[block.first_edge.value] || copied[block.first_edge.value + 1]) {
+            auto location = At(branch); location.control = At(condition).control;
+            location.edge = analysis::EdgeId{block.first_edge.value + (copied[block.first_edge.value] ? 0U : 1U)};
+            WitnessScope witness(*this, TreeObligation::kDecisionEdgeCopies, location);
+            Require(false, Error::kControl);
+          }
           branch_polarity_[branch.value] = taken ? BranchPolarity::kTaken : BranchPolarity::kFallthrough;
         };
         orient(node, !node.decision->evaluate_on_taken);
@@ -1012,6 +1089,7 @@ class TreeBuilder {
     }
   }
   bool DecisionStatements(const ControlNode& root) {
+    WitnessScope witness(*this, TreeObligation::kDecisionPrefix, At(root));
     // Select a representation from the common evaluation placements. Statement
     // roots and lexical declarations retain their conditional statement scope.
     // No opcode/layout admission; expression/anchor placement stays shared.
@@ -1046,6 +1124,7 @@ class TreeBuilder {
     return id;
   }
   void EmitStatementDecision(analysis::OpId op, const ControlNode& root, std::size_t parent) {
+    WitnessScope witness(*this, TreeObligation::kDecisionPrefix, At(op));
     // Stage only predicates, leaving all original roots in their conditional
     // statement regions. One local per decision; shared arms are emitted once.
     const TreeOriginId origin{graph_.ops[op.value].origin.value};
@@ -1064,9 +1143,10 @@ class TreeBuilder {
     auto branch = op;
     bool selected_taken = root.arms->taken.has_value();
     while (true) {
-      Step(); const auto& block = DecisionBlock(*part);
-      Require(!HasCopies(block.first_edge) &&
-          !HasCopies(analysis::EdgeId{block.first_edge.value + 1}), Error::kControl);
+      Step(); WitnessScope predicate_witness(*this, TreeObligation::kDecisionPrefix, At(branch));
+      const auto& block = DecisionBlock(*part);
+      RequireNoCopies(block.first_edge);
+      RequireNoCopies(analysis::EdgeId{block.first_edge.value + 1});
       const TreeOriginId here{graph_.ops[branch.value].origin.value};
       Require(forest_.operations[branch.value].has_value(), Error::kOwnership);
       const auto save = DecisionExpression(AssignmentExpr{SymbolTarget{saved},
@@ -1110,16 +1190,19 @@ class TreeBuilder {
     tree_.operations.push_back({op, drafts_[wrapper].statement});
   }
   void EmitDecision(analysis::OpId op, const ControlNode& node, std::size_t draft) {
+    WitnessScope witness(*this, TreeObligation::kDecisionPrefix, At(op));
     Require(node.decision && node.arms, Error::kControl);
     if (DecisionStatements(node)) { EmitStatementDecision(op, node, draft); return; }
     decision_path_.clear(); decision_roots_.clear();
     const auto* part = &node;
     bool selected_taken = node.arms->taken.has_value();
     while (true) {
-      Step(); const auto& block = DecisionBlock(*part);
-      Require(!HasCopies(block.first_edge) &&
-          !HasCopies(analysis::EdgeId{block.first_edge.value + 1}), Error::kControl);
+      Step(); WitnessScope predicate_witness(*this, TreeObligation::kDecisionPrefix, At(*part));
+      const auto& block = DecisionBlock(*part);
+      RequireNoCopies(block.first_edge);
+      RequireNoCopies(analysis::EdgeId{block.first_edge.value + 1});
       const auto branch = DecisionPredicate(*part);
+      witness_.location = At(branch);
       Require(forest_.operations[branch.value].has_value(), Error::kControl);
 
       if (part != &node) {
@@ -1150,7 +1233,7 @@ class TreeBuilder {
         for (std::uint8_t e = 0; e < path.edge_count; ++e) {
           Step(); const analysis::EdgeId edge{path.first_edge.value + e};
           if (graph_.edges[edge.value].kind != analysis::FlowEdgeKind::kException)
-            Require(!HasCopies(edge), Error::kControl);
+            RequireNoCopies(edge);
         }
         // Keep retained roots in the conditional RHS, in original path order.
         // Native comma syntax preserves each snapshot's normal-completion write.
@@ -1180,6 +1263,7 @@ class TreeBuilder {
     if (fallback) {
       const auto& last = DecisionBlock(*part);
       const auto branch = DecisionPredicate(*part);
+      witness_.location = At(branch);
       const analysis::EdgeId fallback_edge{last.first_edge.value + (selected_taken ? 1U : 0U)};
       alternate = drafts_[Arm(draft, TreeOriginId{graph_.ops[branch.value].origin.value},
           fallback, fallback_edge)].statement;
@@ -1298,6 +1382,7 @@ class TreeBuilder {
     tasks_.push_back({planned.body, body});
   }
   void EmitCells(analysis::OpId allocation, std::size_t draft, TreeOriginId origin) {
+    WitnessScope witness(*this, TreeObligation::kDeferredDeclaration, At(allocation));
     Require(evaluation_.cells.has_value(), Error::kBinding);
     if (!std::holds_alternative<analysis::ValueEnvironmentPush>(graph_.ops[allocation.value].operation)) return;
     const auto& cells = evaluation_.cells->cells.cells;
@@ -1385,6 +1470,7 @@ class TreeBuilder {
     }
   }
   void CheckSemantics() {
+    WitnessScope witness(*this, TreeObligation::kSemantics, {});
     // The checker admits tree storage too. Recredit only that already-admitted
     // output, not builder scratch; both remain live throughout verification.
     const auto measured = MeasureTreeStorage(tree_, {budget_.bytes, work_});
@@ -1394,17 +1480,19 @@ class TreeBuilder {
           ? Error::kWorkLimit : Error::kResourceLimit;
     Step(storage->work);
     Require(storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
+    TreeSemanticFailure semantic_failure;
     auto checked = exceptions_
         ? VerifyExceptionTreeSemantics(graph_, *exceptions_, evaluation_, tree_, constants_,
-                                       {bytes_ + storage->bytes, work_}, TreeControlCheck::kReuseInBuild)
+                                       {bytes_ + storage->bytes, work_}, TreeControlCheck::kReuseInBuild, &semantic_failure)
         : VerifyTreeSemantics(graph_, control_, evaluation_, tree_, constants_,
-                              {bytes_ + storage->bytes, work_});
+                              {bytes_ + storage->bytes, work_}, &semantic_failure);
     auto* semantics = std::get_if<TreeSemantics>(&checked);
     if (!semantics) {
       const auto error = std::get<TreeSemanticError>(checked);
       if (error == TreeSemanticError::kWorkLimit) throw Error::kWorkLimit;
       if (error == TreeSemanticError::kResourceLimit) throw Error::kResourceLimit;
-      throw Error::kSemantics;
+      witness_.location = semantic_failure.location;
+      Fail(Error::kSemantics, semantic_failure, TreeObligation::kSemantics);
     }
     Require(semantics->allocated_bytes >= storage->bytes, Error::kSemantics);
     Admit(semantics->allocated_bytes - storage->bytes, 1);
@@ -1414,6 +1502,7 @@ class TreeBuilder {
   }
 
   void CaptureNames() {
+    WitnessScope witness(*this, TreeObligation::kCapture, {});
     if (!incoming_) return;
     const auto& cells = incoming_->cells;
     Require(syntax_.captures.empty() && syntax_.identity == cells.identity &&
@@ -1427,7 +1516,7 @@ class TreeBuilder {
     if (error) {
       if (*error == CaptureTreeError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == CaptureTreeError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kCapture;
+      Fail(Error::kCapture, std::monostate{}, TreeObligation::kCapture);
     }
     auto aliases = std::get<CaptureAliases>(std::move(bound));
     Admit(aliases.allocated_bytes, 1); Step(aliases.work);
@@ -1446,7 +1535,7 @@ class TreeBuilder {
     if (const auto* error = std::get_if<CaptureTreeError>(&verified)) {
       if (*error == CaptureTreeError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == CaptureTreeError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kCapture;
+      Fail(Error::kCapture, std::monostate{}, TreeObligation::kCapture);
     }
     Step(std::get<std::uint64_t>(verified));
   }

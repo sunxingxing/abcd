@@ -16,31 +16,35 @@ RecordSourceResult BuildRecordSource(
     const analysis::FunctionCreationSites* functions, const analysis::ClassMethodSites* classes) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
+  const auto fail_with = [&](Error kind, auto cause) {
+    auto result = fail(kind); AppendFailureCause(result.causes, cause); return result;
+  };
   const auto metadata = [&](abc::MetadataError kind) {
     switch (kind) {
-      case abc::MetadataError::kResourceLimit: return fail(Error::kResourceLimit);
-      case abc::MetadataError::kRead: return fail(Error::kRead);
-      case abc::MetadataError::kFileChanged: return fail(Error::kFileChanged);
-      default: return fail(Error::kModule);
+      case abc::MetadataError::kResourceLimit: return fail_with(Error::kResourceLimit, kind);
+      case abc::MetadataError::kRead: return fail_with(Error::kRead, kind);
+      case abc::MetadataError::kFileChanged: return fail_with(Error::kFileChanged, kind);
+      default: return fail_with(Error::kModule, kind);
     }
   };
   try {
     if (header.kind != abc::AbcKind::kDynamic ||
         !SupportsRecordProgramProfile(header.profile)) return fail(Error::kProfile);
     const auto module = context.ForOwner(file, record.offset);
-    if (!module) return fail(Error::kModule);
+    if (!module) return fail_with(Error::kModule, RecordModuleProofError::kOwner);
     const auto attributes = abc::ReadMergedRecordAttributes(file, header, index,
         record, {std::min(budget.strings.bytes, budget.bytes)});
     const auto* flags = std::get_if<abc::RecordAttributes>(&attributes);
     if (!flags) {
       const auto& error = std::get<abc::AttributeFailure>(attributes);
       if (error.metadata_error) return metadata(*error.metadata_error);
-      return fail(error.kind == abc::AttributeError::kFileChanged
-          ? Error::kFileChanged : Error::kModule);
+      return fail_with(error.kind == abc::AttributeError::kFileChanged
+          ? Error::kFileChanged : Error::kModule, error.kind);
     }
-    if (flags->common_js.value_or(false) || flags->shared.value_or(false) ||
-        flags->top_level_await.value_or(false) || flags->json_content)
-      return fail(Error::kModule);
+    if (flags->common_js.value_or(false)) return fail_with(Error::kModule, RecordModuleKindError::kCommonJs);
+    if (flags->shared.value_or(false)) return fail_with(Error::kModule, RecordModuleKindError::kShared);
+    if (flags->top_level_await.value_or(false)) return fail_with(Error::kModule, RecordModuleKindError::kTopLevelAwait);
+    if (flags->json_content) return fail_with(Error::kModule, RecordModuleKindError::kJson);
     if (record.first_method > index.methods.size() ||
         record.method_count > index.methods.size() - record.first_method)
       return fail(Error::kEntry);

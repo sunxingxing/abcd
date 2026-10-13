@@ -111,7 +111,7 @@ ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
 std::size_t PhasedBody::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t PhasedBody::Work() const { return storage_->work; }
 
-std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure, PhasedImportFailure, PhasedControlFailure> PhasedBody::Build(
+std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailure, PhasedModuleFailure, PhasedImportFailure, PhasedControlFailure> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
@@ -147,8 +147,34 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFail
       const auto execution = IsAsyncCallable(context.Callable()) ? YieldExecution::kAsynchronous : YieldExecution::kSynchronous;
       if (yield.origin.execution != execution) return Error::kInput;
     }
-    auto flow = PhaseResult<ExceptionFlow>(BuildExceptionFlow(body, context.Identity().profile,
-        frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame, yields), Error::kInput);
+    auto flow_result = BuildExceptionFlow(body, context.Identity().profile,
+        frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame, yields);
+    if (!std::holds_alternative<ExceptionFlow>(flow_result)) {
+      return std::visit([&](const auto& failure) -> PhasedFlowFailure {
+        using T = std::decay_t<decltype(failure)>;
+        if constexpr (std::is_same_v<T, ExceptionFlow>) {
+          // Not visited: keeps the success graph out of the failure envelope.
+          throw Error::kInput;
+        } else {
+          PhasedFlowFailure result{PhaseError(failure, Error::kInput), failure, context.Target(), {}, {}};
+          // Quota/whole-input failures own no instruction, including PC zero.
+          if (result.kind == Error::kResourceLimit || result.kind == Error::kWorkLimit) return result;
+          abc::CodeOffset pc;
+          if constexpr (requires { failure.pc; }) pc = failure.pc;
+          else pc = failure.offset;
+          const auto at = std::lower_bound(body.instructions.begin(), body.instructions.end(), pc,
+              [](const auto& site, auto target) { return site.offset < target; });
+          if (at != body.instructions.end() && at->offset == pc) {
+            result.working_pc = pc;
+            const auto i = static_cast<std::size_t>(at - body.instructions.begin());
+            if (source_pcs.empty()) result.pc = pc;
+            else if (i < source_pcs.size()) result.pc = source_pcs[i];
+          }
+          return result;
+        }
+      }, flow_result);
+    }
+    auto flow = std::get<ExceptionFlow>(std::move(flow_result));
     for (std::size_t i = 0; i < source_pcs.size(); ++i) {
       if (i && source_pcs[i] <= source_pcs[i - 1]) return Error::kInput;
       flow.instructions[i].origin = source_pcs[i];
@@ -353,6 +379,7 @@ std::variant<PhasedMethod, PhasedMethodError> PhasedMethod::Build(
     const PhasedModuleBinding* binding) {
   auto built = PhasedBody::Build(context, body, budget, binding);
   if (const auto* error = std::get_if<PhasedMethodError>(&built)) return *error;
+  if (const auto* failure = std::get_if<PhasedFlowFailure>(&built)) return failure->kind;
   if (std::holds_alternative<PhasedInputFailure>(built)) return PhasedMethodError::kValues;
   if (const auto* failure = std::get_if<PhasedModuleFailure>(&built)) return failure->kind;
   if (const auto* failure = std::get_if<PhasedImportFailure>(&built)) return failure->kind;

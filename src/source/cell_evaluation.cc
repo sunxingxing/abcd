@@ -106,12 +106,15 @@ bool DeferredStore(const analysis::ValueProgram& graph, const CellPlan& plan, Ce
 }
 }  // namespace
 std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& graph,
-    CellEvaluation& cells, std::span<const DeferredCellInitialization> deferred, analysis::SemanticBudget budget) {
+    CellEvaluation& cells, std::span<const DeferredCellInitialization> deferred, analysis::SemanticBudget budget,
+    std::optional<std::size_t>* rejected) {
+  if (rejected) rejected->reset();
   std::uint64_t work = cells.cells.cells.size() + 1;
   if (cells.cells.revision != graph.revision || cells.cells.cfg_revision != graph.cfg_revision ||
       cells.cells.cells.size() > budget.bytes / sizeof(std::optional<analysis::OpId>)) return {};
   cells.deferred.assign(cells.cells.cells.size(), std::nullopt);
   for (const auto& entry : deferred) {
+    if (rejected) *rejected = static_cast<std::size_t>(&entry - deferred.data());
     if (work > budget.work || entry.cell.value >= cells.deferred.size()) return {};
     ++work;
     // Several creations may defer the same cell; check each cell once.
@@ -120,6 +123,7 @@ std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& gra
     if (!DeferredStore(graph, cells.cells, entry.cell, entry.store, work)) return {};
     slot = entry.store;
   }
+  if (rejected) rejected->reset();
   cells.allocated_bytes += cells.deferred.capacity() * sizeof(std::optional<analysis::OpId>);
   if (work > budget.work) return {};
   return work;

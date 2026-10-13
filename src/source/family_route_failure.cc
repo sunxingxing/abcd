@@ -78,12 +78,31 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       }
     }
     if constexpr (std::is_same_v<T, CallPlanFailure>) result.call_reference = error.reference;
+    if constexpr (std::is_same_v<T, PhasedFlowFailure>) {
+      result.method = error.method; result.pc = error.pc; result.working_pc = error.working_pc;
+    }
+    if constexpr (requires { error.tree; }) if (error.tree) {
+      result.tree = error.tree;
+      result.method = error.tree->location.method;
+      result.pc = error.tree->location.pc; result.working_pc = error.tree->location.working_pc;
+    }
+    if constexpr (requires { error.deferred; }) if (error.deferred) {
+      result.deferred = error.deferred;
+      result.method = error.deferred->creator;
+      result.pc = error.deferred->creation.pc;
+      result.working_pc = error.deferred->creation.working_pc;
+    }
     if constexpr (requires { error.working_pc; }) result.working_pc = error.working_pc;
     if constexpr (requires { error.method; }) if (!result.method) result.method = error.method;
     if constexpr (requires { error.creation_pc; error.parent; }) {
       result.creation_pc = error.creation_pc;
       result.creation_method = error.parent;
     }
+    // Newly exposed tree-verifier leaves are diagnostic. Their historical
+    // outer classification remains authoritative (including completion's
+    // TreeFlow catch); expression causes retain their pre-existing policy.
+    if constexpr (std::is_same_v<T, FunctionTreeFailure>)
+      if (!std::holds_alternative<ExpressionFailure>(error.cause)) result.failure_class = Classify(error.kind);
     return result;
   }
 }

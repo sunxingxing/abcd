@@ -17,6 +17,7 @@
 #include "abcd/source/call_reference.h"
 #include "abcd/source/capture_occurrence.h"
 #include "abcd/source/control_failure.h"
+#include "abcd/source/tree_failure.h"
 
 namespace abcd::source {
 // Source route identity (docs/design/source-recovery/acceptance.md §2).
@@ -103,6 +104,8 @@ struct RouteFailure {
   std::optional<CallReferenceEvidence> call_reference = {};
   std::optional<CaptureOccurrence> capture = {};
   std::optional<ControlOwnershipEvidence> control = {};
+  std::optional<TreeFailureEvidence> tree = {};
+  std::optional<DeferredCellEvidence> deferred = {};
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

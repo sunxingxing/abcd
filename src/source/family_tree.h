@@ -36,6 +36,7 @@ struct FamilyTreeFailure {
   bool cell_defaults_proved = false;
   // Resolved while the owned family is still alive; never a creation PC.
   std::optional<abc::EntityOffset> method;
+  std::optional<DeferredCellEvidence> deferred;
 };
 // Consumes a fresh, unchanged ReadFunctionFamily result and actual root context.
 // Parent-first shared construction checks each incoming capture against the

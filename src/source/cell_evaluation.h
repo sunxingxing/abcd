@@ -33,7 +33,8 @@ enum class CellEvaluationError : std::uint8_t {
 // allocation in the same block with no access of that cell in between.
 // Returns the work spent, or nothing when any entry fails these checks.
 [[nodiscard]] std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& graph,
-    CellEvaluation& cells, std::span<const DeferredCellInitialization> deferred, analysis::SemanticBudget budget);
+    CellEvaluation& cells, std::span<const DeferredCellInitialization> deferred, analysis::SemanticBudget budget,
+    std::optional<std::size_t>* rejected = nullptr);
 // Recheck every recorded entry against the same facts. O(cells + entries log accesses).
 [[nodiscard]] std::optional<std::uint64_t> VerifyDeferredCells(const analysis::ValueProgram& graph,
     const CellEvaluation& cells, analysis::SemanticBudget budget);

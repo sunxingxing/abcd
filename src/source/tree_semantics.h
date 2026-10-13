@@ -9,6 +9,11 @@ enum class TreeSemanticError : std::uint8_t {
   kFlow, kOperand, kOperator, kConstant, kOrigin, kUnsupportedOperation,
   kResourceLimit, kWorkLimit
 };
+struct TreeSemanticFailure {
+  TreeSemanticError kind = TreeSemanticError::kFlow;
+  std::variant<std::monostate, TreeFlowError> cause;
+  TreeLocation location;
+};
 struct TreeSemantics {
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;
@@ -30,13 +35,15 @@ struct TreeSemantics {
 [[nodiscard]] std::variant<TreeSemantics, TreeSemanticError> VerifyTreeSemantics(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    ExpressionConstants constants, analysis::SemanticBudget budget = {});
+    ExpressionConstants constants, analysis::SemanticBudget budget = {},
+    TreeSemanticFailure* failure = nullptr);
 // Same conditional correspondence contract, with original phase/region evidence.
 // Does not authorize finally recognition, suspension lowering or publication.
 [[nodiscard]] std::variant<TreeSemantics, TreeSemanticError> VerifyExceptionTreeSemantics(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     ExpressionConstants constants, analysis::SemanticBudget budget = {},
-    TreeControlCheck control_check = TreeControlCheck::kFresh);
+    TreeControlCheck control_check = TreeControlCheck::kFresh,
+    TreeSemanticFailure* failure = nullptr);
 }  // namespace abcd::source
 #endif

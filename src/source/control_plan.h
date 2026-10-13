@@ -5,8 +5,9 @@
 #include "loop_forest.h"
 #include "abcd/source/control_failure.h"
 
+#include "abcd/source/source_ids.h"
+
 namespace abcd::source {
-struct ControlId { std::uint32_t value = 0; auto operator<=>(const ControlId&) const = default; };
 struct ControlArms {
   std::optional<ControlId> taken;
   std::optional<ControlId> fallthrough;

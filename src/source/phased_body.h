@@ -15,6 +15,12 @@ enum class PhasedMethodError : std::uint8_t {
 };
 // Preserve the exact failed input proof and consumed analysis work. No graph
 // or input certificate is constructed from this envelope.
+struct PhasedFlowFailure {
+  PhasedMethodError kind;
+  std::variant<analysis::SemanticFailure, analysis::FlowFailure, analysis::DispatchFailure> cause;
+  abc::EntityOffset method;
+  std::optional<abc::CodeOffset> pc, working_pc;
+};
 struct PhasedInputFailure {
   analysis::ExceptionInputFailure cause;
   std::size_t allocated_bytes = 0;
@@ -51,7 +57,7 @@ class PhasedBody {
   PhasedBody(PhasedBody&&) noexcept;
   PhasedBody& operator=(PhasedBody&&) noexcept;
   ~PhasedBody();
-  [[nodiscard]] static std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedModuleFailure, PhasedImportFailure, PhasedControlFailure> Build(
+  [[nodiscard]] static std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailure, PhasedModuleFailure, PhasedImportFailure, PhasedControlFailure> Build(
       const FunctionContext& context, const abc::MethodBody& body,
       analysis::SemanticBudget budget = {}, const PhasedModuleBinding* modules = nullptr,
       analysis::CapturedValues captures = analysis::CapturedValues::kReject,

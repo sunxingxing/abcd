@@ -15,12 +15,23 @@ namespace abcd::source {
 namespace {
 using Error = TreeFlowError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
+struct FlowFailure { TreeFlowError kind; TreeLocation location; };
 struct TreeRegion {
   ControlId entry;
   StmtId block;
   std::uint32_t first_child = 0;
 };
 class FlowCheck {
+  mutable TreeLocation location_;
+  struct LocationScope {
+    const FlowCheck& owner; TreeLocation previous;
+    LocationScope(const FlowCheck& o, TreeLocation location) : owner(o), previous(o.location_) { o.location_ = location; }
+    ~LocationScope() { owner.location_ = previous; }
+  };
+  TreeLocation At(analysis::OpId id) const { return OperationLocation(graph_, id, tree_.method); }
+  void Require(bool condition, Error error) const {
+    if (!condition) throw FlowFailure{error, location_};
+  }
  public:
   FlowCheck(const analysis::ValueProgram& graph, const ControlPlan& control,
       const EvaluationPlan& evaluation, const FunctionTree& tree,
@@ -174,6 +185,7 @@ class FlowCheck {
         for (std::uint32_t i = 0; i < count; ++i) {
           budget_.Step();
           const analysis::OpId id = predicate.value_or(analysis::OpId{source.first_op.value + i});
+          LocationScope witness(*this, At(id)); location_.statement = region.block;
           const auto& op = graph_.ops[id.value];
           if (exceptions_ && !predicate && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
             Require((evaluation_.operations[id.value].kind == EvaluationKind::kRoot ||
@@ -974,6 +986,7 @@ class FlowCheck {
   // block scope: before it the binding is in its TDZ, as the Hole was.
   void DeferredDeclaration(analysis::OpId id, CellId cell, StmtId site, const BlockStmt& block, StmtId owner) {
     Require(cell.value < deferred_blocks_.size() && deferred_blocks_[cell.value] == owner, Error::kPlacement);
+    LocationScope witness(*this, At(id)); location_.statement = site;
     const auto& statement = tree_.statements[site.value];
     const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
     Require(declaration && declaration->initializer && declaration->symbol.value < tree_.symbols.size() &&
@@ -1335,6 +1348,7 @@ class FlowCheck {
     for (std::size_t i = 0; i < tree_.operations.size(); ++i) {
       budget_.Step();
       const auto& placement = tree_.operations[i];
+      LocationScope witness(*this, At(placement.operation));
       Require(placement.operation.value < graph_.ops.size(), Error::kPlacement);
       auto& entry = placements_[placement.operation.value];
       Require(!entry && graph_.ops[placement.operation.value].life == analysis::ValueLife::kLive, Error::kPlacement);
@@ -1342,6 +1356,7 @@ class FlowCheck {
     }
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
+      LocationScope witness(*this, At(analysis::OpId{static_cast<std::uint32_t>(i)}));
       const auto& op = graph_.ops[i];
       if (op.life != analysis::ValueLife::kLive) continue;
       Require(placements_[i].has_value(), Error::kPlacement);
@@ -1658,7 +1673,8 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     analysis::SemanticBudget budget, const ExceptionTreeInput* exceptions,
-    TreeControlCheck control_check = TreeControlCheck::kFresh) {
+    TreeControlCheck control_check, TreeLocation* failure_location) {
+  if (failure_location) *failure_location = {};
   try {
     // Partial syntax is printable, but cannot certify correspondence to a whole
     // function. Keep the old semantic route from interpreting a gap as a no-op.
@@ -1717,6 +1733,9 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     const CompletionTreeView sequences(tree, completions, checked);
     return FlowCheck(graph, control, evaluation, tree, checked, sequences,
         std::get<TreeStructure>(structure).expression_scopes, exceptions).Run();
+  } catch (const FlowFailure& failure) {
+    if (failure_location) *failure_location = failure.location;
+    return failure.kind;
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
@@ -1727,13 +1746,13 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
 std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    analysis::SemanticBudget budget) {
-  return VerifyFlow(graph, control, evaluation, tree, budget, nullptr);
+    analysis::SemanticBudget budget, TreeLocation* failure_location) {
+  return VerifyFlow(graph, control, evaluation, tree, budget, nullptr, TreeControlCheck::kFresh, failure_location);
 }
 std::variant<TreeFlow, TreeFlowError> VerifyExceptionTreeFlow(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    analysis::SemanticBudget budget, TreeControlCheck control_check) {
-  return VerifyFlow(graph, exceptions.control.skeleton, evaluation, tree, budget, &exceptions, control_check);
+    analysis::SemanticBudget budget, TreeControlCheck control_check, TreeLocation* failure_location) {
+  return VerifyFlow(graph, exceptions.control.skeleton, evaluation, tree, budget, &exceptions, control_check, failure_location);
 }
 }  // namespace abcd::source

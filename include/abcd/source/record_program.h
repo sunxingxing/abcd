@@ -43,14 +43,20 @@ enum class RecordProgramError : unsigned {
   // encoding limit or case-folded collision); other records are unaffected.
   kSourcePath = 21
 };
+enum class RecordModuleKindError : std::uint8_t { kCommonJs, kShared, kTopLevelAwait, kJson };
+enum class RecordModuleProofError : std::uint8_t {
+  kOwner, kAliasBinding, kReadInventory, kSymbolRange, kSymbolBinding
+};
 struct RecordProgramFailure {
   RecordProgramError kind;
-  abc::CodeOffset pc;
+  std::optional<abc::CodeOffset> pc;
   // Typed causes from the stage that produced this record failure (S2).
   FailureCauseChain causes = {};
   std::optional<CallReferenceEvidence> call_reference;
   std::optional<abc::EntityOffset> method;
   std::optional<abc::CodeOffset> working_pc;
+  std::optional<TreeFailureEvidence> tree;
+  std::optional<DeferredCellEvidence> deferred;
 };
 struct RecordProgramBudget {
   std::size_t bytes = 128 * 1024 * 1024;

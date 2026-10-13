@@ -1,4 +1,5 @@
 #include "cell_names.h"
+#include "deferred_failure.h"
 #include "record_tree.h"
 #include "abcd/source/module_exports.h"
 
@@ -51,6 +52,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       if constexpr (std::is_same_v<T, FunctionTreeFailure>) {
         const auto detail = FamilyRouteFailure(alternative);
         failure.call_reference = detail.call_reference;
+        failure.tree = detail.tree; failure.deferred = detail.deferred;
         failure.method = detail.method;
         failure.working_pc = detail.working_pc;
         if (detail.pc) failure.pc = *detail.pc;
@@ -64,7 +66,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       budget.bytes -= bytes;
     };
     const auto module = context.ForOwner(file, record.offset);
-    if (!module) return fail(Error::kModule);
+    if (!module) return fail_with(Error::kModule, RecordModuleProofError::kOwner);
     const ModuleOwnerId owner{record.offset.value};
     auto enclosed = ModuleEnclosure::Build(file, header, context, identity, owner, {budget.bytes});
     auto* enclosure = std::get_if<ModuleEnclosure>(&enclosed);
@@ -322,7 +324,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       const auto slot = alias.target.symbol.value;
       if (alias.target.owner != owner || slot >= names.size() ||
           alias.name.value >= bindings->names.size() ||
-          names[slot] != bindings->names[alias.name.value]) return fail(Error::kModule);
+          names[slot] != bindings->names[alias.name.value]) return fail_with(Error::kModule, RecordModuleProofError::kAliasBinding);
     }
     if (slots->slot_count() > budget.bytes / sizeof(std::optional<analysis::OpId>))
       return fail(Error::kRecordBudget);
@@ -422,9 +424,26 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         for (const auto& member : family->members)
           if (member.incoming && member.incoming->parent == FileFamily::kRoot)
             deferred.insert(deferred.end(), member.incoming->cells.deferred.begin(), member.incoming->cells.deferred.end());
-        if (!evaluation->cells) return fail_with(Error::kFunction, FamilyTreeError::kDeferredCell);
-        if (!MarkDeferredCells(graph, *evaluation->cells, deferred, {budget.bytes}))
-          return fail_with(Error::kFunction, FamilyTreeError::kDeferredCell);
+        const auto deferred_failure = [&](DeferredCellError reason, const DeferredCellInitialization* selected) {
+          auto failure = fail_with(Error::kFunction, FamilyTreeError::kDeferredCell);
+          failure.deferred = DeferredCellEvidence{reason}; failure.deferred->creator = function->input.Method();
+          for (const auto& member : family->members) {
+            if (!member.incoming || member.incoming->parent != FileFamily::kRoot) continue;
+            for (const auto& cell : member.incoming->cells.deferred) if (selected && cell == *selected) {
+              failure.deferred = DescribeDeferredFailure(reason, graph, function->values.cells ? &*function->values.cells : nullptr,
+                  member.incoming->cells, selected, member.function.Capture().Input().Captures());
+              break;
+            }
+            if (failure.deferred->child) break;
+          }
+          AppendFailureCause(failure.causes, reason);
+          failure.method = failure.deferred->creator;
+          return failure;
+        };
+        if (!evaluation->cells) return deferred_failure(DeferredCellError::kBinding, &deferred.front());
+        std::optional<std::size_t> rejected;
+        if (!MarkDeferredCells(graph, *evaluation->cells, deferred, {budget.bytes}, &rejected))
+          return deferred_failure(DeferredCellError::kPlacement, rejected ? &deferred[*rejected] : nullptr);
         retain(evaluation->cells->deferred.capacity() * sizeof(std::optional<analysis::OpId>));
       }
     }
@@ -505,13 +524,13 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     // Recheck the actual emitted tree against the complete metadata inventory.
     // Entry-body locals and imports occupy the same native ESM scope even
     // though the shared function tree models their ownership separately.
-    if (result->tree.modules.size() != names.size()) return fail(Error::kModule);
+    if (result->tree.modules.size() != names.size()) return fail_with(Error::kModule, RecordModuleProofError::kReadInventory);
     retain(names.size());
     std::vector<bool> seen(names.size());
     for (const auto& alias : result->tree.modules) {
       const auto slot = alias.target.symbol.value;
       if (alias.target.owner != owner || slot >= names.size() || seen[slot] ||
-          alias.symbol.value >= result->tree.symbols.size()) return fail(Error::kModule);
+          alias.symbol.value >= result->tree.symbols.size()) return fail_with(Error::kModule, RecordModuleProofError::kSymbolRange);
       seen[slot] = true;
       const bool local = slot >= external;
       const auto& symbol = result->tree.symbols[alias.symbol.value];
@@ -519,7 +538,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           symbol.kind != (local ? BindingKind::kLocal : BindingKind::kModule) ||
           symbol.evidence != (local ? local_names->evidence[slot - external] : NameEvidence::kMetadata) ||
           symbol.name.value >= result->tree.names.size() ||
-          result->tree.names[symbol.name.value] != names[slot]) return fail(Error::kModule);
+          result->tree.names[symbol.name.value] != names[slot]) return fail_with(Error::kModule, RecordModuleProofError::kSymbolBinding);
     }
     std::vector<std::string> lexical_names;
     std::vector<std::string_view> lexical_views;

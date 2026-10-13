@@ -6,6 +6,8 @@
 #include "function_syntax.h"
 #include "capture_tree.h"
 #include "tree_flow.h"
+#include "completion_plan.h"
+#include "tree_semantics.h"
 
 namespace abcd::source {
 struct ConstructedFunction {
@@ -19,11 +21,13 @@ enum class FunctionTreeError : std::uint8_t {
   kControl, kExpression, kBinding, kName, kOrigin, kOwnership,
   kResourceLimit, kWorkLimit, kStructure, kSemantics, kCapture
 };
-// A function-tree refusal with its typed cause (the expression failure behind
-// kExpression). Compares equal to its kind; the cause is diagnostic only.
+// A function-tree refusal with a bounded typed obligation/location and the
+// actual failed verifier cause. These fields never influence admission.
 struct FunctionTreeFailure {
   FunctionTreeError kind;
-  std::variant<std::monostate, ExpressionFailure> cause;
+  std::variant<std::monostate, ExpressionFailure, ControlError, ExceptionControlError, CompletionError,
+      TreeFlowError, TreeStructureError, TreeSemanticFailure> cause;
+  std::optional<TreeFailureEvidence> tree;
   FunctionTreeFailure(FunctionTreeError value) : kind(value) {}  // NOLINT: implicit kind.
   std::optional<abc::EntityOffset> method;
   FunctionTreeFailure(FunctionTreeError value, ExpressionFailure expression,

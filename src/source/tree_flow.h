@@ -103,7 +103,7 @@ struct TreeFlow {
 [[nodiscard]] std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, TreeLocation* failure_location = nullptr);
 // Checks the actual tree against freshly verified original exceptional control
 // and staged copies. Same expression/ABI limitations as normal flow above.
 // Exceptional indexing/traversal adds O(B + E + O + V + R + C) work/storage
@@ -113,6 +113,6 @@ struct TreeFlow {
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     analysis::SemanticBudget budget = {},
-    TreeControlCheck control_check = TreeControlCheck::kFresh);
+    TreeControlCheck control_check = TreeControlCheck::kFresh, TreeLocation* failure_location = nullptr);
 }  // namespace abcd::source
 #endif

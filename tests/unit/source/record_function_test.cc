@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
       std::cerr << "record variant=" << result.index() << '\n';
       if (const auto* failure = std::get_if<source::RecordProgramFailure>(&result))
         std::cerr << "failure=" << static_cast<unsigned>(failure->kind)
-                  << " pc=" << failure->pc.value << '\n';
+                  << " pc=" << (failure->pc ? std::to_string(failure->pc->value) : "absent") << '\n';
     }
     Check(std::holds_alternative<source::PrintedSource>(result));
     const auto& text = std::get<source::PrintedSource>(result);

@@ -5,8 +5,9 @@
 #include "abcd/analysis/creation_binding.h"
 #include "abcd/source/capture_occurrence.h"
 
+#include "abcd/source/source_ids.h"
+
 namespace abcd::source {
-struct CellId { std::uint32_t value; auto operator<=>(const CellId&) const = default; };
 struct AllocatedCell {
   analysis::OpId allocation;
   analysis::LexicalSlot slot;

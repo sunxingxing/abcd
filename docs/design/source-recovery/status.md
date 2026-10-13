@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-10-13。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-14。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
@@ -11,6 +11,26 @@
 - 不按文件数、提交数或 complete 数量宣布完成；通用性以冻结留出集为准，见
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
+
+## Round 42：拒绝义务与位置（工作区完成，未提交）
+
+- 基线 `1c8dee55`。只增加诊断：FunctionTree 的义务、实际下层 verifier 原因，
+  可选强类型位置及原始/工作 PC；DeferredCell 的真实 creator、child occurrence、
+  allocation/store 与 ExternalRoot/PhasedParent/Placement/Binding 子原因。
+- `PhasedMethodError::kInput` 保留 ExceptionFlow 的实际失败 alternative；LruCache
+  的空链已定位为 `RecordModuleKindError::kShared`。两个 SemanticProof PC 属于
+  initializer 方法 5040/8556，分别为真实 PC 12/13，旧外层方法归属已修正。
+- route、record-entry 和 `abc_semantic --record-source` 共享 JSON witness；缺失 PC
+  不再发布成 0。机制和边界见 [failure-evidence.md](failure-evidence.md)。
+- `cmake --build build/regression -j 6 -- -k` 成功；固定集串行 **65/65**；相关
+  定向组 **27/27**；诊断组 **5/5**（与定向组重叠，非额外五项）。新测试覆盖全部
+  义务、零/缺失/归一化/synthetic 位置、资源分类、两条 JSON 路径、三个 phased
+  input alternative，以及六个真实 ABC 拒绝的 CLI/manifest 一致性。
+- 探索对 `explore40/explore40s`：旧 flags **479/620**、source **511/620**；全部
+  record 的 status/domain/外层 error/class/reason 无变化，**0** 状态回退或增益、
+  **0** 文本漂移。没有运行留出集、全套测试或 RSS 基准。
+- 首拒绝完整分布与逐 record 新位置见 [round-42-refusals.md](round-42-refusals.md)。
+  没有把相同的义务枚举当作已证明同一根因；整体验证仍可合法地没有局部 PC。
 
 ## Round 37：调用实参中的赋值表达式（待 cc 审查，未提交）
 
@@ -180,6 +200,7 @@
 | phased 受保护捕获读取（2026-10-14） | Codex 第三十八轮，cc 审查。12 个 record 的首个拒绝点相同，都是 `CaptureCellError::kInput > CaptureError::kScope > ScopeError::kInitialization`：父函数先创建闭包，后初始化 cell，而子函数的读取带有原始 named hole-check。缺口在于 phased 输入缺少逐访问的 guarded 证明，下游又把 guard 当作不会抛出的 initialized 检查。新增 `capture_occurrence`，失败回执携带 ordinal、cell、请求的 domain、子方法原始/工作 PC。新增 `analysis/guarded_reads`：用 SSA identity、支配关系和有序事件证明 load 与 guard 的身份、guard 前没有可观察事件、成功值使用及异常出口对应，不依赖邻接模板。仅对有证据且绑定到 deferred cell 的 occurrence 降为 Guarded；新增 `kGuardedCellRead` 事件类别，与非抛出的 `kCellGuard` 分开，不允许 phase composition 吸收，recovery 独立重算证据。需求格、未保护访问和异常父函数准入不变。错误消息边界：es2abc 把原生 `let` 的 TDZ 读取编译为同一个 hole-check，Node 差分只比较异常构造器和轨迹（guarded-captures.md §9）。新增 `guarded_reads_test`、`phased_guarded_reads_test`、`phased_guarded_captures_cli_test`（真实 es2abc fixture）。12 个候选全部越过原拒绝点，其中 OneWayTlsWorker、TlsServerWorker、FunctionUtil 完成；其余 9 个暴露后续原因（7 个 `PhasedMethodError::kControl`，1 个 `FamilyWriteError::kStore`，1 个 `ControlError::kCrossEntry`）。o16 InputDeviceRoutingSwitching 也完成：guarded 读取走新证明，未保护读取走原有初始化证明，没有开放 Round B。cc 核实了 FindAndListenAudioInputDevice 的早期读取都带有 hole-check，所以原 flags 下完成是可靠的；`language_source_corpus.mjs` 已改为新的分界，只有 OutputDeviceChangePause 仍依赖 TDZ 前提。cc 审查结论：原 flags 下 471 → **478/620**；`--language-source` 下 506 → **510/620**；两者都没有回退，也没有文本漂移；固定集 65/65；配对样本逐字节相同；定向集中的其余失败都在既有失败清单内（已在 c329fd2d 上复现） |
 | 私有终止区域与类型化控制失败证据（2026-10-14） | Codex 第三十九轮，cc 审查（三轮迭代）。`PhasedMethodError::kControl` 不再折叠原因：新增 `ControlFailure`/`ExceptionControlFailure`/`PhasedControlFailure`，链路为 `kControl → ExceptionControlError → ControlError → ControlOwnershipError`，携带重复节点、进入弧、两侧区域边界、方法与原始/工作 PC（合成节点保留类型与 ID）；`abc_semantic --record-source` 不再丢弃类型化原因。Class A（7 个 `start` 方法：内部带分支的提前返回区域未被识别，共享尾部被重复认领）：建立独立的入口支配树、`AllAbrupt`/`ReachMeet` 摘要，单入口、全部路径 abrupt 且 ReachMeet 为自身的区域头才算私有终止。cc 两次拒绝文本漂移：第一次统一应用改变了 follow 的选择（37 个 record 漂移，o32/49868 的捕获声明被拆开）；第二次的双终止 if/else 被展开（6 个）。最终规则：沿用原 follow；只有原 follow 为虚拟出口，且另一臂的 ReachMeet 越出分支支配（存在可证明的共享 continuation）时才补 follow；两臂各自终止的 if/else 保留虚拟出口。验证器另外检查正常完成端口不在仍会执行的 lexical continuation 之前。新增 `control_terminal_test`、`terminal_regions.mjs`（真实 es2abc fixture，两组 flags 各 360 个 Node 场景）。7 个 `start` 越过原拒绝点，但都停在各自 `stop` 方法（节点 180/弧 182，区域 210→147）；它与 renderer.stop 一样属于 Class B（decision continuation 越过外围 stop），留待下一轮。cc 审查结论：原 flags 478/620、`--language-source` 510/620，都没有变化，0 回退，0 文本漂移；固定集 65/65；配对样本逐字节相同。`try_tree_test` 在 bc0b1dee 上同样 abort（rc 134），补入既有失败清单 |
 | decision continuation 与外围 stop 相容（2026-10-14） | Codex 第四十轮，cc 审查。Class B：`Decisions()` 在共同祖先为虚拟出口时把私有 return 臂选为 decision join，共享臂因此越过外围 stop，尾部被重复认领。两组 flags 下同根因共 11 个 record（normal 3：o1 CardCalc/Index、o5 YearView；phased 8：o19/o26 的 7 个 `stop` 与 renderer.stop）。o38 SendCommandComponent 与 o18 handleMessage 是另外的 duplicate，单列。修复：decision 发现与最终 join 分开，在 `Regions()` 已知 enclosing stop T、提交归属前一次性确定。新增真实 normal postdominator 树，与 lexical follow 树、entry dominance 树分开（loop-discovery.md 记录三棵树的分工）。只有当 T 是有界区域的真实 stop、J₀ == R、Private(R)、T 后支配 S、R 不支配 T，且 prefix/作用域/边对应成立时，才以 T 替换 J₀；否则保留 J₀，或以新增 `DecisionContinuationError::{kPostdominator,kPrefix}` 拒绝。独立验证器从原始边复核。新增 `control_decision_test`、`decision_continuations.mjs`（真实 es2abc，两组 flags 各 2016 个 Node 场景，7 种变异全部检出）。11 个原拒绝全部消失：YearView 完成（cc 对照原源码核对 onAnimationStart 的语义一致；`||` 链以 phi 赋值形式输出，可读性另议）；其余 10 个暴露下一层（3 个 FunctionTreeError::kOwnership，2 个 kControl，3 个 CallReferenceError::kNotInline，1 个另一方法的 duplicate，1 个捕获初始化）。cc 审查结论：原 flags 478 → **479/620**，`--language-source` 510 → **511/620**；0 回退，0 文本漂移；固定集 65/65；配对样本逐字节相同；control 定向测试 9/9 |
+| 拒绝义务与位置贯通（2026-10-14） | Codex 第四十二轮（只加诊断），cc 审查。`tree_failure.h` 定义固定大小的义务与位置证据：FunctionTreeFailure 保留原有枚举，新增 decision copies/prefix、catch scope/staging、expression ownership、deferred declaration 等义务，并保留底层 verifier 原因；原始/工作 PC 分开发布，缺失 PC 不再输出为 0，synthetic 节点保留类型与 ID。`deferred_failure.h` 记录真实 creator、child occurrence、cell、domain、allocation、initializing store，以及 ExternalRoot/PhasedParent/Placement/Binding 子原因。PhasedMethod kInput 保留 ExceptionFlowResult 的真实失败；LruCache 的空链补为 `RecordModuleKindError::kShared`；两处 SemanticProof PC 实为方法归属错误（o0 m5040、o20 m8556），已修正。两条发布路径与 `abc_semantic --record-source` 一致。重分类结果（round-42-refusals.md，`--language-source`）：kControl 拆为 DecisionPrefix 9 与 DecisionEdgeCopies 2；kOwnership 3 都是 ExpressionOwnership；kDeferredCell 10 都是 ExternalRoot；kInput 拆为 iterator 4、属性枚举 3、delete 1。新增 `tree_failure_test`、`tree_failure_cli_test`。cc 审查结论：479/620、511/620 都不变，0 状态变化，0 文本变化；固定集 65/65；配对样本逐字节相同 |
 | 既有失败清单（2026-10-13 核实） | 以下 30 个测试在会话起点 22e7423a 上同样失败，不在定向集中（全套测试暂停），不属于本会话的回退：file_generator_return(_loop)_source_test；literal_construct、mixed_literal、phased_literal、literal_closure_source、unguarded_literal_closure_source、derived_literal_receiver_source、unguarded_derived_literal_receiver_source；boolean_context_source_test、captured_receiver_source_test、class_tree_source_test、decision_snapshots_source_test、derived_cells_source_test、family_source_cli_test、forwarded_receiver_source_test、phased_arm_selection_source_test、reversed_captured_receiver_source_test、reversed_forwarded_receiver_source_test、reversed_initialization_captured_receiver_source_test、reversed_initialization_forwarded_receiver_source_test、snapshot_syntax_source_test、try_tree_source_test、try_tree_test（2026-10-14 补登，bc0b1dee 上复现）、unguarded_captured_receiver_source_test、unguarded_derived_cells_source_test、unguarded_forwarded_receiver_source_test、unguarded_reversed_captured_receiver_source_test、unguarded_reversed_forwarded_receiver_source_test、unguarded_reversed_initialization_captured_receiver_source_test、unguarded_reversed_initialization_forwarded_receiver_source_test |
 | `window_navigation_graph_source_test`、`community_ability_graph_source_test` | 单独运行均通过（231s、205s）；与其他测试并行运行时，其 60 秒 worker 子进程会超时，属于资源争用 |
 | `index_cli_test` | macOS 上首次通过（Darwin 断言限额未建立；Linux 的 prlimit 断言保留） |

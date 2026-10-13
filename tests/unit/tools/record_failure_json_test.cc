@@ -74,7 +74,7 @@ int main() {
   Check(budget["source_error"] == static_cast<unsigned>(source::RecordProgramError::kResourceLimit));
   Check(budget["source_pc"] == 7 && !budget.contains("source_failure"));
   Check(budget["source_causes"].empty() && budget["source_causes_truncated"] == false);
-  source::RecordProgramFailure located{source::RecordProgramError::kValue, {73}};
+  source::RecordProgramFailure located{source::RecordProgramError::kValue, abc::CodeOffset{73}};
   located.method=abc::EntityOffset{91}; located.working_pc=abc::CodeOffset{31};
   located.call_reference=chained.call_reference;
   nlohmann::json record_reference;
