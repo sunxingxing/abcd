@@ -147,7 +147,7 @@ void Run(bool caught, bool malformed = false, std::uint32_t count = 3, std::uint
       auto omitted = std::move(tree.omissions);
       std::ostringstream rejected_output;
       test::Check(!tree.DraftPrepared());
-      test::Check(std::holds_alternative<TreePrintError>(PrintClassTree(tree, rejected_output)) && rejected_output.str().empty());
+      test::Check(std::holds_alternative<TreePrintFailure>(PrintClassTree(tree, rejected_output)) && rejected_output.str().empty());
       tree.omissions = std::move(omitted);
       const auto old_site = tree.member_sites[0]; tree.member_sites[0] = tree.member_sites[1];
       test::Check(!tree.DraftPrepared()); tree.member_sites[0] = old_site;

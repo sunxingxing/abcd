@@ -10,6 +10,13 @@
 #include "abcd/source/source_route.h"
 
 namespace abcd::source {
+struct RecordPrintDiagnostics {
+  std::size_t reservation=0, printer_scratch=0, available=0;
+  std::size_t counted_bytes=0, counted_peak=0;
+  std::size_t methods=0, expressions=0, statements=0, operations=0, anchors=0;
+  bool reached_print=false, count_complete=false;
+  std::optional<TreePrintFailure> count_failure;
+};
 // Result of the value-tree record route: printed source, a typed record-level
 // failure, or a typed route refusal from a recovery stage.
 using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure, RouteRefusal>;
@@ -29,6 +36,7 @@ using RecordSourceResult = std::variant<PrintedSource, RecordProgramFailure, Rou
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
     const RouteInputIdentity& identity,
     const analysis::FunctionCreationSites* functions = nullptr,
-    const analysis::ClassMethodSites* classes = nullptr);
+    const analysis::ClassMethodSites* classes = nullptr,
+    RecordPrintDiagnostics* diagnostics = nullptr);
 }  // namespace abcd::source
 #endif

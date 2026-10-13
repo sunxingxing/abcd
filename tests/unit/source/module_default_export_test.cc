@@ -45,7 +45,7 @@ bool Eligible(const FunctionTree& tree, ModuleDefaultExport candidate = kDefault
 void Denied(const FunctionTree& tree, ModuleDefaultExport candidate = kDefault) {
   Check(!Eligible(tree, candidate));
   std::ostringstream output;
-  Check(std::get<TreePrintError>(PrintModuleTree(tree, output, {}, {}, nullptr, candidate)) == TreePrintError::kUnsupportedContext);
+  Check(std::get<TreePrintFailure>(PrintModuleTree(tree, output, {}, {}, nullptr, candidate)) == TreePrintError::kUnsupportedContext);
   Check(output.str().empty());
 }
 }
@@ -73,8 +73,8 @@ int main() {
   invalid = root; invalid.statements.push_back(invalid.statements[1]); Check(!Eligible(invalid));
   Check(!Eligible(root, {{999}, kDefault.binding}));
   Check(!Eligible(root, {{1}, {{8}, {7}}}));
-  Check(std::get<TreePrintError>(CheckModuleDefaultExport(root, nullptr, kDefault, {0})) == TreePrintError::kResourceLimit);
-  Check(std::get<TreePrintError>(CheckModuleDefaultExport(root, nullptr, kDefault, {64 * 1024, 0})) == TreePrintError::kWorkLimit);
+  Check(std::get<TreePrintFailure>(CheckModuleDefaultExport(root, nullptr, kDefault, {0})) == TreePrintError::kResourceLimit);
+  Check(std::get<TreePrintFailure>(CheckModuleDefaultExport(root, nullptr, kDefault, {64 * 1024, 0})) == TreePrintError::kWorkLimit);
   // A sibling is a different symbol owner even when IDs coincide. Module/cell
   // targets, rather than its local ID or printed name, decide binding lifetime.
   auto child = Fixture(); child.owner = {20}; child.modules.clear();

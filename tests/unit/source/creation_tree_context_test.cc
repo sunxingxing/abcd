@@ -686,10 +686,10 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
         std::ostringstream failed_output;
         const auto limited = FamilyEmission::Write(fresh(), {Strictness::kStrict, nullptr},
             failed_output, {}, {0});
-        test::Check(std::get<TreePrintError>(std::get<FamilyEmitFailure>(limited)) == TreePrintError::kOutputLimit);
+        test::Check(std::get<TreePrintFailure>(std::get<FamilyEmitFailure>(limited)) == TreePrintError::kOutputLimit);
         const auto overflow = FamilyEmission::Write(fresh(), {Strictness::kStrict, nullptr},
             failed_output, {std::numeric_limits<std::size_t>::max()});
-        test::Check(std::get<TreePrintError>(std::get<FamilyEmitFailure>(overflow)) == TreePrintError::kOutputLimit);
+        test::Check(std::get<TreePrintFailure>(std::get<FamilyEmitFailure>(overflow)) == TreePrintError::kOutputLimit);
         const auto exhausted = FamilyEmission::Write(fresh(), {Strictness::kStrict, nullptr},
             failed_output, {}, {}, {0, 0});
         test::Check(std::get<FamilyEmitError>(std::get<FamilyEmitFailure>(exhausted)) == FamilyEmitError::kResourceLimit);
@@ -761,7 +761,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
             [](const auto& symbol) { return symbol.kind == BindingKind::kLocal; }));
       }
       std::ostringstream output;
-      test::Check(std::get<TreePrintError>(PrintFunctionTree(function, output)) == TreePrintError::kUnsupportedContext);
+      test::Check(std::get<TreePrintFailure>(PrintFunctionTree(function, output)) == TreePrintError::kUnsupportedContext);
       test::Check(output.str().empty());
     }
     if (all_formats) {

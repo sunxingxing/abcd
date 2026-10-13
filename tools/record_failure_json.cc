@@ -1,3 +1,4 @@
+#include "../src/source/tree_print_failure_json.h"
 #include "record_failure_json.h"
 #include "../src/source/guarded_call_json.h"
 #include "../src/source/control_failure_json.h"
@@ -39,6 +40,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.failure.working_pc) record["source_failure"]["working_pc"] = failure.failure.working_pc->value;
       if (failure.failure.creation_method) record["source_failure"]["creation_method"] = failure.failure.creation_method->value;
       if (failure.failure.creation_pc) record["source_failure"]["creation_pc"] = failure.failure.creation_pc->value;
+      if (failure.failure.printing) record["source_failure"]["printing"] = source::TreePrintFailureJson(*failure.failure.printing);
       if (failure.failure.evaluation) record["source_failure"]["evaluation"] = source::EvaluationFailureJson(*failure.failure.evaluation);
       if (failure.failure.tree) record["source_failure"]["tree"] = source::TreeFailureJson(*failure.failure.tree);
       if (failure.failure.deferred) record["source_failure"]["deferred"] = source::DeferredCellJson(*failure.failure.deferred);
@@ -62,6 +64,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
     } else if constexpr (std::is_same_v<T, source::RecordProgramFailure>) {
       record["source_failure_domain"] = "record_program";
       record["source_error"] = static_cast<unsigned>(failure.kind);
+      if (failure.printing) record["source_printing"] = source::TreePrintFailureJson(*failure.printing);
       if (failure.evaluation) record["source_evaluation"] = source::EvaluationFailureJson(*failure.evaluation);
       if (failure.tree) record["source_tree"] = source::TreeFailureJson(*failure.tree);
       if (failure.deferred) record["source_deferred"] = source::DeferredCellJson(*failure.deferred);

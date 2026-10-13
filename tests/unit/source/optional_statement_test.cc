@@ -83,7 +83,7 @@ int main(int argc, char**) {
       if(value && (computed || chained)) continue;
       Syntax syntax(guards,formed,computed,chained,reverse,value);std::ostringstream source;
       const auto result=PrintFunctionTree(syntax.tree,source);
-      if(const auto* error=std::get_if<TreePrintError>(&result)) std::cerr<<"print error="<<unsigned(*error)<<'\n';
+      if(const auto* error=std::get_if<TreePrintFailure>(&result)) std::cerr<<"print error="<<unsigned(*error)<<'\n';
       Check(std::holds_alternative<PrintedFunction>(result));
       if(source.str().find("?.")==std::string::npos) {std::cerr<<"missing native optional statement\n";std::abort();}
       const auto& positions=std::get<PrintedFunction>(result);Check(positions.expressions[syntax.call.value].begin<positions.expressions[syntax.call.value].end);

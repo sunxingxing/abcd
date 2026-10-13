@@ -355,13 +355,15 @@ class NamePlan {
   std::size_t pending_ = 0, depth_ = 0;
 };
 template<class Input> std::variant<ClassNames, Error> Plan(const Input& input, const GlobalScope* scope, analysis::SemanticBudget budget, Ownership ownership = Ownership::kCanonical, std::span<const SourceVariables> prepared = {}) {
+  TreePrintTrace trace(true);
+  TreePrintSiteScope site(TreePrintSite::kClassNamePlanning);
   try {
     if constexpr (std::is_same_v<Input, ConstructedFamily>) return NamePlan(scope,budget,ownership,prepared).Run(&input,nullptr);
     else if constexpr (std::is_same_v<Input, FunctionTree>) return NamePlan(scope,budget,ownership,prepared).Run(nullptr,nullptr,&input);
     else return NamePlan(scope,budget,ownership,prepared).Run(nullptr,&input);
-  } catch (Error error) { return error; }
-  catch (const std::bad_alloc&) { return Error::kResourceLimit; }
-  catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (Error error) {trace.failure.cause=error;trace.Propagate();return error; }
+  catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0);trace.Propagate();return Error::kResourceLimit; }
+  catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0);trace.Propagate();return Error::kResourceLimit; }
 }
 }
 ClassNames::Use ClassNames::Lookup(const ClassTree& tree) const {

@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_TREE_PRINTER_H_
 
 #include <iosfwd>
+#include "abcd/source/tree_print_failure.h"
 
 #include "abcd/source/emission.h"
 #include "abcd/source/global_reference.h"
@@ -15,10 +16,6 @@ struct GeneratedRange {
   auto operator<=>(const GeneratedRange&) const = default;
 };
 enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression, kFunctionExpression, kModuleBody, kStaticFields, kImplicitConstructor };
-enum class TreePrintError : std::uint8_t {
-  kUnsupportedContext, kOutputLimit, kWrite, kResourceLimit, kWorkLimit,
-  kInvalidLiteral
-};
 // Source recovery decides whether an occurrence is represented by text or by
 // an omission boundary. Publication validates that decision's coordinates; it
 // must not independently re-run syntax recovery to rediscover omissions.
@@ -69,7 +66,7 @@ struct PrintedFunction {
 // require an exact record destination and are checked before writing. Every root
 // must be a receiver field definition, followed by an undefined return. The
 // caller separately establishes the actual class receiver and placement.
-[[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
+[[nodiscard]] std::variant<PrintedFunction, TreePrintFailure> PrintStaticFields(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0,
     const GlobalScope* scope = nullptr, std::optional<abc::EntityOffset> record = {},
@@ -81,7 +78,7 @@ struct PrintedFunction {
 // owner is required. Structural safety is checked before writing; callers retain
 // ownership and must not mutate the tree during printing. Standalone function/
 // arrow expressions have no child lookup; use the shared family entry for those.
-[[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
+[[nodiscard]] std::variant<PrintedFunction, TreePrintFailure> PrintFunctionTree(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr,const OriginalFlow* original = nullptr);
@@ -95,7 +92,7 @@ struct ModuleDefaultExport { StmtId declaration; ModuleSymbol binding; };
 // Same AST printer for a module initializer. No callable envelope is emitted;
 // only a final top-level return is allowed and its value is evaluated/discarded.
 // The record adapter owns entry identity, declarations, imports and exports.
-[[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintModuleTree(
+[[nodiscard]] std::variant<PrintedFunction, TreePrintFailure> PrintModuleTree(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr,
@@ -110,7 +107,7 @@ struct ModuleDefaultExport { StmtId declaration; ModuleSymbol binding; };
 // any output. The scope used during preparation is not transferable permission.
 // Module reads additionally require the exact native ModuleEnclosure prelude;
 // the returned module_binding records that obligation, not record completion.
-[[nodiscard]] std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
+[[nodiscard]] std::variant<PrintedFunction, TreePrintFailure> PrintFunctionTree(
     const VerifiedFunction& function, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr);

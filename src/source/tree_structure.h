@@ -8,10 +8,6 @@ struct GlobalScope;
 // Source-name retention in one projection, distinct from value liveness/TDZ.
 enum class SourceBindingPresence : std::uint8_t {kRetained,kElided};
 struct SourceSpellingId {std::uint32_t value=0;auto operator<=>(const SourceSpellingId&)const=default;};
-enum class TreeStructureError : std::uint8_t {
-  kRange, kOwnership, kScope, kBinding, kName, kTarget, kOrigin,
-  kUnsupportedSyntax, kResourceLimit, kWorkLimit, kGlobalShadowed
-};
 struct TreeStructure {
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;

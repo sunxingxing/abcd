@@ -102,7 +102,7 @@ std::variant<FamilyEmission, FamilyEmitFailure> FamilyEmission::Write(
     limit.bytes = std::min(limit.bytes, std::numeric_limits<std::size_t>::max() - destination.byte);
     auto result = family.PrintDraft(context, output, limit, budget.Left());
     if (const auto* failure = std::get_if<FamilyPrepareFailure>(&result)) return FamilyEmitFailure{*failure};
-    if (const auto* failure = std::get_if<TreePrintError>(&result)) return FamilyEmitFailure{*failure};
+    if (const auto* failure = std::get_if<TreePrintFailure>(&result)) return FamilyEmitFailure{*failure};
     auto positions = std::get<PrintedFamilyDraft>(std::move(result));
     budget.Admit(positions.allocated_bytes, 1); budget.Step(positions.work);
     CheckPositions(family, positions, budget);

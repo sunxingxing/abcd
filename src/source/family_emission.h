@@ -6,7 +6,7 @@
 
 namespace abcd::source {
 enum class FamilyEmitError : std::uint8_t { kReceipt, kPositions, kResourceLimit, kWorkLimit };
-using FamilyEmitFailure = std::variant<FamilyEmitError, FamilyPrepareFailure, TreePrintError>;
+using FamilyEmitFailure = std::variant<FamilyEmitError, FamilyPrepareFailure, TreePrintFailure>;
 // Owns the immutable family and its emitted positions. Receipts identify each
 // creation occurrence by member order; repeated methods are not coalesced.
 // Complete METHOD coverage is not class/record completion or test acceptance.

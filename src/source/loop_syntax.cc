@@ -120,7 +120,7 @@ std::variant<LoopSyntax, TreeStructureError> PlanLoopSyntax(
     PlanLoopInitializers(tree, result, budget, bound);
     result.allocated_bytes = budget.Bytes(); result.work = budget.Work(); return result;
   } catch (TreeStructureError error) { return error;
-  } catch (const std::bad_alloc&) { return TreeStructureError::kResourceLimit;
-  } catch (const std::length_error&) { return TreeStructureError::kResourceLimit; }
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return TreeStructureError::kResourceLimit;
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return TreeStructureError::kResourceLimit; }
 }
 }

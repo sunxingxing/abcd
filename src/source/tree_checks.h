@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_TREE_CHECKS_H_
 
 #include "tree_structure.h"
+#include "tree_print_trace.h"
 #include <algorithm>
 
 namespace abcd::source {
@@ -12,11 +13,17 @@ class TreeCheckBudget {
  public:
   explicit TreeCheckBudget(analysis::SemanticBudget budget) : initial_(budget), remaining_(budget) {}
   void Step(std::uint64_t count = 1) {
-    RequireTree(count <= remaining_.work, TreeStructureError::kWorkLimit);
+    if(count>remaining_.work) {
+      PrintCharge(TreePrintBudgetKind::kWork,count,remaining_.work,initial_.work);
+      throw TreeStructureError::kWorkLimit;
+    }
     remaining_.work -= count;
   }
   void Admit(std::size_t count, std::size_t width) {
-    RequireTree(count <= remaining_.bytes / width, TreeStructureError::kResourceLimit);
+    if(count>remaining_.bytes/width) {
+      PrintByteCharge(count,width,remaining_.bytes,initial_.bytes,peak_bytes_);
+      throw TreeStructureError::kResourceLimit;
+    }
     remaining_.bytes -= count * width;
     peak_bytes_ = std::max(peak_bytes_,initial_.bytes-remaining_.bytes);
   }

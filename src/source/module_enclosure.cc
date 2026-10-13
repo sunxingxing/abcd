@@ -1,3 +1,4 @@
+#include "tree_print_trace.h"
 #include "abcd/source/module_enclosure.h"
 
 #include <algorithm>
@@ -18,12 +19,12 @@ bool Matches(const RouteInputIdentity& identity, const abc::Header& header) {
 }
 class Budget {
  public:
-  explicit Budget(analysis::SemanticBudget budget) : remaining(budget) {}
+  explicit Budget(analysis::SemanticBudget budget) : remaining(budget), initial(budget) {}
   void Step(std::uint64_t count = 1) {
-    Require(count <= remaining.work, Error::kWorkLimit); remaining.work -= count;
+    if(count>remaining.work)PrintCharge(TreePrintBudgetKind::kWork,count,remaining.work,initial.work); Require(count <= remaining.work, Error::kWorkLimit); remaining.work -= count;
   }
   void Admit(std::size_t count, std::size_t width) {
-    Require(count <= remaining.bytes / width, Error::kResourceLimit); remaining.bytes -= count * width;
+    if(count>remaining.bytes/width)PrintByteCharge(count,width,remaining.bytes,initial.bytes,initial.bytes-remaining.bytes); Require(count <= remaining.bytes / width, Error::kResourceLimit); remaining.bytes -= count * width;
   }
   template <class T> void Reserve(std::vector<T>& values, std::size_t count) {
     Admit(count, sizeof(T)); values.reserve(count); Admit(values.capacity() - count, sizeof(T));
@@ -42,6 +43,7 @@ class Budget {
     return found != names.end() && Equal(*found, name);
   }
   analysis::SemanticBudget remaining;
+  const analysis::SemanticBudget initial;
 };
 }  // namespace
 
@@ -103,8 +105,8 @@ std::variant<ModuleEnclosure, ModuleEnclosureError> ModuleEnclosure::Build(
     result.work_ = allowance.work - budget.remaining.work;
     return result;
   } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return Error::kResourceLimit;
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return Error::kResourceLimit; }
 }
 
 ModuleImportResult ModuleEnclosure::WriteImports(const corpus::AbcFile& file,
@@ -175,7 +177,7 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
     }
     return ModuleDestination{allowance.work - budget.remaining.work};
   } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return Error::kResourceLimit;
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return Error::kResourceLimit; }
 }
 }  // namespace abcd::source

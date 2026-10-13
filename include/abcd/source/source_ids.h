@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <compare>
 namespace abcd::source {
+struct AnchorId { std::uint32_t value = 0; auto operator<=>(const AnchorId&) const = default; };
+struct FunctionOwnerId { std::uint32_t value = 0; auto operator<=>(const FunctionOwnerId&) const = default; };
 struct ExprId { std::uint32_t value = 0; auto operator<=>(const ExprId&) const = default; };
 struct StmtId { std::uint32_t value = 0; auto operator<=>(const StmtId&) const = default; };
 struct ControlId { std::uint32_t value = 0; auto operator<=>(const ControlId&) const = default; };

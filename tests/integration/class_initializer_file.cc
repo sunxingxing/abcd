@@ -249,7 +249,7 @@ int main(int argc, char** argv) {
     std::ostringstream constructor_source;
     const auto printed_constructor = std::get<PreparedFamily>(prepared_constructor).PrintDraft(
         constructor_destination, constructor_source);
-    if (const auto* error = std::get_if<TreePrintError>(&printed_constructor))
+    if (const auto* error = std::get_if<TreePrintFailure>(&printed_constructor))
       std::cerr << "derived print failure " << static_cast<unsigned>(*error) << '\n';
     Check(std::holds_alternative<PrintedFamilyDraft>(printed_constructor));
     // Fragment success must not permit a whole class to silently lose extends.
@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
     no_heritage.constructor = std::move(std::get<PreparedFamily>(prepared_constructor));
     std::ostringstream invalid_class;
     const auto rejected_class = PrintClassTree(no_heritage, invalid_class, {}, {}, &constructor_globals);
-    Check(std::get<TreePrintError>(rejected_class) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(rejected_class) == TreePrintError::kUnsupportedContext);
     Check(invalid_class.str().empty());
     // A creation-only fixture isolates outer heritage ownership using the real
     // derived constructor. It deliberately omits the class's other members.
@@ -646,7 +646,7 @@ int main(int argc, char** argv) {
       }
       const auto& tree = std::get<ConstructedFunction>(built).tree;
       std::ostringstream denied;
-      Check(std::get<TreePrintError>(PrintFunctionTree(tree, denied)) == TreePrintError::kUnsupportedContext);
+      Check(std::get<TreePrintFailure>(PrintFunctionTree(tree, denied)) == TreePrintError::kUnsupportedContext);
       auto wrong_tree = tree;
       for (auto& expression : wrong_tree.expressions) {
         if (const auto* field = std::get_if<FieldDefinitionExpr>(&expression.expression)) {
@@ -657,21 +657,21 @@ int main(int argc, char** argv) {
       Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control,
           evaluation, wrong_tree, constants_view)));
       std::ostringstream wrong_output;
-      Check(std::get<TreePrintError>(PrintStaticFields(wrong_tree, wrong_output)) == TreePrintError::kUnsupportedContext);
+      Check(std::get<TreePrintFailure>(PrintStaticFields(wrong_tree, wrong_output)) == TreePrintError::kUnsupportedContext);
       Check(wrong_output.str().empty());
       std::ostringstream printed;
       if (!tree.modules.empty()) {
         std::ostringstream missing, wrong_record, shadowed;
-        Check(std::get<TreePrintError>(PrintStaticFields(tree, missing)) == TreePrintError::kUnsupportedContext);
-        Check(std::get<TreePrintError>(PrintStaticFields(tree, wrong_record, {}, {}, 0, &scope,
+        Check(std::get<TreePrintFailure>(PrintStaticFields(tree, missing)) == TreePrintError::kUnsupportedContext);
+        Check(std::get<TreePrintFailure>(PrintStaticFields(tree, wrong_record, {}, {}, 0, &scope,
             abc::EntityOffset{owner->offset.value + 1})) == TreePrintError::kUnsupportedContext);
         auto shadow = scope; shadow.class_binding = "BreakpointType";
-        Check(std::get<TreePrintError>(PrintStaticFields(tree, shadowed, {}, {}, 0, &shadow,
+        Check(std::get<TreePrintFailure>(PrintStaticFields(tree, shadowed, {}, {}, 0, &shadow,
             owner->offset)) == TreePrintError::kUnsupportedContext);
         Check(missing.str().empty() && wrong_record.str().empty() && shadowed.str().empty());
       }
       const auto result = PrintStaticFields(tree, printed, {}, {}, 0, &scope, owner->offset);
-      if (const auto* error = std::get_if<TreePrintError>(&result)) {
+      if (const auto* error = std::get_if<TreePrintFailure>(&result)) {
         std::cerr << "print failure=" << static_cast<unsigned>(*error) << '\n'; return 1;
       }
       Check(tree.modules.empty() || std::get<PrintedFunction>(result).module_binding.has_value());

@@ -229,7 +229,7 @@ std::optional<std::string> Source(unsigned count, Form form, abc::ProfileId prof
   const auto sources = std::get<InstructionSources>(BuildInstructionSources(input, graph, tree));
   const auto family = std::get<ConstructedFamily>(BuildFunctionFamily({{tree, {}, {}}}, tree.owner));
   std::ostringstream source; const auto printed = PrintFamilyDraft(family, source);
-  if(const auto* error=std::get_if<TreePrintError>(&printed))std::cerr<<"print count="<<count<<" form="<<unsigned(form)<<" error="<<unsigned(*error)<<'\n';
+  if(const auto* error=std::get_if<TreePrintFailure>(&printed))std::cerr<<"print count="<<count<<" form="<<unsigned(form)<<" error="<<unsigned(*error)<<'\n';
   Check(std::holds_alternative<PrintedFamilyDraft>(printed)); const auto& positions = std::get<PrintedFamilyDraft>(printed);
   test::CheckInstructionPositions(tree, sources, positions.members.front(), positions.functions.front());
   if (form == Form::kBarrier || form >= Form::kEffectPrefix) {

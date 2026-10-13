@@ -1,3 +1,4 @@
+#include "tree_print_trace.h"
 #include "tree_globals.h"
 #include "abcd/source/scalar_expression.h"
 #include "abcd/source/module_enclosure.h"
@@ -85,7 +86,7 @@ class GlobalCheck {
   }
  private:
   void Step(std::uint64_t count = 1) {
-    Require(count <= remaining_.work, Error::kWorkLimit); remaining_.work -= count;
+    if(count>remaining_.work)PrintCharge(TreePrintBudgetKind::kWork,count,remaining_.work,initial_.work); Require(count <= remaining_.work, Error::kWorkLimit); remaining_.work -= count;
   }
   template <class A, class B> bool Less(A a, B b) {
     Step(std::min(a.size(), b.size()) + 1);
@@ -111,7 +112,7 @@ std::variant<TreeGlobals, TreeGlobalError> VerifyTreeGlobals(
     const FunctionTree& tree, const GlobalScope* scope, analysis::SemanticBudget budget) {
   try { return GlobalCheck(budget).Run(tree, scope);
   } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return Error::kResourceLimit;
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return Error::kResourceLimit; }
 }
 }  // namespace abcd::source

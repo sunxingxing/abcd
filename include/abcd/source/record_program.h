@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_RECORD_PROGRAM_H_
 #define ABCD_SOURCE_RECORD_PROGRAM_H_
+#include "abcd/source/tree_print_failure.h"
 
 #include "abcd/abc/header.h"
 #include "abcd/abc/method_body.h"
@@ -58,6 +59,7 @@ struct RecordProgramFailure {
   std::optional<TreeFailureEvidence> tree;
   std::optional<EvaluationEvidence> evaluation;
   std::optional<DeferredCellEvidence> deferred;
+  std::optional<TreePrintFailure> printing;
 };
 struct RecordProgramBudget {
   std::size_t bytes = 128 * 1024 * 1024;

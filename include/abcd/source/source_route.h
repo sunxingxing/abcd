@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_SOURCE_ROUTE_H_
 #define ABCD_SOURCE_SOURCE_ROUTE_H_
+#include "abcd/source/tree_print_failure.h"
 
 #include <cstdint>
 #include <type_traits>
@@ -108,6 +109,7 @@ struct RouteFailure {
   std::optional<TreeFailureEvidence> tree = {};
   std::optional<EvaluationEvidence> evaluation;
   std::optional<DeferredCellEvidence> deferred = {};
+  std::optional<TreePrintFailure> printing;
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

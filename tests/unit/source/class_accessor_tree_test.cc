@@ -401,7 +401,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
     const auto printed = PrintFunctionTree(source.tree, output, {}, {}, &globals, final_semantics.flow.original.get());
     if (const auto* text = std::get_if<PrintedFunction>(&printed); text && text->incomplete)
       std::cerr << output.str() << '\n';
-    if (const auto* error = std::get_if<TreePrintError>(&printed))
+    if (const auto* error = std::get_if<TreePrintFailure>(&printed))
       std::cerr << "field print error " << static_cast<unsigned>(*error) << " after " << output.str() << '\n';
     Check(std::holds_alternative<PrintedFunction>(printed) && !std::get<PrintedFunction>(printed).incomplete);
     if (self_initializer) {
@@ -657,8 +657,8 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       *source_layout = std::get<ClassTree>(std::move(complete));
       std::ostringstream detached;
       const auto detached_result = PrintClassTree(*source_layout, detached, {}, {}, &globals);
-      Check(std::holds_alternative<TreePrintError>(detached_result) &&
-          std::get<TreePrintError>(detached_result) == TreePrintError::kUnsupportedContext);
+      Check(std::holds_alternative<TreePrintFailure>(detached_result) &&
+          std::get<TreePrintFailure>(detached_result) == TreePrintError::kUnsupportedContext);
       Check(detached.str().empty());
       Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(source_parent->tree)));
       const auto& constructor = *source_layout->constructor;
@@ -735,7 +735,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       definitions.front().creation, identity, {}, nullptr, definitions);
   Check(std::holds_alternative<ClassTree>(layout));
   std::ostringstream pending;
-  Check(std::get<TreePrintError>(PrintClassTree(std::get<ClassTree>(layout), pending, {}, {}, &globals)) ==
+  Check(std::get<TreePrintFailure>(PrintClassTree(std::get<ClassTree>(layout), pending, {}, {}, &globals)) ==
       TreePrintError::kUnsupportedContext);
   Check(pending.str().empty());
   auto definition = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(layout)));
@@ -840,7 +840,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       if (!body) continue;
       auto missing_body = std::move(body); body.reset();
       std::ostringstream rejected;
-      Check(std::get<TreePrintError>(PrintClassTree(*definition, rejected, {}, {}, &globals)) ==
+      Check(std::get<TreePrintFailure>(PrintClassTree(*definition, rejected, {}, {}, &globals)) ==
           TreePrintError::kUnsupportedContext);
       Check(rejected.str().empty());
       Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, constants.View())));
@@ -880,7 +880,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
   if (parameter) {
     // This fixture is an ordinary function with a real parameter. A module
     // body destination must not discard its signature while printing classes.
-    Check(std::get<TreePrintError>(module_print) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(module_print) == TreePrintError::kUnsupportedContext);
     Check(module.str().empty());
     Check(unlink(path) == 0); return output.str();
   }

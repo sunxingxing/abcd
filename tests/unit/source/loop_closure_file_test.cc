@@ -1254,7 +1254,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
     forged.callable = CallableKind::kAsyncFunction;
     test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(forged)));
     std::ostringstream unbound;
-    test::Check(std::holds_alternative<TreePrintError>(PrintFamilyDraft(family, unbound)));
+    test::Check(std::holds_alternative<TreePrintFailure>(PrintFamilyDraft(family, unbound)));
     }
     const HostArgumentSnapshotBinding factory{u"snapshotArguments", ArgumentSnapshotAbi::kV7CurrentSlots};
     GlobalScope globals{}; globals.argument_snapshot_binding = &factory;

@@ -45,7 +45,7 @@ void Draft(nlohmann::json& report, const ConstructedFamily& family,
                               : PrintFamilyDraft(family, output, {kDraftBytes}, budget);
   const auto* draft = std::get_if<PrintedFamilyDraft>(&printed);
   if (!draft) {
-    report["draft_error"] = static_cast<unsigned>(std::get<TreePrintError>(printed)); return;
+    report["draft_error"] = static_cast<unsigned>(std::get<TreePrintFailure>(printed)); return;
   }
   report["draft_prepared"] = true;
   report["draft_incomplete"] = draft->members[family.root.value].incomplete;

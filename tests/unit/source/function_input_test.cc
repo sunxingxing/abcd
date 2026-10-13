@@ -174,10 +174,10 @@ void TreeBinding(const FunctionValues& parent, const FunctionValues& child,
     test::Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, exact, {}, print_budget)));
     --print_budget.work;
     std::ostringstream exhausted;
-    test::Check(std::get<TreePrintError>(PrintFamilyDraft(family, exhausted, {}, print_budget)) == TreePrintError::kWorkLimit);
+    test::Check(std::get<TreePrintFailure>(PrintFamilyDraft(family, exhausted, {}, print_budget)) == TreePrintError::kWorkLimit);
     print_budget = {}; print_budget.bytes = 0;
-    test::Check(std::get<TreePrintError>(PrintFamilyDraft(family, exhausted, {}, print_budget)) == TreePrintError::kResourceLimit);
-    test::Check(std::get<TreePrintError>(PrintFamilyDraft(family, exhausted, {0})) == TreePrintError::kOutputLimit);
+    test::Check(std::get<TreePrintFailure>(PrintFamilyDraft(family, exhausted, {}, print_budget)) == TreePrintError::kResourceLimit);
+    test::Check(std::get<TreePrintFailure>(PrintFamilyDraft(family, exhausted, {0})) == TreePrintError::kOutputLimit);
     auto missing = members; missing.erase(missing.begin());
     test::Check(std::get<FamilyError>(BuildFunctionFamily(std::move(missing), outer.owner)) == FamilyError::kMissingChild);
     auto duplicate = members; duplicate.push_back(members[0]);

@@ -16,7 +16,7 @@ struct DefaultExportCheck {
 // Direct function/class initializers keep expression creation timing and use
 // the common printer's native default NamedEvaluation context. Functions need
 // an owned body and creation-name evidence; missing evidence is not empty name.
-[[nodiscard]] std::variant<DefaultExportCheck, TreePrintError> CheckModuleDefaultExport(
+[[nodiscard]] std::variant<DefaultExportCheck, TreePrintFailure> CheckModuleDefaultExport(
     const FunctionTree& root, const ConstructedFamily* family,
     ModuleDefaultExport candidate, analysis::SemanticBudget budget = {});
 }

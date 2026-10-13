@@ -1,3 +1,4 @@
+#include "tree_print_failure_json.h"
 #include "guarded_call_json.h"
 #include "abcd/source/source_route.h"
 
@@ -252,6 +253,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
+    if (receipt.failure->printing) failure["printing"] = TreePrintFailureJson(*receipt.failure->printing);
     if (receipt.failure->evaluation) failure["evaluation"] = EvaluationFailureJson(*receipt.failure->evaluation);
     if (receipt.failure->tree) failure["tree"] = TreeFailureJson(*receipt.failure->tree);
     if (receipt.failure->deferred) failure["deferred"] = DeferredCellJson(*receipt.failure->deferred);
@@ -436,6 +438,9 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     if (!location("method", typed.method) || !location("working_pc", typed.working_pc) ||
         !location("creation_method", typed.creation_method) || !location("creation_pc", typed.creation_pc))
       return RouteReceiptError::kFailure;
+    if (const auto item = failure->find("printing"); item != failure->end()) {
+      typed.printing=ParseTreePrintFailure(*item);if(!typed.printing)return RouteReceiptError::kFailure;
+    }
     if (const auto item = failure->find("evaluation"); item != failure->end()) {
       typed.evaluation = ParseEvaluationFailure(*item); if (!typed.evaluation) return RouteReceiptError::kFailure;
     }

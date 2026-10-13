@@ -7,6 +7,9 @@
 namespace abcd::source {
 std::variant<SourceVariables,TreeStructureError> PrepareSourceVariables(
     const FunctionTree& tree,analysis::SemanticBudget allowance,const OriginalFlow* original) {
+  TreePrintTrace trace(true);
+  TreePrintSiteScope site(TreePrintSite::kVariableProjection);
+  TreePrintLocationScope location(tree);
   try {
     TreeCheckBudget budget(allowance);SourceVariables result;result.tree=&tree;result.original=original;
     if(original)CheckOriginalFlow(tree,*original);
@@ -26,8 +29,8 @@ std::variant<SourceVariables,TreeStructureError> PrepareSourceVariables(
     budget.Release(result.bindings.allocated_bytes-binding_storage);
     result.retained_bytes=budget.ActiveBytes();
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
-  }catch(TreeStructureError error){return error;}
-  catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
-  catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
+  }catch(TreeStructureError error){trace.failure.cause=error;trace.Propagate();return error;}
+  catch(const std::bad_alloc&){ PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0);trace.Propagate();return TreeStructureError::kResourceLimit;}
+  catch(const std::length_error&){ PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0);trace.Propagate();return TreeStructureError::kResourceLimit;}
 }
 }

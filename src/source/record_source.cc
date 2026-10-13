@@ -13,7 +13,7 @@ RecordSourceResult BuildRecordSource(
     const abc::RecordInfo& record, const RecordModuleContext& context,
     const analysis::MethodRoleIndex& roles, RecordProgramBudget budget,
     const RouteInputIdentity& identity,
-    const analysis::FunctionCreationSites* functions, const analysis::ClassMethodSites* classes) {
+    const analysis::FunctionCreationSites* functions, const analysis::ClassMethodSites* classes, RecordPrintDiagnostics* diagnostics) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   const auto fail_with = [&](Error kind, auto cause) {
@@ -62,7 +62,7 @@ RecordSourceResult BuildRecordSource(
     const auto position = lookup.Find(entry->offset);
     if (!position) return fail(Error::kEntry);
     return BuildRecordTree(file, header, index, record, context, *position, identity,
-                           budget, lookup, roles, functions, classes);
+                           budget, lookup, roles, functions, classes, diagnostics);
   } catch (const RecordProgramFailure& failure) {
     return failure;
   } catch (const std::bad_alloc&) {

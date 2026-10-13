@@ -641,11 +641,11 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     test::CheckPhasedFamilyEmission(file, header, index, lookup, roles, functions,
         sites, range.first, identity, output.str());
     std::ostringstream unowned;
-    Check(std::get<TreePrintError>(PrintFamilyDraft(family, unowned)) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(PrintFamilyDraft(family, unowned)) == TreePrintError::kUnsupportedContext);
     Check(unowned.str().empty());
     auto mismatched = family;
     mismatched.members[0].tree.callable = CallableKind::kMethod;
-    Check(std::get<TreePrintError>(PrintClassFamilyDraft(mismatched, value, unowned)) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(PrintClassFamilyDraft(mismatched, value, unowned)) == TreePrintError::kUnsupportedContext);
     Check(unowned.str().empty());
     auto changed = index;
     for (const auto kind : {abc::FunctionKind::kAsyncArrow, abc::FunctionKind::kAsyncGenerator}) {
@@ -761,13 +761,13 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       Check(verified.Flow().cfg_revision == verified.Tree().cfg_revision);
       Check(!verified.Flow().expressions.empty());
       std::ostringstream denied;
-      Check(std::get<TreePrintError>(PrintFunctionTree(verified, denied)) == TreePrintError::kUnsupportedContext);
+      Check(std::get<TreePrintFailure>(PrintFunctionTree(verified, denied)) == TreePrintError::kUnsupportedContext);
       GlobalScope names_only{};
       names_only.import_bindings = enclosure.Names(); names_only.import_names = enclosure.SortedNames();
-      Check(std::get<TreePrintError>(PrintFunctionTree(verified, denied, {}, {}, &names_only)) ==
+      Check(std::get<TreePrintFailure>(PrintFunctionTree(verified, denied, {}, {}, &names_only)) ==
           TreePrintError::kUnsupportedContext);
       GlobalScope shadowed = module_scope; shadowed.class_binding = "run";
-      Check(std::get<TreePrintError>(PrintFunctionTree(verified, denied, {}, {}, &shadowed)) ==
+      Check(std::get<TreePrintFailure>(PrintFunctionTree(verified, denied, {}, {}, &shadowed)) ==
           TreePrintError::kUnsupportedContext);
       Check(std::get<FunctionPrepareFailure>(VerifiedFunction::PrepareClass(file, header, module_index,
           lookup, roles, sites, range.first, identity, {}, &shadowed)).kind == FunctionPrepareError::kContext);
@@ -1015,11 +1015,11 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(std::holds_alternative<VerifiedFunction>(ready));
     const auto& function = std::get<VerifiedFunction>(ready);
     std::ostringstream output;
-    Check(std::get<TreePrintError>(PrintFunctionTree(function, output)) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(PrintFunctionTree(function, output)) == TreePrintError::kUnsupportedContext);
     Check(output.view().empty());
     auto shadow = scope;
     shadow.class_binding = "run";
-    Check(std::get<TreePrintError>(PrintFunctionTree(function, output, {}, {}, &shadow)) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(PrintFunctionTree(function, output, {}, {}, &shadow)) == TreePrintError::kUnsupportedContext);
     Check(output.view().empty());
     Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(function, output, {}, {}, &scope)));
     Check(output.view().find("return typeof (0, run);") != std::string_view::npos);
@@ -1073,10 +1073,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(family_output.str() == output.str());
   Check(family_positions.members[0].parameters == printed.parameters);
   std::ostringstream wrong_context;
-  Check(std::get<TreePrintError>(PrintFamilyDraft(family.Family(), wrong_context)) ==
+  Check(std::get<TreePrintFailure>(PrintFamilyDraft(family.Family(), wrong_context)) ==
       TreePrintError::kUnsupportedContext && wrong_context.str().empty());
   auto wrong_owner = family.Family(); wrong_owner.members[0].tree.method.value += 1;
-  Check(std::get<TreePrintError>(PrintClassFamilyDraft(wrong_owner, value, wrong_context)) ==
+  Check(std::get<TreePrintFailure>(PrintClassFamilyDraft(wrong_owner, value, wrong_context)) ==
       TreePrintError::kUnsupportedContext && wrong_context.str().empty());
   const auto placement_refusal = family.PrintDraft({Strictness::kStrict, nullptr}, wrong_context);
   Check(std::get<FamilyPrepareError>(std::get<FamilyPrepareFailure>(placement_refusal).cause) ==
@@ -1124,12 +1124,12 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(range.begin < range.end && range.end <= printed.bytes);
   for (const auto offset : printed.anchors) Check(offset <= printed.bytes);
   std::ostringstream denied;
-  Check(std::get<TreePrintError>(PrintFunctionTree(function, denied, {0})) == TreePrintError::kOutputLimit);
+  Check(std::get<TreePrintFailure>(PrintFunctionTree(function, denied, {0})) == TreePrintError::kOutputLimit);
   Check(denied.view().empty());
-  Check(std::get<TreePrintError>(PrintFunctionTree(function, denied, {}, {0, 0})) == TreePrintError::kWorkLimit);
+  Check(std::get<TreePrintFailure>(PrintFunctionTree(function, denied, {}, {0, 0})) == TreePrintError::kWorkLimit);
   std::ostringstream broken;
   broken.setstate(std::ios::badbit);
-  Check(std::get<TreePrintError>(PrintFunctionTree(function, broken)) == TreePrintError::kWrite);
+  Check(std::get<TreePrintFailure>(PrintFunctionTree(function, broken)) == TreePrintError::kWrite);
   const auto fresh = [&]() {
     return std::get<VerifiedFunction>(VerifiedFunction::PrepareClass(
         file, header, index, lookup, roles, sites, range.first, identity));
@@ -1166,7 +1166,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   mismatched.key = u"wrong";
   Check(std::get<FunctionEmitError>(WriteClassMethod(mismatched, fresh(), denied, {})) == FunctionEmitError::kName);
   Check(denied.view().empty());
-  Check(std::get<TreePrintError>(WriteClassMethod(shape, fresh(), denied,
+  Check(std::get<TreePrintFailure>(WriteClassMethod(shape, fresh(), denied,
       GeneratedOffset{std::numeric_limits<std::size_t>::max()})) == TreePrintError::kOutputLimit);
   Check(denied.view().empty());
   auto limited = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity, {0, 0});

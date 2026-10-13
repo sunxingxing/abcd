@@ -83,7 +83,7 @@ int main(int argc, char**) {
         Check(plan.projections[syntax.root.value].has_value());
         Check(std::count_if(plan.projections.begin(), plan.projections.end(), [](const auto& value) {return bool(value);}) == 1);
         std::ostringstream text; const auto printed = PrintFunctionTree(syntax.tree, text);
-        if (const auto* error = std::get_if<TreePrintError>(&printed))
+        if (const auto* error = std::get_if<TreePrintFailure>(&printed))
           std::cerr << "depth=" << depth << " computed=" << computed << " call=" << call << " formed=" << formed
             << " reversed=" << reversed << " print=" << unsigned(*error) << '\n';
         Check(std::holds_alternative<PrintedFunction>(printed)); const auto& positions = std::get<PrintedFunction>(printed);

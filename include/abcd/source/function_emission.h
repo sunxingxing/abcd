@@ -16,7 +16,7 @@ class FunctionEmission {
  public:
   FunctionEmission(FunctionEmission&&) noexcept = default;
   FunctionEmission& operator=(FunctionEmission&&) noexcept = default;
-  [[nodiscard]] static std::variant<FunctionEmission, TreePrintError> Write(
+  [[nodiscard]] static std::variant<FunctionEmission, TreePrintFailure> Write(
       VerifiedFunction function, std::ostream& output, GeneratedOffset destination,
       EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
       const GlobalScope* scope = nullptr);

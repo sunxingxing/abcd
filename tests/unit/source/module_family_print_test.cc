@@ -137,7 +137,7 @@ void SnapshotNames() {
     if(std::string_view(wanted)=="saved") {
       Check(std::holds_alternative<PrintedFamilyDraft>(constrained));
       Check(strict.str().find("const saved") != std::string::npos);
-    } else {Check(std::get<TreePrintError>(constrained)==TreePrintError::kUnsupportedContext);Check(strict.str().empty());}
+    } else {Check(std::get<TreePrintFailure>(constrained)==TreePrintError::kUnsupportedContext);Check(strict.str().empty());}
   }
 }
 void Names() {
@@ -151,7 +151,7 @@ void Names() {
           auto family = Naming(kind, place, wanted, key, sequence);
           std::ostringstream output;
           const auto printed = PrintFamilyDraft(family, output);
-          if (const auto* error = std::get_if<TreePrintError>(&printed))
+          if (const auto* error = std::get_if<TreePrintFailure>(&printed))
             std::cerr << "name print error " << unsigned(*error) << " kind " << unsigned(kind)
                       << " place " << unsigned(place) << " name " << wanted << '\n';
           Check(std::holds_alternative<PrintedFamilyDraft>(printed));
@@ -170,7 +170,7 @@ void Names() {
           std::ostringstream constrained;
           const auto strict = PrintFamilyDraft(family, constrained);
           if (native) Check(std::holds_alternative<PrintedFamilyDraft>(strict));
-          else { Check(std::get<TreePrintError>(strict) == TreePrintError::kUnsupportedContext); Check(constrained.str().empty()); }
+          else { Check(std::get<TreePrintFailure>(strict) == TreePrintError::kUnsupportedContext); Check(constrained.str().empty()); }
         }
 }
 void DefaultNames() {
@@ -198,7 +198,7 @@ void DefaultNames() {
       std::ostringstream strict_output;
       const auto strict = PrintModuleFamilyDraft(family,strict_output,{}, {},nullptr,default_export);
       if (std::string_view(wanted) == "default") Check(std::holds_alternative<PrintedFamilyDraft>(strict));
-      else {Check(std::get<TreePrintError>(strict) == TreePrintError::kUnsupportedContext); Check(strict_output.str().empty());}
+      else {Check(std::get<TreePrintFailure>(strict) == TreePrintError::kUnsupportedContext); Check(strict_output.str().empty());}
       std::cout << nlohmann::json{{"callable",CallableLabel(kind)},{"wanted",wanted},{"source",output.str()}} << '\n';
     }
 }
@@ -255,7 +255,7 @@ void NameScale() {
     Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, repeated, {}, exact)));
     Check(repeated.str() == output.str());
     --exact.work; std::ostringstream insufficient;
-    Check(std::get<TreePrintError>(PrintFamilyDraft(family, insufficient, {}, exact)) == TreePrintError::kWorkLimit);
+    Check(std::get<TreePrintFailure>(PrintFamilyDraft(family, insufficient, {}, exact)) == TreePrintError::kWorkLimit);
     std::cout << nlohmann::json{{"count", count}, {"work", ranges.work},
         {"allocated", ranges.allocated_bytes}, {"source", output.str()}} << '\n';
   }
@@ -362,7 +362,7 @@ int main(int argc, char** argv) {
   }
   std::ostringstream output;
   const auto result = PrintModuleFamilyDraft(family, output);
-  if (const auto* e = std::get_if<TreePrintError>(&result)) std::cerr << "print error " << unsigned(*e) << '\n';
+  if (const auto* e = std::get_if<TreePrintFailure>(&result)) std::cerr << "print error " << unsigned(*e) << '\n';
   Check(std::holds_alternative<PrintedFamilyDraft>(result));
   const auto& printed = std::get<PrintedFamilyDraft>(result);
   Check(printed.bytes == output.str().size());
@@ -414,10 +414,10 @@ int main(int argc, char** argv) {
   auto invalid = family;
   invalid.members[2].tree.expressions[0].expression = ThisExpr{{10}};
   std::ostringstream denied;
-  Check(std::get<TreePrintError>(PrintModuleFamilyDraft(invalid, denied)) == TreePrintError::kUnsupportedContext);
+  Check(std::get<TreePrintFailure>(PrintModuleFamilyDraft(invalid, denied)) == TreePrintError::kUnsupportedContext);
   invalid = family; invalid.members[2].tree.statements[1].statement = ReturnStmt{ExprId{0}};
-  Check(std::get<TreePrintError>(PrintModuleFamilyDraft(invalid, denied)) == TreePrintError::kUnsupportedContext);
+  Check(std::get<TreePrintFailure>(PrintModuleFamilyDraft(invalid, denied)) == TreePrintError::kUnsupportedContext);
   invalid = family; invalid.members.erase(invalid.members.begin()); invalid.root = {1};
-  Check(std::get<TreePrintError>(PrintModuleFamilyDraft(invalid, denied)) == TreePrintError::kUnsupportedContext);
-  Check(std::get<TreePrintError>(PrintModuleFamilyDraft(family, denied, {0})) == TreePrintError::kOutputLimit);
+  Check(std::get<TreePrintFailure>(PrintModuleFamilyDraft(invalid, denied)) == TreePrintError::kUnsupportedContext);
+  Check(std::get<TreePrintFailure>(PrintModuleFamilyDraft(family, denied, {0})) == TreePrintError::kOutputLimit);
 }

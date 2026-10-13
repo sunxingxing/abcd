@@ -44,10 +44,10 @@ FunctionEmissionResult WriteClassMethod(const ClassMethod& method,
   auto emitted = FunctionEmission::Write(std::move(function), output, destination,
                                          output_budget, scratch, scope);
   if (auto* result = std::get_if<FunctionEmission>(&emitted)) return std::move(*result);
-  return std::get<TreePrintError>(emitted);
+  return std::get<TreePrintFailure>(emitted);
 }
 
-std::variant<FunctionEmission, TreePrintError> FunctionEmission::Write(
+std::variant<FunctionEmission, TreePrintFailure> FunctionEmission::Write(
     VerifiedFunction function, std::ostream& output, GeneratedOffset destination,
     EmitBudget output_budget, analysis::SemanticBudget scratch, const GlobalScope* scope) {
   if (ValidateRouteReceipt(function.Receipt()) ||
@@ -59,7 +59,7 @@ std::variant<FunctionEmission, TreePrintError> FunctionEmission::Write(
       std::numeric_limits<std::size_t>::max() - destination.byte);
   auto printed = PrintFunctionTree(function, output, output_budget, scratch, scope);
   auto* positions = std::get_if<PrintedFunction>(&printed);
-  if (!positions) return std::get<TreePrintError>(printed);
+  if (!positions) return std::get<TreePrintFailure>(printed);
   const GeneratedRange range{destination.byte, destination.byte + positions->bytes};
   auto receipt = function.Receipt();
   receipt.stage = SourceStage::kPrinted;
@@ -79,7 +79,14 @@ std::variant<FunctionEmission, TreePrintError> FunctionEmission::Write(
       !add(positions->expression_extents.capacity(), sizeof(GeneratedExtent)) ||
       !add(positions->property_extents.capacity(), sizeof(GeneratedExtent)) ||
       !add(positions->statement_extents.capacity(), sizeof(GeneratedExtent)))
-    return TreePrintError::kResourceLimit;
+  {
+    TreePrintFailure failure{TreePrintError::kResourceLimit};
+    failure.site=TreePrintSite::kPublication;failure.written_bytes=positions->bytes;
+    failure.location.method=function.Tree().method;failure.owner=function.Tree().owner;
+    failure.budget=TreeBudgetEvidence{TreePrintBudgetKind::kCapacityOverflow,{},
+      std::numeric_limits<std::size_t>::max()-owned,std::numeric_limits<std::size_t>::max(),owned,owned,owned};
+    return failure;
+  }
   return FunctionEmission{std::move(function), std::move(*positions), range, receipt, owned};
 }
 }  // namespace abcd::source

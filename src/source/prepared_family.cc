@@ -323,7 +323,7 @@ std::variant<FamilyEnclosure, FamilyPrepareFailure> PreparedFamily::CheckDestina
   enclosure.work += capture_work;
   return enclosure;
 }
-std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PreparedFamily::PrintDraft(
+std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintFailure> PreparedFamily::PrintDraft(
     FamilyDestination destination, std::ostream& output,
     EmitBudget output_budget, analysis::SemanticBudget scratch, std::size_t indent,
     const ClassNames* prepared) const {
@@ -335,7 +335,7 @@ std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PreparedF
   if (!member && indent) return TreePrintError::kUnsupportedContext;
   auto printed = member ? PrintClassFamilyDraft(storage_->family, *member, output, output_budget, scratch, destination.globals, indent, prepared)
                         : PrintFamilyDraft(storage_->family, output, output_budget, scratch, destination.globals);
-  if (const auto* failure = std::get_if<TreePrintError>(&printed)) return *failure;
+  if (const auto* failure = std::get_if<TreePrintFailure>(&printed)) return *failure;
   auto result = std::get<PrintedFamilyDraft>(std::move(printed));
   result.allocated_bytes += enclosure.allocated_bytes; result.work += enclosure.work;
   return result;

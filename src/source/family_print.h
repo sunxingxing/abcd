@@ -24,7 +24,7 @@ struct PrintedFamilyDraft {
 // Every range uses absolute UTF-8 byte offsets within this entire draft.
 // Realm expressions additionally require an actual destination scope even for
 // drafts: there is no diagnostic placeholder spelling for a VM realm identity.
-[[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(
+[[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintFailure> PrintFamilyDraft(
     const ConstructedFamily& family, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr);
@@ -33,14 +33,14 @@ struct PrintedFamilyDraft {
 // omit pure undefined completion; other returns/receiver/coroutines remain.
 // This does not establish module bindings
 // or class/capture completeness; callers retain those construction obligations.
-[[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintModuleFamilyDraft(
+[[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintFailure> PrintModuleFamilyDraft(
     const ConstructedFamily& family, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr,
     std::optional<ModuleDefaultExport> default_export = {});
 // Root is an actual class-body member; descendants remain ordinary/arrow
 // expressions. This is not an object-literal method or standalone function.
-[[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(
+[[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintFailure> PrintClassFamilyDraft(
     const ConstructedFamily& family, const ClassTreeContext& context, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr, std::size_t indent = 0,

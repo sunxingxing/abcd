@@ -1,14 +1,16 @@
 #include "abcd/source/source_tree.h"
 
 #include <type_traits>
+#include "tree_print_trace.h"
 
 namespace abcd::source {
 std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
     const FunctionTree& tree, analysis::SemanticBudget budget) {
+  TreePrintSiteScope site(TreePrintSite::kTreeStorage);
   auto remaining = budget.bytes;
   auto work = budget.work;
   const auto admit = [&](std::size_t count, std::size_t width) {
-    if (count > remaining / width) return false;
+    if (count > remaining / width) { PrintByteCharge(count,width,remaining,budget.bytes,budget.bytes-remaining); return false; }
     remaining -= count * width;
     return true;
   };
@@ -24,7 +26,7 @@ std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
     return TreeStorageError::kResourceLimit;
   const auto payloads = [&](const auto& strings) -> std::optional<TreeStorageError> {
     for (const auto& text : strings) {
-      if (work == 0) return TreeStorageError::kWorkLimit;
+      if (work == 0) { PrintCharge(TreePrintBudgetKind::kWork,1,work,budget.work); return TreeStorageError::kWorkLimit; }
       --work;
       // Include the null terminator without overflowing capacity + 1.
       if (!admit(text.capacity(), sizeof(char16_t)) || !admit(1, sizeof(char16_t)))

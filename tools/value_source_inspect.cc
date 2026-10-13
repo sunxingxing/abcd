@@ -1,3 +1,4 @@
+#include "../src/source/tree_print_failure_json.h"
 #include "value_source_inspect.h"
 #include "record_failure_json.h"
 #include "family_value_inspect.h"
@@ -98,8 +99,8 @@ RouteFailureClass PreparationClass(FunctionPrepareError error) {
   }
   return RouteFailureClass::kInvariantViolation;
 }
-RouteFailureClass PrintClass(TreePrintError error) {
-  switch (error) {
+RouteFailureClass PrintClass(TreePrintFailure error) {
+  switch (error.kind) {
     case TreePrintError::kResourceLimit: return RouteFailureClass::kMemoryLimit;
     case TreePrintError::kWorkLimit: return RouteFailureClass::kWorkLimit;
     case TreePrintError::kOutputLimit:
@@ -204,7 +205,7 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
   const auto* lookup = std::get_if<abc::MethodLookup>(&looked_up);
   if (!lookup) return Refused(output, receipt, InspectionError::kLookup,
       IndexClass(std::get<abc::MethodLookupError>(looked_up)));
-  if (scope == ValueSourceScope::kRecordTree) {
+  if (scope == ValueSourceScope::kRecordTree || scope == ValueSourceScope::kRecordPrintBudget) {
     const auto owner = std::find_if(index.records.begin(), index.records.end(),
         [&](const abc::RecordInfo& record) { return record.offset == method.owner_offset; });
     if (owner == index.records.end()) return Refused(output, receipt, InspectionError::kLookup);
@@ -222,8 +223,18 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
     const auto* function_sites = std::get_if<analysis::FunctionCreationSites>(&functions);
     const auto* class_sites = std::get_if<analysis::ClassMethodSites>(&classes);
     if (!function_sites || !class_sites) return Refused(output, receipt, InspectionError::kSites);
+    RecordPrintDiagnostics diagnostics;
     auto built = BuildRecordSource(file, header, index, *lookup, *owner, *ready, *role_index,
-        {}, identity, function_sites, class_sites);
+        {}, identity, function_sites, class_sites,scope==ValueSourceScope::kRecordPrintBudget?&diagnostics:nullptr);
+    if(scope==ValueSourceScope::kRecordPrintBudget) {
+      nlohmann::json report{{"record",owner->offset.value},{"reached_print",diagnostics.reached_print},
+        {"reservation",diagnostics.reservation},{"printer_scratch",diagnostics.printer_scratch},{"available",diagnostics.available},
+        {"count_complete",diagnostics.count_complete},{"counted_bytes",diagnostics.counted_bytes},{"counted_peak",diagnostics.counted_peak},
+        {"methods",diagnostics.methods},{"expressions",diagnostics.expressions},{"statements",diagnostics.statements},
+        {"operations",diagnostics.operations},{"anchors",diagnostics.anchors}};
+      if(diagnostics.count_failure)report["count_failure"]=TreePrintFailureJson(*diagnostics.count_failure);
+      abcd::tools::DescribeRecordFailure(built,report);output<<report<<'\n';return EXIT_SUCCESS;
+    }
     if (const auto* source = std::get_if<PrintedSource>(&built)) {
       output << nlohmann::json{{"route", "value_tree"}, {"source", source->text},
           {"source_contract", SourceContractName(source->contract)},
@@ -443,7 +454,8 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       return Refused(output, receipt, InspectionError::kEmission,
           RouteFailureClass::kInvariantViolation, ValueRouteError::kPrintStage,
           static_cast<unsigned>(*shape_error));
-    const auto error = std::get<TreePrintError>(printing);
+    const auto error = std::get<TreePrintFailure>(printing);
+    receipt.failure=FamilyRouteFailure(FamilyEmitFailure{error});
     return Refused(output, receipt, InspectionError::kPrint, PrintClass(error),
         ValueRouteError::kPrintStage, static_cast<unsigned>(error));
   }

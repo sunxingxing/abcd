@@ -1,6 +1,7 @@
 #include "abcd/source/string_literal.h"
 
 #include <array>
+#include "tree_print_trace.h"
 #include <cstdint>
 #include <ostream>
 
@@ -28,11 +29,11 @@ std::size_t EncodedSize(char16_t unit) {
 
 std::variant<std::size_t, EmitError> WriteStringLiteral(
     std::u16string_view value, std::ostream& output, EmitBudget budget) {
-  if (budget.bytes < kQuoteBytes) return EmitError::kOutputLimit;
+  if (budget.bytes < kQuoteBytes) {PrintCharge(TreePrintBudgetKind::kOutputBytes,kQuoteBytes,budget.bytes,budget.bytes);return EmitError::kOutputLimit;}
   std::size_t bytes = kQuoteBytes;
   for (const auto unit : value) {
     const auto width = EncodedSize(unit);
-    if (width > budget.bytes - bytes) return EmitError::kOutputLimit;
+    if (width > budget.bytes - bytes) {PrintCharge(TreePrintBudgetKind::kOutputBytes,width,budget.bytes-bytes,budget.bytes,bytes);return EmitError::kOutputLimit;}
     bytes += width;
   }
   try {

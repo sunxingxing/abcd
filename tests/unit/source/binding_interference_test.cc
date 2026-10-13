@@ -770,7 +770,7 @@ std::uint64_t Many(unsigned count,bool emit){
   Check(std::holds_alternative<TreeStructureError>(work_short));
   Check(std::get<TreeStructureError>(work_short)==TreeStructureError::kWorkLimit);
   std::ostringstream output;const auto printed=PrintFunctionTree(tree,output);
-  if(const auto* error=std::get_if<TreePrintError>(&printed))
+  if(const auto* error=std::get_if<TreePrintFailure>(&printed))
     std::cerr<<"scale count="<<count<<" print error="<<static_cast<unsigned>(*error)<<'\n';
   Check(std::holds_alternative<PrintedFunction>(printed));
   Check(output.str().find("scratch")==std::string::npos);

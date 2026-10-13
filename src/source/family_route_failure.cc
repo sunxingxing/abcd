@@ -77,6 +77,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
         result.pc = error.control.node.pc; result.working_pc = error.control.node.working_pc;
       }
     }
+    if constexpr (std::is_same_v<T, TreePrintFailure>) { result.printing=error;result.method=error.location.method;result.pc=error.location.pc;result.working_pc=error.location.working_pc; }
     if constexpr (std::is_same_v<T, CallPlanFailure>) result.call_reference = error.reference;
     if constexpr (std::is_same_v<T, PhasedFlowFailure>) {
       result.method = error.method; result.pc = error.pc; result.working_pc = error.working_pc;
@@ -107,6 +108,8 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     // Newly exposed tree-verifier leaves are diagnostic. Their historical
     // outer classification remains authoritative (including completion's
     // TreeFlow catch); expression causes retain their pre-existing policy.
+    // Print causes are diagnostic; preserve the former enum-only class.
+    if constexpr (std::is_same_v<T, TreePrintFailure>) result.failure_class=Classify(error.kind);
     if constexpr (std::is_same_v<T, FunctionTreeFailure>)
       if (!std::holds_alternative<ExpressionFailure>(error.cause)) result.failure_class = Classify(error.kind);
     return result;

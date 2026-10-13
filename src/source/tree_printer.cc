@@ -1,3 +1,4 @@
+#include "tree_print_trace.h"
 #include "source_variables.h"
 #include "tail_completion.h"
 #include "discarded_read.h"
@@ -39,7 +40,7 @@ namespace abcd::source {
 namespace {
 using Error = TreePrintError;
 enum class ClassPrintForm { kExpression, kInferredExpression, kNamedExpression, kDeclaration, kDerivedBody };
-std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
+std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClassPart(
     const ClassTree&, std::ostream&, EmitBudget, analysis::SemanticBudget,
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr,
     const ClassNames* = nullptr);
@@ -112,6 +113,7 @@ class TreePrinter {
               const GlobalScope* scope, const ClassNames* prepared = nullptr)
       : family_(&family), class_root_(member), output_(output), limit_(limit.bytes), initial_(scratch), remaining_(scratch), scope_(scope), enclosing_names_(prepared) {}
   PrintedFunction Print() {
+    TreePrintCensusScope::Visit(Tree());
     if (!function_->ClassCreation() || Tree().callable != CallableKind::kMethod ||
         Tree().strictness != Strictness::kStrict || Tree().self || Tree().capture_scope || !Tree().captures.empty())
       throw Error::kUnsupportedContext;
@@ -131,6 +133,7 @@ class TreePrinter {
     if (!Tree().modules.empty())
       Result().module_binding = PrintedFunction::ModuleBinding{
           *function_->Receipt().record, scope_->module_enclosure->Owner()};
+    Site(TreePrintSite::kPositionTable);
     Array(Result().parameters, Tree().parameters.size());
     Array(Result().expressions, Tree().expressions.size());
     Array(Result().properties, Tree().properties.size());
@@ -185,6 +188,8 @@ class TreePrinter {
     default_export_ = default_export;
     module_body_ = module || fields;
     static_fields_ = fields;
+    TreePrintCensusScope::Visit(Tree());
+    Site(TreePrintSite::kStructureVerification);
     const auto checked = VerifyTreeStructure(Tree(), remaining_, scope_);
     if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
       if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
@@ -237,6 +242,7 @@ class TreePrinter {
     Result().fragment = fields ? FunctionFragment::kStaticFields :
         module ? FunctionFragment::kModuleBody : FunctionFragment::kConditionalExpression;
     Result().incomplete = !Tree().recovery_issues.empty();
+    Site(TreePrintSite::kPositionTable);
     Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
     Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
     Array(Result().expression_extents, Tree().expressions.size());
@@ -264,12 +270,15 @@ class TreePrinter {
           (!class_root_->Constructor() && class_root_->Placement() != abc::ClassPlacement::kStatic &&
            class_root_->Placement() != abc::ClassPlacement::kPrototype)) throw Error::kUnsupportedContext;
     }
+    TreePrintSiteScope positions_site(TreePrintSite::kPositionTable);
     Array(draft_.members, family_->members.size()); Array(draft_.functions, family_->members.size());
     Array(locations_, family_->members.size()); Array(owners_, family_->members.size());
     Array(printed_, family_->members.size());
     Array(native_names_, family_->members.size());
     for (std::size_t i = 0; i < family_->members.size(); ++i) {
       current_ = i; Step();
+      TreePrintCensusScope::Visit(Tree());
+      Site(TreePrintSite::kStructureVerification);
       const auto checked = VerifyTreeStructure(Tree(), remaining_, scope_);
       const auto* structure = std::get_if<TreeStructure>(&checked);
       if (!structure) {
@@ -302,6 +311,7 @@ class TreePrinter {
         Result().module_binding = PrintedFunction::ModuleBinding{
             *family_->members[i].record, scope_->module_enclosure->Owner()};
       }
+      Site(TreePrintSite::kPositionTable);
       Array(Result().parameters, Tree().parameters.size()); Array(Result().expressions, Tree().expressions.size());
       Array(Result().properties, Tree().properties.size()); Array(Result().statements, Tree().statements.size());
       Array(Result().expression_extents, Tree().expressions.size());
@@ -316,6 +326,7 @@ class TreePrinter {
       }
     }
     if (has_external_binding_) {
+      Site(TreePrintSite::kDestinationVerification);
       const auto check = VerifyFamilyDestination(*family_, scope_, remaining_,
           module_body_ ? ModuleRole::kInitializer : ModuleRole::kReader);
       const auto* enclosure = std::get_if<FamilyEnclosure>(&check);
@@ -357,6 +368,7 @@ class TreePrinter {
     }
     const auto prepared = family_ ? std::span<const SourceVariables>(family_variables_) :
         std::span<const SourceVariables>(&variables_, 1);
+    Site(TreePrintSite::kClassNamePlanning);
     auto planned = family_ ? PlanPrintedClassNames(*family_, scope_, remaining_, prepared) :
         PlanPrintedClassNames(Tree(), scope_, remaining_, prepared);
     if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
@@ -458,7 +470,7 @@ class TreePrinter {
   void CheckDefaultExport() {
     if (!default_export_) return;
     const auto checked = CheckModuleDefaultExport(Tree(), family_, *default_export_, remaining_);
-    if (const auto* error = std::get_if<Error>(&checked)) throw *error;
+    if (const auto* error = std::get_if<TreePrintFailure>(&checked)) throw *error;
     const auto& check = std::get<DefaultExportCheck>(checked);
     if (!check.eligible) throw Error::kUnsupportedContext;
     Admit(check.allocated_bytes, 1); Step(check.work);
@@ -568,15 +580,40 @@ class TreePrinter {
       actions_.pop_back();
       current_ = action.owner;
       depth_ = action.depth;
-      std::visit([&](const auto& value) { Run(value); }, action.action);
+      Site(TreePrintSite::kTokenOutput);
+      std::visit([&](const auto& value) {
+        using T=std::decay_t<decltype(value)>;
+        if constexpr(std::is_same_v<T,ExprId>) Locate(value);
+        else if constexpr(std::is_same_v<T,Statement>) Locate(value.id);
+        Run(value);
+      }, action.action);
     }
   }
+  void Site(TreePrintSite site) {
+    if(auto* trace=TreePrintTrace::Active()) {
+      trace->failure.site=site; trace->failure.location={};trace->failure.anchor.reset();
+      trace->failure.location.method=Tree().method;trace->failure.owner=Tree().owner;
+      trace->failure.written_bytes=written_;
+    }
+  }
+  void Origin(TreeOriginId origin) {
+    if(auto* trace=TreePrintTrace::Active();trace && origin.value<Tree().origins.size())
+      std::visit([&](const auto& value) {
+        using T=std::decay_t<decltype(value)>;
+        if constexpr(std::is_same_v<T,OriginalSite>||std::is_same_v<T,ElidedOrigin>) {
+          trace->failure.location.working_pc=value.pc;
+          trace->failure.location.pc=value.original.value_or(value.pc);
+        }
+      },Tree().origins[origin.value]);
+  }
+  void Locate(ExprId id) {if(auto* trace=TreePrintTrace::Active())trace->failure.location.expression=id; if(id.value<Tree().expressions.size())Origin(Tree().expressions[id.value].origin);}
+  void Locate(StmtId id) {if(auto* trace=TreePrintTrace::Active())trace->failure.location.statement=id; if(id.value<Tree().statements.size())Origin(Tree().statements[id.value].origin);}
   void Step(std::uint64_t count = 1) {
-    if (count > remaining_.work) throw Error::kWorkLimit;
+    if (count > remaining_.work) { PrintCharge(TreePrintBudgetKind::kWork,count,remaining_.work,initial_.work); throw Error::kWorkLimit; }
     remaining_.work -= count;
   }
   void Admit(std::size_t count, std::size_t width) {
-    if (count > remaining_.bytes / width) throw Error::kResourceLimit;
+    if (count > remaining_.bytes / width) { PrintByteCharge(count,width,remaining_.bytes,initial_.bytes,peak_bytes_); throw Error::kResourceLimit; }
     remaining_.bytes -= count * width;
     peak_bytes_ = std::max(peak_bytes_, initial_.bytes - remaining_.bytes);
   }
@@ -586,13 +623,14 @@ class TreePrinter {
     Admit(values.capacity() - count, sizeof(T));
   }
   void Push(PrintAction action) {
+    TreePrintSiteScope site(TreePrintSite::kActionStack);
     if (actions_.size() == actions_.capacity()) {
       // Geometric growth; retain replaced allocations in the charge, covering
       // the reserve peak without a guessed host-stack depth bound.
       constexpr std::size_t kInitialActions = 16;
       const auto old = actions_.capacity();
-      if (old > std::numeric_limits<std::size_t>::max() / 2)
-        throw Error::kResourceLimit;
+      if (old > std::numeric_limits<std::size_t>::max() / 2) {
+        PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},remaining_.bytes,initial_.bytes,peak_bytes_);throw Error::kResourceLimit; }
       const auto capacity = old == 0 ? kInitialActions : old * 2;
       Admit(capacity, sizeof(OwnedAction));
       actions_.reserve(capacity);
@@ -601,16 +639,19 @@ class TreePrinter {
     actions_.push_back({current_, depth_, action});
   }
   void Append(std::string_view text) {
+    TreePrintSiteScope site(TreePrintSite::kTokenOutput);
     Step(text.size());
-    if (text.size() > limit_ - written_) throw Error::kOutputLimit;
+    if (text.size() > limit_ - written_) { PrintCharge(TreePrintBudgetKind::kOutputBytes,text.size(),limit_-written_,limit_,written_); throw Error::kOutputLimit; }
     output_.write(text.data(), static_cast<std::streamsize>(text.size()));
     if (!output_) throw Error::kWrite;
     written_ += text.size();
+    if(auto* trace=TreePrintTrace::Active())trace->failure.written_bytes=written_;
   }
   void Quoted(std::u16string_view text) {
+    TreePrintSiteScope site(TreePrintSite::kTokenOutput);
     Step(text.size());
     const auto written = WriteStringLiteral(text, output_, {limit_ - written_});
-    if (const auto* bytes = std::get_if<std::size_t>(&written)) written_ += *bytes;
+    if (const auto* bytes = std::get_if<std::size_t>(&written)) {written_ += *bytes;if(auto* trace=TreePrintTrace::Active())trace->failure.written_bytes=written_;}
     else {
       switch (std::get<EmitError>(written)) {
         case EmitError::kOutputLimit: throw Error::kOutputLimit;
@@ -911,7 +952,7 @@ class TreePrinter {
   void ClassPart(const ClassTree& definition, ClassPrintForm form, ExprId expression) {
     const ClassCaptureDestination parent{Tree(), expression};
     auto emitted = PrintClassPart(definition, output_, {limit_ - written_}, remaining_, scope_, depth_, form, &parent, &Names());
-    if (const auto* error = std::get_if<TreePrintError>(&emitted)) throw *error;
+    if (const auto* error = std::get_if<TreePrintFailure>(&emitted)) throw *error;
     if (const auto* failure = std::get_if<FamilyPrepareFailure>(&emitted)) {
       switch (FamilyRouteFailure(*failure).failure_class) {
         case RouteFailureClass::kMemoryLimit: throw Error::kResourceLimit;
@@ -926,10 +967,11 @@ class TreePrinter {
     Result().incomplete |= positions.incomplete;
     Admit(positions.allocated_bytes, 1); Step(positions.work);
     const auto retain = [&](PrintedFunction function, std::size_t offset) {
+      TreePrintSiteScope site(TreePrintSite::kClassMemberRetention);
       auto& retained = Result().class_members;
       if (retained.size() == retained.capacity()) {
         const auto capacity = retained.capacity();
-        if (capacity > std::numeric_limits<std::size_t>::max() / 2) throw Error::kResourceLimit;
+        if (capacity > std::numeric_limits<std::size_t>::max() / 2) {PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},remaining_.bytes,initial_.bytes,peak_bytes_);throw Error::kResourceLimit;}
         const auto next = capacity ? capacity * 2 : 1;
         Admit(next, sizeof(PrintedFunction)); retained.reserve(next);
         Admit(retained.capacity() - next, sizeof(PrintedFunction));
@@ -1800,6 +1842,7 @@ class TreePrinter {
       if(borrowed_variables_.empty())Array(borrowed_variables_,family_->members.size());
       borrowed_variables_[current_]=found.plan;
     }else {
+      Site(TreePrintSite::kVariableProjection);
       auto planned = PrepareSourceVariables(Tree(), remaining_,Original());
       if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
         if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
@@ -1813,6 +1856,7 @@ class TreePrinter {
       if(variables.retained_bytes>variables.allocated_bytes)throw Error::kUnsupportedContext;
       remaining_.bytes+=variables.allocated_bytes-variables.retained_bytes;
     }
+    Site(TreePrintSite::kPositionTable);
     Array(Located(), Tree().anchors.size());
     std::size_t count = 0;
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
@@ -1868,6 +1912,7 @@ class TreePrinter {
     auto found = std::lower_bound(Located().begin(), Located().end(), position,
         [&](const auto& item, auto key) { Step(); return Less(item.boundary, key); });
     while (found != Located().end() && !Less(position, found->boundary)) {
+      if(auto* trace=TreePrintTrace::Active()){trace->failure.anchor=found->id;Origin(Tree().anchors[found->id.value].origin);}
       Step(); Result().anchors[found->id.value] = written_; ++found;
     }
   }
@@ -1905,17 +1950,20 @@ class TreePrinter {
 };
 }  // namespace
 
-std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
+std::variant<PrintedFunction, TreePrintFailure> PrintStaticFields(
     const FunctionTree& tree, std::ostream& output, EmitBudget limit, analysis::SemanticBudget budget, std::size_t indent,
     const GlobalScope* scope, std::optional<abc::EntityOffset> record,const OriginalFlow* original) {
+  TreePrintTrace trace;
+  TreePrintLocationScope location(tree);
   try {
     if (!tree.modules.empty() && !record) return Error::kUnsupportedContext;
+    TreePrintSiteScope site(TreePrintSite::kDestinationVerification);
     const auto destination = VerifyModuleDestination(tree, record.value_or(abc::EntityOffset{}), scope, budget);
     const auto* verified = std::get_if<ModuleDestination>(&destination);
     if (!verified) {
       const auto error = std::get<ModuleEnclosureError>(destination);
-      if (error == ModuleEnclosureError::kResourceLimit) return Error::kResourceLimit;
-      if (error == ModuleEnclosureError::kWorkLimit) return Error::kWorkLimit;
+      if (error == ModuleEnclosureError::kResourceLimit) return trace.Capture(Error::kResourceLimit);
+      if (error == ModuleEnclosureError::kWorkLimit) return trace.Capture(Error::kWorkLimit);
       return Error::kUnsupportedContext;
     }
     budget.work -= verified->work;
@@ -1923,69 +1971,83 @@ std::variant<PrintedFunction, TreePrintError> PrintStaticFields(
     result.work += verified->work;
     if (!tree.modules.empty()) result.module_binding = PrintedFunction::ModuleBinding{*record, scope->module_enclosure->Owner()};
     return result;
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const TreePrintFailure& failure) { return failure;
+  } catch (Error error) { return trace.Capture(error);
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return trace.Capture(Error::kResourceLimit);
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return trace.Capture(Error::kResourceLimit);
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 
-std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
+std::variant<PrintedFunction, TreePrintFailure> PrintFunctionTree(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope,const OriginalFlow* original) {
+  TreePrintTrace trace;
   try { return TreePrinter(tree, output, limit, scratch, scope,original).Direct();
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const TreePrintFailure& failure) { return failure;
+  } catch (Error error) { return trace.Capture(error);
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return trace.Capture(Error::kResourceLimit);
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return trace.Capture(Error::kResourceLimit);
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 
-std::variant<PrintedFunction, TreePrintError> PrintModuleTree(
+std::variant<PrintedFunction, TreePrintFailure> PrintModuleTree(
     const FunctionTree& tree, std::ostream& output,
     EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope, std::optional<ModuleDefaultExport> default_export,const OriginalFlow* original) {
+  TreePrintTrace trace;
   try { return TreePrinter(tree, output, limit, scratch, scope,original).Direct(true, false, 0, default_export);
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const TreePrintFailure& failure) { return failure;
+  } catch (Error error) { return trace.Capture(error);
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return trace.Capture(Error::kResourceLimit);
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return trace.Capture(Error::kResourceLimit);
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 
-std::variant<PrintedFamilyDraft, TreePrintError> PrintFamilyDraft(const ConstructedFamily& family,
+std::variant<PrintedFamilyDraft, TreePrintFailure> PrintFamilyDraft(const ConstructedFamily& family,
     std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope) {
+  TreePrintTrace trace;
   try { return TreePrinter(family, output, limit, scratch, nullptr, scope).Draft();
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const TreePrintFailure& failure) { return failure;
+  } catch (Error error) { return trace.Capture(error);
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return trace.Capture(Error::kResourceLimit);
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return trace.Capture(Error::kResourceLimit);
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
-std::variant<PrintedFamilyDraft, TreePrintError> PrintModuleFamilyDraft(const ConstructedFamily& family,
+std::variant<PrintedFamilyDraft, TreePrintFailure> PrintModuleFamilyDraft(const ConstructedFamily& family,
     std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope, std::optional<ModuleDefaultExport> default_export) {
+  TreePrintTrace trace;
   try { return TreePrinter(family, output, limit, scratch, nullptr, scope).Draft(0, true, default_export);
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const TreePrintFailure& failure) { return failure;
+  } catch (Error error) { return trace.Capture(error);
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return trace.Capture(Error::kResourceLimit);
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return trace.Capture(Error::kResourceLimit);
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
-std::variant<PrintedFamilyDraft, TreePrintError> PrintClassFamilyDraft(const ConstructedFamily& family,
+std::variant<PrintedFamilyDraft, TreePrintFailure> PrintClassFamilyDraft(const ConstructedFamily& family,
     const ClassTreeContext& context, std::ostream& output, EmitBudget limit, analysis::SemanticBudget scratch, const GlobalScope* scope, std::size_t indent,
     const ClassNames* prepared) {
+  TreePrintTrace trace;
   try { return TreePrinter(family, output, limit, scratch, &context, scope, prepared).Draft(indent);
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const TreePrintFailure& failure) { return failure;
+  } catch (Error error) { return trace.Capture(error);
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return trace.Capture(Error::kResourceLimit);
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return trace.Capture(Error::kResourceLimit);
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 
-std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
+std::variant<PrintedFunction, TreePrintFailure> PrintFunctionTree(
     const VerifiedFunction& function, std::ostream& output,
     EmitBudget output_budget, analysis::SemanticBudget scratch, const GlobalScope* scope) {
+  TreePrintTrace trace;
+  TreePrintLocationScope location(function.Tree());
   try {
     if (!function.Receipt().record) return Error::kUnsupportedContext;
+    TreePrintSiteScope site(TreePrintSite::kDestinationVerification);
     const auto destination = VerifyModuleDestination(function.Tree(), *function.Receipt().record, scope, scratch);
     const auto* modules = std::get_if<ModuleDestination>(&destination);
     if (!modules) {
       const auto error = std::get<ModuleEnclosureError>(destination);
-      if (error == ModuleEnclosureError::kResourceLimit) return Error::kResourceLimit;
-      if (error == ModuleEnclosureError::kWorkLimit) return Error::kWorkLimit;
+      if (error == ModuleEnclosureError::kResourceLimit) return trace.Capture(Error::kResourceLimit);
+      if (error == ModuleEnclosureError::kWorkLimit) return trace.Capture(Error::kWorkLimit);
       return Error::kUnsupportedContext;
     }
     scratch.work -= modules->work;
@@ -1993,8 +2055,8 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     const auto* checked = std::get_if<TreeGlobals>(&globals);
     if (!checked) {
       const auto error = std::get<TreeGlobalError>(globals);
-      if (error == TreeGlobalError::kResourceLimit) return Error::kResourceLimit;
-      if (error == TreeGlobalError::kWorkLimit) return Error::kWorkLimit;
+      if (error == TreeGlobalError::kResourceLimit) return trace.Capture(Error::kResourceLimit);
+      if (error == TreeGlobalError::kWorkLimit) return trace.Capture(Error::kWorkLimit);
       return Error::kUnsupportedContext;
     }
     scratch.work -= checked->work;
@@ -2002,24 +2064,28 @@ std::variant<PrintedFunction, TreePrintError> PrintFunctionTree(
     result.work += checked->work + modules->work;
     result.allocated_bytes = std::max(result.allocated_bytes, checked->allocated_bytes);
     return result;
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit;
+  } catch (const TreePrintFailure& failure) { return failure;
+  } catch (Error error) { return trace.Capture(error);
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return trace.Capture(Error::kResourceLimit);
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return trace.Capture(Error::kResourceLimit);
   } catch (const std::ios_base::failure&) { return Error::kWrite; }
 }
 }  // namespace abcd::source
 
 namespace abcd::source {
 namespace {
-std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassPart(
+std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClassPart(
     const ClassTree& tree, std::ostream& output, EmitBudget limit,
     analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent, ClassPrintForm form,
     const ClassCaptureDestination* parent, const ClassNames* prepared) {
   using Failure = TreePrintError;
   const auto initial = budget;
+  TreePrintTrace trace;
+  trace.failure.site=TreePrintSite::kClassMemberRetention;
+  trace.failure.location.method=tree.creation.target;
   try {
     const auto readiness_work = tree.members.size() + tree.omissions.size() + tree.definitions.size();
-    if (readiness_work > budget.work) return Failure::kWorkLimit;
+    if (readiness_work > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,readiness_work,budget.work,initial.work);return trace.Capture(Failure::kWorkLimit);}
     budget.work -= readiness_work;
     if (!tree.DraftPrepared() || ResourceFailures(tree.identity.contract) != ResourceFailureScope::kExcluded ||
         tree.constructor->Identity() != tree.identity ||
@@ -2042,24 +2108,26 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     bool member_gaps = !tree.omissions.empty();
     auto count = tree.members.size() + 1;
     for (const auto& accessor : tree.definitions) {
-      if (!budget.work) return Failure::kWorkLimit;
+      if (!budget.work) {PrintCharge(TreePrintBudgetKind::kWork,1,budget.work,initial.work);return trace.Capture(Failure::kWorkLimit);}
       --budget.work; count += accessor.bodies[0].has_value() + accessor.bodies[1].has_value();
       member_gaps |= accessor.omissions[0].has_value() || accessor.omissions[1].has_value();
     }
-    if (count > budget.bytes / sizeof(PrintedClassTree::Member)) return Failure::kResourceLimit;
+    if (count > budget.bytes / sizeof(PrintedClassTree::Member)) {PrintByteCharge(count,sizeof(PrintedClassTree::Member),budget.bytes,initial.bytes,initial.bytes-budget.bytes);return trace.Capture(Failure::kResourceLimit);}
     budget.bytes -= count * sizeof(PrintedClassTree::Member); result.members.reserve(count);
     const auto excess = result.members.capacity() - count;
-    if (excess > budget.bytes / sizeof(PrintedClassTree::Member)) return Failure::kResourceLimit;
+    if (excess > budget.bytes / sizeof(PrintedClassTree::Member)) {PrintByteCharge(excess,sizeof(PrintedClassTree::Member),budget.bytes,initial.bytes,initial.bytes-budget.bytes);return trace.Capture(Failure::kResourceLimit);}
     budget.bytes -= excess * sizeof(PrintedClassTree::Member);
     const auto append = [&](std::string_view text) {
-      if (text.size() > limit.bytes - result.bytes) throw Failure::kOutputLimit;
-      if (text.size() > budget.work) throw Failure::kWorkLimit;
+      TreePrintSiteScope site(TreePrintSite::kTokenOutput);
+      trace.failure.written_bytes=result.bytes;
+      if (text.size() > limit.bytes - result.bytes) {PrintCharge(TreePrintBudgetKind::kOutputBytes,text.size(),limit.bytes-result.bytes,limit.bytes,result.bytes);throw Failure::kOutputLimit;}
+      if (text.size() > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,text.size(),budget.work,initial.work);throw trace.Capture(Failure::kWorkLimit);}
       budget.work -= text.size(); output << text;
       if (!output) throw Failure::kWrite;
       result.bytes += text.size();
     };
     const auto name = [&] {
-      if (tree.name.size() > budget.work) throw Failure::kWorkLimit;
+      if (tree.name.size() > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,tree.name.size(),budget.work,initial.work);throw trace.Capture(Failure::kWorkLimit);}
       budget.work -= tree.name.size();
       const auto printed = WriteStringLiteral(tree.name, output, {limit.bytes - result.bytes});
       if (const auto* bytes = std::get_if<std::size_t>(&printed)) result.bytes += *bytes;
@@ -2081,11 +2149,11 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     const auto member = [&](const PreparedFamily& family) {
       auto printed = family.PrintDraft(destination, output, {limit.bytes - result.bytes}, budget, indent + 1, prepared);
       if (const auto* failure = std::get_if<FamilyPrepareFailure>(&printed)) throw *failure;
-      if (const auto* failure = std::get_if<TreePrintError>(&printed)) throw *failure;
+      if (const auto* failure = std::get_if<TreePrintFailure>(&printed)) throw *failure;
       auto positions = std::get<PrintedFamilyDraft>(std::move(printed));
       for (const auto& body : positions.members) result.incomplete |= body.incomplete;
-      if (positions.allocated_bytes > budget.bytes) throw Failure::kResourceLimit;
-      if (positions.work > budget.work) throw Failure::kWorkLimit;
+      if (positions.allocated_bytes > budget.bytes) {PrintByteCharge(positions.allocated_bytes,1,budget.bytes,initial.bytes,initial.bytes-budget.bytes);throw Failure::kResourceLimit;}
+      if (positions.work > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,positions.work,budget.work,initial.work);throw trace.Capture(Failure::kWorkLimit);}
       budget.bytes -= positions.allocated_bytes; budget.work -= positions.work;
       const auto offset = result.bytes; result.bytes += positions.bytes;
       result.members.push_back({offset, std::move(positions)});
@@ -2169,14 +2237,14 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
         if (error == TreeGlobalError::kWorkLimit) throw Failure::kWorkLimit;
         throw Failure::kUnsupportedContext;
       }
-      if (checked->allocated_bytes > budget.bytes) throw Failure::kResourceLimit;
-      if (checked->work > budget.work) throw Failure::kWorkLimit;
+      if (checked->allocated_bytes > budget.bytes) {PrintByteCharge(checked->allocated_bytes,1,budget.bytes,initial.bytes,initial.bytes-budget.bytes);throw Failure::kResourceLimit;}
+      if (checked->work > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,checked->work,budget.work,initial.work);throw trace.Capture(Failure::kWorkLimit);}
       budget.bytes -= checked->allocated_bytes; budget.work -= checked->work;
       auto printed = PrintStaticFields(initializer.tree, output, {limit.bytes - result.bytes}, budget, indent + 1, globals, initializer.record,initializer.flow.original.get());
-      if (const auto* error = std::get_if<TreePrintError>(&printed)) throw *error;
+      if (const auto* error = std::get_if<TreePrintFailure>(&printed)) throw *error;
       auto positions = std::get<PrintedFunction>(std::move(printed));
-      if (positions.allocated_bytes > budget.bytes) throw Failure::kResourceLimit;
-      if (positions.work > budget.work) throw Failure::kWorkLimit;
+      if (positions.allocated_bytes > budget.bytes) {PrintByteCharge(positions.allocated_bytes,1,budget.bytes,initial.bytes,initial.bytes-budget.bytes);throw Failure::kResourceLimit;}
+      if (positions.work > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,positions.work,budget.work,initial.work);throw trace.Capture(Failure::kWorkLimit);}
       budget.bytes -= positions.allocated_bytes; budget.work -= positions.work;
       positions.enclosing_offset = result.bytes; result.bytes += positions.bytes;
       result.initializer = std::move(positions);
@@ -2188,26 +2256,28 @@ std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassP
     result.allocated_bytes = initial.bytes - budget.bytes;
     result.work = initial.work - budget.work;
     return result;
-  } catch (Failure failure) { return failure; }
-    catch (const FamilyPrepareFailure& failure) { return failure; }
-    catch (const std::bad_alloc&) { return Failure::kResourceLimit; }
-    catch (const std::length_error&) { return Failure::kResourceLimit; }
+  } catch (const TreePrintFailure& failure) { return failure; }
+    catch (Failure failure) { return trace.Capture(failure); }
+    catch (const FamilyPrepareFailure& failure) { trace.Propagate();return failure; }
+    catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return trace.Capture(Failure::kResourceLimit); }
+    catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return trace.Capture(Failure::kResourceLimit); }
     catch (const std::ios_base::failure&) { return Failure::kWrite; }
 }
 }  // namespace
-std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassTree(
+std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClassTree(
     const ClassTree& tree, std::ostream& output, EmitBudget limit,
     analysis::SemanticBudget budget, const GlobalScope* globals, std::size_t indent) {
+  TreePrintTrace trace;trace.failure.site=TreePrintSite::kClassNamePlanning;trace.failure.location.method=tree.creation.target;
   auto planned = PlanPrintedClassNames(tree, globals, budget);
   if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
-    if (*error == TreeStructureError::kResourceLimit) return TreePrintError::kResourceLimit;
-    if (*error == TreeStructureError::kWorkLimit) return TreePrintError::kWorkLimit;
+    if (*error == TreeStructureError::kResourceLimit) return trace.Capture(TreePrintError::kResourceLimit);
+    if (*error == TreeStructureError::kWorkLimit) return trace.Capture(TreePrintError::kWorkLimit);
     return TreePrintError::kUnsupportedContext;
   }
   const auto& names = std::get<ClassNames>(planned);
   const auto name = names.Lookup(tree);
-  if (names.allocated_bytes > budget.bytes) return TreePrintError::kResourceLimit;
-  if (names.work > budget.work || name.work > budget.work - names.work) return TreePrintError::kWorkLimit;
+  if (names.allocated_bytes > budget.bytes) {PrintByteCharge(names.allocated_bytes,1,budget.bytes,budget.bytes);return trace.Capture(TreePrintError::kResourceLimit);}
+  if (names.work > budget.work || name.work > budget.work - names.work) return trace.Capture(TreePrintError::kWorkLimit);
   budget.bytes -= names.allocated_bytes; budget.work -= names.work + name.work;
   auto result = PrintClassPart(tree, output, limit, budget, globals, indent,
       name.named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression, nullptr, &names);

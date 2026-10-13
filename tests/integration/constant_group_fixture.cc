@@ -192,7 +192,7 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
           family.PrintDraft({Strictness::kStrict, &no_intrinsic}, rejected)));
       test::Check(rejected.str().empty());
     }
-    test::Check(std::holds_alternative<TreePrintError>(PrintFamilyDraft(family.Family(), rejected)));
+    test::Check(std::holds_alternative<TreePrintFailure>(PrintFamilyDraft(family.Family(), rejected)));
     test::Check(rejected.str().empty());
   }
   std::ostringstream output;

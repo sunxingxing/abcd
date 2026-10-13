@@ -168,7 +168,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
       });
   if (method == index->methods.end() || !method->code)
     return Fail(InspectError::kMethod);
-  if (scope == ValueSourceScope::kConditionalValues || scope == ValueSourceScope::kConditionalFamily ||
+  if (scope == ValueSourceScope::kRecordPrintBudget || scope == ValueSourceScope::kConditionalValues || scope == ValueSourceScope::kConditionalFamily ||
       scope == ValueSourceScope::kFamilyDraft)
     return InspectValueSource(file, *header, *index, *method,
         identity, std::cout, scope);
@@ -363,7 +363,7 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 int main(int argc, char** argv) {
   if (argc < 3 || argc > 7) {
     std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--instructions]\n"
-                 "       abc_semantic INPUT.abc METHOD_ENTITY --function-source|--record-source\n"
+                 "       abc_semantic INPUT.abc METHOD_ENTITY --function-source|--record-source|--record-print-budget\n"
                  "                    [--language-arithmetic|--language-numeric] [--language-constructors] | [--language-source]\n"
                                   "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-values\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-family\n"
@@ -390,7 +390,7 @@ int main(int argc, char** argv) {
   std::optional<source::SourceForm> form;
   unsigned forms = 0, instructions = 0, value_routes = 0;
   unsigned language_arithmetic = 0, language_numeric = 0, language_constructors = 0, language_source = 0;
-  unsigned conditional_values = 0, conditional_families = 0, family_drafts = 0;
+  unsigned conditional_values = 0, conditional_families = 0, family_drafts = 0, print_budget = 0;
   for (int i = 3; i < argc; ++i) {
     const std::string_view option{argv[i]};
     if (option == "--language-arithmetic") ++language_arithmetic;
@@ -403,6 +403,7 @@ int main(int argc, char** argv) {
     else if (option == "--value-source") ++value_routes;
     else if (option == "--instructions") ++instructions;
     else if (option == "--function-source") { ++forms; form = source::SourceForm::kFunction; }
+    else if (option == "--record-print-budget") { ++forms; ++print_budget; form=source::SourceForm::kRecord; }
     else if (option == "--record-source") { ++forms; form = source::SourceForm::kRecord; }
     else return Fail(InspectError::kArguments);
   }
@@ -435,7 +436,7 @@ int main(int argc, char** argv) {
   if (value_routes && !form) form = source::SourceForm::kFunction;
   const auto numeric_contract = language_numeric ? source::SourceContract::kLanguageNumericV1 : language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
   return RunWithProcessReport(limit, [&] {
-  return Inspect(argv[1], entity, form, InspectDetail::kSummary, ValueSourceScope::kMember,
+  return Inspect(argv[1], entity, form, InspectDetail::kSummary, print_budget?ValueSourceScope::kRecordPrintBudget:ValueSourceScope::kMember,
       language_source ? source::SourceContract::kLanguageSourceV1
       : language_constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract);
   });

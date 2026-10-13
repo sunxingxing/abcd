@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     std::cerr << "class layout cannot be built before its bodies\n"; return 1;
   }
   std::ostringstream pending;
-  Check(std::get<TreePrintError>(PrintClassTree(std::get<ClassTree>(layout), pending)) ==
+  Check(std::get<TreePrintFailure>(PrintClassTree(std::get<ClassTree>(layout), pending)) ==
       TreePrintError::kUnsupportedContext);
   Check(pending.str().empty());
   const auto prepare = [&]() -> ClassTree {
@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
     auto wrong_owner = root;
     ++wrong_owner.method.value;
     std::ostringstream rejected;
-    Check(std::get<TreePrintError>(PrintFunctionTree(wrong_owner, rejected)) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(PrintFunctionTree(wrong_owner, rejected)) == TreePrintError::kUnsupportedContext);
     auto missing = constants;
     missing[1] = std::monostate{};
     Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, plan, syntax, {missing})));
@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
     ++std::get<analysis::ValueClassCreation>(wrong_creation.ops[1].operation).constructor.value;
     Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(wrong_creation, control, plan, syntax, {constants})));
     std::ostringstream unprepared;
-    Check(std::get<TreePrintError>(PrintFunctionTree(root, unprepared)) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(PrintFunctionTree(root, unprepared)) == TreePrintError::kUnsupportedContext);
     // Prepare only after the parent AST, then fill its original ClassExpr.
     // No placeholder body is printed, and final semantics see actual bodies.
     *definition = prepare();
@@ -121,20 +121,20 @@ int main(int argc, char** argv) {
     auto missing_member = std::move(definition->members.back());
     definition->members.pop_back();
     std::ostringstream missing_body;
-    Check(std::get<TreePrintError>(PrintClassTree(*definition, missing_body)) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(PrintClassTree(*definition, missing_body)) == TreePrintError::kUnsupportedContext);
     Check(missing_body.str().empty());
     definition->members.push_back(std::move(missing_member));
     auto constructor = std::move(definition->constructor);
     definition->constructor.reset();
     std::ostringstream missing_constructor;
-    Check(std::get<TreePrintError>(PrintClassTree(*definition, missing_constructor)) == TreePrintError::kUnsupportedContext);
+    Check(std::get<TreePrintFailure>(PrintClassTree(*definition, missing_constructor)) == TreePrintError::kUnsupportedContext);
     Check(missing_constructor.str().empty());
     definition->constructor = std::move(constructor);
     definition->callable = CallableKind::kDerivedConstructor;
     Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, plan, root, {constants})));
     definition->callable = CallableKind::kBaseConstructor;
     const auto printed = PrintFunctionTree(root, std::cout);
-    if (const auto* error = std::get_if<TreePrintError>(&printed)) {
+    if (const auto* error = std::get_if<TreePrintFailure>(&printed)) {
       std::cerr << "creation AST print failure " << static_cast<unsigned>(*error) << '\n'; return 1;
     }
     const auto& positions = std::get<PrintedFunction>(printed);
@@ -163,6 +163,6 @@ int main(int argc, char** argv) {
   }
   std::ostringstream limited;
   const auto small = PrintClassTree(tree, limited, {1});
-  Check(std::get<TreePrintError>(small) == TreePrintError::kOutputLimit);
+  Check(std::get<TreePrintFailure>(small) == TreePrintError::kOutputLimit);
   std::cout << output.str();
 }

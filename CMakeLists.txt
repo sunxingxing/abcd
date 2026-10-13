@@ -483,6 +483,9 @@ if(BUILD_TESTING)
   add_executable(environment_index_test tests/unit/analysis/environment_index_test.cc)
   target_link_libraries(environment_index_test PRIVATE abcd_analysis)
   add_test(NAME environment_index_test COMMAND environment_index_test)
+  add_executable(tree_print_failure_test tests/unit/source/tree_print_failure_test.cc tools/record_failure_json.cc)
+  target_link_libraries(tree_print_failure_test PRIVATE abcd_source abcd_json)
+  add_test(NAME tree_print_failure_test COMMAND tree_print_failure_test)
   add_executable(source_route_test tests/unit/source/source_route_test.cc)
   add_executable(value_operands_test tests/unit/analysis/value_operands_test.cc)
   target_include_directories(value_operands_test PRIVATE src/analysis)
@@ -2517,6 +2520,11 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/evaluation_failure.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
         ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects)
+      add_test(NAME tree_print_budget_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tree_print_budget.mjs
+        $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_guards/guards.abc
+        ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/SystemFeature/Security/CertificateFramework/artifacts/entry/default/default/modules/modules.abc)
       add_test(NAME tree_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tree_failure.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

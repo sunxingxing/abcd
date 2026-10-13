@@ -77,13 +77,13 @@ void PartialWithPrivateWrites() {
 void InvalidTree() {
   auto tree = Tree(); tree.children[0] = {900};
   std::ostringstream out;
-  Check(std::holds_alternative<TreePrintError>(PrintFunctionTree(tree, out)), "bad ID must fail");
+  Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(tree, out)), "bad ID must fail");
   Check(out.str().empty(), "bad tree must fail before output");
   tree = Tree(); tree.statements[1].statement = UnrecoveredStmt{{99}};
-  Check(std::holds_alternative<TreePrintError>(PrintFunctionTree(tree, out)), "bad issue ID must fail");
+  Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(tree, out)), "bad issue ID must fail");
   tree = Tree();
   tree.recovery_issues.push_back({RecoveryReason::kUnavailableValue, abc::CodeOffset{8}, abc::CodeOffset{4}});
-  Check(std::holds_alternative<TreePrintError>(PrintFunctionTree(tree, out)), "reversed PC range must fail");
+  Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(tree, out)), "reversed PC range must fail");
   Check(out.str().empty(), "malformed gaps must fail before output");
 }
 void PartialFamily() {

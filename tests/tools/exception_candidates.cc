@@ -75,7 +75,7 @@ int Inspect(const abcd::corpus::AbcFile& file, const abcd::abc::Header& header,
     if (!std::holds_alternative<std::size_t>(enclosure->WriteImports(file, header, imports))) return 1;
     auto printed = FunctionEmission::Write(std::get<VerifiedFunction>(std::move(prepared)), output, {}, {}, budget, &scope);
     const auto* emission = std::get_if<FunctionEmission>(&printed);
-    if (!emission) { std::cerr << "print error " << static_cast<unsigned>(std::get<TreePrintError>(printed)) << '\n'; return 1; }
+    if (!emission) { std::cerr << "print error " << static_cast<unsigned>(std::get<TreePrintFailure>(printed)) << '\n'; return 1; }
     tools::WriteTreePositions(mapping, emission->Function().Tree(), emission->Positions());
     std::cout << nlohmann::json{{"method", entity.value}, {"record_complete", false},
         {"fragment_complete", emission->Receipt().coverage == Coverage::kComplete},

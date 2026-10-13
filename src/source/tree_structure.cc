@@ -708,10 +708,16 @@ class StructureCheck {
 
 std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
     const FunctionTree& tree, analysis::SemanticBudget budget, const GlobalScope* destination) {
+  TreePrintTrace trace(true);
+  TreePrintSiteScope site(TreePrintSite::kStructureVerification);
+  TreePrintLocationScope location(tree);
   try {
     const auto measured = MeasureTreeStorage(tree, budget);
-    if (const auto* error = std::get_if<TreeStorageError>(&measured))
-      return *error == TreeStorageError::kResourceLimit ? Error::kResourceLimit : Error::kWorkLimit;
+    if (const auto* error = std::get_if<TreeStorageError>(&measured)) {
+      const auto kind=*error==TreeStorageError::kResourceLimit?Error::kResourceLimit:Error::kWorkLimit;
+      trace.failure.cause=kind;trace.Propagate();
+      return kind;
+    }
     TreeCheckBudget checked(budget);
     checked.Admit(std::get<TreeStorage>(measured).bytes, 1);
     checked.Step(std::get<TreeStorage>(measured).work);
@@ -735,8 +741,8 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
     CheckTreeOrigins(tree, checked);
     result.allocated_bytes = checked.Bytes(); result.work = checked.Work();
     return result;
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (Error error) { trace.failure.cause=error;trace.Propagate();return error;
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); trace.Propagate();return Error::kResourceLimit;
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); trace.Propagate();return Error::kResourceLimit; }
 }
 }  // namespace abcd::source

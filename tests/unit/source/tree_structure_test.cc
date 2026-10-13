@@ -99,7 +99,7 @@ void InferredNames() {
       auto observable_allocation = family;
       observable_allocation.members[0].tree.identity.contract = SourceContract::kLanguageAndHostV1;
       std::ostringstream denied;
-      Check(std::get<TreePrintError>(PrintFamilyDraft(observable_allocation, denied)) == TreePrintError::kUnsupportedContext);
+      Check(std::get<TreePrintFailure>(PrintFamilyDraft(observable_allocation, denied)) == TreePrintError::kUnsupportedContext);
       Check(denied.str().empty());
     }
   }

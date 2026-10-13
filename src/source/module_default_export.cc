@@ -1,3 +1,4 @@
+#include "tree_print_trace.h"
 #include "module_default_export.h"
 
 #include <memory_resource>
@@ -18,7 +19,7 @@ class ExportScratch final : public std::pmr::memory_resource {
   std::size_t Allocated() const { return initial_ - remaining_; }
  private:
   void* do_allocate(std::size_t bytes, std::size_t alignment) override {
-    if (bytes > remaining_) throw Error::kResourceLimit;
+    if (bytes > remaining_) {PrintByteCharge(bytes,1,remaining_,initial_,initial_-remaining_);throw Error::kResourceLimit;}
     remaining_ -= bytes;
     return std::pmr::new_delete_resource()->allocate(bytes, alignment);
   }
@@ -29,13 +30,16 @@ class ExportScratch final : public std::pmr::memory_resource {
   std::size_t remaining_, initial_;
 };
 }
-std::variant<DefaultExportCheck, TreePrintError> CheckModuleDefaultExport(
+std::variant<DefaultExportCheck, TreePrintFailure> CheckModuleDefaultExport(
     const FunctionTree& root, const ConstructedFamily* family,
     ModuleDefaultExport candidate, analysis::SemanticBudget budget) {
+  TreePrintTrace trace(true);
+  TreePrintLocationScope location(root);
+  TreePrintSiteScope site(TreePrintSite::kVariableProjection);
   try {
     ExportScratch scratch(budget.bytes);
     auto work = budget.work;
-    const auto step = [&](std::uint64_t count = 1) { if (count > work) throw Error::kWorkLimit; work -= count; };
+    const auto step = [&](std::uint64_t count = 1) { if (count > work) {PrintCharge(TreePrintBudgetKind::kWork,count,work,budget.work);throw Error::kWorkLimit;} work -= count; };
     const auto result = [&](bool eligible) { return DefaultExportCheck{eligible, scratch.Allocated(), budget.work - work}; };
     step();
     if (family && (family->root.value >= family->members.size() ||
@@ -141,8 +145,8 @@ std::variant<DefaultExportCheck, TreePrintError> CheckModuleDefaultExport(
       }
     }
     return result(true);
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (Error error) { return trace.Capture(error);
+  } catch (const std::bad_alloc&) {PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0);return trace.Capture(Error::kResourceLimit);
+  } catch (const std::length_error&) {PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0);return trace.Capture(Error::kResourceLimit); }
 }
 }

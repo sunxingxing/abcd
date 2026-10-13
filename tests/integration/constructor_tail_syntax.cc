@@ -111,7 +111,7 @@ void ConstructorTailSyntax(const ClassTreeContext& context) {
     ConstructedFamily family; family.root = {0}; family.members = {{tree, {}, {}}};
     std::ostringstream source;
     const auto printed = PrintClassFamilyDraft(family, context, source);
-    if (const auto* error = std::get_if<TreePrintError>(&printed)) {
+    if (const auto* error = std::get_if<TreePrintFailure>(&printed)) {
       std::cerr << Label(kind) << " print error " << unsigned(*error) << '\n'; std::abort();
     }
     const auto& positions = std::get<PrintedFamilyDraft>(printed).members[0];

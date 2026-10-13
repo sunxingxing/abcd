@@ -130,7 +130,7 @@ struct PrintedClassTree {
   bool incomplete = false;
 };
 // The caller supplies the unchanged built tree and discards partial output on failure.
-[[nodiscard]] std::variant<PrintedClassTree, TreePrintError, FamilyPrepareFailure> PrintClassTree(
+[[nodiscard]] std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClassTree(
     const ClassTree&, std::ostream&, EmitBudget = {}, analysis::SemanticBudget = {},
     const GlobalScope* globals = nullptr, std::size_t indent = 0);
 }

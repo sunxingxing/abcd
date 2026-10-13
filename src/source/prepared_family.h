@@ -123,7 +123,7 @@ class PreparedFamily {
   // the caller must discard the partial stream, as with PrintFamilyDraft.
   // Optional preparation is borrowed only during synchronous printing; its
   // exact trees and external context must stay unchanged throughout the call.
-  [[nodiscard]] std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintError> PrintDraft(
+  [[nodiscard]] std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintFailure> PrintDraft(
       FamilyDestination destination, std::ostream& output,
       EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0,
       const ClassNames* prepared = nullptr) const;

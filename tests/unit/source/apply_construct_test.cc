@@ -308,7 +308,7 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
   }
   std::ostringstream output;
   const auto printed = PrintFunctionTree(tree, output,{}, kPrintBudget,nullptr,&original);
-  if(const auto* error=std::get_if<TreePrintError>(&printed)) {
+  if(const auto* error=std::get_if<TreePrintFailure>(&printed)) {
     std::cerr<<"apply print error "<<static_cast<unsigned>(*error)<<" count="<<count<<" arguments="<<arguments
         <<" phased="<<phased<<" form="<<static_cast<unsigned>(form)<<'\n';
     const auto variables=PrepareSourceVariables(tree,kPrintBudget,&original);

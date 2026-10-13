@@ -111,12 +111,12 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode unary, unsigned form, unsi
     if (form >= 5) {
       auto pinned_text = tree; pinned_text.identity.contract = kSourceContract;
       std::ostringstream refused;
-      test::Check(std::holds_alternative<TreePrintError>(PrintFunctionTree(pinned_text, refused)));
+      test::Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(pinned_text, refused)));
       auto private_bits = tree;
       for (auto& node : private_bits.expressions) if (auto* literal = std::get_if<TreeLiteral>(&node.expression))
         if (auto* number = std::get_if<NumberLiteral>(literal)) number->bits = UINT64_C(0xffff000000000005);
       std::ostringstream private_text;
-      test::Check(std::holds_alternative<TreePrintError>(PrintFunctionTree(private_bits, private_text)));
+      test::Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(private_bits, private_text)));
     }
     test::Check(!std::get<PrintedFunction>(PrintFunctionTree(tree, output)).incomplete);
   } else {

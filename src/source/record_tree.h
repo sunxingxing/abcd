@@ -6,6 +6,6 @@ namespace abcd::source {
 RecordSourceResult BuildRecordTree(const corpus::AbcFile&, const abc::Header&,
     const abc::MetadataIndex&, const abc::RecordInfo&, const RecordModuleContext&,
     abc::MethodPosition, RouteInputIdentity, RecordProgramBudget, const abc::MethodLookup&,
-    const analysis::MethodRoleIndex&, const analysis::FunctionCreationSites*, const analysis::ClassMethodSites*);
+    const analysis::MethodRoleIndex&, const analysis::FunctionCreationSites*, const analysis::ClassMethodSites*, RecordPrintDiagnostics* = nullptr);
 }
 #endif

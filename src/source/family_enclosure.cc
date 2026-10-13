@@ -1,3 +1,4 @@
+#include "tree_print_trace.h"
 #include "family_enclosure.h"
 
 #include <algorithm>
@@ -294,9 +295,9 @@ class EnclosureCheck {
   void Add(std::size_t& value, std::size_t count) {
     Require(count <= std::numeric_limits<std::size_t>::max() - value, Error::kResourceLimit); value += count;
   }
-  void Step(std::uint64_t count = 1) { Require(count <= left_.work, Error::kWorkLimit); left_.work -= count; }
+  void Step(std::uint64_t count = 1) { if(count>left_.work)PrintCharge(TreePrintBudgetKind::kWork,count,left_.work,initial_.work); Require(count <= left_.work, Error::kWorkLimit); left_.work -= count; }
   void Admit(std::size_t count, std::size_t width) {
-    Require(count <= left_.bytes / width, Error::kResourceLimit); left_.bytes -= count * width;
+    if(count>left_.bytes/width)PrintByteCharge(count,width,left_.bytes,initial_.bytes,initial_.bytes-left_.bytes); Require(count <= left_.bytes / width, Error::kResourceLimit); left_.bytes -= count * width;
   }
   template<class T> void Array(std::vector<T>& values, std::size_t count) {
     Admit(count, sizeof(T)); Step(count); values.resize(count); Admit(values.capacity() - count, sizeof(T));
@@ -323,14 +324,14 @@ std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyEnclosure(
     const ConstructedFamily& family, analysis::SemanticBudget budget) {
   try { return EnclosureCheck(family, budget).Run();
   } catch (const FamilyEnclosureFailure& failure) { return failure;
-  } catch (const std::bad_alloc&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}};
-  } catch (const std::length_error&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}}; }
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}};
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}}; }
 }
 std::variant<FamilyEnclosure, FamilyEnclosureFailure> VerifyFamilyDestination(
     const ConstructedFamily& family, const GlobalScope* scope, analysis::SemanticBudget budget, ModuleRole root_role) {
   try { return EnclosureCheck(family, budget, EnclosureExtent::kDestination, scope, root_role).Run();
   } catch (const FamilyEnclosureFailure& failure) { return failure;
-  } catch (const std::bad_alloc&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}};
-  } catch (const std::length_error&) { return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}}; }
+  } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}};
+  } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); return FamilyEnclosureFailure{Error::kResourceLimit, {0}, {}}; }
 }
 }  // namespace abcd::source

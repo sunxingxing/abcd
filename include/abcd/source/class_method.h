@@ -19,7 +19,7 @@ struct ClassMethod {
   EffectiveMethodKind effective_kind = EffectiveMethodKind::kUnknown;
 };
 using FunctionEmissionResult =
-    std::variant<FunctionEmission, FunctionEmitError, TreePrintError>;
+    std::variant<FunctionEmission, FunctionEmitError, TreePrintFailure>;
 // Value-tree class member emission. Match the selected owner shape, then
 // emit the whole member from its verified tree. No fallback or hidden secondary
 // self binding: the ABI census proves self/new.target/arguments unobserved.

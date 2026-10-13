@@ -23,8 +23,6 @@ struct ScopeId { std::uint32_t value = 0; auto operator<=>(const ScopeId&) const
 struct NameId { std::uint32_t value = 0; auto operator<=>(const NameId&) const = default; };
 struct TextId { std::uint32_t value = 0; auto operator<=>(const TextId&) const = default; };
 struct TreeOriginId { std::uint32_t value = 0; auto operator<=>(const TreeOriginId&) const = default; };
-struct AnchorId { std::uint32_t value = 0; auto operator<=>(const AnchorId&) const = default; };
-struct FunctionOwnerId { std::uint32_t value = 0; auto operator<=>(const FunctionOwnerId&) const = default; };
 struct ModuleOwnerId { std::uint32_t value = 0; auto operator<=>(const ModuleOwnerId&) const = default; };
 enum class CallableKind : std::uint8_t {
   kFunction, kMethod, kArrow, kBaseConstructor, kDerivedConstructor,

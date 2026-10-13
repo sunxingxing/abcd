@@ -1,3 +1,5 @@
+#include "tree_print_trace.h"
+#include "abcd/source/counting_sink.h"
 #include "cell_names.h"
 #include "deferred_failure.h"
 #include "record_tree.h"
@@ -31,13 +33,14 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     const RecordModuleContext& context, abc::MethodPosition entry,
     RouteInputIdentity identity, RecordProgramBudget budget, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites* functions,
-    const analysis::ClassMethodSites* classes, bool metadata_names, bool& proposed_names) {
+    const analysis::ClassMethodSites* classes, bool metadata_names, bool& proposed_names, RecordPrintDiagnostics* diagnostics) {
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   // Record failure with the typed inner cause that produced it (S2).
   const auto fail_with = [&]<class E>(Error kind, const E& cause) {
     auto failure = fail(kind);
     CollectFailureCauses(cause, failure.causes);
+    if constexpr(std::is_same_v<E,TreePrintFailure>) { failure.printing=cause;failure.method=cause.location.method;failure.pc=cause.location.pc;failure.working_pc=cause.location.working_pc; }
     return failure;
   };
   // Record failure carrying the typed error alternative of a stage result.
@@ -676,9 +679,9 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           if (!declaration || declaration->symbol != *symbol) continue;
           const ModuleDefaultExport candidate{{static_cast<std::uint32_t>(i)}, target};
           auto checked = CheckModuleDefaultExport(root, module_family ? &*module_family : nullptr, candidate, {budget.bytes});
-          if (const auto* error = std::get_if<TreePrintError>(&checked)) {
+          if (const auto* error = std::get_if<TreePrintFailure>(&checked)) {
             if (*error == TreePrintError::kWorkLimit)
-              return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kPrintStage, {}}};
+              return RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{*error})};
             return fail_with(Error::kResourceLimit, *error);
           }
           const auto& check = std::get<DefaultExportCheck>(checked);
@@ -690,6 +693,45 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     }
     // Bound retained stream capacity and the returned string alongside the
     // still-live graph/tree; the printer retains its own scratch allowance.
+    if(diagnostics) {
+      // Counting keeps no output buffer. The exact same actions run with the
+      // existing record's remaining allowance, before any output reservation.
+      // Destroy all diagnostic positions before the unchanged production run.
+      *diagnostics={};diagnostics->reached_print=true;
+      diagnostics->available=budget.bytes;
+      diagnostics->reservation=std::min(budget.output.bytes,budget.bytes/6);
+      diagnostics->printer_scratch=budget.bytes-diagnostics->reservation*5;
+      TreePrintCensus census;TreePrintCensusScope census_scope(census);
+      CountingSink sink;std::ostream counted(&sink);
+      auto prelude=enclosure->WriteImports(file,header,counted,budget.output,{std::min(budget.strings.bytes,budget.bytes)});
+      if(const auto* prefix=std::get_if<std::size_t>(&prelude)) {
+        auto count=[&]()->std::variant<std::size_t,TreePrintFailure> {
+          if(!module_family) {
+            auto printed=PrintModuleTree(result->tree,counted,{budget.output.bytes-*prefix},{budget.bytes},
+                &class_scope,default_export,result->flow?result->flow->original.get():nullptr);
+            if(const auto* error=std::get_if<TreePrintFailure>(&printed))return *error;
+            const auto& value=std::get<PrintedFunction>(printed);diagnostics->counted_peak=value.allocated_bytes;return value.bytes;
+          }
+          auto printed=PrintModuleFamilyDraft(*module_family,counted,{budget.output.bytes-*prefix},{budget.bytes},&class_scope,default_export);
+          if(const auto* error=std::get_if<TreePrintFailure>(&printed))return *error;
+          const auto& value=std::get<PrintedFamilyDraft>(printed);diagnostics->counted_peak=value.allocated_bytes;return value.bytes;
+        }();
+        if(const auto* error=std::get_if<TreePrintFailure>(&count))diagnostics->count_failure=*error;
+        else {
+          diagnostics->count_complete=true;
+          for(std::size_t i=0;i<aliases.size();++i) {
+            if(default_export&&i==*default_alias)continue;
+            counted<<"export { ";for(auto unit:names[alias_slots[i]])counted.put(static_cast<char>(unit));
+            counted<<" as ";auto literal=WriteStringLiteral(aliases[i],counted,budget.output);
+            if(!std::holds_alternative<std::size_t>(literal)){diagnostics->count_complete=false;break;}
+            counted<<" };\n";
+          }
+        }
+      }
+      diagnostics->counted_bytes=sink.Bytes();
+      diagnostics->methods=census.methods;diagnostics->expressions=census.expressions;diagnostics->statements=census.statements;
+      diagnostics->operations=census.operations;diagnostics->anchors=census.anchors;
+    }
     budget.output.bytes = std::min(budget.output.bytes, budget.bytes / 6);
     retain(budget.output.bytes * 5);
     std::ostringstream output;
@@ -711,33 +753,33 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       }
     }
     bool incomplete = false;
-    auto printed = [&]() -> std::variant<std::size_t, TreePrintError> {
+    auto printed = [&]() -> std::variant<std::size_t, TreePrintFailure> {
       if (!module_family) {
         auto emitted = PrintModuleTree(result->tree, output,
             {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope, default_export,result->flow?result->flow->original.get():nullptr);
-        if (const auto* error = std::get_if<TreePrintError>(&emitted)) return *error;
+        if (const auto* error = std::get_if<TreePrintFailure>(&emitted)) return *error;
         const auto& positions = std::get<PrintedFunction>(emitted);
         incomplete = positions.incomplete;
         return positions.bytes;
       }
       auto emitted = PrintModuleFamilyDraft(*module_family, output,
           {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope, default_export);
-      if (const auto* error = std::get_if<TreePrintError>(&emitted)) return *error;
+      if (const auto* error = std::get_if<TreePrintFailure>(&emitted)) return *error;
       const auto& positions = std::get<PrintedFamilyDraft>(emitted);
       incomplete = positions.members[module_family->root.value].incomplete;
       return positions.bytes;
     }();
     const auto* body = std::get_if<std::size_t>(&printed);
     if (!body) {
-      const auto print_error = std::get<TreePrintError>(printed);
-      switch (print_error) {
+      const auto print_error = std::get<TreePrintFailure>(printed);
+      switch (print_error.kind) {
         case TreePrintError::kResourceLimit: return fail_with(Error::kResourceLimit, print_error);
         case TreePrintError::kOutputLimit: return fail_with(Error::kOutputLimit, print_error);
         case TreePrintError::kWrite: return fail_with(Error::kWrite, print_error);
         case TreePrintError::kUnsupportedContext:
         case TreePrintError::kInvalidLiteral: return fail_with(Error::kValue, print_error);
         case TreePrintError::kWorkLimit:
-          return RouteRefusal{{RouteFailureClass::kWorkLimit, ValueRouteError::kPrintStage, {}}};
+          return RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{print_error})};
       }
     }
     std::size_t remaining = budget.output.bytes - *prelude_bytes - *body;
@@ -773,10 +815,10 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
     const RecordModuleContext& context, abc::MethodPosition entry,
     RouteInputIdentity identity, RecordProgramBudget budget, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites* functions,
-    const analysis::ClassMethodSites* classes) {
+    const analysis::ClassMethodSites* classes, RecordPrintDiagnostics* diagnostics) {
   bool proposed = false;
   auto result = BuildRecordTreeAttempt(file, header, index, record, context, entry, identity,
-      budget, lookup, roles, functions, classes, true, proposed);
+      budget, lookup, roles, functions, classes, true, proposed, diagnostics);
   if (!proposed || std::holds_alternative<PrintedSource>(result)) return result;
   // Metadata is a naming hint, not authority to capture a descendant's global.
   // A failed name-bearing tree is destroyed before this one bounded retry with
@@ -791,7 +833,7 @@ RecordSourceResult BuildRecordTree(const corpus::AbcFile& file, const abc::Heade
   if (!retry) return result;
   bool unused = false;
   return BuildRecordTreeAttempt(file, header, index, record, context, entry, identity,
-      budget, lookup, roles, functions, classes, false, unused);
+      budget, lookup, roles, functions, classes, false, unused, diagnostics);
 }
 
 }

@@ -266,7 +266,7 @@ std::string OuterTransfer(abc::ProfileId profile, bool stop, bool carried) {
     else std::get<BreakStmt>(missing.statements[i].statement).label.reset();
     test::Check(std::get<TreeStructureError>(VerifyTreeStructure(missing)) == TreeStructureError::kTarget);
     std::ostringstream refused;
-    test::Check(std::holds_alternative<TreePrintError>(PrintFunctionTree(missing, refused)) && refused.str().empty());
+    test::Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(missing, refused)) && refused.str().empty());
   }
   test::Check(labelled);
   test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
