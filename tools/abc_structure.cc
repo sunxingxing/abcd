@@ -475,26 +475,32 @@ int Export(const std::filesystem::path& input,
 }  // namespace
 int main(int argc, char** argv) {
   SourceMode mode = SourceMode::kNone;
-  unsigned modes = 0, language = 0, numeric = 0, constructors = 0;
+  unsigned modes = 0, language = 0, numeric = 0, constructors = 0, source = 0;
   bool valid = argc >= 3 && argc <= 6;
   for (int i = 3; valid && i < argc; ++i) {
     const std::string_view option{argv[i]};
     if (option == "--language-arithmetic") { ++language; continue; }
     if (option == "--language-constructors") { ++constructors; continue; }
     if (option == "--language-numeric") { ++numeric; continue; }
+    if (option == "--language-source") { ++source; continue; }
     ++modes;
     if (option == "--value-source") mode = SourceMode::kValueTree;
     else valid = false;
   }
-  if (!valid || modes > 1 || constructors > 1 || language + numeric > 1 || ((constructors || language || numeric) && mode != SourceMode::kValueTree)) {
-    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--value-source] [--language-arithmetic|--language-numeric] [--language-constructors]\n"
+  if (!valid || modes > 1 || constructors > 1 || language + numeric > 1 || source > 1 ||
+      (source && (constructors || language || numeric)) ||
+      ((constructors || language || numeric || source) && mode != SourceMode::kValueTree)) {
+    std::cerr << "usage: abc_structure INPUT.abc OUTPUT_DIR [--value-source] [--language-arithmetic|--language-numeric] [--language-constructors] | [--language-source]\n"
                  "  --language-arithmetic requires --value-source and selects binary language arithmetic\n"
                  "  --language-numeric requires --value-source and selects unary and binary numeric semantics\n"
-                 "  --language-constructors requires --value-source and selects native super semantics\n";
+                 "  --language-constructors requires --value-source and selects native super semantics\n"
+                 "  --language-source requires --value-source and selects numeric and constructor semantics plus\n"
+                 "    the source premises approved on 2026-10-13 (docs/design/source-recovery/language-source.md)\n";
     return EXIT_FAILURE;
   }
   const auto numeric_contract = numeric ? source::SourceContract::kLanguageNumericV1 : language ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
-  const auto contract = constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract;
+  const auto contract = source ? source::SourceContract::kLanguageSourceV1
+      : constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract;
   tools::InstallAllocationFailureMonitor();
   const auto limit = tools::EstablishProcessLimit();
   if (!tools::ProcessLimitAcceptable(limit)) {

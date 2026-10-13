@@ -102,7 +102,9 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
          prefix.allocation.value>=block->first_instruction &&
          prefix.allocation.value<instruction && instruction<prefix.store.value);
   }
-  if (!initialized && requirement == analysis::CaptureDomain::kGuarded && deferred && allocation &&
+  const bool deferrable = requirement == analysis::CaptureDomain::kGuarded ||
+      (requirement == analysis::CaptureDomain::kLanguage && source_tdz_);
+  if (!initialized && deferrable && deferred && allocation &&
       writes_ == analysis::ClosureWrites::kLanguage) {
     // The store must be the first write executed after this allocation. Its
     // block holds the allocation and creation, so either the cell's first

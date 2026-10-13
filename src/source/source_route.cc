@@ -120,7 +120,8 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
        identity.contract != SourceContract::kLanguageNumericV1 &&
        identity.contract != SourceContract::kLanguageConstructorsV1 &&
        identity.contract != SourceContract::kLanguageArithmeticConstructorsV1 &&
-       identity.contract != SourceContract::kLanguageNumericConstructorsV1))
+       identity.contract != SourceContract::kLanguageNumericConstructorsV1 &&
+       identity.contract != SourceContract::kLanguageSourceV1))
     return RouteReceiptError::kIdentity;
   const auto valid_entity = [&](const auto& entity) {
     return !entity || (entity->value >= abc::kDynamicHeaderSize &&

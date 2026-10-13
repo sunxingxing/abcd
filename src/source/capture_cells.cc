@@ -181,7 +181,7 @@ CaptureParent Parent(CaptureFunction function) {
       function.values.environments ? &*function.values.environments : nullptr,
       CaptureChild(function).Cells(), function.input.Input().instructions,
       function.input.Proof().locals.allocations, ScopeFacts(function.input.Input(), function.input.Proof(),
-          Prefixes(function))};
+          Prefixes(function), CaptureReads(function.input.Identity().contract) == CaptureReadSemantics::kSourceTdz)};
 }
 void Owner(const CaptureParent& parent, Quota& quota) {
   quota.Step();
@@ -306,8 +306,11 @@ std::vector<DeferredCellInitialization> Deferred(const CaptureParent& parent, co
   for (const auto& binding : input.bindings) {
     quota.Step();
     if (!binding.deferred) continue;
+    // Guarded reads, or Language reads under the approved source TDZ premise.
     Require(std::holds_alternative<analysis::LocalCell>(binding.cell) &&
-        binding.domain == analysis::CaptureDomain::kGuarded, Error::kCell);
+        (binding.domain == analysis::CaptureDomain::kGuarded ||
+         (binding.domain == analysis::CaptureDomain::kLanguage &&
+          CaptureReads(parent.identity.contract) == CaptureReadSemantics::kSourceTdz)), Error::kCell);
     const auto target = Project(parent, binding.cell, quota);
     const auto* cell = std::get_if<ParentCell>(&target);
     const auto store = Operation(parent, *binding.deferred, quota);
@@ -505,7 +508,7 @@ std::variant<CaptureCells, CaptureCellFailure> BindCaptureCells(
   try {
     Quota quota(budget); Owners(index, parent, child, creation, quota);
     auto bound = BuildCapturePlan(ScopeFacts(parent.input.Input(), parent.input.Proof(),
-        Prefixes(parent)),
+        Prefixes(parent), CaptureReads(parent.input.Identity().contract) == CaptureReadSemantics::kSourceTdz),
         site, creation, child.Input().Captures(), quota.Remaining());
     if (const auto* error = std::get_if<CaptureFailure>(&bound)) return InputError(*error);
     auto input = std::get<CapturePlan>(std::move(bound)); quota.Step(input.work);

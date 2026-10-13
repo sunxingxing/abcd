@@ -28,9 +28,10 @@ enum class ScopeError : std::uint8_t {
 class NormalScopeFacts {
  public:
   NormalScopeFacts(const analysis::SemanticMethod& method, const analysis::SemanticProof& proof,
-      std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> module_prefix = {})
+      std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> module_prefix = {},
+      bool source_tdz = false)
       : NormalScopeFacts(method, proof.environments, proof.locals, proof.defined_captures,
-                   proof.closure_writes) { module_prefix_ = module_prefix; }
+                   proof.closure_writes) { module_prefix_ = module_prefix; source_tdz_ = source_tdz; }
   NormalScopeFacts(const analysis::SemanticMethod& method,
       const analysis::EnvironmentFlow& environments, const analysis::LocalAccessPlan& locals,
       const analysis::DefinedCaptures& defined, analysis::ClosureWrites writes)
@@ -39,6 +40,9 @@ class NormalScopeFacts {
   // admitted only as a deferred TDZ initialization: allocation, creation and
   // the cell's first store share one block in that order. `deferred` then
   // receives that store; the owner must declare the binding exactly there.
+  // Under the approved source TDZ premise (CaptureReads, language-source.md)
+  // a Language read is deferred by the same rule: it is a source identifier
+  // read of the binding that the owner declares at that store.
   [[nodiscard]] std::variant<CaptureCell, ScopeError> Rebase(
       analysis::InstructionId creation, analysis::CapturedSlot capture,
       analysis::CaptureDomain requirement,
@@ -58,6 +62,7 @@ class NormalScopeFacts {
   const analysis::LocalAccessPlan& locals_;
   const analysis::DefinedCaptures& defined_;
   analysis::ClosureWrites writes_;
+  bool source_tdz_ = false;
 };
 // Same verified, unchanged exception owner. Before identifies ONE creation;
 // original node IDs are never normal instruction indexes. All stores must pass
@@ -78,8 +83,9 @@ struct ExceptionScopeFacts {
 class ScopeFacts {
  public:
   ScopeFacts(const analysis::SemanticMethod& method, const analysis::SemanticProof& proof,
-      std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> module_prefix = {})
-      : input_(NormalScopeFacts(method, proof, module_prefix)) {}
+      std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> module_prefix = {},
+      bool source_tdz = false)
+      : input_(NormalScopeFacts(method, proof, module_prefix, source_tdz)) {}
   ScopeFacts(const analysis::SemanticMethod& method, const analysis::EnvironmentFlow& environments,
       const analysis::LocalAccessPlan& locals, const analysis::DefinedCaptures& defined,
       analysis::ClosureWrites writes) : input_(NormalScopeFacts(method, environments, locals, defined, writes)) {}
