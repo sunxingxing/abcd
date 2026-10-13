@@ -605,8 +605,11 @@ bool RefreshPhaseSelectionExecutions(const ValueProgram& graph, EvaluationPlan& 
   proof.Account();
   if (operands.size() != plan.phase_selections.size()) return false;
   for (std::size_t i = 0; i < operands.size(); ++i) {
-    budget.Step(); auto same = operands[i]; same.execution = plan.phase_selections[i].execution;
-    if (!(same == plan.phase_selections[i])) return false;
+    // Field-wise, without copying the prefix/ancestor containers.
+    const auto& a = operands[i]; const auto& b = plan.phase_selections[i];
+    budget.Step(a.prefix.size() + a.ancestors.size() + 1);
+    if (a.owner != b.owner || a.branch != b.branch || a.value != b.value || a.input != b.input ||
+        a.transport != b.transport || a.prefix != b.prefix || a.ancestors != b.ancestors) return false;
   }
   for (std::size_t i = 0; i < operands.size(); ++i) { budget.Step(); plan.phase_selections[i].execution = operands[i].execution; }
   return true;

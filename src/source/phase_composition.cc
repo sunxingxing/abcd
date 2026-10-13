@@ -13,12 +13,25 @@ bool RefreshPhaseSelectionExecutions(const analysis::ValueProgram&, EvaluationPl
 namespace {
 using namespace analysis;
 void Require(bool condition) { if (!condition) throw EvaluationError::kOrder; }
-// One event of the expected source order: an ordered operation, or a whole
-// committed selection identified by its original branch.
-struct Item {
-  bool selection = false;
-  OpId id;
+// A backward scan position: ops [0, end) of block remain to be examined.
+struct Cursor {
+  WorkBlockId block;
+  std::uint32_t end = 0;
 };
+// The first thing met when scanning backwards along single-entry, copy-free
+// normal steps: an ordered event, the start of a committed selection's join,
+// or anything else (a merge, a copy, a catch block), which blocks composition.
+struct Stop {
+  enum class Kind : std::uint8_t { kBlocked, kEvent, kJoin } kind = Kind::kBlocked;
+  OpId op;
+  std::size_t region = 0;
+  Cursor after;
+};
+struct Frame {
+  OpId op;
+  std::uint32_t ordinal = 0;
+};
+enum class Mode : std::uint8_t { kBuild, kVerify };
 class Composition {
  public:
   Composition(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget)
@@ -27,9 +40,17 @@ class Composition {
     budget.Admit(phase_budget_.Cost().bytes, 1);
     accounted_work_ = phase_budget_.Cost().work; budget.Step(accounted_work_);
     regions_ = FindPhasedPhiSelections(graph, plan, budget);
-    roots_ = IndexPhaseInlineRoots(graph, plan, budget);
-    budget.Array(region_of_, graph.ops.size());
-    for (std::size_t i = 0; i < regions_.size(); ++i) { budget.Step(); region_of_[regions_[i].branch.value] = i; }
+    const auto roots = IndexPhaseInlineRoots(graph, plan, budget);
+    budget.Array(region_of_, graph.ops.size()); budget.Array(join_of_, graph.blocks.size());
+    budget.Array(shared_join_, graph.blocks.size());
+    for (std::size_t i = 0; i < regions_.size(); ++i) {
+      budget.Step(); const auto branch = regions_[i].branch;
+      region_of_[branch.value] = i;
+      if (!Committed(branch)) continue;
+      auto& join = join_of_[regions_[i].join.value];
+      if (join) shared_join_[regions_[i].join.value] = 1;
+      join = i;
+    }
     budget.Array(incoming_, graph.blocks.size()); budget.Array(outgoing_, graph.blocks.size());
     budget.Array(predecessor_, graph.blocks.size()); budget.Array(copied_, graph.edges.size());
     budget.Array(visited_, graph.blocks.size());
@@ -57,197 +78,303 @@ class Composition {
     // inline predicate chain of its branch, each with its own inline subtree.
     budget.Array(owner_, graph.ops.size()); budget.Array(owned_count_, graph.ops.size());
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      budget.Step(); const auto root = roots_[i];
+      budget.Step(); const auto root = roots[i];
       std::optional<OpId> owner;
       if (root.value < plan.phase_prefixes.size() && plan.phase_prefixes[root.value]) owner = plan.phase_prefixes[root.value];
-      else if (region_of_[root.value] && plan.operations[root.value].kind == EvaluationKind::kLogicalValue) owner = root;
+      else if (region_of_[root.value] && Committed(root)) owner = root;
       if (!owner || !PhaseCorridors::Event(graph.ops[i], plan.operations[i])) continue;
       owner_[i] = owner; ++owned_count_[owner->value];
     }
-    budget.Array(overlay_, graph.ops.size()); budget.Array(member_, graph.ops.size());
+    budget.Array(overlay_, graph.ops.size()); budget.Array(added_, graph.ops.size());
+    budget.Array(valid_, graph.ops.size()); budget.Array(events_, graph.ops.size());
+    budget.Array(selection_, graph.ops.size()); budget.Array(fresh_, graph.ops.size());
+    budget.Array(begin_, graph.ops.size()); budget.Array(last_, graph.ops.size());
+    budget.Array(region_state_, regions_.size()); budget.Array(region_throw_, regions_.size());
+    budget.Admit(graph.ops.size(), sizeof(Frame)); stack_.reserve(graph.ops.size());
+    budget.Admit(stack_.capacity() - graph.ops.size(), sizeof(Frame));
+    budget.Admit(graph.ops.size(), sizeof(OpId)); nodes_.reserve(graph.ops.size());
+    budget.Admit(nodes_.capacity() - graph.ops.size(), sizeof(OpId));
+    budget.Admit(graph.edges.size() + 2, sizeof(WorkBlockId)); queue_.reserve(graph.edges.size() + 2);
+    budget.Admit(queue_.capacity() - graph.edges.size() - 2, sizeof(WorkBlockId));
   }
-  // Expands root's final-ownership tree, optionally adding eligible root
-  // producers, then proves the actual order and catch obligations.
-  bool Prove(OpId root, bool tentative) {
-    items_.clear(); nodes_.clear(); added_.clear();
-    try {
-      Expand(root, tentative);
-      Require(std::any_of(items_.begin(), items_.end(), [](const Item& item) { return item.selection; }));
-      Require(!tentative || !added_.empty());
-      Walk(root);
-      return true;
-    } catch (EvaluationError) {
-      for (const auto& [producer, use] : added_) { budget_.Step(); overlay_[producer.value].reset(); }
-      added_.clear();
+  // Composes one node over its operands in reverse source order. Existing
+  // owned children and committed selections must fit; in kBuild an eligible
+  // root child is absorbed when it fits, otherwise it keeps its snapshot.
+  // Returns whether the node has a proved span (kVerify throws instead).
+  bool Compose(OpId consumer, Mode mode) {
+    budget_.Step();
+    const auto& op = graph_.ops[consumer.value];
+    const bool may_throw = op.exceptional == ExceptionalCompletion::kMayThrow;
+    const auto fail = [&]() -> bool {
+      Require(mode == Mode::kBuild);
+      for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
+        budget_.Step(); const UseId use{op.first_use.value + ordinal};
+        const auto* value = std::get_if<ValueId>(&graph_.uses[use.value].operand);
+        const auto* result = value ? std::get_if<OpResult>(&graph_.values[value->value].origin) : nullptr;
+        if (result && added_[result->op.value] && overlay_[result->op.value] == use) {
+          overlay_[result->op.value].reset(); added_[result->op.value] = 0;
+        }
+      }
       return false;
+    };
+    if (op.life != ValueLife::kLive || excluded_[consumer.value] ||
+        (!PhaseCorridors::Expression(op.operation) && !PhaseCorridors::ConsumesOperands(op.operation))) return fail();
+    // A moved throw point keeps this consumer's handler and needs no staging.
+    const auto fits_catch = [&](OpId thrower) {
+      return may_throw && corridors_.SameCatch(thrower, consumer) && !corridors_.HasCatchCopies(thrower);
+    };
+    auto cursor = Cursor{op.block, consumer.value - graph_.blocks[op.block.value].first_op.value};
+    auto stop = Next(cursor);
+    std::optional<OpId> last;
+    bool events = false, selection = false, fresh = false;
+    for (std::uint32_t ordinal = op.use_count; ordinal != 0; --ordinal) {
+      budget_.Step(); const UseId use{op.first_use.value + ordinal - 1};
+      const auto link = Edge(consumer, use, mode == Mode::kBuild);
+      if (link.selection) {
+        const auto& region = regions_[*region_of_[link.selection->value]];
+        if (stop.kind != Stop::Kind::kJoin || stop.region != *region_of_[link.selection->value]) return fail();
+        // The join's normal entries are exactly this selection's two arms.
+        if (!region.keep_input || !region.evaluate_input || *region.keep_input == *region.evaluate_input ||
+            graph_.edges[region.keep_input->value].target != region.join ||
+            graph_.edges[region.evaluate_input->value].target != region.join ||
+            incoming_[region.join.value] != 2) return fail();
+        const auto thrower = RegionThrower(*region_of_[link.selection->value]);
+        if (!thrower || (*thrower && !fits_catch(**thrower))) return fail();
+        auto inner = Cursor{region.header, graph_.blocks[region.header.value].op_count};
+        for (std::size_t owned = 0; owned < owned_count_[link.selection->value]; ++owned) {
+          const auto event = Next(inner);
+          if (event.kind != Stop::Kind::kEvent || owner_[event.op.value] != *link.selection ||
+              (graph_.ops[event.op.value].exceptional == ExceptionalCompletion::kMayThrow && !fits_catch(event.op))) return fail();
+          inner = event.after;
+        }
+        if (!last) last = *link.selection;
+        events = selection = true; cursor = inner; stop = Next(cursor);
+        continue;
+      }
+      if (!link.producer) continue;
+      const auto producer = *link.producer;
+      if (excluded_[producer.value] || Owned(producer) || !valid_[producer.value] ||
+          (!Transport(producer) && !Fusable(producer, consumer, use))) {
+        if (link.added) continue;  // An eligible root keeps its snapshot.
+        return fail();
+      }
+      // Invariant of a composed node: each absorbed throw point has no catch
+      // copies and the node's handler, and a node that cannot throw absorbed
+      // none. Checking the child itself therefore covers its whole subtree.
+      bool fits = !events_[producer.value] ||
+          (stop.kind == Stop::Kind::kEvent && last_[producer.value] && stop.op == *last_[producer.value]);
+      if (fits && graph_.ops[producer.value].exceptional == ExceptionalCompletion::kMayThrow) fits = fits_catch(producer);
+      if (!fits) {
+        if (link.added) continue;
+        return fail();
+      }
+      if (link.added) { overlay_[producer.value] = use; added_[producer.value] = 1; fresh = true; }
+      fresh |= fresh_[producer.value] != 0; selection |= selection_[producer.value] != 0;
+      if (events_[producer.value]) {
+        if (!last) last = last_[producer.value];
+        events = true; cursor = begin_[producer.value]; stop = Next(cursor);
+      }
     }
+    if (PhaseCorridors::Event(op, Placement(consumer))) { last = consumer; events = true; }
+    valid_[consumer.value] = 1; events_[consumer.value] = events; selection_[consumer.value] = selection;
+    fresh_[consumer.value] = fresh; begin_[consumer.value] = cursor; last_[consumer.value] = last;
+    return true;
   }
-  [[nodiscard]] std::span<const std::pair<OpId, UseId>> Added() const { return added_; }
-  [[nodiscard]] std::span<const OpId> Nodes() const { return nodes_; }
-  void Claim() { for (const auto node : nodes_) { budget_.Step(); member_[node.value] = 1; } }
-  [[nodiscard]] bool Member(OpId op) const { return member_[op.value] != 0; }
+  // Builder: every node once in increasing order (producers precede their
+  // consumers), then roots decide: a fresh tree with a selection is kept;
+  // otherwise only the root's own new edges are withdrawn and its children are
+  // reconsidered as roots. Linear in the method.
+  std::vector<OpId> Build(std::vector<std::pair<OpId, UseId>>& edges) {
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) { budget_.Step(); Compose(OpId{static_cast<std::uint32_t>(i)}, Mode::kBuild); }
+    std::vector<OpId> roots;
+    budget_.Admit(graph_.ops.size(), sizeof(OpId)); roots.reserve(graph_.ops.size());
+    budget_.Admit(roots.capacity() - graph_.ops.size(), sizeof(OpId));
+    for (std::size_t i = graph_.ops.size(); i-- > 0;) {
+      budget_.Step(); const OpId id{static_cast<std::uint32_t>(i)};
+      if (!valid_[i] || !fresh_[i] || Placement(id).kind == EvaluationKind::kInline) continue;
+      if (selection_[i] && StatementRoot(id)) { roots.push_back(id); continue; }
+      Withdraw(id);
+    }
+    for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
+      budget_.Step(); if (added_[i]) edges.push_back({OpId{static_cast<std::uint32_t>(i)}, *overlay_[i]});
+    }
+    std::reverse(roots.begin(), roots.end());
+    return roots;
+  }
+  // Verifier: expands the listed root's actual tree, then requires every node
+  // to compose with all of its owned children. Returns the tree's members.
+  std::span<const OpId> Verify(OpId root) {
+    Require(root.value < graph_.ops.size() && StatementRoot(root) && !valid_[root.value]);
+    nodes_.clear(); stack_.clear(); stack_.push_back({root});
+    while (!stack_.empty()) {
+      budget_.Step();
+      auto& frame = stack_.back();
+      const auto& op = graph_.ops[frame.op.value];
+      if (frame.ordinal == op.use_count) {
+        Require(nodes_.size() < nodes_.capacity()); nodes_.push_back(frame.op); stack_.pop_back();
+        continue;
+      }
+      const UseId use{op.first_use.value + frame.ordinal++};
+      const auto link = Edge(frame.op, use, false);
+      if (!link.producer) continue;
+      Require(!valid_[link.producer->value] && stack_.size() < stack_.capacity());
+      stack_.push_back({*link.producer});
+    }
+    for (const auto node : nodes_) Compose(node, Mode::kVerify);
+    Require(selection_[root.value] != 0);
+    return nodes_;
+  }
   void Account() { budget_.Step(phase_budget_.Cost().work - accounted_work_); accounted_work_ = phase_budget_.Cost().work; }
 
  private:
+  // An unregistered root keeps its original placements: walk its tree through
+  // existing edges and undo every new edge met. Each child cut off this way is
+  // a root again (a smaller OpId), decided later by the same loop.
+  void Withdraw(OpId root) {
+    stack_.clear(); stack_.push_back({root});
+    while (!stack_.empty()) {
+      budget_.Step(); const auto node = stack_.back().op; stack_.pop_back();
+      const auto& op = graph_.ops[node.value];
+      for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
+        budget_.Step(); const UseId use{op.first_use.value + ordinal};
+        const auto link = Edge(node, use, false);
+        if (!link.producer) continue;
+        const auto producer = *link.producer;
+        if (added_[producer.value]) { overlay_[producer.value].reset(); added_[producer.value] = 0; continue; }
+        Require(stack_.size() < stack_.capacity()); stack_.push_back({producer});
+      }
+    }
+  }
+  struct Link {
+    std::optional<OpId> selection;
+    std::optional<OpId> producer;
+    bool added = false;
+  };
+  bool Committed(OpId branch) const {
+    return plan_.operations[branch.value].kind == EvaluationKind::kLogicalValue &&
+        (branch.value >= plan_.phase_children.size() || !plan_.phase_children[branch.value]);
+  }
+  bool StatementRoot(OpId id) const {
+    const auto& op = graph_.ops[id.value];
+    const auto& placement = plan_.operations[id.value];
+    return op.life == ValueLife::kLive &&
+        (placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kPhiInput) &&
+        (PhaseCorridors::Expression(op.operation) || PhaseCorridors::ConsumesOperands(op.operation));
+  }
   OpEvaluation Placement(OpId op) const {
     if (overlay_[op.value]) return {EvaluationKind::kInline, overlay_[op.value], {}};
     return plan_.operations[op.value];
   }
-  std::optional<OpId> Selected(UseId use, ValueId value) const {
-    if (value.value >= plan_.logical_values.size() || !plan_.logical_values[value.value]) return {};
-    const auto branch = *plan_.logical_values[value.value];
-    const auto& placement = plan_.operations[branch.value];
-    if (placement.kind != EvaluationKind::kLogicalValue || placement.consumer != use ||
-        !region_of_[branch.value] || (branch.value < plan_.phase_children.size() && plan_.phase_children[branch.value]))
-      return {};
-    return branch;
+  bool Owned(OpId producer) const {
+    return (producer.value < plan_.phase_prefixes.size() && plan_.phase_prefixes[producer.value]) ||
+        (producer.value < plan_.phase_references.size() && plan_.phase_references[producer.value]);
   }
-  bool Eligible(OpId producer, OpId consumer, UseId use) const {
-    const auto& child = graph_.ops[producer.value];
+  bool Transport(OpId producer) const {
+    return producer.value < plan_.phase_transports.size() && plan_.phase_transports[producer.value];
+  }
+  // Coordinate-free fusion semantics shared by builder and verifier: the one
+  // canonical use, operand role/snapshot rules, and the producer semantics of
+  // CanFuse. Order and catch obligations are checked by Compose.
+  bool Fusable(OpId producer, OpId consumer, UseId use) const {
     const auto& parent = graph_.ops[consumer.value];
     const auto& occurrence = graph_.uses[use.value];
-    const auto& placement = plan_.operations[producer.value];
-    if (producer.value >= consumer.value || child.life != ValueLife::kLive || !child.result ||
-        placement.kind != EvaluationKind::kRoot || placement.temporary == TemporaryReason::kMultipleUses ||
-        placement.temporary == TemporaryReason::kPredicateSnapshot || excluded_[producer.value] ||
-        region_of_[producer.value] || std::holds_alternative<ValueCopy>(child.operation) ||
-        (producer.value < plan_.phase_prefixes.size() && plan_.phase_prefixes[producer.value]) ||
-        (producer.value < plan_.phase_references.size() && plan_.phase_references[producer.value]) ||
-        (producer.value < plan_.phase_transports.size() && plan_.phase_transports[producer.value]) ||
-        !corridors_.SoleUse(*child.result, use)) return false;
     const auto shape = DescribeEvaluation(parent.operation);
-    if (!shape || shape->NeedsSnapshot(occurrence.role) || occurrence.role == OperandRole::kReceiver ||
-        PredicateSnapshot(graph_, parent, occurrence.operand) ||
-        (!PhaseCorridors::Expression(parent.operation) && !PhaseCorridors::ConsumesOperands(parent.operation))) return false;
-    if (PhaseCorridors::Expression(child.operation)) return true;
-    // Closed pure values are admitted by the shared evaluation semantics.
-    const auto produced = DescribeEvaluation(child.operation);
-    return produced && produced->expression && produced->inputs == InputEvaluation::kEager &&
-        produced->Count() == 0 && child.use_count == 0 && child.normal == LanguageEffect::kNone &&
-        child.before_throw == LanguageEffect::kNone && child.exceptional == ExceptionalCompletion::kImpossible &&
-        graph_.values[child.result->value].domain.IsLanguage();
+    return shape && !shape->NeedsSnapshot(occurrence.role) && occurrence.role != OperandRole::kReceiver &&
+        !PredicateSnapshot(graph_, parent, occurrence.operand) &&
+        corridors_.FuseSemantics(producer, consumer, use).has_value();
   }
-  void Expand(OpId root, bool tentative) {
-    struct Frame { OpId op; std::uint32_t ordinal = 0; };
-    std::vector<Frame> stack;
-    Require(!excluded_[root.value] && !member_[root.value]);
-    stack.push_back({root});
-    while (!stack.empty()) {
-      budget_.Step(); Require(stack.size() <= graph_.ops.size());
-      auto& frame = stack.back();
-      const auto& op = graph_.ops[frame.op.value];
-      if (frame.ordinal == op.use_count) {
-        const auto id = frame.op; stack.pop_back();
-        nodes_.push_back(id);
-        if (PhaseCorridors::Event(graph_.ops[id.value], Placement(id))) items_.push_back({false, id});
-        continue;
-      }
-      const UseId use{op.first_use.value + frame.ordinal++};
-      const auto consumer = frame.op;
-      const auto& occurrence = graph_.uses[use.value];
-      if (IsMemberReceiver(graph_, plan_, occurrence)) continue;
-      const auto operand = ResolveEvaluationOperand(plan_, occurrence.operand);
-      const auto* value = std::get_if<ValueId>(&operand);
-      if (!value) continue;
-      if (const auto branch = Selected(use, *value)) { items_.push_back({true, *branch}); continue; }
-      const auto* result = std::get_if<OpResult>(&graph_.values[value->value].origin);
-      if (!result) continue;
-      const auto producer = result->op;
-      const auto placement = Placement(producer);
-      if (placement.kind == EvaluationKind::kInline && placement.consumer == use) {
-        // Callee references certified by the selection proof keep their own
-        // evidence; composite literal/module/object events are not expanded.
-        Require(!excluded_[producer.value] && !member_[producer.value] &&
-            (producer.value >= plan_.phase_references.size() || !plan_.phase_references[producer.value]));
-        stack.push_back({producer});
-      } else if (tentative && Eligible(producer, consumer, use)) {
-        overlay_[producer.value] = use; added_.push_back({producer, use});
-        stack.push_back({producer});
-      }
+  bool Eligible(OpId producer, OpId consumer, UseId use) const {
+    const auto& placement = plan_.operations[producer.value];
+    return placement.kind == EvaluationKind::kRoot && placement.temporary != TemporaryReason::kMultipleUses &&
+        placement.temporary != TemporaryReason::kPredicateSnapshot && !excluded_[producer.value] &&
+        !region_of_[producer.value] && !Owned(producer) && !Transport(producer) && Fusable(producer, consumer, use);
+  }
+  // One operand occurrence of a node: a committed selection, an owned
+  // producer (actual inline edge, or in kBuild a newly eligible root), or
+  // external (receiver, snapshot, constant).
+  Link Edge(OpId consumer, UseId use, bool build) const {
+    const auto& occurrence = graph_.uses[use.value];
+    if (IsMemberReceiver(graph_, plan_, occurrence)) return {};
+    const auto operand = ResolveEvaluationOperand(plan_, occurrence.operand);
+    const auto* value = std::get_if<ValueId>(&operand);
+    if (!value) return {};
+    if (value->value < plan_.logical_values.size() && plan_.logical_values[value->value]) {
+      const auto branch = *plan_.logical_values[value->value];
+      if (Committed(branch) && region_of_[branch.value] && plan_.operations[branch.value].consumer == use)
+        return {branch};
     }
+    const auto* result = std::get_if<OpResult>(&graph_.values[value->value].origin);
+    if (!result) return {};
+    const auto producer = result->op;
+    const auto placement = Placement(producer);
+    if (placement.kind == EvaluationKind::kInline && placement.consumer == use) return {std::nullopt, producer};
+    if (build && Eligible(producer, consumer, use)) return {std::nullopt, producer, true};
+    return {};
   }
-  void Census(OpId op, OpId root) {
-    budget_.Step();
-    if (op == root || graph_.ops[op.value].exceptional != ExceptionalCompletion::kMayThrow) return;
-    // A moved throw point keeps the root's handler and needs no new staging.
-    Require(corridors_.SameCatch(op, root) && !corridors_.HasCatchCopies(op));
+  Stop Next(Cursor at) const {
+    for (std::size_t steps = 0; steps <= graph_.blocks.size(); ++steps) {
+      budget_.Step();
+      const auto& work = graph_.blocks[at.block.value];
+      for (auto i = at.end; i-- > 0;) {
+        budget_.Step(); const OpId id{work.first_op.value + i};
+        if (graph_.ops[id.value].life == ValueLife::kLive && PhaseCorridors::Event(graph_.ops[id.value], Placement(id)))
+          return {Stop::Kind::kEvent, id, 0, {at.block, i}};
+      }
+      if (graph_.phases[at.block.value].phase == ExceptionPhase::kCatch) return {};
+      if (join_of_[at.block.value]) {
+        if (shared_join_[at.block.value]) return {};
+        return {Stop::Kind::kJoin, {}, *join_of_[at.block.value], {at.block, 0}};
+      }
+      // An ordinary step: one normal entry, copy-free, whose source always
+      // continues here. Exceptional edges are covered by the catch checks.
+      if (incoming_[at.block.value] != 1 || !predecessor_[at.block.value]) return {};
+      const auto edge = *predecessor_[at.block.value];
+      const auto source = graph_.edges[edge.value].source;
+      if (copied_[edge.value] || outgoing_[source.value] != 1) return {};
+      at = {source, graph_.blocks[source.value].op_count};
+    }
+    return {};
   }
-  void CensusRegion(const SelectionRegion& region, OpId root) {
-    ++stamp_;
-    std::vector<WorkBlockId> queue;
+  // Every throw point between a committed selection's header and its join:
+  // nullopt if they disagree or carry catch copies; otherwise one
+  // representative (or none). Every normal path must reach the join.
+  std::optional<std::optional<OpId>> RegionThrower(std::size_t index) {
+    if (region_state_[index] == 1) return region_throw_[index];
+    if (region_state_[index] == 2) return std::nullopt;
+    region_state_[index] = 2;
+    const auto& region = regions_[index];
+    std::optional<OpId> thrower;
+    ++stamp_; queue_.clear();
     const auto& header = graph_.blocks[region.header.value];
     for (std::uint32_t e = 0; e < header.edge_count; ++e) {
       budget_.Step(); const auto& edge = graph_.edges[header.first_edge.value + e];
-      if (edge.kind != FlowEdgeKind::kException) queue.push_back(edge.target);
+      if (edge.kind == FlowEdgeKind::kException) continue;
+      if (queue_.size() == queue_.capacity()) return std::nullopt;
+      queue_.push_back(edge.target);
     }
-    for (std::size_t at = 0; at < queue.size(); ++at) {
-      budget_.Step(); const auto block = queue[at];
+    for (std::size_t at = 0; at < queue_.size(); ++at) {
+      budget_.Step(); const auto block = queue_[at];
       if (block == region.join || visited_[block.value] == stamp_) continue;
       visited_[block.value] = stamp_;
-      Require(queue.size() <= graph_.edges.size() + 2);
       const auto& work = graph_.blocks[block.value];
       for (std::uint32_t i = 0; i < work.op_count; ++i) {
-        const OpId id{work.first_op.value + i};
-        if (graph_.ops[id.value].life == ValueLife::kLive) Census(id, root);
+        budget_.Step(); const OpId id{work.first_op.value + i};
+        const auto& op = graph_.ops[id.value];
+        if (op.life != ValueLife::kLive || op.exceptional != ExceptionalCompletion::kMayThrow) continue;
+        if (corridors_.HasCatchCopies(id) || (thrower && !corridors_.SameCatch(id, *thrower))) return std::nullopt;
+        if (!thrower) thrower = id;
       }
       bool exits = false;
       for (std::uint32_t e = 0; e < work.edge_count; ++e) {
         budget_.Step(); const auto& edge = graph_.edges[work.first_edge.value + e];
         if (edge.kind == FlowEdgeKind::kException) continue;
-        exits = true; queue.push_back(edge.target);
+        if (queue_.size() == queue_.capacity()) return std::nullopt;
+        exits = true; queue_.push_back(edge.target);
       }
-      // Every normal path of a committed selection completes at its join.
-      Require(exits);
+      if (!exits) return std::nullopt;
     }
-  }
-  // Walks the actual normal path backwards from the root: every ordered event
-  // must be the next expected item, every edge single-entry and copy-free, and
-  // each selection is crossed only from its own join to its own header.
-  void Walk(OpId root) {
-    auto k = items_.size();
-    std::optional<OpId> selection;
-    std::size_t remaining = 0;
-    auto block = graph_.ops[root.value].block;
-    auto end = root.value - graph_.blocks[block.value].first_op.value + 1;
-    for (std::size_t steps = 0; steps <= graph_.blocks.size() + graph_.ops.size(); ++steps) {
-      budget_.Step();
-      const auto& work = graph_.blocks[block.value];
-      for (auto i = end; i-- > 0;) {
-        budget_.Step(); const OpId id{work.first_op.value + i};
-        if (graph_.ops[id.value].life != ValueLife::kLive || !PhaseCorridors::Event(graph_.ops[id.value], Placement(id))) continue;
-        if (remaining) {
-          Require(owner_[id.value] == selection); --remaining;
-        } else {
-          Require(k && !items_[k - 1].selection && items_[k - 1].id == id); --k;
-        }
-        Census(id, root);
-        if (!k && !remaining) return;
-      }
-      if (!k && !remaining) return;
-      Require(graph_.phases[block.value].phase != ExceptionPhase::kCatch);
-      if (!remaining && k && items_[k - 1].selection) {
-        const auto& region = regions_[*region_of_[items_[k - 1].id.value]];
-        if (region.join == block) {
-          // The join's normal entries are exactly this selection's two arms.
-          Require(region.keep_input && region.evaluate_input && *region.keep_input != *region.evaluate_input &&
-              graph_.edges[region.keep_input->value].target == block &&
-              graph_.edges[region.evaluate_input->value].target == block && incoming_[block.value] == 2);
-          CensusRegion(region, root);
-          selection = items_[k - 1].id; remaining = owned_count_[selection->value]; --k;
-          if (!k && !remaining) return;
-          block = region.header; end = graph_.blocks[block.value].op_count;
-          continue;
-        }
-      }
-      // An ordinary step: one normal entry, copy-free, whose source always
-      // continues here. Exceptional edges are covered by the catch census.
-      Require(incoming_[block.value] == 1 && predecessor_[block.value]);
-      const auto edge = *predecessor_[block.value];
-      const auto source = graph_.edges[edge.value].source;
-      Require(!copied_[edge.value] && outgoing_[source.value] == 1);
-      block = source; end = graph_.blocks[block.value].op_count;
-    }
-    Require(false);
+    region_state_[index] = 1; region_throw_[index] = thrower;
+    return thrower;
   }
 
   const ValueProgram& graph_;
@@ -257,54 +384,44 @@ class Composition {
   PhaseCorridors corridors_;
   std::uint64_t accounted_work_ = 0;
   std::vector<SelectionRegion> regions_;
-  std::vector<OpId> roots_;
-  std::vector<std::optional<std::size_t>> region_of_;
+  std::vector<std::optional<std::size_t>> region_of_, join_of_;
   std::vector<std::uint32_t> incoming_, outgoing_, visited_;
   std::vector<std::optional<EdgeId>> predecessor_;
-  std::vector<std::uint8_t> copied_, excluded_, member_;
-  std::vector<std::optional<OpId>> owner_;
+  std::vector<std::uint8_t> copied_, excluded_, shared_join_, added_, valid_, events_, selection_, fresh_, region_state_;
+  std::vector<std::optional<OpId>> owner_, last_, region_throw_;
   std::vector<std::size_t> owned_count_;
   std::vector<std::optional<UseId>> overlay_;
-  std::vector<Item> items_;
+  std::vector<Cursor> begin_;
+  std::vector<Frame> stack_;
   std::vector<OpId> nodes_;
-  std::vector<std::pair<OpId, UseId>> added_;
+  std::vector<WorkBlockId> queue_;
   std::uint32_t stamp_ = 0;
 };
-bool StatementRoot(const ValueOp& op, const OpEvaluation& placement) {
-  return op.life == ValueLife::kLive &&
-      (placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kPhiInput) &&
-      (PhaseCorridors::Expression(op.operation) || PhaseCorridors::ConsumesOperands(op.operation));
-}
 }  // namespace
 void ComposePhaseExpressions(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
   if (plan.flow != EvaluationFlow::kPhased || plan.phase_selections.empty()) return;
-  struct Edge { OpId producer; UseId use; OpEvaluation original; };
-  std::vector<Edge> committed;
+  std::vector<std::pair<OpId, UseId>> edges;
+  budget.Admit(graph.ops.size(), sizeof(std::pair<OpId, UseId>)); edges.reserve(graph.ops.size());
+  budget.Admit(edges.capacity() - graph.ops.size(), sizeof(std::pair<OpId, UseId>));
   std::vector<OpId> roots;
   {
     Composition proof(graph, plan, budget);
-    // Later roots first: an absorbed root is never proposed as its own tree.
-    // Committed edges stay visible to later proofs through the overlay.
-    for (std::size_t i = graph.ops.size(); i-- > 0;) {
-      budget.Step(); const OpId id{static_cast<std::uint32_t>(i)};
-      if (proof.Member(id) || !StatementRoot(graph.ops[i], plan.operations[i]) || !proof.Prove(id, true)) continue;
-      for (const auto& [producer, use] : proof.Added()) {
-        budget.Step(); committed.push_back({producer, use, plan.operations[producer.value]});
-      }
-      proof.Claim(); roots.push_back(id);
-    }
+    roots = proof.Build(edges);
     proof.Account();
   }
   if (roots.empty()) return;
-  for (const auto& edge : committed) {
-    budget.Step(); plan.operations[edge.producer.value] = {EvaluationKind::kInline, edge.use, {}};
+  std::vector<OpEvaluation> original;
+  budget.Admit(edges.size(), sizeof(OpEvaluation)); original.reserve(edges.size());
+  budget.Admit(original.capacity() - edges.size(), sizeof(OpEvaluation));
+  for (const auto& [producer, use] : edges) {
+    budget.Step(); original.push_back(plan.operations[producer.value]);
+    plan.operations[producer.value] = {EvaluationKind::kInline, use, {}};
   }
-  std::reverse(roots.begin(), roots.end());
   plan.phase_compositions = std::move(roots);
   // Conservative gate: the selection proof must accept exactly the same
   // regions, owners, prefixes and references; only execution may change.
   if (RefreshPhaseSelectionExecutions(graph, plan, budget)) return;
-  for (const auto& edge : committed) { budget.Step(); plan.operations[edge.producer.value] = edge.original; }
+  for (std::size_t i = 0; i < edges.size(); ++i) { budget.Step(); plan.operations[edges[i].first.value] = original[i]; }
   plan.phase_compositions.clear();
 }
 std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, const EvaluationPlan& plan,
@@ -316,11 +433,8 @@ std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, con
   Composition proof(graph, plan, budget);
   for (std::size_t i = 0; i < plan.phase_compositions.size(); ++i) {
     budget.Step(); const auto root = plan.phase_compositions[i];
-    Require(root.value < graph.ops.size() && (!i || plan.phase_compositions[i - 1] < root) &&
-        StatementRoot(graph.ops[root.value], plan.operations[root.value]));
-    Require(proof.Prove(root, false));
-    for (const auto node : proof.Nodes()) { budget.Step(); Require(!mask[node.value]); mask[node.value] = 1; }
-    proof.Claim();
+    Require(!i || plan.phase_compositions[i - 1] < root);
+    for (const auto node : proof.Verify(root)) { budget.Step(); Require(!mask[node.value]); mask[node.value] = 1; }
   }
   proof.Account();
   return mask;

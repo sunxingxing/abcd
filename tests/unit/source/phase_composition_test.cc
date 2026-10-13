@@ -11,8 +11,13 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
-enum class Variant { kBase, kForeignBefore, kForeignAfterJoin, kCallOutsideTry, kCatchCopies };
-void Run(abc::ProfileId profile, Variant variant) {
+enum class Variant {
+  kBase, kForeignBefore, kForeignAfterJoin, kCallOutsideTry, kCatchCopies,
+  kExtraUse,  // The callee value is observed again after the call.
+  kChain      // A chain of Binaries over the selection, each split by a foreign getter.
+};
+// Returns the planner's work, for linear-scaling checks.
+std::uint64_t Run(abc::ProfileId profile, Variant variant, std::uint32_t chain = 0) {
   const auto op = [](abc::Opcode code) { return static_cast<std::uint8_t>(code); };
   constexpr std::uint8_t kCallee = 0, kLeft = 1, kArgument = 2, kResult = 3;
   constexpr std::uint8_t kObject = 7, kCondition = 8, kX = 9, kY = 10;
@@ -38,11 +43,19 @@ void Run(abc::ProfileId profile, Variant variant) {
     foreign();
     bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kArgument});
   }
-  bytes.insert(bytes.end(), {op(abc::Opcode::kADD2_IMM8_V8), 0, kLeft, op(abc::Opcode::kSTA_V8), kArgument});
+  bytes.insert(bytes.end(), {op(abc::Opcode::kADD2_IMM8_V8), 0, kLeft});
+  for (std::uint32_t i = 0; i < chain; ++i) {
+    bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), kArgument});
+    foreign();
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kArgument, op(abc::Opcode::kADD2_IMM8_V8), 0, kLeft});
+  }
+  bytes.insert(bytes.end(), {op(abc::Opcode::kSTA_V8), kArgument});
   const auto before_call = static_cast<std::uint32_t>(bytes.size());
   bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kCallee,
-      op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, kObject, kArgument, op(abc::Opcode::kSTA_V8), kResult,
-      op(abc::Opcode::kLDA_V8), kResult, op(abc::Opcode::kRETURN)});
+      op(abc::Opcode::kCALLTHIS1_IMM8_V8_V8), 0, kObject, kArgument, op(abc::Opcode::kSTA_V8), kResult});
+  if (variant == Variant::kExtraUse)
+    bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kCallee, op(abc::Opcode::kSTA_V8), kResult});
+  bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kResult, op(abc::Opcode::kRETURN)});
   const auto handler_pc = static_cast<std::uint32_t>(bytes.size());
   // Reading a register assigned inside the span gives its throw points catch copies.
   if (variant == Variant::kCatchCopies) bytes.insert(bytes.end(), {op(abc::Opcode::kLDA_V8), kLeft});
@@ -104,7 +117,7 @@ void Run(abc::ProfileId profile, Variant variant) {
     rejected(forged);
     forged.phase_compositions.push_back(*call);
     rejected(forged);
-    return;
+    return evaluation.work;
   }
   test::Check(evaluation.phase_compositions.size() == 1 && evaluation.phase_compositions[0] == *call);
   for (const auto& selection : evaluation.phase_selections) test::Check(selection.execution == *call);
@@ -123,12 +136,30 @@ void Run(abc::ProfileId profile, Variant variant) {
   forged = evaluation;
   forged.operations[callee->value] = {EvaluationKind::kRoot, {}, {}};  // Snapshot claimed composed.
   rejected(forged);
+  // Byte accounting is deterministic and bounded: find the smallest grant and
+  // check that one byte less fails cleanly with a resource limit.
+  std::size_t low = 0, high = SemanticBudget{}.bytes;
+  while (low + 1 < high) {
+    const auto middle = low + (high - low) / 2;
+    if (std::holds_alternative<EvaluationPlan>(BuildPhasedEvaluationPlan(graph, {middle, evaluation.work},
+        IncomingCells::kReject))) high = middle; else low = middle;
+  }
+  test::Check(std::get<EvaluationError>(BuildPhasedEvaluationPlan(graph, {high - 1, evaluation.work},
+      IncomingCells::kReject)) == EvaluationError::kResourceLimit);
+  return evaluation.work;
 }
 }  // namespace
 int main() {
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                             abc::ProfileId::kDynamic1301})
     for (const auto variant : {Variant::kBase, Variant::kForeignBefore, Variant::kForeignAfterJoin,
-                               Variant::kCallOutsideTry, Variant::kCatchCopies})
+                               Variant::kCallOutsideTry, Variant::kCatchCopies, Variant::kExtraUse})
       Run(profile, variant);
+  // A failing chain must not be re-expanded per candidate: linear planner work.
+  std::uint64_t previous = 0;
+  for (const auto count : {200U, 201U, 400U, 800U}) {
+    const auto work = Run(abc::ProfileId::kDynamic1206, Variant::kChain, count);
+    if (count == 400 || count == 800) test::Check(work < 3 * previous);
+    previous = work;
+  }
 }

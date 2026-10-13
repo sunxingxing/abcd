@@ -3,6 +3,8 @@
 
 #include "phase_evaluation.h"
 
+#include <optional>
+
 namespace abcd::source {
 class PhaseBudget {
  public:
@@ -34,6 +36,11 @@ class PhaseCorridors {
   PhaseCorridors(const analysis::ValueProgram& graph, const EvaluationPlan& plan, PhaseBudget& budget,
       PhaseLiteralIntervals literals = PhaseLiteralIntervals::kInclude);
   bool CanFuse(analysis::OpId producer, analysis::OpId consumer, analysis::UseId use) const;
+  // The coordinate-free part of CanFuse: nullopt rejects; true means an
+  // invariant pure value needing no corridor; false needs an ordering proof
+  // (corridor coordinates here, or the composition order proof).
+  [[nodiscard]] std::optional<bool> FuseSemantics(analysis::OpId producer, analysis::OpId consumer,
+      analysis::UseId use) const;
   bool SameCatch(analysis::OpId producer, analysis::OpId root);
   bool HasCatchCopies(analysis::OpId operation) const;
   // The value's only canonical (non-receiver, non-identity) occurrence.

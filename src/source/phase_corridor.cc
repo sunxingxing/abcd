@@ -245,7 +245,7 @@ bool PhaseCorridors::HasCatchCopies(OpId operation) const {
   const auto bundle = throws_[operation.value];
   return bundle && plan_.phis->bundles[*bundle].count != 0;
 }
-bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
+std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, UseId use) const {
   const auto& child = graph_.ops[producer.value];
   const auto& parent = graph_.ops[consumer.value];
   // A language expression is pure here when its shared evaluation shape is
@@ -260,13 +260,13 @@ bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
   const bool closed = pure && child.use_count == 0 && shape->Count() == 0;
   if (producer.value >= consumer.value || child.life != ValueLife::kLive ||
       !child.result || (!Expression(child.operation) && !closed) ||
-      (!Expression(parent.operation) && !ConsumesOperands(parent.operation))) return false;
+      (!Expression(parent.operation) && !ConsumesOperands(parent.operation))) return std::nullopt;
   const auto& uses = uses_[child.result->value];
-  if (uses.multiple || uses.first != use) return false;
+  if (uses.multiple || uses.first != use) return std::nullopt;
   // A pure language expression with only literal inputs has no binding state,
   // receiver identity or catch timing to preserve across a CFG split. Original
   // SSA availability still applies. Use shared evaluation semantics, never an
-  // opcode list; mutable/phi/catch reads retain the corridor rules below.
+  // opcode list; mutable/phi/catch reads retain the corridor rules.
   if (pure) {
     bool invariant = true;
     for (std::uint32_t i = 0; i < child.use_count; ++i) {
@@ -274,12 +274,8 @@ bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
     }
     if (invariant) return true;
   }
-  const auto& start = positions_[child.block.value];
-  const auto& end = positions_[parent.block.value];
-  if (!start.head || start.head != end.head || start.order >= end.order || start.copies != end.copies ||
-      graph_.blocks[child.block.value].op_count != 1 || graph_.blocks[parent.block.value].op_count != 1) return false;
   // A transported read of retained storage needs its original value and scope,
-  // not a second private slot. This same no-copy interval proves no phi slot
+  // not a second private slot. The caller's no-copy interval proves no phi slot
   // changes before the use; unique def-use/availability and effect suffixes are
   // checked by the caller/verifier. Do not restore an unconditional SSA-copy
   // ban. Catch-parameter relocation still lacks handler-scope evidence here;
@@ -288,9 +284,19 @@ bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
     const auto input = ResolveEvaluationOperand(plan_, graph_.uses[child.first_use.value].operand);
     if (const auto* value = std::get_if<ValueId>(&input)) {
       const auto lifetime = RetainedEvaluationLifetime(graph_, plan_, *value);
-      if (!lifetime || *lifetime == EvaluationStorageLifetime::kHandler) return false;
+      if (!lifetime || *lifetime == EvaluationStorageLifetime::kHandler) return std::nullopt;
     }
   }
-  return true;
+  return false;
+}
+bool PhaseCorridors::CanFuse(OpId producer, OpId consumer, UseId use) const {
+  const auto semantics = FuseSemantics(producer, consumer, use);
+  if (!semantics) return false;
+  if (*semantics) return true;
+  const auto& start = positions_[graph_.ops[producer.value].block.value];
+  const auto& end = positions_[graph_.ops[consumer.value].block.value];
+  return start.head && start.head == end.head && start.order < end.order && start.copies == end.copies &&
+      graph_.blocks[graph_.ops[producer.value].block.value].op_count == 1 &&
+      graph_.blocks[graph_.ops[consumer.value].block.value].op_count == 1;
 }
 }  // namespace abcd::source
