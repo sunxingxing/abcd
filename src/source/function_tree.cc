@@ -116,7 +116,7 @@ class TreeBuilder {
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
         constants_, {bytes_, work_}, modules,
         (incoming_ && !incoming_->cells.targets.empty()) || exceptions_ || !syntax_.captures.empty()
-            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_, syntax_.callable, Arithmetic(syntax_.identity.contract), Constructors(syntax_.identity.contract));
+            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_, syntax_.callable, Arithmetic(syntax_.identity.contract), Constructors(syntax_.identity.contract), syntax_.parameter_form);
     if (const auto* error = std::get_if<ExpressionFailure>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;
@@ -129,6 +129,7 @@ class TreeBuilder {
     tree_.method = syntax_.method;
     tree_.owner = syntax_.owner;
     tree_.callable = syntax_.callable;
+    tree_.parameter_form = syntax_.parameter_form;
     tree_.constructor_form = constants_.implicit_constructor ? ConstructorForm::kImplicit : ConstructorForm::kExplicit;
     if (!constants_.receiver_guards.empty()) {
       Require(!exceptions_, Error::kOwnership);
@@ -172,7 +173,7 @@ class TreeBuilder {
     const auto root_origin = BodyOrigin();
     const auto root = Block(kBodyScope, root_origin);
     tree_.body = drafts_[root].statement;
-    for (std::size_t i = syntax_.parameters.size(); i < tree_.symbols.size(); ++i) {
+    for (std::size_t i = forest_.bindings.SourceParameterCount(); i < tree_.symbols.size(); ++i) {
       Step();
       if (tree_.symbols[i].kind == BindingKind::kLocal || tree_.symbols[i].kind == BindingKind::kCapture ||
           tree_.symbols[i].kind == BindingKind::kModule || tree_.symbols[i].kind == BindingKind::kFunctionSelf ||
@@ -351,7 +352,7 @@ class TreeBuilder {
     Grow(tree_.origins, tree_.origins.size() + symbols + synthetic + staging);
     Grow(tree_.expressions, tree_.expressions.size() + symbols + decision_expressions);
     Grow(tree_.symbols, symbols + staging);
-    Grow(tree_.parameters, syntax_.parameters.size());
+    Grow(tree_.parameters, forest_.bindings.SourceParameterCount());
     Grow(tree_.captures, syntax_.captures.size());
     Grow(tree_.modules, syntax_.modules.size());
     Grow(tree_.scopes, blocks + 1 + capture_scopes + module_scopes + self_scopes);
@@ -364,7 +365,7 @@ class TreeBuilder {
     Grow(tasks_, blocks);
     Grow(decision_path_, control_.nodes.size());
     if (decisions) Grow(decision_roots_, graph_.ops.size());
-    Grow(name_order_, syntax_.parameters.size());
+    Grow(name_order_, forest_.bindings.SourceParameterCount());
     Grow(reserved_names_, constants_.name_count);
     Grow(loops_, control_.loops.size());
     Step(control_.loops.size());
@@ -554,9 +555,10 @@ class TreeBuilder {
       tree_.scopes.push_back({ScopeKind::kFunctionSelf, tree_.scopes[kParameterScope.value].parent});
       tree_.scopes[kParameterScope.value].parent = self_scope;
     }
-    for (std::size_t i = 0; i < syntax_.parameters.size(); ++i) {
+    for (std::size_t i = 0; i < forest_.bindings.SourceParameterCount(); ++i) {
       Step();
-      const auto& input = syntax_.parameters[i];
+      const ParameterSyntax rest{{}, NameEvidence::kSynthesized, true};
+      const auto& input = syntax_.parameter_form == ParameterForm::kInvocationRest ? rest : syntax_.parameters[i];
       NameId name;
       auto evidence = input.evidence;
       if (input.name) {
@@ -587,7 +589,7 @@ class TreeBuilder {
     for (std::size_t i = 1; i < name_order_.size(); ++i)
       Require(less(name_order_[i - 1], name_order_[i]), Error::kName);
     std::size_t next_capture = 0;
-    for (std::size_t i = syntax_.parameters.size(); i < forest_.bindings.symbols.size(); ++i) {
+    for (std::size_t i = forest_.bindings.SourceParameterCount(); i < forest_.bindings.symbols.size(); ++i) {
       Step();
       const auto& binding = forest_.bindings.symbols[i];
       if (const auto* caught = std::get_if<CatchParameterBinding>(&binding)) {

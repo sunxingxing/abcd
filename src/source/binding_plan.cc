@@ -16,7 +16,7 @@ std::uint32_t CycleCount(const EvaluationPlan& evaluation, std::size_t bundle) {
 }
 std::variant<BindingPlan, BindingError> BuildBindings(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget, EvaluationFlow flow) {
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, EvaluationFlow flow, ParameterForm parameter_form) {
   using namespace analysis;
   using Error = BindingError;
   const auto verified = VerifyEvaluationForFlow(graph, evaluation, budget, flow);
@@ -25,6 +25,15 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     if (*error == EvaluationError::kWorkLimit) return Error::kWorkLimit;
     return Error::kEvaluation;
   }
+  switch (parameter_form) {
+    case ParameterForm::kFrameFormals: break;
+    case ParameterForm::kInvocationRest:
+      if (flow != EvaluationFlow::kNormal) return Error::kParameter;
+      break;
+    default: return Error::kParameter;
+  }
+  const bool invocation_rest = parameter_form == ParameterForm::kInvocationRest;
+  const std::uint32_t source_parameters = invocation_rest ? 1U : parameter_count;
   auto work = budget.work - std::get<std::uint64_t>(verified);
   auto bytes = budget.bytes;
   const auto admit = [&](std::size_t count, std::size_t width) {
@@ -40,6 +49,9 @@ std::variant<BindingPlan, BindingError> BuildBindings(
   for (const auto& op : graph.ops) {
     if (work == 0) return Error::kWorkLimit;
     --work;
+    if (invocation_rest && op.life == ValueLife::kLive &&
+        (std::holds_alternative<ValueRestArguments>(op.operation) ||
+         std::holds_alternative<ValueArgumentSnapshot>(op.operation))) return Error::kParameter;
     needs_self |= op.life == ValueLife::kLive && std::holds_alternative<ValueFrameFunction>(op.operation);
     const auto kind = evaluation.operations[static_cast<std::size_t>(&op - graph.ops.data())].kind;
     update_count += op.life == ValueLife::kLive && kind != EvaluationKind::kElidedPure && NeedsNumericScratch(graph, op);
@@ -61,7 +73,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     if (count > kMaxId - cycle_count) return Error::kResourceLimit;
     cycle_count += count;
   }
-  std::size_t fixed_symbols = parameter_count;
+  std::size_t fixed_symbols = source_parameters;
   for (const auto count : {phi_count, cycle_count, self_count, catch_count, slot_count, hole_count, update_count}) {
     if (count > kMaxId - fixed_symbols) return Error::kResourceLimit;
     fixed_symbols += count;
@@ -97,6 +109,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
     plan.revision = graph.revision;
     plan.cfg_revision = graph.cfg_revision;
     plan.parameter_count = parameter_count;
+    plan.parameter_form = parameter_form;
     plan.parameters = std::move(*parameters);
     plan.values.resize(graph.values.size());
     const auto symbol_limit = graph.ops.size() + fixed_symbols + cell_count;
@@ -112,7 +125,8 @@ std::variant<BindingPlan, BindingError> BuildBindings(
         !admit(plan.updates.capacity() - plan.updates.size(), sizeof(std::optional<SymbolId>)) ||
         !admit(plan.symbols.capacity() - symbol_limit, sizeof(BindingSource)))
       return Error::kResourceLimit;
-    for (std::uint32_t i = 0; i < parameter_count; ++i) {
+    if (invocation_rest) plan.symbols.emplace_back(InvocationRestBinding{});
+    else for (std::uint32_t i = 0; i < parameter_count; ++i) {
       if (work == 0) return Error::kWorkLimit;
       --work;
       plan.symbols.emplace_back(ParameterBinding{i});
@@ -137,6 +151,15 @@ std::variant<BindingPlan, BindingError> BuildBindings(
           if (parameter->index >= parameter_count ||
               plan.parameters.formals[parameter->index].entry !=
                   ValueId{static_cast<std::uint32_t>(i)}) return Error::kParameter;
+          if (invocation_rest) for (auto use = value.first_use; use; use = graph.uses[use->value].next) {
+            if (!work) return Error::kWorkLimit;
+            --work;
+            if (graph.uses[use->value].life != ValueLife::kLive) continue;
+            const auto* owner = std::get_if<OpId>(&graph.uses[use->value].owner);
+            if (!owner || (evaluation.operations[owner->value].kind != EvaluationKind::kElidedPure &&
+                           evaluation.operations[owner->value].kind != EvaluationKind::kAlias))
+              return Error::kParameter;
+          }
         } else if (std::holds_alternative<ReceiverEntry>(*entry)) {
           plan.values[i] = ReceiverEntryBinding{};
         } else {
@@ -274,12 +297,12 @@ std::variant<BindingPlan, BindingError> BuildBindings(
 }  // namespace
 std::variant<BindingPlan, BindingError> BuildBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget) {
-  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kNormal);
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters) {
+  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kNormal, parameters);
 }
 std::variant<BindingPlan, BindingError> BuildPhasedBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget) {
-  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kPhased);
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters) {
+  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kPhased, parameters);
 }
 }  // namespace abcd::source

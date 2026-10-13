@@ -11,7 +11,7 @@
 | 前提 | 谓词 | 影响（探索集，2026-10-13） | 状态 |
 |---|---|---|---|
 | 捕获访问（读取与写入）按源语言 TDZ 解释 | `CaptureReads() == kSourceTdz` | 诊断涉及 24 个 record（不是当前新增完成数） | 无自身 handler 的访问及 Round A 转发已实现；Round B 待做 |
-| 派生类字段初始化按源语言 `[[Set]]`/define 解释 | 待定 | 16 个 record（`DerivedProjectionError`） | 未实现 |
+| 原帧转发显式投影为 rest/spread；实例属性赋值保持 `[[Set]]` | `ConstructorForwarding() == kSourceRestSpread` | 16 个 record（`DerivedProjectionError`） | normal 路径显式 rest/spread 投影已实现；验证见 §2 |
 | 惰性导入 `callruntime.ldlazymodulevar` 按普通 import 绑定输出 | 待定 | 11 个 record | 未实现 |
 | 数组展开 `starrayspread` 按源语言 `[...x]` 输出 | 待定 | 7 个 record | 未实现 |
 
@@ -99,6 +99,56 @@ Guarded 需求得以转发，方法自身无 handler 的访问保持 SourceAcces
 再把尚被拒绝页面的 `--language-source` 预期翻转为 complete。Round A 不增加异常事件、不改 catch
 快照或 finally/async/generator 的异常语义，也不扩展已有延迟声明的结构准入。
 
-## 2–4. 其余三项
+## 2. 原帧转发的显式构造器投影
+
+**前提（用户批准：2026-10-13）。** 在经证明保持本次调用参数列表、构造器身份和
+new.target 的派生构造器中，允许用私有 rest 参数及原生 `super(...rest)` 表示
+invocation-frame forwarding。新增数组迭代过程引起的可观察差异属于批准范围；
+其余正文仍须保持求值顺序、异常、receiver 和完成语义。实例属性赋值保留 `[[Set]]`。
+不能改为原生类字段声明的 `[[DefineOwnProperty]]`：父类可能有 setter 或只读属性。
+rest 数组分配的资源耗尽差异沿用本契约已有的资源前提，不增加其他可观察差异。
+
+**实现边界。** `ConstructorForwarding()` 仅在 `kLanguageSourceV1` 启用，独立于旧的
+`Constructors()` 前提。纯转发且已接受的隐式构造器保持原输出。显式投影依次通过
+共同帧/协议证明、物理参数与源码 rest 签名分离、树构建、独立复验及普通语法打印。
+第一增量不支持构造器自身 handler、arguments/new.target 的正文观察、需保留的形参或
+默认参数、动态重复转发，以及未转发的正常返回。前后语句通过通用效果、CFG/SSA 和
+树对应检查，不按字段名、opcode 序列或块形状准入。这里的 handler 指既有透明重抛规范化之后
+仍保留的 handler；本轮不扩展重抛擦除。转发前后可保留普通语句、互斥路径上的转发，以及不经过
+转发的循环；每条正常返回路径须恰好成功转发一次并返回该 receiver。异常退出不需要到达转发。
+暂时改写再恢复物理参数/new.target 槽仍保守拒绝，属于首版帧保存证明的覆盖限制。
+
+**实现。** `constructor_forwarding` 在原始寄存器 SSA 上传播入口身份与参数/new.target 观察位；
+在 normal CFG 上传播 Before/After/Mixed 与帧改写位。单个状态有常数次增长，稀疏工作队列与
+邻接表预先计费；不按参数逐个遍历 CFG。活跃工作图的转发操作、构造器身份、receiver guard、
+返回与原始指令对应均重新检查。拒绝原因在 `DerivedProjectionError` 中分别记录 contract、frame、
+frame changed、handlers、arguments、new.target、parameters、repeated、missing、return。
+
+`ParameterForm::kInvocationRest` 与 `InvocationRestBinding` 将物理参数布局同源码签名分开：
+原始 `ArgumentWindow`、extra_arguments 和 SSA 不改，不伪造 `ValueRestArguments`。源码只合成
+一个由常规分配器命名的私有 rest 绑定；`SuperCallExpr` 仍保留 `kInvocationFrame` 来源，
+其唯一新增实参是该绑定的 spread。`tree_operands` 重新计算投影，`tree_structure` 校验契约与
+形状，`function_abi` 禁止原参数残留观察、rest 写入/逃逸和额外引用。字段写入仍走现有
+`ValueNamedWrite`→`AssignmentExpr` 的 [[Set]] 对应。打印器只输出已经验证的普通语法。
+
+**测试。** `source_route_test` 穷尽全部契约。`binding_plan_test` 覆盖 0/1/200/201/4096 个物理槽
+对应一个源码 rest 绑定及残留参数观察拒绝。`constructor_forwarding_test` 用提交的 es2abc fixture
+解析真实类 owner，并先断言一项 SuperForward 和两项 [[Set]]；再构造协议、寄存器复制、块拆分、
+互斥转发和循环变体，覆盖各项拒绝、伪造 proof/AST/owner、精确预算及 200/201/400/800 规模。
+`constructor_forwarding_cli_test` 对 `fields.abc` 运行 480 个 Node 差分场景及六种变异检测，
+旧的六种 CLI flags 组合保持拒绝；纯转发 `pure.abc` 的新旧输出逐字相同。fixture 来源、生成命令、
+哈希和测试范围见 [README](../../../tests/integration/fixtures/constructor_forwarding/README.md)。
+Node oracle 明确使用赋值而非原生类字段，不声称进行了 Ark VM 差分或平台验收。
+探索集比较由 cc 执行；本轮不运行全语料或留出集，不推断新增 record 数量。
+
+**Round 29 验证（2026-10-13，工作区未提交）。** 按 D1→D7 顺序推进，每阶段构建并运行相关测试。
+最终 `cmake --build build/regression -j 6 -- -k` 成功；定向命令
+`ctest --test-dir build/regression -R 'constructor|derived_projection|source_route_test|language_source_cli_test|binding_plan_test' --output-on-failure`
+串行 19/19；固定集 `ctest --preset source-regression` 65/65。两个新增测试已包含在定向清单中，
+单独运行也为 2/2。D6 的打印单测首次未提供全局对象读取所需的输出作用域，补齐测试的
+`GlobalScope` 后通过，没有放宽生产门禁。未运行全语料、RSS、留出集或探索集；
+旧 flags 的 467/620 和 `--language-source` 的不回退对照仍由 cc 完成。
+
+## 3–4. 其余两项
 
 批准范围已登记，实施时在此处补充各自的现象、前提、实现与测试。

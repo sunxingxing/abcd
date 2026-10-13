@@ -1,4 +1,5 @@
 #include "implicit_constructor.h"
+#include "derived_projection.h"
 #include "derived_value_states.h"
 #include "integer_nan.h"
 #include "function_object.h"
@@ -140,6 +141,25 @@ class OperandCheck {
       const auto proof = ProveImplicitConstructor(*constants_.implicit_constructor, budget_.Remaining());
       RequireMeaning(std::holds_alternative<ImplicitConstructorProof>(proof), Error::kOperand);
       budget_.Step(std::get<ImplicitConstructorProof>(proof).work);
+    }
+    if (tree_.parameter_form == ParameterForm::kInvocationRest) {
+      RequireMeaning(constants_.derived_constructor && constants_.forwarding_owner &&
+          &constants_.derived_constructor->values.graph == &graph_ &&
+          tree_.identity == constants_.derived_constructor->input.Identity() &&
+          tree_.method == constants_.derived_constructor->input.Method(), Error::kOperand);
+      // Recompute from the immutable original frame and current working graph;
+      // a synthetic parameter or a cached projection is never proof authority.
+      const auto checked = ProjectDerivedConstructor(*constants_.derived_constructor,
+          *constants_.forwarding_owner, budget_.Remaining(), constants_.forwarding_captures);
+      if (const auto* error = std::get_if<DerivedProjectionError>(&checked)) {
+        if (*error == DerivedProjectionError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == DerivedProjectionError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kOperand;
+      }
+      const auto& proof = std::get<DerivedProjection>(checked);
+      budget_.Admit(proof.allocated_bytes, 1); budget_.Step(proof.work);
+      RequireMeaning(proof.form == DerivedConstructorForm::kInvocationRest &&
+          proof.guards == tree_.receiver_guards, Error::kOperand);
     }
     std::optional<DerivedValueStates> derived_states;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
@@ -478,7 +498,13 @@ class OperandCheck {
           const auto& call = Node<SuperCallExpr>(expression);
           RequireMeaning(call.source == operation.source, Error::kOperand);
           if (operation.source == analysis::SuperArgumentSource::kInvocationFrame) {
-            RequireMeaning(tree_.ImplicitConstructor() && op.use_count == 1 && std::holds_alternative<ArgumentRange>(call.arguments) && !std::get<ArgumentRange>(call.arguments).count && !operation.arguments, Error::kOperand);
+            RequireMeaning(op.use_count == 1 && !operation.arguments, Error::kOperand);
+            if (tree_.parameter_form == ParameterForm::kInvocationRest) {
+              const auto* spread = std::get_if<SpreadArguments>(&call.arguments);
+              RequireMeaning(spread && tree_.parameters.size() == 1 &&
+                  Node<SymbolExpr>(spread->iterable).symbol == tree_.parameters.front().symbol, Error::kOperand);
+            } else RequireMeaning(tree_.ImplicitConstructor() && std::holds_alternative<ArgumentRange>(call.arguments) &&
+                !std::get<ArgumentRange>(call.arguments).count, Error::kOperand);
           } else {
             const auto* range = std::get_if<ArgumentRange>(&call.arguments);
             RequireMeaning(range, Error::kOperand);

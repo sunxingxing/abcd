@@ -112,3 +112,8 @@ newTarget/Proxy/bound/iterator/返回/异常场景及70组async方法场景。
 - 证明字段名在原型链上没有 accessor 或只读属性（需要类层次的外部事实）。
 
 在决定之前，这些 record 保持拒绝。
+
+2026-10-13：用户已批准独立的原帧转发 rest/spread 前提，见
+[LanguageSourceV1 第 2 项](language-source.md#2-原帧转发的显式构造器投影)。
+它保留显式正文及属性赋值的 `[[Set]]`；不放宽上述整函数省略证明，也不改变旧契约。
+normal 路径的显式投影已实现；实施状态与验证边界在该文档维护。

@@ -198,6 +198,9 @@ int main() {
   // Every contract that can be written can be read back (dense enum range).
   for (std::size_t raw = 0; raw <= static_cast<std::size_t>(SourceContract::kLanguageSourceV1); ++raw) {
     const auto contract = static_cast<SourceContract>(raw);
+    Check(ConstructorForwarding(contract) == (contract == SourceContract::kLanguageSourceV1
+        ? ConstructorForwardingSemantics::kSourceRestSpread
+        : ConstructorForwardingSemantics::kInvocationFrame));
     auto receipt = RefusedReceipt();
     receipt.identity.contract = contract;
     Check(!ValidateRouteReceipt(receipt));

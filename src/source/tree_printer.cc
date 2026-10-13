@@ -843,7 +843,10 @@ class TreePrinter {
   }
   void Expression(const SuperCallExpr& node) {
     if (Tree().callable != CallableKind::kDerivedConstructor || !ClassRoot() ||
-        node.source != analysis::SuperArgumentSource::kExplicit)
+        (node.source != analysis::SuperArgumentSource::kExplicit &&
+         !(node.source == analysis::SuperArgumentSource::kInvocationFrame &&
+           Tree().parameter_form == ParameterForm::kInvocationRest &&
+           std::holds_alternative<SpreadArguments>(node.arguments))))
       throw Error::kUnsupportedContext;
     Append("super(");
     Push(std::string_view(")"));

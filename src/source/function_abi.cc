@@ -35,13 +35,26 @@ class AbiBuilder {
         break;
       default: throw Error::kSyntax;
     }
-    Require(tree_.parameters.size() == frame_.parameters, Error::kParameter);
+    const bool invocation_rest = tree_.parameter_form == ParameterForm::kInvocationRest;
+    switch (tree_.parameter_form) {
+      case ParameterForm::kFrameFormals:
+        Require(tree_.parameters.size() == frame_.parameters, Error::kParameter); break;
+      case ParameterForm::kInvocationRest:
+        Require(tree_.callable == CallableKind::kDerivedConstructor && !tree_.ImplicitConstructor() &&
+            tree_.strictness == Strictness::kStrict && length == 0 && graph_.arguments &&
+            graph_.arguments->frame == frame_ && tree_.parameters.size() == 1 &&
+            tree_.parameters.front().rest && !tree_.parameters.front().initializer &&
+            ConstructorForwarding(tree_.identity.contract) == ConstructorForwardingSemantics::kSourceRestSpread,
+            Error::kParameter);
+        break;
+      default: throw Error::kParameter;
+    }
     if (tree_.self)
       Require((AllowsNamedSelf(tree_.callable) ||
           (IsArrowCallable(tree_.callable) && tree_.self_form == SelfForm::kCreationBinding)) &&
           tree_.self->value < tree_.symbols.size() &&
           tree_.symbols[tree_.self->value].kind == BindingKind::kFunctionSelf, Error::kSyntax);
-    Array(result_.parameters, frame_.parameters);
+    Array(result_.parameters, tree_.parameters.size());
     Array(formals_, tree_.symbols.size());
     result_.length = length;
     std::uint32_t source_length = frame_.parameters;
@@ -83,7 +96,7 @@ class AbiBuilder {
                       evaluation_->operations[owner->value].kind == EvaluationKind::kAlias)) continue;
       if (const auto* owner = std::get_if<analysis::OpId>(&use.owner);
           owner && IsReceiverGuard(tree_, *owner)) continue;
-      if (tree_.ImplicitConstructor() && use.role == analysis::OperandRole::kConstructor &&
+      if ((tree_.ImplicitConstructor() || invocation_rest) && use.role == analysis::OperandRole::kConstructor &&
           use.purpose == analysis::ReadPurpose::kProtocol) {
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);
         const auto* call = owner ? std::get_if<analysis::ValueSuperCall>(&graph_.ops[owner->value].operation) : nullptr;
@@ -115,11 +128,19 @@ class AbiBuilder {
       Step();
       std::visit([&](const auto& value) { Expression(value); }, expression.expression);
     }
-    std::uint64_t rest_reads = 0;
+    for (const auto& capture : tree_.closure_captures) {
+      Step();
+      if (invocation_rest) Require(capture != tree_.parameters.front().symbol, Error::kParameter);
+    }
+    std::uint64_t rest_reads = 0, forwarding_calls = 0;
     for (const auto& op : graph_.ops) {
+      if (op.life == analysis::ValueLife::kLive) {
+        if (const auto* call = std::get_if<analysis::ValueSuperCall>(&op.operation);
+            call && call->source == analysis::SuperArgumentSource::kInvocationFrame) Increment(forwarding_calls);
+      }
       if (op.life == analysis::ValueLife::kLive)
         if (const auto* rest = std::get_if<analysis::ValueRestArguments>(&op.operation)) {
-          Require(result_.layout == ParameterLayout::kRest &&
+          Require(!invocation_rest && result_.layout == ParameterLayout::kRest &&
               rest->first_argument + 1U == tree_.parameters.size() && op.use_count == 0, Error::kParameter);
           Increment(rest_reads);
         }
@@ -147,8 +168,11 @@ class AbiBuilder {
         // an array. Only the single checked allocation introduces this symbol.
         // Correspondence also permits its SSA consumers to read that native
         // binding directly; their count is not an ABI admission condition.
-        Require(parameter.reads.operands == 0 && rest_reads == 1 &&
-            parameter.reads.references >= rest_reads && parameter.writes == 0, Error::kParameter);
+        Require(parameter.reads.operands == 0 && parameter.writes == 0, Error::kParameter);
+        if (invocation_rest)
+          Require(rest_reads == 0 && forwarding_calls != 0 &&
+              parameter.reads.references == forwarding_calls, Error::kParameter);
+        else Require(rest_reads == 1 && parameter.reads.references >= rest_reads, Error::kParameter);
       } else {
         Require((parameter.reads.operands != 0) == (parameter.reads.references != 0) &&
             parameter.writes == 0, Error::kParameter);
@@ -189,7 +213,8 @@ class AbiBuilder {
     ++count;
   }
   void Entry(analysis::ParameterEntry value) {
-    Require(value.index < result_.parameters.size(), Error::kParameter);
+    Require(tree_.parameter_form == ParameterForm::kFrameFormals &&
+        value.index < result_.parameters.size(), Error::kParameter);
     Increment(result_.parameters[value.index].reads.operands);
   }
   void Entry(analysis::ReceiverEntry) {
@@ -226,6 +251,7 @@ class AbiBuilder {
     Increment(result_.receiver.references);
   }
   void Expression(ArgumentSnapshotExpr node) {
+    Require(tree_.parameter_form == ParameterForm::kFrameFormals, Error::kEntry);
     snapshot_ = true;
     Require(graph_.arguments && graph_.arguments->frame == frame_ &&
         node.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&

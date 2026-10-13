@@ -54,6 +54,9 @@ class FamilyTrees {
       const auto& context = i ? *member.context : *root;
       const auto& function = member.function;
       const auto* phase = function.Phase();
+      if (phase && context.Callable() == CallableKind::kDerivedConstructor &&
+          ConstructorForwarding(context.Identity().contract) == ConstructorForwardingSemantics::kSourceRestSpread)
+        throw FamilyTreeFailure{member_, DerivedProjectionError::kForwardingHandlers};
       const auto& graph = function.Graph();
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
           file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_, function.Defaults() ? function.Defaults()->Strings() : std::span<const SignatureString>{}, function.Cells()));
@@ -164,17 +167,18 @@ class FamilyTrees {
       const ModuleAliases* aliases = phase ? phase->Phases().Modules() :
           (normal_aliases_[i] ? &*normal_aliases_[i] : nullptr);
       std::optional<DerivedProjection> derived;
+      std::optional<DerivedCaptureInput> derived_captures;
       if (context.Callable() == CallableKind::kDerivedConstructor) {
         Require(!phase, FamilyTreeError::kContext);
         // Reuse the existing same-file transitive preservation proof. A child
         // write or unsupported descendant never becomes an immutable cell.
-        std::optional<DerivedCaptureInput> captures;
-        if (lookup_) captures.emplace(DerivedCaptureInput{file_, header_, index_, *lookup_});
-        auto projection = ProjectDerivedConstructor(function.Normal(), context, left_, captures ? &*captures : nullptr);
+        if (lookup_) derived_captures.emplace(DerivedCaptureInput{file_, header_, index_, *lookup_});
+        auto projection = ProjectDerivedConstructor(function.Normal(), context, left_, derived_captures ? &*derived_captures : nullptr);
         if (const auto* error = std::get_if<DerivedProjectionError>(&projection))
           throw FamilyTreeFailure{member_, *error};
         derived.emplace(std::get<DerivedProjection>(std::move(projection)));
         Admit(sizeof(DerivedProjection) + derived->guards.capacity() * sizeof(analysis::OpId) +
+            derived->forwarding_calls.capacity() * sizeof(analysis::OpId) +
             derived->receiver_cells.capacity() * sizeof(CellId) +
             derived->receiver_initializations.capacity() * sizeof(ReceiverInitialization), 1);
       }
@@ -216,7 +220,13 @@ class FamilyTrees {
       constants.name_reservations = &reserved;
       constants.receiver_guards = guards;
       if (derived) constants.derived_constructor = &function.Normal();
-      if (derived && derived->implicit) constants.implicit_constructor = &function.Normal();
+      if (derived && derived->form == DerivedConstructorForm::kImplicit) constants.implicit_constructor = &function.Normal();
+      if (derived && derived->form == DerivedConstructorForm::kInvocationRest) {
+        if (function.Defaults()) throw FamilyTreeFailure{member_, DerivedProjectionError::kForwardingParameters};
+        syntax.syntax.parameter_form = ParameterForm::kInvocationRest;
+        constants.forwarding_owner = &context;
+        constants.forwarding_captures = derived_captures ? &*derived_captures : nullptr;
+      }
       auto constructed = [&]() -> ConstructedFunction {
         if (phase) {
           auto draft = Take<ExceptionFunctionDraft, FunctionTreeFailure>(BuildExceptionFunctionDraft(graph,

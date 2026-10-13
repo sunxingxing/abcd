@@ -14,6 +14,7 @@ enum class SourceContract : std::uint8_t {
   kLanguageSourceV1
 };
 enum class ConstructorSemantics : std::uint8_t { kPinnedRuntime, kSourceLanguage };
+enum class ConstructorForwardingSemantics : std::uint8_t { kInvocationFrame, kSourceRestSpread };
 enum class RealmBindingPolicy : std::uint8_t { kExplicitHost, kStableGlobalThis };
 enum class ResourceFailureScope : std::uint8_t { kObservable, kExcluded };
 enum class CallableTextPolicy : std::uint8_t { kUnspecified, kRecovered };
@@ -28,6 +29,26 @@ enum class CaptureReadSemantics : std::uint8_t { kPinnedRuntime, kSourceTdz };
 // behavior, scopes, parameters, results and effects still require proof.
 // User approval: 2026-09-27; see source-contract-v3.md. Never reinterpret V2.
 inline constexpr SourceContract kSourceContract = SourceContract::kLanguageAndHostV3;
+
+// User-approved 2026-10-13: explicit rest/spread may observe array iteration;
+// invocation identity, argument values and the retained body still require proof.
+// This premise is independent of the earlier native-super constructor opt-in.
+constexpr ConstructorForwardingSemantics ConstructorForwarding(SourceContract contract) {
+  switch (contract) {
+    case SourceContract::kLanguageAndHostV1:
+    case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageAndHostV3:
+    case SourceContract::kLanguageArithmeticV1:
+    case SourceContract::kLanguageNumericV1:
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
+      return ConstructorForwardingSemantics::kInvocationFrame;
+    case SourceContract::kLanguageSourceV1:
+      return ConstructorForwardingSemantics::kSourceRestSpread;
+  }
+  std::terminate();
+}
 
 // Opt-in language arithmetic changes the numeric equivalence premise only;
 // it does not claim measured equivalence to a particular Ark binary. See

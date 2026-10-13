@@ -58,6 +58,21 @@ void ReceiverAndUnsupportedAbi() {
     }
   }
 }
+void InvocationRest() {
+  auto graph = Returning(analysis::ReceiverEntry{});
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
+  for (const auto count : {0U, 1U, 200U, 201U, 4096U}) {
+    const auto result = BuildBindingPlan(graph, evaluation, count, {}, ParameterForm::kInvocationRest);
+    Check(std::holds_alternative<BindingPlan>(result));
+    const auto& bindings = std::get<BindingPlan>(result);
+    Check(bindings.parameter_count == count && bindings.parameters.formals.size() == count);
+    Check(bindings.SourceParameterCount() == 1 && bindings.symbols.size() == 1);
+    Check(std::holds_alternative<InvocationRestBinding>(bindings.symbols.front()));
+  }
+  auto observed = Returning(analysis::ParameterEntry{0});
+  const auto uses = std::get<EvaluationPlan>(BuildEvaluationPlan(observed));
+  Check(std::get<BindingError>(BuildBindingPlan(observed, uses, 1, {}, ParameterForm::kInvocationRest)) == BindingError::kParameter);
+}
 void SpreadProtocolEntry() {
   using namespace analysis;
   for (EntryDefinition entry : {EntryDefinition{CallableEntry{}},
@@ -92,5 +107,6 @@ void SpreadProtocolEntry() {
 int main() {
   ParameterAndUnusedFormals();
   ReceiverAndUnsupportedAbi();
+  InvocationRest();
   SpreadProtocolEntry();
 }

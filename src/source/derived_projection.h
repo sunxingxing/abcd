@@ -15,11 +15,13 @@ struct ReceiverInitialization {
   analysis::InstructionId store;
   bool operator==(const ReceiverInitialization&) const = default;
 };
+enum class DerivedConstructorForm : std::uint8_t { kExplicit, kImplicit, kInvocationRest };
 struct DerivedProjection {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   analysis::OpId call;
-  bool implicit = false;
+  DerivedConstructorForm form = DerivedConstructorForm::kExplicit;
+  std::vector<analysis::OpId> forwarding_calls;
   std::vector<analysis::OpId> guards;
   // Allocated cells whose every direct store is this invocation's super
   // result, with all descendant captures independently proved read-only.
@@ -29,9 +31,14 @@ struct DerivedProjection {
   // actual super store. A creation independently proves store dominance; an
   // incomparable write may require a finer cell snapshot than this suffix fact.
   std::vector<ReceiverInitialization> receiver_initializations;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
 };
 enum class DerivedProjectionError : std::uint8_t {
-  kOwner, kProtocol, kOrigin, kOperand, kResourceLimit, kWorkLimit, kRevision, kCoverage
+  kOwner, kProtocol, kOrigin, kOperand, kResourceLimit, kWorkLimit, kRevision, kCoverage,
+  kForwardingContract, kForwardingFrame, kForwardingFrameChanged,
+  kForwardingHandlers, kForwardingArguments, kForwardingNewTarget,
+  kForwardingParameters, kForwardingRepeated, kForwardingMissing, kForwardingReturn
 };
 // Same verified input/work pair, with a genuine derived creation owner. Reprove
 // original initialization and check actual working guard inputs before allowing

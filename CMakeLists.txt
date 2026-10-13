@@ -216,7 +216,7 @@ target_sources(abcd_source PRIVATE src/source/cell_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/cell_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_names.cc)
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
-target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc)
+target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/effect_order.cc src/source/class_definitions.cc src/source/class_definition_projection.cc src/source/defined_member_context.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_prototype.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/derived_projection.cc src/source/class_tree.cc)
 target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc)
 target_sources(abcd_source PRIVATE src/source/rest_ownership.cc)
@@ -1145,6 +1145,11 @@ if(BUILD_TESTING)
   add_executable(forward_derived_projection_test tests/integration/forward_derived_projection.cc)
   target_include_directories(forward_derived_projection_test PRIVATE src/source tests/support)
   target_link_libraries(forward_derived_projection_test PRIVATE abcd_source)
+  add_executable(constructor_forwarding_test tests/integration/constructor_forwarding.cc)
+  target_include_directories(constructor_forwarding_test PRIVATE src/source tests/support)
+  target_link_libraries(constructor_forwarding_test PRIVATE abcd_source)
+  add_test(NAME constructor_forwarding_test COMMAND constructor_forwarding_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/constructor_forwarding/fields.abc")
   add_executable(spread_derived_projection_test tests/integration/spread_derived_projection.cc)
   target_link_libraries(spread_derived_projection_test PRIVATE abcd_source abcd_corpus)
   add_executable(module_initialization_input_test tests/integration/module_initialization_input.cc)
@@ -2334,6 +2339,9 @@ if(BUILD_TESTING)
       add_test(NAME call_references_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/call_references.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/call_references)
+      add_test(NAME constructor_forwarding_cli_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/constructor_forwarding.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/constructor_forwarding)
       add_test(NAME language_source_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_source.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/language_source)

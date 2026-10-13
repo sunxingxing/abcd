@@ -48,6 +48,9 @@ struct FunctionSyntax {
   std::optional<NameId> inferred_name;
   // Sorted allocation/slot hints; names never establish storage or lifetime.
   std::vector<LocalNameSyntax> locals;
+  // parameters retains physical frame metadata; a proven invocation-rest
+  // projection introduces its own source binding instead of reusing slot zero.
+  ParameterForm parameter_form = ParameterForm::kFrameFormals;
 };
 }  // namespace abcd::source
 #endif

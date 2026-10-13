@@ -53,6 +53,17 @@ void CheckCallable(const FunctionTree& tree) {
       RequireTree(tree.callable == CallableKind::kDerivedConstructor, Error::kUnsupportedSyntax); break;
     default: throw Error::kUnsupportedSyntax;
   }
+  switch (tree.parameter_form) {
+    case ParameterForm::kFrameFormals: break;
+    case ParameterForm::kInvocationRest:
+      RequireTree(tree.callable == CallableKind::kDerivedConstructor && !tree.ImplicitConstructor() &&
+          tree.strictness == Strictness::kStrict && tree.parameters.size() == 1 &&
+          tree.parameters.front().rest && !tree.parameters.front().initializer &&
+          ConstructorForwarding(tree.identity.contract) == ConstructorForwardingSemantics::kSourceRestSpread,
+          Error::kUnsupportedSyntax);
+      break;
+    default: throw Error::kUnsupportedSyntax;
+  }
   RequireTree(tree.strictness == Strictness::kStrict || tree.strictness == Strictness::kSloppy,
               Error::kUnsupportedSyntax);
   switch (tree.callable) {
@@ -361,9 +372,14 @@ class StructureCheck {
               (expression.source == analysis::SuperArgumentSource::kInvocationFrame &&
                tree_.ImplicitConstructor() && range->count == 0), Error::kUnsupportedSyntax);
         } else {
-          RequireTree(Constructors(tree_.identity.contract) == ConstructorSemantics::kSourceLanguage &&
-              expression.source == analysis::SuperArgumentSource::kExplicit &&
-              std::get<SpreadArguments>(expression.arguments).iterable.value < tree_.expressions.size(), Error::kUnsupportedSyntax);
+          const auto iterable = std::get<SpreadArguments>(expression.arguments).iterable;
+          RequireTree(iterable.value < tree_.expressions.size(), Error::kRange);
+          if (expression.source == analysis::SuperArgumentSource::kInvocationFrame) {
+            const auto* rest = std::get_if<SymbolExpr>(&tree_.expressions[iterable.value].expression);
+            RequireTree(tree_.parameter_form == ParameterForm::kInvocationRest && rest &&
+                rest->symbol == tree_.parameters.front().symbol, Error::kUnsupportedSyntax);
+          } else RequireTree(Constructors(tree_.identity.contract) == ConstructorSemantics::kSourceLanguage &&
+              expression.source == analysis::SuperArgumentSource::kExplicit, Error::kUnsupportedSyntax);
         }
       } else if constexpr (std::is_same_v<T, CallExpr>) {
         RequireTree(expression.arguments.first <= tree_.arguments.size() &&

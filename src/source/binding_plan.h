@@ -9,6 +9,7 @@ struct UnboundValue {};
 struct ReceiverEntryBinding {};
 struct NativeReceiverBinding { ReceiverValue source; };
 using ValueBinding = std::variant<UnboundValue, SymbolId, ReceiverEntryBinding, NativeReceiverBinding>;
+struct InvocationRestBinding {};
 struct ParameterBinding { std::uint32_t index; };
 struct SnapshotBinding {
   analysis::ValueId value;
@@ -23,12 +24,13 @@ struct HoleTokenBinding {};
 struct UpdateBinding { analysis::OpId producer; };
 struct CatchParameterBinding { analysis::ValueId value; analysis::WorkBlockId block; };
 struct CatchSlotBinding { CatchSlotId slot; };
-using BindingSource = std::variant<ParameterBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding,
+using BindingSource = std::variant<ParameterBinding, InvocationRestBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding,
                                    FunctionSelfBinding, CatchParameterBinding, CatchSlotBinding, HoleTokenBinding, UpdateBinding>;
 // These source bindings already hold invocation-owned values. Loaded mutable
 // cells, phi/cycle locations and effect snapshots never qualify.
 inline bool IsInvocationBinding(const BindingSource& source) {
   return std::holds_alternative<ParameterBinding>(source) ||
+      std::holds_alternative<InvocationRestBinding>(source) ||
       std::holds_alternative<FunctionSelfBinding>(source);
 }
 struct BindingPlan {
@@ -45,7 +47,11 @@ struct BindingPlan {
   // CellId-indexed mutable storage, separate from every loaded SSA value and
   // snapshot. Declaration scope/position belongs to tree construction.
   std::vector<SymbolId> cells;
-  std::uint32_t parameter_count = 0;
+  std::uint32_t parameter_count = 0; // Physical frame count.
+  ParameterForm parameter_form = ParameterForm::kFrameFormals;
+  std::uint32_t SourceParameterCount() const {
+    return parameter_form == ParameterForm::kInvocationRest ? 1U : parameter_count;
+  }
   ParameterPlan parameters;
   std::optional<SymbolId> self;
   std::optional<SymbolId> hole;
@@ -67,12 +73,14 @@ enum class BindingError : std::uint8_t {
 // use this same mapping; receiver initialization legality belongs to tree proof.
 [[nodiscard]] std::variant<BindingPlan, BindingError> BuildBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget = {});
+    std::uint32_t parameter_count, analysis::SemanticBudget budget = {},
+    ParameterForm parameters = ParameterForm::kFrameFormals);
 // Catch parameters retain their Catch block identity for lexical handler-scope
 // assignment. Staging slots are distinct invocation-private compiler symbols.
 // This allocation does not authorize hoisting a catch parameter into the body.
 [[nodiscard]] std::variant<BindingPlan, BindingError> BuildPhasedBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget = {});
+    std::uint32_t parameter_count, analysis::SemanticBudget budget = {},
+    ParameterForm parameters = ParameterForm::kFrameFormals);
 }  // namespace abcd::source
 #endif

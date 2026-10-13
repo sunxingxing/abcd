@@ -323,11 +323,13 @@ struct YieldReturnComposition {
   std::optional<StmtId> preserving_exit;
   std::optional<StmtId> cleanup_arm;
 };
+enum class ParameterForm : std::uint8_t { kFrameFormals, kInvocationRest };
 enum class ConstructorForm : std::uint8_t { kExplicit, kImplicit };
 struct FunctionTree {
   // Native class absence of an explicit constructor; whole-function CFG/SSA
   // proof supplies its executable default behavior, including raw forwarding.
   ConstructorForm constructor_form = ConstructorForm::kExplicit;
+  ParameterForm parameter_form = ParameterForm::kFrameFormals;
   bool ImplicitConstructor() const { return constructor_form == ConstructorForm::kImplicit; }
   // Original guard operations retained as non-executing source anchors.
   // The adapter proves the same derived protocol or an initialized captured

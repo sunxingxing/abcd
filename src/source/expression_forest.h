@@ -97,7 +97,8 @@ BuildExpressionForest(const analysis::ValueProgram& graph,
     std::span<const std::u16string> names = {}, std::span<const SelectionRegion> logicals = {},
     std::span<const BranchPolarity> polarity = {}, CallableKind callable = CallableKind::kFunction,
     analysis::ArithmeticSemantics arithmetic = analysis::ArithmeticSemantics::kPinnedRuntime,
-    ConstructorSemantics constructors = ConstructorSemantics::kPinnedRuntime);
+    ConstructorSemantics constructors = ConstructorSemantics::kPinnedRuntime,
+    ParameterForm parameters = ParameterForm::kFrameFormals);
 [[nodiscard]] std::variant<ExpressionForest, ExpressionFailure>
 BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
@@ -107,6 +108,7 @@ BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     std::span<const std::u16string> names = {}, std::span<const SelectionRegion> logicals = {},
     std::span<const BranchPolarity> polarity = {}, CallableKind callable = CallableKind::kFunction,
     analysis::ArithmeticSemantics arithmetic = analysis::ArithmeticSemantics::kPinnedRuntime,
-    ConstructorSemantics constructors = ConstructorSemantics::kPinnedRuntime);
+    ConstructorSemantics constructors = ConstructorSemantics::kPinnedRuntime,
+    ParameterForm parameters = ParameterForm::kFrameFormals);
 }  // namespace abcd::source
 #endif

@@ -2,6 +2,7 @@
 #include "derived_projection.h"
 #include "derived_value_states.h"
 #include "implicit_constructor.h"
+#include "constructor_forwarding.h"
 #include "abcd/source/capture_preservation.h"
 #include <new>
 #include <stdexcept>
@@ -15,6 +16,7 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     const FileFunction& function, const FunctionContext& owner, analysis::SemanticBudget budget,
     const DerivedCaptureInput* captures) {
   using namespace analysis;
+  const auto initial = budget;
   try {
     Require(owner.Callable() == CallableKind::kDerivedConstructor && owner.ConstructorSite() &&
         function.input.MatchesOwner(owner) && function.frame == owner.Frame(), Error::kOwner);
@@ -39,14 +41,29 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     for (const auto& instruction : function.input.Input().instructions)
       forwarding |= std::holds_alternative<SuperForward>(instruction.operation);
     std::optional<ImplicitConstructorProof> implicit;
+    std::optional<ConstructorForwardingProof> explicit_forward;
     if (forwarding) {
-      Require(owner.Length() == 0, Error::kProtocol);
-      auto proof = ProveImplicitConstructor(function, budget);
-      if (const auto* error = std::get_if<Error>(&proof)) throw *error;
-      implicit = std::get<ImplicitConstructorProof>(proof);
-      Require(implicit->allocated_bytes <= budget.bytes, Error::kResourceLimit);
-      budget.bytes -= implicit->allocated_bytes;
-      Require(implicit->work <= budget.work, Error::kWorkLimit); budget.work -= implicit->work;
+      const bool native_rest = ConstructorForwarding(owner.Identity().contract) ==
+          ConstructorForwardingSemantics::kSourceRestSpread;
+      Require(owner.Length() == 0, native_rest ? Error::kForwardingParameters : Error::kProtocol);
+      auto elision = ProveImplicitConstructor(function, budget);
+      if (const auto* proof = std::get_if<ImplicitConstructorProof>(&elision)) {
+        implicit = *proof;
+        Require(proof->allocated_bytes <= budget.bytes, Error::kResourceLimit);
+        budget.bytes -= proof->allocated_bytes;
+        Require(proof->work <= budget.work, Error::kWorkLimit); budget.work -= proof->work;
+      } else {
+        const auto error = std::get<Error>(elision);
+        if (!native_rest || (error != Error::kProtocol && error != Error::kOperand)) throw error;
+        // Elision failure grants no body projection. Reprove the full explicit
+        // protocol and frame independently; resource/input failures never retry.
+        auto checked = ProveConstructorForwarding(function, owner, budget, preserved.sites);
+        if (const auto* failure = std::get_if<Error>(&checked)) throw *failure;
+        explicit_forward = std::get<ConstructorForwardingProof>(std::move(checked));
+        Require(explicit_forward->allocated_bytes <= budget.bytes, Error::kResourceLimit);
+        budget.bytes -= explicit_forward->allocated_bytes;
+        Require(explicit_forward->work <= budget.work, Error::kWorkLimit); budget.work -= explicit_forward->work;
+      }
     }
     bool spread = false;
     for (const auto& instruction : function.input.Input().instructions)
@@ -54,9 +71,10 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     // Select from the actual protocol, never retry a failed range proof under
     // a more permissive form. Both share normal-flow initialization analysis.
     const auto proof = [&]() -> std::variant<abc::CodeOffset, DerivedConstructorError> {
-      if (implicit) {
+      if (implicit || explicit_forward) {
         const auto& graph = function.values.graph;
-        return graph.origins[graph.ops[implicit->first_call.value].origin.value].pc;
+        const auto call = implicit ? implicit->first_call : explicit_forward->calls.front();
+        return graph.origins[graph.ops[call.value].origin.value].pc;
       }
       if (spread) {
         const auto checked = ProveSpreadDerivedConstructor(function.body, function.frame,
@@ -78,7 +96,9 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     Require(graph.input.sites.size() == input.instructions.size(), Error::kOrigin);
     const auto step = [&] { Require(budget.work != 0, Error::kWorkLimit); --budget.work; };
     DerivedProjection result{graph.revision, graph.cfg_revision, {}};
-    result.implicit = implicit.has_value();
+    result.form = implicit ? DerivedConstructorForm::kImplicit : explicit_forward ?
+        DerivedConstructorForm::kInvocationRest : DerivedConstructorForm::kExplicit;
+    if (explicit_forward) result.forwarding_calls = std::move(explicit_forward->calls);
     bool found = false;
     for (std::size_t i = 0; i < input.instructions.size(); ++i) {
       step();
@@ -197,7 +217,7 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
           Error::kOrigin);
       if (frame_call) {
         const auto* current = std::get_if<ValueSuperCall>(&op.operation);
-        Require(result.implicit && current && current->source == SuperArgumentSource::kInvocationFrame &&
+        Require(result.form != DerivedConstructorForm::kExplicit && current && current->source == SuperArgumentSource::kInvocationFrame &&
             !current->arguments && !current->cache_slot && op.result && op.use_count == 1, Error::kOrigin);
         const auto& use = graph.uses[op.first_use.value];
         Require(use.role == OperandRole::kConstructor && use.purpose == ReadPurpose::kProtocol &&
@@ -235,6 +255,8 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
         result.guards.push_back(id);
       }
     }
+    result.allocated_bytes = initial.bytes - budget.bytes;
+    result.work = initial.work - budget.work;
     return result;
   } catch (Error error) { return error; }
     catch (const std::bad_alloc&) { return Error::kResourceLimit; }
@@ -248,7 +270,7 @@ std::optional<DerivedProjectionError> VerifyDerivedProjection(
   const auto checked = ProjectDerivedConstructor(function, owner, budget, captures);
   if (const auto* error = std::get_if<Error>(&checked)) return *error;
   const auto& expected = std::get<DerivedProjection>(checked);
-  if (expected.implicit != projection.implicit || expected.call != projection.call || expected.guards != projection.guards ||
+  if (expected.form != projection.form || expected.forwarding_calls != projection.forwarding_calls || expected.call != projection.call || expected.guards != projection.guards ||
       expected.receiver_cells != projection.receiver_cells ||
       expected.receiver_initializations != projection.receiver_initializations) return Error::kCoverage;
   return {};
