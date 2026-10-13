@@ -595,6 +595,22 @@ void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan
   }
   plan.phase_selections = std::move(operands);
 }
+// After phase composition: rerun the same proof on the composed plan. Accept
+// only an identical result up to each selection's execution owner, which
+// legitimately moves to the composed root; then adopt those owners.
+bool RefreshPhaseSelectionExecutions(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+  const auto regions = FindPhasedPhiSelections(graph, plan, budget);
+  OperandSelections proof(graph, plan, budget);
+  auto operands = proof.CheckAll(regions);
+  proof.Account();
+  if (operands.size() != plan.phase_selections.size()) return false;
+  for (std::size_t i = 0; i < operands.size(); ++i) {
+    budget.Step(); auto same = operands[i]; same.execution = plan.phase_selections[i].execution;
+    if (!(same == plan.phase_selections[i])) return false;
+  }
+  for (std::size_t i = 0; i < operands.size(); ++i) { budget.Step(); plan.phase_selections[i].execution = operands[i].execution; }
+  return true;
+}
 void VerifyPhaseSelectionOperands(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
   Require(plan.logical_values.empty() || plan.logical_values.size() == graph.values.size());
   if (plan.phase_selections.empty()) {

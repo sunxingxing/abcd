@@ -796,7 +796,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
     VerifyPhaseSelectionOperands(graph, plan, budget);
     VerifyPhasedObjectOperands(graph, plan, budget); return;
   }
-  Require(plan.phase_selections.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty() && plan.phase_children.empty());
+  Require(plan.phase_selections.empty() && plan.phase_transports.empty() && plan.phase_prefixes.empty() && plan.phase_references.empty() && plan.phase_children.empty() && plan.phase_compositions.empty());
   Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size());
   Require(plan.logical_values.empty() || (plan.flow == EvaluationFlow::kNormal && plan.logical_values.size() == graph.values.size()));
   if (plan.logical_values.empty()) {

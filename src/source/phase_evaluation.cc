@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include "phase_corridor.h"
 #include "logical_evaluation.h"
+#include "phase_composition.h"
 
 namespace abcd::source {
 namespace {
@@ -148,8 +149,12 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
   try {
     if (plan.flow != EvaluationFlow::kPhased) return PhaseEvaluationCost{};
     TreeCheckBudget selected_budget(allowance);
-    if (!plan.phase_children.empty() || !plan.phase_selections.empty() || !plan.phase_transports.empty() || !plan.phase_prefixes.empty() || !plan.phase_references.empty() || !plan.logical_values.empty())
+    if (!plan.phase_children.empty() || !plan.phase_selections.empty() || !plan.phase_transports.empty() || !plan.phase_prefixes.empty() || !plan.phase_references.empty() || !plan.logical_values.empty() || !plan.phase_compositions.empty())
       VerifyPhaseSelectionOperands(graph, plan, selected_budget);
+    // Composed trees are proved whole by their own ordered-event equations;
+    // ordinary corridor coordinates are never mixed into the same equation.
+    const auto composed = VerifyPhaseCompositions(graph, plan, selected_budget);
+    const auto in_composition = [&](std::size_t op) { return !composed.empty() && composed[op]; };
     PhaseBudget budget(selected_budget.Remaining());
     PhaseCorridors corridors(graph, plan, budget);
     const auto roots = Roots(graph, plan, budget);
@@ -161,7 +166,7 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
       const auto& op = graph.ops[i];
       const auto end = corridors.EffectsBefore(id);
       intervals[i] = corridors.Interval(id);
-      if (!Inputs(op, BeforeLogicalFusion(graph, plan, i))) continue;
+      if (in_composition(i) || !Inputs(op, BeforeLogicalFusion(graph, plan, i))) continue;
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);
       std::optional<EffectInterval> children;
@@ -196,9 +201,9 @@ std::variant<PhaseEvaluationCost, EvaluationError> VerifyPhaseExpressions(
     }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
-      Require(plan.operations[i].kind != EvaluationKind::kInline || consumed[i] ||
+      Require(plan.operations[i].kind != EvaluationKind::kInline || consumed[i] || in_composition(i) ||
           CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)}), Error::kOwnership);
-      if (plan.operations[i].kind == EvaluationKind::kInline &&
+      if (plan.operations[i].kind == EvaluationKind::kInline && !in_composition(i) &&
           !CrossLogicalInline(graph, plan, OpId{static_cast<std::uint32_t>(i)}) &&
           PhaseCorridors::Event(graph.ops[i], plan.operations[i]) &&
           graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow)

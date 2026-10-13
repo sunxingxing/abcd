@@ -16,8 +16,10 @@ const [structure, fixtures] = process.argv.slice(2);
 // The ph* fixtures put the call inside try/catch, so they take the phased
 // (exception-aware) route; their callee and argument chains start at globalThis.
 const complete = ['single', 'twoargs', 'computed', 'rewrite', 'throwing', 'noncallable',
-  'phplain', 'phtrue', 'phfalse', 'phthrow', 'phrewrite', 'phnoncall', 'realmlit'];
-const throwsBeforeCall = new Set(['throwing', 'phthrow']);
+  'phplain', 'phtrue', 'phfalse', 'phthrow', 'phrewrite', 'phnoncall', 'realmlit',
+  // Composed across committed selections (call-references.md §5.4).
+  'phconcat', 'phtwo', 'phsiblings', 'phprim', 'phprimthrow', 'phrewritearm', 'phassign', 'phthrowarm'];
+const throwsBeforeCall = new Set(['throwing', 'phthrow', 'phprimthrow', 'phthrowarm']);
 const directory = mkdtempSync(join(tmpdir(), 'abcd-call-references-'));
 try {
   const exportRecord = name => {
@@ -59,10 +61,10 @@ try {
   assert.ok(mutations.detach > 0 && mutations.reread > 0, JSON.stringify(mutations));
   // A nested `??` selection without a single consumer stays refused, with the
   // full typed cause chain.
-  // A selection inside a concatenated argument on the phased route is the open
-  // gap of call-references.md section 5.2 (the Binary chain was rooted before
-  // selection fusion); it stays refused with the same typed chain until then.
-  for (const name of ['optarg', 'phconcat']) {
+  // Still refused with the same typed chain: a selection nested inside another
+  // selection's arm of a concatenation, and a comma side effect inside the
+  // argument (a root event outside the call tree breaks the order proof).
+  for (const name of ['optarg', 'phnested', 'phcomma']) {
     const {record} = exportRecord(name);
     assert.equal(record.source_status, 3, name);
     const causes = record.source_failure?.causes ?? record.source_causes;

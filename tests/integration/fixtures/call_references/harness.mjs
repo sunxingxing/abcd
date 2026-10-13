@@ -11,6 +11,8 @@ globalThis.H = () => { log.push('H'); return 'h'; };
 globalThis.R = v => { log.push('R'); version++; Object.defineProperty(globalThis.obj, 'f', {value: make('replaced')}); return v; };
 globalThis.x = { get g() { log.push('get g'); if (globalThis.boom) throw globalThis.sentinel; return { h: 7 }; } };
 globalThis.sentinel = { sentinel: true };
+globalThis.P = { [Symbol.toPrimitive]() { log.push('prim'); return 'p'; } };
+globalThis.Q = { [Symbol.toPrimitive]() { log.push('prim-throw'); throw globalThis.sentinel; } };
 globalThis.G = v => { log.push('G ' + v); return v; };
 let m, error = null;
 try { m = await import(file); } catch (e) { error = e === globalThis.sentinel ? 'sentinel' : e.constructor.name; }

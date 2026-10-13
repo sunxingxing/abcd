@@ -141,6 +141,9 @@ struct EvaluationPlan {
   std::vector<std::optional<analysis::UseId>> closed_expressions;
   std::vector<std::optional<analysis::UseId>> phase_transports;
   std::vector<std::optional<analysis::OpId>> phase_prefixes;
+  // Ascending execution roots whose final-ownership trees were composed across
+  // committed selections (phase_composition.h). Each is independently re-proved.
+  std::vector<analysis::OpId> phase_compositions;
   // Buffered allocations own a chain of staged definitions across source operands.
   // Indexed by allocation, pointing to the last definition. Normal selected
   // objects and phased operand composition share the native forest/placement.

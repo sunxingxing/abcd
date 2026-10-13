@@ -36,6 +36,11 @@ class PhaseCorridors {
   bool CanFuse(analysis::OpId producer, analysis::OpId consumer, analysis::UseId use) const;
   bool SameCatch(analysis::OpId producer, analysis::OpId root);
   bool HasCatchCopies(analysis::OpId operation) const;
+  // The value's only canonical (non-receiver, non-identity) occurrence.
+  [[nodiscard]] bool SoleUse(analysis::ValueId value, analysis::UseId use) const {
+    const auto& occurrence = uses_[value.value];
+    return !occurrence.multiple && occurrence.first == use;
+  }
   std::size_t EffectsBefore(analysis::OpId op) const;
   std::size_t EffectCount(analysis::OpId op) const;
   PhaseEffectInterval Interval(analysis::OpId op) const;

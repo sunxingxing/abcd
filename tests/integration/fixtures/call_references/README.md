@@ -19,14 +19,23 @@ DevEco Studio's bundled es2abc (`--bc-version` 24.0.0.0), command
 | `phrewrite` | The selected arm replaces `obj.f`; the old function is still called | complete, Node-equal trace |
 | `phnoncall` | Non-callable callee throws `TypeError` after the selected argument ran; caught | complete, Node-equal trace |
 | `realmlit` | Object/array initializers holding `globalThis` itself or reading from it, in normal and phased code (the closed realm value must stay a literal initializer) | complete, Node-equal result |
-| `phconcat` | `obj.f('a' + (H ? x.g.h : G(6)) + 'b')` inside try/catch | refused, same chain as `optarg` (call-references.md §5.2) |
+| `phconcat` | `obj.f('a' + (H ? x.g.h : G(6)) + 'b')` inside try/catch: callee composed across the selection | complete, Node-equal trace |
+| `phtwo` | Two selections in one concatenation; the Binary composes across the second | complete, Node-equal trace |
+| `phsiblings` | Two sibling selection arguments | complete, Node-equal trace |
+| `phprim` | `P + (H ? G(4) : 0) + P` with a logging `Symbol.toPrimitive` | complete, Node-equal trace |
+| `phprimthrow` | The Binary's `Symbol.toPrimitive` throws after the selection; caught | complete, Node-equal trace |
+| `phrewritearm` | The selected arm replaces `obj.f` inside a concatenation | complete, Node-equal trace |
+| `phassign` | `r = 'a' + S1 + 'b' + S2` (no call root) | complete, Node-equal trace |
+| `phthrowarm` | The selected arm's getter throws inside a concatenation | complete, Node-equal trace |
+| `phnested` | A selection nested in another selection's arm inside a concatenation | refused, same chain as `optarg` |
+| `phcomma` | `obj.f('a' + (G(0), H ? x.g.h : 1) + 'b')`: a comma side effect is a root event inside the span | refused, same chain as `optarg` |
 | `optarg` | `o.f(G(x.g?.h))`: the member callee is read before an argument whose optional chain splits the call's region | refused (its nested `??` selection has no single consumer) with `FunctionTreeError::kExpression → ExpressionError::kUnsupportedOperation → CallPlanError::kReference` |
 
 The `ph*` and `realmlit` fixtures were compiled with `--opt-level=0` added: this es2abc's
 default bytecode optimizer writes catch blocks with `code_size` 0, which the
 current catch-region layout refuses (a separate gap, see status.md).
 
-`harness.mjs` defines `globalThis.obj`, `x` and `G` with logging getters so the
+`harness.mjs` defines `globalThis.obj`, `x`, `G`, and `P`/`Q` (logging and throwing `Symbol.toPrimitive`) with logging getters so the
 evaluation order (`get f` before the argument's getters) and the receiver are
 observable once the call is admitted.
 
@@ -46,4 +55,13 @@ fe8e0804a541d8874493eb89e053551bc460ed6ad5433c5d6eb48f129bcd8920  phthrow.abc
 5a2de38cbecf5d8f73b19a4506085be693c51f2cc8236545ec719e786b4c2ff4  phnoncall.abc
 c4ea8bdb726d5f7b79d0cb7da68902e88c777a3e96a6663d4ddb8af1aef7a930  phconcat.abc
 5927312aa0284bfe5daec9a776642d9d602f21c9c031e211445196cbd3a1e9a1  realmlit.abc
+98954334ca12cec286cb881f52ab50602b8235c2dbc16c8e08c556b3dd18a765  phtwo.abc
+160cfca6e50f14db30fdad7a488bd560960aed7321cc5ed8c5bd48eb549da948  phsiblings.abc
+6819edb2e317c1575622fae5cca4bc779d53f83834eb94f38ff2773ea578044a  phprim.abc
+3a0d5164128be1623391d5165db9d909cdb1bc454dd56edb7c82b77e23ecd262  phprimthrow.abc
+2515b8b61232179d432e83e69cdfe5c0e89ab635e7150a42e9ec2059424bb658  phrewritearm.abc
+b06ec12a00a23686fca81bda3de1bbf8eb39f5441e88aadc8e24516f7553cddd  phassign.abc
+ef51949b0c8e20a27d3428d8a36ae31a9a2d6936d043cc004b071ad8d81abf0c  phthrowarm.abc
+72305260de912a7634d863363b0a966417a39b7164ab9d7edc3371c3e0b606a3  phnested.abc
+da94432a52211d17c8177aa2db0eeafe19b02bad608420363a505e4ad729104c  phcomma.abc
 ```

@@ -243,3 +243,52 @@ reread 变异检测），以及 `phconcat` 拒绝类。
 0，报 `CatchRegionError::kHandlerShape`，导致整个方法以 `PhasedMethodError::kRegion` 失败。
 需要改为由 CFG 推导处理器范围，尚未实施。抽查的两个 24.0.0.0 语料文件（共 60 个处理器）长度都
 不为 0，影响面待评估。
+
+### 5.4 跨已提交选择的组合（第一增量，2026-10-13）
+
+按 Codex 第二十一轮共识实施，实现位于 `src/source/phase_composition.{h,cc}`。
+
+**模型。** 已提交的顶层选择（`plan.logical_values` 指向的 `kLogicalValue` 分支，非
+`PhaseSelectionArm`）在外层树中是**一个原子事件**。它的前缀、谓词、各 arm 与嵌套子选择，
+仍由原有的选择证明在原始视图中验证。外层不使用整数坐标桥接，而是用一个共享的有序事件证明
+`Composition::Prove(root)`：
+
+1. **展开预期序列。** 对执行根 C 的最终所有权树做后序展开，操作数按源语言求值顺序处理。
+   接收者（`IsMemberReceiver`）、需要快照的操作数和外部 root 不属于该树。已提交选择记为
+   `Sel(branch)`；其余有序操作（`PhaseCorridors::Event`）记为自身。字面量区间、受保护模块对、
+   phased 对象操作数以及已有 `phase_references` 的树，不在第一增量范围内。
+2. **沿实际正常路径反向匹配。** 从 C 开始，每个有序事件必须恰好是预期序列中的下一项。
+   遇到预期中选择的 join 块时：该 join 的正常入边必须恰好是此选择的 `keep_input` 与
+   `evaluate_input`；然后跳到 header，并吞掉恰好 `owned_count` 个由该选择拥有的事件（前缀
+   root 及谓词链）。其他每一步都要求目标块只有一个正常入口、入边上没有 phi 拷贝、源块只有
+   一个正常后继。纯的非事件操作不参与匹配。
+3. **catch 普查。** 树中所有被移动的可抛出事件，以及每个选择区域内（header 到 join 之间）
+   的全部可抛出操作，都必须满足 `SameCatch(op, C)` 且没有 catch 拷贝。第一增量不新增表达式
+   内部的 staging。
+
+**Builder（`ComposePhaseExpressions`）。** 在 `BuildPhasedObjectOperands` 之后运行。按操作
+逆序考察语句级 root（`kRoot` 或 `kPhiInput`）。对含有已提交选择的树，把符合条件的 root 生产者
+试探性内联：单一规范使用、非快照角色、语义上是表达式或封闭纯值、临时原因不是多用或谓词快照。
+证明通过才整棵提交，并登记到 `plan.phase_compositions`；否则整棵撤销。全部组合完成后，在
+最终计划上重跑选择的 `CheckAll`：结果必须与组合前一致，只允许 `execution` 改为新的执行根，
+否则撤销全部组合。这是第一增量的保守门禁；按共识，后续要把选择验证拆分为结构、放置、
+引用三部分。
+
+**Verifier。** `VerifyPhaseExpressions` 对 `phase_compositions` 中的每个根独立重跑同一证明
+（要求根严格递增、是语句级 root、各树成员互不重叠）。被组合树覆盖的操作不再参与旧的走廊
+方程，其余操作的方程完全不变；同一个方程中不会混用两种坐标。选择记录中的 `execution`
+由 `VerifyPhaseSelectionOperands` 在最终计划上重算并逐项比较。
+
+**测试。**
+- `phase_composition_test`：手工组装的 IR，三个 profile。
+  - 基本情形会组合并通过验证，且会核对工作量预算的精确上限。
+  - 选择之前插入的外部事件、调用移出 try：拒绝组合。
+  - join 之后插入外部事件、span 内有 catch 拷贝：选择本身就不会被提交。
+  - 伪造计划一律被拒绝：删除、重复或插入非根的组合登记，陈旧的 `execution`，把快照声称为组合。
+- `call_references_cli_test`：新增 8 个完整类，日志逐条相等，并做变异检测：`phconcat`、
+  `phtwo`、`phsiblings`、`phprim`、`phprimthrow`、`phrewritearm`、`phassign`、`phthrowarm`。
+  新增 2 个拒绝类：`phnested`（选择嵌套在另一选择的 arm 中）、`phcomma`（逗号副作用是 span
+  内的外部事件）。
+
+**后续。** 按共识拆分选择验证器；支持嵌套选择、literal、模块与对象操作数；补充等价变体，
+以及深度与数量为 200、201 的规模检查。
