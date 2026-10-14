@@ -209,7 +209,7 @@ std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
       const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember,
           {static_cast<std::uint32_t>(result.next_owner)}};
       auto body = FamilyPreparation::Read(file, header, index, lookup, roles, functions,
-          std::move(root), destination, budget, recovery, &modules, &creator);
+          std::move(root), destination, budget, recovery, &modules, &creator, &classes);
       if (const auto* prepared = std::get_if<FamilyPreparation>(&body)) {
         admit(prepared->AllocatedBytes(), 1); step(prepared->Work());
         result.next_owner += prepared->MemberCount();

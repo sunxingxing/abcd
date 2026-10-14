@@ -1,4 +1,5 @@
 #include "../../../src/source/family_route_failure.h"
+#include "../../../src/source/class_tree.h"
 #include "../../../src/source/family_creation_json.h"
 #include "../../../tools/record_failure_json.h"
 #include <cstdlib>
@@ -50,7 +51,7 @@ int main() {
   static_assert(static_cast<unsigned>(FamilyFileError::kCreation)==1);
   static_assert(static_cast<unsigned>(FamilyFileError::kResourceLimit)==4);
   static_assert(static_cast<unsigned>(FamilyFileError::kWorkLimit)==5);
-  for(unsigned tag=0;tag<=static_cast<unsigned>(FamilyCreationCheck::kSelfInitializer);++tag) {
+  for(unsigned tag=0;tag<=static_cast<unsigned>(FamilyCreationCheck::kClassPreparationGate);++tag) {
     FamilyFileFailure f{FamilyFileError::kCreation};
     auto& e=f.family_creation.emplace(FamilyCreationEvidence{static_cast<FamilyCreationCheck>(tag)});
     e.location.method=abc::EntityOffset{77}; e.location.operation=analysis::OpId{0};
@@ -66,6 +67,7 @@ int main() {
     Check(route.causes.count==3 && route.causes.entries[2].domain==FailureDomain<analysis::CreationError>());
     RoundTrip(f);
     f.creation_cause=analysis::CreationBindingError::kUnreachable;RoundTrip(f);
+    f.creation_cause=ClassTreeError::kCreation;RoundTrip(f);
     f.creation_cause=abc::MetadataError::kRead;RoundTrip(f);
     // Historical kCreation classification is authoritative; exposed child
     // causes cannot turn this diagnostic-only change into process admission.
@@ -78,7 +80,7 @@ int main() {
     f.cause=FamilyFileError::kCreation;
     e.location.pc.reset();e.location.working_pc.reset();e.descendant_source.reset();RoundTrip(f);
     auto j=nlohmann::json::parse(FamilyCreationJson(e).dump());
-    j["reason"]=static_cast<unsigned>(FamilyCreationCheck::kSelfInitializer)+1;Check(!ParseFamilyCreation(j));
+    j["reason"]=static_cast<unsigned>(FamilyCreationCheck::kClassPreparationGate)+1;Check(!ParseFamilyCreation(j));
     j=nlohmann::json::parse(FamilyCreationJson(e).dump());j["kind"]=99U;Check(!ParseFamilyCreation(j));
     j=nlohmann::json::parse(FamilyCreationJson(e).dump());j["constructor_pool"]=UINT64_MAX;Check(!ParseFamilyCreation(j));
     j=nlohmann::json::parse(FamilyCreationJson(e).dump());j.erase("literal_pool");Check(!ParseFamilyCreation(j));
@@ -91,5 +93,5 @@ int main() {
     const auto parsed=ParseFamilyCreation(nlohmann::json::parse(FamilyCreationJson(e).dump()));
     Check(parsed==e);
   }
-  std::cout << "family_creation_failure_test: all 13 checks, both JSON paths, origin absence/zero, classes and malformed witnesses\n";
+  std::cout << "family_creation_failure_test: all 15 checks, both JSON paths, origin absence/zero, classes and malformed witnesses\n";
 }

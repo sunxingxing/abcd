@@ -14,6 +14,7 @@
 #include <type_traits>
 #include "function_file.h"
 #include "class_tree.h"
+#include "creator_classes.h"
 #include "family_route_failure.h"
 #include "family_print.h"
 #include "function_tree.h"
@@ -124,7 +125,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     FileFunction* function = nullptr;
     if (functions) {
       auto read = ReadFunctionFamily(file, header, index, lookup, roles, *functions, entry, identity,
-          {budget.bytes}, &context, nullptr, owner, FamilyClassMode::kRetainRoot);
+          {budget.bytes}, &context, nullptr, owner, FamilyClassMode::kRetainRoot, nullptr, {}, nullptr, classes);
       if (const auto* error = std::get_if<FamilyFileFailure>(&read))
         return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
       family.emplace(std::get<FileFamily>(std::move(read)));
@@ -211,10 +212,6 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       if (!name || name->value >= constants->names.size() || constants->names[name->value] != u"prototype")
         return fail(Error::kInitializer);
     }
-    retain(graph.ops.size() * sizeof(const ClassInitializerCall*));
-    std::vector<const ClassInitializerCall*> initialization(graph.ops.size());
-    retain((initialization.capacity() - initialization.size()) * sizeof(const ClassInitializerCall*));
-    for (const auto& call : function->values.initializers.calls) initialization[call.creation.value] = &call;
     GlobalScope class_scope{};
     class_scope.module_enclosure = enclosure;
     FunctionSyntax syntax{};
@@ -434,13 +431,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     class_scope.module_local_evidence = local_names->evidence;
     // File-level occurrence indexes are borrowed across records. Never rescan
     // the whole ABC for every class or use a detached class as a body fallback.
-    retain(function->values.definitions.sites.size() * sizeof(ClassDefinitionSite));
-    auto definitions = function->values.definitions.sites;
-    retain((definitions.capacity() - definitions.size()) * sizeof(ClassDefinitionSite));
-    std::sort(definitions.begin(), definitions.end(), [](const auto& a, const auto& b) {
-      return a.creation != b.creation ? a.creation < b.creation : a.definition < b.definition;
-    });
-    const auto class_failure = [&](const ClassTreeFailure& failure, analysis::OpId creation) -> RecordSourceResult {
+    const auto class_failure = [&](const ClassTreeFailure& failure, std::optional<analysis::OpId> creation) -> RecordSourceResult {
       const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
         using T = std::decay_t<decltype(error)>;
         if constexpr (std::is_same_v<T, FamilyPrepareFailure>)
@@ -465,52 +456,33 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
             if (error == T::kFileChanged) return fail(Error::kFileChanged);
           if constexpr (requires { T::kRead; })
             if (error == T::kRead) return fail(Error::kRead);
-          return RecordProgramFailure{Error::kClass, graph.origins[graph.ops[creation.value].origin.value].pc};
+          return RecordProgramFailure{Error::kClass, creation ?
+              std::optional<abc::CodeOffset>{graph.origins[graph.ops[creation->value].origin.value].pc} : std::nullopt};
         }
       };
       return std::visit([&](const auto& error) { return classify(classify, error); }, failure);
     };
-    struct PendingClass {
-      analysis::OpId operation;
-      std::shared_ptr<ClassTree> tree;
-      std::span<const ClassDefinitionSite> definitions;
-      std::optional<ClassPreparation> preparation;
-    };
-    retain(function->values.classes.classes.size() * sizeof(PendingClass));
-    std::vector<PendingClass> pending_classes;
-    pending_classes.reserve(function->values.classes.classes.size());
-    retain((pending_classes.capacity() - function->values.classes.classes.size()) * sizeof(PendingClass));
-    for (const auto& occurrence : function->values.classes.classes) {
+    std::optional<CreatorClassInput> class_input;
+    CreatorClasses creator_classes;
+    if (!function->values.classes.classes.empty()) {
       if (!functions || !classes) return fail(Error::kClass);
-      const auto first = std::lower_bound(definitions.begin(), definitions.end(), occurrence.operation,
-          [](const auto& site, auto id) { return site.creation < id; });
-      const auto last = std::upper_bound(first, definitions.end(), occurrence.operation,
-          [](auto id, const auto& site) { return id < site.creation; });
-      auto layout = BuildClassLayout(file, header, index, lookup, roles, *classes,
-          *function, occurrence.operation, identity, {budget.bytes},
-          initialization[occurrence.operation.value], std::span(first, last));
-      if (const auto* failure = std::get_if<ClassTreeFailure>(&layout))
-        return class_failure(*failure, occurrence.operation);
-      auto definition = std::get<ClassTree>(std::move(layout));
-      retain(definition.allocated_bytes);
-      auto retained = std::make_shared<ClassTree>(std::move(definition));
-      constants->operations[occurrence.operation.value] = retained;
-      pending_classes.push_back({occurrence.operation, std::move(retained), std::span(first, last)});
+      class_input.emplace(CreatorClassInput{file,header,index,lookup,roles,*functions,*classes,*function,identity,
+          {index.methods[entry.value].offset,family?family->first_owner:syntax.owner,{0}}});
+      auto discovered=DiscoverCreatorClasses(*class_input,{budget.bytes});
+      if(const auto* failure=std::get_if<CreatorClassFailure>(&discovered))
+        return class_failure(failure->cause,failure->operation);
+      creator_classes=std::get<CreatorClasses>(std::move(discovered));
+      retain(creator_classes.allocated_bytes);
+      for(const auto& task:creator_classes.tasks) constants->operations[task.operation.value]=task.tree;
+      const auto first=std::uint64_t{syntax.owner.value}+(family? family->members.size():1);
+      if(first>UINT32_MAX)return fail(Error::kResourceLimit);
+      auto prepared=PrepareCreatorClasses(*class_input,creator_classes,&class_scope,
+          {static_cast<std::uint32_t>(first)},RecoveryMode::kAllowPartial,{budget.bytes});
+      if(const auto* failure=std::get_if<CreatorClassFailure>(&prepared))
+        return class_failure(failure->cause,failure->operation);
+      retain(std::get<CreatorClassCost>(prepared).allocated_bytes);
     }
-    // Discover complete member requirements before freezing this creator. Keep
-    // the same owner reservation and member order as final construction.
-    std::uint64_t prepared_owner = syntax.owner.value + static_cast<std::uint64_t>(family ? family->members.size() : 1);
-    for (auto& pending : pending_classes) {
-      if (prepared_owner > UINT32_MAX) return fail(Error::kResourceLimit);
-      auto prepared = PrepareClassTree(file, header, index, lookup, roles, *functions, *classes,
-          *function, pending.operation, identity, &class_scope, {budget.bytes},
-          initialization[pending.operation.value], pending.definitions,
-          {static_cast<std::uint32_t>(prepared_owner)}, RecoveryMode::kAllowPartial);
-      if (const auto* failure = std::get_if<ClassTreeFailure>(&prepared)) return class_failure(*failure, pending.operation);
-      pending.preparation.emplace(std::get<ClassPreparation>(std::move(prepared)));
-      retain(pending.preparation->allocated_bytes);
-      prepared_owner = pending.preparation->next_owner;
-    }
+    auto& pending_classes=creator_classes.tasks;
     {
       // Root cells that direct children capture before their first store
       // (deferred TDZ initializations): this entry tree must declare them there.
@@ -620,25 +592,14 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       retain(class_parent_flow->allocated_bytes);
     }
     const auto class_parent = class_parent_flow ? std::optional<CaptureTree>{{result->tree, *class_parent_flow}} : std::nullopt;
-    for (auto& pending : pending_classes) {
-      if (next_class_owner > std::numeric_limits<std::uint32_t>::max()) return fail(Error::kResourceLimit);
-      auto built = BuildClassTree(file, header, index, lookup, roles, *functions, *classes,
-          *function, pending.operation, identity, &class_scope, {budget.bytes},
-          initialization[pending.operation.value], pending.definitions, RecoveryMode::kAllowPartial,
-          {static_cast<std::uint32_t>(next_class_owner)}, class_parent ? &*class_parent : nullptr, &*pending.preparation);
-      if (const auto* failure = std::get_if<ClassTreeFailure>(&built))
-        return class_failure(*failure, pending.operation);
-      auto definition = std::get<ClassTree>(std::move(built));
-      if (definition.name != pending.tree->name || definition.callable != pending.tree->callable ||
-          definition.member_sites != pending.tree->member_sites || !definition.DraftPrepared())
-        return fail(Error::kClass);
-      retain(definition.allocated_bytes);
-      next_class_owner += definition.constructor->Family().members.size();
-      for (const auto& member : definition.members) if (member) next_class_owner += member->Family().members.size();
-      for (const auto& site : definition.definitions)
-        for (const auto& member : site.bodies) if (member) next_class_owner += member->Family().members.size();
-      next_class_owner += definition.initializer.has_value();
-      *pending.tree = std::move(definition);
+    if (class_input) {
+      if(next_class_owner>UINT32_MAX)return fail(Error::kResourceLimit);
+      auto finished=FinishCreatorClasses(*class_input,creator_classes,&class_scope,
+          {static_cast<std::uint32_t>(next_class_owner)},class_parent ? &*class_parent : nullptr,
+          RecoveryMode::kAllowPartial,{budget.bytes});
+      if(const auto* failure=std::get_if<CreatorClassFailure>(&finished))
+        return class_failure(failure->cause,failure->operation);
+      retain(std::get<CreatorClassCost>(finished).allocated_bytes);
     }
     if (!pending_classes.empty()) {
       // The provisional parent check cannot certify bodies. Recheck actual

@@ -35,10 +35,10 @@ try {
    const failure=cli.source_failure,e=failure.family_creation;
    assert.equal(failure.class,'unproved');assert.equal(failure.method,method);
    assert.equal(failure.pc,pc);assert.equal(failure.working_pc,pc);
-   const reason=o===18?9:8; // FunctionBinding / PhasedSite
+   const reason=o===18?14:8; // Verified layout -> preparation gate / unchanged PhasedSite
    const expected=[{domain:'abcd::source::FamilyFileError',value:1},
      {domain:'abcd::source::FamilyCreationCheck',value:reason}];
-   if(o===18)expected.push({domain:'abcd::analysis::CreationError',value:0});
+   if(o===18)assert.equal(e.projected_class,op); // Actual class occurrence, not a function binding.
    assert.deepEqual(failure.causes,expected);
    assert.equal(e.reason,reason);assert.equal(e.root,family);assert.equal(e.occurrence,occurrence);
    assert.equal(e.location.method,method);assert.equal(e.location.operation,op);

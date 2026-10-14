@@ -144,7 +144,8 @@ std::variant<FamilyPreparation, FamilyPrepareFailure> FamilyPreparation::Read(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     FunctionContext root, FamilyDestination destination, analysis::SemanticBudget allowance,
-    RecoveryMode recovery, const ParentModuleInput* root_modules, const FileFunction* creator) {
+    RecoveryMode recovery, const ParentModuleInput* root_modules, const FileFunction* creator,
+    const analysis::ClassMethodSites* class_sites) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     CheckPlacement(root, destination);
@@ -163,7 +164,7 @@ std::variant<FamilyPreparation, FamilyPrepareFailure> FamilyPreparation::Read(
       modules = &enclosure.Context(); module_owner = enclosure.Owner();
     }
     auto read = ReadFunctionFamily(file, header, index, lookup, roles, sites, root.Position(), root.Identity(),
-        budget.Left(), modules, &root, module_owner, FamilyClassMode::kReject, root_modules, destination.first_owner, creator);
+        budget.Left(), modules, &root, module_owner, FamilyClassMode::kReject, root_modules, destination.first_owner, creator, class_sites);
     if (auto* failed = std::get_if<FamilyFileFailure>(&read)) {
       if (auto* phase = std::get_if<PhasedFileFailure>(&failed->cause))
         if (auto* input = std::get_if<PhasedInputFailure>(phase)) {

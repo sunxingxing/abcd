@@ -8,7 +8,8 @@ namespace abcd::source {
 enum class FamilyCreationCheck : std::uint8_t {
   kBodySite, kSemanticSite, kProjectionSite, kProjectionOperation,
   kProjectionLive, kProjectionOwner, kProjectionKind, kPhasedIndex,
-  kPhasedSite, kFunctionBinding, kCaptureFlow, kChildOrder, kSelfInitializer
+  kPhasedSite, kFunctionBinding, kCaptureFlow, kChildOrder, kSelfInitializer,
+  kClassPreparationInput, kClassPreparationGate
 };
 enum class FamilyCreationKind : std::uint8_t { kFunction, kMethod, kClass, kOther };
 struct FamilyOccurrenceId {

@@ -240,7 +240,7 @@ target_sources(abcd_source PRIVATE src/source/family_file.cc)
 target_sources(abcd_source PRIVATE src/source/family_cells.cc)
 target_sources(abcd_source PRIVATE src/source/tree_labels.cc)
 target_sources(abcd_source PRIVATE src/source/family_tree.cc)
-target_sources(abcd_source PRIVATE src/source/prepared_family.cc)
+target_sources(abcd_source PRIVATE src/source/prepared_family.cc src/source/creator_classes.cc)
 target_sources(abcd_source PRIVATE src/source/instruction_sources.cc)
 target_sources(abcd_source PRIVATE src/source/family_emission.cc)
 target_sources(abcd_source PRIVATE src/source/family_route_failure.cc)
@@ -966,6 +966,10 @@ if(BUILD_TESTING)
     add_test(NAME closure_schedule_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/closure_schedule.mjs $<TARGET_FILE:closure_schedule_test>)
   endif()
+  add_executable(creator_classes_test tests/unit/source/creator_classes_test.cc)
+  target_link_libraries(creator_classes_test PRIVATE abcd_source)
+  add_test(NAME creator_classes_test COMMAND creator_classes_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes)
   add_executable(class_deferred_test tests/unit/source/class_deferred_test.cc)
   target_include_directories(class_deferred_test PRIVATE tests/support)
   target_link_libraries(class_deferred_test PRIVATE abcd_source)
@@ -2648,6 +2652,10 @@ if(BUILD_TESTING)
     target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME tree_failure_test COMMAND tree_failure_test)
     if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME creator_classes_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/creator_classes.mjs
+        $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes/member.abc)
       add_test(NAME family_creation_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/family_creation_failure.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

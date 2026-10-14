@@ -18,7 +18,7 @@ inline nlohmann::json FamilyCreationJson(const FamilyCreationEvidence& e) {
 inline std::optional<FamilyCreationEvidence> ParseFamilyCreation(const nlohmann::json& j) {
   if (!j.is_object()) return {};
   std::uint32_t reason;
-  if (!FailureNumber(j, "reason", reason) || reason > static_cast<unsigned>(FamilyCreationCheck::kSelfInitializer)) return {};
+  if (!FailureNumber(j, "reason", reason) || reason > static_cast<unsigned>(FamilyCreationCheck::kClassPreparationGate)) return {};
   const auto at = j.find("location"); if (at == j.end()) return {};
   const auto location = ParseTreeLocation(*at); if (!location) return {};
   FamilyCreationEvidence e{static_cast<FamilyCreationCheck>(reason), *location};

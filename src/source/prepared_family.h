@@ -40,7 +40,8 @@ class FamilyPreparation {
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, const analysis::MethodRoleIndex&,
       const analysis::FunctionCreationSites&, FunctionContext, FamilyDestination,
-      analysis::SemanticBudget, RecoveryMode, const ParentModuleInput*, const FileFunction*);
+      analysis::SemanticBudget, RecoveryMode, const ParentModuleInput*, const FileFunction*,
+      const analysis::ClassMethodSites* = nullptr);
   const CaptureCells* RootCapture() const {
     const auto& capture = input_.Input().root_capture; return capture ? &*capture : nullptr;
   }

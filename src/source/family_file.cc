@@ -1,5 +1,6 @@
 #include "family_file.h"
 #include "family_cells.h"
+#include "creator_classes.h"
 #include "abcd/analysis/transparent_rethrow.h"
 
 #include <bit>
@@ -27,7 +28,8 @@ class FamilyReader {
         identity_(identity), budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), module_owner_(module_owner) {}
 
   FileFamily Read(abc::MethodPosition root, const FunctionContext* owner, FamilyClassMode classes,
-      const ParentModuleInput* root_modules, FunctionOwnerId first_owner, const FileFunction* root_creator) {
+      const ParentModuleInput* root_modules, FunctionOwnerId first_owner, const FileFunction* root_creator, const analysis::ClassMethodSites* class_sites) {
+    class_sites_ = class_sites;
     class_mode_ = classes;
     result_.first_owner = first_owner;
     Require(root.value < index_.methods.size(), Error::kMethod);
@@ -69,6 +71,20 @@ class FamilyReader {
       pc_ = parent.Instructions()[site.value].origin.value_or(*pc_);
       const auto& operation = parent.Instructions()[site.value].operation;
       auto& member = result_.members[cursor.member.value];
+      const bool prepared_record_root=cursor.member==FileFamily::kRoot && class_mode_==FamilyClassMode::kRetainRoot;
+      // The existing explicit family DFS owns the creator occurrence. Discover
+      // its class work only at the actual barrier, preserving first-failure order.
+      if (!member.class_projection && !parent.Phase() && class_sites_ &&
+          !prepared_record_root && std::holds_alternative<analysis::ClassCreation>(operation)) {
+        SelfOrder(member.function.Normal());
+        const auto& values=member.function.Normal().values;
+        const auto& self=member.function.Normal().self_order;
+        auto projected=ProjectClassMembers(values.graph,values.initializers.calls,Remaining(),
+            values.definitions.sites,self ? &*self : nullptr);
+        if(const auto* error=std::get_if<ClassInitializerError>(&projected)) Fail(*error);
+        member.class_projection.emplace(std::get<ClassProjection>(std::move(projected)));
+        Admit(member.class_projection->allocated_bytes,1);Step(member.class_projection->work);
+      }
       if (member.class_projection) {
         const auto& graph = parent.Graph();
         RequireCreation(site.value < graph.input.sites.size() && graph.input.sites[site.value], FamilyCreationCheck::kProjectionSite, parent, cursor.member, site);
@@ -86,6 +102,38 @@ class FamilyReader {
               (std::holds_alternative<analysis::FunctionCreation>(operation) &&
                std::get<analysis::FunctionCreation>(operation).kind == analysis::CreationKind::kMethod), FamilyCreationCheck::kProjectionKind, parent, cursor.member, site, creation);
           AppendRoom(member.classes); member.classes.push_back({site, current, *creation});
+          if(!prepared_record_root) {
+            const CreatorClassInput input{file_,header_,index_,lookup_,roles_,sites_,*class_sites_,parent.Normal(),identity_,{*root_,result_.first_owner,{cursor.member.value}}};
+            auto tasks=DiscoverCreatorClasses(input,Remaining());
+            const auto reject=[&](const CreatorClassFailure& error) {
+              const auto failed=error.operation.value_or(*creation);
+              const auto& g=parent.Graph();
+              const auto failed_site=failed.value<g.ops.size() && g.ops[failed.value].origin.value<g.origins.size() ?
+                  analysis::InstructionId{g.origins[g.ops[failed.value].origin.value].site.value} : site;
+              auto failure=CreationFailure(FamilyCreationCheck::kClassPreparationInput,parent,cursor.member,failed_site,failed);
+              failure.creation_pc=failure.family_creation->location.pc;
+              const auto cause=[&](auto&& self,const auto& e)->void {
+                using T=std::decay_t<decltype(e)>;
+                if constexpr(std::is_enum_v<T>) {
+                  if constexpr(requires{T::kResourceLimit;}) if(e==T::kResourceLimit) Fail(Error::kResourceLimit);
+                  if constexpr(requires{T::kWorkLimit;}) if(e==T::kWorkLimit) Fail(Error::kWorkLimit);
+                }
+                if constexpr(std::is_same_v<T,ClassContextFailure>) std::visit([&](const auto& nested){self(self,nested);},e.error);
+                else if constexpr(std::is_assignable_v<decltype(failure.creation_cause)&,T>) failure.creation_cause=e;
+              };
+              std::visit([&](const auto& e){cause(cause,e);},error.cause);
+              throw failure;
+            };
+            if(const auto* error=std::get_if<CreatorClassFailure>(&tasks)) reject(*error);
+            const auto& plan=std::get<CreatorClasses>(tasks);
+            Admit(plan.allocated_bytes,1);Step(plan.work);
+            auto checked=VerifyCreatorClasses(input,plan,Remaining());
+            if(const auto* error=std::get_if<CreatorClassFailure>(&checked)) reject(*error);
+            const auto cost=std::get<CreatorClassCost>(checked);Admit(cost.allocated_bytes,1);Step(cost.work);
+            // No binding, source owner, or AST is invented for these tasks.
+            // Increment II must merge all class-family requirements first.
+            throw CreationFailure(FamilyCreationCheck::kClassPreparationGate,parent,cursor.member,site,creation);
+          }
           continue;
         }
       }
@@ -442,6 +490,7 @@ class FamilyReader {
   std::uint64_t work_;
   const RecordModuleContext* modules_;
   ModuleOwnerId module_owner_;
+  const analysis::ClassMethodSites* class_sites_ = nullptr;
   FileFamily result_;
   FamilyClassMode class_mode_ = FamilyClassMode::kReject;
   std::vector<FamilyCursor> stack_;
@@ -458,8 +507,8 @@ std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     abc::MethodPosition root, RouteInputIdentity identity,
     analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner, ModuleOwnerId module_owner, FamilyClassMode classes,
-    const ParentModuleInput* root_modules, FunctionOwnerId first_owner, const FileFunction* root_creator) {
-  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner, classes, root_modules, first_owner, root_creator);
+    const ParentModuleInput* root_modules, FunctionOwnerId first_owner, const FileFunction* root_creator, const analysis::ClassMethodSites* class_sites) {
+  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner, classes, root_modules, first_owner, root_creator, class_sites);
   } catch (const FamilyFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}};
   } catch (const std::length_error&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}}; }

@@ -12,6 +12,7 @@
 #include "class_initializer_file.h"
 
 namespace abcd::source {
+enum class ClassTreeError : std::uint8_t;
 struct FamilyCreation {
   FamilyId parent;
   analysis::InstructionId site;
@@ -33,7 +34,8 @@ struct FamilyArray {
   BufferedArray buffer;
 };
 // An original class barrier delegated to the class tree, not a discharged
-// closure edge. Normal family publication still rejects these obligations.
+// closure edge. Unprepared creators retain them up to the typed preparation
+// gate; only complete ClassTree/barrier evidence can discharge publication.
 struct FamilyClassObligation {
   analysis::InstructionId site;
   analysis::OpId operation;
@@ -91,7 +93,8 @@ struct FamilyFileFailure {
   std::optional<abc::EntityOffset> root;
   std::optional<FamilyCreationEvidence> family_creation;
   std::variant<std::monostate, analysis::CreationError, analysis::CreationBindingError,
-      abc::MethodTargetError, abc::MetadataError, abc::MethodAttributeError> creation_cause;
+      abc::MethodTargetError, abc::MetadataError, abc::MethodAttributeError,
+      ClassContextError, abc::LiteralFailure, abc::ClassBufferError, ClassTreeError> creation_cause;
 
 };
 // Reads the complete supported creation family, using an explicit DFS stack
@@ -121,6 +124,6 @@ struct FamilyFileFailure {
     const FunctionContext* owner = nullptr, ModuleOwnerId module_owner = {},
     FamilyClassMode classes = FamilyClassMode::kReject,
     const ParentModuleInput* root_modules = nullptr, FunctionOwnerId first_owner = {},
-    const FileFunction* root_creator = nullptr);
+    const FileFunction* root_creator = nullptr, const analysis::ClassMethodSites* class_sites = nullptr);
 }  // namespace abcd::source
 #endif

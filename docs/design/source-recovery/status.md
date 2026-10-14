@@ -12,6 +12,14 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 67 Increment I：普通后代类准备发现（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；513/620、552/620 不变，0 状态变化，0 文本变化；cli/corpus/failure 扫描 59/60，只有既有的 family_source_cli_test 失败。
+
+- 基线 `220cd6da`。从 record_tree 提取共用的布局发现、成员准备与完成协调；保持 record-root 顺序、命名和 owner 分配。普通后代在现有显式 family DFS 中保留真实类义务，按 occurrence/creator/pool/revision 独立验证后返回 `kClassPreparationGate`，不发布类体。后代完整 owner 范围仍须等成员家族计数；不以直接成员数伪造范围。见 [设计与验证记录](round-67-creator-classes.md)。
+- 对 explore66/explore66s：**513/620、552/620** 不变，0 状态变化、0 complete/partial 文本漂移，含 o32/49868。完整 manifest 只有四个 o18 目标各两组 flags 的 `source_failure` 改为 gate 14；其余字段不变。证据 `/private/tmp/r67-final-cohort/`。
+- 完整 keep-going 构建通过；固定集串行 **65/65**；新增/扩展 **4/4**；class/capture/deferred/guarded/family/creation/recovery 定向 **65/79**（14 项均为下方既有失败）；CLI/corpus/failure/receipt/manifest 扫描 **58/59**，仅既有 family_source_cli_test。真实 es2abc 200/201/400/800 宽度/深度、精确 byte/work 边界、错 pool/creator、重复或遗漏 occurrence、owner 冲突变异通过。未运行留出集、全套测试、RSS 基准；未 commit/push/stash。
+- Increment II/III 尚未实施：类成员家族需求汇总、真实 creator storage/声明 fulfilment、ReferenceNames、enclosure 与 FamilyWrites 屏障贯通；phased creator 不变。没有新增源语言前提，也不声称后代类已可执行或通过 Node 差分。
+
 ## Round 66：FamilyFile 创建拒绝定位（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；513/620、552/620 不变，0 状态变化，0 文本变化；cli/corpus/failure 扫描 58/59，只有既有的 family_source_cli_test 失败。
 
