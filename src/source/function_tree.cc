@@ -814,7 +814,7 @@ class TreeBuilder {
       if (exceptions_ && std::holds_alternative<std::monostate>(node.synthetic)) {
         const auto& unit = exceptions_->control.units[cursor->value];
         if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
-          cursor = exceptions_->control.regions[region->region.value].body;
+          cursor = exceptions_->control.regions[region->region.value]->body;
           continue;
         }
         Require(std::holds_alternative<PhaseControlUnit>(unit), Error::kOrigin);
@@ -1458,7 +1458,7 @@ class TreeBuilder {
     EmitBlock(node, draft);
   }
   void EmitTry(analysis::TryId region, std::size_t parent) {
-    const auto& planned = exceptions_->control.regions[region.value];
+    const auto& planned = *exceptions_->control.regions[region.value];
     const auto& source = exceptions_->regions.regions[region.value];
     Require(source.binding && catch_symbols_[source.binding->block.value], Error::kBinding);
     const auto parameter = *catch_symbols_[source.binding->block.value];

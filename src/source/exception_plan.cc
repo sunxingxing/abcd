@@ -1,6 +1,7 @@
 #include "exception_plan.h"
 
 #include <new>
+#include <algorithm>
 #include <stdexcept>
 
 namespace abcd::source {
@@ -47,8 +48,24 @@ ExceptionRegions Layout(const abc::MethodBody& body, const ValueProgram& graph,
   quota.Work(std::get<PhasedImportProof>(verified).work);
   quota.Admit(std::get<PhasedImportProof>(verified).allocated_bytes, 1);
   auto built = BuildExceptionRegions(body, input.flow, quota.Remaining());
-  if (const auto* error = std::get_if<CatchRegionFailure>(&built))
-    throw error->kind == CatchRegionError::kResourceLimit ? Error::kResourceLimit : Error::kLayout;
+  if (const auto* error = std::get_if<CatchRegionFailure>(&built)) {
+    if (error->kind == CatchRegionError::kResourceLimit) throw Error::kResourceLimit;
+    ExceptionPlanFailure failure{Error::kLayout,*error,{}};
+    if (error->region && error->region->value < body.tries.size()) {
+      const auto& region=body.tries[error->region->value];
+      if(region.first_handler<body.handlers.size()) {
+        const auto handler=body.handlers[region.first_handler].offset;
+        const auto origin=[&](abc::CodeOffset pc)->std::optional<abc::CodeOffset> {
+          const auto it=std::lower_bound(input.flow.instructions.begin(),input.flow.instructions.end(),pc,
+              [&](const auto& instruction,auto value){quota.Work();return instruction.pc<value;});
+          if(it==input.flow.instructions.end()||it->pc!=pc)return {};
+          return it->origin.value_or(it->pc);
+        };
+        failure.exception_region=ExceptionRegionEvidence{*error->region,origin(region.offset),origin(handler),region.offset,handler};
+      }
+    }
+    throw failure;
+  }
   auto result = std::get<ExceptionRegions>(std::move(built));
   quota.Work(result.work_units);
   quota.Admit(result.allocated_bytes, sizeof(std::byte));
@@ -71,8 +88,11 @@ void CheckLayout(const ExceptionRegions& expected, const ExceptionRegions& actua
     const auto& b = actual.regions[r];
     Require(SameRange(a.body, b.body) && SameRange(a.handler, b.handler) &&
         a.handler_id == b.handler_id && SameScope(a.parent, b.parent) &&
-        a.outer_dispatch == b.outer_dispatch && expected.source_order[r] == actual.source_order[r],
+        a.outer_dispatch == b.outer_dispatch && a.inactive == b.inactive,
         Error::kLayout);
+  }
+  for (std::size_t i = 0; i < expected.source_order.size(); ++i) {
+    quota.Work(); Require(expected.source_order[i] == actual.source_order[i], Error::kLayout);
   }
   for (std::size_t i = 0; i < expected.scopes.size(); ++i) {
     quota.Work();
@@ -175,7 +195,7 @@ class RegionIndex {
 };
 }  // namespace
 
-std::variant<ExceptionPlan, ExceptionPlanError> BuildExceptionPlan(
+std::variant<ExceptionPlan, ExceptionPlanError, ExceptionPlanFailure> BuildExceptionPlan(
     const abc::MethodBody& body, const ValueProgram& graph,
     const PhasedValueInput& input, SemanticBudget budget) {
   try {
@@ -201,6 +221,7 @@ std::variant<ExceptionPlan, ExceptionPlanError> BuildExceptionPlan(
     quota.Work(std::get<std::uint64_t>(checked));
     plan.work = budget.work - quota.Remaining().work;
     return plan;
+  } catch (const ExceptionPlanFailure& failure) { return failure;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
@@ -223,6 +244,7 @@ std::variant<std::uint64_t, ExceptionPlanError> VerifyExceptionPlan(
       quota.Work(); Require(plan.transfers[e] == index.Transfer(graph.edges[e]), Error::kTransfer);
     }
     return budget.work - quota.Remaining().work;
+  } catch (const ExceptionPlanFailure& failure) { return failure.kind;
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

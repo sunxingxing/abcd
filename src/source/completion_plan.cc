@@ -92,7 +92,7 @@ class CompletionBuilder {
     Require(control_.regions.size() == exceptions_.regions.size());
     quota_.Size(regions_, control_.regions.size());
     quota_.Size(shared_completions_, control_.regions.size());
-    Require(exceptions_.layout.source_order.size() == regions_.size());
+    Require(exceptions_.layout.source_order.size() <= regions_.size());
     SharedGuards();
     // Source order is outer-before-inner, independent of encoded TryId order.
     // Summarize each owned body/handler once; never replay descendant graphs
@@ -102,7 +102,7 @@ class CompletionBuilder {
       quota_.Work(); const auto r = i->value;
       Require(r < regions_.size() && !regions_[r].ready);
       stamp_ = static_cast<std::size_t>(r) + 1;
-      const auto& region = control_.regions[r];
+      const auto& region = *control_.regions[r];
       const auto body = Body(*i, region.body);
       const auto handler = Body(*i, region.handler);
       if (evaluation_.holes) {
@@ -114,8 +114,9 @@ class CompletionBuilder {
     }
     CompletionPlan plan{graph_.revision, graph_.cfg_revision, {}};
     for (std::uint32_t r = 0; r < control_.regions.size(); ++r) {
-      quota_.Work(); stamp_ = static_cast<std::size_t>(r) + 1;
-      const auto& region = control_.regions[r];
+      quota_.Work(); if (!control_.regions[r]) continue;
+      stamp_ = static_cast<std::size_t>(r) + 1;
+      const auto& region = *control_.regions[r];
       const auto next = control_.skeleton.nodes[region.wrapper.value].next;
       const auto& shared_completion = shared_completions_[r];
       if (next && shared_guards_[r] && shared_completion.valid &&
@@ -385,7 +386,7 @@ class CompletionBuilder {
           multiple[o] || !rethrows[o])
         continue;
       const auto region = *catches[input.caught->value];
-      if (control_.regions[region.value].exit != phi->block) continue;
+      if (control_.regions[region.value]->exit != phi->block) continue;
       // Multiple tests are still printable, but do not choose a finalizer
       // boundary arbitrarily.
       if (candidates[region.value]) {
@@ -466,7 +467,7 @@ class CompletionBuilder {
         consume(shared_completions_[nested->region.value]);
         if (!result.valid) return result;
         if (node.next) Append(pending, Task{*node.next, task.stop});
-        else if (control_.regions[nested->region.value].exit && !task.stop) return {false};
+        else if (control_.regions[nested->region.value]->exit && !task.stop) return {false};
         continue;
       }
       const auto* phase =
@@ -586,7 +587,7 @@ class CompletionBuilder {
         Require(summary.ready);
         if (!summary.body || !summary.handler) return false;
         if (node.next) Append(pending, Task{*node.next, task.stop});
-        else if (control_.regions[nested->region.value].exit && !task.stop) return false;
+        else if (control_.regions[nested->region.value]->exit && !task.stop) return false;
         continue;
       }
       const auto* phase = std::get_if<PhaseControlUnit>(&control_.units[id.value]);

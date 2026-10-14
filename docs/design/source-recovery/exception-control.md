@@ -956,3 +956,48 @@ proof](loop-discovery.md#bounded-decision-continuations-round-40) is shared with
 normal control. It does not alter this projection, raise edges, handler entries,
 try-exit ports or catch staging. Failure-location translation visits every new
 decision witness endpoint, preserving phase PCs and synthetic identities.
+
+## Inactive regions (Round 54)
+
+A missing CatchBinding is not evidence that a try can be omitted.
+`BuildExceptionRegions` first traverses the original `ExceptionFlow`, including
+normal and exceptional edges. Dispatch is the pinned first matching file-order
+try, already represented by each Before node's exception target. Prefix indexes
+count reachable instructions, nonthrowing Before events and dispatched throwing
+events. A region is inactive only when no reachable throwing event dispatches
+to it and **every phase in its handler range is unreachable**, including normal
+entries into the interior. Protected instructions are accounted as nonthrowing,
+dispatched elsewhere (including uncaught), or unreachable. An inactive region
+retains its original TryId, body/handler ranges and these counts.
+
+Only active regions participate in lexical scopes and topology wrappers.
+ExceptionControl keeps an optional slot per original TryId, rather than
+renumbering regions or inventing an empty control plan. Existing active wrapper
+order is unchanged. No live exception edge, catch payload or try-exit is removed.
+Active/shared/normal-entry handlers remain subject to the existing checks.
+
+`VerifyExceptionPlan` recomputes reachability and all counts from the immutable
+body and original flow; `VerifyExceptionControl` rebuilds the projection.
+TreeFlow verifies active try coverage and retains both original region bounds
+and the separate inactive evidence in OriginalFlow. Each recovery proposal
+recomputes the complete inactive set, rejecting missing as well as forged
+certificates, and recomputes reachability over retained
+original phase edges, confirms handler deadness and protected-event counts,
+and rejects any exception exit targeting an inactive region. The original dead
+instructions and phases remain represented. The projection creates no source
+expressions or symbols, and uses no new source-language premise.
+
+Additional storage is O(I+B+R); prefix queries are O(1), ordered lookup/scope
+construction is O((I+B+E+R) log(I+R+1)). All arrays are charged before allocation.
+The 200/201/400/800 unit cases exercise exact byte and work boundaries.
+`ExceptionPlanFailure` preserves CatchRegionError and optional typed region
+identity; public `exception_region` evidence distinguishes original from working
+body/handler PCs. PC zero is real; missing origin is absent, never fabricated.
+
+Tests cover dead pure handlers, earlier-try shadowing, live throwing handlers,
+normal handler entry, forged counts/projections, and original/recovery evidence.
+The es2abc fixture is independently decoded: O0 supplies the Node source
+comparison, while default optimization emits zero-size handler extents and
+retains a located kHandlerShape refusal. Active getter exceptions must still
+be caught. This is general
+reachability projection, not a return/NOP or register/opcode sequence rule.

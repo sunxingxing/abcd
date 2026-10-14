@@ -40,8 +40,12 @@ int main() {
       {17, source::ControlOriginKind::kPhase, 17, abc::CodeOffset{73}, abc::CodeOffset{31}}, 19,
       {{5, source::ControlOriginKind::kPhase, 5}, source::ControlLocation{13, source::ControlOriginKind::kTryExit, 2}},
       {{0, source::ControlOriginKind::kPhase, 0}, {}}};
+  chained.exception_region=source::ExceptionRegionEvidence{{2},abc::CodeOffset{0},{},{12},{19}};
   nlohmann::json with_causes;
   tools::DescribeRecordFailure(source::RouteRefusal{chained}, with_causes);
+  Check(with_causes["source_failure"]["exception_region"]["body_pc"] == 0);
+  Check(with_causes["source_failure"]["exception_region"]["working_body_pc"] == 12);
+  Check(!with_causes["source_failure"]["exception_region"].contains("handler_pc"));
   const auto& checked_read = with_causes["source_failure"]["call_reference"]["checked"];
   Check(checked_read["call"] == 17 && checked_read["read"] == 5 && checked_read["guard"] == 6 &&
       checked_read["use"] == 9 && checked_read["read_pc"] == 0 && checked_read["guard_pc"] == 73 &&

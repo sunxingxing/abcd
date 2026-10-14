@@ -319,7 +319,7 @@ void Decoded(abc::ProfileId profile, ThrowingSite site, std::ostream* output = n
   const auto& forest = std::get<ExpressionForest>(expressed);
   test::Check(forest.throws.size() == 2 && forest.catches.size() == 1);
   test::Check(forest.throw_assignments.size() == 2 && forest.catch_assignments.size() == 1);
-  const auto catch_entry = control.regions.front().handler;
+  const auto catch_entry = control.regions.front()->handler;
   test::Check(std::get<PhaseControlUnit>(control.units[catch_entry.value]).block == forest.catches.front().block);
   for (const auto& staged : forest.throws) {
     const auto block = graph.ops[staged.placement.operation.value].block;

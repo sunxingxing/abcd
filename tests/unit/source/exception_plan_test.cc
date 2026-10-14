@@ -27,7 +27,7 @@ void Control(const abc::MethodBody& body, const ValueProgram& graph,
   test::Check(control.units.size() <= control.skeleton.nodes.size());
   test::Check(control.arcs.size() == control.skeleton.edges.size());
   for (std::size_t r = 0; r < control.regions.size(); ++r) {
-    const auto& region = control.regions[r];
+    const auto& region = *control.regions[r];
     test::Check(std::get<TryControlUnit>(control.units[region.wrapper.value]).region == TryId{static_cast<std::uint32_t>(r)});
     test::Check(std::get<PhaseControlUnit>(control.units[region.handler.value]).block ==
         regions.regions[r].binding->block);
@@ -67,7 +67,7 @@ void Control(const abc::MethodBody& body, const ValueProgram& graph,
   test::Check(std::holds_alternative<std::uint64_t>(checked));
   test::Check(std::holds_alternative<ControlError>(VerifyControlPlan(graph, control.skeleton)));
   auto changed = control;
-  changed.regions.front().handler = changed.regions.front().body;
+  changed.regions.front()->handler = changed.regions.front()->body;
   test::Check(std::holds_alternative<ExceptionControlError>(
       VerifyExceptionControl(body, graph, input, regions, changed)));
   changed = control;
@@ -79,7 +79,7 @@ void Control(const abc::MethodBody& body, const ValueProgram& graph,
   test::Check(std::holds_alternative<ExceptionControlError>(
       VerifyExceptionControl(body, graph, input, regions, changed)));
   changed = control;
-  changed.regions.front().exit = WorkBlockId{static_cast<std::uint32_t>(graph.blocks.size())};
+  changed.regions.front()->exit = WorkBlockId{static_cast<std::uint32_t>(graph.blocks.size())};
   test::Check(std::holds_alternative<ExceptionControlError>(
       VerifyExceptionControl(body, graph, input, regions, changed)));
   changed = control;
@@ -291,7 +291,9 @@ void OldLocal(abc::ProfileId profile, bool normal_handler_entry) {
   if (normal_handler_entry) {
     // A handler reachable by a normal jump needs a different control lowering;
     // it must not acquire the catch parameter's scope merely by PC identity.
-    test::Check(std::get<ExceptionPlanError>(planned) == ExceptionPlanError::kLayout);
+    const auto& failure=std::get<ExceptionPlanFailure>(planned);
+    test::Check(failure.kind == ExceptionPlanError::kLayout &&
+        failure.cause.kind == CatchRegionError::kNormalEntry && failure.exception_region);
     return;
   }
   test::Check(std::holds_alternative<ExceptionPlan>(planned));

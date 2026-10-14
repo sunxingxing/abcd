@@ -12,6 +12,15 @@ struct CatchScope {
 struct InstructionRange {
   InstructionId begin;
   InstructionId end;  // Exclusive; may equal instruction count.
+  bool operator==(const InstructionRange&) const = default;
+};
+// Original TryId and instruction ranges survive projection. The counts cover
+// every protected instruction exactly once; all handler phases are unreachable.
+struct InactiveExceptionRegion {
+  TryId region;
+  InstructionRange body, handler;
+  std::uint32_t nonthrowing = 0, dispatched_elsewhere = 0, unreachable = 0;
+  bool operator==(const InactiveExceptionRegion&) const = default;
 };
 struct CatchRegion {
   InstructionRange body;
@@ -19,11 +28,12 @@ struct CatchRegion {
   HandlerId handler_id;
   std::optional<CatchScope> parent;
   std::optional<TryId> outer_dispatch;
+  std::optional<InactiveExceptionRegion> inactive;
 };
 struct ExceptionRegions {
   // Indexed by encoded TryId, never reordered to change handler priority.
   std::vector<CatchRegion> regions;
-  // Outer-before-inner source order, separate from encoded dispatch identity.
+  // Active regions in outer-before-inner source order; original TryIds remain stable.
   std::vector<TryId> source_order;
   std::vector<std::optional<CatchScope>> scopes;
   std::size_t allocated_bytes = 0;
@@ -36,6 +46,7 @@ enum class CatchRegionError : std::uint8_t {
 struct CatchRegionFailure {
   CatchRegionError kind;
   abc::CodeOffset pc;
+  std::optional<TryId> region;
 };
 
 // Matching decoded body and unchanged phased flow. Proves disjoint/nested

@@ -14,8 +14,8 @@ bool Contains(InstructionRange range, std::size_t instruction) {
 std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
     const abc::MethodBody& body, const ExceptionFlow& flow, SemanticBudget budget) {
   using Error = CatchRegionError;
-  const auto fail = [](Error kind, abc::CodeOffset pc = {}) {
-    return CatchRegionFailure{kind, pc};
+  const auto fail = [](Error kind, abc::CodeOffset pc = {}, std::optional<TryId> region = {}) {
+    return CatchRegionFailure{kind, pc, region};
   };
   const auto count = body.instructions.size();
   if (!count || count > UINT32_MAX || body.tries.size() > UINT32_MAX ||
@@ -77,10 +77,10 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
       charge();
       const auto& region = body.tries[i];
       if (region.handler_count != 1 || region.first_handler >= body.handlers.size())
-        return fail(Error::kHandlerShape, region.offset);
+        return fail(Error::kHandlerShape, region.offset, TryId{static_cast<std::uint32_t>(i)});
       const auto& handler = body.handlers[region.first_handler];
       if (handler.type || !region.length || !handler.length)
-        return fail(Error::kHandlerShape, handler.offset);
+        return fail(Error::kHandlerShape, handler.offset, TryId{static_cast<std::uint32_t>(i)});
       CatchRegion candidate{{boundary(region.offset.value),
                              boundary(std::uint64_t(region.offset.value) + region.length)},
                             {boundary(handler.offset.value),
@@ -89,10 +89,58 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
       if (candidate.body.begin >= candidate.body.end ||
           candidate.body.end > candidate.handler.begin ||
           candidate.handler.begin >= candidate.handler.end)
-        return fail(Error::kHandlerShape, handler.offset);
+        return fail(Error::kHandlerShape, handler.offset, TryId{static_cast<std::uint32_t>(i)});
       result.regions.push_back(candidate);
       order.push_back({static_cast<std::uint32_t>(i)});
     }
+    // Recompute from the immutable original exception flow, not from a missing
+    // CatchBinding or edited ValueProgram. Dispatch targets already implement
+    // the pinned first matching file-order try (BuildExceptionFlow contract).
+    // Prefix sums make nested protected/handler range queries O(1), not O(I*R).
+    std::vector<std::uint32_t> live, nonthrowing, throwing, entered;
+    reserve(live, count + 1); live.resize(count + 1);
+    reserve(nonthrowing, count + 1); nonthrowing.resize(count + 1);
+    reserve(throwing, count + 1); throwing.resize(count + 1);
+    reserve(entered, body.tries.size()); entered.resize(body.tries.size());
+    for (std::size_t n = 0; n < flow.nodes.size(); ++n) {
+      charge(); const auto& node = flow.nodes[n];
+      if (node.instruction.value >= count) return fail(Error::kInvalidFlow);
+      if (!reachable[n]) continue;
+      const auto i = node.instruction.value; live[i + 1] = 1;
+      if (node.phase != ExceptionPhase::kBefore) continue;
+      if (!node.exception) {
+        if (flow.instructions[i].effects.exceptional != ExceptionalCompletion::kImpossible)
+          return fail(Error::kInvalidFlow);
+        nonthrowing[i + 1] = 1;
+      }
+      else {
+        throwing[i + 1] = 1;
+        if (const auto target = node.exception->target) {
+          if (target->region.value >= result.regions.size()) return fail(Error::kInvalidFlow);
+          const auto& region = result.regions[target->region.value];
+          if (!Contains(region.body, i) || target->handler != region.handler_id ||
+              target->handler_pc != body.instructions[region.handler.begin.value].offset)
+            return fail(Error::kInvalidFlow);
+          ++entered[target->region.value];
+        }
+      }
+    }
+    for (std::size_t i = 1; i <= count; ++i) {
+      charge(); live[i] += live[i-1]; nonthrowing[i] += nonthrowing[i-1]; throwing[i] += throwing[i-1];
+    }
+    std::size_t active = 0;
+    for (std::uint32_t r = 0; r < result.regions.size(); ++r) {
+      charge(); auto& region = result.regions[r];
+      const auto first = region.body.begin.value, last = region.body.end.value;
+      if (entered[r] == 0 && live[region.handler.end.value] == live[region.handler.begin.value]) {
+        const auto pure = nonthrowing[last] - nonthrowing[first];
+        const auto other = throwing[last] - throwing[first];
+        if (pure + other > last - first) return fail(Error::kInvalidFlow);
+        region.inactive = InactiveExceptionRegion{{r}, region.body, region.handler,
+            pure, other, last - first - pure - other};
+      } else order[active++] = {r};
+    }
+    order.resize(active);
     std::sort(order.begin(), order.end(), [&](TryId a, TryId b) {
       charge();
       const auto& left = result.regions[a.value];
@@ -118,7 +166,7 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
         if (region.body.begin >= parent.handler.begin) scope.part = CatchPart::kHandler;
         const auto enclosing = range(scope);
         if (region.body.begin < enclosing.begin || region.handler.end > enclosing.end)
-          return fail(Error::kCrossingScopes, body.instructions[region.body.begin.value].offset);
+          return fail(Error::kCrossingScopes, body.instructions[region.body.begin.value].offset, id);
         region.parent = scope;
         region.outer_dispatch = scope.part == CatchPart::kProtected
             ? std::optional<TryId>{parent_id} : parent.outer_dispatch;
@@ -173,12 +221,12 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
               ? std::optional<TryId>{scope->region}
               : result.regions[scope->region.value].outer_dispatch;
         const auto& actual = node.exception->target;
-        if (selected.has_value() != actual.has_value()) return fail(Error::kDispatchMismatch, pc);
+        if (selected.has_value() != actual.has_value()) return fail(Error::kDispatchMismatch, pc, selected);
         if (selected && (actual->region != *selected ||
             actual->handler != result.regions[selected->value].handler_id ||
             actual->handler_pc != body.instructions[
                 result.regions[selected->value].handler.begin.value].offset))
-          return fail(Error::kDispatchMismatch, pc);
+          return fail(Error::kDispatchMismatch, pc, selected);
       }
       for (std::size_t e = 0; e < node.successor_count; ++e) {
         charge();
@@ -195,7 +243,7 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
         const auto entry_parent = entry_parents[scope->region.value];
         if (scope->part == CatchPart::kProtected && target == region.body.begin.value &&
             (!entry_parent || Contains(range(*entry_parent), source))) continue;
-        return fail(Error::kNormalEntry, pc);
+        return fail(Error::kNormalEntry, pc, scope->region);
       }
     }
     result.allocated_bytes = result.regions.capacity() * sizeof(CatchRegion) +

@@ -37,8 +37,14 @@ class Projection {
     quota_.Size(owners_, blocks);
     quota_.Size(exits_, regions);
     quota_.Size(result_.ports, regions);
-    quota_.Size(entries_, regions);
-    unit_count_ = static_cast<std::uint32_t>(blocks + regions);
+    quota_.Size(entries_, regions_.layout.source_order.size());
+    quota_.Size(wrappers_, regions);
+    unit_count_ = static_cast<std::uint32_t>(blocks);
+    for (std::uint32_t r = 0; r < regions; ++r) {
+      quota_.Work(); if (regions_.layout.regions[r].inactive) continue;
+      wrappers_[r] = ControlId{unit_count_++};
+    }
+    wrapper_end_ = unit_count_;
     PreservingCompletions(); Index(); Forwarders(); Exits();
     std::size_t capacity = blocks + regions;
     const auto add = [&](std::size_t count) {
@@ -78,12 +84,13 @@ class Projection {
       }
     }
     for (std::uint32_t r = 0; r < regions; ++r) {
-      quota_.Work(); const TryId region{r}; const auto wrapper = Wrapper(region);
+      quota_.Work(); if (regions_.layout.regions[r].inactive) continue;
+      const TryId region{r}; const auto wrapper = Wrapper(region);
       const auto& original = regions_.regions[r];
       Require(original.binding.has_value(), Error::kRegion);
       result_.mapping.units[wrapper.value] = TryControlUnit{region};
       if (const auto parent = regions_.layout.regions[r].parent) result_.owners[wrapper.value] = parent->region;
-      auto& planned = result_.mapping.regions[r];
+      auto& planned = result_.mapping.regions[r].emplace();
       planned = {wrapper, Target(original.body, ControlScope{region, CatchPart::kProtected}),
           {original.binding->block.value}, {}};
       result_.blocks[wrapper.value].first_arc = {edge_count_};
@@ -96,7 +103,7 @@ class Projection {
       result_.entries[root_count++] = planned.body;
       result_.entries[root_count++] = planned.handler;
     }
-    for (std::size_t u = blocks + regions; u < unit_count_; ++u) {
+    for (std::size_t u = wrapper_end_; u < unit_count_; ++u) {
       quota_.Work(); result_.blocks[u].first_arc = {edge_count_};
     }
     for (const auto block : result_.mapping.inactive_phases) {
@@ -151,12 +158,14 @@ class Projection {
     std::vector<std::optional<TryId>> heads, siblings;
     std::vector<RegionVisit> visits;
     quota_.Size(heads, count + 1); quota_.Size(siblings, count); quota_.Size(visits, 2 * count);
+    std::size_t entry = 0;
     for (std::uint32_t r = 0; r < count; ++r) {
-      quota_.Work(); const TryId region{r};
+      quota_.Work(); if (regions_.layout.regions[r].inactive) continue;
+      const TryId region{r};
       const auto parent = ScopeOf(regions_.layout.regions[r].parent);
       const auto slot = parent ? parent->region.value : count;
       siblings[r] = heads[slot]; heads[slot] = region;
-      entries_[r] = {parent, regions_.regions[r].body, region};
+      entries_[entry++] = {parent, regions_.regions[r].body, region};
     }
     std::size_t pending = 0;
     for (auto root = heads[count]; root; root = siblings[root->value]) {
@@ -175,7 +184,7 @@ class Projection {
         visits[pending++] = {*child, false};
       }
     }
-    Require(stamp == count, Error::kRegion);
+    Require(stamp == regions_.layout.source_order.size(), Error::kRegion);
     std::sort(entries_.begin(), entries_.end(), [&](const auto& a, const auto& b) {
       quota_.Work(); return std::tie(a.parent, a.block) < std::tie(b.parent, b.block);
     });
@@ -188,8 +197,8 @@ class Projection {
     }
     // Catch executes outside any nested try beginning at the handler's first
     // instruction. PC/range membership alone gives the wrong lexical owner.
-    for (std::uint32_t r = 0; r < count; ++r) {
-      quota_.Work(); const auto& binding = regions_.regions[r].binding;
+    for (const auto id : regions_.layout.source_order) {
+      quota_.Work(); const auto r = id.value; const auto& binding = regions_.regions[r].binding;
       Require(binding.has_value(), Error::kRegion);
       owners_[binding->block.value] = ControlScope{{r}, CatchPart::kHandler};
     }
@@ -345,7 +354,8 @@ class Projection {
     }
   }
   ControlId Wrapper(TryId region) const {
-    return {static_cast<std::uint32_t>(graph_.blocks.size() + region.value)};
+    Require(region.value < wrappers_.size() && wrappers_[region.value].has_value(), Error::kRegion);
+    return *wrappers_[region.value];
   }
   ControlId Target(WorkBlockId block, Scope scope, std::optional<TryExitSource> source = {}) {
     if (owners_[block.value] == scope) return {block.value};
@@ -376,6 +386,8 @@ class Projection {
   ExceptionTopology result_;
   std::vector<bool> preserving_;
   std::vector<Scope> owners_;
+  std::vector<std::optional<ControlId>> wrappers_;
+  std::uint32_t wrapper_end_ = 0;
   std::vector<RegionInterval> intervals_;
   std::vector<RegionEntry> entries_;
   std::vector<std::vector<WorkBlockId>> exits_;

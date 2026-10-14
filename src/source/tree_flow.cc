@@ -74,6 +74,20 @@ class FlowCheck {
     if (exceptions) {
       budget.Array(flow_.catch_parameters, graph.values.size());
       budget.Array(flow_.tries, exceptions->regions.regions.size());
+      std::size_t inactive = 0;
+      for (const auto& r : exceptions->regions.layout.regions) { budget.Step(); inactive += r.inactive.has_value(); }
+      if (inactive) {
+        budget.Array(flow_.exception_regions,exceptions->regions.layout.regions.size());
+        for (std::size_t r=0;r<flow_.exception_regions.size();++r) {
+          budget.Step();const auto& input=exceptions->regions.layout.regions[r];
+          flow_.exception_regions[r]={input.body,input.handler};
+        }
+      }
+      budget.Array(flow_.inactive_regions, inactive);
+      std::size_t index = 0;
+      for (const auto& r : exceptions->regions.layout.regions) {
+        budget.Step(); if (r.inactive) flow_.inactive_regions[index++] = *r.inactive;
+      }
     }
     budget.Array(flow_.branch_polarity, graph.ops.size());
     budget.Array(flow_.edge_controls,graph.edges.size());
@@ -400,7 +414,8 @@ class FlowCheck {
              (!enumeration_ || !enumeration_->forwarded_blocks[std::get<analysis::CatchDefinition>(value.origin).block.value])), Error::kPlacement);
       }
       for (std::size_t i = 0; i < flow_.tries.size(); ++i) {
-        budget_.Step(); Require(flow_.tries[i].has_value() == (!enumeration_ || !enumeration_->forwarded_regions[i]), Error::kControl);
+        budget_.Step(); Require(flow_.tries[i].has_value() == (!exceptions_->regions.layout.regions[i].inactive &&
+            (!enumeration_ || !enumeration_->forwarded_regions[i])), Error::kControl);
       }
     }
     sequences_.Finish(flow_, budget_);
@@ -960,7 +975,7 @@ class FlowCheck {
     const auto* origin = std::get_if<TryOrigin>(&tree_.origins[node.origin.value]);
     Require(syntax && syntax->handler && !syntax->finalizer && origin && origin->region == id,
         Error::kControl);
-    const auto& planned = exceptions_->control.regions[id.value];
+    const auto& planned = *exceptions_->control.regions[id.value];
     const auto& region = exceptions_->regions.regions[id.value];
     Require(region.binding.has_value(), Error::kPlacement);
     const auto parameter = syntax->handler->parameter;
@@ -1142,7 +1157,8 @@ class FlowCheck {
       scopes[scope.value] = analysis::CatchScope{region, part}; resolved[scope.value] = 1;
     };
     for (std::size_t r = 0; r < flow_.tries.size(); ++r) {
-      budget_.Step(); if (enumeration_ && enumeration_->forwarded_regions[r]) continue;
+      budget_.Step(); if (exceptions_->regions.layout.regions[r].inactive ||
+          (enumeration_ && enumeration_->forwarded_regions[r])) continue;
       Require(flow_.tries[r].has_value(), Error::kControl);
       const auto& syntax = std::get<TryStmt>(tree_.statements[flow_.tries[r]->value].statement);
       Require(syntax.handler.has_value(), Error::kControl);
@@ -1417,7 +1433,7 @@ class FlowCheck {
       if (exceptions_ && std::holds_alternative<std::monostate>(node.synthetic)) {
         const auto& unit = exceptions_->control.units[cursor->value];
         if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
-          cursor = exceptions_->control.regions[region->region.value].body;
+          cursor = exceptions_->control.regions[region->region.value]->body;
           continue;
         }
         Require(std::holds_alternative<PhaseControlUnit>(unit), Error::kPlacement);

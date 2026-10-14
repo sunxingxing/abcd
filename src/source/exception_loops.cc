@@ -46,7 +46,8 @@ class Composition {
     quota_.Size(summaries, nodes.size());
     std::uint32_t next = static_cast<std::uint32_t>(t_.blocks.size());
     for (std::size_t r = 0; r < t_.ports.size(); ++r) {
-      auto source = t_.mapping.regions[r].wrapper.value;
+      if (!t_.mapping.regions[r]) { Require(t_.ports[r].empty(), Error::kRegion); continue; }
+      auto source = t_.mapping.regions[r]->wrapper.value;
       const auto& ports = t_.ports[r];
       for (std::size_t p = 0; p < ports.size(); ++p) {
         quota_.Work(); summaries[source].first = ports[p].destination;
@@ -105,7 +106,7 @@ class Composition {
   void Inherit() {
     quota_.Size(inherited_, t_.ports.size());
     for (const auto region : regions_.layout.source_order) {
-      quota_.Work(); const auto wrapper = t_.mapping.regions[region.value].wrapper;
+      quota_.Work(); const auto wrapper = t_.mapping.regions[region.value]->wrapper;
       inherited_[region.value] = t_.loops.owners[wrapper.value];
       if (!inherited_[region.value]) {
         const auto parent = regions_.layout.regions[region.value].parent;
@@ -199,7 +200,7 @@ class Composition {
       quota_.Work(); auto& ports = t_.ports[region.value];
       quota_.Size(abrupt[region.value], ports.size());
       const auto scope = inherited_[region.value];
-      auto& planned = t_.mapping.regions[region.value];
+      auto& planned = *t_.mapping.regions[region.value];
       for (std::size_t p = 0; p < ports.size(); ++p) {
         quota_.Work(); auto& port = ports[p];
         const auto immediate = port.destination;
@@ -227,7 +228,7 @@ class Composition {
       if (const auto* edge = std::get_if<EdgeId>(&exit->source)) {
         origins_[n] = *edge; t_.loops.owners[n] = t_.loops.owners[graph_.edges[edge->value].source.value];
       } else {
-        const auto wrapper = t_.mapping.regions[std::get<TryId>(exit->source).value].wrapper;
+        const auto wrapper = t_.mapping.regions[std::get<TryId>(exit->source).value]->wrapper;
         t_.loops.owners[n] = t_.loops.owners[wrapper.value];
       }
     }

@@ -12,6 +12,11 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 54：不可达 handler 的 inactive 区域投影（cc 审查通过）
+
+- 从原始 ExceptionFlow 重算正常与异常可达性；只有 handler 整段不可达、且没有可达事件派往它时，才生成类型化 inactive 记录（保留 TryId、范围与 protected 指令分类计数）；inactive 区域不分配 try/catch，原始索引保留；recovery 独立重算完整 inactive 集合。kRegion 拒绝补上 region 与 body/handler 位置。新增单元与真实 es2abc（O0）fixture；默认优化产物的 handler 长度为 0，保持带位置的 `kHandlerShape` 拒绝。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；498/620、535/620 不变，0 状态变化，0 文本变化；定向 5/5。诊断变化仅 6 条：5 个 for-of 方法改为 `kControl > kMultipleExits`，driver 的 kRegion 补全为 `kLayout > kCrossingScopes`（region 4，PC 777/803）。
+
 ## Round 53 增量 I（部分）：标准迭代获取契约与原始语义（cc 审查通过）
 
 - 用户 2026-10-14 批准第五项源语言前提“标准迭代获取”：新增 `kLanguageSourceV2` 与独立谓词 `IterationAcquisition()`，`--language-source` 选择 V2；V1 的语义、枚举值与序列化名称保留。接受的差异：@@iterator 不可调用或返回非对象时原生 for…of 更早抛 TypeError。不在此前提内、须逐循环证明的：next 缓存、done/value 顺序、关闭优先级（language-source.md）。

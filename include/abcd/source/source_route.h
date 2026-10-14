@@ -18,6 +18,7 @@
 #include "abcd/source/call_reference.h"
 #include "abcd/source/capture_occurrence.h"
 #include "abcd/source/control_failure.h"
+#include "abcd/source/exception_region_failure.h"
 #include "abcd/source/tree_failure.h"
 #include "abcd/source/evaluation_failure.h"
 
@@ -110,6 +111,7 @@ struct RouteFailure {
   std::optional<EvaluationEvidence> evaluation;
   std::optional<DeferredCellEvidence> deferred = {};
   std::optional<TreePrintFailure> printing;
+  std::optional<ExceptionRegionEvidence> exception_region;
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

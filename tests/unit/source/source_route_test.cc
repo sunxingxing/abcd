@@ -234,6 +234,9 @@ int main() {
   }
   auto no_method = capture_json; no_method["failure"]["capture"].erase("method");
   Check(std::holds_alternative<RouteReceiptError>(ParseRouteReceipt(no_method.dump())));
+  caused.failure->exception_region=ExceptionRegionEvidence{{1},abc::CodeOffset{0},{},{12},{19}};
+  const auto region_roundtrip=std::get<MethodRouteReceipt>(ParseRouteReceipt(std::get<std::string>(SerializeRouteReceipt(caused))));
+  Check(region_roundtrip.failure->exception_region==caused.failure->exception_region);
   const auto samples = {RefusedReceipt(), caused, deep, complete_value};
   for (const auto& receipt : samples) {
     const auto serialized = SerializeRouteReceipt(receipt);

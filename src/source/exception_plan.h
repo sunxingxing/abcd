@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_EXCEPTION_PLAN_H_
 
 #include "abcd/analysis/exception_regions.h"
+#include "abcd/source/exception_region_failure.h"
 #include "../analysis/phased_value_import.h"
 
 namespace abcd::source {
@@ -42,13 +43,18 @@ struct ExceptionPlan {
 enum class ExceptionPlanError : std::uint8_t {
   kInput, kRevision, kLayout, kBinding, kTransfer, kWorkLimit, kResourceLimit
 };
+struct ExceptionPlanFailure {
+  ExceptionPlanError kind;
+  analysis::CatchRegionFailure cause;
+  std::optional<ExceptionRegionEvidence> exception_region;
+};
 // Matching original body/phase analyses only. This plan preserves catch payload
 // identity and dispatch; it is not yet a control tree or executable-source proof.
 // Additional storage O(I+B+E+R), indexing work O(I+B+V+E+R); total work
 // additionally includes the existing phase-availability and region checks.
 // All caller-owned inputs (including the plan for verification) are admitted
 // separately. The grant covers simultaneous additional results and scratch.
-[[nodiscard]] std::variant<ExceptionPlan, ExceptionPlanError> BuildExceptionPlan(
+[[nodiscard]] std::variant<ExceptionPlan, ExceptionPlanError, ExceptionPlanFailure> BuildExceptionPlan(
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
     const analysis::PhasedValueInput& input, analysis::SemanticBudget budget = {});
 [[nodiscard]] std::variant<std::uint64_t, ExceptionPlanError> VerifyExceptionPlan(

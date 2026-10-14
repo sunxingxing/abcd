@@ -89,6 +89,8 @@ struct TreeFlow {
   std::vector<std::optional<SymbolId>> catch_parameters; // ValueId indexed.
   std::vector<std::optional<SymbolId>> catch_slots; // CatchSlotId indexed.
   std::vector<std::vector<ExprId>> catch_commits; // ExceptionCopies commit order.
+  std::vector<OriginalExceptionRegion> exception_regions;
+  std::vector<analysis::InactiveExceptionRegion> inactive_regions;
   std::vector<std::optional<StmtId>> tries; // Original TryId indexed.
   // Origins of independently checked synthetic loop/transfer statements.
   // Indexed by the synthetic ControlNode suffix, not inferred from text.

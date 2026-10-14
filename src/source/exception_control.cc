@@ -52,9 +52,9 @@ void LoopEntries(ExceptionControl& mapping, const ControlPlan& plan, ControlQuot
     wrappers[loop.header.value] = loop.wrapper;
   }
   for (auto& region : mapping.regions) {
-    quota.Work();
-    if (wrappers[region.body.value]) region.body = *wrappers[region.body.value];
-    if (wrappers[region.handler.value]) region.handler = *wrappers[region.handler.value];
+    quota.Work(); if (!region) continue;
+    if (wrappers[region->body.value]) region->body = *wrappers[region->body.value];
+    if (wrappers[region->handler.value]) region->handler = *wrappers[region->handler.value];
   }
 }
 void CheckProjection(const ValueProgram& graph, ExceptionTopology& topology,
@@ -119,7 +119,7 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure> B
     auto result = std::move(topology.mapping);
     result.skeleton = std::move(skeleton);
     result.allocated_bytes = result.skeleton.allocated_bytes + result.units.capacity() * sizeof(ExceptionControlUnit) +
-        result.arcs.capacity() * sizeof(ControlArc) + result.regions.capacity() * sizeof(TryControlRegion) +
+        result.arcs.capacity() * sizeof(ControlArc) + result.regions.capacity() * sizeof(std::optional<TryControlRegion>) +
         result.inactive_phases.capacity() * sizeof(WorkBlockId);
     result.work = budget.work - quota.RemainingWork();
     return result;

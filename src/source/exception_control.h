@@ -40,7 +40,8 @@ struct ExceptionControl {
   ControlPlan skeleton;
   std::vector<ExceptionControlUnit> units;
   std::vector<ControlArc> arcs;
-  std::vector<TryControlRegion> regions;
+  // Original TryId indexed. Absence is checked against the inactive-region proof.
+  std::vector<std::optional<TryControlRegion>> regions;
   // Disconnected phases certified unreachable by original ExceptionFlow.
   // Removed Before operations retain sites but no effects/reads/definitions.
   std::vector<analysis::WorkBlockId> inactive_phases;

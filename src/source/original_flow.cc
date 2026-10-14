@@ -37,6 +37,8 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
   copy(result->values,graph.values);copy(result->uses,graph.uses);
   copy(result->blocks,graph.blocks);copy(result->edges,graph.edges);
   result->edge_controls=std::move(flow.edge_controls);
+  result->inactive_regions=std::move(flow.inactive_regions);
+  result->exception_regions=std::move(flow.exception_regions);
   copy(result->exceptional_exits,graph.exceptional_exits);copy(result->phases,graph.phases);copy(result->origins,graph.origins);
   bool causes=false;
   for(const auto& exit:graph.exceptional_exits) {
@@ -111,6 +113,62 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
     }
   }
   return result;
+}
+// Recompute the projection from retained original edges and operations on every
+// recovery proposal. Dead flags alone cannot authorize omission of a handler.
+void VerifyInactiveOriginalRegions(const OriginalFlow& original, TreeCheckBudget& budget) {
+  using namespace analysis;
+  if (original.inactive_regions.empty() && original.exception_regions.empty()) return;
+  constexpr auto error = TreeStructureError::kOwnership;
+  RequireTree(original.phases.size()==original.blocks.size()&&!original.blocks.empty(),error);
+  std::vector<std::uint8_t> reachable; std::vector<WorkBlockId> pending;
+  budget.Array(reachable,original.blocks.size()); budget.Array(pending,original.blocks.size());
+  std::size_t end=1; pending[0]={0}; reachable[0]=1;
+  for(std::size_t head=0;head<end;++head) {
+    budget.Step();const auto b=pending[head];const auto& block=original.blocks[b.value];
+    RequireTree(block.first_edge.value<=original.edges.size()&&block.edge_count<=original.edges.size()-block.first_edge.value,error);
+    for(std::size_t e=block.first_edge.value;e<block.first_edge.value+block.edge_count;++e) {
+      budget.Step();const auto& edge=original.edges[e];RequireTree(edge.source==b&&edge.target.value<reachable.size(),error);
+      if(!reachable[edge.target.value]){reachable[edge.target.value]=1;pending[end++]=edge.target;}
+    }
+  }
+  std::size_t count=0;
+  for(const auto& phase:original.phases){budget.Step();count=std::max(count,std::size_t(phase.instruction.value)+1);}
+  // A phase per instruction bounds allocation even for malformed indices.
+  RequireTree(count<=original.phases.size(),error);
+  std::vector<std::uint32_t> live,pure,throwing;
+  budget.Array(live,count+1);budget.Array(pure,count+1);budget.Array(throwing,count+1);
+  for(std::size_t b=0;b<original.phases.size();++b) {
+    budget.Step();const auto& phase=original.phases[b];
+    RequireTree(bool(reachable[b])==(phase.reachability==PhaseReachability::kReachable),error);
+    if(!reachable[b])continue;
+    const auto i=phase.instruction.value;live[i+1]=1;
+    if(phase.phase!=ExceptionPhase::kBefore)continue;
+    RequireTree(phase.operation&&phase.operation->value<original.operations.size(),error);
+    const auto& op=original.operations[phase.operation->value];
+    RequireTree(op.block==WorkBlockId{static_cast<std::uint32_t>(b)},error);
+    if(op.exceptional==ExceptionalCompletion::kImpossible)pure[i+1]=1;else throwing[i+1]=1;
+  }
+  for(std::size_t i=1;i<=count;++i){budget.Step();live[i]+=live[i-1];pure[i]+=pure[i-1];throwing[i]+=throwing[i-1];}
+  std::vector<std::uint32_t> entered;budget.Array(entered,original.exception_regions.size());
+  for(const auto& exit:original.exceptional_exits) {
+    budget.Step();if(!exit.handler)continue;
+    const auto r=exit.handler->dispatch.region.value;
+    RequireTree(r<entered.size(),error);++entered[r];
+  }
+  std::size_t inactive=0;
+  for(std::uint32_t id=0;id<original.exception_regions.size();++id) {
+    budget.Step();const auto& region=original.exception_regions[id];
+    const auto a=region.body.begin.value,z=region.body.end.value,h=region.handler.begin.value,t=region.handler.end.value;
+    RequireTree(a<z&&z<=h&&h<t&&t<=count,error);
+    if(entered[id]||live[t]!=live[h])continue;
+    RequireTree(inactive<original.inactive_regions.size(),error);
+    const auto& r=original.inactive_regions[inactive++];
+    RequireTree(r.region==TryId{id}&&r.body==region.body&&r.handler==region.handler&&
+        r.nonthrowing==pure[z]-pure[a]&&r.dispatched_elsewhere==throwing[z]-throwing[a]&&
+        r.unreachable==z-a-r.nonthrowing-r.dispatched_elsewhere,error);
+  }
+  RequireTree(inactive==original.inactive_regions.size(),error);
 }
 void RecordOriginalInput(OriginalFlow& original,const analysis::ValueOperand& operand,
     const analysis::ValueOperand& resolved,ExprId expression,

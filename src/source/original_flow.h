@@ -5,6 +5,7 @@
 #include "truth_domains.h"
 #include "cell_plan.h"
 #include "for_in_emission.h"
+#include "abcd/analysis/exception_regions.h"
 #include <memory>
 namespace abcd::source {
 struct TreeFlow;
@@ -145,12 +146,17 @@ struct OriginalInputRange {std::size_t first=0,count=0;};
 // Owned by the same immutable prepared tree/flow. A conditional input product,
 // never a certificate for an arbitrary mutated tree. Source-only initializers,
 // binding activations and recovery projections are added by the common adapter.
+struct OriginalExceptionRegion {
+  analysis::InstructionRange body, handler;
+};
 struct OriginalFlow {
   RouteInputIdentity identity;
   abc::EntityOffset method;
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;
   std::size_t statements=0, bindings=0;
+  std::vector<OriginalExceptionRegion> exception_regions;
+  std::vector<analysis::InactiveExceptionRegion> inactive_regions;
   std::vector<OriginalEnumeration> enumerations;
   std::vector<std::optional<ForInMember>> enumeration_operations, enumeration_values;
   std::vector<std::optional<std::uint32_t>> forwarded_operations, forwarded_blocks;
@@ -195,6 +201,7 @@ void RecordOriginalInput(OriginalFlow&,const analysis::ValueOperand&,
     const analysis::ValueOperand&,ExprId,std::optional<analysis::UseId>,TreeCheckBudget&);
 void IndexOriginalInputs(OriginalFlow&,TreeCheckBudget&);
 void CheckOriginalFlow(const FunctionTree&,const OriginalFlow&);
+void VerifyInactiveOriginalRegions(const OriginalFlow&, TreeCheckBudget&);
 struct OriginalResult {
   analysis::ValueId value;
   ExprId expression;

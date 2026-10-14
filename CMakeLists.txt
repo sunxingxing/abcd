@@ -512,6 +512,10 @@ if(BUILD_TESTING)
   target_link_libraries(control_decision_test PRIVATE abcd_source abcd_json)
   add_test(NAME control_decision_test COMMAND control_decision_test)
   add_executable(control_plan_test tests/unit/source/control_plan_test.cc)
+  add_executable(inactive_exception_test tests/unit/source/inactive_exception_test.cc)
+  target_link_libraries(inactive_exception_test PRIVATE abcd_source abcd_json)
+  target_include_directories(inactive_exception_test PRIVATE tests/support)
+  add_test(NAME inactive_exception_test COMMAND inactive_exception_test)
   add_executable(exception_plan_test tests/unit/source/exception_plan_test.cc)
   target_link_libraries(exception_plan_test PRIVATE abcd_source)
   target_include_directories(exception_plan_test PRIVATE tests/support)
@@ -994,6 +998,10 @@ if(BUILD_TESTING)
   target_link_libraries(module_reads_test PRIVATE abcd_source)
   add_test(NAME module_reads_test COMMAND module_reads_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME inactive_regions_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/inactive_regions.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:inactive_exception_test> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/inactive_regions)
     add_test(NAME phased_reachability_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_reachability.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>

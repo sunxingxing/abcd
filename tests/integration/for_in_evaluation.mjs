@@ -30,12 +30,13 @@ try {
     assert.equal(report.source_complete,true);assert.equal(report.source,readFileSync(join(out,complete.source),'utf8'));
     assert.equal(report.source_failure,undefined);
     // GETITERATOR now has raw semantics, but this for-of method still fails
-    // before evaluation: a retained unreachable handler has no CatchBinding.
-    // kRegion owns no instruction PC; do not retain the old acquisition PC.
+    // before evaluation at multiple active-region exits. Round 54 proved and
+    // projected the inactive acquisition handler; kRegion is no longer the
+    // first refusal. kMultipleExits owns no instruction PC.
     const driver=rows.find(r=>r.entity===42397).source_failure;
     assert.equal(driver.method,42717);assert.equal(driver.pc,undefined);
     assert.equal(driver.working_pc,undefined);
-    assert.deepEqual(driver.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:2}]);
+    assert.deepEqual(driver.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
     const blocked=JSON.parse(run(semantic,[abc,'42717','--record-source','--value-source',...flags],1));
     assert.deepEqual(blocked.source_failure,driver);
   }

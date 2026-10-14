@@ -83,7 +83,7 @@ class Planner {
           // Skeleton block IDs name projected units, never original work blocks.
           const auto& unit = exceptions_->control.units[node.block.value];
           if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
-            const auto& roots = exceptions_->control.regions[region->region.value];
+            const auto& roots = *exceptions_->control.regions[region->region.value];
             child(task.scope, CellTryScope{region->region, CellTryPart::kBody}, roots.body);
             child(task.scope, CellTryScope{region->region, CellTryPart::kHandler}, roots.handler);
             continue;

@@ -350,8 +350,14 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
         quota.Admit(aliases->allocated_bytes); quota.Step(aliases->work);
       }
     }
-    auto regions = PhaseResult<ExceptionPlan>(BuildExceptionPlan(body, imported.graph, input,
-        quota.Remaining()), Error::kRegion);
+    auto planned_regions = BuildExceptionPlan(body, imported.graph, input, quota.Remaining());
+    if (const auto* failure=std::get_if<ExceptionPlanFailure>(&planned_regions)) {
+      std::optional<abc::CodeOffset> original, working;
+      if(failure->exception_region){original=failure->exception_region->body_pc;working=failure->exception_region->working_body_pc;}
+      return PhasedControlFailure{Error::kRegion,*failure,context.Target(),original,working};
+    }
+    if(const auto* error=std::get_if<ExceptionPlanError>(&planned_regions))return PhaseError(*error,Error::kRegion);
+    auto regions=std::get<ExceptionPlan>(std::move(planned_regions));
     quota.Admit(regions.allocated_bytes); quota.Step(regions.work);
     auto controlled = BuildExceptionControl(body, imported.graph, input, regions, quota.Remaining());
     if (const auto* failure = std::get_if<ExceptionControlFailure>(&controlled))

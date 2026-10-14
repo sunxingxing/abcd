@@ -103,7 +103,7 @@ ForInEmissionView Build(const ValueProgram& g, const ExceptionPlan& regions,
   for (std::uint32_t r = 0; r < result.forwarded_regions.size(); ++r) {
     q.Step(); if (!result.forwarded_regions[r]) continue;
     const auto i = *result.forwarded_regions[r]; const auto& route = std::get<ForwardedExceptionRoute>(result.loops[i].acquisition);
-    const auto& region = control.regions[r];
+    const auto& region = *control.regions[r];
     result.continuations[region.wrapper.value] = EnumerationContinuation{region.body};
     std::optional<ControlId> at = region.body;
     while (at) {
