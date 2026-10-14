@@ -333,8 +333,8 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
       } else if (!regions && site.offset == body->instructions.front().offset) {
         const auto& failure = std::get<analysis::AwaitRegionFailure>(awaited);
         output["await_region_failure"] = {
-            {"kind", static_cast<unsigned>(failure.kind)},
-            {"pc", failure.pc.value}};
+            {"kind", static_cast<unsigned>(failure.kind)}};
+        if (failure.pc) output["await_region_failure"]["pc"] = failure.pc->value;
       }
       std::cout << output << '\n';
     }

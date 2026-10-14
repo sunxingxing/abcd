@@ -69,6 +69,11 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       result.pc = error.family_creation->location.pc;
       result.working_pc = error.family_creation->location.working_pc;
     }
+    if constexpr (std::is_same_v<T, AsyncCompletionFailure>) {
+      result.async = error.async; result.method = error.async.location.method;
+      result.pc = error.async.location.pc; result.working_pc = error.async.location.working_pc;
+      result.failure_class = Classify(error.kind);
+    }
     if constexpr (std::is_same_v<T, analysis::SemanticProofFailure>) result.internal_value = error.internal_value;
     if constexpr (std::is_same_v<T, CaptureFailure>) {
       result.capture = error.occurrence;

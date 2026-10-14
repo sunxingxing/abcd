@@ -818,10 +818,10 @@ void AsyncPrefixes(abc::ProfileId profile) {
         ResourceFailureScope::kExcluded);
     if (std::holds_alternative<abc::MethodBody>(proved) != c.admitted)
       std::cerr << "async prefix case " << (&c - cases.data()) << " admitted=" << std::holds_alternative<abc::MethodBody>(proved)
-                << " error=" << (std::holds_alternative<FunctionEmitError>(proved) ? int(std::get<FunctionEmitError>(proved)) : -1) << '\n';
+                << " error=" << (std::holds_alternative<AsyncCompletionFailure>(proved) ? int(std::get<AsyncCompletionFailure>(proved).kind) : -1) << '\n';
     test::Check(std::holds_alternative<abc::MethodBody>(proved) == c.admitted);
     if (!c.admitted) {
-      test::Check(std::get<FunctionEmitError>(proved) == FunctionEmitError::kKind);
+      test::Check(std::get<AsyncCompletionFailure>(proved).kind == FunctionEmitError::kKind);
       continue;
     }
     // The whole prefix survives, in order, ahead of the retained body.

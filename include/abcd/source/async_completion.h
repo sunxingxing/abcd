@@ -3,7 +3,7 @@
 
 #include "abcd/abc/frame_layout.h"
 #include "abcd/abc/method_body.h"
-#include "abcd/source/function_emit_error.h"
+#include "abcd/source/async_failure.h"
 #include "abcd/analysis/await_region.h"
 #include "abcd/source/source_contract.h"
 
@@ -22,7 +22,7 @@ namespace abcd::source {
 // A leading lexical allocation is retained only under an explicit exclusion
 // of VM resource-exhaustion differences. Named-scope metadata and all lexical
 // uses still require the shared source owner's independent validation.
-using AsyncCompletion = std::variant<abc::MethodBody, FunctionEmitError>;
+using AsyncCompletion = std::variant<abc::MethodBody, AsyncCompletionFailure>;
 [[nodiscard]] AsyncCompletion ProveAsyncCompletion(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     std::size_t bytes, std::vector<abc::CodeOffset>* source_pcs = nullptr,

@@ -75,7 +75,7 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
     abc::CodeOffset completion_handler, SemanticBudget budget,
     std::optional<abc::CodeOffset> implicit_exit = std::nullopt,
     std::span<const AwaitRegion> awaits = {}) {
-  const auto fail = [](AwaitCatchError kind, abc::CodeOffset pc = {}) {
+  const auto fail = [](AwaitCatchError kind, std::optional<abc::CodeOffset> pc = {}) {
     return AwaitCatchFailure{kind, pc};
   };
   if (regions.empty()) return AwaitCatchProof{};
@@ -94,8 +94,12 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
     const auto* dispatch = std::get_if<ExceptionDispatch>(&selected);
     if (!dispatch) {
       const auto& error = std::get<DispatchFailure>(selected);
+      // Legacy dispatch failures do not distinguish a missing offset from PC0
+      // for malformed bodies. Only boundary failures guarantee a real site.
+      const auto pc = error.kind == DispatchError::kInvalidBoundary
+          ? std::optional{error.offset} : std::nullopt;
       return fail(error.kind == DispatchError::kResourceLimit
-          ? AwaitCatchError::kResourceLimit : AwaitCatchError::kRegion, error.offset);
+          ? AwaitCatchError::kResourceLimit : AwaitCatchError::kRegion, pc);
     }
     const auto retain = [&](std::size_t bytes) {
       if (bytes > budget.bytes) throw std::bad_alloc{};
@@ -361,8 +365,13 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
         const auto use = uses.At(position(probe.slot.value));
         const bool unread_suffix = suffix_known && (!suffix_target || *suffix_target >= probe.handler) &&
             suffix_reads.At(position(probe.slot.value)) == FirstUse::kExit;
-        if (use != FirstUse::kWrite && use != FirstUse::kExit && !unread_suffix)
-          return fail(AwaitCatchError::kObservedRegister, probe.suspension);
+        if (use != FirstUse::kWrite && use != FirstUse::kExit && !unread_suffix) {
+          auto failure = fail(AwaitCatchError::kObservedRegister, probe.suspension);
+          failure.observation = AwaitCatchObservation{probe.handler, probe.slot,
+              use == FirstUse::kRead ? CatchInputPrefix::kRead : CatchInputPrefix::kUnprovedPaths,
+              suffix_known, !suffix_target || *suffix_target >= probe.handler};
+          return failure;
+        }
       }
       if (next_probe == probes.size()) return AwaitCatchProof{budget.work - work};
     }

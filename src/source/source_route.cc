@@ -1,3 +1,4 @@
+#include "async_failure_json.h"
 #include "internal_value_json.h"
 #include "family_creation_json.h"
 #include "exception_region_json.h"
@@ -257,6 +258,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
+    if (receipt.failure->async) failure["async"] = AsyncCompletionJson(*receipt.failure->async);
     if (receipt.failure->exception_region) failure["exception_region"] = ExceptionRegionJson(*receipt.failure->exception_region);
     if (receipt.failure->family_creation) failure["family_creation"] = FamilyCreationJson(*receipt.failure->family_creation);
     if (receipt.failure->internal_value) failure["internal_value"] = InternalValueJson(*receipt.failure->internal_value);
@@ -445,6 +447,9 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     if (!location("method", typed.method) || !location("working_pc", typed.working_pc) ||
         !location("creation_method", typed.creation_method) || !location("creation_pc", typed.creation_pc))
       return RouteReceiptError::kFailure;
+    if (const auto item = failure->find("async"); item != failure->end()) {
+      typed.async=ParseAsyncCompletion(*item);if(!typed.async)return RouteReceiptError::kFailure;
+    }
     if (const auto item = failure->find("exception_region"); item != failure->end()) {
       typed.exception_region=ParseExceptionRegionJson(*item);if(!typed.exception_region)return RouteReceiptError::kFailure;
     }

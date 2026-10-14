@@ -21,6 +21,7 @@
 #include "abcd/source/capture_occurrence.h"
 #include "abcd/source/control_failure.h"
 #include "abcd/source/exception_region_failure.h"
+#include "abcd/source/async_failure.h"
 #include "abcd/source/tree_failure.h"
 #include "abcd/source/evaluation_failure.h"
 
@@ -114,6 +115,7 @@ struct RouteFailure {
   std::optional<DeferredCellEvidence> deferred = {};
   std::optional<TreePrintFailure> printing;
   std::optional<ExceptionRegionEvidence> exception_region;
+  std::optional<AsyncCompletionEvidence> async;
   std::optional<analysis::InternalValueEvidence> internal_value;
   std::optional<FamilyCreationEvidence> family_creation;
 };

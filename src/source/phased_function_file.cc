@@ -155,8 +155,13 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
           identity.contract == SourceContract::kLanguageNumericConstructorsV1 ||
           identity.contract == SourceContract::kLanguageSourceV1 ||
           identity.contract == SourceContract::kLanguageSourceV2, Error::kIdentity);
-      auto normalized = Take<abc::MethodBody>(ProveAsyncCompletion(body, frame,
-          left.bytes, &source_pcs, &awaits, header.profile, ResourceFailureScope::kExcluded));
+      auto completion = ProveAsyncCompletion(body, frame, left.bytes, &source_pcs, &awaits,
+          header.profile, ResourceFailureScope::kExcluded);
+      if (auto* failure = std::get_if<AsyncCompletionFailure>(&completion)) {
+        failure->async.location.method = method.offset;
+        throw PhasedFileFailure{*failure};
+      }
+      auto normalized = std::get<abc::MethodBody>(std::move(completion));
       arena(normalized.instructions); arena(normalized.tries); arena(normalized.handlers);
       arena(source_pcs); arena(awaits);
       original.emplace(std::move(body)); body = std::move(normalized);

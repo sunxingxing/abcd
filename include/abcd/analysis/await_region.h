@@ -48,7 +48,7 @@ enum class AwaitRegionError {
 };
 struct AwaitRegionFailure {
   AwaitRegionError kind;
-  abc::CodeOffset pc;
+  std::optional<abc::CodeOffset> pc;
 };
 using AwaitRegions = std::variant<std::vector<AwaitRegion>, AwaitRegionFailure>;
 

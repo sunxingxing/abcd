@@ -56,10 +56,14 @@ bool TouchesRegister(const abc::BodyInstruction& instruction,
 }
 bool RebaseBranches(const abc::MethodBody& original,
                     std::span<const abc::CodeOffset> origins,
-                    abc::MethodBody& source) {
+                    abc::MethodBody& source, AsyncCompletionEvidence& evidence) {
   for (auto& site : source.instructions) {
     if (!site.branch_target) continue;
     const auto target = *site.branch_target;
+    evidence.check = AsyncCompletionCheck::kBranchRebase;
+    evidence.location.working_pc = site.offset;
+    const auto ordinal = static_cast<std::size_t>(&site - source.instructions.data());
+    evidence.location.pc = origins[ordinal]; evidence.related_pc = target;
     const auto retained = std::lower_bound(origins.begin(), origins.end(), target);
     if (retained == origins.end()) return false;
     const auto target_index = static_cast<std::size_t>(retained - origins.begin());
@@ -106,8 +110,13 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
                                      ResourceFailureScope resources) {
   using abc::Opcode;
   const auto& sites = body.instructions;
+  using Check = AsyncCompletionCheck;
+  const auto fail = [&](Check check, std::optional<std::size_t> index = {}) {
+    return AsyncCompletionFailure{check, index && *index < sites.size() ?
+        std::optional{sites[*index].offset} : std::nullopt};
+  };
   if (sites.size() < 7 || body.tries.empty() || body.handlers.empty())
-    return FunctionEmitError::kKind;
+    return fail(Check::kInput);
   std::size_t enter = 0;
   // NOPs carry no semantics; leading ones stay in the normalized prefix.
   while (enter < sites.size() && sites[enter].decoded.opcode == Opcode::kNOP) ++enter;
@@ -135,7 +144,7 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
     const auto* instruction = std::get_if<analysis::SemanticInstruction>(&lifted);
     if (!instruction || instruction->effects.exceptional != analysis::ExceptionalCompletion::kImpossible ||
         abc::GetControlTransfer(sites[enter].decoded.opcode) != abc::ControlTransfer::kFallthrough)
-      return FunctionEmitError::kKind;
+      return fail(Check::kPreludeEffects, enter);
     const auto& operation = instruction->operation;
     const auto* store = std::get_if<analysis::LexicalStore>(&operation);
     // A depth-0 store writes the fresh environment's own cell: its lexical
@@ -147,18 +156,18 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
     const bool pure = instruction->effects.normal == analysis::LanguageEffect::kNone &&
         (std::holds_alternative<analysis::NoOperation>(operation) ||
          std::holds_alternative<analysis::ScalarAssignment>(operation));
-    if (!cell && !pure) return FunctionEmitError::kKind;
+    if (!cell && !pure) return fail(Check::kPreludeOperation, enter);
     ++enter;
   }
   if (enter + 5 >= sites.size() ||
       sites[enter].decoded.operand_count != 0)
-    return FunctionEmitError::kKind;
+    return fail(Check::kEnter, enter);
   abc::RegisterId promise;
   if (!IsRegister(sites[enter + 1], Opcode::kSTA_V8, &promise) ||
       promise.value >= frame.locals)
-    return FunctionEmitError::kKind;
+    return fail(Check::kPromiseStore, enter + 1);
   for (std::size_t i = prefix_begin; i < enter; ++i)
-    if (TouchesRegister(sites[i], promise, frame.registers)) return FunctionEmitError::kKind;
+    if (TouchesRegister(sites[i], promise, frame.registers)) return fail(Check::kPromisePreludeUse, i);
   // Normalization erases ASYNCFUNCTIONENTER's accumulator definition (the
   // async object) with its `sta promise`. In the original, acc still holds
   // that object after the store; the normalized body would instead see the
@@ -182,27 +191,27 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       if (found == sites.end() || found->offset != target) return std::nullopt;
       return static_cast<std::size_t>(found - sites.begin());
     };
-    if (enter + 2 >= sites.size()) return FunctionEmitError::kKind;
+    if (enter + 2 >= sites.size()) return fail(Check::kAccumulatorFallthrough, enter + 1);
     pending.push_back(enter + 2); visited[enter + 2] = 1;
     while (!pending.empty()) {
       const auto i = pending.back(); pending.pop_back();
       const auto effect = analysis::LiftRegisterEffect(sites[i].decoded, frame.registers);
       const auto* registers = std::get_if<analysis::RegisterEffect>(&effect);
-      if (!registers) return FunctionEmitError::kKind;
+      if (!registers) return fail(Check::kAccumulatorEffect, i);
       for (std::uint8_t r = 0; r < registers->read_count; ++r)
-        if (std::holds_alternative<analysis::Accumulator>(registers->reads[r])) return FunctionEmitError::kKind;
+        if (std::holds_alternative<analysis::Accumulator>(registers->reads[r])) return fail(Check::kAccumulatorRead, i);
       if (registers->write && std::holds_alternative<analysis::Accumulator>(*registers->write)) continue;
       const auto control = abc::GetControlTransfer(sites[i].decoded.opcode);
-      if (!control || *control == abc::ControlTransfer::kSuspend) return FunctionEmitError::kKind;
+      if (!control || *control == abc::ControlTransfer::kSuspend) return fail(Check::kAccumulatorControl, i);
       std::array<std::optional<std::size_t>, 2> next{};
       if (*control == abc::ControlTransfer::kFallthrough || *control == abc::ControlTransfer::kBranch) {
-        if (i + 1 >= sites.size()) return FunctionEmitError::kKind;
+        if (i + 1 >= sites.size()) return fail(Check::kAccumulatorFallthrough, i);
         next[0] = i + 1;
       }
       if (*control == abc::ControlTransfer::kJump || *control == abc::ControlTransfer::kBranch) {
-        if (!sites[i].branch_target) return FunctionEmitError::kKind;
+        if (!sites[i].branch_target) return fail(Check::kAccumulatorTarget, i);
         next[1] = index_of(*sites[i].branch_target);
-        if (!next[1]) return FunctionEmitError::kKind;
+        if (!next[1]) return fail(Check::kAccumulatorTarget, i);
       }
       for (const auto successor : next)
         if (successor && !visited[*successor]) { visited[*successor] = 1; pending.push_back(*successor); }
@@ -211,17 +220,14 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   } catch (const std::length_error&) { return FunctionEmitError::kResourceLimit; }
   const auto handler = sites.size() - 3;
   abc::RegisterId caught, resolved, rejected;
-  if (handler <= enter + 4 ||
-      !IsRegister(sites[handler], Opcode::kSTA_V8, &caught) ||
-      caught == promise || caught.value >= frame.locals ||
-      !IsRegister(sites[handler + 1], Opcode::kASYNCFUNCTIONREJECT_V8,
-                  &rejected) ||
-      !IsReturn(sites[handler + 2]) ||
-      !IsRegister(sites[handler - 2], Opcode::kASYNCFUNCTIONRESOLVE_V8,
-                  &resolved) ||
-      !IsReturn(sites[handler - 1]) || resolved != promise ||
-      rejected != promise)
-    return FunctionEmitError::kKind;
+  if (handler <= enter + 4) return fail(Check::kInput, handler);
+  if (!IsRegister(sites[handler], Opcode::kSTA_V8, &caught)) return fail(Check::kCatchStore, handler);
+  if (caught == promise || caught.value >= frame.locals) return fail(Check::kCatchRegister, handler);
+  if (!IsRegister(sites[handler + 1], Opcode::kASYNCFUNCTIONREJECT_V8, &rejected)) return fail(Check::kReject, handler + 1);
+  if (!IsReturn(sites[handler + 2])) return fail(Check::kRejectReturn, handler + 2);
+  if (!IsRegister(sites[handler - 2], Opcode::kASYNCFUNCTIONRESOLVE_V8, &resolved)) return fail(Check::kResolve, handler - 2);
+  if (!IsReturn(sites[handler - 1])) return fail(Check::kResolveReturn, handler - 1);
+  if (resolved != promise || rejected != promise) return fail(Check::kPromiseIdentity, handler);
   auto retained = handler - 3;
   const auto site_bytes = sizeof(abc::BodyInstruction) + sizeof(abc::CodeOffset);
   if (retained > bytes / site_bytes)
@@ -230,7 +236,7 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       std::uint64_t(sites.back().offset.value) + sites.back().decoded.size;
   if (!HasAsyncCompletionCatch(body, sites[enter + 2].offset,
                                sites[handler].offset, code_end))
-    return FunctionEmitError::kKind;
+    return fail(Check::kCompletionCatch, handler);
   try {
   std::vector<analysis::AwaitRegion> regions;
   const bool has_await = awaits && std::any_of(sites.begin(), sites.end(),
@@ -242,9 +248,11 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       });
   if (has_await) {
     auto found = analysis::FindAwaitRegions(body, profile, frame.registers, bytes);
-    if (const auto* failure = std::get_if<analysis::AwaitRegionFailure>(&found))
-      return failure->kind == analysis::AwaitRegionError::kResourceLimit
-          ? FunctionEmitError::kResourceLimit : FunctionEmitError::kKind;
+    if (const auto* failure = std::get_if<analysis::AwaitRegionFailure>(&found)) {
+      AsyncCompletionFailure result{Check::kAwaitRegion, failure->pc}; result.cause = failure->kind;
+      if (failure->kind == analysis::AwaitRegionError::kResourceLimit) result.kind = FunctionEmitError::kResourceLimit;
+      return result;
+    }
     regions = std::get<std::vector<analysis::AwaitRegion>>(std::move(found));
   }
   const auto region_bytes = regions.capacity() * sizeof(analysis::AwaitRegion);
@@ -252,16 +260,19 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   bytes -= region_bytes;
   const auto catch_inputs = analysis::ProveAwaitCatchInputs(
       body, regions, profile, frame.registers, sites[handler].offset, {bytes});
-  if (const auto* failure = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs))
-    return failure->kind == analysis::AwaitCatchError::kResourceLimit
-        ? FunctionEmitError::kResourceLimit : FunctionEmitError::kKind;
+  if (const auto* failure = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs)) {
+    AsyncCompletionFailure result{Check::kCatchInput, failure->pc}; result.cause = failure->kind;
+    result.async.catch_input = failure->observation;
+    if (failure->kind == analysis::AwaitCatchError::kResourceLimit) result.kind = FunctionEmitError::kResourceLimit;
+    return result;
+  }
   std::size_t next_region = 0;
   for (std::size_t i = enter + 2; i < handler - 2; ++i) {
     const auto& site = sites[i];
     if (next_region < regions.size() && site.offset == regions[next_region].await) {
       const auto& region = regions[next_region++];
-      if (region.state != promise || region.continuation >= sites[handler - 2].offset)
-        return FunctionEmitError::kKind;
+      if (region.state != promise) return fail(Check::kAwaitState, i);
+      if (region.continuation >= sites[handler - 2].offset) return fail(Check::kAwaitBounds, i);
       while (i + 1 < handler - 2 && sites[i + 1].offset < region.continuation) {
         ++i;
         if (sites[i].offset != region.result_store &&
@@ -272,28 +283,28 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
     }
     abc::RegisterId settled;
     if (IsRegister(site, Opcode::kASYNCFUNCTIONRESOLVE_V8, &settled)) {
-      if (settled != promise || i + 1 >= handler - 2 || !IsReturn(sites[i + 1]))
-        return FunctionEmitError::kKind;
+      if (settled != promise) return fail(Check::kResolveIdentity, i);
+      if (i + 1 >= handler - 2 || !IsReturn(sites[i + 1])) return fail(Check::kResolveSuccessor, i);
       --retained;
       continue;
     }
     const auto control = abc::GetControlTransfer(site.decoded.opcode);
     if (!control || *control == abc::ControlTransfer::kSuspend)
-      return FunctionEmitError::kKind;
+      return fail(Check::kBodyControl, i);
     if (*control == abc::ControlTransfer::kReturn) {
       if (!IsReturn(site) || i == enter + 2 ||
           !IsRegister(sites[i - 1], Opcode::kASYNCFUNCTIONRESOLVE_V8, &settled) ||
           settled != promise)
-        return FunctionEmitError::kKind;
+        return fail(Check::kReturnProtocol, i);
     }
     if (site.branch_target &&
         (*site.branch_target < sites[enter + 2].offset ||
          *site.branch_target > sites[handler - 1].offset))
-      return FunctionEmitError::kKind;
+      return fail(Check::kBranchBounds, i);
     if (TouchesRegister(site, promise, frame.registers))
-      return FunctionEmitError::kKind;
+      return fail(Check::kPromiseUse, i);
   }
-    if (next_region != regions.size()) return FunctionEmitError::kKind;
+    if (next_region != regions.size()) return fail(Check::kAwaitCoverage);
     if (regions.size() > bytes / sizeof(analysis::AwaitSite))
       return FunctionEmitError::kResourceLimit;
     std::vector<analysis::AwaitSite> await_sites;
@@ -349,13 +360,19 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       site.offset = abc::CodeOffset{next_pc};
       next_pc += site.decoded.size;
     }
-    if (!RebaseBranches(body, origins, source)) return FunctionEmitError::kKind;
+    AsyncCompletionEvidence rebasing;
+    if (!RebaseBranches(body, origins, source, rebasing)) {
+      auto failure = fail(Check::kBranchRebase); failure.async = rebasing; return failure;
+    }
     const auto retained_bytes = source.instructions.capacity() *
         sizeof(abc::BodyInstruction) + origins.capacity() * sizeof(abc::CodeOffset);
     if (retained_bytes > bytes) return FunctionEmitError::kResourceLimit;
-    if (const auto failure = RebaseAsyncHandlers(body, origins, source,
-                                                 bytes - retained_bytes))
-      return *failure;
+    if (const auto error = RebaseAsyncHandlers(body, origins, source,
+                                                 bytes - retained_bytes, &rebasing)) {
+      AsyncCompletionFailure failure{*error};
+      if (*error == FunctionEmitError::kKind) failure.async = rebasing;
+      return failure;
+    }
     if (source_pcs) *source_pcs = std::move(origins);
     if (awaits) *awaits = std::move(await_sites);
     return source;

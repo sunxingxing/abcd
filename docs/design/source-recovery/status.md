@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-10-14。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-15。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
@@ -11,6 +11,17 @@
 - 不按文件数、提交数或 complete 数量宣布完成；通用性以冻结留出集为准，见
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
+
+## Round 69：async 归一化诊断（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；520/620、560/620 不变，0 状态变化，0 文本变化；cli/corpus/failure 扫描 63/64，只有既有的 family_source_cli_test 失败。
+
+- 基线 `40f0d0c1`。新增固定大小 `AsyncCompletionFailure` / `AsyncCompletionCheck`，保留既有错误枚举和资源分类；原始/工作 PC 分开，真实 PC0 与缺失位置分开。下层 AwaitRegion/AwaitCatch 原因、handler/register 与路径未证明证据进入 receipt、manifest 两条 JSON 路径和 `abc_semantic`。见 [四目标、根因和停止边界](round-69-async-normalization.md)。
+- 四例拆成 3 个 catch-input 未证明路径（m7950@3459 H3537/v25、m23306@99 H131/v13、m22136@75 H348/v11），以及 1 个 promise 创建前闭包实例化（m58418@18）。前三例不等于已证明实际泄漏；需要原始异常 CFG 上的输入定义/提交证明。后一例需要 private instantiation/escape 证明，不能扩展 prelude 操作白名单。按本轮停止条件仅交付步骤 1；没有新 complete，没有 Node 语义修复声明。
+
+
+- 最终完整构建通过；固定集串行 **65/65**；新增及直接相关 **4/4**；`async|await|coroutine|control_composition|source_route|tree_failure|family_creation_failure` 定向 **25/26**（仅已登记的 async_semantics_test，bad_variant_access）；`cli|corpus|failure|_receipt|manifest` 扫描 **63/64**（仅已登记的 family_source_cli_test，owner/origin arena）。没有更新或弱化既有测试期望。命令、返回码和完整日志见 `/private/tmp/r69/acceptance.json`。
+- 对 explore68/explore68s 的最终逐 record 比较：**520/620、560/620** 不变，0 状态变化，0 complete/partial 文本漂移（含 o32/49868）。每组仅四目标的诊断条目变化，其余 record 条目相同。`/private/tmp/r69/final-cohort.log` 和 `/private/tmp/r69/final-cohort/` 保留证据。没有新输出需要 node --check。
+- 新测试覆盖实际 PC0/无位置预算失败、try/handler/branch 原始与工作坐标、两条 JSON 路径、所有 36 个 check 的 envelope round-trip、真实四 ABC × 两契约 CLI 一致性。200/201/400/800 的精确 byte 边界为 29896/30044/59496/118696，低一字节保持资源拒绝。只读复核发现的缺失位置误报 PC0 已修正并测试。未跑留出集、全套测试或 RSS 基准；未 commit/push/stash。
 
 ## Round 68：正常 class-creation 路径的 Guarded activation（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 516 → **520/620**，`--language-source` 556 → **560/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 62/63，只有既有的 family_source_cli_test 失败。

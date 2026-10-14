@@ -21,6 +21,7 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     std::visit([&](const auto& nested) { CollectFailureCauses(nested, out); }, error);
   } else {
     if constexpr (requires { error.kind; }) CollectFailureCauses(error.kind, out);
+    if constexpr (std::is_same_v<T, AsyncCompletionFailure>) CollectFailureCauses(error.async.check, out);
     if constexpr (requires { error.cause; }) CollectFailureCauses(error.cause, out);
     else if constexpr (requires { error.error; }) CollectFailureCauses(error.error, out);
     else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);

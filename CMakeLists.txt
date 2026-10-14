@@ -2660,6 +2660,9 @@ if(BUILD_TESTING)
     add_executable(class_omissions_test tests/unit/source/class_omissions_test.cc tools/record_failure_json.cc)
     target_link_libraries(class_omissions_test PRIVATE abcd_source abcd_json)
     add_test(NAME class_omissions_test COMMAND class_omissions_test)
+    add_executable(async_failure_test tests/unit/source/async_failure_test.cc tools/record_failure_json.cc)
+    target_link_libraries(async_failure_test PRIVATE abcd_source abcd_json)
+    add_test(NAME async_failure_test COMMAND async_failure_test)
     add_executable(family_creation_failure_test tests/unit/source/family_creation_failure_test.cc tools/record_failure_json.cc)
     target_link_libraries(family_creation_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME family_creation_failure_test COMMAND family_creation_failure_test)
@@ -2679,6 +2682,10 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/creator_classes.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes/member.abc)
+      add_test(NAME async_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_failure.mjs
+        $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
+        ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects)
       add_test(NAME family_creation_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/family_creation_failure.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

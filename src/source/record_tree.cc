@@ -66,6 +66,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         failure.family_creation = detail.family_creation;
         failure.call_reference = detail.call_reference;
         failure.exception_region = detail.exception_region;
+        failure.async = detail.async;
         failure.evaluation = detail.evaluation;
         failure.internal_value = detail.internal_value;
         failure.tree = detail.tree; failure.deferred = detail.deferred;

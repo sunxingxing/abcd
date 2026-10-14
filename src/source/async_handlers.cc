@@ -48,14 +48,20 @@ bool HasAsyncCompletionCatch(const abc::MethodBody& body,
 
 std::optional<FunctionEmitError> RebaseAsyncHandlers(
     const abc::MethodBody& original, std::span<const abc::CodeOffset> origins,
-    abc::MethodBody& source, std::size_t bytes) {
+    abc::MethodBody& source, std::size_t bytes, AsyncCompletionEvidence* evidence) {
+  const auto failure = [&](AsyncCompletionCheck check, std::optional<abc::CodeOffset> pc = {},
+      std::optional<abc::CodeOffset> working_pc = {}) {
+    if(evidence) { *evidence = {}; evidence->check = check;
+      evidence->location.pc = pc; evidence->location.working_pc = working_pc; }
+    return FunctionEmitError::kKind;
+  };
   if (original.tries.empty() || original.handlers.empty() ||
       source.instructions.empty() || origins.size() != source.instructions.size())
-    return FunctionEmitError::kKind;
+    return failure(AsyncCompletionCheck::kHandlerInput);
   const auto source_end = std::uint64_t(source.instructions.back().offset.value) +
                           source.instructions.back().decoded.size;
   if (source_end > std::numeric_limits<std::uint32_t>::max())
-    return FunctionEmitError::kKind;
+    return failure(AsyncCompletionCheck::kHandlerRange, origins.back(), source.instructions.back().offset);
   const auto boundary = [&](std::uint64_t pc) -> std::optional<abc::CodeOffset> {
     if (pc == original.handlers.back().offset.value)
       return abc::CodeOffset{static_cast<std::uint32_t>(source_end)};
@@ -93,7 +99,7 @@ std::optional<FunctionEmitError> RebaseAsyncHandlers(
     auto region = original.tries[i];
     const auto begin = boundary(region.offset.value);
     const auto end = boundary(std::uint64_t(region.offset.value) + region.length);
-    if (!begin || !end || *end <= *begin) return FunctionEmitError::kKind;
+    if (!begin || !end || *end <= *begin) return failure(AsyncCompletionCheck::kTryBoundary, region.offset, begin);
     region.offset = *begin;
     region.length = end->value - begin->value;
     source.tries.push_back(region);
@@ -102,7 +108,7 @@ std::optional<FunctionEmitError> RebaseAsyncHandlers(
     auto handler = original.handlers[i];
     const auto begin = boundary(handler.offset.value);
     const auto end = boundary(std::uint64_t(handler.offset.value) + handler.length);
-    if (!begin || !end || *end < *begin) return FunctionEmitError::kKind;
+    if (!begin || !end || *end < *begin) return failure(AsyncCompletionCheck::kHandlerBoundary, handler.offset, begin);
     handler.offset = *begin;
     handler.length = end->value - begin->value;
     source.handlers.push_back(handler);

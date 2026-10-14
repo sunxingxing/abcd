@@ -6,9 +6,18 @@
 
 namespace abcd::analysis {
 enum class AwaitCatchError { kRegion, kObservedRegister, kResourceLimit };
+enum class CatchInputPrefix : std::uint8_t { kUnprovedPaths, kRead };
+struct AwaitCatchObservation {
+  abc::CodeOffset handler;
+  abc::RegisterId slot;
+  CatchInputPrefix prefix;
+  bool suffix_known, suffix_confined;
+  bool operator==(const AwaitCatchObservation&) const = default;
+};
 struct AwaitCatchFailure {
   AwaitCatchError kind;
-  abc::CodeOffset pc;
+  std::optional<abc::CodeOffset> pc;
+  std::optional<AwaitCatchObservation> observation;
 };
 struct AwaitCatchProof {
   std::uint64_t work_units = 0;

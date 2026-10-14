@@ -5,7 +5,7 @@
 #include <span>
 
 #include "abcd/abc/method_body.h"
-#include "abcd/source/function_emit_error.h"
+#include "abcd/source/async_failure.h"
 
 namespace abcd::source {
 // The completion region/handler must be last in file order. Earlier regions
@@ -22,6 +22,6 @@ bool HasAsyncCompletionCatch(const abc::MethodBody& body,
 // handler entry maps to the new code end, never to a user instruction.
 std::optional<FunctionEmitError> RebaseAsyncHandlers(
     const abc::MethodBody& original, std::span<const abc::CodeOffset> origins,
-    abc::MethodBody& source, std::size_t bytes);
+    abc::MethodBody& source, std::size_t bytes, AsyncCompletionEvidence* evidence = nullptr);
 }  // namespace abcd::source
 #endif
