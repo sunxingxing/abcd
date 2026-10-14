@@ -637,6 +637,9 @@ if(BUILD_TESTING)
   add_executable(selection_consumer_test tests/unit/source/selection_consumer_test.cc)
   target_link_libraries(selection_consumer_test PRIVATE abcd_source abcd_json)
   add_test(NAME selection_consumer_test COMMAND selection_consumer_test)
+  add_executable(logical_coverage_test tests/unit/source/logical_coverage_test.cc)
+  target_link_libraries(logical_coverage_test PRIVATE abcd_source abcd_json)
+  add_test(NAME logical_coverage_test COMMAND logical_coverage_test)
   add_executable(logical_regions_test tests/unit/source/logical_regions_test.cc)
   target_link_libraries(logical_regions_test PRIVATE abcd_source abcd_json)
   add_test(NAME logical_regions_test COMMAND logical_regions_test)
@@ -1459,6 +1462,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/snapshot_candidates)
     add_test(NAME eager_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/eager_snapshot.mjs $<TARGET_FILE:eager_snapshot_test>)
+    add_test(NAME logical_coverage_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_coverage.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/logical_coverage)
     add_test(NAME logical_regions_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_regions.mjs $<TARGET_FILE:logical_regions_test>)
     add_test(NAME decision_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

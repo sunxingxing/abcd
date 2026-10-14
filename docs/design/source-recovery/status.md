@@ -12,6 +12,17 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 61：LogicalCoverage（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 500 → **501/620**，`--language-source` 537 → **539/620**（assertClose、GridLayout）；0 回退，0 文本漂移；cli/corpus/failure 扫描 51/52，只有既有的 family_source_cli_test 失败。
+
+- 基线 `94e298d8`，证据先行：o32/28894 m29074 Op65/PC174 → Op101/PC258（Use111），o7/13863 m14290 Op201/PC508 → Op245/PC633（Use276），均为 `kConsumedEvent`：已登记 `kLogicalValue`，但消费目标属于 LiteralPlan 的 `kInitializer`，普通 Domain 不遍历其输入。不是 Round 46 的 predicate/keep-edge 联合义务。临时插桩已全部撤回。
+- 固定大小 `LogicalCoverageEvidence` 区分 ValueMap / RouteMember / ForwardedRegistration / ConsumedEvent，保留实际位置、consumer、登记与覆盖状态，贯通 route/record-entry/JSON。逆序构建只有在所有选择的真实输入消费均通过区间证明后才提交 route 及成员；不完整候选保留原 phi/临时表示。正序验证器仍独立重算；无 TreeFlow、控制、声明、literal 准入或资源上限改动。详见 [selection-consumers.md](selection-consumers.md#atomic-route-coverage-round-61)。
+- 完整构建 `cmake --build build/regression -j 6 -- -k` 成功；固定集串行 **65/65**；新测试加 JSON 通路 **3/3**；`logical|evaluation|selection|decision` 定向 **52/54**，仅既有 `phased_arm_selection_source_test`、`decision_snapshots_source_test` 失败；`cli|corpus|failure|_receipt|manifest` 扫查 **50/51**，仅既有 `family_source_cli_test` 失败。未改这些既有失败断言。
+- 新增 `logical_coverage_test`、`logical_coverage_cli_test`：四类 mismatch 变异、部分 route 保留/终止、copy/寄存器/拆块、200/201/400/800 和精确 byte/work 边界；真实 es2abc fixture **112** 次 Node 差分、**10** 个变异检出。规模测试最小 scratch 预算为 3,988,312 / 4,008,235 / 7,972,912 / 15,942,112 bytes，work 为 1,777,364 / 1,786,243 / 3,566,587 / 7,158,200。
+- 两组 exploration 对 explore60/explore60s：原 flags **500 → 501/620**，`--language-source` **537 → 539/620**；**0 状态回退、0 已完成文本漂移**，仅两个目标的 complete 增益产生诊断变化。assertClose o32/28894 在两组 flags 下 complete；GridLayout o7/13863 只在 source 下 complete，旧 flags 的 `DerivedProjectionError=1`（m14399，无 PC）保持不变。新完整输出全部 `node --check` 通过。
+- `evaluation_failure.mjs` 的两个旧拒绝期望改为严格 complete 和 manifest/abc_semantic 完整源码一致性；其他四个后续拒绝期望不变。
+- 证据：`/private/tmp/r61-evidence-o32/manifest.json`、`r61-evidence-o7/manifest.json`（修复前的类型化证据）；`r61-build-final.log`、`r61-fixed.log`、`r61-new-tests-final.log`、`r61-targeted.log`、`r61-sweep.log`、`r61-cohort.log`；导出在 `/private/tmp/r61-cohort/`。未运行留出集、全套测试或 RSS 基准；for-of 继续暂停。
+
 ## Round 60：DecisionEdgeCopies（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 498 → **500/620**，`--language-source` 535 → **537/620**（ScanSize、Filter；Filter 含三个原生 for-in，`node --check` 通过）；0 回退，0 文本漂移；cli/corpus/failure 扫描 50/51，只有既有的 family_source_cli_test 失败。
 

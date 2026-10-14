@@ -24,6 +24,14 @@ inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
     if (c.consumer) item["consumer"] = static_cast<unsigned>(*c.consumer);
     j["snapshot_candidate"] = std::move(item);
   }
+  if (v.logical_coverage) {
+    const auto& c = *v.logical_coverage;
+    nlohmann::json item{{"check", static_cast<unsigned>(c.check)}, {"registered", c.registered}, {"covered", c.covered}};
+    if (c.branch) item["branch"] = c.branch->value;
+    if (c.route_entry) item["route_entry"] = c.route_entry->value;
+    if (c.route_exit) item["route_exit"] = c.route_exit->value;
+    j["logical_coverage"] = std::move(item);
+  }
   if (v.use) j["use"] = v.use->value;
   if (v.value) j["value"] = v.value->value;
   if (v.selection_exit) j["selection_exit"] = static_cast<unsigned>(*v.selection_exit);
@@ -59,6 +67,17 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
     if (c.contains("producer")) { if (!FailureNumber(c,"producer",n) || n > static_cast<unsigned>(EvaluationKind::kForInEvent)) return {}; evidence.producer = static_cast<EvaluationKind>(n); }
     if (c.contains("consumer")) { if (!FailureNumber(c,"consumer",n) || n > static_cast<unsigned>(EvaluationKind::kForInEvent)) return {}; evidence.consumer = static_cast<EvaluationKind>(n); }
     v.snapshot_candidate = evidence;
+  }
+  if (j.contains("logical_coverage")) {
+    const auto& c = j["logical_coverage"]; LogicalCoverageEvidence evidence;
+    if (!c.is_object() || !FailureNumber(c,"check",n) || n > static_cast<unsigned>(LogicalCoverageCheck::kConsumedEvent) ||
+        !c.contains("registered") || !c["registered"].is_boolean() ||
+        !c.contains("covered") || !c["covered"].is_boolean()) return {};
+    evidence.check = static_cast<LogicalCoverageCheck>(n);
+    evidence.registered = c["registered"].get<bool>(); evidence.covered = c["covered"].get<bool>();
+    if (!FailureOptionalId(c,"branch",evidence.branch) || !FailureOptionalId(c,"route_entry",evidence.route_entry) ||
+        !FailureOptionalId(c,"route_exit",evidence.route_exit)) return {};
+    v.logical_coverage = evidence;
   }
   if (!FailureOptionalId(j,"use",v.use) || !FailureOptionalId(j,"value",v.value) ||
       !FailureOptionalId(j,"selection_edge",v.selection_edge) || !FailureOptionalId(j,"expected_consumer",v.expected_consumer) || !FailureOptionalId(j,"actual_consumer",v.actual_consumer)) return {};

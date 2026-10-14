@@ -31,11 +31,21 @@ struct SnapshotCandidateEvidence {
   std::optional<EvaluationKind> producer, consumer;
   bool operator==(const SnapshotCandidateEvidence&) const = default;
 };
+enum class LogicalCoverageCheck : std::uint8_t {
+  kValueMap, kRouteMember, kForwardedRegistration, kConsumedEvent
+};
+struct LogicalCoverageEvidence {
+  LogicalCoverageCheck check = LogicalCoverageCheck::kValueMap;
+  std::optional<analysis::OpId> branch, route_entry, route_exit;
+  bool registered = false, covered = false;
+  bool operator==(const LogicalCoverageEvidence&) const = default;
+};
 struct EvaluationEvidence {
   EvaluationObligation obligation = EvaluationObligation::kPlan;
   TreeLocation location;
   std::optional<ForInFailure> for_in;
   std::optional<SnapshotCandidateEvidence> snapshot_candidate;
+  std::optional<LogicalCoverageEvidence> logical_coverage;
   std::optional<analysis::UseId> use, expected_consumer, actual_consumer;
   std::optional<analysis::ValueId> value;
   std::optional<SelectionExitReason> selection_exit;

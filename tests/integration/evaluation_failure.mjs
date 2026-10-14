@@ -7,13 +7,13 @@ import {tmpdir} from 'node:os';
 const [semantic,structure,root]=process.argv.slice(2);
 const cases=[
  ['UI/CalendarViewSwitch',27642,27869,276,113,4,'complete'],
- ['DocsSample/ArkUISample/DynamicLayout',13863,14290,508,201,17],
+ ['DocsSample/ArkUISample/DynamicLayout',13863,14290,508,201,17,'complete'],
  ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket',22901,24302,212,93,4,'reference'],
  ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket',38531,39900,212,93,4,'reference'],
  ['DocsSample/Media/AVPlayer/AVPlayerArkTSSubtitle',4775,5424,58,28,4,'complete'],
  ['DocsSample/InputMethod/KikaInputMethod',10284,11969,null,null,3,'decision'],
  ['Solutions/InputMethod/KikaInputMethod',10155,11285,null,null,3,'decision'],
- ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo',28894,29074,174,65,17],
+ ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo',28894,29074,174,65,17,'complete'],
  ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo',41871,42137,26,13,4,'complete'],
 ];
 const run=(tool,args)=>{const p=spawnSync(tool,args,{encoding:'utf8',timeout:120000,maxBuffer:32*1024*1024});assert.ifError(p.error);assert.equal(p.signal,null);return p;};
@@ -28,6 +28,8 @@ try{
   // Preserve exact next-stage expectations. Round 48 already completed the
   // AVPlayer print case (confirmed in explore57/s); Round 59 exposes the two
   // Kika decision-prefix refusals without inventing a PC for their blocks.
+  // Round 61 completes both orphan logical-route cases; require full source
+  // equality across the manifest and semantic CLI, not merely a changed leaf.
   if(expected==='complete') {
    assert.equal(row.source_status,0);assert.equal(p.status,0);assert.equal(report.source_complete,true);
    assert.equal(report.record,record);assert.equal(report.source,readFileSync(join(dest,row.source),'utf8'));
@@ -53,5 +55,5 @@ try{
   const instructions=run(semantic,[abc,String(method),'--instructions']);assert.equal(instructions.status,0);
   assert.ok(instructions.stdout.trim().split('\n').map(JSON.parse).some(i=>i.pc===pc));
  }
- console.log('evaluation_failure_cli_test: 2 evaluation refusals, 3 complete records and 4 next-stage refusals agree across publication paths');
+ console.log('evaluation_failure_cli_test: 5 complete records and 4 next-stage refusals agree across publication paths');
 }finally{rmSync(dir,{recursive:true,force:true});}

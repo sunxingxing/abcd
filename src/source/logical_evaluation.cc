@@ -520,7 +520,7 @@ class Domain {
     for (const auto owner : chain_) index_.owners[owner.value] = 0;
   }
   bool Build(std::vector<std::pair<OpId, UseId>>& selected) {
-    std::size_t serial = 0, definition = 0, objects_consumed = 0;
+    std::size_t serial = 0, definition = 0, objects_consumed = 0, selections_consumed = 0;
     for (std::size_t b = 0; b < index_.order.size(); ++b) {
       const auto& range = Block(b);
       for (auto j = Start(b); j < Count(b); ++j) {
@@ -550,12 +550,19 @@ class Domain {
           Require(interval.count <= expected); expected -= interval.count; intervals_[id.value].count += interval.count;
           if (candidate && !base && !literal) selected.emplace_back(*producer, use);
           if (literal) ++objects_consumed;
+          if (logical) ++selections_consumed;
         }
         if (field) { intervals_[selections_.fields[id.value]->value] = intervals_[id.value]; ++definition; }
         serial += count;
       }
     }
-    return !object_ || (objects_consumed == object_->allocations.size() && definition == object_->definitions.size());
+    // Route registration and operand movement commit together. Discovering a
+    // consumer does not prove that this domain owns its inputs (a literal may
+    // already own them). Each unique selection occurrence must actually pass
+    // the reverse interval proof before any member is published. The forward
+    // verifier independently accounts for those same occurrences.
+    return selections_consumed == route_.size() &&
+        (!object_ || (objects_consumed == object_->allocations.size() && definition == object_->definitions.size()));
   }
   void Verify(std::vector<std::uint8_t>& consumed) {
     std::size_t serial = 0, definition = 0;
@@ -874,6 +881,12 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
     }
     for (const auto* selected_region : route) {
       budget.Step(); const auto& placement = plan.operations[selected_region->branch.value];
+      witness = EvaluationAt(graph, plan, selected_region->branch, EvaluationObligation::kLogicalCoverage);
+      witness.value = selected_region->merged;
+      witness.expected_consumer = index.consumers[selected_region->branch.value].InlineUse();
+      witness.logical_coverage = LogicalCoverageEvidence{LogicalCoverageCheck::kRouteMember,
+          selected_region->branch, route.front()->branch, route.back()->branch,
+          plan.logical_values[selected_region->merged.value].has_value(), values[selected_region->merged.value] != 0};
       Require(plan.logical_values[selected_region->merged.value] == selected_region->branch &&
           placement.kind == EvaluationKind::kLogicalValue && placement.consumer == index.consumers[selected_region->branch.value].InlineUse() && !placement.temporary);
       values[selected_region->merged.value] = 1;
@@ -889,6 +902,10 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
   for (const auto& region : regions) {
     budget.Step(); if (!region.forwarded) continue;
     const auto& placement = plan.operations[region.branch.value];
+    witness = EvaluationAt(graph, plan, region.branch, EvaluationObligation::kLogicalCoverage);
+    witness.value = region.merged; witness.expected_consumer = region.forwarded;
+    witness.logical_coverage = LogicalCoverageEvidence{LogicalCoverageCheck::kForwardedRegistration,
+        region.branch, {}, {}, plan.logical_values[region.merged.value].has_value(), values[region.merged.value] != 0};
     Require(region.parent && region.complete_phi && !values[region.merged.value] && !consumed[region.branch.value] &&
         plan.logical_values[region.merged.value] == region.branch && placement.kind == EvaluationKind::kLogicalValue &&
         placement.consumer == region.forwarded && !placement.temporary);
@@ -898,11 +915,15 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
     budget.Step(); witness = {}; witness.obligation = EvaluationObligation::kLogicalCoverage;
     if (plan.logical_values[i]) witness = EvaluationAt(graph, plan, *plan.logical_values[i], EvaluationObligation::kLogicalCoverage);
     witness.value = ValueId{static_cast<std::uint32_t>(i)};
+    witness.logical_coverage = LogicalCoverageEvidence{LogicalCoverageCheck::kValueMap,
+        plan.logical_values[i], {}, {}, plan.logical_values[i].has_value(), values[i] != 0};
     Require(plan.logical_values[i].has_value() == (values[i] != 0));
   }
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step();
     witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kLogicalCoverage);
+    witness.logical_coverage = LogicalCoverageEvidence{LogicalCoverageCheck::kConsumedEvent,
+        {}, {}, {}, true, consumed[i] != 0};
     if (!plan.logical_objects.empty() && plan.logical_objects[i]) {
       Require(objects[i] && consumed[i] && plan.logical_objects[i]->value < graph.ops.size() && consumed[plan.logical_objects[i]->value]);
     }

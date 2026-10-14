@@ -115,3 +115,51 @@ ran 48 tests: 46 passed; `phased_arm_selection_source_test` and
 failures (see status.md). They were not changed. The updated
 `evaluation_failure_cli_test` passed both its isolated rerun and this final
 48-test run. No holdout, full test suite or RSS benchmark was run.
+
+## Atomic route coverage (Round 61)
+
+Diagnostic-first investigation at `94e298d8` found the same local mismatch in
+o32/28894 m29074 (Op65/PC174 -> Op101/PC258, Use111) and o7/13863 m14290
+(Op201/PC508 -> Op245/PC633, Use276). Both registered the selected phi as
+`kLogicalValue`, but failed the final consumed-event check. The target use is
+owned by `kInitializer` in the existing literal plan. A non-object Domain does
+not traverse that initializer's inputs; nevertheless its previous Build result
+registered the route. The independently reconstructed route was identical;
+there was no predicate/keep-edge joint obligation or exception protocol.
+
+`LogicalCoverageEvidence` now distinguishes ValueMap, RouteMember,
+ForwardedRegistration and ConsumedEvent, with fixed-size optional branch/route
+IDs and actual registration/coverage state. Existing EvaluationError values,
+resource classes, PC provenance and both publication paths are preserved.
+
+The reverse builder counts actual selection occurrences that pass its interval
+proof. It may commit the route and its moved members only after every route
+selection is consumed. The single-use index and disjoint block traversal ensure
+each can be counted at most once. A failed candidate leaves the existing
+phi/temporary/literal representation intact; the existing continuation-boundary
+rule remains in force. The forward verifier still recomputes coverage from the
+original uses independently. No verifier retry, consumer-kind whitelist,
+TreeFlow relaxation, literal admission, or declaration change is introduced.
+The check adds one scalar counter and O(1) work per visited use; it allocates no
+buffer. The existing indexes and charged traversal bounds remain unchanged.
+
+`logical_coverage_test` reproduces the old orphan as a must-reject mutation,
+checks all four mismatch kinds, copied/renumbered/split variants, and exact
+byte/work admission boundaries at 200/201/400/800. `tree_failure_test` checks
+both JSON publication paths, PC zero and absence. The real es2abc fixture in
+`tests/integration/fixtures/logical_coverage` compares ordinary, short-circuit,
+nested and call-argument selections against Node with full getter/throw traces.
+The deferred Round-46 joint predicate/keep-edge admission remains withdrawn.
+
+Round-61 acceptance: full keep-going build passed; fixed set 65/65 serial;
+new tests plus JSON routes 3/3; logical/evaluation/selection/decision 52/54
+(the registered phased_arm_selection_source_test and decision_snapshots_source_test
+failures unchanged); CLI/corpus/failure/receipt/manifest 50/51 (registered
+family_source_cli_test failure). Both exploration comparisons against
+explore60/explore60s have zero regressions and zero byte changes in previously
+complete output: 500 -> 501/620 and 537 -> 539/620. assertClose completes under
+both flags; GridLayout completes under language-source only. Its old-contract
+DerivedProjectionError at m14399 is unchanged. New complete outputs pass
+node --check. The stale evaluation_failure CLI assertions now require complete
+source equality between the manifest export and abc_semantic, not an arbitrary
+new failure. No holdout, full-suite or RSS benchmark was run.

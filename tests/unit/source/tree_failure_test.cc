@@ -107,6 +107,17 @@ int main() {
     e.location.pc.reset();e.location.working_pc.reset();e.snapshot_candidate->occurrence.reset();
     RoundTrip(FamilyRouteFailure(f));
   }
+  for (unsigned tag = 0; tag <= static_cast<unsigned>(LogicalCoverageCheck::kConsumedEvent); ++tag) {
+    EvaluationFailure f{EvaluationError::kOwnership}; auto& e = f.evaluation;
+    e.obligation = EvaluationObligation::kLogicalCoverage;
+    e.location.operation = analysis::OpId{0}; e.location.pc = abc::CodeOffset{0};
+    e.location.working_pc = abc::CodeOffset{17};
+    e.logical_coverage = LogicalCoverageEvidence{static_cast<LogicalCoverageCheck>(tag),
+        analysis::OpId{0}, analysis::OpId{1}, analysis::OpId{2}, true, false};
+    RoundTrip(FamilyRouteFailure(f));
+    e.location = {}; e.logical_coverage = LogicalCoverageEvidence{static_cast<LogicalCoverageCheck>(tag)};
+    RoundTrip(FamilyRouteFailure(f));
+  }
   // The original leaf is retained, including resource/work classification.
   for(auto cause:{ControlError::kUncoveredBlock,ControlError::kResourceLimit,ControlError::kWorkLimit}) {
     FunctionTreeFailure f{cause==ControlError::kResourceLimit?FunctionTreeError::kResourceLimit:
