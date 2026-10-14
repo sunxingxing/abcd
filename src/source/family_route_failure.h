@@ -24,6 +24,10 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     if constexpr (requires { error.cause; }) CollectFailureCauses(error.cause, out);
     else if constexpr (requires { error.error; }) CollectFailureCauses(error.error, out);
     else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);
+    if constexpr (std::is_same_v<T, FamilyFileFailure>) {
+      if (error.family_creation) CollectFailureCauses(error.family_creation->reason, out);
+      CollectFailureCauses(error.creation_cause, out);
+    }
     if constexpr (std::is_same_v<T, analysis::SemanticProofFailure>)
       if (error.internal_value) CollectFailureCauses(error.internal_value->reason, out);
     if constexpr (std::is_same_v<T, EvaluationFailure>) {

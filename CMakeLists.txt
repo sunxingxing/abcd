@@ -2641,10 +2641,17 @@ if(BUILD_TESTING)
     add_executable(class_omissions_test tests/unit/source/class_omissions_test.cc tools/record_failure_json.cc)
     target_link_libraries(class_omissions_test PRIVATE abcd_source abcd_json)
     add_test(NAME class_omissions_test COMMAND class_omissions_test)
+    add_executable(family_creation_failure_test tests/unit/source/family_creation_failure_test.cc tools/record_failure_json.cc)
+    target_link_libraries(family_creation_failure_test PRIVATE abcd_source abcd_json)
+    add_test(NAME family_creation_failure_test COMMAND family_creation_failure_test)
     add_executable(tree_failure_test tests/unit/source/tree_failure_test.cc tools/record_failure_json.cc)
     target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME tree_failure_test COMMAND tree_failure_test)
     if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME family_creation_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/family_creation_failure.mjs
+        $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
+        ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects)
       add_test(NAME cyclic_cells_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cyclic_cells.mjs
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>

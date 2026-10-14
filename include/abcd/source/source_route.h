@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_SOURCE_ROUTE_H_
 #include "abcd/analysis/internal_value_failure.h"
 #include "abcd/source/tree_print_failure.h"
+#include "abcd/source/family_creation_failure.h"
 
 #include <cstdint>
 #include <type_traits>
@@ -114,6 +115,7 @@ struct RouteFailure {
   std::optional<TreePrintFailure> printing;
   std::optional<ExceptionRegionEvidence> exception_region;
   std::optional<analysis::InternalValueEvidence> internal_value;
+  std::optional<FamilyCreationEvidence> family_creation;
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

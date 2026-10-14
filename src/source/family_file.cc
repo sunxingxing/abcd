@@ -63,28 +63,28 @@ class FamilyReader {
       }
       const auto site = parent.Children()[cursor.next];
       ++stack_.back().next;
-      Require(site.value < parent.Body().instructions.size(), Error::kCreation);
+      RequireCreation(site.value < parent.Body().instructions.size(), FamilyCreationCheck::kBodySite, parent, cursor.member, site);
       parent_ = parent.Method(); pc_ = parent.Body().instructions[site.value].offset;
-      Require(site.value < parent.Instructions().size(), Error::kCreation);
+      RequireCreation(site.value < parent.Instructions().size(), FamilyCreationCheck::kSemanticSite, parent, cursor.member, site);
       pc_ = parent.Instructions()[site.value].origin.value_or(*pc_);
       const auto& operation = parent.Instructions()[site.value].operation;
       auto& member = result_.members[cursor.member.value];
       if (member.class_projection) {
         const auto& graph = parent.Graph();
-        Require(site.value < graph.input.sites.size() && graph.input.sites[site.value], Error::kCreation);
+        RequireCreation(site.value < graph.input.sites.size() && graph.input.sites[site.value], FamilyCreationCheck::kProjectionSite, parent, cursor.member, site);
         const auto current = *graph.input.sites[site.value];
-        Require(current.value < graph.ops.size(), Error::kCreation);
+        RequireCreation(current.value < graph.ops.size(), FamilyCreationCheck::kProjectionOperation, parent, cursor.member, site);
         const auto& op = graph.ops[current.value];
-        Require(op.life == analysis::ValueLife::kLive, Error::kCreation);
+        RequireCreation(op.life == analysis::ValueLife::kLive, FamilyCreationCheck::kProjectionLive, parent, cursor.member, site);
         auto creation = std::holds_alternative<analysis::ClassCreation>(operation) ?
             std::optional<analysis::OpId>{current} : std::nullopt;
         if (!creation && !member.class_projection->owners.empty()) creation = member.class_projection->owners[current.value];
         if (creation) {
-          Require(creation->value < graph.ops.size() &&
-              std::holds_alternative<analysis::ValueClassCreation>(graph.ops[creation->value].operation), Error::kCreation);
-          Require(std::holds_alternative<analysis::ClassCreation>(operation) ||
+          RequireCreation(creation->value < graph.ops.size() &&
+              std::holds_alternative<analysis::ValueClassCreation>(graph.ops[creation->value].operation), FamilyCreationCheck::kProjectionOwner, parent, cursor.member, site, creation);
+          RequireCreation(std::holds_alternative<analysis::ClassCreation>(operation) ||
               (std::holds_alternative<analysis::FunctionCreation>(operation) &&
-               std::get<analysis::FunctionCreation>(operation).kind == analysis::CreationKind::kMethod), Error::kCreation);
+               std::get<analysis::FunctionCreation>(operation).kind == analysis::CreationKind::kMethod), FamilyCreationCheck::kProjectionKind, parent, cursor.member, site, creation);
           AppendRoom(member.classes); member.classes.push_back({site, current, *creation});
           continue;
         }
@@ -121,16 +121,23 @@ class FamilyReader {
       PhasedCreation* phase_creation = nullptr;
       if (parent.Phase()) {
         auto& creations = result_.members[cursor.member.value].phase_creations;
-        Require(creations.has_value(), Error::kCreation);
+        RequireCreation(creations.has_value(), FamilyCreationCheck::kPhasedIndex, parent, cursor.member, site);
         Step(std::bit_width(creations->sites.size()) + 1);
         auto found = std::lower_bound(creations->sites.begin(), creations->sites.end(), site,
             [](const auto& creation, auto sought) { return creation.instruction < sought; });
-        Require(found != creations->sites.end() && found->instruction == site, Error::kCreation);
+        RequireCreation(found != creations->sites.end() && found->instruction == site, FamilyCreationCheck::kPhasedSite, parent, cursor.member, site);
         phase_creation = &*found;
       } else {
         auto resolved = analysis::BindCreation(file_, header_, index_, lookup_, parent.Method(),
             parent.Body(), parent.Normal().input.Proof().environments, site.value);
-        Require(std::holds_alternative<analysis::CreationBinding>(resolved), Error::kCreation);
+        if (!std::holds_alternative<analysis::CreationBinding>(resolved)) {
+          auto failure = CreationFailure(FamilyCreationCheck::kFunctionBinding, parent, cursor.member, site);
+          std::visit([&](const auto& cause) {
+            if constexpr (!std::is_same_v<std::decay_t<decltype(cause)>, analysis::CreationBinding>)
+              failure.creation_cause = cause;
+          }, resolved);
+          throw failure;
+        }
         normal_binding.emplace(std::get<analysis::CreationBinding>(std::move(resolved)));
       }
       const auto* binding = phase_creation ? &phase_creation->binding : &*normal_binding;
@@ -227,7 +234,7 @@ class FamilyReader {
       pc_ = child.context->CreationSite() ? child.context->CreationSite()->pc : edge.creation.offset;
       const auto work = child.function.Capture();
       const auto* phase = parent.function.Phase();
-      Require((phase != nullptr) == edge.phase_operation.has_value(), Error::kCreation);
+      RequireCreation((phase != nullptr) == edge.phase_operation.has_value(), FamilyCreationCheck::kCaptureFlow, parent.function, edge.parent, edge.site);
       const auto owner = result_.Owner({static_cast<std::uint32_t>(i)});
       auto rebound = phase ? BindPhasedCaptureCells(index_, lookup_, phase->Phases(), phase->Body(),
           phase->Locals(), {*edge.phase_operation, edge.site, edge.creation}, work, *child.context,
@@ -244,9 +251,54 @@ class FamilyReader {
       if (const auto* error = std::get_if<CaptureEvaluationFailure>(&evaluated)) Fail(*error);
       auto evaluation = std::get<CapturedFunctionBinding>(std::move(evaluated));
       Admit(evaluation.allocated_bytes, 1); Step(evaluation.work);
-      Require(parent.children.empty() || parent.children.back().creation < evaluation.binding.creation, Error::kCreation);
+      RequireCreation(parent.children.empty() || parent.children.back().creation < evaluation.binding.creation, FamilyCreationCheck::kChildOrder, parent.function, edge.parent, edge.site);
       parent.children.push_back(std::move(evaluation.binding));
     }
+  }
+  // Failure-only O(1) witness: borrow existing origins and incoming occurrence.
+  // Do not resolve a new class body or allocate an index while diagnosing it.
+  FamilyFileFailure CreationFailure(FamilyCreationCheck check, const FamilyFunction& parent,
+      FamilyId member, analysis::InstructionId site, std::optional<analysis::OpId> projected = {}) const {
+    auto failure = FamilyFileFailure{Error::kCreation, method_, parent_, pc_, root_};
+    FamilyCreationEvidence e{check}; e.root = root_; e.occurrence = FamilyOccurrenceId{member.value};
+    e.instruction = site; e.location.method = parent.Method(); e.projected_class = projected;
+    const auto& graph = parent.Graph();
+    if (site.value < graph.input.sites.size() && graph.input.sites[site.value])
+      e.location = OperationLocation(graph, *graph.input.sites[site.value], parent.Method());
+    if (site.value < parent.Body().instructions.size()) {
+      e.location.working_pc = parent.Body().instructions[site.value].offset;
+      e.location.pc = e.location.working_pc;
+    }
+    if (site.value < parent.Instructions().size()) {
+      const auto& instruction = parent.Instructions()[site.value];
+      if (instruction.origin) e.location.pc = instruction.origin;
+      e.kind = FamilyCreationKind::kOther;
+      if (const auto* c = std::get_if<analysis::ClassCreation>(&instruction.operation)) {
+        e.kind = FamilyCreationKind::kClass; e.constructor = c->constructor; e.literal = c->literal;
+      } else if (const auto* c = std::get_if<analysis::FunctionCreation>(&instruction.operation)) {
+        e.kind = c->kind == analysis::CreationKind::kFunction ? FamilyCreationKind::kFunction : FamilyCreationKind::kMethod;
+      }
+    }
+    if (member.value < result_.members.size()) {
+      const auto& child = result_.members[member.value];
+      if (child.incoming && child.incoming->parent.value < result_.members.size()) {
+        const auto& edge = *child.incoming;
+        const auto& creator = result_.members[edge.parent.value].function;
+        const auto& graph = creator.Graph();
+        TreeLocation source; source.method = creator.Method();
+        if (edge.site.value < graph.input.sites.size() && graph.input.sites[edge.site.value])
+          source = OperationLocation(graph, *graph.input.sites[edge.site.value], creator.Method());
+        source.working_pc = edge.creation.offset;
+        source.pc = child.context && child.context->CreationSite() ?
+            child.context->CreationSite()->pc : edge.creation.offset;
+        e.descendant_source = source;
+      }
+    }
+    failure.family_creation = e; return failure;
+  }
+  void RequireCreation(bool ok, FamilyCreationCheck check, const FamilyFunction& parent,
+      FamilyId member, analysis::InstructionId site, std::optional<analysis::OpId> projected = {}) const {
+    if (!ok) throw CreationFailure(check, parent, member, site, projected);
   }
   template <class T> [[noreturn]] void Fail(T cause) const {
     throw FamilyFileFailure{std::move(cause), method_, parent_, pc_, root_};
@@ -331,7 +383,14 @@ class FamilyReader {
     std::vector<ClassInitializerWitness> witnesses;
     Grow(bodies,candidates.stores.size()); Grow(witnesses,candidates.stores.size());
     for (const auto& store : candidates.stores) {
-      Step(1); Require(calls[store.initializer.value].has_value(),Error::kCreation);
+      Step(1);
+      if (!calls[store.initializer.value]) {
+        auto failure = FamilyFileFailure{Error::kCreation, method_, parent_, pc_, root_};
+        failure.family_creation = FamilyCreationEvidence{FamilyCreationCheck::kSelfInitializer,
+            OperationLocation(values.graph, store.initializer, parent.input.Method())};
+        failure.family_creation->root = root_;
+        throw failure;
+      }
       const auto& call = values.initializers.calls[*calls[store.initializer.value]];
       auto loaded = ReadClassInitializerFunction(file_,header_,index_,lookup_,roles_,sites_,parent,call,Remaining(),modules_);
       if (const auto* error = std::get_if<ClassInitializerReadFailure>(&loaded)) Fail(*error);

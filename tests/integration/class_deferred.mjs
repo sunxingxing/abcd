@@ -57,8 +57,19 @@ try {
       if (name === 'static_early' || name === 'loop') {
         assert.equal(record.source_status, 3, JSON.stringify(record));
         assert.equal(record.source, undefined);
-        if (name === 'loop') assert.deepEqual(record.source_failure.causes.at(-1),
-          {domain: 'abcd::source::FamilyFileError', value: 1});
+        if (name === 'loop') {
+          // Round 66 exposes the existing phased class/index mismatch. The
+          // loop still refuses; no activation or TDZ requirement is relaxed.
+          assert.deepEqual(record.source_failure.causes, [
+            {domain: 'abcd::source::FamilyFileError', value: 1},
+            {domain: 'abcd::source::FamilyCreationCheck', value: 8},
+          ]);
+          const creation = record.source_failure.family_creation;
+          assert.equal(creation.reason, 8); assert.equal(creation.kind, 2);
+          assert.deepEqual(creation.location, {method: 395, operation: 16, block: 32, pc: 38, working_pc: 38});
+          assert.equal(creation.root, 423); assert.equal(creation.occurrence, 1);
+          assert.deepEqual(creation.descendant_source, {method: 423, operation: 3, block: 0, pc: 6, working_pc: 6});
+        }
         else { assert.equal(record.source_failure_domain, 'record_program'); assert.equal(record.source_error, 7); }
         continue;
       }

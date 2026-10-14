@@ -89,6 +89,10 @@ struct FamilyFileFailure {
   // This binds a descendant input refusal to its containing family; it grants
   // neither a child body nor permission to ignore other failure categories.
   std::optional<abc::EntityOffset> root;
+  std::optional<FamilyCreationEvidence> family_creation;
+  std::variant<std::monostate, analysis::CreationError, analysis::CreationBindingError,
+      abc::MethodTargetError, abc::MetadataError, abc::MethodAttributeError> creation_cause;
+
 };
 // Reads the complete supported creation family, using an explicit DFS stack
 // and active-method index. No C++ recursion, per-edge metadata scan, guessed

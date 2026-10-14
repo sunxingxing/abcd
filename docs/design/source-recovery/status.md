@@ -12,6 +12,15 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 66：FamilyFile 创建拒绝定位（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；513/620、552/620 不变，0 状态变化，0 文本变化；cli/corpus/failure 扫描 58/59，只有既有的 family_source_cli_test 失败。
+
+- 基线 `bd4029c7`。五例在两组 flags 下相同：o18 四例为普通后代函数内的 ClassCreation 进入函数专用 BindCreation，实际叶子为 `FamilyFileError=1 > FamilyCreationCheck=9 (FunctionBinding) > CreationError=0`；o36/19453 为 phased 家族根的 ClassCreation 不在函数创建索引中，叶子为 `FamilyFileError=1 > FamilyCreationCheck=8 (PhasedSite)`。m60156 原始 CFG 的 PC128→174、PC192→229 跳转绕过先前 return，PC232 的类创建可达。逐例表与停止依据见 [round-66-family-creations.md](round-66-family-creations.md)。
+- 所有 13 个 kCreation 检查有固定大小的类型化证据：实际创建 method / Op / instruction / 原始与工作 PC，家族 root / occurrence，方法作用域内 constructor / literal pool 身份，以及后代的独立 incoming creation 来源。普通 BindCreation 的真实底层错误不再折叠。route/manifest、record-entry JSON 和 abc_semantic 共用证据；失败枚举值和资源分类不变。无新生产索引、无新缓冲、失败时 O(1) 读取已有事实。
+- 按本轮停止条件只完成步骤 1：现有 ClassTree 准备/组合及 FamilyWrites 验证只接入 normal record 根，后代类需要跨家族准备、捕获/声明与类屏障对应；phased 类还需异常相位对应。没有删除类、忽略创建或放宽局部准入。
+- 对 explore65/explore65s：**513/620、552/620** 均不变，所有 record 状态不变，已有 complete/partial 文本逐字节不变；每组恰好五个目标仅 `source_failure` 字段变化。输出 `/private/tmp/r66-cohort/`，构建、CFG、CLI、测试与比较日志 `/private/tmp/r66-evidence/`。
+- 完整 keep-going 构建通过；固定集串行 **65/65**；新增 **2/2**；family/creation/class_tree/class_omissions/source_route/tree_failure 定向 **26/28**，仅既有 `family_source_cli_test`、`class_tree_source_test` 失败。CLI/corpus/failure/receipt/manifest 扫查 **57/58**，仅既有 `family_source_cli_test` 失败。`class_deferred_cli_test` 的 loop 反例仍严格拒绝；将折叠叶子期望改为实际 `FamilyFileError=1 > FamilyCreationCheck=8`，并加强创建/后代来源断言，原 TDZ/Node/变异断言未改。新单测包含 13 种检查、位置/错误枚举变异、两条 JSON 通路、资源分类和 200/201/400/800 固定大小诊断往返；未声称新增恢复算法的精确预算或 Node 语义差分。未运行留出集、全套测试或 RSS 基准；未 commit/push/stash。
+
 ## Round 65：成员调用参数中的保留值 fallback（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 510 → **513/620**，`--language-source` 549 → **552/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 57/58，只有既有的 family_source_cli_test 失败。cc 核对 ComputedProperty 输出为装饰器降级的标准形态 `Object.defineProperty(proto, "sum", decorate(...) || descriptor)`。
 
