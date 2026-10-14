@@ -2023,6 +2023,12 @@ class Initializers {
             if(use.declaration && declaration_containers_[visit.statement.value] && !use.legacy_initializer)
               use.legacy_initializer=visit.statement;
           }
+      } else if constexpr (std::is_same_v<T, ForInStmt>) {
+        Scan(syntax.object, visit.lexical, visit.projector);
+        // The header owns a write even when the body never reads the key.
+        // Keep its existing declaration until native binding projection has
+        // separately proved scope, zero-iteration state and activation.
+        uses_[syntax.key.value].outside_body = true;
       } else if constexpr (std::is_same_v<T, IfStmt>) Scan(syntax.condition, visit.lexical, visit.projector);
       else if constexpr (std::is_same_v<T, ReturnStmt>) { if (syntax.value) Scan(*syntax.value, visit.lexical, visit.projector); }
       else if constexpr (std::is_same_v<T, ThrowStmt>) Scan(syntax.value, visit.lexical, visit.projector);

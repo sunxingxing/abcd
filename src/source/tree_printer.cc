@@ -1564,6 +1564,14 @@ class TreePrinter {
     }
     Push(Statement{node.body, at.depth});
   }
+  void StatementNode(ForInStmt node, Statement at) {
+    if (node.label) { Label(*node.label); Append(": "); }
+    Append("for (");
+    if (node.binding == ForInBinding::kPerIterationLet) Append("let ");
+    Name(node.key); Append(" in ");
+    Push(Statement{node.body, at.depth}); Push(std::string_view(") "));
+    Push(ExpressionOperand{node.object, {}});
+  }
   void StatementNode(LoopStmt node, Statement at) {
     if (const auto& syntax = Loops().conditions[at.id.value]) {
       const auto& transition = Loops().transitions[at.id.value];

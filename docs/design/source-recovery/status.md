@@ -12,6 +12,12 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 51c：ForInStmt 语法、打印与恢复骨架（cc 审查通过；生产接入待续）
+
+- `ForInStmt` 分别持有 RHS、key、body，不引入源码枚举器；接入遍历、结构检查、break/continue 标签与 recovery 事件骨架（acquisition 一次、continue 回到 advance、exhaustion 不写 key）。打印赋值式 `for (key in object)`，保留原声明；`kPerIterationLet` 仍明确拒绝。尚未接入生产准入：advance 结果与源码 key 在 done 成功边上的提交对应、TreeFlow/OriginalFlow/recovery 的共同验证、捕获 key 的激活证明（m524：PC10 RHS 环境、PC39 逐迭代环境、PC47 初始化 key）。
+- 新增 `for_in_tree_test`、`for_in_tree.mjs`（手工构造树的打印结果，不是 ABC 恢复差分）。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；497/620、534/620 不变，0 状态变化，0 文本变化；for-in 测试 4/4。
+
 ## Round 51b：for-in 协议证明与异常转发摘要（cc 审查通过；D/E 待续）
 
 - 步骤 B/C：`ForInPlan` 经 SCC copy/phi 身份、自然循环和异常图支配，证明 acquisition 身份、闭合使用、每轮单次 advance、done 等价、key 使用与 acquisition 顺序，失败带固定大小的类型化 witness；`exception_forwarding` 是通用的异常转发摘要（所有正常路径无可观察效果地抛出同一 SSA 值到同一目的地），只由 ForInPlan 消费。新增 `for_in_plan_test`、`for_in_fixture_test`（真实 es2abc fixture）。

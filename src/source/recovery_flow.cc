@@ -1258,6 +1258,35 @@ class FlowBuilder {
           return Stmt(child,context.Child(context.next,at.id,context.header?FlowStatementRetention::kOptional:FlowStatementRetention::kRequired));
         };
         Link(branch,arm(node.consequent),FlowCompletion::kTaken);Link(branch,node.alternate?arm(*node.alternate):context.next,FlowCompletion::kNotTaken);
+      } else if constexpr(std::is_same_v<T,ForInStmt>) {
+        RequireTree(node.binding == ForInBinding::kAssignment, Error::kUnsupportedSyntax);
+        // RHS once; exhaustion bypasses PutValue entirely. Continue returns to
+        // next, never acquisition. The source target may still fail its TDZ
+        // check, so the key definition follows successful PutValue only.
+        const auto acquire=New({FlowEventKind::kEnumerationAcquire});
+        const auto advance=New({FlowEventKind::kEnumerationNext});
+        const auto done=New({FlowEventKind::kControl});
+        const auto write=New({FlowEventKind::kEnumerationBind});
+        const auto commit=Define(node.key,FlowDefinitionKind::kAssignment,{},{},at.id,{},
+            FlowWriteEffect::kObservable,{},FlowExceptionContext{context.thrown,context.finalizer},at.id);
+        WriteAction(definitions_.back(),FlowAction{write,commit,{context.thrown,context.finalizer}});
+        for(const auto event:{acquire,advance}) {
+          events_[event.value].effects=CallbackEffects();
+          events_[event.value].effect=ExpressionEvaluation::kRequired;
+          Link(event,context.thrown,FlowCompletion::kThrow);
+        }
+        events_[write.value].effects=SourceEffects{analysis::LanguageEffect::kLexicalWrite,
+            analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kMayThrow};
+        events_[write.value].effect=ExpressionEvaluation::kRequired;
+        Link(write,context.thrown,FlowCompletion::kThrow);Link(write,commit);
+        repeats_[at.id.value]=advance;
+        semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=advance;
+        semantics.entry_value=node.object;
+        Link(start,Expr(node.object,context.Operand(acquire)));
+        Link(acquire,advance);Link(advance,done);
+        Link(done,context.next,FlowCompletion::kTaken);
+        Link(done,write,FlowCompletion::kNotTaken);
+        Link(commit,Stmt(node.body,context.Child(advance,at.id,FlowStatementRetention::kRequired)));
       } else if constexpr(std::is_same_v<T,LoopStmt>) {
         semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=start;
         if(projection_.loops)if(const auto& program=projection_.loops->conditions[at.id.value]) {

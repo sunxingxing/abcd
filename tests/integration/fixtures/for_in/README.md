@@ -20,9 +20,13 @@ SHA-256:
 operations and their acquisition-only exception handlers, builds and rechecks
 the raw protocol evidence. It covers scan, break/continue/return/throw and
 nested loops. It also checks the capture-environment operation in `captured`;
-that method deliberately remains `kAcquisitionOrder`, because an environment
-allocation between acquisition and first advancement needs the future binding
-activation and RHS-scope projection. The test does not erase that allocation.
+that method deliberately remains `kAcquisitionOrder`. Its environment is
+allocated at PC10 before acquisition at PC14, then popped at PC26 before
+advancement at PC27. A distinct iteration environment is allocated at PC39
+after the done test, and the key is stored at PC47. The acquisition handler
+also pops the environment (PC21) before rethrowing. These scope transitions
+need the binding-activation and RHS-scope projection; the test does not erase
+them or treat an environment pop as inert.
 
 Verified acquisition/next PCs: scan m440 16/27; exits m468 18/29;
 nested m496 20/31 and 49/60. Captured m524 is refused at working PC27.

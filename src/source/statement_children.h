@@ -22,7 +22,7 @@ std::optional<StmtId> StatementChild(const TreeStatement& statement, std::size_t
       if (index == 0) return node.body;
       if (index == 1 && node.handler) return node.handler->body;
       if (index == (node.handler ? 2U : 1U)) return node.finalizer;
-    } else if constexpr (std::is_same_v<T, LoopStmt>) {
+    } else if constexpr (std::is_same_v<T, LoopStmt> || std::is_same_v<T, ForInStmt>) {
       if (index == 0) return node.body;
     } else static_assert(std::is_same_v<T, DeclarationStmt> || std::is_same_v<T, ExpressionStmt> ||
         std::is_same_v<T, ReturnStmt> || std::is_same_v<T, BreakStmt> || std::is_same_v<T, ContinueStmt> ||

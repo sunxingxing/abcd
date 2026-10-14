@@ -205,3 +205,72 @@ is claimed complete by this increment.
 Each exact boundary accepts and boundary minus one refuses with the proper
 resource/work kind. These are query-budget tests, not a process-RSS benchmark
 and not evidence that native per-iteration binding is complete.
+
+### D/E work in progress: native statement syntax, not source admission
+
+The current uncommitted continuation adds a typed `ForInStmt` with an owned
+RHS, assignment target symbol and body. Structural checking and label planning
+recognize it as a loop. Its source-side recovery program evaluates the RHS
+once, acquires once, advances on normal/continue completion, and defines the
+key only on the non-exhausted branch. Break and labelled outer continue use
+the existing target identities. Acquisition, advance and key assignment have
+distinct ordered source actions and conservative exception exits. Existing
+key declarations are retained; no binding motion or loop layout rule changes.
+
+This is **not completion of D/E**. EvaluationPlan and FunctionTree do not yet
+consume ForInPlan. No enumerator operation has gained source admission. The
+`kPerIterationLet` syntax alternative is deliberately rejected until activation
+and RHS scope have independent correspondence evidence. The new
+`for_in_tree_test` and `for_in_tree_source_test` use manually constructed source
+trees; their Node checks are syntax/recovery-adapter checks, not a differential
+of ABC recovery. The real es2abc fixture still only exercises the B/C proof.
+
+The remaining semantic adapter must distinguish three boundaries: acquire
+success creates private protocol state; advance success still includes the
+undefined exhaustion result; only the successful done edge supplies a key to
+the source binding. An ordinary expression result correspondence cannot
+identify all three with a source key read. TreeFlow, OriginalFlow and recovery
+must retain the native statement actions, edge-qualified key commit and all
+consumed original sites together, then recheck every exit and exception route.
+Only that adapter can authorize removing the enumerator from source bindings
+or consuming the acquisition-handler forwarding certificate.
+
+The captured-key fixture also needs more than an allocation exemption in the
+first-event summary. In m524, PC10 creates the RHS environment, PC14 acquires,
+PC26 pops that environment, and PC27 advances. The iteration environment is
+created at PC39 after the done test and initialized at PC47. The acquisition
+handler pops the RHS environment at PC21 before rethrowing. Activation proof
+must cover both normal and exceptional scope exits and the distinct captured
+iteration units. The current order check remains strict.
+
+The new source-flow tests cover assignment-key zero iterations and last-key
+live-out, break, continue, labelled outer continue, invalid target and invalid
+per-iteration admission, plus exact byte/work budget boundaries:
+
+| Statements | Work units | Byte boundary |
+| --- | ---: | ---: |
+| 200 | 46424 | 2459190 |
+| 201 | 46655 | 2459871 |
+| 400 | 92624 | 4917822 |
+| 800 | 185024 | 9835086 |
+
+These measurements cover the source-side flow builder, not the outstanding
+original-flow correspondence or activation proof. Proxy, mutation and Symbol
+runtime gaps described above remain unchanged.
+
+WIP validation (not D/E completion): full keep-going build passed; fixed source
+regression 65/65; for-in tree/Node/plan/real-fixture tests 4/4; the bounded
+loop/exception/iterator/source slice 26/27, with only the documented pre-existing
+`tree_structure_test` abort. No assertion in that test was changed. Final
+exploration comparison against explore51b/explore51bs remains 497/620 and
+534/620, with zero status changes and zero source-byte changes. Logs are
+`/private/tmp/r51de-{build-final,fixed,new,targeted,accept-cohort}.log`.
+
+All six target raw protocols still pass B/C verification. Both flags retain
+the same published first refusals: assertContain m29450@90, Filter m44469@28,
+core m21553@47 and MockKit m54047@230 are EvaluationError::kUnsupportedOperation
+with EvaluationObligation::kPlan. Filter's second raw loop at 179/190 is proved
+but source construction stops at the first loop. DataDriver still first fails
+at m42717@153, PhasedMethodError::kInput > SemanticError::kUnsupportedInstruction;
+its m42548 23/34 for-in protocol is independently proved. No target is newly
+complete, and the original for-in source refusal has not been removed.

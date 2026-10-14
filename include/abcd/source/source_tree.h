@@ -241,6 +241,16 @@ struct TryStmt {
 // LoopSyntax projects owned completion prefixes/transitions into while/for
 // after verification; effects, copies and transfer identities remain here.
 struct LoopStmt { StmtId body; std::optional<LabelId> label; };
+// Native enumeration has a success-only key write: exhaustion never writes
+// undefined. Its enumerator is intrinsic state, not a source binding.
+enum class ForInBinding : std::uint8_t { kAssignment, kPerIterationLet };
+struct ForInStmt {
+  ExprId object;
+  SymbolId key;
+  StmtId body;
+  ForInBinding binding = ForInBinding::kAssignment;
+  std::optional<LabelId> label;
+};
 // Targets are enclosing syntax owners, never CFG/region IDs. Outer transfers
 // carry a preassigned label; the printer must not infer or retarget a jump.
 struct BreakStmt { StmtId target; std::optional<LabelId> label; };
@@ -262,7 +272,7 @@ struct RecoveryIssue {
 struct UnrecoveredStmt { RecoveryIssueId issue; };
 using TreeStatement = std::variant<BlockStmt, DeclarationStmt, ExpressionStmt, IfStmt, ReturnStmt,
                                    LoopStmt, BreakStmt, ContinueStmt, DebuggerStmt, ThrowStmt, TryStmt,
-                                   UnrecoveredStmt>;
+                                   UnrecoveredStmt, ForInStmt>;
 struct StmtNode { TreeStatement statement; TreeOriginId origin; };
 
 // Origins/validation side tables may refer to working IDs. Executable node

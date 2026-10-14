@@ -442,10 +442,11 @@ class StructureCheck {
   void Transfer(StmtId target, std::optional<LabelId> label, std::optional<StmtId> nearest, bool continues) {
     RequireTree(target.value < statements_.size() && statements_[target.value] == 1, Error::kTarget);
     const auto* loop = std::get_if<LoopStmt>(&tree_.statements[target.value].statement);
+    const auto* enumerated = std::get_if<ForInStmt>(&tree_.statements[target.value].statement);
     const auto* block = std::get_if<BlockStmt>(&tree_.statements[target.value].statement);
-    RequireTree(loop || (!continues && block), Error::kTarget);
-    if (loop && target == nearest) { RequireTree(!label, Error::kTarget); return; }
-    RequireTree(label && (loop ? loop->label : block->label) == label && label->value < tree_.labels.size() &&
+    RequireTree(loop || enumerated || (!continues && block), Error::kTarget);
+    if ((loop || enumerated) && target == nearest) { RequireTree(!label, Error::kTarget); return; }
+    RequireTree(label && (loop ? loop->label : enumerated ? enumerated->label : block->label) == label && label->value < tree_.labels.size() &&
         tree_.labels[label->value] == target, Error::kTarget);
     labels_used_[label->value] = 1;
   }
@@ -496,6 +497,15 @@ class StructureCheck {
       RequireBlock(loop->body);
       if (loop->label) RequireTree(loop->label->value < tree_.labels.size() &&
           tree_.labels[loop->label->value] == id, Error::kTarget);
+      frame.loop = id;
+    } else if (const auto* enumeration = std::get_if<ForInStmt>(&node.statement)) {
+      RequireBlock(enumeration->body);
+      // Per-iteration binding needs its own activation certificate before it
+      // can enter the published tree; never infer it from a mutable symbol.
+      RequireTree(enumeration->binding == ForInBinding::kAssignment, Error::kUnsupportedSyntax);
+      scopes_.Reference(enumeration->key, true);
+      if (enumeration->label) RequireTree(enumeration->label->value < tree_.labels.size() &&
+          tree_.labels[enumeration->label->value] == id, Error::kTarget);
       frame.loop = id;
     } else if (const auto* transfer = std::get_if<BreakStmt>(&node.statement)) {
       Transfer(transfer->target, transfer->label, frame.loop, false);
@@ -624,6 +634,7 @@ class StructureCheck {
           if (node.finalizer) add(*node.finalizer);
         }
         else if constexpr (std::is_same_v<T, LoopStmt>) add(node.body);
+        else if constexpr (std::is_same_v<T, ForInStmt>) { add(node.object); add(node.body); }
         else { static_assert(std::is_same_v<T, BlockStmt> || std::is_same_v<T, BreakStmt> ||
                              std::is_same_v<T, DebuggerStmt> || std::is_same_v<T, UnrecoveredStmt> ||
                              std::is_same_v<T, ContinueStmt>); }
