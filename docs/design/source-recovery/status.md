@@ -12,6 +12,12 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 57 增量 A（部分）：迭代器键解析与候选扫描（cc 审查通过）
+
+- 设计（Round 57）获批：控制构造前用 IteratorProtocolScan 证明区域所有权；ProtocolCloseUnit 按完成种类分端口，循环骨架保留原控制身份；区域显式标记为 OrdinaryTry/Inactive/ProtocolOwned；关闭优先级从展开代码的值流证明；分 A/B/C/II/III 五个门禁增量。
+- 本次交付：类型化 `IteratorKey`（不运行 TreeConstants 与名称规划）；`iterator_protocol_scan` 产出候选事实（acquisition 身份、唯一候选 next 定义、return 读取派发的区域与外层 handler）；`VerifyIteratorCandidates` 独立核对候选，不产生所有权。尚未完成：动态激活/advance 证明、close 完成值流、VerifiedProtocolRegionOwnership、PhasedBody 接入与诊断输出。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；498/620、535/620 不变，0 状态变化，0 文本变化；新测试 1/1。
+
 ## Round 55：kMultipleExits 位置证据（cc 审查通过）
 
 - 固定大小的区域/出口证据（TryId、body/handler 原始与工作 PC、原始 EdgeId 与 continuation），贯通 route/record-entry/JSON；仅在拒绝时做一次计入 work 预算的线性扫描。
