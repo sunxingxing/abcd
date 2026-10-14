@@ -28,7 +28,7 @@ class FamilyReader {
         identity_(identity), budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), module_owner_(module_owner) {}
 
   FileFamily Read(abc::MethodPosition root, const FunctionContext* owner, FamilyClassMode classes,
-      const ParentModuleInput* root_modules, FunctionOwnerId first_owner, const FileFunction* root_creator, const analysis::ClassMethodSites* class_sites) {
+      const ParentModuleInput* root_modules, FunctionOwnerId first_owner, const FileFunction* root_creator, const analysis::ClassMethodSites* class_sites, const CaptureStorage* root_storage, ClassRootBinding root_binding) {
     class_sites_ = class_sites;
     class_mode_ = classes;
     result_.first_owner = first_owner;
@@ -223,14 +223,14 @@ class FamilyReader {
       if (phase_creation) incoming.phase_operation = phase_creation->operation;
       Add(std::move(child), std::move(context), std::move(incoming), target);
     }
-    BindEvaluations(owner, root_creator);
+    BindEvaluations(owner, root_creator, root_storage, root_binding);
     if (file_.CheckUnchanged()) Fail(FunctionFileFailure{FunctionFileError::kChanged});
     result_.allocated_bytes = budget_.bytes - bytes_;
     result_.work = budget_.work - work_;
     return std::move(result_);
   }
  private:
-  void BindRoot(const FunctionContext* owner, const FileFunction* creator) {
+  void BindRoot(const FunctionContext* owner, const FileFunction* creator, const CaptureStorage* storage) {
     method_ = result_.members.front().function.Method(); parent_.reset(); pc_.reset();
     // Borrow the actual creator only for this synchronous binding. Root evidence
     // owns its stamps/cell map; a class root never becomes an ordinary family edge.
@@ -241,7 +241,7 @@ class FamilyReader {
     else if (const auto* site = owner->ConstructorSite()) pc_ = site->pc;
     else if (const auto* site = owner->ClassSite()) pc_ = site->pc;
     const auto child = result_.members.front().function.Capture();
-    auto bound = BindClassRootCaptureCells(file_, header_, index_, lookup_, *creator, child, *owner, Remaining());
+    auto bound = BindClassRootCaptureCells(file_, header_, index_, lookup_, *creator, child, *owner, Remaining(), storage);
     if (const auto* error = std::get_if<CaptureCellFailure>(&bound)) Fail(*error);
     auto cells = std::get<CaptureCells>(std::move(bound));
     pc_ = cells.input.pc;
@@ -253,7 +253,7 @@ class FamilyReader {
     }
     result_.root_capture.emplace(std::move(cells));
   }
-  void BindEvaluations(const FunctionContext* owner, const FileFunction* creator) {
+  void BindEvaluations(const FunctionContext* owner, const FileFunction* creator, const CaptureStorage* storage, ClassRootBinding root_binding) {
     // Discovery must finish before committing evaluation bindings: a child's
     // own direct accesses are not its descendants' complete capture demand.
     // Each occurrence is bound once here; no repeated subtree discovery.
@@ -266,7 +266,7 @@ class FamilyReader {
       for (const auto& cell : cells->cells) {
         Step();
         if (std::holds_alternative<IncomingCell>(cell.storage)) {
-          BindRoot(owner, creator);
+          if (root_binding == ClassRootBinding::kBind) BindRoot(owner, creator, storage);
           break;
         }
       }
@@ -507,8 +507,8 @@ std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
     abc::MethodPosition root, RouteInputIdentity identity,
     analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner, ModuleOwnerId module_owner, FamilyClassMode classes,
-    const ParentModuleInput* root_modules, FunctionOwnerId first_owner, const FileFunction* root_creator, const analysis::ClassMethodSites* class_sites) {
-  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner, classes, root_modules, first_owner, root_creator, class_sites);
+    const ParentModuleInput* root_modules, FunctionOwnerId first_owner, const FileFunction* root_creator, const analysis::ClassMethodSites* class_sites, const CaptureStorage* root_storage, ClassRootBinding root_binding) {
+  try { return FamilyReader(file, header, index, lookup, roles, sites, identity, budget, modules, module_owner).Read(root, owner, classes, root_modules, first_owner, root_creator, class_sites, root_storage, root_binding);
   } catch (const FamilyFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}};
   } catch (const std::length_error&) { return FamilyFileFailure{FamilyFileError::kResourceLimit, {}, {}, {}}; }

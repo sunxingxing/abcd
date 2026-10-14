@@ -22,6 +22,7 @@ struct CreatorClassInput {
   const FileFunction& creator;
   RouteInputIdentity identity;
   CreatorClassOccurrence occurrence;
+  const CaptureStorage* storage = nullptr;
 };
 struct ClassOwnerRange {
   std::uint64_t begin, end;  // Half-open; end may be UINT32_MAX + 1.
@@ -52,6 +53,7 @@ struct CreatorClassFailure {
   ClassTreeFailure cause;
   std::optional<analysis::OpId> operation;
 };
+struct CreatorClassDemands { std::vector<FamilyCellDemand> demands; std::size_t allocated_bytes = 0; std::uint64_t work = 0; };
 struct CreatorClassCost { std::size_t allocated_bytes; std::uint64_t work; };
 [[nodiscard]] std::variant<CreatorClasses, CreatorClassFailure> DiscoverCreatorClasses(
     const CreatorClassInput&, analysis::SemanticBudget = {});
@@ -61,12 +63,18 @@ struct CreatorClassCost { std::size_t allocated_bytes; std::uint64_t work; };
     const CreatorClassInput&, const CreatorClasses&, analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<CreatorClassCost, CreatorClassFailure> PrepareCreatorClasses(
     const CreatorClassInput&, CreatorClasses&, const GlobalScope*, FunctionOwnerId,
-    RecoveryMode, analysis::SemanticBudget = {});
+    RecoveryMode, analysis::SemanticBudget = {},
+    ClassRootBinding root_binding = ClassRootBinding::kBind);
 [[nodiscard]] std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
     const CreatorClassInput&, CreatorClasses&, const GlobalScope*, FunctionOwnerId,
     const CaptureTree*, RecoveryMode, analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<CreatorClassCost, CreatorClassFailure> VerifyCreatorClassOwners(
     const CreatorClasses&, FunctionOwnerId, analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<CreatorClassDemands, CreatorClassFailure> CollectCreatorClassDemands(
+    const CreatorClassInput&, const CreatorClasses&, FamilyId, analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<CreatorClassCost, CreatorClassFailure> BindCreatorClasses(
+    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&, const abc::MethodLookup&,
+    const FileFunction&, const CaptureStorage*, CreatorClasses&, analysis::SemanticBudget = {});
 // Allocation-free validation used at preparation and final construction.
 [[nodiscard]] bool ValidClassOwnerRange(ClassOwnerRange range, std::uint64_t expected);
 }

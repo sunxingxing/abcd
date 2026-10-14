@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_FAMILY_TREE_H_
 
 #include "family_file.h"
+#include "family_cells.h"
 #include "derived_projection.h"
 #include "cell_defaults.h"
 #include "cell_default_proof.h"
@@ -18,6 +19,7 @@ namespace abcd::source {
 struct ExternalFamilyCapture {
   const FileFunction& creator;
   ClassCaptureParent source;
+  const CaptureStorage* storage = nullptr;
 };
 enum class FamilyTreeError : std::uint8_t {
   kContext, kParent, kModules, kResourceLimit, kWorkLimit, kDeferredCell
@@ -51,7 +53,11 @@ class FamilyTreeInput {
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       FileFamily, const FunctionContext&, analysis::SemanticBudget,
       const RecordModuleContext*, ModuleOwnerId, const abc::MethodLookup*,
-      RecoveryMode, const FileFunction* creator);
+      RecoveryMode, const FileFunction* creator, const CaptureStorage* creator_storage = nullptr);
+  std::variant<FamilyCellCost, FamilyTreeFailure> BindCreator(
+      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+      const abc::MethodLookup&, const FunctionContext&, const FileFunction&,
+      const CaptureStorage*, analysis::SemanticBudget);
   std::variant<ConstructedFamily, FamilyTreeFailure> Build(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const FunctionContext&, analysis::SemanticBudget, const RecordModuleContext*,

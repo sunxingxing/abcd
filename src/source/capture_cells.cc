@@ -362,11 +362,11 @@ ClassRootPoint RootPoint(const corpus::AbcFile& file, const abc::Header& header,
 std::variant<CaptureCells, CaptureCellFailure> BindClassRootCaptureCells(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const abc::MethodLookup& lookup, const FileFunction& creator, CaptureChild child,
-    const FunctionContext& owner, analysis::SemanticBudget budget) {
+    const FunctionContext& owner, analysis::SemanticBudget budget, const CaptureStorage* creator_storage) {
   try {
     Quota quota(budget);
     const auto point = RootPoint(file, header, index, lookup, creator, child, owner, quota);
-    auto bound = BindCaptureCells(index, {creator.input, creator.values, nullptr, creator.module_capture_prefix ? &*creator.module_capture_prefix : nullptr, nullptr, creator.self_order ? &*creator.self_order : nullptr}, child, point.site, point.creation, quota.Remaining());
+    auto bound = BindCaptureCells(index, {creator.input, creator.values, creator_storage, creator.module_capture_prefix ? &*creator.module_capture_prefix : nullptr, nullptr, creator.self_order ? &*creator.self_order : nullptr}, child, point.site, point.creation, quota.Remaining());
     if (const auto* error = std::get_if<CaptureCellFailure>(&bound)) return *error;
     auto cells = std::get<CaptureCells>(std::move(bound));
     cells.work += quota.Work();
@@ -378,11 +378,11 @@ std::variant<CaptureCells, CaptureCellFailure> BindClassRootCaptureCells(
 std::variant<std::uint64_t, CaptureCellFailure> VerifyClassRootCaptureCells(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const abc::MethodLookup& lookup, const FileFunction& creator, CaptureChild child,
-    const FunctionContext& owner, const CaptureCells& cells, analysis::SemanticBudget budget) {
+    const FunctionContext& owner, const CaptureCells& cells, analysis::SemanticBudget budget, const CaptureStorage* creator_storage) {
   try {
     Quota quota(budget);
     const auto point = RootPoint(file, header, index, lookup, creator, child, owner, quota);
-    const auto checked = VerifyCaptureCells(index, {creator.input, creator.values, nullptr, creator.module_capture_prefix ? &*creator.module_capture_prefix : nullptr, nullptr, creator.self_order ? &*creator.self_order : nullptr}, child,
+    const auto checked = VerifyCaptureCells(index, {creator.input, creator.values, creator_storage, creator.module_capture_prefix ? &*creator.module_capture_prefix : nullptr, nullptr, creator.self_order ? &*creator.self_order : nullptr}, child,
         point.site, point.creation, cells, quota.Remaining());
     if (const auto* error = std::get_if<CaptureCellFailure>(&checked)) return *error;
     quota.Step(std::get<std::uint64_t>(checked));

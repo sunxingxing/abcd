@@ -56,6 +56,7 @@ struct ClassRootWriteInput {
   const FileFunction& creator;
   const FunctionContext& owner;
   ClassCaptureParent parent;
+  const CaptureStorage* creator_storage = nullptr;
 };
 // Requires unchanged, complete file-family inputs and freshly verified semantic
 // trees/default signatures/flows/capture layout. Rechecks every original store's

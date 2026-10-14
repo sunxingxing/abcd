@@ -966,6 +966,10 @@ if(BUILD_TESTING)
     add_test(NAME closure_schedule_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/closure_schedule.mjs $<TARGET_FILE:closure_schedule_test>)
   endif()
+  add_executable(creator_requirements_test tests/unit/source/creator_requirements_test.cc)
+  target_link_libraries(creator_requirements_test PRIVATE abcd_source)
+  add_test(NAME creator_requirements_test COMMAND creator_requirements_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes)
   add_executable(creator_classes_test tests/unit/source/creator_classes_test.cc)
   target_link_libraries(creator_classes_test PRIVATE abcd_source)
   add_test(NAME creator_classes_test COMMAND creator_classes_test

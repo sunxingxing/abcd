@@ -20,7 +20,7 @@ void Combine(Requirement& state, analysis::CaptureDomain domain, std::optional<C
 }
 }  // namespace
 std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
-    FileFamily& family, analysis::SemanticBudget budget) {
+    FileFamily& family, analysis::SemanticBudget budget, std::span<const FamilyCellDemand> external) {
   using Error = CaptureCellError;
   auto left = budget;
   const auto require = [](bool condition, Error error) { if (!condition) throw error; };
@@ -33,6 +33,28 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
   try {
     admit(family.members.size(), sizeof(std::vector<CellDemand>));
     std::vector<std::vector<CellDemand>> demands(family.members.size());
+    // Count once by occurrence, then allocate before copying. No per-creator
+    // scan of all external requirements and no lookup by method entity.
+    if (!external.empty()) {
+      admit(family.members.size(), sizeof(std::size_t));
+      std::vector<std::size_t> counts(family.members.size());
+      for (const auto& entry : external) {
+        step(); require(entry.creator.value < family.members.size(), Error::kOwner);
+        const auto& graph = family.members[entry.creator.value].function.Graph();
+        require(entry.demand.creation.value < graph.ops.size(), Error::kCreation);
+        const auto& op = graph.ops[entry.demand.creation.value];
+        require(op.life == analysis::ValueLife::kLive &&
+            (std::holds_alternative<analysis::ValueClassCreation>(op.operation) ||
+             std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)), Error::kCreation);
+        require(counts[entry.creator.value] < std::numeric_limits<std::size_t>::max(), Error::kResourceLimit);
+        ++counts[entry.creator.value];
+      }
+      for (std::size_t i=0;i<counts.size();++i) {
+        step(); admit(counts[i],sizeof(CellDemand)); demands[i].reserve(counts[i]);
+        admit(demands[i].capacity()-counts[i],sizeof(CellDemand));
+      }
+      for (const auto& entry : external) {step();demands[entry.creator.value].push_back(entry.demand);}
+    }
     for (auto& member : family.members) { step(); member.function.ClearStorage(); }
     for (std::size_t i = family.members.size(); i-- > 0;) {
       step(); auto& member = family.members[i]; auto& function = member.function;

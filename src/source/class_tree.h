@@ -101,7 +101,8 @@ struct ClassPreparation {
     const analysis::FunctionCreationSites&, const analysis::ClassMethodSites&,
     const FileFunction&, analysis::OpId, RouteInputIdentity, const GlobalScope*,
     analysis::SemanticBudget, const ClassInitializerCall*, std::span<const ClassDefinitionSite>,
-    FunctionOwnerId, RecoveryMode);
+    FunctionOwnerId, RecoveryMode, const CaptureStorage* creator_storage = nullptr,
+    ClassRootBinding root_binding = ClassRootBinding::kBind);
 // Fresh unchanged caller and same-file indexes are admitted by the caller.
 // Constructor and every member use the shared family pipeline. Refusal of any
 // member refuses this creation by default. Explicit AllowPartial may retain a
@@ -118,7 +119,8 @@ struct ClassPreparation {
     const ClassInitializerCall* initializer = nullptr,
     std::span<const ClassDefinitionSite> definitions = {},
     RecoveryMode recovery = RecoveryMode::kCompleteOnly, FunctionOwnerId first_owner = {},
-    const CaptureTree* parent = nullptr, ClassPreparation* preparation = nullptr);
+    const CaptureTree* parent = nullptr, ClassPreparation* preparation = nullptr,
+    const CaptureStorage* creator_storage = nullptr);
 struct PrintedClassTree {
   // Each member's positions remain relative to its own byte offset, preserving
   // the existing family source maps without expanding their origin graphs.

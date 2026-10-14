@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "family_tree.h"
+#include "family_cells.h"
 #include "family_print.h"
 
 namespace abcd::source {
@@ -24,7 +25,7 @@ struct FamilyDestination {
 };
 enum class FamilyPrepareError : std::uint8_t {
   kStrictness, kCallable, kModules, kAbi, kFileChanged, kResourceLimit, kWorkLimit,
-  kSources, kReceipt, kPlacement
+  kSources, kReceipt, kPlacement, kClassRequirements
 };
 struct FamilyPrepareFailure {
   std::variant<FamilyPrepareError, CreationContextFailure, FamilyFileFailure,
@@ -41,7 +42,12 @@ class FamilyPreparation {
       const abc::MethodLookup&, const analysis::MethodRoleIndex&,
       const analysis::FunctionCreationSites&, FunctionContext, FamilyDestination,
       analysis::SemanticBudget, RecoveryMode, const ParentModuleInput*, const FileFunction*,
-      const analysis::ClassMethodSites* = nullptr);
+      const analysis::ClassMethodSites* = nullptr, const CaptureStorage* creator_storage = nullptr,
+      ClassRootBinding root_binding = ClassRootBinding::kBind);
+  std::variant<FamilyCellCost, FamilyPrepareFailure> BindCreator(
+      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+      const abc::MethodLookup&, const FileFunction&, const CaptureStorage*, analysis::SemanticBudget = {});
+  bool RequirementsOnly() const { return requirements_only_; }
   const CaptureCells* RootCapture() const {
     const auto& capture = input_.Input().root_capture; return capture ? &*capture : nullptr;
   }
@@ -60,6 +66,7 @@ class FamilyPreparation {
   RecoveryMode recovery_;
   std::size_t bytes_;
   std::uint64_t work_;
+  bool requirements_only_ = false;
 };
 // Immutable, file-backed preparation, not a record-completion receipt. Factory
 // consumes a real creation occurrence and runs every family pass itself. No
@@ -104,7 +111,7 @@ class PreparedFamily {
   static std::variant<PreparedFamily, FamilyPrepareFailure> Finish(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, FamilyPreparation, FamilyDestination,
-      analysis::SemanticBudget, const FileFunction*);
+      analysis::SemanticBudget, const FileFunction*, const CaptureStorage* creator_storage = nullptr);
   [[nodiscard]] const ConstructedFamily& Family() const;
   [[nodiscard]] const RouteInputIdentity& Identity() const;
   [[nodiscard]] const analysis::ClassMethodSite* ClassCreation() const;

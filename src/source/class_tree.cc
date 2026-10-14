@@ -172,7 +172,7 @@ std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
     const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
     const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
-    std::span<const ClassDefinitionSite> definitions, FunctionOwnerId first_owner, RecoveryMode recovery) {
+    std::span<const ClassDefinitionSite> definitions, FunctionOwnerId first_owner, RecoveryMode recovery, const CaptureStorage* creator_storage, ClassRootBinding root_binding) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -209,7 +209,7 @@ std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
       const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember,
           {static_cast<std::uint32_t>(result.next_owner)}};
       auto body = FamilyPreparation::Read(file, header, index, lookup, roles, functions,
-          std::move(root), destination, budget, recovery, &modules, &creator, &classes);
+          std::move(root), destination, budget, recovery, &modules, &creator, &classes, creator_storage, root_binding);
       if (const auto* prepared = std::get_if<FamilyPreparation>(&body)) {
         admit(prepared->AllocatedBytes(), 1); step(prepared->Work());
         result.next_owner += prepared->MemberCount();
@@ -262,7 +262,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
     const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
     std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery, FunctionOwnerId first_owner,
-    const CaptureTree* parent, ClassPreparation* preparation) {
+    const CaptureTree* parent, ClassPreparation* preparation, const CaptureStorage* creator_storage) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -295,7 +295,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       auto& input = preparation->bodies[prepared_body++];
       if (auto* failure = std::get_if<FamilyPrepareFailure>(&input)) return *failure;
       return PreparedFamily::Finish(file, header, index, lookup,
-          std::get<FamilyPreparation>(std::move(input)), destination(), budget, &creator);
+          std::get<FamilyPreparation>(std::move(input)), destination(), budget, &creator, creator_storage);
     };
     const ParentModuleInput modules{creator.input,
         {creator.values.graph.origins[creator.values.graph.ops[operation.value].origin.value].site.value}};

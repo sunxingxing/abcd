@@ -166,7 +166,7 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyCreatorClasses(
 }
 std::variant<CreatorClassCost, CreatorClassFailure> PrepareCreatorClasses(
     const CreatorClassInput& input, CreatorClasses& plan, const GlobalScope* globals,
-    FunctionOwnerId first_owner, RecoveryMode recovery, analysis::SemanticBudget budget) {
+    FunctionOwnerId first_owner, RecoveryMode recovery, analysis::SemanticBudget budget, ClassRootBinding root_binding) {
   return Run(budget,[&](Quota& q) {
     std::uint64_t next=first_owner.value;
     for (auto& task:plan.tasks) {
@@ -174,11 +174,75 @@ std::variant<CreatorClassCost, CreatorClassFailure> PrepareCreatorClasses(
       q.Require(!task.preparation && !task.owners,Error::kCreation);
       auto prepared=q.Take<ClassPreparation>(PrepareClassTree(input.file,input.header,input.index,input.lookup,
           input.roles,input.functions,input.classes,input.creator,task.operation,input.identity,globals,q.Left(),
-          task.initializer,task.definitions,{static_cast<std::uint32_t>(next)},recovery));
+          task.initializer,task.definitions,{static_cast<std::uint32_t>(next)},recovery,input.storage,root_binding));
       q.Admit(prepared.allocated_bytes);q.Step(prepared.work);
       const ClassOwnerRange range{next,prepared.next_owner};
       q.Require(ValidClassOwnerRange(range,next),Error::kCreation);
       task.owners=range;next=range.end;task.preparation.emplace(std::move(prepared));
+    }
+    return q.Cost();
+  });
+}
+std::variant<CreatorClassDemands, CreatorClassFailure> CollectCreatorClassDemands(
+    const CreatorClassInput& input, const CreatorClasses& plan, FamilyId creator,
+    analysis::SemanticBudget budget) {
+  return Run(budget,[&](Quota& q) {
+    CreatorClassDemands result;
+    q.Require(plan.occurrence==input.occurrence && creator.value==input.occurrence.member.value &&
+        plan.identity==input.identity && plan.creator==input.creator.input.Method() &&
+        plan.value_revision==input.creator.values.graph.revision &&
+        plan.cfg_revision==input.creator.values.graph.cfg_revision,Error::kCreation);
+    std::size_t count=0;
+    for(const auto& task:plan.tasks) {
+      q.Step();q.operation=task.operation;q.Require(task.preparation.has_value(),Error::kCreation);
+      for(const auto& body:task.preparation->bodies) {
+        q.Step();if(const auto* family=std::get_if<FamilyPreparation>(&body)) {
+          q.Require(family->RootUses().size()<=SIZE_MAX-count,Error::kResourceLimit);
+          count+=family->RootUses().size();
+        }
+      }
+    }
+    q.Reserve(result.demands,count);
+    const auto& instructions=input.creator.input.Input().instructions;
+    const auto& graph=input.creator.values.graph;
+    for(const auto& task:plan.tasks) for(const auto& body:task.preparation->bodies) {
+      q.Step();q.operation=task.operation;
+      const auto* family=std::get_if<FamilyPreparation>(&body);if(!family) continue;
+      const auto& context=family->Context();
+      q.Require(context.ClassContext() && context.Identity()==input.identity,Error::kCreation);
+      const auto* constructor=context.ConstructorSite();const auto* member=context.ClassSite();
+      const auto* function=context.CreationSite();
+      q.Require(constructor || member || function,Error::kCreation);
+      q.Require((constructor?constructor->creator:member?member->creator:function->creator)==input.creator.input.Method(),Error::kCreation);
+      const auto pc=constructor?constructor->pc:member?member->pc:function->pc;
+      q.Step(std::bit_width(instructions.size())+1);
+      const auto site=std::lower_bound(instructions.begin(),instructions.end(),pc,
+          [](const auto& instruction,auto pc){return instruction.pc<pc;});
+      q.Require(site!=instructions.end() && site->pc==pc,Error::kCreation);
+      const auto id=static_cast<std::size_t>(site-instructions.begin());
+      q.Require(id<graph.input.sites.size() && graph.input.sites[id],Error::kCreation);
+      for(const auto& use:family->RootUses()) {
+        q.Step();result.demands.push_back({creator,{*graph.input.sites[id],use.cell,use.domain,
+            use.source?use.source:std::optional<CaptureOrigin>{{context.Target(),{}, {}}}}});
+      }
+    }
+    result.allocated_bytes=q.Cost().allocated_bytes;result.work=q.Cost().work;return result;
+  });
+}
+std::variant<CreatorClassCost, CreatorClassFailure> BindCreatorClasses(
+    const corpus::AbcFile& file,const abc::Header& header,const abc::MetadataIndex& index,
+    const abc::MethodLookup& lookup,const FileFunction& creator,const CaptureStorage* storage,
+    CreatorClasses& plan,analysis::SemanticBudget budget) {
+  return Run(budget,[&](Quota& q) {
+    q.Require(plan.creator==creator.input.Method() && plan.value_revision==creator.values.graph.revision &&
+        plan.cfg_revision==creator.values.graph.cfg_revision,Error::kCreation);
+    for(auto& task:plan.tasks) {
+      q.Step();q.operation=task.operation;q.Require(task.preparation.has_value(),Error::kCreation);
+      for(auto& body:task.preparation->bodies) if(auto* family=std::get_if<FamilyPreparation>(&body)) {
+        q.Step();auto bound=family->BindCreator(file,header,index,lookup,creator,storage,q.Left());
+        if(const auto* error=std::get_if<FamilyPrepareFailure>(&bound))throw CreatorClassFailure{*error,q.operation};
+        const auto cost=std::get<FamilyCellCost>(bound);q.Admit(cost.allocated_bytes);q.Step(cost.work);
+      }
     }
     return q.Cost();
   });
@@ -213,7 +277,7 @@ std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
       q.Require(task.owners && ValidClassOwnerRange(*task.owners,next) && task.preparation,Error::kCreation);
       auto definition=q.Take<ClassTree>(BuildClassTree(input.file,input.header,input.index,input.lookup,input.roles,
           input.functions,input.classes,input.creator,task.operation,input.identity,globals,q.Left(),task.initializer,
-          task.definitions,recovery,{static_cast<std::uint32_t>(next)},parent,&*task.preparation));
+          task.definitions,recovery,{static_cast<std::uint32_t>(next)},parent,&*task.preparation,input.storage));
       q.Require(definition.name==task.tree->name && definition.callable==task.tree->callable &&
           definition.member_sites==task.tree->member_sites && definition.DraftPrepared(),Error::kCreation);
       q.Admit(definition.allocated_bytes);q.Step(definition.work);

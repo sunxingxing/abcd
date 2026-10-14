@@ -20,7 +20,7 @@ class FamilyTrees {
       RecoveryMode recovery)
       : file_(file), header_(header), index_(index), initial_(budget), left_(budget),
         modules_(modules), module_owner_(owner), lookup_(lookup), recovery_(recovery) {}
-  FamilyCellCost Prepare(FileFamily& family, const FunctionContext* root, const FileFunction* creator) {
+  FamilyCellCost Prepare(FileFamily& family, const FunctionContext* root, const FileFunction* creator, const CaptureStorage* creator_storage = nullptr) {
     // Keep the original family-stage resource gate before any nested pass.
     Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty(), FamilyTreeError::kContext);
@@ -29,10 +29,10 @@ class FamilyTrees {
     Rebind(family);
     if (family.root_capture) {
       auto cells = Take<CaptureCells, CaptureCellFailure>(BindClassRootCaptureCells(file_, header_, index_, *lookup_,
-          *creator, family.members.front().function.Capture(), *root, left_));
+          *creator, family.members.front().function.Capture(), *root, left_, creator_storage));
       Account(cells);
       Step(Take<std::uint64_t, CaptureCellFailure>(VerifyClassRootCaptureCells(file_, header_, index_, *lookup_,
-          *creator, family.members.front().function.Capture(), *root, cells, left_)));
+          *creator, family.members.front().function.Capture(), *root, cells, left_, creator_storage)));
       family.root_capture = std::move(cells);
     }
     return {initial_.bytes - left_.bytes, initial_.work - left_.work};
@@ -120,7 +120,8 @@ class FamilyTrees {
         if (*error == CaptureTreeError::kWorkLimit) Fail(FamilyTreeError::kWorkLimit);
         auto failure = FamilyTreeFailure{FileFamily::kRoot, FamilyTreeError::kDeferredCell};
         failure.deferred = DescribeDeferredFailure(DeferredCellError::kExternalRoot,
-            external->creator.values.graph, external->creator.values.cells ? &*external->creator.values.cells : nullptr,
+            external->creator.values.graph, external->storage ? &external->storage->cells :
+                external->creator.values.cells ? &*external->creator.values.cells : nullptr,
             *family.root_capture, rejected ? &family.root_capture->deferred[*rejected] : nullptr,
             family.members.front().function.Capture().Input().Captures());
         failure.method = failure.deferred->creator;
@@ -373,7 +374,7 @@ class FamilyTrees {
     }
     std::optional<ClassRootWriteInput> root_writes;
     if (result.root_capture) root_writes.emplace(ClassRootWriteInput{
-        file_, header_, *lookup_, external->creator, *root, external->source});
+        file_, header_, *lookup_, external->creator, *root, external->source, external->storage});
     const auto writes = VerifyFamilyWrites(index_, family, result, left_, lookup_, root_writes ? &*root_writes : nullptr);
     if (const auto* failure = std::get_if<FamilyWriteFailure>(&writes)) {
       member_ = failure->member; Fail(*failure);
@@ -710,10 +711,10 @@ std::variant<FamilyTreeInput, FamilyTreeFailure> FamilyTreeInput::Prepare(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     FileFamily family, const FunctionContext& root, analysis::SemanticBudget budget,
     const RecordModuleContext* modules, ModuleOwnerId owner, const abc::MethodLookup* lookup,
-    RecoveryMode recovery, const FileFunction* creator) {
+    RecoveryMode recovery, const FileFunction* creator, const CaptureStorage* creator_storage) {
   try {
     FamilyTrees builder(file, header, index, budget, modules, owner, lookup, recovery);
-    const auto cost = builder.Prepare(family, &root, creator);
+    const auto cost = builder.Prepare(family, &root, creator, creator_storage);
     return FamilyTreeInput(std::move(family), cost.allocated_bytes, cost.work);
   } catch (const FamilyTreeFailure& error) {
     auto located = error;
@@ -722,6 +723,33 @@ std::variant<FamilyTreeInput, FamilyTreeFailure> FamilyTreeInput::Prepare(
     return located;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }
+}
+std::variant<FamilyCellCost, FamilyTreeFailure> FamilyTreeInput::BindCreator(
+    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
+    const abc::MethodLookup& lookup, const FunctionContext& root, const FileFunction& creator,
+    const CaptureStorage* storage, analysis::SemanticBudget budget) {
+  if (family_.members.empty() || !root.ClassContext())
+    return FamilyTreeFailure{{0},FamilyTreeError::kContext};
+  auto bound=BindClassRootCaptureCells(file,header,index,lookup,creator,
+      family_.members.front().function.Capture(),root,budget,storage);
+  if (const auto* error=std::get_if<CaptureCellFailure>(&bound)) return FamilyTreeFailure{{0},*error};
+  auto cells=std::get<CaptureCells>(std::move(bound));
+  if(cells.work>budget.work || cells.targets.size()>budget.work-cells.work) return FamilyTreeFailure{{0},FamilyTreeError::kWorkLimit};
+  for(const auto& target:cells.targets)
+    if(!std::holds_alternative<ParentCell>(target.target))
+      return FamilyTreeFailure{{0},CaptureEvaluationFailure{CaptureEvaluationError::kOuterCapture}};
+  cells.work+=cells.targets.size();
+  if (cells.allocated_bytes>budget.bytes) return FamilyTreeFailure{{0},FamilyTreeError::kResourceLimit};
+  if (cells.work>budget.work) return FamilyTreeFailure{{0},FamilyTreeError::kWorkLimit};
+  budget.bytes-=cells.allocated_bytes;budget.work-=cells.work;
+  auto verified=VerifyClassRootCaptureCells(file,header,index,lookup,creator,
+      family_.members.front().function.Capture(),root,cells,budget,storage);
+  if (const auto* error=std::get_if<CaptureCellFailure>(&verified)) return FamilyTreeFailure{{0},*error};
+  const FamilyCellCost cost{cells.allocated_bytes,cells.work+std::get<std::uint64_t>(verified)};
+  // An empty binding is still tied to the actual creator; the final enclosure
+  // and write verifier must inspect it, not infer closedness from missing reads.
+  family_.root_capture.emplace(std::move(cells));
+  return cost;
 }
 std::variant<ConstructedFamily, FamilyTreeFailure> FamilyTreeInput::Build(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
@@ -745,7 +773,7 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     const abc::MethodLookup* lookup, RecoveryMode recovery, const ExternalFamilyCapture* external) {
   try {
     FamilyTrees builder(file, header, index, budget, modules, module_owner, lookup, recovery);
-    builder.Prepare(family, &root, external ? &external->creator : nullptr);
+    builder.Prepare(family, &root, external ? &external->creator : nullptr, external ? external->storage : nullptr);
     return builder.Build(family, &root, {}, external);
   } catch (const FamilyTreeFailure& error) {
     auto located = error;

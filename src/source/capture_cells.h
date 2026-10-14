@@ -100,11 +100,11 @@ struct CaptureCellFailure {
 [[nodiscard]] std::variant<CaptureCells, CaptureCellFailure> BindClassRootCaptureCells(
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
     const abc::MethodLookup&, const FileFunction& creator, CaptureChild child,
-    const FunctionContext& owner, analysis::SemanticBudget = {});
+    const FunctionContext& owner, analysis::SemanticBudget = {}, const CaptureStorage* creator_storage = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, CaptureCellFailure> VerifyClassRootCaptureCells(
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
     const abc::MethodLookup&, const FileFunction& creator, CaptureChild child,
-    const FunctionContext& owner, const CaptureCells&, analysis::SemanticBudget = {});
+    const FunctionContext& owner, const CaptureCells&, analysis::SemanticBudget = {}, const CaptureStorage* creator_storage = nullptr);
 // One genuine same-file resolved creation. Per-function plans are prepared
 // once, not rebuilt per creation. Same target at two sites produces two plans.
 [[nodiscard]] std::variant<CaptureCells, CaptureCellFailure> BindCaptureCells(

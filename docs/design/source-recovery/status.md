@@ -12,6 +12,14 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 67 Increment II 基础 WIP（cc 审查通过；生产贯通待续）
+- cc 独立审查（增量 II 部分）：构建通过；固定集串行 65/65；配对样本逐字节相同；513/620、552/620 不变，0 状态变化，0 文本变化；cli/corpus/failure 扫描 60/61，只有既有的 family_source_cli_test 失败。
+
+- 基线 `97ca420a`。新增 requirements-only 类成员准备状态及禁止 Finish 的类型化门禁；按 occurrence 汇总类成员家族需求，交给既有 bottom-up 格处理；CellPlan 支持在真实 ClassCreation 环境解析需求；实际 creator Storage 贯通类根绑定、独立复核及 ClassRootWriteInput。纯转发 creator 的真实 es2abc 单测证明：缺少 demanded storage 拒绝，补齐后绑定成功。见 [实现边界和剩余依赖](round-67-class-requirements.md)。
+- **未完成 II**：尚无统一的嵌套类准备任务图；生产入口仍保留 Increment I 的 gate。未接通冻结前声明决策、嵌套类全 owner 范围与 ReferenceNames、真实 enclosure 下的完成及 FamilyWrites 非根屏障验证；III 未启动。没有新增 complete，没有 Node 端到端声明。
+- 完整构建通过；固定集串行 **65/65**；新/扩展测试 **5/5**；定向 **65/79**（14 项均为既有失败）；CLI/corpus/failure/receipt/manifest 扫描 **58/59**（仅既有 family_source_cli_test）。新增测试含两契约下 18 个真实 ABC 案例、200/201/400/800 宽度和成员内转发深度、需求/规划/绑定的精确 byte/work 边界及错 occurrence/creator/op/storage 反例。
+- 对 explore67/explore67s：**513/620、552/620** 不变，80 份 manifest 逐字节相同，已有 complete/partial 源码逐字节相同（含 o32/49868）。四目标均仍为 FamilyCreationCheck=14。证据 `/private/tmp/r67ii-final-cohort/`，验收日志 `/private/tmp/r67ii-acceptance.json`。未运行留出集、全套测试或 RSS 基准；未 commit/push/stash。
+
 ## Round 67 Increment I：普通后代类准备发现（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；513/620、552/620 不变，0 状态变化，0 文本变化；cli/corpus/failure 扫描 59/60，只有既有的 family_source_cli_test 失败。
 

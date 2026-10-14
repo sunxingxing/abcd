@@ -36,3 +36,32 @@ Compiler SHA-256: `4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54
 | width400.abc | `5a3641e7adda3dc3f663f9b41d654cdec95d0362eab0698c4381c064c4ff3d44` |
 | width800.abc | `5b2684191046c044eafa48732ee3d1692e039b21be4be56e6947db85f76247db` |
 | member.abc | `afbae48163c7236e546a055e7522f40a4477fedede7a44d2ac00a6f564a24548` |
+
+## Requirements-only preparation fixtures
+
+`forward` is an anonymous class in a normal `factory` function. `factory` has
+no direct lexical access; its member `read` demands `outer`'s parameter.
+`forwardwidthN` creates N such classes. `forwarddepthN` puts N ordinary nested
+function occurrences inside the class member before the actual captured read.
+The generator above uses the same pinned compiler/options for all of them.
+
+These fixtures test demand collection, pure forwarding, actual creator-storage
+binding and the requirements-only publication gate. They do **not** demonstrate
+production descendant-class output or a Node differential. The named class self-binding variant was refused by normal input with
+SemanticError::kExceptionRegions; it remains outside this normal-creator test.
+No handler was removed to make it pass.
+Exact budget checks cover collection, family cell planning and binding. The
+class-member family read is exercised at each depth, but its full preparation
+budget is not the constant-size binding budget reported for the deepest case.
+
+| File | SHA-256 |
+|---|---|
+| forward.abc | `2b7552a803d8651752677371f22f52d20ee0231ff381372ed74681b390cc0c49` |
+| forwarddepth200.abc | `e74919d50739994f615c5d1b59565ecf49f64b045e65c006fe2a823eba776174` |
+| forwarddepth201.abc | `446bdd2940167c2d4cbc7dac67cfab45f0109eb6ca7767949f24d886458b7dff` |
+| forwarddepth400.abc | `c1427d001901d9d25e017a687e89a0532fc0f2757a79ed7c0314c0a43acbf5ad` |
+| forwarddepth800.abc | `4ff4c04cdf9167a1191b924489feb6f868a8edaccf2a9dff58ad98d28586088e` |
+| forwardwidth200.abc | `78e155a42661c89e9348216096c1bf4eb7a04a6a142948367968c14bbf15a786` |
+| forwardwidth201.abc | `981b61a6cac0e1fe7c9c0a15647d3ed9e3140e685c91bd7c20b3053c10324764` |
+| forwardwidth400.abc | `83e55fefb613e26162d06fd9b8e2062f13a59be0ca52e7711c0a8aa2a332bee5` |
+| forwardwidth800.abc | `70e267f65710f0b91ee16b05ad1e7798667adbf7915c8d88ccb851db20046ee4` |

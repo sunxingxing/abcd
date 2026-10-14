@@ -55,7 +55,7 @@ class WriteCheck {
       Require(external_ && std::holds_alternative<const FileFamily*>(inputs_), Error::kCapture);
       const auto& cells = *trees_.root_capture;
       const auto checked = VerifyClassRootCaptureCells(external_->file, external_->header, index_, external_->lookup,
-          external_->creator, Child(root), external_->owner, cells, left_);
+          external_->creator, Child(root), external_->owner, cells, left_, external_->creator_storage);
       if (const auto* error = std::get_if<CaptureCellFailure>(&checked))
         Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
             *error == CaptureCellError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);
@@ -63,7 +63,7 @@ class WriteCheck {
       const auto* file_family = std::get<const FileFamily*>(inputs_);
       if (file_family->root_capture) {
         const auto original = VerifyClassRootCaptureCells(external_->file, external_->header, index_, external_->lookup,
-            external_->creator, Child(root), external_->owner, *file_family->root_capture, left_);
+            external_->creator, Child(root), external_->owner, *file_family->root_capture, left_, external_->creator_storage);
         if (const auto* error = std::get_if<CaptureCellFailure>(&original))
           Fail(*error == CaptureCellError::kResourceLimit ? Error::kResourceLimit :
               *error == CaptureCellError::kWorkLimit ? Error::kWorkLimit : Error::kCapture);

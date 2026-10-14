@@ -41,6 +41,7 @@ struct FamilyClassObligation {
   analysis::OpId operation;
   analysis::OpId creation;
 };
+enum class ClassRootBinding : std::uint8_t { kBind, kRequirements };
 enum class FamilyClassMode : std::uint8_t { kReject, kRetainRoot };
 struct FileFamilyMember {
   FamilyFunction function;
@@ -124,6 +125,8 @@ struct FamilyFileFailure {
     const FunctionContext* owner = nullptr, ModuleOwnerId module_owner = {},
     FamilyClassMode classes = FamilyClassMode::kReject,
     const ParentModuleInput* root_modules = nullptr, FunctionOwnerId first_owner = {},
-    const FileFunction* root_creator = nullptr, const analysis::ClassMethodSites* class_sites = nullptr);
+    const FileFunction* root_creator = nullptr, const analysis::ClassMethodSites* class_sites = nullptr,
+    const CaptureStorage* root_storage = nullptr,
+    ClassRootBinding root_binding = ClassRootBinding::kBind);
 }  // namespace abcd::source
 #endif
