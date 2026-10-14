@@ -31,7 +31,23 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
                            nlohmann::json& record) {
   std::visit([&](const auto& failure) {
     using T = std::decay_t<decltype(failure)>;
-    if constexpr (std::is_same_v<T, source::RouteRefusal>) {
+    if constexpr (std::is_same_v<T, source::PrintedSource>) {
+      if (failure.omitted_members.empty()) return;
+      auto& omissions = record["source_omitted_members"];
+      omissions = nlohmann::json::array();
+      for (const auto& member : failure.omitted_members) {
+        source::FailureCauseChain chain;
+        std::visit([&](auto cause) { source::AppendFailureCause(chain, cause); }, member.cause);
+        nlohmann::json item{{"constructor", member.constructor.value}, {"member", member.member.value},
+            {"method", member.method.value}, {"pc", member.pc.value}, {"causes", DescribeCauses(chain)}};
+        if (member.working_pc) item["working_pc"] = member.working_pc->value;
+        if (member.creation_method) item["creation_method"] = member.creation_method->value;
+        if (member.creation_pc) item["creation_pc"] = member.creation_pc->value;
+        if (member.node) item["exception_node"] = member.node->value;
+        if (member.value) item["value"] = member.value->value;
+        omissions.push_back(std::move(item));
+      }
+    } else if constexpr (std::is_same_v<T, source::RouteRefusal>) {
       record["source_failure_domain"] = "route_refusal";
       record["source_failure"] = {
           {"class", source::RouteFailureClassName(failure.failure.failure_class)},

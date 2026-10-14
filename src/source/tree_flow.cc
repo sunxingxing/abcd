@@ -443,10 +443,11 @@ class FlowCheck {
     return graph_.blocks[node.block.value];
   }
   const SelectionRegion* DecisionSelection(const ControlNode& node) const {
-    if (exceptions_ || !node.arms || !node.next) return nullptr;
+    if (!node.arms || !node.next) return nullptr;
     const auto branch = DecisionPredicate(node);
     if (logical_branches_.empty() || !logical_branches_[branch.value] ||
-        evaluation_.operations[branch.value].kind != EvaluationKind::kLogicalValue) return nullptr;
+        (evaluation_.operations[branch.value].kind != EvaluationKind::kLogicalValue &&
+         !(exceptions_ && evaluation_.operations[branch.value].kind == EvaluationKind::kRoot))) return nullptr;
     const auto& selection = logicals_[*logical_branches_[branch.value]];
     if (selection.parent || selection.prefix_parent ||
         control_.nodes[node.next->value].block != selection.join) return nullptr;
@@ -710,6 +711,25 @@ class FlowCheck {
               LogicalValue(*selection, parent, child);
             } else DecisionOperation(op, parent, child, &condition, root_predicate, analysis::OpId{at});
           }
+          if (exceptions_) if (const auto* selection = DecisionSelection(linear)) {
+            const auto site = graph_.phases[graph_.ops[selection->branch.value].block.value].instruction.value;
+            const auto owner = graph_.phases[graph_.ops[root_predicate.value].block.value].instruction.value;
+            const auto& scope = exceptions_->regions.layout.scopes[site];
+            const auto& enclosing = exceptions_->regions.layout.scopes[owner];
+            Require(scope.has_value() == enclosing.has_value() &&
+                (!scope || (scope->region == enclosing->region && scope->part == enclosing->part)), Error::kPlacement);
+            if (evaluation_.operations[selection->branch.value].kind == EvaluationKind::kLogicalValue) {
+              LogicalValue(*selection, parent, child);
+            } else {
+              const auto* sequence = std::get_if<SequenceExpr>(&tree_.expressions[condition.value].expression);
+              Require(sequence && tree_.expressions[condition.value].origin.value == graph_.ops[at].origin.value,
+                  Error::kSequence);
+              const auto& placement = tree_.operations[*placements_[selection->branch.value]].node;
+              Require(std::get_if<ExprId>(&placement) && std::get<ExprId>(placement) == sequence->left, Error::kPlacement);
+              LogicalAssignment(*selection, sequence->left, parent, child);
+              condition = sequence->right;
+            }
+          }
           for (std::uint8_t e = 0; !DecisionSelection(linear) && e < path.edge_count; ++e) {
             budget_.Step(); const analysis::EdgeId edge{path.first_edge.value + e};
             if (graph_.edges[edge.value].kind == analysis::FlowEdgeKind::kException) continue;
@@ -766,20 +786,23 @@ class FlowCheck {
   }
   void LogicalBranch(const SelectionRegion& region, StmtId statement, StmtId parent, std::uint32_t child) {
     const auto root = std::get<ExpressionStmt>(tree_.statements[statement.value].statement).expression;
+    Require(tree_.statements[statement.value].origin.value == graph_.ops[region.branch.value].origin.value,
+        Error::kPlacement);
+    LogicalAssignment(region, root, parent, child);
+  }
+  void LogicalAssignment(const SelectionRegion& region, ExprId root, StmtId parent, std::uint32_t child) {
     const auto* assignment = std::get_if<AssignmentExpr>(&tree_.expressions[root.value].expression);
     Require(assignment != nullptr, Error::kPlacement);
     const auto* target = std::get_if<SymbolTarget>(&assignment->target);
     if (region.consequent) {
-      Require(target && tree_.statements[statement.value].origin.value == graph_.ops[region.branch.value].origin.value &&
-          tree_.expressions[root.value].origin == tree_.statements[statement.value].origin, Error::kPlacement);
+      Require(target && tree_.expressions[root.value].origin.value == graph_.ops[region.branch.value].origin.value, Error::kPlacement);
       Conditional(region, assignment->value, target->symbol, parent, child);
       return;
     }
     const auto* logical = std::get_if<LogicalExpr>(&tree_.expressions[assignment->value.value].expression);
     Require(target && logical && logical->operation == region.operation &&
         flow_.expressions[region.boolean.value] == assignment->value &&
-        tree_.statements[statement.value].origin.value == graph_.ops[region.branch.value].origin.value &&
-        tree_.expressions[root.value].origin == tree_.statements[statement.value].origin, Error::kPlacement);
+        tree_.expressions[root.value].origin.value == graph_.ops[region.branch.value].origin.value, Error::kPlacement);
     const auto rhs = std::get<analysis::ValueId>(region.right);
     const auto producer = std::get<analysis::OpResult>(graph_.values[rhs.value].origin).op;
     Require(flow_.expressions[producer.value] == logical->right, Error::kPlacement);
@@ -1562,6 +1585,12 @@ class FlowCheck {
            (logicals_[*logical_branches_[i]].parent || logicals_[*logical_branches_[i]].prefix_parent))) {
         const auto* expression = std::get_if<ExprId>(&placement);
         Require(expression != nullptr, Error::kPlacement); flow_.expressions[i] = *expression;
+      } else if (exceptions_ && std::holds_alternative<analysis::ValueBranch>(op.operation) &&
+          !logical_branches_.empty() && logical_branches_[i] && std::holds_alternative<ExprId>(placement)) {
+        // The decision walk must consume this retained phi assignment at its
+        // exact prefix position. Merely indexing it does not prove execution.
+        Require(evaluation_.operations[i].kind == EvaluationKind::kRoot, Error::kPlacement);
+        flow_.expressions[i] = std::get<ExprId>(placement);
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
           std::holds_alternative<analysis::ValueDebugger>(op.operation) ||
           std::holds_alternative<analysis::ValueThrow>(op.operation) ||
@@ -1899,6 +1928,10 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     if (failure_location) *failure_location = failure.location;
     return failure.kind;
   } catch (Error error) { return error;
+  } catch (EvaluationError error) {
+    if (error == EvaluationError::kWorkLimit) return Error::kWorkLimit;
+    if (error == EvaluationError::kResourceLimit) return Error::kResourceLimit;
+    return Error::kEvaluation;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

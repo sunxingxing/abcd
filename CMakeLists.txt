@@ -896,11 +896,19 @@ if(BUILD_TESTING)
   target_include_directories(decision_prefix_test PRIVATE tests/support)
   target_link_libraries(decision_prefix_test PRIVATE abcd_source)
   add_test(NAME decision_prefix_test COMMAND decision_prefix_test)
+  add_executable(phased_decision_prefix_test tests/unit/source/phased_decision_prefix_test.cc)
+  target_include_directories(phased_decision_prefix_test PRIVATE tests/support)
+  target_link_libraries(phased_decision_prefix_test PRIVATE abcd_source)
+  add_test(NAME phased_decision_prefix_test COMMAND phased_decision_prefix_test)
   add_executable(decision_selection_prefix_test tests/unit/source/decision_selection_prefix_test.cc)
   target_include_directories(decision_selection_prefix_test PRIVATE tests/support)
   target_link_libraries(decision_selection_prefix_test PRIVATE abcd_source)
   add_test(NAME decision_selection_prefix_test COMMAND decision_selection_prefix_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME phased_decision_prefix_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phased_decision_prefix.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/phased_decision_prefix)
     add_test(NAME decision_selection_prefix_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_selection_prefix.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
@@ -2618,10 +2626,17 @@ if(BUILD_TESTING)
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
         ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo/artifacts/entry/default/default/modules/modules.abc)
     endif()
+    add_executable(class_omissions_test tests/unit/source/class_omissions_test.cc tools/record_failure_json.cc)
+    target_link_libraries(class_omissions_test PRIVATE abcd_source abcd_json)
+    add_test(NAME class_omissions_test COMMAND class_omissions_test)
     add_executable(tree_failure_test tests/unit/source/tree_failure_test.cc tools/record_failure_json.cc)
     target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME tree_failure_test COMMAND tree_failure_test)
     if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME class_omissions_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_omissions.mjs
+        $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
+        ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects)
       add_test(NAME evaluation_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/evaluation_failure.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

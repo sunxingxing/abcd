@@ -25,8 +25,9 @@ try {
     const exported=run(structure,[abc,dest,'--value-source','--language-source']);
     assert.equal(exported.status,0,exported.stderr);
     const row=JSON.parse(readFileSync(join(dest,'manifest.json'),'utf8')).records.find(r=>r.entity===entity);
-    if(entity===29268) {
-      // Increment III now verifies and publishes this native for-in method.
+    if(entity===29268 || entity===28264) {
+      // For-in increment III completes 29268; Round 63 independently verifies
+      // the retained phased selection prefix in 28264. Both must publish exact source.
       assert.equal(row.source_complete,true);
       const cli=run(semantic,[abc,String(method),'--record-source','--value-source','--language-source']);
       assert.equal(cli.status,0);const report=JSON.parse(cli.stdout);
@@ -50,15 +51,6 @@ try {
       const lines=instructions.stdout.trim().split('\n').map(line=>JSON.parse(line));
       assert.ok(lines.some(line=>line.pc===pc || line.offset===pc),`${entity}: real instruction boundary ${pc}`);
     }
-    if(entity===28264) {
-      const tree=report.source_failure.tree;
-      assert.deepEqual(report.source_failure.causes,[
-        {domain:'abcd::source::FunctionTreeError',value:0},{domain:'abcd::source::TreeObligation',value:3}]);
-      assert.equal(tree.decision_prefix,8); // kPrefixArms: phased event not projected.
-      assert.equal(tree.placement,1); // kRoot, not the verified selected value case.
-      assert.deepEqual(tree.location,{method:29676,block:94,control:95,operation:47,pc:114,working_pc:111});
-      assert.deepEqual(tree.prefix_event,{method:29676,block:94,operation:47,pc:114,working_pc:111});
-    }
     if(entity===24892) {
       assert.deepEqual(report.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
       assert.equal(report.source_pc,undefined);
@@ -78,5 +70,5 @@ try {
     }
 
   }
-  console.log('tree_failure_cli_test: five real refusals and one verified native loop agree across CLI and manifest');
+  console.log('tree_failure_cli_test: four real refusals and two verified complete records agree across CLI and manifest');
 } finally {rmSync(temp,{recursive:true,force:true});}

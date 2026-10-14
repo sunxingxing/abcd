@@ -328,7 +328,8 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       auto context = resolve();
       admit(context.AllocatedBytes(), 1); step(context.Work());
       ClassMemberOmission gap{std::move(context), phased_gap ? decltype(ClassMemberOmission::failure){input->cause} :
-          decltype(ClassMemberOmission::failure){*proof}, *family->root, *family->method, family->parent, family->creation_pc};
+          decltype(ClassMemberOmission::failure){*proof}, *family->root, *family->method, family->parent, family->creation_pc,
+          phased_gap ? input->working_site : normal_input->working_pc};
       if (!gap.InputGap()) throw ClassTreeFailure{Error::kMember};
       return gap;
     };

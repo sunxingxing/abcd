@@ -12,6 +12,7 @@
 
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/metadata_index.h"
+#include "abcd/analysis/exception_ssa.h"
 #include "abcd/source/cleanup_origin.h"
 #include "abcd/source/parameter_default.h"
 #include "abcd/source/source_contract.h"
@@ -19,6 +20,10 @@
 
 // Published artifacts of the value-tree source route: typed failures,
 // generated positions and the printed record/function text with its maps.
+namespace abcd::analysis {
+enum class SemanticProofError : std::uint8_t;
+enum class ExceptionInputError : std::uint8_t;
+}
 namespace abcd::source {
 enum class SourceError : std::uint8_t {
   kUnsupportedOperation,
@@ -82,6 +87,20 @@ struct HostRealmRequirement {
 };
 enum class VmSlotUse : std::uint8_t { kUnknown, kNone, kRequired };
 enum class RegisterUse : std::uint8_t { kUnused, kUsed };
+// A diagnostic only: neither the missing member nor its descendant is emitted.
+// The cause remains typed; domain strings are produced only at JSON boundaries.
+struct OmittedClassMember {
+  abc::EntityOffset constructor;
+  abc::EntityOffset member;
+  abc::EntityOffset method;
+  std::variant<analysis::SemanticProofError, analysis::ExceptionInputError> cause;
+  abc::CodeOffset pc;
+  std::optional<abc::CodeOffset> working_pc;
+  std::optional<abc::EntityOffset> creation_method;
+  std::optional<abc::CodeOffset> creation_pc;
+  std::optional<analysis::ExceptionNodeId> node;
+  std::optional<analysis::SsaValueId> value;
+};
 struct PrintedSource {
   SourceText text;
   std::vector<GeneratedSpan> spans;
@@ -97,6 +116,7 @@ struct PrintedSource {
   // A retained class/member gap makes the surrounding record incomplete.
   // This is recovery status, never permission to execute a partial artifact.
   bool incomplete = false;
+  std::vector<OmittedClassMember> omitted_members;
   std::vector<EnvironmentCleanupSite> environment_cleanup;
 };
 enum class SourceForm : std::uint8_t { kFunction, kRecord };

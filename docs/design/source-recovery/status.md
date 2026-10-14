@@ -12,6 +12,11 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 63：遗漏成员诊断与 phased ValueBranch 前缀（cc 审查通过）
+
+- A：`source_omitted_members` 发布每个遗漏类成员的类型化首拒绝与位置（两个 partial class 的根因都是 `SemanticProofError::kInternalValue`）。B：3 个 phased Root 实为 Commit 上的 ValueBranch，已有 selection 证明；把向 phi 临时变量的条件赋值按原顺序放进 decision RHS 的逗号表达式，TreeFlow 独立核对。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 506 → **509/620**，`--language-source` 544 → **547/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 57/58，只有既有的 family_source_cli_test 失败。
+
 ## Round 62：DecisionPrefix（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 501 → **506/620**，`--language-source` 539 → **544/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 53/54，只有既有的 family_source_cli_test 失败。cc 对照原源码核对 KeyboardController：`isShiftKeyHold` 与原文几乎一致；调用处 `!(A && B) || C` 与原 `A && B && !C` 按德摩根律等价，分支互换，短路求值顺序相同。
 

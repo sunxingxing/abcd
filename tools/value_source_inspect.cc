@@ -236,9 +236,11 @@ int InspectValueSource(const abcd::corpus::AbcFile& file,
       abcd::tools::DescribeRecordFailure(built,report);output<<report<<'\n';return EXIT_SUCCESS;
     }
     if (const auto* source = std::get_if<PrintedSource>(&built)) {
-      output << nlohmann::json{{"route", "value_tree"}, {"source", source->text.View()},
+      nlohmann::json report{{"route", "value_tree"}, {"source", source->text.View()},
           {"source_contract", SourceContractName(source->contract)},
-          {"record", owner->offset.value}, {"source_complete", !source->incomplete}, {"executable", false}} << '\n';
+          {"record", owner->offset.value}, {"source_complete", !source->incomplete}, {"executable", false}};
+      abcd::tools::DescribeRecordFailure(built, report);
+      output << report << '\n';
       return EXIT_SUCCESS;
     }
     nlohmann::json report{{"route", "value_tree"}, {"record", owner->offset.value},

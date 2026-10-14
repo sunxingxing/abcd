@@ -373,6 +373,7 @@ int Export(const std::filesystem::path& input,
             record_manifest["source_complete"] = false;
             record_manifest["executable"] = false;
             if (const auto* artifact = std::get_if<source::PrintedSource>(&built)) {
+              tools::DescribeRecordFailure(built, record_manifest);
               std::filesystem::create_directories(
                   (tree.path / source_stem).parent_path());
               std::ofstream program(tree.path / source_path, std::ios::binary);

@@ -278,7 +278,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
         if (site.value < flow.instructions.size())
           original.pc = flow.instructions[site.value].origin.value_or(original.pc);
       }
-      return PhasedInputFailure{original, quota.Bytes(), quota.Work() + failure->work_units};
+      return PhasedInputFailure{original, quota.Bytes(), quota.Work() + failure->work_units, failure->pc};
     }
     auto proof = std::get<ExceptionInputProof>(std::move(verified));
     quota.Step(proof.work_units);

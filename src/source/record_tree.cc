@@ -695,6 +695,62 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         }
       }
     }
+    // Walk owned syntax once, before printing. Class gaps are diagnostics, not
+    // functions to recover or print. Every queue/output growth is admitted
+    // before allocation; nested families keep their original occurrence order.
+    std::uint64_t omission_work = 0;
+    const auto omission_step = [&]() {
+      if (omission_work == analysis::kDefaultSemanticWork)
+        throw RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{FamilyPrepareError::kWorkLimit})};
+      ++omission_work;
+    };
+    std::vector<OmittedClassMember> omitted_members;
+    std::vector<const FunctionTree*> omission_trees;
+    const auto grow_omissions = [&](auto& items) {
+      if (items.size() < items.capacity()) return;
+      const auto old = items.capacity();
+      const auto capacity = old ? old * 2 : 1;
+      if (capacity < old) throw fail(Error::kRecordBudget);
+      using Item = typename std::decay_t<decltype(items)>::value_type;
+      // Old and replacement buffers can coexist during vector relocation.
+      if (capacity > budget.bytes / sizeof(Item)) throw fail(Error::kRecordBudget);
+      retain(capacity * sizeof(Item));
+      items.reserve(capacity);
+      if (items.capacity() > capacity) retain((items.capacity() - capacity) * sizeof(Item));
+    };
+    const auto queue_tree = [&](const FunctionTree& tree) {
+      omission_step(); grow_omissions(omission_trees); omission_trees.push_back(&tree);
+    };
+    const auto queue_family = [&](const ConstructedFamily& family) {
+      for (const auto& member : family.members) queue_tree(member.tree);
+    };
+    if (module_family) queue_family(*module_family); else queue_tree(result->tree);
+    for (std::size_t cursor = 0; cursor < omission_trees.size(); ++cursor) {
+      for (const auto& expression : omission_trees[cursor]->expressions) {
+        omission_step();
+        const auto* cls = std::get_if<ClassExpr>(&expression.expression);
+        if (!cls || !cls->definition) continue;
+        const auto& definition = *cls->definition;
+        const auto append = [&](const ClassMemberOmission& gap) {
+          omission_step(); grow_omissions(omitted_members);
+          OmittedClassMember item{definition.creation.target, gap.root, gap.method,
+              std::visit([](const auto& proof) -> decltype(OmittedClassMember::cause) { return proof.kind; }, gap.failure),
+              gap.Pc(), gap.working_pc, gap.parent, gap.creation_pc, {}, {}};
+          if (const auto* proof = std::get_if<analysis::ExceptionInputFailure>(&gap.failure)) {
+            item.node = proof->node; item.value = proof->value;
+          }
+          omitted_members.push_back(item);
+        };
+        for (const auto& gap : definition.omissions) append(gap);
+        if (definition.constructor) queue_family(definition.constructor->Family());
+        for (const auto& member : definition.members) if (member) queue_family(member->Family());
+        for (const auto& site : definition.definitions) {
+          for (const auto& gap : site.omissions) if (gap) append(*gap);
+          for (const auto& member : site.bodies) if (member) queue_family(member->Family());
+        }
+        if (definition.initializer) queue_tree(definition.initializer->tree);
+      }
+    }
     // The immutable root/family and class owners were retained above. This
     // mirror never grants more bytes: the original record ledger keeps that
     // charge until its owners die. Borrowing is limited to exact root identities.
@@ -707,7 +763,9 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     PrintMemory memory(budget.bytes);
     BorrowedPrintTrees borrowed(module_family?nullptr:&result->tree,
         module_family?&*module_family:nullptr,held,memory,{budget.bytes});
-    std::uint64_t remaining_work=analysis::kDefaultSemanticWork-borrowed.Work();
+    if (omission_work > analysis::kDefaultSemanticWork - borrowed.Work())
+      throw RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{FamilyPrepareError::kWorkLimit})};
+    std::uint64_t remaining_work=analysis::kDefaultSemanticWork-borrowed.Work()-omission_work;
     struct PrintPass {std::size_t bytes,peak;bool incomplete;};
     const auto write=[&](std::ostream& output)->PrintPass {
     // Reserve the nested phase allowance before it can allocate. Its own
@@ -820,6 +878,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     source.contract = identity.contract;
     source.text = sink.Finish();
     source.incomplete = printed.incomplete;
+    source.omitted_members = std::move(omitted_members);
     source.environment_cleanup = std::move(cleanup_sites);
     return source;
   } catch (const RecordProgramFailure& failure) { return failure; }

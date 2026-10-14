@@ -25,6 +25,8 @@ struct PhasedInputFailure {
   analysis::ExceptionInputFailure cause;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  // Working coordinate retained alongside cause.pc (already mapped to original).
+  std::optional<abc::CodeOffset> working_site;
 };
 // Keep binding/guard leaves visible while preserving resource classification.
 struct PhasedModuleFailure {

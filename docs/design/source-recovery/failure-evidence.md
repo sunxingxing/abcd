@@ -92,3 +92,22 @@ Every sub-reason is round-trip tested on both JSON paths, including real PC 0,
 normalized PC, missing PC, synthetic identity, invalid tags and unchanged
 resource/work classification. A real phased TCP prefix remains refused and
 its Op47 at original114/working111 is checked through the CLI and manifest.
+
+## Omitted class members (Round 63)
+
+A partial `PrintedSource` carries `source_omitted_members` in the manifest and
+`abc_semantic --record-source`. Each entry contains `constructor` (class
+constructor method), `member` (the omitted member's root method), `method`
+(the actual failing root/descendant), `pc` (original), optional `working_pc`,
+and the typed first-refusal `causes`. Optional `creation_method`/`creation_pc`
+identify a descendant creation; they never replace its failure location.
+For phased input failures, `exception_node` and `value` retain the original
+exception-flow/SSA identities. Zero is a real ID/PC; absence is omitted.
+
+These are supplementary diagnostics. They do not become a record-level failure,
+make an omitted body executable, or change partial/complete status. No field is
+emitted when there are no omissions. The currently admitted omission types are
+SemanticProofError::kInternalValue and ExceptionInputError::kInternalValue;
+preparation's intervening variant envelopes have no enum tag to append. The
+engine keeps the enum alternatives, not diagnostic strings. JSON formatting is
+shared by both record output entry points.

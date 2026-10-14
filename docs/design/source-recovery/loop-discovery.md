@@ -453,3 +453,46 @@ Zero-drift rule: a previously accepted linear prefix takes exactly its old
 path. Only a node formerly rejected for having arms can use the already-proved
 selected-value continuation. Real es2abc and IR tests are in
 `decision_selection_prefix_cli_test` and `decision_selection_prefix_test`.
+
+## Retained phased selection prefixes (Round 63)
+
+The three Root witnesses at m5417 Op21 (original 50 / working 47), m29676
+Op47 (114 / 111), and m49302 Op141 (367 / 362) identify **ValueBranch at
+Commit**, not an unowned throwing property read. `FindPhasedSelections` already
+proves their two arms, phi inputs and join (phase blocks 43 -> 50, 95 -> 102,
+283 -> 290). `ExpressionForest::BuildLogical` already represents each retained
+root as an assignment of a conditional expression to its original phi symbol.
+The property/call preceding the truth conversion retains its own throwing event.
+Temporary diagnostics were removed after confirming these identities.
+
+Decision-prefix emission now consumes that existing assignment as one comma
+item in the conditional RHS. It neither changes evaluation placement to Inline
+nor deletes the phi assignment. The selection must have complete existing
+control/operand evidence, be top-level and join the prefix's actual continuation.
+Its exception scope must equal the enclosing decision's scope. Existing phased
+selection checks still reject nonempty catch staging. The original selected-arm
+emitter records every operation and origin once, at the same enclosing boundary.
+No follow, join, name allocation, declaration or catch rule changes.
+
+TreeFlow independently reconstructs selection regions and rechecks the exact
+comma position, root placement, assignment target, conditional operands, phi
+edges, scope and origins. It consumes selected edges through the existing
+Conditional/LogicalEdges proof, not as empty straight edges. OriginalFlow and
+recovery consume those existing checked conditional/edge-definition facts; no
+mask, new protocol, or verification bypass is added. Missing/duplicated roots,
+wrong exception edges, changed arms and moved sequence items are rejected.
+The shared selection proof's EvaluationError resource/work exceptions are now
+translated at tree boundaries without changing their resource classes.
+
+The added lookups are O(1) via the existing branch index. Arm emission and
+verification reuse their linear traversal and prepaid storage; total complexity
+stays within O(N log N). Old accepted linear prefixes take the same path. No new
+source-language premise or predicate/keep-edge admission is introduced.
+
+Partial-class diagnostics are independent of this change. `PrintedSource` now
+retains typed omitted-member causes with class constructor, member root, actual
+failing method, original/working PC, and descendant creation context. Phased
+failures also retain exception-node/value IDs. A budgeted traversal of owned
+families/classes collects these records; it never recovers or prints an omitted
+body. Both manifest and abc_semantic use the same JSON writer. Absence of an
+omission produces no new field; partial status and source text remain unchanged.

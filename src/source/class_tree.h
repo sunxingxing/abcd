@@ -27,6 +27,7 @@ struct ClassMemberOmission {
   abc::EntityOffset method;
   std::optional<abc::EntityOffset> parent;
   std::optional<abc::CodeOffset> creation_pc;
+  std::optional<abc::CodeOffset> working_pc;
   [[nodiscard]] abc::CodeOffset Pc() const {
     return std::visit([](const auto& proof) {return proof.pc;}, failure);
   }

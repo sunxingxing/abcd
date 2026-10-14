@@ -137,6 +137,12 @@ class TreeBuilder {
             }
           }
         }
+      } catch (EvaluationError error) {
+        // Phase corridors use the evaluation quota inside the selection proof.
+        // Preserve its resource class at this tree boundary, including exact budgets.
+        if (error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
+        if (error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
+        Fail(Error::kSemantics, EvaluationFailure{error}, TreeObligation::kSemantics);
       } catch (TreeStructureError error) {
         throw error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
       }
@@ -1129,11 +1135,13 @@ class TreeBuilder {
   const SelectionRegion* DecisionSelection(const ControlNode& node) const {
     // A checked selected value already owns both arms and their phi edges.
     // Its join is the continuation; it is not a second statement branch.
-    // Phased Commit/exception staging needs its separate event correspondence.
-    if (exceptions_ || !node.arms || !node.next) return nullptr;
+    // A phased retained selection keeps its phi assignment, consumed as one
+    // conditional prefix expression at Commit; it never becomes a fused value.
+    if (!node.arms || !node.next) return nullptr;
     const auto branch = DecisionPredicate(node);
     if (logical_branches_.empty() || !logical_branches_[branch.value] ||
-        evaluation_.operations[branch.value].kind != EvaluationKind::kLogicalValue) return nullptr;
+        (evaluation_.operations[branch.value].kind != EvaluationKind::kLogicalValue &&
+         !(exceptions_ && evaluation_.operations[branch.value].kind == EvaluationKind::kRoot))) return nullptr;
     const auto& selection = logicals_[*logical_branches_[branch.value]];
     if (selection.parent || selection.prefix_parent ||
         control_.nodes[node.next->value].block != selection.join) return nullptr;
@@ -1388,7 +1396,7 @@ class TreeBuilder {
         Step(); const auto& linear = control_.nodes[next.value];
         const auto& path = DecisionBlock(linear);
         RequireDecisionContinuation(linear);
-        for (std::uint8_t e = 0; e < path.edge_count; ++e) {
+        for (std::uint8_t e = 0; !DecisionSelection(linear) && e < path.edge_count; ++e) {
           Step(); const analysis::EdgeId edge{path.first_edge.value + e};
           if (graph_.edges[edge.value].kind != analysis::FlowEdgeKind::kException)
             RequireNoCopies(edge);
@@ -1396,7 +1404,18 @@ class TreeBuilder {
         // Keep retained roots in the conditional RHS, in original path order.
         // Native comma syntax preserves each snapshot's normal-completion write.
         if (!exceptions_) EmitBlock(linear, draft);
-        else EmitDecisionBlock(linear, draft, op);
+        else if (const auto* selection = DecisionSelection(linear)) {
+          // The complete selection already owns its arm/copy events. Keep the
+          // binding assignment in this conditional RHS, with its original catch.
+          const auto site = graph_.phases[graph_.ops[selection->branch.value].block.value].instruction.value;
+          const auto owner = graph_.phases[graph_.ops[op.value].block.value].instruction.value;
+          const auto& scope = exceptions_->regions.layout.scopes[site];
+          const auto& enclosing = exceptions_->regions.layout.scopes[owner];
+          Require(scope.has_value() == enclosing.has_value() &&
+              (!scope || (scope->region == enclosing->region && scope->part == enclosing->part)),
+              Error::kOwnership, TreeObligation::kCatchScope);
+          EmitBranch(selection->branch, linear, path.first_edge, draft, true);
+        } else EmitDecisionBlock(linear, draft, op);
         next = *linear.next;
       }
       selected_taken = decision.shared_on_taken;
@@ -1430,7 +1449,7 @@ class TreeBuilder {
     Append(draft, statement); tree_.operations.push_back({op, statement});
   }
   void EmitBranch(analysis::OpId op, const ControlNode& node,
-                  analysis::EdgeId first_edge, std::size_t draft) {
+                  analysis::EdgeId first_edge, std::size_t draft, bool decision_prefix = false) {
     Require(node.arms.has_value(), Error::kControl);
     const TreeOriginId origin{graph_.ops[op.value].origin.value};
     const auto expression = forest_.operations[op.value];
@@ -1475,12 +1494,16 @@ class TreeBuilder {
       }
       if (evaluation_.operations[op.value].kind == EvaluationKind::kLogicalValue) {
         tree_.operations.push_back({op, *expression});
+      } else if (decision_prefix) {
+        decision_roots_.push_back(*expression);
+        tree_.operations.push_back({op, *expression});
       } else {
         const auto statement = Statement(ExpressionStmt{*expression}, origin);
         Append(draft, statement); tree_.operations.push_back({op, statement});
       }
       return;
     }
+    Require(!decision_prefix, Error::kControl);
     if (node.decision) { EmitDecision(op, node, draft); return; }
     if (!branch_polarity_.empty() && branch_polarity_[op.value] == BranchPolarity::kFallthrough) {
       Require(!node.arms->taken && node.arms->fallthrough && !HasCopies(first_edge), Error::kControl);
