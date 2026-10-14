@@ -34,7 +34,16 @@ struct FlowInvocationPhase {ParameterId parameter;};
 // An erased initialized guard qualifies a captured value. Its VM location is
 // not the load's physical action or a later expression's completion.
 struct FlowGuardPhase {analysis::OpId operation;};
-using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase,FlowGuardPhase>;
+struct FlowForwardedPhase {StmtId statement; analysis::WorkBlockId block;};
+using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase,FlowGuardPhase,FlowForwardedPhase>;
+// Native ports are separate even when a VM result has no source expression.
+struct FlowEnumeration {
+  StmtId statement;
+  FlowPoint rhs, acquire_before, acquire_commit, next_before, next_commit;
+  FlowPoint done, key_write, key_commit, body, exit;
+  FlowPoint thrown;
+  std::optional<FlowPoint> finalizer;
+};
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
 struct FlowInputId { std::uint32_t value = 0; auto operator<=>(const FlowInputId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
@@ -192,6 +201,7 @@ struct FlowOriginalAction {FlowPoint before;std::optional<FlowPoint> normal;Flow
 // a normal statement's next point is its own successful completion.
 struct FlowStatementAction {OriginalStatementKind kind;FlowOriginalAction action;};
 struct FlowOriginalException {FlowPoint before,thrown;};
+struct FlowForwardedException {FlowPoint before,thrown; ForInExceptionExitId exit; analysis::WorkBlockId handler; analysis::ValueId payload;};
 // A contract-excluded failure has no physical source throw point. Keeping it
 // distinct from both a mapped route and missing evidence prevents borrowing
 // a declaration/scope entry as the VM allocation action.
@@ -200,7 +210,7 @@ struct FlowExcludedResourceFailure {};
 // solver carries both its value and completion dependencies into the handler;
 // changing initialization, occurrence or cell identity withdraws raw catch caps.
 struct FlowExcludedGuardFailure {ExprId value;FlowPoint input,target;};
-using FlowOriginalFailure=std::variant<FlowOriginalException,FlowExcludedResourceFailure,FlowExcludedGuardFailure>;
+using FlowOriginalFailure=std::variant<FlowOriginalException,FlowForwardedException,FlowExcludedResourceFailure,FlowExcludedGuardFailure>;
 enum class FlowOriginalRouteCoverage : std::uint8_t {kUnmodeled,kComplete};
 struct FlowReference {
   FlowPoint point;
@@ -264,6 +274,7 @@ struct FlowCapturedInput {
   FlowCapturedValue value;
   analysis::ValueKinds kinds=analysis::ValueKinds::Language();
 };
+struct FlowEnumerationDefinition { StmtId statement; std::optional<ForInKeyCommit> original; };
 struct FlowDefinition {
   FlowPoint point;
   SymbolId binding;
@@ -281,6 +292,8 @@ struct FlowDefinition {
   // stores. Pending-value precision depends on current incoming completions.
   const OriginalCatchBinding* original_catch=nullptr;
   std::optional<FlowPoint> catch_entry;
+  // Success-edge key commit, not the raw next result on exhaustion.
+  std::optional<FlowEnumerationDefinition> enumeration;
   // The semantic adapter owns both expression and statement write positions.
   // Kind still distinguishes lexical completion from assignment/slot writes;
   // a site alone never authorizes deleting initialization or binding lifetime.
@@ -514,6 +527,7 @@ struct RecoveryFlow {
   std::vector<FlowArgumentCarrier> argument_carriers;
   std::vector<FlowSnapshotSlot> snapshot_slots;
   std::vector<std::optional<FlowAction>> property_initializers; // PropertyId indexed.
+  std::vector<std::optional<FlowEnumeration>> enumerations; // StmtId indexed.
   std::vector<std::optional<FlowOriginalAction>> original_actions; // OpId indexed.
   std::vector<FlowInvocationValue> invocation_values;
   std::vector<std::optional<ParameterId>> original_invocations; // OpId indexed.
@@ -596,6 +610,10 @@ struct RecoveryFlow {
         std::holds_alternative<EnclosingBindingScope>(bindings[binding.value].scope);
   }
 };
+// Recomputed for every recovery proposal, including retained forwarded routes.
+void VerifyForInRecovery(const FunctionTree&, RecoveryFlow&, TreeCheckBudget&);
+[[nodiscard]] std::variant<TreeStorage,TreeStructureError> VerifyInitialForInRecovery(
+    const FunctionTree&,const OriginalFlow&,analysis::SemanticBudget = {});
 [[nodiscard]] std::optional<FlowPoint> FindOriginalPhase(const RecoveryFlow&,
     analysis::WorkBlockId,analysis::ExceptionPhase,std::optional<analysis::OpId> = {});
 [[nodiscard]] std::optional<FlowOriginalControl> FindOriginalControlPhase(const RecoveryFlow&,

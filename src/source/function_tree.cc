@@ -1,5 +1,6 @@
 #include "function_tree.h"
 #include "for_in_emission.h"
+#include "recovery_flow.h"
 #include "for_in_evaluation.h"
 #include "evaluation_disposition.h"
 #include "completion_tree.h"
@@ -277,24 +278,16 @@ class TreeBuilder {
     }
     Admit(std::get<TreeStorage>(labels).bytes, 1); Step(std::get<TreeStorage>(labels).work);
     if (enumeration_) {
-      const auto measured = MeasureTreeStorage(tree_, {budget_.bytes, work_});
-      const auto* storage = std::get_if<TreeStorage>(&measured);
-      Require(storage && storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
-      Step(storage->work);
-      TreeLocation failed;
-      auto checked = VerifyExceptionTreeFlow(graph_, *exceptions_, evaluation_, tree_,
-          {bytes_ + storage->bytes, work_}, TreeControlCheck::kFresh, &failed);
-      if (const auto* error = std::get_if<TreeFlowError>(&checked)) {
-        witness_.location = failed;
-        if (*error == TreeFlowError::kResourceLimit) throw Error::kResourceLimit;
-        if (*error == TreeFlowError::kWorkLimit) throw Error::kWorkLimit;
-        Fail(Error::kSemantics, *error, TreeObligation::kFlow);
+      CheckSemantics();
+      WitnessScope witness(*this,TreeObligation::kForInRecovery,At(evaluation_.for_in->loops.front().acquisition));
+      auto recovery=VerifyInitialForInRecovery(tree_,*flow_->original,{bytes_,work_});
+      if(const auto* error=std::get_if<TreeStructureError>(&recovery)) {
+        if(*error==TreeStructureError::kResourceLimit)throw Error::kResourceLimit;
+        if(*error==TreeStructureError::kWorkLimit)throw Error::kWorkLimit;
+        Fail(Error::kSemantics,*error,TreeObligation::kForInRecovery);
       }
-      auto flow = std::get<TreeFlow>(std::move(checked));
-      Require(flow.allocated_bytes >= storage->bytes, Error::kResourceLimit);
-      Admit(flow.allocated_bytes - storage->bytes, 1); Step(flow.work);
-      // This is an unpublished draft only. OriginalFlow/recovery has not run.
-      return {std::move(tree_), budget_.bytes - bytes_, budget_.work - work_, std::move(flow)};
+      const auto& proof=std::get<TreeStorage>(recovery);Admit(proof.bytes,1);Step(proof.work);
+      return {std::move(tree_), budget_.bytes - bytes_, budget_.work - work_, std::move(flow_)};
     }
     if (forest_.recovery_stop) {
       const auto checked = VerifyTreeStructure(tree_, {bytes_, work_});
@@ -1732,12 +1725,6 @@ std::variant<ExceptionFunctionDraft, FunctionTreeFailure> BuildExceptionFunction
   try {
     auto built = TreeBuilder(graph, exceptions.control.skeleton, evaluation,
         std::move(syntax), constants, budget, incoming, &exceptions).Build();
-    if (evaluation.for_in) {
-      FunctionTreeFailure failure{Error::kSemantics}; failure.method = built.tree.method;
-      failure.tree = TreeFailureEvidence{TreeObligation::kForInRecovery,
-          OperationLocation(graph, evaluation.for_in->loops.front().acquisition, built.tree.method)};
-      return failure;
-    }
     return built;
   } catch (Error error) { return error;
   } catch (const FunctionTreeFailure& failure) { return failure;

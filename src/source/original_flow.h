@@ -4,9 +4,23 @@
 #include "abcd/analysis/value_ir.h"
 #include "truth_domains.h"
 #include "cell_plan.h"
+#include "for_in_emission.h"
 #include <memory>
 namespace abcd::source {
 struct TreeFlow;
+// Checked native ports retain raw Commit identities, never fabricated ExprIds.
+struct OriginalEnumeration {
+  ForInEventPair original;
+  StmtId statement;
+  ExprId object;
+  SymbolId key;
+  ScopeId scope;
+  EnumerationException acquisition;
+  analysis::EdgeId success, exhausted;
+};
+struct OriginalEnumerationExit {StmtId statement; std::uint32_t loop; LoopTransferKind kind; TreeOriginId origin;};
+struct OriginalEnumerationInput { std::uint32_t loop; analysis::UseId use; ExprId expression; };
+
 // Allocation sites identify dynamic cell families, not one scalar value or
 // one invocation's unit. The verified declaration and source scope are kept
 // separate: scope entry allocates a source unit, declaration initializes it.
@@ -116,6 +130,9 @@ struct OriginalOperation {
   // Physical binding write verified at this source commit. A numeric staging
   // save has a definition correspondence but is not the conversion's write.
   std::optional<OriginalWriteSite> write;
+  bool forwarding_throw = false;
+  std::optional<analysis::EnumerationAction> enumeration;
+
 };
 // Operand evidence stays occurrence-specific. Never join it with operation
 // result domains: predicates and completion operands can share source anchors.
@@ -134,6 +151,12 @@ struct OriginalFlow {
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;
   std::size_t statements=0, bindings=0;
+  std::vector<OriginalEnumeration> enumerations;
+  std::vector<std::optional<ForInMember>> enumeration_operations, enumeration_values;
+  std::vector<std::optional<std::uint32_t>> forwarded_operations, forwarded_blocks;
+  std::vector<analysis::ValueId> canonical_values;
+  std::vector<OriginalEnumerationInput> enumeration_inputs;
+  std::vector<OriginalEnumerationExit> enumeration_exits;
   std::vector<analysis::ValueDefinition> values;
   std::vector<analysis::OperandUse> uses;
   std::vector<OriginalOperation> operations;

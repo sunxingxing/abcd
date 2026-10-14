@@ -195,12 +195,21 @@ class OperandCheck {
       budget_.Admit(derived_states->allocated_bytes, 1);
       break; // One shared identity index for every original super occurrence.
     }
+    for (const auto& native : original_.enumerations) {
+      budget_.Step(); current_ = native.original.acquisition.operation;
+      origin_ = {graph_.ops[current_.value].origin.value};
+      const auto& syntax = std::get<ForInStmt>(tree_.statements[native.statement.value].statement);
+      RequireMeaning(syntax.object == native.object && syntax.key == native.key, Error::kOperand);
+      InputAt(0, syntax.object);
+    }
     RequireMeaning(tree_.receiver_guards == evaluation_.receiver_guards, Error::kOperand);
     RequireMeaning(tree_.receiver_guards.size() == constants_.receiver_guards.size() &&
         std::equal(tree_.receiver_guards.begin(), tree_.receiver_guards.end(), constants_.receiver_guards.begin()), Error::kOperand);
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
+      if ((!original_.enumeration_operations.empty() && original_.enumeration_operations[i]) ||
+          (!original_.forwarded_operations.empty() && original_.forwarded_operations[i])) continue;
       if (evaluation_.operations[i].kind == EvaluationKind::kArrayCursor || evaluation_.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
           evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
           evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
@@ -985,6 +994,28 @@ class OperandCheck {
       return;
     }
     const auto resolved=ResolveEvaluationOperand(evaluation_,operand);
+    if (const auto* value = std::get_if<analysis::ValueId>(&resolved);
+        value && !original_.enumeration_values.empty() && original_.enumeration_values[value->value]) {
+      const auto member = *original_.enumeration_values[value->value];
+      RequireMeaning(member.role == ForInRole::kNextResult && member.loop < original_.enumerations.size(), Error::kOperand);
+      const auto& native = original_.enumerations[member.loop];
+      RequireMeaning(Node<SymbolExpr>(expression).symbol == native.key, Error::kOperand);
+      LeafOrigin(expression);
+      // Raw next-result is not a language expression. This source read denotes
+      // only the edge-qualified successful key definition.
+      if (occurrence) {
+        if (original_.enumeration_inputs.size() == original_.enumeration_inputs.capacity()) {
+          const auto old = original_.enumeration_inputs.capacity();
+          const auto next = old ? old * 2 : 1;
+          RequireMeaning(next > old, Error::kResourceLimit);
+          budget_.Admit(next, sizeof(OriginalEnumerationInput));
+          original_.enumeration_inputs.reserve(next);
+          budget_.Admit(original_.enumeration_inputs.capacity()-next, sizeof(OriginalEnumerationInput));
+        }
+        original_.enumeration_inputs.push_back({member.loop,*occurrence,expression});
+      }
+      return;
+    }
     std::visit([&](const auto& value) {
       using T = std::decay_t<decltype(value)>;
       if constexpr (std::is_same_v<T, analysis::ValueId>) {

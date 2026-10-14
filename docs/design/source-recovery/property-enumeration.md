@@ -1,10 +1,11 @@
-# Property enumeration — Round 51 working boundary
+# Native property enumeration
 
 The approved target is native `for (key in object)` with no new source-language
-premise. **Committed step A implements raw semantic lifting/import; the current
-B/C increment adds raw protocol and exception-forwarding evidence. Native tree
-projection and printing (D/E) remain unimplemented.** No source printer admission
-follows from these operations or certificates.
+premise. Steps A-C retain raw semantics, protocol and exception-forwarding
+proofs; Increment II adds the production draft and independent TreeFlow checks.
+Increment III below adds joint original/recovery event correspondence before
+publication. Captured per-iteration bindings, handled advance and ambiguous
+exhaustion copies remain refused.
 
 ## Raw operations implemented
 
@@ -471,3 +472,97 @@ byte grants were 9,277,041 / 9,323,363 / 18,541,441 / 37,070,241; minimum work
 grants were 11,190,049 / 11,247,301 / 22,393,670 / 44,822,463. These are measured
 semantic-budget boundaries (not peak RSS), with the exact and minus-one checks
 run separately for each dimension. No record/process cap was raised.
+
+## Round 52 increment III: original/recovery event correspondence
+
+`OriginalEnumeration` retains the original acquisition and advance Before,
+Commit, exception exits, the distinct next-result, success/exhausted edges,
+source statement, RHS and key binding. Protocol results never acquire an
+`ExprId`; `FindOriginalResult` is not used to fabricate their source identity.
+Normal loop/body/exit origins and the physical control graph remain unchanged.
+
+`FlowEnumeration` names native event ports: RHS completion -> AcquireBefore ->
+AcquireCommit -> NextBefore -> NextCommit -> DoneDecision. Exhaustion exits;
+success executes KeyWrite -> KeyCommit -> body. Continue returns to NextBefore.
+KeyCommit has a typed, success-edge-qualified definition separate from next's
+Commit (which also commits undefined on exhaustion). Ordinary phi copies remain
+ordinary definitions; a key contribution to a live-out phi is admitted only
+when its real incoming edge is dominated by the successful iteration. No key
+write or invented undefined assignment is placed on exhaustion.
+
+`VerifyForInRecovery` runs after original mapping in **every** BuildRecoveryFlow,
+including the conservative initial proof before FunctionTree can be published
+and later recovery proposals. It rechecks raw event/result/phase/exit identities,
+both done edges, native port links, key input identity and actual break/continue
+jumps. Each current key input must be dominated by the success-edge KeyCommit;
+hoisting it before acquisition or onto exhaustion invalidates the projection. It queries reset-aware declaration initialization at KeyWrite; being
+non-captured never removes PutValue's possible throw. A key domain remains
+conservatively Language rather than assuming a String on Ark's proxy path.
+
+`FlowForwardedException` is distinct from a physical catch. Recovery repeats
+same-payload, inert-prefix, final-destination and incoming-entry checks over the
+original forwarding subgraph. Reverse Kahn termination rejects cycles and
+non-throwing exits. Only then does the consumed Catch get typed forwarded phase
+coverage. A shared handler's other entries cannot borrow this evidence. The
+initial increment still refuses nonempty staging and handled advance. No other
+catch is simplified.
+
+No buffer is allocated from an uncharged protocol census. Retained tables use
+TreeCheckBudget; temporary adjacency/worklists use RecoveryScratch. Recovery
+uses O(V+E+U) additional storage and O((V+E+U) log V) time including the existing
+initialization/dominance machinery. No record/process/work cap is increased.
+
+`for_in_native_fixture_test` exercises the real production builder; the new
+`for_in_source_test` exports native.abc under both contracts and runs Node
+against its separate ordinary-object source oracle. It covers inherited and
+shadowed keys, ordering, zero/last key, break/continue/return/throw, nested loops,
+getters and callback throws. Key live-out across break is covered through a
+property target. A local-key loop with break and nonempty exhaustion copies
+remains `ForInError::kExit`, recorded by key_break.abc: emitting those copies
+after an arbitrary break would overwrite the actual key. This is a remaining
+representation gap, not a language restriction. Captured m524 and handled
+advance retain their prior typed refusals.
+
+Mutation checks cover raw Commit/exception/identity/done evidence, forwarding
+payload, source event effects, writes on exhaustion and real continue edges.
+They also detect source mutations losing inherited keys or zero-iteration key
+values. The production-draft scale test covers 200/201/400/800 loops and exact
+byte/work success and minus-one boundaries. Proxy/mutation/Symbol behavior
+outside the ordinary-object cases remains the pinned-Ark verification gap
+listed above; the Node run is not evidence closing that gap.
+
+
+Increment-III measured production-draft byte grants (200/201/400/800 independent
+loops) are 13,267,260 / 13,320,648 / 26,517,148 / 53,016,924; work grants are
+10,424,631 / 10,477,632 / 20,874,641 / 41,809,540. Each exact grant succeeds;
+one fewer byte/work unit fails in the corresponding resource class. These
+measure admission, not process RSS.
+
+Final cohort replay against explore52b/explore52bs yields 498/620 and 535/620
+(+1 each), no status regression and byte-identical already-complete output.
+Only four target first-refusal diagnostics change. All six target method loops
+pass production draft + OriginalFlow + initial recovery verification. Record
+results are identical under both flag sets:
+
+| Record | Target method acquisition/advance | Published result / next refusal |
+|---|---|---|
+| o32/29268 assertContain | m29450 90/101 | complete; node --check passed |
+| o32/42397 DataDriver | m42548 23/34 | unchanged SemanticError::kUnsupportedInstruction, m42717@153 |
+| o32/43537 Filter, loop 1 | m44469 28/39 | TreeObligation::kDecisionEdgeCopies, m44496@252 |
+| o32/43537 Filter, loop 2 | m44469 179/190 | same record-level next refusal |
+| o32/21089 core | m21553 47/58 | ForInError::kCatchState, m21280@599, op215 |
+| o32/53454 MockKit | m54047 230/241 | SyntaxResolutionError::kParameters, m54264; no published PC |
+
+Both original/working PCs are equal at the reported next-refusal sites. No PC
+is invented for the parameter-resolution failure. Replay and per-method logs:
+`/private/tmp/r52iii-delivery-cohort.log`, `r52iii-record-results.log`,
+`r52iii-target-loops-delivery.log`; exports: `/private/tmp/r52iii-delivery-cohort/`.
+
+
+Delivery validation: full keep-going build passed; fixed regression 65/65;
+41 targeted tests: 40 passed, only the registered pre-existing
+`tree_structure_test` aborted (its assertions were not changed). All 11 for-in
+tests passed. The exact selected tests and individual results are retained in
+`/private/tmp/r52iii-targeted-list.txt` and `r52iii-targeted-delivery.log`;
+other final logs are `r52iii-build-delivery.log`, `r52iii-fixed-delivery.log`
+and `r52iii-node-check.log`. No holdout, full-suite or RSS benchmark was run.

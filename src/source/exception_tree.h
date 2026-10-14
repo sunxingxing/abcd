@@ -38,7 +38,8 @@ inline std::optional<analysis::WorkBlockId> ExceptionNodeBlock(const ExceptionTr
   return {};
 }
 // Native enumeration draft: no conversion to ConstructedFunction is provided.
-// It has TreeFlow only; OriginalFlow/recovery correspondence remains pending.
+// It retains TreeFlow/OriginalFlow and passed the initial recovery projection;
+// callable/family admission and every later projection still reverify.
 struct ForInTreeDraft {
   FunctionTree tree;
   std::size_t allocated_bytes = 0;

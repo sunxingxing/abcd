@@ -24,6 +24,16 @@ try {
     const exported=run(structure,[abc,dest,'--value-source','--language-source']);
     assert.equal(exported.status,0,exported.stderr);
     const row=JSON.parse(readFileSync(join(dest,'manifest.json'),'utf8')).records.find(r=>r.entity===entity);
+    if(entity===29268) {
+      // Increment III now verifies and publishes this native for-in method.
+      assert.equal(row.source_complete,true);
+      const cli=run(semantic,[abc,String(method),'--record-source','--value-source','--language-source']);
+      assert.equal(cli.status,0);const report=JSON.parse(cli.stdout);
+      assert.equal(report.record,entity);assert.equal(report.source_complete,true);
+      assert.equal(report.source,readFileSync(join(dest,row.source),'utf8'));
+      assert.equal(report.source_failure,undefined);
+      continue;
+    }
     assert.equal(row.source_complete,false);
     const cli=run(semantic,[abc,String(method),'--record-source','--value-source','--language-source']);
     assert.equal(cli.status,1);const report=JSON.parse(cli.stdout);
@@ -51,10 +61,7 @@ try {
     }
     if(entity===28303) assert.deepEqual(report.source_failure.causes,[
       {domain:'abcd::source::PhasedMethodError',value:0},{domain:'abcd::analysis::SemanticError',value:1}]);
-    // Round 52 proves enumeration evaluation but deliberately stops before
-    // native-statement correspondence/publication. The acquisition PC is real.
-    if(entity===29268) assert.deepEqual(report.source_failure.causes,[
-      {domain:'abcd::source::FunctionTreeError',value:9},{domain:'abcd::source::TreeObligation',value:15}]);
+
   }
-  console.log('tree_failure_cli_test: five real refusals agree across CLI and manifest');
+  console.log('tree_failure_cli_test: four real refusals and one verified native loop agree across CLI and manifest');
 } finally {rmSync(temp,{recursive:true,force:true});}

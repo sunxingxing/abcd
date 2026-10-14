@@ -1,6 +1,7 @@
 #include "../../../src/source/for_in_plan.h"
 #include "../../../src/source/for_in_emission.h"
 #include "../../../src/source/exception_tree.h"
+#include "../../../src/source/recovery_flow.h"
 #include "abcd/analysis/exception_locals.h"
 #include "../../../src/source/tree_constants.h"
 #include "../../../src/source/evaluation_plan.h"
@@ -88,7 +89,85 @@ ValueProgram Import(const abc::MethodBody& body, std::uint32_t locals, std::uint
     }
     Check(std::holds_alternative<ForInTreeDraft>(tree));
     const auto& draft = std::get<ForInTreeDraft>(tree);
-    Check(!draft.flow.original); // OriginalFlow/recovery is deliberately absent.
+    Check(draft.flow.original != nullptr); // Original operand correspondence now retained.
+    std::vector<std::optional<SymbolId>> aliases(draft.tree.symbols.size());
+    for(std::uint32_t b=0;b<aliases.size();++b)aliases[b]=SymbolId{b};
+    std::vector<std::optional<PrimitiveId>> literals(aliases.size());
+    std::vector<std::optional<ExprId>> replacements(draft.tree.expressions.size());
+    std::vector<std::uint8_t> omitted(draft.tree.statements.size()),normal(replacements.size());
+    std::vector<ExpressionEvaluation> effects(replacements.size(),ExpressionEvaluation::kRequired);
+    LegacyFlowProjection projection{aliases,literals,replacements,omitted,effects,normal};
+    projection.original=draft.flow.original.get();
+    auto recovered=BuildRecoveryFlow(draft.tree,projection);
+    if(const auto* error=std::get_if<TreeStructureError>(&recovered))std::cerr << "recovery failure " << unsigned(*error) << std::endl;
+    Check(std::holds_alternative<RecoveryFlow>(recovered));
+    const auto& recovery=std::get<RecoveryFlow>(recovered);
+    for(const auto& native:draft.flow.original->enumerations) {
+      const auto& ports=*recovery.enumerations[native.statement.value];
+      Check(ports.acquire_before!=ports.acquire_commit && ports.next_before!=ports.next_commit && ports.key_write!=ports.key_commit);
+      Check(!FindOriginalResult(*draft.flow.original,native.original.advance.operation));
+      Check(recovery.events[ports.key_commit.value].definition.has_value());
+    }
+    if(plan.loops.size()<=2) {
+      const auto reject_original=[&](OriginalFlow changed) {
+        auto candidate=recovery;candidate.original=&changed;
+        bool rejected=false;
+        try { TreeCheckBudget q({}); VerifyForInRecovery(draft.tree,candidate,q); }
+        catch(TreeStructureError){rejected=true;}
+        Check(rejected);
+      };
+      auto wrong=*draft.flow.original;
+      wrong.enumerations[0].original.advance.commit=wrong.enumerations[0].original.advance.before; reject_original(std::move(wrong));
+      wrong=*draft.flow.original;
+      wrong.exceptional_exits.erase(wrong.exceptional_exits.begin()+wrong.enumerations[0].original.acquisition.exceptional_exit.value);reject_original(std::move(wrong));
+      wrong=*draft.flow.original;
+      std::swap(wrong.enumerations[0].original.key.success,wrong.enumerations[0].original.key.exhausted);reject_original(std::move(wrong));
+      wrong=*draft.flow.original;
+      wrong.enumerations[0].original.acquisition.result=wrong.enumerations[0].original.advance.result;reject_original(std::move(wrong));
+      if(const auto* route=std::get_if<ForwardedExceptionRoute>(&draft.flow.original->enumerations[0].acquisition)) {
+        wrong=*draft.flow.original;
+        ++std::get<ForwardedExceptionRoute>(wrong.enumerations[0].acquisition).payload.value;reject_original(std::move(wrong));
+      }
+      const auto reject_flow=[&](RecoveryFlow changed) {
+        bool rejected=false;try{TreeCheckBudget q({});VerifyForInRecovery(draft.tree,changed,q);}catch(TreeStructureError){rejected=true;}Check(rejected);
+      };
+      auto wrong_flow=recovery;const auto stmt=draft.flow.original->enumerations[0].statement;
+      wrong_flow.events[wrong_flow.enumerations[stmt.value]->next_before.value].effects.reset();reject_flow(std::move(wrong_flow));
+      wrong_flow=recovery;
+      auto& ports=*wrong_flow.enumerations[stmt.value];
+      for(auto e=wrong_flow.events[ports.done.value].outgoing;e;e=wrong_flow.edges[*e].outgoing)
+        if(wrong_flow.edges[*e].completion==FlowCompletion::kTaken)wrong_flow.edges[*e].to=ports.key_write;
+      reject_flow(std::move(wrong_flow));
+      wrong_flow=recovery;wrong_flow.statement_semantics[stmt.value]->repeat_point=wrong_flow.enumerations[stmt.value]->acquire_before;reject_flow(std::move(wrong_flow));
+      for(std::uint32_t i=0;i<draft.tree.statements.size();++i) {
+        const auto* declaration=std::get_if<DeclarationStmt>(&draft.tree.statements[i].statement);
+        if(!declaration || declaration->symbol!=draft.flow.original->enumerations[0].key)continue;
+        omitted[i]=1;
+        Check(std::holds_alternative<TreeStructureError>(BuildRecoveryFlow(draft.tree,projection)));
+        omitted[i]=0;
+      }
+      if(!draft.flow.original->enumeration_inputs.empty()) {
+        wrong_flow=recovery;
+        const auto& input=draft.flow.original->enumeration_inputs.front();
+        auto& action=*wrong_flow.actions[input.expression.value];
+        const auto& before=*wrong_flow.enumerations[draft.flow.original->enumerations[input.loop].statement.value];
+        // Retain a real read event but move its occurrence to the pre-loop
+        // declaration read: the successful key definition must dominate it.
+        wrong_flow.events[before.rhs.value].kind=FlowEventKind::kRead;
+        wrong_flow.events[before.rhs.value].read=draft.flow.original->enumerations[input.loop].key;
+        action.before=before.rhs;
+        reject_flow(std::move(wrong_flow));
+      }
+      for(const auto& exit:draft.flow.original->enumeration_exits) {
+        wrong_flow=recovery;
+        for(auto e=wrong_flow.events[wrong_flow.statements[exit.statement.value].value].outgoing;e;e=wrong_flow.edges[*e].outgoing)
+          if(wrong_flow.edges[*e].completion==FlowCompletion::kJump)
+            wrong_flow.edges[*e].to=wrong_flow.enumerations[draft.flow.original->enumerations[exit.loop].statement.value]->acquire_before;
+        reject_flow(std::move(wrong_flow));
+      }
+
+    }
+
     Check(draft.flow.enumerations.size() == events.loops.size());
     for (std::size_t i=0;i<events.loops.size();++i) {
       Check(draft.flow.enumerations[i].original == events.loops[i]);
@@ -97,9 +176,8 @@ ValueProgram Import(const abc::MethodBody& body, std::uint32_t locals, std::uint
     Check(std::count_if(draft.tree.statements.begin(), draft.tree.statements.end(), [](const auto& n) {
       return std::holds_alternative<ForInStmt>(n.statement);
     }) == plan.loops.size());
-    const auto denied = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, constants.View());
-    const auto* refusal = std::get_if<FunctionTreeFailure>(&denied);
-    Check(refusal && refusal->tree && refusal->tree->obligation == TreeObligation::kForInRecovery);
+    const auto published = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, constants.View());
+    Check(std::holds_alternative<ExceptionFunctionDraft>(published));
     if (plan.loops.size() <= 2) {
       auto forged = std::get<ForInEmissionView>(view);
       forged.loops[0].body.reset();

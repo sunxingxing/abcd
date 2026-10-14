@@ -31,11 +31,39 @@ them or treat an environment pop as inert.
 Verified acquisition/next PCs: scan m440 16/27; exits m468 18/29;
 nested m496 20/31 and 49/60. Captured m524 is refused at working PC27.
 
-This B/C increment does not emit ForInStmt. There is therefore **no Node
-differential of decompiler output yet**; that belongs with the tree/recovery/
-printer increment. The fixture source is prepared for that oracle, not a
-substitute for it. Its future Node differential must cover ordinary objects,
-key order, inherited/shadowed keys, deletion and ordinary control/exception
-traces. Proxy trap sequences, prototype/enumerability mutation and the Proxy
-Symbol-key path remain explicit pinned-Ark runtime-verification gaps. Do not
-label a Node source-only test as Ark equivalence or engine recovery evidence.
+At the historical B/C increment only raw protocol evidence was verified. The
+engine-output differential is now provided by the separate native.abc fixture
+below. It covers ordinary objects; Proxy trap sequences, prototype/enumerability
+mutation and the Proxy Symbol-key path remain explicit pinned-Ark verification
+gaps. Source-only execution is not evidence of Ark equivalence.
+
+## Increment III production fixture
+
+`native.js` / `native.abc` use the same pinned DevEco compiler and command above,
+with `--record-name=native --source-file=native.js` and native input/output
+paths. `key_break.js` / `key_break.abc` use `--record-name=key_break
+--source-file=key_break.js`; the remaining flags are identical. The source
+files are independent oracles and never engine inputs.
+
+SHA-256:
+
+- native.js: `a1a781941f2f0c0f365e1f740e22586f48df2b45af79364a3b70e43418890d6f`
+- native.abc: `e5069232c2d56a764ea333aca9f825da7c4a4545fe85195b51a020c57791cce7`
+- key_break.js: `ddac0a1ab594c68574b55cf0b213c1d65c23d7b6e20a68e92452b83b49bb1323`
+- key_break.abc: `cd2dfab3766a833965f7cc1ecff78112bcfb42a509c6ed1aafa7ee8515cff454`
+
+Verified acquisition/next PCs in native.abc: keys m421 18/29, scan m449 16/27,
+exits m477 18/29, nested m505 20/31 and 49/60, keysBreak m561 28/39.
+The IR fixture test checks actual instructions, acquisition handlers, and the
+same production builder plus OriginalFlow/recovery verification. The Node test
+exports engine output under both flags and checks syntax and independent
+ordinary-object traces. It also detects mutations replacing inherited enumeration
+with Object.keys and losing the zero-iteration local key.
+
+`keys` covers local key live-out for zero and last iterations. `keysBreak`
+covers property-target key live-out including early break. `key_break` is a
+negative: local-key live-out with break and nonempty exhaustion-edge phi copies
+must remain `ForInError::kExit`, m380@22. Those copies cannot run on a break
+path. This test does not claim that the current representation supports that
+case. Captured-key m524 in loops.abc remains refused. No Proxy/prototype or
+enumerability-mutation/Symbol-path Ark equivalence is inferred from Node.

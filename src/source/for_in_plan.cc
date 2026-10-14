@@ -375,7 +375,20 @@ class Proof {
         if (!live[phi->value]) continue;
         if (Canon(*phi) == value) continue;
         if (g.values[value.value].domain == ValueKinds::PropertyEnumerator()) q.Fail(Error::kIdentity);
-        if (result && key_loop[result->op.value]) q.Fail(Error::kKeyBinding);
+        if (result && key_loop[result->op.value]) {
+          const auto slot=*key_loop[result->op.value];const auto& loop=plan.loops[slot];
+          q.witness.acquisition=loop.acquisition;
+          const auto* edge=use.incoming?std::get_if<EdgeId>(&*use.incoming):nullptr;
+          q.Require(edge && edge->value<g.edges.size(),Error::kKeyBinding);
+          q.witness.edge=*edge;
+          const auto& arc=g.edges[edge->value];
+          const auto* target=std::get_if<PhiDefinition>(&g.values[phi->value].origin);
+          // A live-out phi is an ordinary source assignment. Its key input
+          // must come from the successful iteration, never the exhausted next.
+          q.Require(target && arc.target==target->block && arc.kind!=FlowEdgeKind::kException &&
+              Dominates(loop.body,arc.source),Error::kKeyBinding);
+          plan.keys.push_back({slot,{u}});
+        }
         continue;
       }
       const auto owner = std::get<OpId>(use.owner); const auto& op = g.ops[owner.value]; q.witness.operation = owner;

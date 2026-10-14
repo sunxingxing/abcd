@@ -83,6 +83,11 @@ class FlowBuilder {
     // Native events/properties already own source-only completion semantics.
     // Normal SSA and phased SSA share action/result withdrawal. Source-only
     // trees need no extra raw correspondence index.
+    const bool has_enumerations = projection_.original ? !projection_.original->enumerations.empty() :
+        std::any_of(tree_.statements.begin(),tree_.statements.end(),[](const auto& s){return std::holds_alternative<ForInStmt>(s.statement);});
+    if(!projection_.original)budget_.Step(tree_.statements.size());
+    Resize(result_.enumerations,has_enumerations?tree_.statements.size():0);
+    for(auto& e:result_.enumerations)e.reset();
     const bool phased=projection_.original&&!projection_.original->phases.empty();
     if(!projection_.original) {
       decltype(result_.actions){}.swap(result_.actions);
@@ -319,6 +324,7 @@ class FlowBuilder {
     result.source_shadows=std::move(names.shadows);result.binding_presence=std::move(names.presence);
     result.source_names=std::move(names.index);
     ProjectOriginal();
+    VerifyForInRecovery(tree_, result, budget_);
     result.allocated_bytes=budget_.Bytes();
     // Published buffers own their actual capacities. Construction admission
     // includes old/new growth overlap, PMR traversal scratch and subordinate
@@ -336,6 +342,7 @@ class FlowBuilder {
     };
     // Ownership census, not semantic dispatch. Add any new owned flow buffer
     // here; original evidence is borrowed and scopes are charged separately.
+    add(flow.enumerations);
     add(flow.normal_kinds);add(flow.normal_truths);add(flow.normal_exits);
     add(flow.actions);add(flow.aggregates);add(flow.argument_carriers);
     add(flow.snapshot_slots);add(flow.property_initializers);add(flow.original_actions);
@@ -555,6 +562,17 @@ class FlowBuilder {
       if(operation.life!=analysis::ValueLife::kLive||operation.completion!=OriginalCompletionBoundary::kInvocationBinding)continue;
       const auto parameter=operation.invocation_parameter;
       if(parameter&&parameter->value<invocation_definitions.size()&&invocation_definitions[parameter->value])relation=parameter;
+    }
+    if(result.original)for(const auto& original:result.original->enumerations) {
+      budget_.Step(); RequireTree(original.statement.value<result.enumerations.size() && result.enumerations[original.statement.value],Error::kOwnership);
+      const auto& port=*result.enumerations[original.statement.value];
+      const auto key=result.events[port.key_commit.value].definition;
+      RequireTree(key && result.definitions[key->value].enumeration &&
+          result.definitions[key->value].enumeration->statement==original.statement,Error::kOwnership);
+      result.definitions[key->value].enumeration->original=original.original.key;
+      result.original_actions[original.original.acquisition.operation.value]=FlowOriginalAction{port.acquire_before,port.acquire_commit,{port.thrown,port.finalizer}};
+      result.original_actions[original.original.advance.operation.value]=FlowOriginalAction{port.next_before,port.next_commit,{port.thrown,port.finalizer}};
+      result.original_actions[original.original.key.decision.value]=FlowOriginalAction{port.done,port.done,{port.thrown,port.finalizer}};
     }
     Resize(result.original_phases,result.original?result.original->phases.size():0);
     for(std::size_t i=0;i<result.original_phases.size();++i) {
@@ -1264,11 +1282,17 @@ class FlowBuilder {
         // next, never acquisition. The source target may still fail its TDZ
         // check, so the key definition follows successful PutValue only.
         const auto acquire=New({FlowEventKind::kEnumerationAcquire});
+        const auto acquire_commit=New();
         const auto advance=New({FlowEventKind::kEnumerationNext});
+        const auto next_commit=New();
         const auto done=New({FlowEventKind::kControl});
         const auto write=New({FlowEventKind::kEnumerationBind});
         const auto commit=Define(node.key,FlowDefinitionKind::kAssignment,{},{},at.id,{},
             FlowWriteEffect::kObservable,{},FlowExceptionContext{context.thrown,context.finalizer},at.id);
+        definitions_.back().enumeration=FlowEnumerationDefinition{at.id,{}};
+        // Availability is queried at PutValue, before its successful definition.
+        Reference(write,Resolve(node.key),FlowReferenceKind::kWrite,at.id,
+            FlowExceptionContext{context.thrown,context.finalizer},at.id);
         WriteAction(definitions_.back(),FlowAction{write,commit,{context.thrown,context.finalizer}});
         for(const auto event:{acquire,advance}) {
           events_[event.value].effects=CallbackEffects();
@@ -1282,11 +1306,16 @@ class FlowBuilder {
         repeats_[at.id.value]=advance;
         semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=advance;
         semantics.entry_value=node.object;
-        Link(start,Expr(node.object,context.Operand(acquire)));
-        Link(acquire,advance);Link(advance,done);
+        const auto rhs=Expr(node.object,context.Operand(acquire));
+        Link(start,rhs);
+        Link(acquire,acquire_commit);Link(acquire_commit,advance);
+        Link(advance,next_commit);Link(next_commit,done);
         Link(done,context.next,FlowCompletion::kTaken);
         Link(done,write,FlowCompletion::kNotTaken);
-        Link(commit,Stmt(node.body,context.Child(advance,at.id,FlowStatementRetention::kRequired)));
+        const auto body=Stmt(node.body,context.Child(advance,at.id,FlowStatementRetention::kRequired));
+        Link(commit,body);
+        result_.enumerations[at.id.value]=FlowEnumeration{at.id,rhs,acquire,acquire_commit,advance,next_commit,
+            done,write,commit,body,context.next,context.thrown,context.finalizer};
       } else if constexpr(std::is_same_v<T,LoopStmt>) {
         semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=start;
         if(projection_.loops)if(const auto& program=projection_.loops->conditions[at.id.value]) {

@@ -312,6 +312,16 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
                   }
                   break;
                 case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
+                  if(generated.enumeration) {
+                    RequireTree(generated.enumeration->statement.value<flow.enumerations.size() && flow.enumerations[generated.enumeration->statement.value] &&
+                        flow.enumerations[generated.enumeration->statement.value]->key_commit==generated.point,Error::kOwnership);
+                    // Do not refine to String: the pinned Ark proxy slow path
+                    // does not prove that domain. The success-edge certificate
+                    // gives a key identity, not an ECMA-only enumeration oracle.
+                    constant(target,K::Language());
+                    dependency(event_node(generated.point),target,DependencyKind::kProvenance,nullptr);
+                    continue;
+                  }
                   if(generated.value){RequireTree(generated.value->value<expressions,Error::kOwnership);dependency(NodeId{generated.value->value},target,DependencyKind::kValue,&generated);
                     dependency(event_node(generated.point),target,DependencyKind::kProvenance,nullptr);
                     if(generated.write)dependency(NodeId{generated.write->value},target,DependencyKind::kProvenance,nullptr);

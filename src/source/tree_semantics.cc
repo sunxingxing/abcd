@@ -1,5 +1,6 @@
 #include "tree_semantics.h"
 #include "original_flow.h"
+#include "../analysis/value_phi.h"
 
 #include <new>
 #include <stdexcept>
@@ -33,6 +34,27 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     checked.Admit(flow->allocated_bytes, 1);
     checked.Step(flow->work);
     auto original=RetainOriginalFlow(graph,tree,*flow,checked);
+    if (evaluation.for_in) {
+      checked.Array(original->enumeration_operations, evaluation.for_in->operations.size());
+      std::copy(evaluation.for_in->operations.begin(), evaluation.for_in->operations.end(), original->enumeration_operations.begin());
+      checked.Array(original->enumeration_values, evaluation.for_in->values.size());
+      std::copy(evaluation.for_in->values.begin(), evaluation.for_in->values.end(), original->enumeration_values.begin());
+      auto identities = analysis::AnalyzeValueIdentities(graph, checked.Remaining());
+      if (const auto* error = std::get_if<analysis::ValueSimplifyError>(&identities)) {
+        switch (*error) {
+          case analysis::ValueSimplifyError::kWorkLimit: return Error::kWorkLimit;
+          case analysis::ValueSimplifyError::kResourceLimit: return Error::kResourceLimit;
+          case analysis::ValueSimplifyError::kStaleRevision:
+          case analysis::ValueSimplifyError::kRevisionLimit:
+          case analysis::ValueSimplifyError::kInvalidGraph:
+          case analysis::ValueSimplifyError::kCopyCycle:
+          case analysis::ValueSimplifyError::kUnsupportedFlow: return Error::kOperand;
+        }
+      }
+      auto& identity = std::get<analysis::ValueIdentities>(identities);
+      checked.Admit(identity.allocated_bytes, 1); checked.Step(identity.work);
+      original->canonical_values = std::move(identity.canonical);
+    }
     if (evaluation.cells) {
       original->environments=evaluation.cells->environments;
       RequireTree(original->environments!=nullptr,TreeStructureError::kOwnership);

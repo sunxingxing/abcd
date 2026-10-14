@@ -151,6 +151,19 @@ class FlowCheck {
       budget_.Array(enumeration_statements_, enumeration_->loops.size());
       budget_.Array(enumeration_scopes_, enumeration_->loops.size());
       budget_.Array(flow_.enumerations, enumeration_->loops.size());
+      budget_.Array(flow_.enumeration_controls,flow_.controls.size());
+      for(std::size_t n=flow_.first_control.value;n<control_.nodes.size();++n) {
+        budget_.Step(); const auto& node=control_.nodes[n];
+        if(const auto* loop=std::get_if<LoopControl>(&node.synthetic)) {
+          if(enumeration_->wrappers[loop->loop.value])flow_.enumeration_controls[n-flow_.first_control.value]=EnumerationControl::kLoop;
+        } else if(const auto* transfer=std::get_if<LoopTransfer>(&node.synthetic)) {
+          const auto native=enumeration_->wrappers[transfer->loop.value];
+          const auto* edge=std::get_if<analysis::EdgeId>(&transfer->source);
+          if(native && edge && transfer->kind==LoopTransferKind::kBreak &&
+              exceptions_->control.arcs[edge->value].edge==evaluation_.for_in->loops[*native].done_edge)
+            flow_.enumeration_controls[n-flow_.first_control.value]=EnumerationControl::kExhausted;
+        }
+      }
     }
     IndexPlacements();
     ModulePairs();
@@ -395,6 +408,10 @@ class FlowCheck {
     flow_.cfg_revision = graph_.cfg_revision;
     flow_.allocated_bytes = budget_.Bytes();
     flow_.work = budget_.Work();
+    if (enumeration_) {
+      flow_.forwarded_operations = std::move(enumeration_->forwarded_operations);
+      flow_.forwarded_blocks = std::move(enumeration_->forwarded_blocks);
+    }
     return std::move(flow_);
   }
 
@@ -1315,7 +1332,7 @@ class FlowCheck {
           declared_[key.value] && !assigned_[key.value], Error::kSnapshot);
       assigned_[key.value] = 1; enumeration_scopes_[member.loop] = block.scope;
       flow_.enumerations[member.loop] = {event, statement, syntax.object, key, block.scope,
-          enumeration_->loops[member.loop].acquisition};
+          enumeration_->loops[member.loop].acquisition, event.key.success, event.key.exhausted};
       const auto loop = enumeration_->loops[member.loop].loop;
       Require(!loops_[loop.value], Error::kControl); loops_[loop.value] = statement;
       // Stage is still checked at the original acquisition, not at the loop's

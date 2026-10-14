@@ -34,18 +34,13 @@ struct TreeSelectionTruth {
   analysis::UseId occurrence;
   std::optional<PureTruthTest> test;
 };
-struct TreeForInEvents {
-  ForInEventPair original;
-  StmtId statement;
-  ExprId object;
-  SymbolId key;
-  ScopeId scope;
-  EnumerationException acquisition;
-};
+using TreeForInEvents = OriginalEnumeration;
+enum class EnumerationControl : std::uint8_t { kLoop, kExhausted };
 struct TreeFlow {
   // Independent typed protocol correspondence. Advance Commit and success-only
   // key assignment remain distinct; neither is an ordinary shared expression.
   std::vector<TreeForInEvents> enumerations;
+  std::vector<std::optional<std::uint32_t>> forwarded_operations, forwarded_blocks;
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;
   // Indexed by OpId. Branches/returns map to their condition/returned value;
@@ -98,6 +93,7 @@ struct TreeFlow {
   // Origins of independently checked synthetic loop/transfer statements.
   // Indexed by the synthetic ControlNode suffix, not inferred from text.
   std::vector<TreeOriginId> controls;
+  std::vector<std::optional<EnumerationControl>> enumeration_controls;
   ControlId first_control;
   std::vector<StmtId> control_statements; // Same synthetic suffix as controls.
   // Private boolean routing expressions checked by the completion projection.

@@ -44,8 +44,16 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   budget.Array(covered, graph.origins.size());
   budget.Array(visited, tree.origins.size());
   budget.Array(stack, tree.origin_parts.size() + 1);
-  for (const auto origin : flow.controls) {
+  for (std::size_t c=0;c<flow.controls.size();++c) {
+    const auto origin=flow.controls[c];
     budget.Step();
+    if(!flow.enumeration_controls.empty() && flow.enumeration_controls[c]) {
+      if(*flow.enumeration_controls[c]==EnumerationControl::kLoop) {
+        RequireMeaning(flow.control_statements[c].value<tree.statements.size() && origin.value<graph.origins.size() &&
+            std::holds_alternative<ForInStmt>(tree.statements[flow.control_statements[c].value].statement),Error::kOrigin);
+      }
+      continue; // Original done edge is the native exhausted port, not a fake break statement.
+    }
     RequireMeaning(origin.value >= graph.origins.size() && origin.value < tree.origins.size() &&
         !visited[origin.value] &&
         (std::holds_alternative<LoopOrigin>(tree.origins[origin.value]) ||
@@ -55,7 +63,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   }
   for (std::size_t i = 0; i < flow.tries.size(); ++i) {
     budget.Step();
-    RequireMeaning(flow.tries[i].has_value(), Error::kOrigin);
+    if (!flow.tries[i]) continue; // Only freshly verified forwarded routes have no physical try.
     const auto origin = tree.statements[flow.tries[i]->value].origin;
     const auto* region = std::get_if<TryOrigin>(&tree.origins[origin.value]);
     RequireMeaning(origin.value >= graph.origins.size() && region && region->region.value == i &&
@@ -97,6 +105,8 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step();
     const auto& op = graph.ops[i];
+    if ((evaluation.for_in && evaluation.for_in->operations[i]) ||
+        (!flow.forwarded_operations.empty() && flow.forwarded_operations[i])) continue;
     if (IsReceiverGuard(tree, analysis::OpId{static_cast<std::uint32_t>(i)}) || evaluation.operations[i].kind == EvaluationKind::kCellGuard || evaluation.operations[i].kind == EvaluationKind::kArrayCursor || evaluation.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph, evaluation, op) || op.life != analysis::ValueLife::kLive ||
         evaluation.operations[i].kind == EvaluationKind::kElidedPure ||
         evaluation.operations[i].kind == EvaluationKind::kAlias) continue;

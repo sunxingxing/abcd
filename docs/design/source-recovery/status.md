@@ -12,6 +12,16 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 52 increment III：OriginalFlow/recovery 联合验证与发布（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 497 → **498/620**，`--language-source` 534 → **535/620**；0 回退，0 文本漂移；for-in 测试 11/11。cc 核对 assertContain 的首个原生 `for ($key10 in actualValue)` 输出语义一致；可读性（空 then、尾部 `continue`）另议。
+
+- 基线 `5b361344`，工作区未提交。OriginalEnumeration / FlowEnumeration 分离 acquire、next 的 Before/Commit、done、success-only KeyWrite/KeyCommit；内部 enumerator/next-result 不伪造源码变量或 ExprId。初始 draft 和每次 BuildRecoveryFlow 都复验原始事件、输入身份、边与提交。真实 key 读取必须由成功 KeyCommit 支配；写入 TDZ 用 reset-aware 声明事实证明。
+- ForwardedException 与 PhysicalCatch 分开；逐入口重新核对同 payload、无观察前缀和最终目的地，反向 Kahn 检查全部路径终止。没有删除 handler 一致性义务，也未简化其他 catch。只对全部证明通过的方法移除 kForInRecovery 发布门禁；follow/decision 与原 LoopId 不变。
+- 完整 `cmake --build build/regression -j 6 -- -k` **成功**；最终固定集 `ctest --preset source-regression -j 1` **65/65**；定向 **40/41**，唯一失败为此前已登记的 `tree_structure_test`（abort，未修改断言）。for-in **11/11**。新增真实 es2abc fixture 经引擎导出后做普通对象 Node 差分，另有原始 Commit/exception/identity/done、key 提前/耗尽写入、continue、handler payload、声明遗漏变异及 200/201/400/800 精确预算。
+- 对 `explore52b/explore52bs`：**498/620、535/620**（各 +1），**0 状态回退、0 文本漂移**；仅四个目标 record 的首拒绝诊断变化。assertContain 新完整且两套 `node --check` 均通过。六个目标循环均通过生产 draft + OriginalFlow/recovery；DataDriver 首拒绝仍为 m42717@153 unsupported，Filter 转到 m44496@252 decision edge copies，core 转到 m21280@599 kCatchState，MockKit 转到 m54264 kParameters（无 PC）。逐循环表见 [property-enumeration.md](property-enumeration.md#round-52-increment-iii-originalrecovery-event-correspondence)。
+- 边界：局部 key 在 break 后 live-out 且耗尽边有非空 phi copies 仍以 kExit 拒绝，独立 key_break.abc 固定该边界；属性 key 的 zero/last/break live-out 已有差分。捕获 m524、handled advance、非空 staging 仍拒绝。Proxy/原型或枚举属性变化/Symbol 的 Ark 运行时验证缺口未关闭；不新增源语言前提。
+- 证据：`/private/tmp/r52iii-build-delivery.log`、`r52iii-fixed-delivery.log`、`r52iii-targeted-delivery.log`、`r52iii-targeted-list.txt`、`r52iii-target-loops-delivery.log`、`r52iii-delivery-cohort.log`、`r52iii-node-check.log`；导出 `/private/tmp/r52iii-delivery-cohort/`。未 commit/push/stash；未跑留出集、全套测试或 RSS 基准。
+
 ## Round 52 increment II：生产 draft 与 TreeFlow（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；497/620、534/620 不变，0 状态变化，0 文本变化；for-in 测试 9/9。审查重点：preheader 私有 phi 初始化先于 native 语句（依赖 acquisition→first-next 证明），耗尽 copies 仅在唯一正常退出时后置，其余以 kExit 拒绝。
 

@@ -82,7 +82,11 @@ void CheckEvents(const FunctionTree& tree,unsigned count) {
       if(e.completion==FlowCompletion::kThrow)threw=true;
     }
     Check(success&&threw);
-    const auto& done=flow.events[success->value];
+    const auto& commit=flow.events[success->value];
+    Check(commit.kind==FlowEventKind::kControl && !commit.definition);
+    Check(commit.outgoing && !flow.edges[*commit.outgoing].outgoing);
+    Check(flow.edges[*commit.outgoing].completion==FlowCompletion::kNormal);
+    const auto& done=flow.events[flow.edges[*commit.outgoing].to.value];
     Check(done.kind==FlowEventKind::kControl&&!done.definition);
     bool exhausted=false,present=false;
     for(auto edge=done.outgoing;edge;edge=flow.edges[*edge].outgoing) {

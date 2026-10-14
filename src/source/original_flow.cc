@@ -51,7 +51,26 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
       result->exception_causes[i]=graph.ops[op.value].exception_cause;
     }
   }
-  // Transfer the verified table; its allocation was already admitted with TreeFlow.
+  // Keep immutable protocol evidence; these copies have their own admission.
+  copy(result->enumerations,flow.enumerations);
+  copy(result->forwarded_operations,flow.forwarded_operations);
+  copy(result->forwarded_blocks,flow.forwarded_blocks);
+  if(!result->enumerations.empty()) {
+    std::vector<std::optional<std::uint32_t>> owners;budget.Array(owners,tree.statements.size());
+    for(std::uint32_t i=0;i<result->enumerations.size();++i){budget.Step();owners[result->enumerations[i].statement.value]=i;}
+    budget.Admit(flow.control_statements.size(),sizeof(OriginalEnumerationExit));
+    result->enumeration_exits.reserve(flow.control_statements.size());
+    budget.Admit(result->enumeration_exits.capacity()-flow.control_statements.size(),sizeof(OriginalEnumerationExit));
+    for(std::size_t i=0;i<flow.control_statements.size();++i) {
+      budget.Step(); if(!flow.enumeration_controls.empty()&&flow.enumeration_controls[i])continue;
+      const auto statement=flow.control_statements[i]; const auto& node=tree.statements[statement.value];
+      if(const auto* jump=std::get_if<ContinueStmt>(&node.statement);jump&&owners[jump->target.value])
+        result->enumeration_exits.push_back({statement,*owners[jump->target.value],LoopTransferKind::kContinue,node.origin});
+      if(const auto* jump=std::get_if<BreakStmt>(&node.statement);jump&&owners[jump->target.value])
+        result->enumeration_exits.push_back({statement,*owners[jump->target.value],LoopTransferKind::kBreak,node.origin});
+    }
+  }
+  // Transfer the verified definitions; TreeFlow already charged this storage.
   result->definitions=std::move(flow.definitions);
   result->declarations=std::move(flow.declarations);
   if(!flow.cell_bindings.empty()) {
@@ -63,7 +82,7 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
     budget.Array(result->catches,tree.symbols.size());
     std::vector<std::optional<StmtId>> bodies;budget.Array(bodies,tree.symbols.size());
     for(const auto statement:flow.tries) {
-      budget.Step();RequireTree(statement.has_value(),TreeStructureError::kOwnership);
+      budget.Step();if(!statement)continue; // Fresh TreeFlow checked each forwarded route independently.
       const auto& clause=std::get<TryStmt>(tree.statements[statement->value].statement).handler;
       RequireTree(clause&&clause->parameter.value<bodies.size()&&!bodies[clause->parameter.value],TreeStructureError::kOwnership);
       bodies[clause->parameter.value]=clause->body;
@@ -82,7 +101,10 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
     budget.Step();const auto& op=graph.ops[i];
     result->operations[i]={op.block,op.first_use,op.use_count,op.result,op.normal,
         op.before_throw,op.exceptional,op.life,op.origin,flow.expressions[i],flow.statements[i]};
-    if(op.life==analysis::ValueLife::kLive&&flow.statements[i]) {
+    if (const auto* enumeration=std::get_if<analysis::ValueEnumeration>(&op.operation)) result->operations[i].enumeration=enumeration->action;
+    result->operations[i].forwarding_throw=std::holds_alternative<analysis::ValueThrow>(op.operation);
+    if(op.life==analysis::ValueLife::kLive&&flow.statements[i] &&
+        (result->forwarded_operations.empty() || !result->forwarded_operations[i])) {
       if(std::holds_alternative<analysis::ValueThrow>(op.operation))result->operations[i].statement_kind=OriginalStatementKind::kThrow;
       else if(std::holds_alternative<analysis::ValueReturn>(op.operation))result->operations[i].statement_kind=OriginalStatementKind::kReturn;
       else if(std::holds_alternative<analysis::ValueDebugger>(op.operation))result->operations[i].statement_kind=OriginalStatementKind::kNormal;
