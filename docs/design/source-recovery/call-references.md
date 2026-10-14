@@ -1,5 +1,8 @@
 # 跨选择区域的成员调用引用
 
+2026-10-14 Round 65：未满足的 normal 成员引用现可组合已保留 fallback 的选择参数；
+实现、逐方法证据与边界见 [round-65-retained-call-selections.md](round-65-retained-call-selections.md)。
+
 状态：设计共识（Claude 与 Codex gpt-6-astra/xhigh，2026-10-12）。第 1 步（原因链）已实施；
 第 2 步的 normal 路径第一个增量（融合域沿内联消费链延伸）已实施，见 §4。phased 路径共用证据和
 没有唯一消费者的嵌套选择尚未实施。

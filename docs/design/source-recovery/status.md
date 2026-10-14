@@ -12,6 +12,15 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 65：成员调用参数中的保留值 fallback（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 510 → **513/620**，`--language-source` 549 → **552/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 57/58，只有既有的 family_source_cli_test 失败。cc 核对 ComputedProperty 输出为装饰器降级的标准形态 `Object.defineProperty(proto, "sum", decorate(...) || descriptor)`。
+
+- 基线 `3cb1e433`。o21 四例均为 normal：callee 在 B5、调用在 B8；子调用已是 predicate snapshot，phi 在真分支保留该结果、假分支读取此前保存的 fallback。raw logical region 已发现，但 logical 路线要求 arm 内 `kPhiInput`，conditional 路线又让给 logical owner，形成发现缺口。不是 Round 46 暂缓的联合 consumer 准入。逐方法 Op/PC/phi 证据见 [round-65-retained-call-selections.md](round-65-retained-call-selections.md)。
+- 只为未满足成员 Reference 的实参树保留现有 conditional/snapshot 证明，复用反向区间构造、正向验证及 TreeFlow/OriginalFlow/recovery。未改 consumer eligibility、catch、声明、命名或打印；无新前提。两个新索引预先计费，线性构建，总复杂度不超过既有 O(N log N)。
+- 两套 cohort 对 explore64/explore64s：**510 → 513/620、549 → 552/620**，0 回退、0 已 complete 文本漂移。每套仅四个目标变化：15203、18179、23526 complete；16320 的入口问题消除，转到 m17082@171 的 CallReferenceError::kNotInline（call Op70/property Op8，Root/CrossRegionValue）。六份新增 complete 输出均通过 `node --check`。
+- 完整 keep-going 构建成功；固定集串行 **65/65**；新增 **2/2**（104 次 Node 差分、12 个变异检出）；`retained_call_selection|call|reference|logical|selection|evaluation|recovery|original_flow` 定向 **68/69**，仅既有 phased_arm_selection_source_test；`cli|corpus|failure|_receipt|manifest` 扫查 **55/56**，仅既有 family_source_cli_test。没有修改既有失败或过期期望。
+- IR 测试含 consumer/phi/树事件变异、copy/寄存器/直线前缀拆块、200/201/400/800 精确 work/byte 边界和独立 tree/recovery 验证。两个兄弟选择、join 到 consumer 的跨块限制仍开放，不把它们称为语言约束。证据在 `/private/tmp/r65-evidence/`；双 cohort 输出在 `/private/tmp/r65-first-cohort/`。未跑留出集、全套测试或 RSS 基准；未 commit/push/stash。
+
 ## Round 64：内部值诊断与循环 cell 初始化（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 509 → **510/620**，`--language-source` 547 → **549/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 55/56，只有既有的 family_source_cli_test 失败。`async_semantics_test` 在会话起点 22e7423a 上同样 rc 134，cc 将其补入既有失败清单。
 

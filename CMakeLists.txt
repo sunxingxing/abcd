@@ -641,6 +641,9 @@ if(BUILD_TESTING)
   add_executable(logical_coverage_test tests/unit/source/logical_coverage_test.cc)
   target_link_libraries(logical_coverage_test PRIVATE abcd_source abcd_json)
   add_test(NAME logical_coverage_test COMMAND logical_coverage_test)
+  add_executable(retained_call_selection_test tests/unit/source/retained_call_selection_test.cc)
+  target_link_libraries(retained_call_selection_test PRIVATE abcd_source)
+  add_test(NAME retained_call_selection_test COMMAND retained_call_selection_test)
   add_executable(logical_regions_test tests/unit/source/logical_regions_test.cc)
   target_link_libraries(logical_regions_test PRIVATE abcd_source abcd_json)
   add_test(NAME logical_regions_test COMMAND logical_regions_test)
@@ -2381,6 +2384,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/selection_consumers.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/selection_consumers)
+    add_test(NAME retained_call_selection_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_call_selection.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/retained_call_selection)
     add_test(NAME decision_guards_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_guards.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
