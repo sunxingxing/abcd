@@ -20,7 +20,10 @@ const refused = {
   childwrite: {domain: 'abcd::source::ScopeError', value: 3},
   forwardwrite: {domain: 'abcd::source::ScopeError', value: 3},
   ownwrite: {domain: 'abcd::source::ScopeError', value: 3},
-  branch: {domain: 'abcd::source::ScopeError', value: 3},
+  // Round 68 proves the earlier allocation dominates this creation. The
+  // owner still fails evaluation; no source is published.
+  branch: [{domain: 'abcd::source::EvaluationError', value: 2},
+    {domain: 'abcd::source::EvaluationObligation', value: 0}],
 };
 const runner = `
 const show = v => typeof v === 'function' ? 'function' : Array.isArray(v) ? '[' + v.map(show) + ']' : String(v);
@@ -80,7 +83,7 @@ try {
     const {record} = exportRecord(name);
     assert.equal(record.source_status, 3, name);
     const causes = record.source_failure?.causes ?? record.source_causes;
-    assert.deepEqual(causes.at(-1), leaf, name + ' ' + JSON.stringify(causes));
+    assert.deepEqual(Array.isArray(leaf) ? causes : causes.at(-1), leaf, name + ' ' + JSON.stringify(causes));
     assert.equal(record.source, undefined, name);
   }
 } finally {

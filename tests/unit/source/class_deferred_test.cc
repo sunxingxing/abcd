@@ -30,6 +30,7 @@ void Run(unsigned count, bool split, bool copy = false) {
   opcode(abc::Opcode::kWIDE_NEWLEXENV_PREF_IMM16); word(count);
   if (split) { opcode(abc::Opcode::kJMP_IMM8); code.push_back(2); }
   for (unsigned i = 0; i < count; ++i) {
+    if (split) { opcode(abc::Opcode::kJMP_IMM8); code.push_back(2); }
     opcode(abc::Opcode::kLDA_V8); code.push_back(copy ? 1 : 0);
     if (copy) {
       opcode(abc::Opcode::kSTA_V8); code.push_back(0);
@@ -55,8 +56,28 @@ void Run(unsigned count, bool split, bool copy = false) {
   const auto bytes=evaluation.cells->cells.cells.size()*sizeof(std::optional<OpId>);
   auto low=evaluation;
   Check(!MarkDeferredCells(graph,*low.cells,deferred,{bytes-1}));
-  Check(MarkDeferredCells(graph,*evaluation.cells,deferred,{bytes}).has_value());
-  Check(VerifyDeferredCells(graph,*evaluation.cells,{}).has_value());
+  // Cross-block deferral now independently rebuilds working-flow dominance;
+  // its simultaneous scratch must be admitted as well as the retained table.
+  const auto mark=[&](std::size_t allowance,std::uint64_t work=SemanticBudget{}.work) {
+    auto copy=evaluation;return MarkDeferredCells(graph,*copy.cells,deferred,{allowance,work});
+  };
+  std::size_t lower=bytes,upper=SemanticBudget{}.bytes;
+  Check(mark(upper).has_value());
+  while(lower<upper){const auto mid=lower+(upper-lower)/2;if(mark(mid))upper=mid;else lower=mid+1;}
+  Check(lower && !mark(lower-1));
+  const auto work=*mark(lower);Check(mark(lower,work).has_value());Check(work && !mark(lower,work-1));
+  Check(MarkDeferredCells(graph,*evaluation.cells,deferred,{lower,work}).has_value());
+  const auto verify=[&](std::size_t allowance,std::uint64_t steps=SemanticBudget{}.work) {
+    return VerifyDeferredCells(graph,*evaluation.cells,{allowance,steps});
+  };
+  std::size_t first=0,last=SemanticBudget{}.bytes;
+  Check(verify(last).has_value());
+  while(first<last){const auto mid=first+(last-first)/2;if(verify(mid))last=mid;else first=mid+1;}
+  if(first)Check(!verify(first-1));
+  const auto verify_work=*verify(first);Check(verify(first,verify_work).has_value());
+  Check(verify_work && !verify(first,verify_work-1));
+  std::cout<<"deferred cells="<<count<<" split="<<split<<" copy="<<copy
+    <<" mark="<<lower<<'/'<<work<<" verify="<<first<<'/'<<verify_work<<'\n';
   auto invalid = *evaluation.cells;
   invalid.deferred[deferred.front().cell.value] = OpId{0};
   Check(!VerifyDeferredCells(graph,invalid,{}));
@@ -107,6 +128,34 @@ void Run(unsigned count, bool split, bool copy = false) {
     const auto& binding=flow.original->cells->bindings[entry.cell.value];
     Check(!binding.activation && binding.declaration==flow.statements[entry.store.value]);
   }
+}
+// The immutable working graph is well-formed; only the proposed storage owner
+// is forged. All ids/revisions stay valid, so cross-block dominance must reject
+// a future allocation as the owner of an earlier store.
+void WorkingActivation() {
+  const auto op=[](abc::Opcode value){return static_cast<std::uint8_t>(value);};
+  const auto body=test::Body({op(abc::Opcode::kNEWLEXENV_IMM8),1,
+      op(abc::Opcode::kLDA_V8),0,op(abc::Opcode::kSTLEXVAR_IMM4_IMM4),0,
+      op(abc::Opcode::kJMP_IMM8),2,op(abc::Opcode::kNEWLEXENV_IMM8),1,
+      op(abc::Opcode::kPOPLEXENV),op(abc::Opcode::kRETURNUNDEFINED)});
+  const auto frame=Take<abc::FrameLayout>(abc::BuildFrameLayout(0,1,{false,false,false,false}));
+  RouteInputIdentity identity;identity.profile=abc::ProfileId::kDynamic1206;identity.abc_version={12,0,6,0};
+  const auto input=Take<FunctionInput>(FunctionInput::Build(identity,{300},{100},body,frame,InputCaptureMode::kClosed));
+  const auto values=Take<FunctionValues>(BuildFunctionValues(input,body,frame));
+  const auto& graph=values.graph;
+  auto evaluation=Take<EvaluationPlan>(BuildEvaluationPlan(graph));
+  std::vector<OpId> allocations;std::optional<DeferredCellInitialization> request;
+  for(std::size_t i=0;i<graph.ops.size();++i){
+    if(std::holds_alternative<ValueEnvironmentPush>(graph.ops[i].operation))allocations.push_back({static_cast<std::uint32_t>(i)});
+    if(std::holds_alternative<ValueLexicalStore>(graph.ops[i].operation))request=DeferredCellInitialization{*evaluation.cells->cells.operations[i],{static_cast<std::uint32_t>(i)}};
+  }
+  Check(allocations.size()==2 && request.has_value());
+  Check(graph.ops[allocations.back().value].block!=graph.ops[request->store.value].block);
+  Check(MarkDeferredCells(graph,*evaluation.cells,{&*request,1},{}).has_value());
+  auto forged=*evaluation.cells;
+  std::get<AllocatedCell>(forged.cells.cells[request->cell.value].storage).allocation=allocations.back();
+  Check(!VerifyDeferredCells(graph,forged,{}));
+  Check(!MarkDeferredCells(graph,forged,{&*request,1},{}));
 }
 void FilePreparation(const char* path) {
   const auto file=Take<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
@@ -176,5 +225,6 @@ void FilePreparation(const char* path) {
 }
 int main(int argc,char** argv) {
   for (auto size:{1U,200U,201U,400U,800U}) { Run(size,false);Run(size,true);Run(size,true,true); }
+  WorkingActivation();
   Check(argc==2);FilePreparation(argv[1]);
 }

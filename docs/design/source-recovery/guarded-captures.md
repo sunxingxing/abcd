@@ -455,3 +455,13 @@ finalizers in protected ranges (m473 PC170 → H247, PC325 → H337, PC377 → c
 The repeated finally trace is bytecode-faithful, not an engine bug. Original
 Node source is used for the remaining modes; exception messages/stacks remain
 outside the comparison. See the exception-control oracle boundary.
+
+## 13. Cross-block normal-owner activation (Round 68)
+
+An early Guarded capture may now defer through the original allocation's
+normal-flow dominance over creation and the cell's unique direct store.
+Independent working-flow and source-scope checks still require that same
+activation and a declaration at the original store in the allocation's source
+scope. The new rule is Guarded-only; SourceAccess, strict writes and exceptional
+parents keep their previous boundaries. See the
+[proof, evidence and tests](round-68-capture-activation.md).

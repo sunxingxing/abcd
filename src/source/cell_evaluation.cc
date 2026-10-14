@@ -1,5 +1,6 @@
 #include "cell_evaluation.h"
 #include "recovery_scratch.h"
+#include "../analysis/value_flow.h"
 
 #include <algorithm>
 #include <bit>
@@ -76,12 +77,29 @@ std::optional<analysis::ValueId> InitializedCellGuardInput(const analysis::Value
   return {};
 }
 namespace {
+struct DeferredActivation {
+  analysis::SemanticBudget budget;
+  std::optional<analysis::ValueFlowProof> flow;
+  bool Before(const analysis::ValueProgram& graph, analysis::OpId allocation,
+      analysis::OpId store, std::uint64_t& work) {
+    if (!flow) {
+      if (work > budget.work) return false;
+      auto checked = analysis::VerifyValueFlow(graph, {budget.bytes, budget.work - work});
+      auto* proof = std::get_if<analysis::ValueFlowProof>(&checked);
+      if (!proof) return false;
+      work += proof->work; flow.emplace(std::move(*proof));
+    }
+    const auto& a = graph.ops[allocation.value]; const auto& s = graph.ops[store.value];
+    return a.block == s.block ? a.order < s.order :
+        flow->dominators.Dominates({a.block.value}, {s.block.value});
+  }
+};
 // One deferred entry: allocated storage and a live first store that is either
 // in the allocation's block after it, with no access of the cell in between,
 // or the cell's only store, in another block. Local reads separately need a
 // dominating store (CellInitializations); the owner tree places the store.
 bool DeferredStore(const analysis::ValueProgram& graph, const CellPlan& plan, CellId cell,
-    analysis::OpId store, std::uint64_t& work) {
+    analysis::OpId store, std::uint64_t& work, DeferredActivation& activation) {
   work += std::bit_width(plan.accesses.size()) + 1;
   if (cell.value >= plan.cells.size() || store.value >= graph.ops.size() ||
       store.value >= plan.operations.size() || plan.operations[store.value] != cell) return false;
@@ -97,7 +115,8 @@ bool DeferredStore(const analysis::ValueProgram& graph, const CellPlan& plan, Ce
   if (graph.ops[local->allocation.value].block != op.block) {
     // The only store of this cell: count stores among its sorted accesses.
     work += entry.count;
-    return std::count_if(first, last, [](const CellAccess& access) { return access.kind == CellAccessKind::kStore; }) == 1;
+    return std::count_if(first, last, [](const CellAccess& access) { return access.kind == CellAccessKind::kStore; }) == 1 &&
+        activation.Before(graph, local->allocation, store, work);
   }
   // Same block: accesses are sorted by operation and one block owns a
   // contiguous range, so the access just before this store must precede the
@@ -113,6 +132,8 @@ std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& gra
   if (cells.cells.revision != graph.revision || cells.cells.cfg_revision != graph.cfg_revision ||
       cells.cells.cells.size() > budget.bytes / sizeof(std::optional<analysis::OpId>)) return {};
   cells.deferred.assign(cells.cells.cells.size(), std::nullopt);
+  if (cells.deferred.capacity() > budget.bytes / sizeof(std::optional<analysis::OpId>)) return {};
+  DeferredActivation activation{{budget.bytes - cells.deferred.capacity() * sizeof(std::optional<analysis::OpId>), budget.work}, {}};
   for (const auto& entry : deferred) {
     if (rejected) *rejected = static_cast<std::size_t>(&entry - deferred.data());
     if (work > budget.work || entry.cell.value >= cells.deferred.size()) return {};
@@ -120,7 +141,7 @@ std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& gra
     // Several creations may defer the same cell; check each cell once.
     auto& slot = cells.deferred[entry.cell.value];
     if (slot) { if (*slot != entry.store) return {}; continue; }
-    if (!DeferredStore(graph, cells.cells, entry.cell, entry.store, work)) return {};
+    if (!DeferredStore(graph, cells.cells, entry.cell, entry.store, work, activation)) return {};
     slot = entry.store;
   }
   if (rejected) rejected->reset();
@@ -134,10 +155,11 @@ std::optional<std::uint64_t> VerifyDeferredCells(const analysis::ValueProgram& g
   if (cells.deferred.empty()) return work;
   if (cells.deferred.size() != cells.cells.cells.size() || cells.cells.revision != graph.revision ||
       cells.cells.cfg_revision != graph.cfg_revision) return {};
+  DeferredActivation activation{budget, {}};
   for (std::size_t i = 0; i < cells.deferred.size(); ++i) {
     if (work > budget.work) return {};
     if (cells.deferred[i] && !DeferredStore(graph, cells.cells, CellId{static_cast<std::uint32_t>(i)},
-        *cells.deferred[i], work)) return {};
+        *cells.deferred[i], work, activation)) return {};
   }
   if (work > budget.work) return {};
   return work;

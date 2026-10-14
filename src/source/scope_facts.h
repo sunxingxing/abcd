@@ -37,12 +37,13 @@ class NormalScopeFacts {
       const analysis::DefinedCaptures& defined, analysis::ClosureWrites writes)
       : method_(method), environments_(environments), locals_(locals), defined_(defined), writes_(writes) {}
   // A Guarded use of a local cell that is not yet initialized at creation is
-  // admitted only as a deferred TDZ initialization: allocation, creation and
-  // the cell's first store share one block in that order. `deferred` then
-  // receives that store; the owner must declare the binding exactly there.
+  // admitted only as a deferred TDZ initialization. Besides the original
+  // ordered local case, a unique store can use original allocation dominance
+  // over creation and store. The tree must retain the allocation's activation
+  // and scope and declare exactly at the store; dominance alone cannot do so.
   // Under the approved source TDZ premise (CaptureReads, language-source.md)
-  // a kSourceAccess use is deferred by the same rule: it is a source identifier
-  // access of the binding that the owner declares at that store.
+  // a kSourceAccess use retains the original ordered-local rule; the new
+  // cross-block proof is Guarded-only. It adds no unguarded-access premise.
   [[nodiscard]] std::variant<CaptureCell, ScopeError> Rebase(
       analysis::InstructionId creation, analysis::CapturedSlot capture,
       analysis::CaptureDomain requirement,

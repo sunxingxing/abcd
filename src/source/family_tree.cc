@@ -284,6 +284,9 @@ class FamilyTrees {
         if (!marked) DeferredFailure(family, i, DeferredCellError::kPlacement,
             rejected ? &deferred[i][*rejected] : nullptr);
         Step(*marked);
+        // Mark admitted the allocation against this remaining budget; retain
+        // its charge while the new deferred table stays alive with evaluation.
+        Admit(evaluation.cells->deferred.capacity(), sizeof(std::optional<analysis::OpId>));
       }
       std::optional<IncomingCaptureTree> incoming;
       if (member.incoming) {

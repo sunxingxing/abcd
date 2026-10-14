@@ -26,7 +26,10 @@ std::variant<std::uint64_t, SemanticProofFailure> ProveCyclicLocalInitialization
   budget.bytes -= dominance->work.allocated_bytes;
   step(dominance->work.steps);
   reserve(plan.block_entries, method.flow.blocks.size());
-  for (const auto& node : dominance->nodes) { step(); plan.block_entries.push_back(node.begin); }
+  reserve(plan.block_exits, method.flow.blocks.size());
+  for (const auto& node : dominance->nodes) {
+    step(); plan.block_entries.push_back(node.begin); plan.block_exits.push_back(node.end);
+  }
   reserve(plan.initializations, plan.stores.size());
   const auto block = [&](InstructionId site) {
     step(std::bit_width(method.flow.blocks.size()) + 1);

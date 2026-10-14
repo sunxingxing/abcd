@@ -8,10 +8,11 @@
 
 namespace abcd::source {
 std::uint64_t NormalScopeFacts::QueryWork() const {
-  // Seven possible binary searches plus ancestry and bounded field checks.
+  // Indexed cell/store/guard queries, two additional block lookups for the
+  // cross-block activation certificate, and fixed-width environment ancestry.
   constexpr auto kChecks = std::numeric_limits<std::uint32_t>::digits;
   return 2 * kChecks + std::bit_width(locals_.cells.size()) +
-      std::bit_width(locals_.stores.size()) + 2 * std::bit_width(method_.flow.blocks.size()) +
+      std::bit_width(locals_.stores.size()) + 4 * std::bit_width(method_.flow.blocks.size()) +
       std::bit_width(locals_.initializations.size()) +
       std::bit_width(locals_.capture_barriers.size()) + std::bit_width(defined_.guards.size());
 }
@@ -126,6 +127,36 @@ std::variant<CaptureCell, ScopeError> NormalScopeFacts::Rebase(
       const auto next = std::next(first);
       const bool only = next == locals_.stores.end() || next->cell.value != id;
       if (same_block ? first->instruction.value > creation.value : only) {
+        *deferred = first->instruction;
+        initialized = true;
+      }
+    }
+    if (!initialized && requirement == analysis::CaptureDomain::kGuarded &&
+        first != locals_.stores.end() && first->cell.value == id &&
+        (std::next(first) == locals_.stores.end() || std::next(first)->cell.value != id)) {
+      // A unique direct store cannot hide an earlier reset. The verified
+      // Language-writes premise excludes Hole from direct/transitive writes.
+      // Original dominance certifies the same allocation reaches creation and
+      // store. It does NOT authorize a new lexical scope: working-IR and tree
+      // verification still require the declaration in the allocation's scope.
+      const auto block_of = [&](analysis::InstructionId site) -> std::optional<std::size_t> {
+        const auto end = std::upper_bound(blocks.begin(), blocks.end(), site.value,
+            [](auto target, const auto& item) { return target < item.first_instruction; });
+        if (end == blocks.begin()) return {};
+        const auto found = end - 1;
+        if (site.value - found->first_instruction >= found->instruction_count) return {};
+        return static_cast<std::size_t>(found - blocks.begin());
+      };
+      const auto a = block_of(*allocation), s = block_of(first->instruction);
+      const auto dominates = [&](std::size_t target) {
+        return a && *a < locals_.block_entries.size() && *a < locals_.block_exits.size() &&
+            target < locals_.block_entries.size() && locals_.block_entries[*a] &&
+            locals_.block_entries[*a] <= locals_.block_entries[target] &&
+            locals_.block_entries[target] < locals_.block_exits[*a];
+      };
+      if (a && s && dominates(block_id) && dominates(*s) &&
+          (*a != block_id || *allocation < creation) &&
+          (*a != *s || *allocation < first->instruction)) {
         *deferred = first->instruction;
         initialized = true;
       }

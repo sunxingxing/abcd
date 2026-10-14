@@ -160,6 +160,11 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       const auto entry_bytes = plan.block_entries.capacity() * sizeof(std::uint32_t);
       if (entry_bytes > remaining) return resource();
       remaining -= entry_bytes;
+      if (method.flow.blocks.size() > remaining / sizeof(std::uint32_t)) return resource();
+      plan.block_exits.resize(method.flow.blocks.size());
+      const auto exit_bytes = plan.block_exits.capacity() * sizeof(std::uint32_t);
+      if (exit_bytes > remaining) return resource();
+      remaining -= exit_bytes;
       auto built = BuildNormalDominators(method.flow, {}, {remaining});
       auto* tree = std::get_if<DominatorTree>(&built);
       if (!tree) return resource();
@@ -170,8 +175,11 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       dominance.emplace(std::move(*tree));
       if (dominance->work.allocated_bytes > remaining) return resource();
       remaining -= dominance->work.allocated_bytes;
-      for (std::size_t i = 0; i < plan.block_entries.size(); ++i)
+      for (std::size_t i = 0; i < plan.block_entries.size(); ++i) {
+        charge();
         plan.block_entries[i] = dominance->nodes[i].begin;
+        plan.block_exits[i] = dominance->nodes[i].end;
+      }
     }
     std::optional<SemanticProofFailure> cyclic_gap;
     std::size_t block = 0;
@@ -294,6 +302,23 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
           {remaining, remaining_work}, closure_writes);
       if (const auto* failure = std::get_if<SemanticProofFailure>(&checked)) return *failure;
       remaining_work -= std::get<std::uint64_t>(checked);
+    } else if (!acyclic && !plan.cells.empty()) {
+      // A loop with no unclosed local read still needs activation evidence for
+      // guarded child requirements. Retain only dominance: do not change the
+      // existing initialized-read facts or infer a value from a loop backedge.
+      auto built = BuildNormalDominators(method.flow, {}, {remaining, remaining_work});
+      const auto* tree = std::get_if<DominatorTree>(&built);
+      if (!tree || tree->work.allocated_bytes > remaining || tree->work.steps > remaining_work) return resource();
+      remaining -= tree->work.allocated_bytes; remaining_work -= tree->work.steps;
+      if (method.flow.blocks.size() > remaining / (2 * sizeof(std::uint32_t))) return resource();
+      plan.block_entries.resize(method.flow.blocks.size());
+      plan.block_exits.resize(method.flow.blocks.size());
+      const auto bytes = (plan.block_entries.capacity() + plan.block_exits.capacity()) * sizeof(std::uint32_t);
+      if (bytes > remaining) return resource();
+      remaining -= bytes;
+      for (std::size_t i = 0; i < tree->nodes.size(); ++i) {
+        charge(); plan.block_entries[i] = tree->nodes[i].begin; plan.block_exits[i] = tree->nodes[i].end;
+      }
     }
     if (acyclic) {
       std::sort(plan.initializations.begin(), plan.initializations.end(), [&](const auto& a, const auto& b) {

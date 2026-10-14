@@ -12,6 +12,15 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 68：正常 class-creation 路径的 Guarded activation（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 516 → **520/620**，`--language-source` 556 → **560/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 62/63，只有既有的 family_source_cli_test 失败。
+
+- 基线 `95ef0813`。新增 Guarded-only 原始支配证据：allocation 支配 creation 和唯一 direct store；Language 写入前提、原作用域/激活、初始化 store 来源仍独立验证。工作 IR 的 Mark/VerifyDeferredCells 共享一次预算内支配计算，FamilyTree 持有 deferred 表的真实 charge。未放宽 SourceAccess/Language/Defined、未知闭包写入或 exceptional-parent deferral；未改声明/控制布局或打印。逐例证据与算法边界见 [Round 68](round-68-capture-activation.md)。
+- explore67c/explore67cs 对比：**516 → 520/620、556 → 560/620**；每组恰好四个目标变化，o3/55292、o10/52872、o29/12767、o21/12185 全部 complete。0 状态回退，0 已 complete/partial 文本漂移（含 o32/49868），8 份新输出通过 `node --check`。证据 `/private/tmp/r68/cohort/`、`/private/tmp/r68/cohort.log`。
+- 最终完整 `cmake --build build/regression -j 6 -- -k` 通过；固定集串行 **65/65**；新增/直接相关 **6/6**；`capture|deferred|guarded|class|local_initialization|cyclic_cells|scope` 定向 **59/72**（13 项均在既有失败清单）；`cli|corpus|failure|_receipt|manifest` 串行扫描 **61/62**（仅既有 family_source_cli_test）。完整日志 `/private/tmp/r68/acceptance.json`，最终补充边界与新测试 `/private/tmp/r68/boundary-tests.log`、`/private/tmp/r68/final-new.log`，最终构建 `/private/tmp/r68/final-build.log`。
+- 新单测覆盖原始/工作 CFG 的非支配 allocation、reset、多 store、伪造 store、严格需求拒绝、copy/拆块、200/201/400/800 和原始局部证明/捕获计划/Mark/Verify 的精确 byte/work 边界。真实 es2abc fixture 两契约 **24 次 Node 差分、8 个变异**；分别检出提前声明丢 TDZ，以及保留早读 ReferenceError 但错误共享循环后续值。消息/stack 不作跨 VM oracle。
+- 唯一过期期望更新：guarded_captures 的 branch 仍拒绝且无 source，从 ScopeError=3 推进为完整 `EvaluationError=2 > EvaluationObligation=0` 链；其余负例断言未弱化。独立只读代码复核未发现阻断，补齐了工作支配与预算/activation 反例。不支持的循环环境复制 join 仍按原类型化原因拒绝；无新语言前提。未跑留出集、全套测试或 RSS 基准；未 commit/push/stash。
+
 ## Round 67：闭合普通后代类生产贯通（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 513 → **516/620**，`--language-source` 552 → **556/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 63/64，只有既有的 family_source_cli_test 失败。输出形如 `(class SocketInfo {...}).prototype;`：es2abc 定义类后会读取 prototype，而类值在该函数中未被使用，所以这是对字节码的忠实投影；可读性另议。
 

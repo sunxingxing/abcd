@@ -29,13 +29,16 @@ enum class CellEvaluationError : std::uint8_t {
 // O(1) after fresh CellEvaluation verification. Incoming witnesses retain the
 // existing enclosing-owner obligation; they never authorize standalone output.
 // Check and record deferred TDZ initializations on a fresh normal-flow plan:
-// each names an allocated cell and its live first store, which follows the
-// allocation in the same block with no access of that cell in between.
+// each names an allocated cell and its live first store: ordered in the same
+// block without an intervening access, or a unique store dominated by the
+// allocation in independently verified working flow. Tree scope/activation
+// and original capture requirements remain separate obligations.
 // Returns the work spent, or nothing when any entry fails these checks.
 [[nodiscard]] std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& graph,
     CellEvaluation& cells, std::span<const DeferredCellInitialization> deferred, analysis::SemanticBudget budget,
     std::optional<std::size_t>* rejected = nullptr);
-// Recheck every recorded entry against the same facts. O(cells + entries log accesses).
+// Recheck entries and rebuild cross-block dominance once: O((V+E) log V),
+// plus indexed cell accesses. Scratch is charged while the table is alive.
 [[nodiscard]] std::optional<std::uint64_t> VerifyDeferredCells(const analysis::ValueProgram& graph,
     const CellEvaluation& cells, analysis::SemanticBudget budget);
 [[nodiscard]] bool IsInitializedCellGuard(const analysis::ValueProgram&, const CellEvaluation&, analysis::OpId);

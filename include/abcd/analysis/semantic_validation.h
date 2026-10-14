@@ -104,6 +104,9 @@ struct LocalAccessPlan {
   // failure or a non-shared owner; capture admission must qualify all of these.
   std::vector<std::optional<UnexposedInitialization>> module_prefix_initializations;
   std::vector<std::uint32_t> block_entries;
+  // Original normal CFG dominance intervals, paired with block_entries.
+  // These certify allocation activation, not cell initialization or values.
+  std::vector<std::uint32_t> block_exits;
   // Sorted creation instructions lacking same-body CapturePreservation.
   // Includes callable/class/buffer captures; not merely the previous function.
   // Empty means the verifier found no unpreserved sites, not initialization.
@@ -123,6 +126,7 @@ struct LocalAccessPlan {
            unexposed_initializations.capacity() * sizeof(std::optional<UnexposedInitialization>) +
            module_prefix_initializations.capacity() * sizeof(std::optional<UnexposedInitialization>) +
            block_entries.capacity() * sizeof(std::uint32_t) +
+           block_exits.capacity() * sizeof(std::uint32_t) +
            capture_barriers.capacity() * sizeof(InstructionId) +
            site_order.capacity() * sizeof(std::optional<InstructionRank>) +
            capture_before.capacity() * sizeof(std::optional<InstructionRank>);
