@@ -25,18 +25,19 @@ try {
     assert.ok(report.counted_peak<=report.available);++checked;
   }
   assert.ok(checked>0);
-  // A resource failure exercises the real record-entry serialization and the
-  // abc_semantic boundary, rather than inventing a charge at that boundary.
+  // This Round-47 scratch refusal is now complete. The production stream
+  // reserves its proven exact length, not five times an unused maximum.
   {
     const out=join(dir,'resource');const records=exportFile(projects,out);
-    const record=records.records.find(r=>r.entity===7635);assert.ok(record.source_printing?.budget);
+    const record=records.records.find(r=>r.entity===7635);assert.equal(record.source_status,0);
     const metadata=JSON.parse(readFileSync(join(out,record.metadata),'utf8'));
     const entry=metadata.methods.find(m=>m.encoded_name==='func_main_0');
     const p=run(semantic,[projects,String(entry.entity),'--record-source','--language-source']);
-    assert.equal(p.status,1);assert.deepEqual(JSON.parse(p.stdout).source_printing,record.source_printing);
+    assert.equal(p.status,0,p.stderr);
+    const text=readFileSync(join(out,record.source),'utf8');assert.equal(JSON.parse(p.stdout).source,text);
     const count=JSON.parse(run(semantic,[projects,String(entry.entity),'--record-print-budget','--language-source']).stdout);
-    assert.equal(count.count_complete,true);assert.deepEqual(count.source_printing,record.source_printing);
-    assert.ok(count.counted_bytes<count.reservation);
+    assert.equal(count.count_complete,true);assert.equal(count.counted_bytes,Buffer.byteLength(text));
+    assert.equal(count.reservation,count.counted_bytes);
   }
-  console.log(`tree_print_budget_cli_test: ${checked} exact byte counts; resource CLI/manifest evidence agrees`);
+  console.log(`tree_print_budget_cli_test: ${checked} exact byte counts; exact production reservation and CLI/manifest text agree`);
 } finally {rmSync(dir,{recursive:true,force:true});}

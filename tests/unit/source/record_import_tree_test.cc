@@ -501,7 +501,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   source::RecordProgramBudget exhausted; exhausted.bytes = 0;
   Check(std::get<source::RecordProgramFailure>(build(exhausted)).kind == source::RecordProgramError::kResourceLimit);
   Check(unlink(path) == 0);
-  return std::get<source::PrintedSource>(std::move(result)).text;
+  return std::string(std::get<source::PrintedSource>(result).text.View());
 }
 }
 int main(int argc, char** argv) {

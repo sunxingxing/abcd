@@ -165,6 +165,6 @@ int main(int argc, char** argv) {
   Check(source.text.find("async onRestore(bundleVersion)") != std::string::npos);
   Check(source.text.find("super(") == std::string::npos);
   Check(source.text.find("export { EntryBackupAbility as \"default\" }") != std::string::npos);
-  if (argc == 3) std::cout << (std::string_view(argv[2]) == "--backup-source" ? source.text : output.str());
+  if (argc == 3) std::cout << (std::string_view(argv[2]) == "--backup-source" ? std::string(source.text.View()) : output.str());
   Check(!file.CheckUnchanged());
 }

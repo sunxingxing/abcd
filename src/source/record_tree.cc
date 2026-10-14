@@ -1,4 +1,6 @@
 #include "tree_print_trace.h"
+#include "borrowed_print_trees.h"
+#include "record_print_sink.h"
 #include "abcd/source/counting_sink.h"
 #include "cell_names.h"
 #include "deferred_failure.h"
@@ -34,6 +36,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     RouteInputIdentity identity, RecordProgramBudget budget, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites* functions,
     const analysis::ClassMethodSites* classes, bool metadata_names, bool& proposed_names, RecordPrintDiagnostics* diagnostics) {
+  const auto record_limit=budget.bytes;
   using Error = RecordProgramError;
   const auto fail = [](Error kind) { return RecordProgramFailure{kind, {}}; };
   // Record failure with the typed inner cause that produced it (S2).
@@ -691,122 +694,145 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         }
       }
     }
-    // Bound retained stream capacity and the returned string alongside the
-    // still-live graph/tree; the printer retains its own scratch allowance.
-    if(diagnostics) {
-      // Counting keeps no output buffer. The exact same actions run with the
-      // existing record's remaining allowance, before any output reservation.
-      // Destroy all diagnostic positions before the unchanged production run.
-      *diagnostics={};diagnostics->reached_print=true;
-      diagnostics->available=budget.bytes;
-      diagnostics->reservation=std::min(budget.output.bytes,budget.bytes/6);
-      diagnostics->printer_scratch=budget.bytes-diagnostics->reservation*5;
-      TreePrintCensus census;TreePrintCensusScope census_scope(census);
-      CountingSink sink;std::ostream counted(&sink);
-      auto prelude=enclosure->WriteImports(file,header,counted,budget.output,{std::min(budget.strings.bytes,budget.bytes)});
-      if(const auto* prefix=std::get_if<std::size_t>(&prelude)) {
-        auto count=[&]()->std::variant<std::size_t,TreePrintFailure> {
-          if(!module_family) {
-            auto printed=PrintModuleTree(result->tree,counted,{budget.output.bytes-*prefix},{budget.bytes},
-                &class_scope,default_export,result->flow?result->flow->original.get():nullptr);
-            if(const auto* error=std::get_if<TreePrintFailure>(&printed))return *error;
-            const auto& value=std::get<PrintedFunction>(printed);diagnostics->counted_peak=value.allocated_bytes;return value.bytes;
-          }
-          auto printed=PrintModuleFamilyDraft(*module_family,counted,{budget.output.bytes-*prefix},{budget.bytes},&class_scope,default_export);
-          if(const auto* error=std::get_if<TreePrintFailure>(&printed))return *error;
-          const auto& value=std::get<PrintedFamilyDraft>(printed);diagnostics->counted_peak=value.allocated_bytes;return value.bytes;
-        }();
-        if(const auto* error=std::get_if<TreePrintFailure>(&count))diagnostics->count_failure=*error;
-        else {
-          diagnostics->count_complete=true;
-          for(std::size_t i=0;i<aliases.size();++i) {
-            if(default_export&&i==*default_alias)continue;
-            counted<<"export { ";for(auto unit:names[alias_slots[i]])counted.put(static_cast<char>(unit));
-            counted<<" as ";auto literal=WriteStringLiteral(aliases[i],counted,budget.output);
-            if(!std::holds_alternative<std::size_t>(literal)){diagnostics->count_complete=false;break;}
-            counted<<" };\n";
-          }
+    // The immutable root/family and class owners were retained above. This
+    // mirror never grants more bytes: the original record ledger keeps that
+    // charge until its owners die. Borrowing is limited to exact root identities.
+    TreePrintTrace print_trace;
+    print_trace.failure.site=TreePrintSite::kPublication;
+    const auto& printed_root=module_family?module_family->members[module_family->root.value].tree:result->tree;
+    print_trace.failure.location.method=printed_root.method;print_trace.failure.owner=printed_root.owner;
+    PrintMemory held_record(record_limit);
+    auto held=held_record.Reserve(record_limit-budget.bytes);
+    PrintMemory memory(budget.bytes);
+    BorrowedPrintTrees borrowed(module_family?nullptr:&result->tree,
+        module_family?&*module_family:nullptr,held,memory,{budget.bytes});
+    std::uint64_t remaining_work=analysis::kDefaultSemanticWork-borrowed.Work();
+    struct PrintPass {std::size_t bytes,peak;bool incomplete;};
+    const auto write=[&](std::ostream& output)->PrintPass {
+    // Reserve the nested phase allowance before it can allocate. Its own
+    // ledgers enforce that allowance. The lease ends only after every returned
+    // position table and checker has been destroyed; output lives outside it.
+    auto scratch=memory.Reserve(memory.Remaining());
+      const auto prelude = enclosure->WriteImports(file, header, output, budget.output,
+          {std::min(budget.strings.bytes, scratch.Bytes())});
+      const auto* prelude_bytes = std::get_if<std::size_t>(&prelude);
+      if (!prelude_bytes) {
+        const auto import_error = std::get<ModuleImportFailure>(prelude).kind;
+        switch (import_error) {
+          case ModuleImportError::kOutputLimit: throw fail_with(Error::kOutputLimit, import_error);
+          case ModuleImportError::kResourceLimit: throw fail_with(Error::kResourceLimit, import_error);
+          case ModuleImportError::kWrite: throw fail_with(Error::kWrite, import_error);
+          case ModuleImportError::kContract:
+          case ModuleImportError::kRequestPhases:
+          case ModuleImportError::kBinding:
+          case ModuleImportError::kModuleKind:
+          case ModuleImportError::kRequestIndex:
+          case ModuleImportError::kString: throw fail_with(Error::kModule, import_error);
         }
       }
-      diagnostics->counted_bytes=sink.Bytes();
-      diagnostics->methods=census.methods;diagnostics->expressions=census.expressions;diagnostics->statements=census.statements;
-      diagnostics->operations=census.operations;diagnostics->anchors=census.anchors;
-    }
-    budget.output.bytes = std::min(budget.output.bytes, budget.bytes / 6);
-    retain(budget.output.bytes * 5);
-    std::ostringstream output;
-    const auto prelude = enclosure->WriteImports(file, header, output, budget.output,
-        {std::min(budget.strings.bytes, budget.bytes)});
-    const auto* prelude_bytes = std::get_if<std::size_t>(&prelude);
-    if (!prelude_bytes) {
-      const auto import_error = std::get<ModuleImportFailure>(prelude).kind;
-      switch (import_error) {
-        case ModuleImportError::kOutputLimit: return fail_with(Error::kOutputLimit, import_error);
-        case ModuleImportError::kResourceLimit: return fail_with(Error::kResourceLimit, import_error);
-        case ModuleImportError::kWrite: return fail_with(Error::kWrite, import_error);
-        case ModuleImportError::kContract:
-        case ModuleImportError::kRequestPhases:
-        case ModuleImportError::kBinding:
-        case ModuleImportError::kModuleKind:
-        case ModuleImportError::kRequestIndex:
-        case ModuleImportError::kString: return fail_with(Error::kModule, import_error);
-      }
-    }
-    bool incomplete = false;
-    auto printed = [&]() -> std::variant<std::size_t, TreePrintFailure> {
-      if (!module_family) {
-        auto emitted = PrintModuleTree(result->tree, output,
-            {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope, default_export,result->flow?result->flow->original.get():nullptr);
+      bool incomplete = false;
+      std::size_t peak=0;std::uint64_t work=0;
+      auto printed = [&]() -> std::variant<std::size_t, TreePrintFailure> {
+        if (!module_family) {
+          auto emitted = PrintModuleTree(result->tree, output,
+              {budget.output.bytes - *prelude_bytes}, {scratch.Bytes(),remaining_work}, &class_scope, default_export,result->flow?result->flow->original.get():nullptr);
+          if (const auto* error = std::get_if<TreePrintFailure>(&emitted)) return *error;
+          const auto& positions = std::get<PrintedFunction>(emitted);
+          incomplete = positions.incomplete;peak=positions.allocated_bytes;work=positions.work;
+          return positions.bytes;
+        }
+        auto emitted = PrintModuleFamilyDraft(*module_family, output,
+            {budget.output.bytes - *prelude_bytes}, {scratch.Bytes(),remaining_work}, &class_scope, default_export);
         if (const auto* error = std::get_if<TreePrintFailure>(&emitted)) return *error;
-        const auto& positions = std::get<PrintedFunction>(emitted);
-        incomplete = positions.incomplete;
+        const auto& positions = std::get<PrintedFamilyDraft>(emitted);
+        incomplete = positions.members[module_family->root.value].incomplete;peak=positions.allocated_bytes;work=positions.work;
         return positions.bytes;
+      }();
+      const auto* body = std::get_if<std::size_t>(&printed);
+      if (!body) {
+        const auto print_error = std::get<TreePrintFailure>(printed);
+        switch (print_error.kind) {
+          case TreePrintError::kResourceLimit: throw fail_with(Error::kResourceLimit, print_error);
+          case TreePrintError::kOutputLimit: throw fail_with(Error::kOutputLimit, print_error);
+          case TreePrintError::kWrite: throw fail_with(Error::kWrite, print_error);
+          case TreePrintError::kUnsupportedContext:
+          case TreePrintError::kInvalidLiteral: throw fail_with(Error::kValue, print_error);
+          case TreePrintError::kWorkLimit:
+            throw RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{print_error})};
+        }
       }
-      auto emitted = PrintModuleFamilyDraft(*module_family, output,
-          {budget.output.bytes - *prelude_bytes}, {budget.bytes}, &class_scope, default_export);
-      if (const auto* error = std::get_if<TreePrintFailure>(&emitted)) return *error;
-      const auto& positions = std::get<PrintedFamilyDraft>(emitted);
-      incomplete = positions.members[module_family->root.value].incomplete;
-      return positions.bytes;
-    }();
-    const auto* body = std::get_if<std::size_t>(&printed);
-    if (!body) {
-      const auto print_error = std::get<TreePrintFailure>(printed);
-      switch (print_error.kind) {
-        case TreePrintError::kResourceLimit: return fail_with(Error::kResourceLimit, print_error);
-        case TreePrintError::kOutputLimit: return fail_with(Error::kOutputLimit, print_error);
-        case TreePrintError::kWrite: return fail_with(Error::kWrite, print_error);
-        case TreePrintError::kUnsupportedContext:
-        case TreePrintError::kInvalidLiteral: return fail_with(Error::kValue, print_error);
-        case TreePrintError::kWorkLimit:
-          return RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{print_error})};
+      std::size_t remaining = budget.output.bytes - *prelude_bytes - *body;
+      const auto append = [&](std::string_view text) {
+        if (text.size() > remaining) throw fail(Error::kOutputLimit);
+        output << text; remaining -= text.size();
+      };
+      for (std::size_t i = 0; i < aliases.size(); ++i) {
+        if (default_export && i == *default_alias) continue;
+        append("export { ");
+        for (const auto unit : names[alias_slots[i]]) append(std::string(1, static_cast<char>(unit)));
+        append(" as ");
+        const auto literal = WriteStringLiteral(aliases[i], output, {remaining});
+        if (!std::holds_alternative<std::size_t>(literal)) throw fail(Error::kOutputLimit);
+        remaining -= std::get<std::size_t>(literal); append(" };\n");
       }
-    }
-    std::size_t remaining = budget.output.bytes - *prelude_bytes - *body;
-    const auto append = [&](std::string_view text) {
-      if (text.size() > remaining) throw fail(Error::kOutputLimit);
-      output << text; remaining -= text.size();
+      if(!output)throw fail(Error::kWrite);
+      const auto bytes=budget.output.bytes-remaining;
+      const auto framing=bytes-*body;
+      if(work>remaining_work||framing>remaining_work-work)
+        throw RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{TreePrintFailure{TreePrintError::kWorkLimit}})};
+      remaining_work-=work+framing;
+      return PrintPass{bytes,peak,incomplete};
     };
-    for (std::size_t i = 0; i < aliases.size(); ++i) {
-      if (default_export && i == *default_alias) continue;
-      append("export { ");
-      for (const auto unit : names[alias_slots[i]]) append(std::string(1, static_cast<char>(unit)));
-      append(" as ");
-      const auto literal = WriteStringLiteral(aliases[i], output, {remaining});
-      if (!std::holds_alternative<std::size_t>(literal)) return fail(Error::kOutputLimit);
-      remaining -= std::get<std::size_t>(literal); append(" };\n");
+    CountingSink counter;std::ostream counted(&counter);
+    TreePrintCensus census;
+    if(diagnostics) {
+      *diagnostics={};diagnostics->reached_print=true;
+      diagnostics->available=budget.bytes;diagnostics->printer_scratch=memory.Remaining();
     }
+    const auto census_result=[&] {
+      if(!diagnostics)return;
+      diagnostics->counted_bytes=counter.Bytes();diagnostics->methods=census.methods;
+      diagnostics->expressions=census.expressions;diagnostics->statements=census.statements;
+      diagnostics->operations=census.operations;diagnostics->anchors=census.anchors;
+    };
+    const auto measure=[&](){
+      TreePrintCensusScope scope(census);
+      try {auto result=write(counted);census_result();return result;}
+      catch(const RecordProgramFailure& failure){census_result();if(diagnostics)diagnostics->count_failure=failure.printing;throw;}
+      catch(const RouteRefusal& failure){census_result();if(diagnostics)diagnostics->count_failure=failure.failure.printing;throw;}
+      catch(const TreePrintFailure& failure){census_result();if(diagnostics)diagnostics->count_failure=failure;throw;}
+    }();
+    if(counter.Bytes()!=measure.bytes)throw fail(Error::kValue);
+    if(diagnostics) {
+      diagnostics->count_complete=true;diagnostics->reservation=measure.bytes;
+      diagnostics->printer_scratch=memory.Remaining()-std::min(memory.Remaining(),measure.bytes);
+      diagnostics->counted_peak=measure.peak;
+    }
+    RecordPrintSink sink(memory,measure.bytes);std::ostream output(&sink);
+    const auto printed=write(output);
+    if(printed.bytes!=measure.bytes||printed.incomplete!=measure.incomplete)throw fail(Error::kValue);
     if (file.CheckUnchanged()) return fail(Error::kFileChanged);
     PrintedSource source;
     // The selected contract owns the entire recovered family, including partial
     // output. Do not relabel language-mode code with PrintedSource's legacy
     // default when transferring it across the common record boundary.
     source.contract = identity.contract;
-    source.text = std::move(output).str();
-    source.incomplete = incomplete;
+    source.text = sink.Finish();
+    source.incomplete = printed.incomplete;
     source.environment_cleanup = std::move(cleanup_sites);
     return source;
   } catch (const RecordProgramFailure& failure) { return failure; }
+    catch (const RouteRefusal& failure) {return failure;}
+    catch (const TreePrintFailure& failure) {
+      switch(failure.kind) {
+        case TreePrintError::kResourceLimit:return fail_with(Error::kResourceLimit,failure);
+        case TreePrintError::kOutputLimit:return fail_with(Error::kOutputLimit,failure);
+        case TreePrintError::kWrite:return fail_with(Error::kWrite,failure);
+        case TreePrintError::kWorkLimit:return RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{failure})};
+        case TreePrintError::kUnsupportedContext:
+        case TreePrintError::kInvalidLiteral:return fail_with(Error::kValue,failure);
+      }
+    }
     catch (const std::bad_alloc&) { return fail(Error::kAllocationFailure); }
     catch (const std::length_error&) { return fail(Error::kAllocationFailure); }
 }

@@ -12,6 +12,25 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 48：TreePrint 存活期账本（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 488 → **495/620**，`--language-source` 522 → **532/620**；0 回退，0 文本漂移；
+  10 个新完成输出 `node --check` 全部通过，文件字节数与 Round 47 计数 sink 预测完全一致。o4 的 RSS 增长（约 12 → 31 MB）来自原本就计费的 flow_kinds 依赖数组：旧版在分配前被拒，现在能执行到。
+  该数组源于 block × binding 的稠密事实格，属于既有 O(n²) 内的实现，另列为后续优化项，不阻塞本轮。
+
+- 基线 `057aa5cb`。精确树身份与仍持有的 owner charge 证明借用；未知输入继续计费。
+  verifier/enclosure 的缓冲销毁后才返还 scratch，保留仍存活的 scopes/input。
+  同一打印动作先计数，再预付精确 B 字节输出并直接转移所有权；取消未使用最大输出的 5 倍预留。
+  未提高 record/process/output/work 上限，未改打印动作、名字或声明。
+- 完整 keep-going 构建成功；固定集串行 **65/65**；定向 **17/18**，仅已登记的
+  `tree_structure_test` 失败。新增 ledger 测试及原 print-failure/CLI 三项 **3/3**。
+- 对 `explore47/explore47s`：**495/620、532/620**（+7/+10），均 **0 回退、0 文本漂移**。
+  10 个 source flags 目标全部 complete；旧 flags 三个捕获初始化拒绝保持原原因/位置。
+- **不能宣称全部验收通过**：o4/7635 的生产 CLI RSS 从约 12 MB 增至 31 MB，原因是现在
+  能执行原有 flow-kind 分析的 17,866,872 字节依赖分配；旧计数诊断同样约 31 MB。
+  该解释不代替用户的生产 RSS 门槛。本轮未擅自扩展到 flow solver 优化，等待 cc 审查。
+- 具体文件、测试、10 个目标的前后 CLI RSS 和证据日志见
+  [Round 48 results](round-48-results.md)。未 commit/push/stash；未运行留出集、全套测试或全语料 RSS。
+
 ## Round 47：TreePrint 资源证据（cc 审查通过）
 
 - 基线 `5f1f71de`，仅诊断；预算、输出预留、打印动作、错误枚举和资源分类不变。

@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
     Check(std::holds_alternative<source::PrintedSource>(result));
     const auto& text = std::get<source::PrintedSource>(result);
     Check(!text.incomplete);
-    return text.text;
+    return std::string(text.text.View());
   };
   const auto source_text = printed(build(header, index));
   auto async_index = index;

@@ -190,14 +190,7 @@ class TreePrinter {
     static_fields_ = fields;
     TreePrintCensusScope::Visit(Tree());
     Site(TreePrintSite::kStructureVerification);
-    const auto checked = VerifyTreeStructure(Tree(), remaining_, scope_);
-    if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
-      if (*error == TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
-      if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
-      throw Error::kUnsupportedContext;
-    }
-    const auto& structure = std::get<TreeStructure>(checked);
-    Admit(structure.allocated_bytes, 1); Step(structure.work);
+    CheckStructure();
     if (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
         Tree().callable != CallableKind::kAsyncFunction && Tree().callable != CallableKind::kGenerator &&
         Tree().callable != CallableKind::kAsyncGenerator && !(fields && Tree().callable == CallableKind::kMethod))
@@ -279,16 +272,7 @@ class TreePrinter {
       current_ = i; Step();
       TreePrintCensusScope::Visit(Tree());
       Site(TreePrintSite::kStructureVerification);
-      const auto checked = VerifyTreeStructure(Tree(), remaining_, scope_);
-      const auto* structure = std::get_if<TreeStructure>(&checked);
-      if (!structure) {
-        switch (std::get<TreeStructureError>(checked)) {
-          case TreeStructureError::kResourceLimit: throw Error::kResourceLimit;
-          case TreeStructureError::kWorkLimit: throw Error::kWorkLimit;
-          default: throw Error::kUnsupportedContext;
-        }
-      }
-      Admit(structure->allocated_bytes, 1); Step(structure->work);
+      CheckStructure();
       if (Tree().strictness != Strictness::kStrict ||
           (Tree().callable != CallableKind::kFunction && !IsArrowCallable(Tree().callable) &&
            !IsMethodCallable(Tree().callable) && Tree().callable != CallableKind::kBaseConstructor && Tree().callable != CallableKind::kDerivedConstructor && Tree().callable != CallableKind::kAsyncFunction &&
@@ -337,7 +321,7 @@ class TreePrinter {
           default: throw Error::kUnsupportedContext;
         }
       }
-      Admit(enclosure->allocated_bytes, 1); Step(enclosure->work);
+      Observe(enclosure->allocated_bytes); Step(enclosure->work);
     }
     std::sort(owners_.begin(), owners_.end(), [&](const auto& a, const auto& b) { Step(); return a.owner < b.owner; });
     for (std::size_t i = 1; i < owners_.size(); ++i) {
@@ -608,6 +592,25 @@ class TreePrinter {
   }
   void Locate(ExprId id) {if(auto* trace=TreePrintTrace::Active())trace->failure.location.expression=id; if(id.value<Tree().expressions.size())Origin(Tree().expressions[id.value].origin);}
   void Locate(StmtId id) {if(auto* trace=TreePrintTrace::Active())trace->failure.location.statement=id; if(id.value<Tree().statements.size())Origin(Tree().statements[id.value].origin);}
+  // Preserve the measured peak, but return scratch only after the result's
+  // expression_scopes and the verifier's internal owner have both died.
+  void CheckStructure() {
+    std::size_t peak=0,input=0;std::uint64_t work=0;
+    {
+      auto checked=VerifyTreeStructure(Tree(),remaining_,scope_);
+      if(const auto* error=std::get_if<TreeStructureError>(&checked)) {
+        if(*error==TreeStructureError::kResourceLimit)throw Error::kResourceLimit;
+        if(*error==TreeStructureError::kWorkLimit)throw Error::kWorkLimit;
+        throw Error::kUnsupportedContext;
+      }
+      const auto& structure=std::get<TreeStructure>(checked);
+      peak=structure.allocated_bytes;input=structure.input_bytes;work=structure.work;
+    }
+    Observe(peak);Admit(input,1);Step(work);
+  }
+  void Observe(std::size_t bytes) {
+    Admit(bytes,1);remaining_.bytes+=bytes;
+  }
   void Step(std::uint64_t count = 1) {
     if (count > remaining_.work) { PrintCharge(TreePrintBudgetKind::kWork,count,remaining_.work,initial_.work); throw Error::kWorkLimit; }
     remaining_.work -= count;
@@ -1842,6 +1845,7 @@ class TreePrinter {
       if(borrowed_variables_.empty())Array(borrowed_variables_,family_->members.size());
       borrowed_variables_[current_]=found.plan;
     }else {
+      if (family_ && family_variables_.empty()) Array(family_variables_, family_->members.size());
       Site(TreePrintSite::kVariableProjection);
       auto planned = PrepareSourceVariables(Tree(), remaining_,Original());
       if (const auto* error = std::get_if<TreeStructureError>(&planned)) {
@@ -1849,7 +1853,6 @@ class TreePrinter {
         if (*error == TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
         throw Error::kUnsupportedContext;
       }
-      if (family_ && family_variables_.empty()) Array(family_variables_, family_->members.size());
       auto& variables = family_ ? family_variables_[current_] : variables_;
       variables = std::get<SourceVariables>(std::move(planned));
       Admit(variables.allocated_bytes, 1); Step(variables.work);

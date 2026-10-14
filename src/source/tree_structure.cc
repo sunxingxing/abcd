@@ -1,4 +1,5 @@
 #include "tree_structure.h"
+#include "borrowed_print_trees.h"
 #include "../analysis/register_value_rule.h"
 
 #include <algorithm>
@@ -712,15 +713,17 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
   TreePrintSiteScope site(TreePrintSite::kStructureVerification);
   TreePrintLocationScope location(tree);
   try {
-    const auto measured = MeasureTreeStorage(tree, budget);
-    if (const auto* error = std::get_if<TreeStorageError>(&measured)) {
-      const auto kind=*error==TreeStorageError::kResourceLimit?Error::kResourceLimit:Error::kWorkLimit;
-      trace.failure.cause=kind;trace.Propagate();
-      return kind;
-    }
     TreeCheckBudget checked(budget);
-    checked.Admit(std::get<TreeStorage>(measured).bytes, 1);
-    checked.Step(std::get<TreeStorage>(measured).work);
+    std::size_t input_bytes=0;
+    if(!BorrowedPrintTrees::Holds(tree)) {
+      const auto measured=MeasureTreeStorage(tree,budget);
+      if(const auto* error=std::get_if<TreeStorageError>(&measured)) {
+        const auto kind=*error==TreeStorageError::kResourceLimit?Error::kResourceLimit:Error::kWorkLimit;
+        trace.failure.cause=kind;trace.Propagate();return kind;
+      }
+      input_bytes=std::get<TreeStorage>(measured).bytes;
+      checked.Admit(input_bytes,1);checked.Step(std::get<TreeStorage>(measured).work);
+    }
     checked.Admit(1, sizeof(StructureCheck));
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
     RequireTree(tree.expressions.size() <= kMaxId && tree.statements.size() <= kMaxId &&
@@ -740,6 +743,8 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
     result.maximum_depth = StructureCheck(tree, checked, result.expression_scopes, destination).Run();
     CheckTreeOrigins(tree, checked);
     result.allocated_bytes = checked.Bytes(); result.work = checked.Work();
+    result.input_bytes=input_bytes;
+    result.retained_bytes=result.expression_scopes.capacity()*sizeof(ScopeId);
     return result;
   } catch (Error error) { trace.failure.cause=error;trace.Propagate();return error;
   } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); trace.Propagate();return Error::kResourceLimit;

@@ -15,6 +15,7 @@
 #include "abcd/source/cleanup_origin.h"
 #include "abcd/source/parameter_default.h"
 #include "abcd/source/source_contract.h"
+#include "abcd/source/source_text.h"
 
 // Published artifacts of the value-tree source route: typed failures,
 // generated positions and the printed record/function text with its maps.
@@ -82,7 +83,7 @@ struct HostRealmRequirement {
 enum class VmSlotUse : std::uint8_t { kUnknown, kNone, kRequired };
 enum class RegisterUse : std::uint8_t { kUnused, kUsed };
 struct PrintedSource {
-  std::string text;
+  SourceText text;
   std::vector<GeneratedSpan> spans;
   SourceContract contract = kSourceContract;
   std::optional<HostRealmRequirement> host_realm;

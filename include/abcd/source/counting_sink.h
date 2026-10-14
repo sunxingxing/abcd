@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_COUNTING_SINK_H_
 #define ABCD_SOURCE_COUNTING_SINK_H_
 #include <streambuf>
+#include <cstdint>
 #include <limits>
 namespace abcd::source {
 // Diagnostic sink: runs the real writer, retains no output bytes. It does not

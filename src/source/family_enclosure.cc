@@ -43,7 +43,11 @@ class EnclosureCheck {
         }
       }
       auto structure = std::get<TreeStructure>(std::move(checked));
+      // VerifyTreeStructure has destroyed its checker. The returned scopes
+      // remain in structures_, so only dead scratch is credited here.
       Admit(structure.allocated_bytes, 1); Step(structure.work);
+      left_.bytes+=structure.allocated_bytes-structure.retained_bytes-structure.input_bytes;
+      input_bytes_+=structure.input_bytes;
       structures_[i] = std::move(structure);
       if (extent_ == EnclosureExtent::kDestination && (!tree.modules.empty() || tree.module_scope)) {
         Require(family_.members[i].record.has_value() && scope_ && scope_->module_enclosure,
@@ -185,7 +189,7 @@ class EnclosureCheck {
         name_.reset();
       }
     }
-    return {globals, initial_.bytes - left_.bytes, initial_.work - left_.work, module_reads, realm_reads, symbol_reads, argument_snapshots};
+    return {globals, peak_, initial_.work - left_.work, module_reads, realm_reads, symbol_reads, argument_snapshots, input_bytes_};
   }
  private:
   void Merge(std::vector<BindingInterval>& bindings) {
@@ -297,7 +301,7 @@ class EnclosureCheck {
   }
   void Step(std::uint64_t count = 1) { if(count>left_.work)PrintCharge(TreePrintBudgetKind::kWork,count,left_.work,initial_.work); Require(count <= left_.work, Error::kWorkLimit); left_.work -= count; }
   void Admit(std::size_t count, std::size_t width) {
-    if(count>left_.bytes/width)PrintByteCharge(count,width,left_.bytes,initial_.bytes,initial_.bytes-left_.bytes); Require(count <= left_.bytes / width, Error::kResourceLimit); left_.bytes -= count * width;
+    if(count>left_.bytes/width)PrintByteCharge(count,width,left_.bytes,initial_.bytes,initial_.bytes-left_.bytes); Require(count <= left_.bytes / width, Error::kResourceLimit); left_.bytes -= count * width; peak_=std::max(peak_,initial_.bytes-left_.bytes);
   }
   template<class T> void Array(std::vector<T>& values, std::size_t count) {
     Admit(count, sizeof(T)); Step(count); values.resize(count); Admit(values.capacity() - count, sizeof(T));
@@ -306,6 +310,7 @@ class EnclosureCheck {
   void Require(bool ok, Error error) const { if (!ok) Fail(error); }
   const ConstructedFamily& family_;
   analysis::SemanticBudget initial_, left_;
+  std::size_t peak_=0,input_bytes_=0;
   EnclosureExtent extent_;
   const GlobalScope* scope_;
   ModuleRole root_role_;

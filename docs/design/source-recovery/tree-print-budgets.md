@@ -228,3 +228,71 @@ diagnostic JSON fields are intentionally different. Exports are under
 `/private/tmp/r47-cohort-verified/`; the 20 per-record diagnostic reports are in
 `/private/tmp/r47-targets/rows.json`. No holdout, full test suite or RSS benchmark
 was run. The peaks above must not be presented as measured process RSS.
+
+
+## Round 48: lifetime ledger and exact output storage (workspace review)
+
+Baseline `057aa5cb`. No record, process, output or work cap is raised. Token
+ordering, actions, names and declaration placement are unchanged.
+
+### Ownership and release
+
+`PrintMemory` separates live admission, tracked attached storage and historical
+peak. A move-only lease reserves before allocation. Attached storage must be
+released before the lease can return credit; `Release()` refuses otherwise.
+`PrintArray` charges both buffers during replacement, then destroys the old
+array before releasing its charge. Publication seals the ledger: transferring
+an exact output allocation to `SourceText` never grants subsequent admission.
+
+`BorrowedPrintTrees` is a charged, sorted index of exact immutable tree addresses
+and still-held owner leases. A record issues it only after its existing retain
+charges; the sum of measured tree storage must fit the held owner charge. The
+index does not grant additional record bytes. Nested families inherit an exact
+owner witness, or hold the destination check's unborrowed input charge while
+printing. An unknown identity or an expired owner is charged normally. There is
+no unconditional waiver for a tree merely because it belongs to a family.
+
+`TreeStructure` distinguishes its input charge and the live returned
+`expression_scopes` vector from verifier scratch. In `CheckStructure`, the
+returned vector dies before scratch credit is returned. `FamilyEnclosure` keeps
+those vectors while checking all members, then returns only scalar facts; its
+input remains charged in `PreparedFamily::PrintDraft`. Peaks of disjoint checker
+and printer lifetimes are combined by maximum, not by retaining dead storage.
+
+### Exact output bound
+
+A shared record-writing lambda executes imports, body and exports twice. The
+first pass uses `CountingSink`; all of its checker and position buffers are
+destroyed before the second pass. Its exact length B is charged before allocating
+`char[B]`. The second pass has only the remaining scratch budget, writes into
+that bounded allocation, and must agree on byte count and incomplete status.
+The allocation moves directly into `SourceText`; there is no string-buffer copy
+or `5 * unused maximum` reservation. The configured output limit still applies
+to both passes. Work from both body passes and import/export bytes is cumulative.
+A nested scratch lease is reserved before a pass begins, and released only after
+its returned position tables and scratch owners have died.
+
+The storage bound is existing retained record storage + borrowing index +
+`max(count scratch, B + emitting scratch)`, all within the existing record
+allowance. Counting adds one execution of the same algorithms; it is not a claim
+that all existing binding-recovery internals have a linear bound. The new owner
+index takes O(N log N) time and O(N) charged space; output copying is O(B).
+
+### Independent checks and remaining acceptance boundary
+
+`print_memory_test` overrides allocation in its own executable and compares live
+allocation payloads against ledger live bytes at allocation time. It detects an
+intentionally omitted charge, refuses early lease return, checks returned
+expression scopes, borrowed versus owned input and expired owner evidence, and
+checks simultaneous growth/exact output boundaries at 200/201/400/800. Counting
+and real sinks agree; one-less output/work allowances retain `kOutputLimit` and
+`kWorkLimit`. This is allocation-payload evidence, not a substitute for RSS.
+
+See [Round 48 results](round-48-results.md) for commands, cohort comparisons and
+before/after CLI RSS. In particular, o4/7635 has a material RSS increase compared
+with the old production refusal. It now reaches an existing 17,866,872-byte
+`SolveFlowNormalKinds` dependency allocation that the old production budget
+refused before allocation. The old counting diagnostic also reaches it. This
+explains the increase but does **not** satisfy the requested no-material-growth
+production RSS gate, and the diagnostic baseline must not replace that gate.
+No unrelated flow-solver change or cap increase is included.

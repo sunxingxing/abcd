@@ -1,4 +1,5 @@
 #include "prepared_family.h"
+#include "borrowed_print_trees.h"
 
 #include <new>
 #include <stdexcept>
@@ -327,17 +328,27 @@ std::variant<PrintedFamilyDraft, FamilyPrepareFailure, TreePrintFailure> Prepare
     FamilyDestination destination, std::ostream& output,
     EmitBudget output_budget, analysis::SemanticBudget scratch, std::size_t indent,
     const ClassNames* prepared) const {
-  auto checked = CheckDestination(destination, scratch);
-  if (const auto* failure = std::get_if<FamilyPrepareFailure>(&checked)) return *failure;
-  const auto& enclosure = std::get<FamilyEnclosure>(checked);
-  scratch.bytes -= enclosure.allocated_bytes; scratch.work -= enclosure.work;
-  const auto* member = storage_->context.ClassContext();
-  if (!member && indent) return TreePrintError::kUnsupportedContext;
-  auto printed = member ? PrintClassFamilyDraft(storage_->family, *member, output, output_budget, scratch, destination.globals, indent, prepared)
-                        : PrintFamilyDraft(storage_->family, output, output_budget, scratch, destination.globals);
-  if (const auto* failure = std::get_if<TreePrintFailure>(&printed)) return *failure;
-  auto result = std::get<PrintedFamilyDraft>(std::move(printed));
-  result.allocated_bytes += enclosure.allocated_bytes; result.work += enclosure.work;
-  return result;
+  try {
+    auto checked = CheckDestination(destination, scratch);
+    if (const auto* failure = std::get_if<FamilyPrepareFailure>(&checked)) return *failure;
+    const auto& enclosure = std::get<FamilyEnclosure>(checked);
+    // Checker storage is dead. Its unborrowed input is still alive: hold that
+    // charge and issue exact-identity borrowing evidence for the nested printer.
+    PrintMemory inputs(enclosure.input_bytes);auto input_charge=inputs.Reserve(enclosure.input_bytes);
+    if(enclosure.input_bytes>scratch.bytes)return TreePrintError::kResourceLimit;
+    scratch.bytes-=enclosure.input_bytes;scratch.work-=enclosure.work;
+    PrintMemory index(scratch.bytes);
+    BorrowedPrintTrees borrowed(nullptr,&storage_->family,input_charge,index,scratch);
+    scratch.bytes=index.Remaining();scratch.work-=borrowed.Work();
+    const auto* member = storage_->context.ClassContext();
+    if (!member && indent) return TreePrintError::kUnsupportedContext;
+    auto printed = member ? PrintClassFamilyDraft(storage_->family, *member, output, output_budget, scratch, destination.globals, indent, prepared)
+                          : PrintFamilyDraft(storage_->family, output, output_budget, scratch, destination.globals);
+    if (const auto* failure = std::get_if<TreePrintFailure>(&printed)) return *failure;
+    auto result = std::get<PrintedFamilyDraft>(std::move(printed));
+    result.allocated_bytes=std::max(enclosure.allocated_bytes,enclosure.input_bytes+index.Live()+result.allocated_bytes);
+    result.work+=enclosure.work+borrowed.Work();return result;
+  }catch(const TreePrintFailure& failure){return failure;}
+
 }
 }  // namespace abcd::source
