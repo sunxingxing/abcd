@@ -111,8 +111,12 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
       const auto kinds = values.Facts()[read.value.value];
       const bool hole_transport = domain == ExceptionInputDomain::kHoleTransport &&
           !kinds.IsEmpty() && !kinds.Contains(VmValueKind::kEnvironment) &&
-          !kinds.Contains(VmValueKind::kOtherInternal);
-      if (!kinds.IsLanguage() && !hole_transport)
+          !kinds.Contains(VmValueKind::kOtherInternal) &&
+          !kinds.Contains(VmValueKind::kPropertyEnumerator);
+      const bool enumerator = kinds == ValueKinds::PropertyEnumerator() &&
+          AcceptsPropertyEnumerator(instruction.operation);
+      if ((!kinds.IsLanguage() && !hole_transport && !enumerator) ||
+          (std::holds_alternative<NextPropertyName>(instruction.operation) && !enumerator))
         return fail(Error::kInternalValue, pc, id, read.value);
       ++proof.reads;
     }

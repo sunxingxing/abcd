@@ -187,6 +187,12 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (std::get<ScalarError>(scalar) != ScalarError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
 
+  const auto iterator = LiftIteratorInstruction(decoded, frame_size);
+  if (const auto* acquire = std::get_if<PropertyIterator>(&iterator)) return *acquire;
+  if (const auto* next = std::get_if<NextPropertyName>(&iterator)) return *next;
+  if (const auto* error = std::get_if<IteratorError>(&iterator);
+      error && *error != IteratorError::kUnsupportedOpcode)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto deleted=LiftPropertyDelete(decoded,frame_size);
   if(const auto* op=std::get_if<PropertyDelete>(&deleted))return *op;
   if(std::get<ScalarError>(deleted)!=ScalarError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
@@ -389,6 +395,15 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, PropertyIterator> ||
+                             std::is_same_v<T, NextPropertyName>) {
+          // Pinned EnumerateObjectProperties/NextInternal can run proxy traps;
+          // index/cache/heap effects may precede failure. The interpreter commits
+          // acc only after its abrupt-completion check (1797/2574).
+          effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |
+                           LanguageEffect::kUserCode | LanguageEffect::kAllocation;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, PropertyDelete>) {
           effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |
                            LanguageEffect::kUserCode | LanguageEffect::kAllocation;
@@ -479,6 +494,15 @@ SemanticEffects Effects(const SemanticOperation& operation,
   return effects;
 }
 }  // namespace
+
+bool AcceptsPropertyEnumerator(const SemanticOperation& operation) {
+  if (std::holds_alternative<NextPropertyName>(operation)) return true;
+  const auto* copy = std::get_if<ScalarAssignment>(&operation);
+  if (!copy || copy->completion != CompletionEffect::kNormal) return false;
+  const auto* value = std::get_if<ScalarValue>(&copy->expression);
+  return value && (std::holds_alternative<Accumulator>(*value) ||
+                   std::holds_alternative<abc::RegisterId>(*value));
+}
 
 InstructionLift LiftSemanticInstruction(const abc::BodyInstruction& site,
                                         abc::ProfileId profile,

@@ -21,6 +21,7 @@
 #include "abcd/analysis/hole_guard.h"
 #include "abcd/analysis/indexed_write.h"
 #include "abcd/analysis/iter_result.h"
+#include "abcd/analysis/iterator.h"
 #include "abcd/analysis/lexical.h"
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/module_store.h"
@@ -157,7 +158,10 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName>;
+// Exact VM-enumerator transport only. Does not prove acquisition identity,
+// closed use, loop advancement or source admission.
+[[nodiscard]] bool AcceptsPropertyEnumerator(const SemanticOperation& operation);
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

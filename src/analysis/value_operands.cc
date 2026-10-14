@@ -48,6 +48,12 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
     } else if constexpr (std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
       Append(plan, OperandRole::kInput, op.input);
       plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, PropertyIterator>) {
+      Append(plan, OperandRole::kInput, Accumulator{});
+      plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, NextPropertyName>) {
+      Append(plan, OperandRole::kInput, op.iterator, ReadPurpose::kProtocol);
+      plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, PropertyDelete>) {
       Append(plan, OperandRole::kBase, op.object);
       Append(plan, OperandRole::kKey, Accumulator{});

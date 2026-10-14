@@ -12,6 +12,12 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 51a：for-in 原始语义（cc 审查通过；B–E 待续）
+
+- 只做设计中的步骤 A：提升 `PropertyIterator`/`NextPropertyName` 为有序、可能抛出、成功才提交的语义操作；新增独立的 `PropertyEnumerator` 内部值域与 `ValueEnumeration`，枚举器不能作为语言值或 Hole 输出，源码投影仍然拒绝。详见 property-enumeration.md（含 Node 无法验证的 Proxy/原型变动/Symbol-key 运行时缺口）。
+- 5 个候选越过 unsupported-instruction：4 个停在 `EvaluationError::kUnsupportedOperation > kPlan`（待协议投影）；DataDriver 暴露另一方法 m42717@153 的 GETITERATOR。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；497/620、534/620 均不变，0 状态变化，0 文本变化；新测试 2/2。
+
 ## Round 50：严格属性操作（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 495 → **497/620**，`--language-source` 532 → **534/620**；0 回退，0 文本漂移。cc 核对 `super.changeIndex(index, useAnimation)` 与 `LEVEL = ({["0"]: 1 << 24, ...})` 的输出形态。
 

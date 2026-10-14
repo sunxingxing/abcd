@@ -17,6 +17,12 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     using T = std::decay_t<decltype(operation)>;
     if constexpr (std::is_same_v<T, ScalarAssignment>) {
       return DescribeScalarValue(operation, arithmetic);
+    } else if constexpr (std::is_same_v<T, PropertyIterator>) {
+      return ValueRule{ValueRuleKind::kFixed, ValueKinds::PropertyEnumerator()};
+    } else if constexpr (std::is_same_v<T, NextPropertyName>) {
+      // Proxy slow keys in the pinned runtime are not proved String-only.
+      // Exhaustion is Undefined; protocol ownership is checked separately.
+      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
     } else if constexpr (std::is_same_v<T, PropertyDelete>) {
       return ValueRule{ValueRuleKind::kFixed,ValueKinds::Boolean()};
     } else if constexpr (std::is_same_v<T, NamedRead> ||

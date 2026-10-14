@@ -267,7 +267,11 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
         if (kinds && *kinds == ValueKinds::Hole() &&
             AcceptsProtocolHole(method.instructions[i].operation,
                                 method.ssa.Values()[read.value.value])) continue;
-        if (!kinds || !kinds->IsLanguage())
+        const auto& operation = method.instructions[i].operation;
+        if (kinds && *kinds == ValueKinds::PropertyEnumerator() &&
+            AcceptsPropertyEnumerator(operation)) continue;
+        if (!kinds || !kinds->IsLanguage() ||
+            std::holds_alternative<NextPropertyName>(operation))
           return SemanticProofFailure{SemanticProofError::kInternalValue, body.instructions[i].offset,
               budget.bytes - remaining + analyzed->AllocatedBytes(),
               argument_inputs.work + bound->instruction_visits + locals->work_units + initialization_work + quota.Consumed() +

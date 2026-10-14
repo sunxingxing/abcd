@@ -1194,7 +1194,7 @@ class ForestBuilder {
         return Add(FieldDefinitionExpr{operands[0], *name, operands[1]}, origin);
       }
       else {
-        static_assert(std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueClassCreation> ||
+        static_assert(std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueClassCreation> ||
                       std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
                       std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                       std::is_same_v<T, analysis::ValueModuleRead> ||

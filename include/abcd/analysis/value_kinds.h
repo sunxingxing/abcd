@@ -5,8 +5,8 @@
 #include <cstdint>
 
 namespace abcd::analysis {
-enum class VmValueKind { kLanguage, kHole, kEnvironment, kOtherInternal };
-inline constexpr std::size_t kValueKindCount = 4;
+enum class VmValueKind { kLanguage, kHole, kEnvironment, kOtherInternal, kPropertyEnumerator };
+inline constexpr std::size_t kValueKindCount = 5;
 
 // Closed powerset of VM categories. String and non-NaN-number refine Defined
 // (a Language value other than undefined); their mixed join retains Defined.
@@ -55,8 +55,9 @@ class ValueKinds {
   static constexpr ValueKinds OtherInternal() {
     return ValueKinds{kOtherInternal};
   }
+  static constexpr ValueKinds PropertyEnumerator() { return ValueKinds{kPropertyEnumerator}; }
   static constexpr ValueKinds Unknown() {
-    return Language().Join(Hole()).Join(Environment()).Join(OtherInternal());
+    return Language().Join(Hole()).Join(Environment()).Join(OtherInternal()).Join(PropertyEnumerator());
   }
   [[nodiscard]] constexpr ValueKinds Join(ValueKinds other) const {
     if (IsEmpty()) return other;
@@ -156,6 +157,8 @@ class ValueKinds {
         return (bits_ & kHole) != 0;
       case VmValueKind::kEnvironment:
         return (bits_ & kEnvironment) != 0;
+      case VmValueKind::kPropertyEnumerator:
+        return (bits_ & kPropertyEnumerator) != 0;
       case VmValueKind::kOtherInternal:
         return (bits_ & kOtherInternal) != 0;
     }
@@ -171,6 +174,7 @@ class ValueKinds {
   static constexpr std::uint8_t kHole = 1 << 1;
   static constexpr std::uint8_t kEnvironment = 1 << 2;
   static constexpr std::uint8_t kOtherInternal = 1 << 3;
+  static constexpr std::uint8_t kPropertyEnumerator = 1 << 4;
   explicit constexpr ValueKinds(
       std::uint8_t bits, Refinement refinement = Refinement::kNone, bool excludes_min_int32 = false, bool integral_number = false)
       : bits_(bits), refinement_(refinement), excludes_min_int32_(excludes_min_int32),

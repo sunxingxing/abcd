@@ -93,7 +93,8 @@ void PropagateValues(std::span<const ValueNode> nodes,
           ready &= !input.IsEmpty();
           language &= input.IsLanguage();
           equality_inputs &= !input.Contains(VmValueKind::kEnvironment) &&
-                             !input.Contains(VmValueKind::kOtherInternal);
+                             !input.Contains(VmValueKind::kOtherInternal) &&
+                             !input.Contains(VmValueKind::kPropertyEnumerator);
         }
         if (!ready) {
           propagated = {};

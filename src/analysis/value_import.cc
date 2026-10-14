@@ -72,6 +72,10 @@ ValueOperation Operation(const SemanticOperation& operation) {
           return ValuePropertyRead{};
         }
       }, op.expression);
+    } else if constexpr (std::is_same_v<T, PropertyIterator>) {
+      return ValueEnumeration{EnumerationAction::kAcquire};
+    } else if constexpr (std::is_same_v<T, NextPropertyName>) {
+      return ValueEnumeration{EnumerationAction::kNext};
     } else if constexpr (std::is_same_v<T, PropertyDelete>) {
       return ValuePropertyDelete{};
     } else if constexpr (std::is_same_v<T, NamedRead>) {

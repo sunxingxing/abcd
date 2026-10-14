@@ -1,5 +1,6 @@
 #include "register_value_rule.h"
 #include "abcd/analysis/property_delete.h"
+#include "abcd/analysis/iterator.h"
 
 #include <algorithm>
 #include <bit>
@@ -215,6 +216,11 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
   if (std::holds_alternative<PushEnvironment>(
           LiftLexicalInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Environment()};
+  const auto iterator = LiftIteratorInstruction(instruction, frame_size);
+  if (std::holds_alternative<PropertyIterator>(iterator))
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::PropertyEnumerator()};
+  if (std::holds_alternative<NextPropertyName>(iterator))
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   if(std::holds_alternative<PropertyDelete>(LiftPropertyDelete(instruction,frame_size)))
     return ValueRule{ValueRuleKind::kFixed,ValueKinds::Boolean()};
   if (std::holds_alternative<NamedRead>(LiftNamedRead(instruction)) ||

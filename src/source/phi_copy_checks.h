@@ -70,7 +70,8 @@ inline void CheckPhiDomain(const analysis::ValueProgram& graph, const analysis::
     PhiDomain domain) {
   const auto admitted = [domain](analysis::ValueKinds kinds) {
     return kinds.IsLanguage() || (domain == PhiDomain::kHoleTransport && !kinds.IsEmpty() &&
-        !kinds.Contains(analysis::VmValueKind::kEnvironment) && !kinds.Contains(analysis::VmValueKind::kOtherInternal));
+        !kinds.Contains(analysis::VmValueKind::kEnvironment) && !kinds.Contains(analysis::VmValueKind::kOtherInternal) &&
+        !kinds.Contains(analysis::VmValueKind::kPropertyEnumerator));
   };
   const auto destination = std::get<analysis::ValueId>(use.owner);
   RequirePhiCopy(admitted(graph.values[destination.value].domain), PhiCopyError::kDomain);
