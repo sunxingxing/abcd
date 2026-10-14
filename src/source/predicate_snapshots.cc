@@ -56,9 +56,13 @@ std::vector<UseId> OrderedUses(const ValueProgram& graph, const EvaluationPlan& 
   }
   ordered.resize(used); return ordered;
 }
-std::vector<std::optional<UseId>> Candidates(const ValueProgram& graph,
+struct Candidate {
+  std::optional<UseId> consumer;
+  SnapshotCandidateEvidence evidence;
+};
+std::vector<Candidate> Candidates(const ValueProgram& graph,
     const EvaluationPlan& plan, TreeCheckBudget& budget) {
-  std::vector<std::optional<UseId>> first;
+  std::vector<Candidate> first;
   budget.Array(first, graph.ops.size());
   // The first actual eager occurrence acquires initialization; later reads
   // retain its binding. Cross-block ownership remains the documented legacy
@@ -66,38 +70,47 @@ std::vector<std::optional<UseId>> Candidates(const ValueProgram& graph,
   const auto ordered = OrderedUses(graph, plan, budget);
   for (const auto occurrence : ordered) {
     budget.Step(); const auto& use = graph.uses[occurrence.value];
-    if (use.life != ValueLife::kLive) continue;
     const auto* owner = std::get_if<OpId>(&use.owner);
     const auto* value = std::get_if<ValueId>(&use.operand);
     const auto* source = value ? std::get_if<OpResult>(&graph.values[ResolveEvaluationValue(plan, *value).value].origin) : nullptr;
-    if (!owner || !source || graph.ops[source->op.value].block != graph.ops[owner->value].block) continue;
-    if (plan.operations[owner->value].kind == EvaluationKind::kAlias ||
-        (plan.cells && IsInitializedCellGuard(graph, *plan.cells, *owner))) continue;
+    // Non-result operands have no producer that could own a snapshot.
+    if (!source) continue;
+    auto& candidate = first[source->op.value];
+    if (candidate.consumer) continue;
+    auto& evidence = candidate.evidence; evidence.occurrence = occurrence;
+    evidence.producer = BeforeLogicalFusion(graph, plan, source->op.value).kind;
+    if (owner) evidence.consumer = BeforeLogicalFusion(graph, plan, owner->value).kind;
+    else evidence.consumer.reset();
+    using Reason = SnapshotCandidateReason;
+    if (use.life != ValueLife::kLive) { evidence.reason = Reason::kDeadUse; continue; }
+    if (!owner) { evidence.reason = Reason::kPhiOwner; continue; }
+    if (graph.ops[source->op.value].block != graph.ops[owner->value].block) { evidence.reason = Reason::kCrossBlock; continue; }
+    if (plan.operations[owner->value].kind == EvaluationKind::kAlias) { evidence.reason = Reason::kAliasOwner; continue; }
+    if (plan.cells && IsInitializedCellGuard(graph, *plan.cells, *owner)) { evidence.reason = Reason::kInitializedGuard; continue; }
     const auto placement = BeforeLogicalFusion(graph, plan, source->op.value);
-    if (placement.kind != EvaluationKind::kRoot || placement.temporary != TemporaryReason::kMultipleUses) continue;
-    auto& previous = first[source->op.value];
-    if (!previous) previous = occurrence;
+    if (placement.kind != EvaluationKind::kRoot || placement.temporary != TemporaryReason::kMultipleUses) {
+      evidence.reason = Reason::kProducerPlacement; continue;
+    }
+    candidate.consumer = occurrence; evidence.reason = Reason::kEligible;
   }
   for (std::size_t i = 0; i < first.size(); ++i) {
-    budget.Step(); if (!first[i]) continue;
-    const auto& operation = graph.ops[i].operation;
-    // Snapshot an expression's value, not an opcode family. The common shape
-    // specifies evaluation capability; the forward interval proof below owns
-    // every effect and rejects movement across unrelated effects.
-    const auto shape = DescribeEvaluation(operation);
-    if (!shape || !shape->expression || shape->inputs != InputEvaluation::kEager) { first[i].reset(); continue; }
-    const auto owner = std::get<OpId>(graph.uses[first[i]->value].owner);
+    budget.Step(); auto& candidate = first[i]; if (!candidate.consumer) continue;
+    auto& evidence = candidate.evidence;
+    const auto shape = DescribeEvaluation(graph.ops[i].operation);
+    const auto owner = std::get<OpId>(graph.uses[candidate.consumer->value].owner);
     const auto& consumer = graph.ops[owner.value];
     const auto consumer_shape = DescribeEvaluation(consumer.operation);
     const auto placement = BeforeLogicalFusion(graph, plan, owner.value);
-    // The exact eager occurrence receives one assignment, irrespective of its
-    // source syntax. Reference-before-RHS and repeated-input lowering retain
-    // their existing snapshots; the interval proof owns all intervening effects.
-    const bool eligible = consumer_shape && consumer_shape->inputs == InputEvaluation::kEager &&
-        !consumer_shape->NeedsSnapshot(graph.uses[first[i]->value].role) &&
-        !PredicateSnapshot(graph, consumer, graph.uses[first[i]->value].operand) &&
-        (placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kInline);
-    if (!eligible) first[i].reset();
+    using Reason = SnapshotCandidateReason;
+    if (!shape) evidence.reason = Reason::kProducerShape;
+    else if (!shape->expression) evidence.reason = Reason::kProducerExpression;
+    else if (shape->inputs != InputEvaluation::kEager) evidence.reason = Reason::kProducerInputs;
+    else if (!consumer_shape) evidence.reason = Reason::kConsumerShape;
+    else if (consumer_shape->inputs != InputEvaluation::kEager) evidence.reason = Reason::kConsumerInputs;
+    else if (consumer_shape->NeedsSnapshot(graph.uses[candidate.consumer->value].role)) evidence.reason = Reason::kSnapshotRole;
+    else if (PredicateSnapshot(graph, consumer, graph.uses[candidate.consumer->value].operand)) evidence.reason = Reason::kPredicateInput;
+    else if (placement.kind != EvaluationKind::kRoot && placement.kind != EvaluationKind::kInline) evidence.reason = Reason::kConsumerPlacement;
+    if (evidence.reason != Reason::kEligible) candidate.consumer.reset();
   }
   return first;
 }
@@ -166,7 +179,7 @@ void BuildPredicateSnapshots(const ValueProgram& graph, EvaluationPlan& plan, Tr
   EvaluationEvidence witness;
   const auto Require = [&](bool ok) { if (!ok) throw EvaluationFailure{EvaluationError::kOwnership, witness}; };
   const auto candidates = Candidates(graph, plan, budget);
-  bool any = false; for (const auto candidate : candidates) { budget.Step(); any |= candidate.has_value(); }
+  bool any = false; for (const auto& candidate : candidates) { budget.Step(); any |= candidate.consumer.has_value(); }
   if (!any) return;
   std::vector<Interval> intervals; budget.Array(intervals, graph.ops.size());
   for (const auto& block : graph.blocks) {
@@ -184,7 +197,7 @@ void BuildPredicateSnapshots(const ValueProgram& graph, EvaluationPlan& plan, Tr
         if (!source || graph.ops[source->op.value].block != op.block) continue;
         const auto placement = plan.operations[source->op.value];
         const bool owned = placement.kind == EvaluationKind::kInline && placement.consumer == use;
-        const bool candidate = candidates[source->op.value] == use;
+        const bool candidate = candidates[source->op.value].consumer == use;
         if (!owned && !candidate) continue;
         const auto interval = intervals[source->op.value];
         if (interval.count && interval.end != expected) { if (owned) break; continue; }
@@ -195,6 +208,24 @@ void BuildPredicateSnapshots(const ValueProgram& graph, EvaluationPlan& plan, Tr
     }
   }
   const auto rejected = UninitializedSnapshots(graph, plan, budget);
+  if (!rejected.empty()) RetainSnapshotInputs(graph, plan, rejected, budget);
+}
+void CommitPredicateSnapshots(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+  // Logical-left discovery changes consumer ownership after tentative snapshot
+  // selection. Commit against that settled view, before logical routes consume
+  // the forest. Ineligible assignments retain their original definitions; this
+  // is a construction decision, never a retry after verification failure.
+  bool any = false;
+  for (const auto& placement : plan.operations) { budget.Step(); any |= placement.kind == EvaluationKind::kPredicateSnapshot; }
+  if (!any) return;
+  const auto candidates = Candidates(graph, plan, budget);
+  std::vector<OpId> rejected; budget.Array(rejected, graph.ops.size()); std::size_t count = 0;
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); const auto& actual = plan.operations[i];
+    if (actual.kind == EvaluationKind::kPredicateSnapshot && candidates[i].consumer != actual.consumer)
+      rejected[count++] = OpId{static_cast<std::uint32_t>(i)};
+  }
+  rejected.resize(count);
   if (!rejected.empty()) RetainSnapshotInputs(graph, plan, rejected, budget);
 }
 void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
@@ -219,8 +250,9 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
     budget.Step(); const auto actual = plan.operations[i];
     if (actual.kind != EvaluationKind::kPredicateSnapshot) continue;
     witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kSnapshotCandidate);
-    witness.expected_consumer = candidates[i];
-    Require(actual.consumer && candidates[i] == actual.consumer && actual.temporary == TemporaryReason::kMultipleUses);
+    witness.expected_consumer = candidates[i].consumer;
+    witness.snapshot_candidate = candidates[i].evidence;
+    Require(actual.consumer && candidates[i].consumer == actual.consumer && actual.temporary == TemporaryReason::kMultipleUses);
     needed[std::get<OpId>(graph.uses[actual.consumer->value].owner).value] = 1;
   }
   // This proof owns the selected consumers and their original inline operand
@@ -269,7 +301,7 @@ void VerifyPredicateSnapshots(const ValueProgram& graph, const EvaluationPlan& p
         const bool selected = actual.kind == EvaluationKind::kPredicateSnapshot && actual.consumer == use;
         if (!(placement.kind == EvaluationKind::kInline && placement.consumer == use) && !selected) continue;
         if (selected) {
-          Require(candidates[source->op.value] == use && actual.temporary == TemporaryReason::kMultipleUses && !consumed[source->op.value]);
+          Require(candidates[source->op.value].consumer == use && actual.temporary == TemporaryReason::kMultipleUses && !consumed[source->op.value]);
           consumed[source->op.value] = 1;
         }
         const auto interval = intervals[source->op.value]; Require(interval.count <= interval.end);

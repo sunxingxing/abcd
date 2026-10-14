@@ -640,6 +640,9 @@ if(BUILD_TESTING)
   add_executable(logical_regions_test tests/unit/source/logical_regions_test.cc)
   target_link_libraries(logical_regions_test PRIVATE abcd_source abcd_json)
   add_test(NAME logical_regions_test COMMAND logical_regions_test)
+  add_executable(snapshot_candidate_test tests/unit/source/snapshot_candidate_test.cc)
+  target_link_libraries(snapshot_candidate_test PRIVATE abcd_source abcd_json)
+  add_test(NAME snapshot_candidate_test COMMAND snapshot_candidate_test)
   add_executable(eager_snapshot_test tests/unit/source/eager_snapshot_test.cc)
   target_link_libraries(eager_snapshot_test PRIVATE abcd_source)
   add_test(NAME eager_snapshot_test COMMAND eager_snapshot_test)
@@ -1450,6 +1453,10 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME expression_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/expression_snapshot.mjs $<TARGET_FILE:logical_regions_test>)
+    add_test(NAME snapshot_candidates_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/snapshot_candidates.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/snapshot_candidates)
     add_test(NAME eager_snapshot_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/eager_snapshot.mjs $<TARGET_FILE:eager_snapshot_test>)
     add_test(NAME logical_regions_source_test COMMAND ${ABCD_NODE_EXECUTABLE}

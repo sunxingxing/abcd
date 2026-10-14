@@ -16,6 +16,14 @@ inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
     if (f.edge) item["edge"] = f.edge->value;
     j["for_in"] = std::move(item);
   }
+  if (v.snapshot_candidate) {
+    const auto& c = *v.snapshot_candidate;
+    nlohmann::json item{{"reason", static_cast<unsigned>(c.reason)}};
+    if (c.occurrence) item["occurrence"] = c.occurrence->value;
+    if (c.producer) item["producer"] = static_cast<unsigned>(*c.producer);
+    if (c.consumer) item["consumer"] = static_cast<unsigned>(*c.consumer);
+    j["snapshot_candidate"] = std::move(item);
+  }
   if (v.use) j["use"] = v.use->value;
   if (v.value) j["value"] = v.value->value;
   if (v.selection_exit) j["selection_exit"] = static_cast<unsigned>(*v.selection_exit);
@@ -42,6 +50,15 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
         !FailureOptionalId(f,"value",failure.value) || !FailureOptionalId(f,"use",failure.use) ||
         !FailureOptionalId(f,"block",failure.block) || !FailureOptionalId(f,"edge",failure.edge)) return {};
     v.for_in = failure;
+  }
+  if (j.contains("snapshot_candidate")) {
+    const auto& c = j["snapshot_candidate"]; SnapshotCandidateEvidence evidence;
+    if (!c.is_object() || !FailureNumber(c,"reason",n) || n > static_cast<unsigned>(SnapshotCandidateReason::kConsumerPlacement)) return {};
+    evidence.reason = static_cast<SnapshotCandidateReason>(n);
+    if (!FailureOptionalId(c,"occurrence",evidence.occurrence)) return {};
+    if (c.contains("producer")) { if (!FailureNumber(c,"producer",n) || n > static_cast<unsigned>(EvaluationKind::kForInEvent)) return {}; evidence.producer = static_cast<EvaluationKind>(n); }
+    if (c.contains("consumer")) { if (!FailureNumber(c,"consumer",n) || n > static_cast<unsigned>(EvaluationKind::kForInEvent)) return {}; evidence.consumer = static_cast<EvaluationKind>(n); }
+    v.snapshot_candidate = evidence;
   }
   if (!FailureOptionalId(j,"use",v.use) || !FailureOptionalId(j,"value",v.value) ||
       !FailureOptionalId(j,"selection_edge",v.selection_edge) || !FailureOptionalId(j,"expected_consumer",v.expected_consumer) || !FailureOptionalId(j,"actual_consumer",v.actual_consumer)) return {};

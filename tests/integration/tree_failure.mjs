@@ -10,7 +10,7 @@ const cases = [
   ['DocsSample/DistributedAppDev/DistributedAuthentication', 4660, 5040, 12],
   ['UI/CustomAnimationTab', 8166, 8556, 13],
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
-  ['UI/CalendarViewSwitch', 28303, 28799, 677],
+  ['UI/CalendarViewSwitch', 28303, 28799, 1146],
   ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo', 29268, 29450, 90],
 ];
 const run = (exe,args) => {
@@ -53,14 +53,19 @@ try {
       assert.deepEqual(report.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
       assert.equal(report.source_pc,undefined);
     }
-    // Round 43 fulfilled the former ExternalRoot requirement for 28303;
-    // its first refusal is now this real child's unsupported instruction.
+    // Round 43 fulfilled the former ExternalRoot requirement for 28303.
+    // Round 53 lifted its getiterator and Round 54 projected the inactive
+    // region; the first refusal is now the for-of close-protection region
+    // (TryId 0, body 1146 / handler 1171) with two distinct continuations.
     if(entity===28303) {
-      assert.equal(report.source_failure.working_pc,677);
+      assert.equal(report.source_failure.working_pc,1146);
       assert.equal(report.source_failure.deferred,undefined);
+      assert.deepEqual(report.source_failure.causes,[
+        {domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
+      const region=report.source_failure.exception_region;
+      assert.equal(region.region,0);assert.equal(region.body_pc,1146);assert.equal(region.handler_pc,1171);
+      assert.deepEqual(region.exits.map(exit=>[exit.pc,exit.target_pc]),[[1169,1173],[1160,1182]]);
     }
-    if(entity===28303) assert.deepEqual(report.source_failure.causes,[
-      {domain:'abcd::source::PhasedMethodError',value:0},{domain:'abcd::analysis::SemanticError',value:1}]);
 
   }
   console.log('tree_failure_cli_test: four real refusals and one verified native loop agree across CLI and manifest');

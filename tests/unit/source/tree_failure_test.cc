@@ -98,6 +98,15 @@ int main() {
       Check(route.causes.count==2);RoundTrip(route);
     }
   }
+  for(unsigned tag=0;tag<=static_cast<unsigned>(SnapshotCandidateReason::kConsumerPlacement);++tag) {
+    EvaluationFailure f{EvaluationError::kOwnership};auto& e=f.evaluation;
+    e.obligation=EvaluationObligation::kSnapshotCandidate;
+    e.location.method=abc::EntityOffset{77};e.location.pc=abc::CodeOffset{0};e.location.working_pc=abc::CodeOffset{17};
+    e.snapshot_candidate=SnapshotCandidateEvidence{static_cast<SnapshotCandidateReason>(tag),analysis::UseId{0},EvaluationKind::kRoot,EvaluationKind::kLogicalLeft};
+    RoundTrip(FamilyRouteFailure(f));
+    e.location.pc.reset();e.location.working_pc.reset();e.snapshot_candidate->occurrence.reset();
+    RoundTrip(FamilyRouteFailure(f));
+  }
   // The original leaf is retained, including resource/work classification.
   for(auto cause:{ControlError::kUncoveredBlock,ControlError::kResourceLimit,ControlError::kWorkLimit}) {
     FunctionTreeFailure f{cause==ControlError::kResourceLimit?FunctionTreeError::kResourceLimit:

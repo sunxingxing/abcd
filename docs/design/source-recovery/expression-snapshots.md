@@ -90,3 +90,37 @@ See [selection-consumers.md](selection-consumers.md) for typed exit evidence,
 materialization boundaries, independent route verification and the deferred
 joint predicate/keep-edge projection. A materialized selected value remains one
 stored result; later reads do not replay either arm or merge independent getters.
+
+## Snapshot candidate commit boundary (Round 59)
+
+The indexed-value cases in o8/10284 m12516 and o28/10155 m11832 have the same
+located failure: producer op24/PC59, Use34, consumer op33/PC82. Construction sees
+that consumer as Root; logical-left discovery changes it to LogicalLeft. The
+final candidate check then rejects the consumer placement. This is local plan
+consistency, not an additional iteration/catch/source-language premise.
+
+Candidates now retain a fixed-size typed reason and the considered occurrence
+and producer/consumer placement. Missing shape, non-expression/non-eager input,
+reference/snapshot role, predicate duplication, consumer placement and the
+occurrence filters remain distinct. Evidence travels through EvaluationFailure,
+both record JSON paths, receipts and abc_semantic. No existing error enum or
+resource class changes. A non-result operand has no candidate producer identity.
+
+Snapshot selection remains provisional until logical-left discovery finishes.
+`CommitPredicateSnapshots` uses the same candidate proof as the final verifier,
+before logical routes consume the forest. A newly ineligible snapshot restores
+its original materialized definition; the existing bounded dependency walk
+also retains affected saving assignments in its input tree. There is no catch
+of verifier failure, whole-method retry, new consumer admission, or change to
+control, declarations, names or catch staging. Valid candidates stay unchanged.
+Logical-left ownership is settled here: logical domain composition only selects
+new edges from Root producers and does not convert an owned LogicalLeft back
+to Inline. The final verifier still independently checks candidates, first
+observation, event intervals and exactly-once consumption.
+
+The additional pass is O(operations + uses + blocks), with precharged linear
+scratch; it allocates nothing beyond a scan when there are no snapshots.
+Unit tests cover copy/register/split-block variants, invalid/duplicate/missing
+consumption, JSON round trips, and 200/201/400/800 with exact commit scratch and
+work boundaries. The real es2abc fixture and its Node oracle are documented in
+`tests/integration/fixtures/snapshot_candidates/README.md`.

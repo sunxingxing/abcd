@@ -18,10 +18,24 @@ enum class EvaluationObligation : std::uint8_t {
 enum class SelectionExitReason : std::uint8_t {
   kNone, kNoUse, kMultipleUses, kPhiUse, kCrossBlock, kProtocolRole, kSnapshot, kKeepEdge
 };
+// Candidate diagnostics describe the proof input, not a new admission rule.
+enum class SnapshotCandidateReason : std::uint8_t {
+  kEligible, kNoOccurrence, kDeadUse, kPhiOwner, kCrossBlock, kAliasOwner,
+  kInitializedGuard, kProducerPlacement, kProducerShape, kProducerExpression,
+  kProducerInputs, kConsumerShape, kConsumerInputs, kSnapshotRole,
+  kPredicateInput, kConsumerPlacement
+};
+struct SnapshotCandidateEvidence {
+  SnapshotCandidateReason reason = SnapshotCandidateReason::kNoOccurrence;
+  std::optional<analysis::UseId> occurrence;
+  std::optional<EvaluationKind> producer, consumer;
+  bool operator==(const SnapshotCandidateEvidence&) const = default;
+};
 struct EvaluationEvidence {
   EvaluationObligation obligation = EvaluationObligation::kPlan;
   TreeLocation location;
   std::optional<ForInFailure> for_in;
+  std::optional<SnapshotCandidateEvidence> snapshot_candidate;
   std::optional<analysis::UseId> use, expected_consumer, actual_consumer;
   std::optional<analysis::ValueId> value;
   std::optional<SelectionExitReason> selection_exit;

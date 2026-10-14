@@ -10,6 +10,7 @@ struct SelectionRegion;
 // eligible use. Current interval proofs are local; reference/RHS and repeated
 // input boundaries retain snapshots. No consumer opcode or predicate shape gate.
 void BuildPredicateSnapshots(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
+void CommitPredicateSnapshots(const analysis::ValueProgram&, EvaluationPlan&, TreeCheckBudget&);
 void VerifyPredicateSnapshots(const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);
 // The builder starts from a freshly constructed local forest. Its backwards
 // choices are checked by independent forward interval equations; the original

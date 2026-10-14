@@ -489,11 +489,12 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       witness = {}; witness.obligation = EvaluationObligation::kProjection;
       BuildPredicateSnapshots(graph, plan, logical_budget);
       const auto inputs = FindLogicalLeftInputs(graph, plan, logical_budget);
-      admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
       for (std::size_t i = 0; i < inputs.size(); ++i) {
         step(); if (inputs[i] && !pinned[i])
           plan.operations[i] = {EvaluationKind::kLogicalLeft, inputs[i], {}};
       }
+      CommitPredicateSnapshots(graph, plan, logical_budget);
+      admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
     }
     if (flow == EvaluationFlow::kNormal && plan.phis) {
       TreeCheckBudget logical_budget({bytes, work});
