@@ -22,6 +22,9 @@ struct DefaultCandidate {
   analysis::EdgeId merge;
   std::optional<analysis::OpId> undefined;
   std::optional<analysis::OpId> number;
+  // Pool identity is verified against the original ValueString, then resolved
+  // by TreeConstants in the original method pool. Never executable pool syntax.
+  std::optional<abc::PoolIndex> text;
 };
 // A nonliteral boundary, not a migrated default. Captured-cell scope, guard,
 // initializer environment and source ownership still need separate proof.

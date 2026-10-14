@@ -289,6 +289,15 @@ class Finder {
           producer->op,*facts.last,header,arm,join,present,missing,arm_block.first_edge,undefined_op,{}}, arm_facts);
       return {};
     }
+    const auto& producer_op = graph_.ops[arm_facts.value_op->value];
+    if (const auto* string = std::get_if<ValueString>(&producer_op.operation)) {
+      const auto* value = std::get_if<ValueId>(&literal);
+      if (!value || producer_op.result != *value || producer_op.use_count != 0 ||
+          arm_facts.value_operations != 1) return {};
+      return DefaultCandidate{parameter->index, *entry, merged, literal, *arm_facts.value_op,
+          producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge,
+          undefined_op, {}, string->string};
+    }
     std::optional<OpId> number_op;
     {
       const auto& initializer = graph_.ops[arm_facts.value_op->value];

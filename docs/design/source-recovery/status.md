@@ -12,6 +12,15 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 71：直接 SSA 字符串默认参数（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 520 → **521/620**，`--language-source` 560 → **561/620**（Logger：`constructor(prefix = "", domain = 65280)`）；0 回退，0 文本漂移；cli/corpus/failure 扫描 66/67，只有既有的 family_source_cli_test 失败。
+
+- 基线 `8d8febf9`。直接默认值候选保留原始字符串 pool 身份；独立证明复核常量、结果/phi 使用和参数顺序，再经已有 `SignatureString`、原方法常量池和签名验证贯通。`.length` 等式、参数环境边界、打印器及捕获默认值准入未改。见 [实现和边界](family-defaults.md)。
+- 对 `explore69/explore69s`：**520 → 521/620、560 → 561/620**。每组只有 o13/3609 Logger 变化，构造器为 `constructor(prefix = "", domain = 65280)`，从 `FunctionAbiError::kLength` 到 complete；两份新输出均通过 `node --check`。0 回退，0 已 complete/partial 文本漂移，其他 record 的 manifest 条目不变。证据 `/private/tmp/r71/cohort.log`、`/private/tmp/r71/comparison/`。
+- 完整构建通过；新增 **2/2**；固定集串行 **65/65**；默认参数/签名/常量池定向 **18/18**；CLI/corpus/failure/receipt/manifest 扫描 **64/65**，仅已登记的 `family_source_cli_test`（owner/origin arena）。未改既有测试期望。命令及日志索引 `/private/tmp/r71/acceptance.json`。
+- IR/签名单测覆盖错误 pool、数值伪装为字符串、错误参数/顺序/生产者、错误解析文本、漏默认值及 length 不等；200/201/400/800 检查线性工作量及 byte/work 精确边界。真实 DevEco/es2abc fixture 两契约 **88 次 Node 差分、8 个被检出的变异**，覆盖函数/构造器/箭头、连续默认值、required 前缀、missing/undefined、Unicode 和显式对象转换的顺序/抛出。fixture 编译命令及哈希随 README 保存。
+- Round 70 的三个 cell-backed 捕获默认值保持拒绝；无 SSA 合流的已消除字符串默认值、一般效果表达式默认值不在本增量。没有新语言前提。未跑留出集、全套测试或 RSS 基准；未 commit/push/stash。
+
 ## Round 69：async 归一化诊断（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；520/620、560/620 不变，0 状态变化，0 文本变化；cli/corpus/failure 扫描 63/64，只有既有的 family_source_cli_test 失败。
 

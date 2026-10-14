@@ -210,7 +210,7 @@ template<class Proof> ProjectedDefault Project(const ValueProgram& original,
   budget.bytes -= initializer_bytes;
   for (const auto& candidate : proof.Defaults()) {
     if constexpr (std::is_same_v<Proof, DefaultValueProof>)
-      initializers.push_back({candidate.parameter, candidate.fallback, candidate.initializer});
+      initializers.push_back({candidate.parameter, candidate.fallback, candidate.initializer, candidate.text});
     else initializers.push_back({candidate.parameter,candidate.fallback,candidate.fallback_store,candidate.text});
   }
   std::vector<SignatureString> strings;

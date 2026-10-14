@@ -200,7 +200,7 @@ class Checker {
     Require(graph_.edges[c.missing.value].kind == (missing_taken ? FlowEdgeKind::kTaken : FlowEdgeKind::kFallthrough) &&
         graph_.edges[c.present.value].kind == (missing_taken ? FlowEdgeKind::kFallthrough : FlowEdgeKind::kTaken), Error::kControl);
     if (capture_ && capture_->candidate.shape.parameter == c.parameter) {
-      Require(!c.number, Error::kLiteral);
+      Require(!c.number && !c.text, Error::kLiteral);
       const auto& initializer = Op(c.initializer, c.arm);
       const auto* load = std::get_if<ValueLexicalLoad>(&initializer.operation);
       Require(load && load->address.depth.value == capture_->candidate.address.depth.value &&
@@ -221,6 +221,20 @@ class Checker {
             guard.before_throw == LanguageEffect::kGuard &&
             guard.exceptional == ExceptionalCompletion::kMayThrow, Error::kEffect);
       }
+      return;
+    }
+    if (c.text) {
+      // A pool string is a constant, but still has an original result/phi use
+      // and an origin owned by the signature. Recheck all three independently.
+      const auto& initializer = Op(c.initializer, c.arm);
+      const auto* string = std::get_if<ValueString>(&initializer.operation);
+      Require(c.merged && !c.number && string && string->string == *c.text &&
+          initializer.use_count == 0 && initializer.result &&
+          SameLiteral(c.fallback, *initializer.result), Error::kLiteral);
+      Require(initializer.result->value < graph_.values.size() &&
+          graph_.values[initializer.result->value].domain.IsString(), Error::kLiteral);
+      Pure(initializer);
+      Restrict(*initializer.result, i, ValueRole::kInitializer);
       return;
     }
     Require(!std::holds_alternative<ValueId>(c.fallback), Error::kLiteral);

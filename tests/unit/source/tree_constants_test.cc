@@ -75,6 +75,9 @@ void Run(std::string_view name, bool element) {
   Check(resolved.names.empty() && resolved.texts.size() == 1 &&
       resolved.texts[0] == std::u16string(name.begin(),name.end()));
   Check(std::get<TextId>(resolved.operations[0]) == TextId{0});
+  const SignatureString outside_pool[]{{{0},{kAliasSlots}}};
+  Check(std::holds_alternative<abc::MetadataError>(ResolveTreeConstants(
+      file,header,index,{kMethod},residual,{},outside_pool)));
   const SignatureString duplicate[]{{{0},{0}},{{0},{1}}};
   Check(std::get<TreeConstantError>(ResolveTreeConstants(file,header,index,{kMethod},residual,{},duplicate)) == TreeConstantError::kSignatureLiteral);
   residual.ops[0].life = analysis::ValueLife::kLive;

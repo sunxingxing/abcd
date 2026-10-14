@@ -1,5 +1,32 @@
 # 函数族默认参数迁移
 
+## 2026-10-15：Round 71 直接 SSA 字符串默认值
+
+直接 SSA 默认值候选现在保留可选的类型化 `PoolIndex`。它与现有数字等
+常量使用同一个按参数顺序推进的发现过程；接受字符串后继续处理下一个
+默认参数。没有改变默认分支/phi、入口逃逸和效果顺序证明，也不新增
+opcode 邻接模板。此增量处理仍有 SSA 合流结果的字符串默认值；未扩展
+无结果的已消除字符串初始化、cell-backed 捕获默认值或任意表达式默认值。
+
+`DefaultValueProof` 独立核对原始 `ValueString` 的 pool 身份、String
+值域、无输入/无效果/不抛出、结果及原始 phi 使用，并复核参数顺序。
+`DefaultBody` 将证明过的字符串交给已有 `SignatureString` 通路，保留
+原始操作来源。`TreeConstants` 用原方法的常量池解析实体和字符串，
+pool 索引不进入可执行语法。签名验证独立核对解析后的常量、参数位置和
+来源；ABI 原有的首个默认参数位置与 `.length` 等式保持不变。
+
+所有新增持久字段由已有容器的 `sizeof` 计费；没有新索引或逐参数扫描。
+发现和证明仍为 O(V+E)，常量池解析复用 O(N log N) 的排序/去重。
+新测试 `string_defaults_test` 覆盖交替字符串/数值的 200/201/400/800
+参数、精确 byte/work 边界，以及 pool、参数、顺序、生产者和签名变异。
+实际 DevEco/es2abc fixture 与 Node 差分说明见
+[string_defaults README](../../../tests/integration/fixtures/string_defaults/README.md)。
+
+对 `explore69/explore69s` 的比较：只有 o13/3609 Logger 从拒绝变为
+complete，两组为 521/620、561/620；已有 complete/partial 输出逐字节
+不变。Logger 的构造器现在保留两个原生默认参数，`.length` 为 0。
+Round 70 的另外三个 cell-backed 捕获默认值仍保持原拒绝。
+
 ## 2026-10-15：Round 70 length 拒绝诊断（未扩大准入）
 
 以下是 HEAD `17b20ccd` 的 ABC-only 证据；未读取配对源码。表中的

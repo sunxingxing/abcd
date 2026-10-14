@@ -724,6 +724,9 @@ if(BUILD_TESTING)
     add_test(NAME environment_cleanup_entry_test COMMAND environment_cleanup_test
       "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" 12208)
   endif()
+  add_executable(string_defaults_test tests/unit/source/string_defaults_test.cc)
+  target_link_libraries(string_defaults_test PRIVATE abcd_source)
+  add_test(NAME string_defaults_test COMMAND string_defaults_test)
   add_executable(default_candidates_test tests/unit/source/default_candidates_test.cc)
   target_link_libraries(default_candidates_test PRIVATE abcd_source)
   add_test(NAME default_candidates_test COMMAND default_candidates_test)
@@ -2403,6 +2406,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_call_selection.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/retained_call_selection)
+    add_test(NAME string_defaults_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/string_defaults.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/string_defaults)
     add_test(NAME decision_guards_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_guards.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
