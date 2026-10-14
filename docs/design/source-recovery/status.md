@@ -12,6 +12,12 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 51b：for-in 协议证明与异常转发摘要（cc 审查通过；D/E 待续）
+
+- 步骤 B/C：`ForInPlan` 经 SCC copy/phi 身份、自然循环和异常图支配，证明 acquisition 身份、闭合使用、每轮单次 advance、done 等价、key 使用与 acquisition 顺序，失败带固定大小的类型化 witness；`exception_forwarding` 是通用的异常转发摘要（所有正常路径无可观察效果地抛出同一 SSA 值到同一目的地），只由 ForInPlan 消费。新增 `for_in_plan_test`、`for_in_fixture_test`（真实 es2abc fixture）。
+- 6 个循环都通过证明与证书复核，handler 都取得转发证据；尚未接入 ForInStmt 发射，公开首个拒绝不变。捕获 key 的 fixture 暂停在 `kAcquisitionOrder`（待 D 的激活证明）；handled advance 暂停在 `kCatchState`。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；497/620、534/620 不变，0 状态变化，0 文本变化；新测试 2/2。
+
 ## Round 51a：for-in 原始语义（cc 审查通过；B–E 待续）
 
 - 只做设计中的步骤 A：提升 `PropertyIterator`/`NextPropertyName` 为有序、可能抛出、成功才提交的语义操作；新增独立的 `PropertyEnumerator` 内部值域与 `ValueEnumeration`，枚举器不能作为语言值或 Hole 输出，源码投影仍然拒绝。详见 property-enumeration.md（含 Node 无法验证的 Proxy/原型变动/Symbol-key 运行时缺口）。
