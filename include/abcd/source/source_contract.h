@@ -11,7 +11,7 @@ namespace abcd::source {
 enum class SourceContract : std::uint8_t {
   kLanguageAndHostV1, kLanguageAndHostV2, kLanguageAndHostV3, kLanguageArithmeticV1, kLanguageNumericV1,
   kLanguageConstructorsV1, kLanguageArithmeticConstructorsV1, kLanguageNumericConstructorsV1,
-  kLanguageSourceV1
+  kLanguageSourceV1, kLanguageSourceV2
 };
 enum class ConstructorSemantics : std::uint8_t { kPinnedRuntime, kSourceLanguage };
 enum class ConstructorForwardingSemantics : std::uint8_t { kInvocationFrame, kSourceRestSpread };
@@ -45,6 +45,7 @@ constexpr ConstructorForwardingSemantics ConstructorForwarding(SourceContract co
     case SourceContract::kLanguageNumericConstructorsV1:
       return ConstructorForwardingSemantics::kInvocationFrame;
     case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2:
       return ConstructorForwardingSemantics::kSourceRestSpread;
   }
   std::terminate();
@@ -65,6 +66,7 @@ constexpr analysis::ArithmeticSemantics Arithmetic(SourceContract contract) {
     case SourceContract::kLanguageNumericV1:
     case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2:
       return analysis::ArithmeticSemantics::kSourceNumeric;
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageArithmeticConstructorsV1:
@@ -84,7 +86,8 @@ constexpr ConstructorSemantics Constructors(SourceContract contract) {
     case SourceContract::kLanguageConstructorsV1:
     case SourceContract::kLanguageArithmeticConstructorsV1:
     case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageSourceV1: return ConstructorSemantics::kSourceLanguage;
+    case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2: return ConstructorSemantics::kSourceLanguage;
   }
   std::terminate();
 }
@@ -96,7 +99,8 @@ constexpr SourceContract WithLanguageConstructors(SourceContract contract) {
     case SourceContract::kLanguageConstructorsV1:
     case SourceContract::kLanguageArithmeticConstructorsV1:
     case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageSourceV1: return contract;
+    case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2: return contract;
     case SourceContract::kLanguageAndHostV1:
     case SourceContract::kLanguageAndHostV2: std::terminate(); // Historical host profiles cannot opt in.
   }
@@ -113,6 +117,7 @@ constexpr analysis::PendingExceptionValues PendingExceptions(SourceContract cont
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3:
     case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2:
       return analysis::PendingExceptionValues::kLanguage;
   }
   std::terminate();
@@ -127,7 +132,8 @@ constexpr analysis::CallResultValues NormalCallResults(SourceContract contract) 
     case SourceContract::kLanguageNumericV1:
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageSourceV1: return analysis::CallResultValues::kLanguage;
+    case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2: return analysis::CallResultValues::kLanguage;
   }
   std::terminate();
 }
@@ -141,7 +147,8 @@ constexpr RealmBindingPolicy RealmBinding(SourceContract contract) {
     case SourceContract::kLanguageNumericV1:
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageSourceV1: return RealmBindingPolicy::kStableGlobalThis;
+    case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2: return RealmBindingPolicy::kStableGlobalThis;
   }
   std::terminate();
 }
@@ -155,7 +162,8 @@ constexpr ResourceFailureScope ResourceFailures(SourceContract contract) {
     case SourceContract::kLanguageNumericV1:
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageSourceV1: return ResourceFailureScope::kExcluded;
+    case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2: return ResourceFailureScope::kExcluded;
   }
   std::terminate();
 }
@@ -171,6 +179,7 @@ constexpr CallableTextPolicy CallableText(SourceContract contract) {
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageAndHostV3:
     case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2:
       return CallableTextPolicy::kRecovered;
   }
   std::terminate();
@@ -184,8 +193,19 @@ constexpr CallableTextPolicy CallableText(SourceContract contract) {
 // reads the hole or writes the slot, the source throws ReferenceError).
 // Reads approved 2026-10-13, extended to writes the same day.
 constexpr CaptureReadSemantics CaptureReads(SourceContract contract) {
-  return contract == SourceContract::kLanguageSourceV1 ? CaptureReadSemantics::kSourceTdz
-                                                       : CaptureReadSemantics::kPinnedRuntime;
+  switch (contract) {
+    case SourceContract::kLanguageAndHostV1:
+    case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageAndHostV3:
+    case SourceContract::kLanguageArithmeticV1:
+    case SourceContract::kLanguageNumericV1:
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1: return CaptureReadSemantics::kPinnedRuntime;
+    case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2: return CaptureReadSemantics::kSourceTdz;
+  }
+  std::terminate();
 }
 // Round 31: ArkTS preserves lazy initialization; array spread is a separate
 // approved premise whose lowering is not enabled by the lazy-import adapter.
@@ -202,7 +222,8 @@ constexpr LazyImportSemantics LazyImports(SourceContract contract) {
     case SourceContract::kLanguageArithmeticConstructorsV1:
     case SourceContract::kLanguageNumericConstructorsV1:
       return LazyImportSemantics::kPinnedRuntime;
-    case SourceContract::kLanguageSourceV1: return LazyImportSemantics::kArkTsLazyImport;
+    case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2: return LazyImportSemantics::kArkTsLazyImport;
   }
   std::terminate();
 }
@@ -217,7 +238,27 @@ constexpr ArraySpreadSemantics ArraySpreads(SourceContract contract) {
     case SourceContract::kLanguageArithmeticConstructorsV1:
     case SourceContract::kLanguageNumericConstructorsV1:
       return ArraySpreadSemantics::kPinnedRuntime;
-    case SourceContract::kLanguageSourceV1: return ArraySpreadSemantics::kSourceIterator;
+    case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2: return ArraySpreadSemantics::kSourceIterator;
+  }
+  std::terminate();
+}
+// Approved 2026-10-14. V2 adds only standard iterator acquisition; V1 keeps
+// its historical four premises. This does not authorize apply/spread calls,
+// next re-reads, different close completion priority, or binding changes.
+enum class IterationAcquisitionSemantics : std::uint8_t { kPinnedRuntime, kStandardV1 };
+constexpr IterationAcquisitionSemantics IterationAcquisition(SourceContract contract) {
+  switch (contract) {
+    case SourceContract::kLanguageAndHostV1:
+    case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageAndHostV3:
+    case SourceContract::kLanguageArithmeticV1:
+    case SourceContract::kLanguageNumericV1:
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
+    case SourceContract::kLanguageSourceV1: return IterationAcquisitionSemantics::kPinnedRuntime;
+    case SourceContract::kLanguageSourceV2: return IterationAcquisitionSemantics::kStandardV1;
   }
   std::terminate();
 }
@@ -233,6 +274,7 @@ constexpr std::string_view SourceContractName(SourceContract contract) {
     case SourceContract::kLanguageArithmeticV1: return "language_arithmetic_v1";
     case SourceContract::kLanguageAndHostV3: return "language_and_host_v3";
     case SourceContract::kLanguageSourceV1: return "language_source_v1";
+    case SourceContract::kLanguageSourceV2: return "language_source_v2";
   }
   std::terminate();
 }

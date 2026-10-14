@@ -298,6 +298,11 @@ RegisterEffect EffectOf(const NextPropertyName& value) {
   effect.reads[effect.read_count++] = value.iterator;
   return effect;
 }
+RegisterEffect EffectOf(const ObjectCheck& value) {
+  RegisterEffect effect;
+  effect.reads[effect.read_count++] = value.value;
+  return effect;
+}
 RegisterEffect EffectOf(const AcquireIterator&) {
   return AccumulatorReadWrite();
 }

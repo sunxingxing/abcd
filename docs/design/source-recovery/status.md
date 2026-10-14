@@ -12,6 +12,14 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 53 增量 I（部分）：标准迭代获取契约与原始语义（cc 审查通过）
+
+- 用户 2026-10-14 批准第五项源语言前提“标准迭代获取”：新增 `kLanguageSourceV2` 与独立谓词 `IterationAcquisition()`，`--language-source` 选择 V2；V1 的语义、枚举值与序列化名称保留。接受的差异：@@iterator 不可调用或返回非对象时原生 for…of 更早抛 TypeError。不在此前提内、须逐循环证明的：next 缓存、done/value 顺序、关闭优先级（language-source.md）。
+- 原始语义：同步 GETITERATOR imm8/imm16 → `AcquireIterator`/`ValueIteratorAcquire`（可能执行用户代码与抛出，成功后提交，不伪造 Object 结果域）；`throw.ifnotobject` → `ObjectCheck`/`ValueObjectCheck`。新增 `iteration_semantics_test`。
+- 新阻塞：5 个方法在求值前停在 `PhasedMethodError::kControl > ExceptionControlError::kRegion`，原因是保留了 handler 不可达、没有 CatchBinding 的区域（ExceptionPlan 允许，ExceptionTopology 拒绝），需要有可达性证明的 inactive-region 投影。两个 RpcTool 停在其他子函数的捕获初始化。
+- cc 修正 `language_source_corpus.mjs`：Round 44 起 FindAndListenAudioOutputDevice 在旧 flags 下也完成（该过期期望当时未被定向集覆盖）。
+- cc 独立审查：构建通过；固定集 65/65（rich-text 首跑 worker 超时，重跑通过）；配对样本逐字节相同；498/620、535/620 不变，0 状态变化，0 文本变化；定向 15/15。
+
 ## Round 52 increment III：OriginalFlow/recovery 联合验证与发布（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 497 → **498/620**，`--language-source` 534 → **535/620**；0 回退，0 文本漂移；for-in 测试 11/11。cc 核对 assertContain 的首个原生 `for ($key10 in actualValue)` 输出语义一致；可读性（空 then、尾部 `continue`）另议。
 

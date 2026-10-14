@@ -1,7 +1,8 @@
-# LanguageSourceV1：按源语言语义输出的四项前提
+# 源语言契约：LanguageSourceV1 与 V2
 
-`SourceContract::kLanguageSourceV1`（序列化名 `language_source_v1`）由 CLI 的 `--language-source`
-选择，必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
+`SourceContract::kLanguageSourceV1`（序列化名 `language_source_v1`）保留原有四项前提。
+2026-10-14 新增 `kLanguageSourceV2`（`language_source_v2`），由 CLI 的 `--language-source`
+选择；V2 继承 V1，并加入 §5 的独立标准迭代获取前提。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
 `--language-constructors` 组合。它包含 `LanguageNumericConstructorsV1` 的全部前提（numeric 算术、
 原生 super 语义），并另外加入下面四项源语言前提。默认契约 V3 以及其他已有 opt-in 都不变。
 
@@ -108,7 +109,7 @@ invocation-frame forwarding。新增数组迭代过程引起的可观察差异�
 不能改为原生类字段声明的 `[[DefineOwnProperty]]`：父类可能有 setter 或只读属性。
 rest 数组分配的资源耗尽差异沿用本契约已有的资源前提，不增加其他可观察差异。
 
-**实现边界。** `ConstructorForwarding()` 仅在 `kLanguageSourceV1` 启用，独立于旧的
+**实现边界。** `ConstructorForwarding()` 在 `kLanguageSourceV1` 及继承它的 V2 启用，独立于旧的
 `Constructors()` 前提。纯转发且已接受的隐式构造器保持原输出。显式投影依次通过
 共同帧/协议证明、物理参数与源码 rest 签名分离、树构建、独立复验及普通语法打印。
 第一增量不支持构造器自身 handler、arguments/new.target 的正文观察、需保留的形参或
@@ -283,3 +284,44 @@ RHS 调用、getter、receiver、抛出、顺序及重复读取变异。结果�
 在修改前后均为 46/53：上述七项失败名单、断言位置和 family/tree 诊断相同。
 扩展的 `array_initialization_test`、`array_phase_test`、`array_spread_cli_test` 全部通过。
 未提交；未运行探索集、留出集、全套 CTest 或 RSS 基准。
+
+
+## 5. 标准迭代获取（LanguageSourceV2，2026-10-14）
+
+**用户批准的精确差异。** 在完整的同步 for-of 协议已经被证明时，允许输出原生
+`for (... of ...)`。当 `@@iterator` 不可调用，或调用后返回非对象时，原生 for-of
+较早抛出 `TypeError`；原 ABC 随后对 `next` 的读取、调用及其效果不再发生。这是
+独立前提 `IterationAcquisition() == kStandardV1`，仅由 `kLanguageSourceV2` 启用。
+V1 的四项前提、各旧契约的枚举值和序列化名称不变；契约名称仍从枚举生成并做往返验证。
+
+**不包含。** 每个循环仍须独立证明 next 缓存、done/value 的顺序、IteratorClose
+覆盖及异常优先级、绑定与动态激活。此前 `[...x]` 的授权不能代替这些证明，此前提也
+不授权 `apply` 投影为 `f(...args)`。异步迭代、捕获的逐迭代绑定、解构不是首批目标。
+
+**当前工作区的实现边界。** 已加入谓词与同步 GETITERATOR imm8/imm16 的原始语义，
+以及 `throw.ifnotobject` 的独立对象检查。获取仍返回运行时实际的语言值，不能凭契约
+改成 Object 域；只有成功路径提交 acc。对象检查不写 acc，并保留独立异常出口。
+`next`、`done`、`value`、`return` 仍是普通属性/调用事件。没有新增原始 CloseIterator
+提升；既有拒绝不变。
+
+**尚未完成增量 I。** 尚无 ForOfPlan/Events、IteratorCloseEvidence、共同求值入口接入、
+独立协议验证或 `kForOfCorrespondence` 门禁，因此不能宣称已验证 for-of 或已有源码准入。
+加入原始语义后，TimeUtils、ComponentFactory、DeepTypeUtils、configService 和 DataDriver
+在进入共同求值入口前，遇到 `ExceptionControlError::kRegion`：保留的 try 没有可达的
+Catch 节点/绑定，而 ExceptionTopology 要求每个保留 region 都有 CatchBinding。需要先明确
+不可达异常区域的投影和独立来源对应，再接协议求值证明；不能用空 ControlPlan 绕过。
+该阻碍不需要新增源语言前提，也不能放宽 effectful close 为透明转发。
+
+原始语义单测 `iteration_semantics_test` 验证窄/宽编码、成功 Commit、独立异常出口、
+伪造 Commit/删除异常出口变异，以及 200/201/400/800 的 importer 精确内存/工作边界。
+这些是 raw IR 证据，不是协议层、IteratorClose 或 Node 差分验收。
+
+**本次 raw/契约增量自检。** 完整 `cmake --build build/regression -j 6 -- -k` 成功；
+新增 raw 测试的最终单目标重建成功；固定集串行 65/65，定向 21/21（含既有 for-in 11 项）。
+DataDriver 的旧 CLI 断言随实际首拒绝从 unsupported@153 改为 kControl > kRegion，
+严格检查 method 42717、没有虚构 PC，并补查 manifest 与 abc_semantic 一致。
+对 `explore52c/explore52cs` 的逐 record 对比仍为 498/620、535/620，状态与 complete 源码
+字节均无变化，assertContain 保持完整；仅指定 8 个候选 record 的首拒绝变化。
+日志与比较 JSON 在 `/private/tmp/round53-{full-build,targeted-final,fixed,cohort}.log` 和
+`/private/tmp/round53-cohort/comparison.json`。这些结果只验证当前 raw/契约增量；
+不能代替尚未实现的 acquisition-semantics 门禁、close/completion 协议及独立求值验证。

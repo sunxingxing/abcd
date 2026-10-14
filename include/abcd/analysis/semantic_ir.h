@@ -158,7 +158,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck>;
 // Exact VM-enumerator transport only. Does not prove acquisition identity,
 // closed use, loop advancement or source admission.
 [[nodiscard]] bool AcceptsPropertyEnumerator(const SemanticOperation& operation);

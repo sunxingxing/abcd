@@ -17,6 +17,7 @@ struct AcquireIterator {
   IteratorMode mode;
   std::uint16_t inline_cache;
 };
+struct ObjectCheck { abc::RegisterId value; };
 struct CloseIterator {
   std::uint16_t inline_cache;
   abc::RegisterId iterator;
@@ -32,12 +33,13 @@ enum class IteratorError {
 };
 using IteratorInstruction = std::variant<PropertyIterator, NextPropertyName,
                                          AcquireIterator, CloseIterator,
-                                         IteratorNext, IteratorError>;
+                                         IteratorNext, ObjectCheck, IteratorError>;
 
 // Pinned v7 interpreter semantics: acquisition reads acc, property-name next
 // reads its iterator register, close reads only its iterator register, and
 // legacy next reads two registers; all replace acc on
-// normal completion and may throw. IC slots are not source operands. The ISA
+// normal completion and may throw. ObjectCheck only reads its register, may
+// throw TypeError and never defines acc. IC slots are not source operands. The ISA
 // group's x_none exception annotation does not override interpreter handlers.
 [[nodiscard]] IteratorInstruction LiftIteratorInstruction(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size);

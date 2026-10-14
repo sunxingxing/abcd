@@ -23,6 +23,11 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       // Proxy slow keys in the pinned runtime are not proved String-only.
       // Exhaustion is Undefined; protocol ownership is checked separately.
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+    } else if constexpr (std::is_same_v<T, AcquireIterator>) {
+      // RuntimeGetIterator may return the non-callable @@iterator value or a
+      // primitive call result. Never manufacture an Object result premise.
+      return ValueRule{ValueRuleKind::kFixed, calls == CallResultValues::kLanguage
+          ? ValueKinds::Language() : ValueKinds::Unknown()};
     } else if constexpr (std::is_same_v<T, PropertyDelete>) {
       return ValueRule{ValueRuleKind::kFixed,ValueKinds::Boolean()};
     } else if constexpr (std::is_same_v<T, NamedRead> ||
@@ -101,7 +106,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
                     std::is_same_v<T, OwnWrite> ||
                     std::is_same_v<T, IndexedWrite> || std::is_same_v<T, ComputedOwnWrite> ||
                     std::is_same_v<T, ValueWrite> ||
-                    std::is_same_v<T, HoleGuard> ||
+                    std::is_same_v<T, HoleGuard> || std::is_same_v<T, ObjectCheck> ||
                     std::is_same_v<T, BranchOperation> ||
                     std::is_same_v<T, JumpOperation> ||
                     std::is_same_v<T, ReturnOperation> ||

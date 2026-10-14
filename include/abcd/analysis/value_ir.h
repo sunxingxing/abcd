@@ -132,6 +132,9 @@ struct ValueEnumeration {
   EnumerationAction action;
   bool operator==(const ValueEnumeration&) const = default;
 };
+// Raw acquisition retains pinned semantics, including non-object success.
+struct ValueIteratorAcquire { bool operator==(const ValueIteratorAcquire&) const = default; };
+struct ValueObjectCheck { bool operator==(const ValueObjectCheck&) const = default; };
 struct ValuePropertyDelete { bool operator==(const ValuePropertyDelete&) const = default; };
 struct ValuePropertyRead { bool operator==(const ValuePropertyRead&) const = default; };
 struct ValueBranch { UnaryOperator predicate; bool operator==(const ValueBranch&) const = default; };
@@ -292,7 +295,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation, ValueIterResult,
     ValueInvoke, ValueConstruct, ValueConstructApply, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
-    ValueModuleWrite, ValuePropertyWrite, ValuePropertyDelete, ValueEnumeration, ValueDebugger, ValueFrameThis, ValueFrameFunction,
+    ValueModuleWrite, ValuePropertyWrite, ValuePropertyDelete, ValueEnumeration, ValueIteratorAcquire, ValueObjectCheck, ValueDebugger, ValueFrameThis, ValueFrameFunction,
     ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite>;
 struct ValueOp {
   ValueOperation operation;

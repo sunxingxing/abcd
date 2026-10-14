@@ -130,7 +130,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       case SourceContract::kLanguageNumericConstructorsV1:
       case SourceContract::kLanguageNumericV1:
       case SourceContract::kLanguageArithmeticV1:
-      case SourceContract::kLanguageSourceV1: break;
+      case SourceContract::kLanguageSourceV1:
+      case SourceContract::kLanguageSourceV2: break;
       default: return Error::kContract;
     }
     PhaseBudget quota(budget);

@@ -217,6 +217,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
           LiftLexicalInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Environment()};
   const auto iterator = LiftIteratorInstruction(instruction, frame_size);
+  if (const auto* acquire = std::get_if<AcquireIterator>(&iterator); acquire && acquire->mode == IteratorMode::kSync)
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
   if (std::holds_alternative<PropertyIterator>(iterator))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::PropertyEnumerator()};
   if (std::holds_alternative<NextPropertyName>(iterator))

@@ -30,7 +30,7 @@ constexpr std::array kProfiles{
     abc::ProfileId::kDynamic2400, abc::ProfileId::kStatic0107};
 // Derived from the single serialization map, indexed by the dense enum, so
 // every contract that can be written can also be read back.
-constexpr std::size_t kContractCount = static_cast<std::size_t>(SourceContract::kLanguageSourceV1) + 1;
+constexpr std::size_t kContractCount = static_cast<std::size_t>(SourceContract::kLanguageSourceV2) + 1;
 constexpr auto kContractNames = [] {
   std::array<std::string_view, kContractCount> names{};
   for (std::size_t i = 0; i < kContractCount; ++i) names[i] = SourceContractName(static_cast<SourceContract>(i));
@@ -134,7 +134,8 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
        identity.contract != SourceContract::kLanguageConstructorsV1 &&
        identity.contract != SourceContract::kLanguageArithmeticConstructorsV1 &&
        identity.contract != SourceContract::kLanguageNumericConstructorsV1 &&
-       identity.contract != SourceContract::kLanguageSourceV1))
+       identity.contract != SourceContract::kLanguageSourceV1 &&
+       identity.contract != SourceContract::kLanguageSourceV2))
     return RouteReceiptError::kIdentity;
   const auto valid_entity = [&](const auto& entity) {
     return !entity || (entity->value >= abc::kDynamicHeaderSize &&

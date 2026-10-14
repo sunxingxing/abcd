@@ -188,6 +188,8 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
     return Fail(SemanticError::kMalformedInstruction, site.offset);
 
   const auto iterator = LiftIteratorInstruction(decoded, frame_size);
+  if (const auto* acquire = std::get_if<AcquireIterator>(&iterator); acquire && acquire->mode == IteratorMode::kSync) return *acquire;
+  if (const auto* check = std::get_if<ObjectCheck>(&iterator)) return *check;
   if (const auto* acquire = std::get_if<PropertyIterator>(&iterator)) return *acquire;
   if (const auto* next = std::get_if<NextPropertyName>(&iterator)) return *next;
   if (const auto* error = std::get_if<IteratorError>(&iterator);
@@ -396,10 +398,11 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, PropertyIterator> ||
-                             std::is_same_v<T, NextPropertyName>) {
-          // Pinned EnumerateObjectProperties/NextInternal can run proxy traps;
-          // index/cache/heap effects may precede failure. The interpreter commits
-          // acc only after its abrupt-completion check (1797/2574).
+                             std::is_same_v<T, NextPropertyName> || std::is_same_v<T, AcquireIterator>) {
+          // Pinned enumeration may run proxy traps; RuntimeGetIterator may
+          // read/call @@iterator. Effects can precede failure; acc commits only
+          // on success (interpreter-inl.cpp:1797/2574/4662/4672). Acquisition
+          // does not establish an object or callable-result premise.
           effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |
                            LanguageEffect::kUserCode | LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
@@ -466,7 +469,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
             case SuperCheckKind::kNoop:
               break;
           }
-        } else if constexpr (std::is_same_v<T, HoleGuard>) {
+        } else if constexpr (std::is_same_v<T, HoleGuard> || std::is_same_v<T, ObjectCheck>) {
           effects.normal = LanguageEffect::kGuard;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;

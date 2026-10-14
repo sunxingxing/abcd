@@ -24,6 +24,11 @@ IteratorInstruction LiftIteratorInstruction(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
   using abc::Opcode;
   switch (instruction.opcode) {
+    case Opcode::kTHROW_IFNOTOBJECT_PREF_V8:
+      if (instruction.operand_count != 1 || !Register(instruction, 0))
+        return IteratorError::kMalformedInstruction;
+      if (instruction.operands[0].raw_bits >= frame_size) return IteratorError::kRegisterRange;
+      return ObjectCheck{abc::RegisterId{static_cast<std::uint32_t>(instruction.operands[0].raw_bits)}};
     case Opcode::kGETPROPITERATOR:
       if (instruction.operand_count != 0)
         return IteratorError::kMalformedInstruction;

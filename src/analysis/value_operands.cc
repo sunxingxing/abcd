@@ -48,7 +48,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
     } else if constexpr (std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
       Append(plan, OperandRole::kInput, op.input);
       plan.write = Accumulator{};
-    } else if constexpr (std::is_same_v<T, PropertyIterator>) {
+    } else if constexpr (std::is_same_v<T, PropertyIterator> || std::is_same_v<T, AcquireIterator>) {
       Append(plan, OperandRole::kInput, Accumulator{});
       plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, NextPropertyName>) {
@@ -153,6 +153,8 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, SuperCheck>) {
       Append(plan, OperandRole::kGuardValue, Accumulator{}, ReadPurpose::kProtocol);
+    } else if constexpr (std::is_same_v<T, ObjectCheck>) {
+      Append(plan, OperandRole::kGuardValue, op.value);
     } else if constexpr (std::is_same_v<T, HoleGuard>) {
       Append(plan, OperandRole::kGuardValue, SlotValue(op.value));
       // The diagnostic register is read only on the failing guard path.

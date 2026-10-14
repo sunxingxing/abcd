@@ -91,9 +91,11 @@ bool SameReceipt(const MethodRouteReceipt& left,
 // lifted.
 int main() {
   Check(kSourceContract == SourceContract::kLanguageAndHostV3);
-  for (unsigned i = 0; i <= static_cast<unsigned>(SourceContract::kLanguageSourceV1); ++i) {
+  for (unsigned i = 0; i <= static_cast<unsigned>(SourceContract::kLanguageSourceV2); ++i) {
     const auto contract = static_cast<SourceContract>(i);
-    const bool source = contract == SourceContract::kLanguageSourceV1;
+    Check(IterationAcquisition(contract) == (contract == SourceContract::kLanguageSourceV2
+        ? IterationAcquisitionSemantics::kStandardV1 : IterationAcquisitionSemantics::kPinnedRuntime));
+    const bool source = (contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2);
     Check(LazyImports(contract) == (source ? LazyImportSemantics::kArkTsLazyImport : LazyImportSemantics::kPinnedRuntime));
     Check(ArraySpreads(contract) == (source ? ArraySpreadSemantics::kSourceIterator : ArraySpreadSemantics::kPinnedRuntime));
   }
@@ -243,9 +245,9 @@ int main() {
     Check(SameReceipt(receipt, *recovered));
   }
   // Every contract that can be written can be read back (dense enum range).
-  for (std::size_t raw = 0; raw <= static_cast<std::size_t>(SourceContract::kLanguageSourceV1); ++raw) {
+  for (std::size_t raw = 0; raw <= static_cast<std::size_t>(SourceContract::kLanguageSourceV2); ++raw) {
     const auto contract = static_cast<SourceContract>(raw);
-    Check(ConstructorForwarding(contract) == (contract == SourceContract::kLanguageSourceV1
+    Check(ConstructorForwarding(contract) == ((contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2)
         ? ConstructorForwardingSemantics::kSourceRestSpread
         : ConstructorForwardingSemantics::kInvocationFrame));
     auto receipt = RefusedReceipt();

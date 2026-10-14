@@ -5,9 +5,10 @@
 // the pages whose early reads carry a named hole check under the previous
 // contract too (FindAndListenAudioInputDevice, InputDeviceRoutingSwitching,
 // ListenDeviceByAudioSession). OutputDeviceChangePause still needs the premise
-// and keeps the initialization cause chain; FindAndListenAudioOutputDevice
-// passes initialization but stops at a later call-plan cause. With
-// --language-source all five pages complete.
+// and keeps the initialization cause chain. FindAndListenAudioOutputDevice
+// also completes under the previous contract since Round 44 (checked capture
+// reads composed into member-call arguments). With --language-source all five
+// pages complete.
 //
 // usage: node language_source_corpus.mjs ABC_STRUCTURE INPUT.abc
 import assert from 'node:assert/strict';
@@ -40,10 +41,10 @@ try {
         ['CaptureCellError=3', 'CaptureError=1', 'ScopeError=3'], page);
   };
   const strict = statuses(['--language-numeric', '--language-constructors']);
-  for (const page of ['FindAndListenAudioInputDevice', 'InputDeviceRoutingSwitching', 'ListenDeviceByAudioSession'])
+  for (const page of ['FindAndListenAudioInputDevice', 'FindAndListenAudioOutputDevice', 'InputDeviceRoutingSwitching',
+    'ListenDeviceByAudioSession'])
     assert.equal(strict.get(page).source_status, 0, page + ' ' + JSON.stringify(strict.get(page)));
   refused('OutputDeviceChangePause', strict.get('OutputDeviceChangePause'));
-  assert.equal(strict.get('FindAndListenAudioOutputDevice').source_status, 3);
   for (const [page, record] of statuses(['--language-source']))
     assert.equal(record.source_status, 0, page + ' ' + JSON.stringify(record));
 } finally {

@@ -29,11 +29,15 @@ try {
     const report=JSON.parse(run(semantic,[abc,'29450','--record-source','--value-source',...flags]));
     assert.equal(report.source_complete,true);assert.equal(report.source,readFileSync(join(out,complete.source),'utf8'));
     assert.equal(report.source_failure,undefined);
-    // This record cannot publish the method-local for-in refusal first: an
-    // earlier preparation failure in another method is still authoritative.
+    // GETITERATOR now has raw semantics, but this for-of method still fails
+    // before evaluation: a retained unreachable handler has no CatchBinding.
+    // kRegion owns no instruction PC; do not retain the old acquisition PC.
     const driver=rows.find(r=>r.entity===42397).source_failure;
-    assert.equal(driver.method,42717);assert.equal(driver.pc,153);
-    assert.deepEqual(driver.causes,[{domain:'abcd::source::PhasedMethodError',value:0},{domain:'abcd::analysis::SemanticError',value:1}]);
+    assert.equal(driver.method,42717);assert.equal(driver.pc,undefined);
+    assert.equal(driver.working_pc,undefined);
+    assert.deepEqual(driver.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:2}]);
+    const blocked=JSON.parse(run(semantic,[abc,'42717','--record-source','--value-source',...flags],1));
+    assert.deepEqual(blocked.source_failure,driver);
   }
 } finally { rmSync(temp,{recursive:true,force:true}); }
 console.log('for-in verified publication and next refusals: ok');
