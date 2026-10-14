@@ -1,4 +1,5 @@
 #include "binding_plan.h"
+#include "for_in_emission.h"
 #include "evaluation_flow.h"
 
 #include <limits>
@@ -16,7 +17,7 @@ std::uint32_t CycleCount(const EvaluationPlan& evaluation, std::size_t bundle) {
 }
 std::variant<BindingPlan, BindingError> BuildBindings(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget, EvaluationFlow flow, ParameterForm parameter_form) {
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, EvaluationFlow flow, ParameterForm parameter_form, const ForInEmissionView* enumeration) {
   using namespace analysis;
   using Error = BindingError;
   const auto verified = VerifyEvaluationForFlow(graph, evaluation, budget, flow);
@@ -146,6 +147,22 @@ std::variant<BindingPlan, BindingError> BuildBindings(
       --work;
       const auto& value = graph.values[i];
       if (value.life == ValueLife::kRemoved) continue;
+      if (enumeration && evaluation.for_in->values[i]) {
+        const auto member = *evaluation.for_in->values[i];
+        if (member.role == ForInRole::kNextResult && evaluation.for_in->loops[member.loop].key == ValueId{static_cast<std::uint32_t>(i)}) {
+          const SymbolId symbol{static_cast<std::uint32_t>(plan.symbols.size())};
+          plan.symbols.emplace_back(ForInKeyBinding{member.loop}); plan.values[i] = symbol;
+        }
+        continue;
+      }
+      if (enumeration) {
+        if (const auto* caught = std::get_if<CatchDefinition>(&value.origin))
+          if (enumeration->forwarded_blocks[caught->block.value]) continue;
+        if (const auto* phi = std::get_if<PhiDefinition>(&value.origin))
+          if (enumeration->forwarded_blocks[phi->block.value]) continue;
+        if (const auto* produced = std::get_if<OpResult>(&value.origin))
+          if (enumeration->forwarded_operations[produced->op.value]) continue;
+      }
       if (const auto* entry = std::get_if<EntryDefinition>(&value.origin)) {
         if (const auto* parameter = std::get_if<ParameterEntry>(entry)) {
           if (parameter->index >= parameter_count ||
@@ -297,12 +314,12 @@ std::variant<BindingPlan, BindingError> BuildBindings(
 }  // namespace
 std::variant<BindingPlan, BindingError> BuildBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters) {
-  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kNormal, parameters);
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters, const ForInEmissionView* enumeration) {
+  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kNormal, parameters, enumeration);
 }
 std::variant<BindingPlan, BindingError> BuildPhasedBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters) {
-  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kPhased, parameters);
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters, const ForInEmissionView* enumeration) {
+  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kPhased, parameters, enumeration);
 }
 }  // namespace abcd::source

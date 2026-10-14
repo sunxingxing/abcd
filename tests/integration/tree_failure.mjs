@@ -54,7 +54,7 @@ try {
     // Round 52 proves enumeration evaluation but deliberately stops before
     // native-statement correspondence/publication. The acquisition PC is real.
     if(entity===29268) assert.deepEqual(report.source_failure.causes,[
-      {domain:'abcd::source::FunctionTreeError',value:9},{domain:'abcd::source::TreeObligation',value:14}]);
+      {domain:'abcd::source::FunctionTreeError',value:9},{domain:'abcd::source::TreeObligation',value:15}]);
   }
   console.log('tree_failure_cli_test: five real refusals agree across CLI and manifest');
 } finally {rmSync(temp,{recursive:true,force:true});}

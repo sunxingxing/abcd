@@ -385,3 +385,89 @@ single method-entry tree refusal at its first acquisition, PC28; there is no
 fabricated second public refusal. CLI tests compare the actual record receipts
 with `abc_semantic --record-source`. Logs use the `/private/tmp/r52-` prefix,
 listed in status.md. No native-for-in source completion is claimed.
+
+## Round 52 increment II: native draft and TreeFlow (unpublished)
+
+`ForInEmissionView` interprets the verified exceptional control tree without
+rewriting its nodes, arcs, loop discovery, decisions or follows. It retains the
+original LoopId for each native enumeration and each break/continue. A consumed
+protocol decision enters its proved successful arm (or its existing continuation
+when that arm is empty); it never enters the ordinary `EmitBranch` path. Other
+body operations and loops retain their original control and operation identities.
+The builder and TreeFlow each derive this view from immutable inputs and the
+independently verified ForInPlan/ForInEvents. Supplied consumed flags are not
+certificates. Split ControlDecision prefixes are still a typed correspondence
+limitation of this adapter, not a restriction of for-in semantics.
+
+The draft contains assignment-form `ForInStmt`, an invocation-private key
+binding, and the original body stores/declarations. The key binding is distinct
+from the raw next-result and the internal enumerator; it is written only on
+success, never with the exhausted Undefined result. Original lexical stores
+stay in the body, so a shared outer key cell retains its initial value on zero
+iterations and its last assigned value afterwards. No declaration becomes a
+per-iteration declaration. Captured-key activation remains refused.
+
+The native statement retains acquisition's original origin and scope; its RHS
+is evaluated once. Before appending the statement, the original preheader phi
+initializations execute in their original sequence. These are private transport:
+ForInPlan's acquisition-to-first-next proof excludes intervening observable or
+throwing operations, and construction does not coalesce their storage with an
+invocation parameter or captured cell. Thus these private writes cannot change
+what the RHS observes or expose a change when acquisition throws. The verifier
+requires acquisition and native loop entry to have the same actual source
+scope. No user statement/declaration is moved by a follow-selection heuristic.
+
+Exhaustion copies are emitted after the native statement only when the original
+loop transfer census proves exhaustion is its sole normal exit. With another
+break exit, nonempty exhaustion copies remain `ForInError::kExit`: they cannot
+be executed unconditionally after a break. Existing explicit break/continue
+copies and targets otherwise stay in the ordinary loop machinery. TreeFlow
+rechecks both done edges, all remaining transfers, source sequences and copy
+ownership against the unmodified control plan.
+
+Exception correspondence is typed per original entry: `PhysicalCatch` preserves
+the original exceptional exit; `ForwardedExceptionRoute` records that exit,
+handler entry, payload and final destination. The universal forwarding summary
+must cover the entire consumed path. The view separately censuses every
+incoming exception edge before omitting any handler path; a mixed physical and
+forwarded shared entry remains `kCatchState`, not permission to erase its other
+entries. Nonempty catch staging also remains `kCatchState`. Handled advance is
+still refused by the raw protocol proof. Unrelated catches are unchanged.
+
+TreeFlow retains `TreeForInEvents`: the original acquisition/advance Commits,
+success-only key event, native statement, RHS, key, scope and exception route.
+Acquire/advance are not represented by one shared source expression. This draft
+is deliberately not a ConstructedFunction. `BuildForInTreeDraft` exposes the
+same production draft builder to internal validation; the normal production
+entry refuses after successful TreeFlow with the appended
+`TreeObligation::kForInRecovery`, at the first acquisition's real original and
+working PC. OriginalFlow/recovery joint verification and publication remain
+increment III; no engine-output Node differential is claimed here.
+
+New tests exercise that production draft builder, including the real es2abc
+scan/exits/nested fixture; copy and block variations; a shared outer cell's
+initial/last key; handled advance sharing an acquisition handler; captured-key
+refusal; forged view bounds/forwarding payload/exit/path; deleted next placement,
+wrong key or continue target, RHS/key scope and per-iteration binding mutations.
+The 200/201/400/800 cases binary-search the actual minimum grant for bytes and
+work, check the boundary succeeds and boundary-minus-one fails with the correct
+resource class. A returned retained-byte count is not assumed to be the peak
+scratch grant required by nested verifiers. All added indexes are precharged;
+passes remain O((V+E+U) log V) with O(V+E+U) additional storage.
+
+Increment-II validation: the full keep-going build passed, the fixed set passed
+65/65, and the 39-test targeted slice passed 38/39 (only the registered
+pre-existing `tree_structure_test` failure). All nine for-in tests passed.
+The six actual target loops also pass the production draft builder and TreeFlow:
+m29450@90/101, m42548@23/34, m44469@28/39 and @179/190, m21553@47/58,
+m54047@230/241 (acquisition/advance). Both flag sets against explore52/explore52s
+remain 497/620 and 534/620 with zero status or source-byte changes. Only the
+four previously for-in-blocked record diagnostics move to kForInRecovery;
+DataDriver still first refuses the unrelated getiterator in m42717@153.
+Logs and exports use `/private/tmp/r52ii-`; see status.md for the exact paths.
+
+For the 200/201/400/800 independent-loop fixtures, the minimum successful draft
+byte grants were 9,277,041 / 9,323,363 / 18,541,441 / 37,070,241; minimum work
+grants were 11,190,049 / 11,247,301 / 22,393,670 / 44,822,463. These are measured
+semantic-budget boundaries (not peak RSS), with the exact and minus-one checks
+run separately for each dimension. No record/process cap was raised.

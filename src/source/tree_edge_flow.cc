@@ -1,4 +1,5 @@
 #include "tree_edge_flow.h"
+#include "for_in_emission.h"
 #include "completion_tree.h"
 
 namespace abcd::source {
@@ -221,6 +222,22 @@ void TreeEdgeFlow::Catch(analysis::WorkBlockId handler, const BlockStmt& block,
   }
 }
 
+void TreeEdgeFlow::Forwarded(const ForInEmissionView& view) {
+  if (!evaluation_.phis) return;
+  for (std::size_t b = 0; b < evaluation_.phis->bundles.size(); ++b) {
+    budget_.Step(); const auto* id = std::get_if<analysis::EdgeId>(&evaluation_.phis->bundles[b].incoming);
+    if (!id) continue;
+    const auto& edge = graph_.edges[id->value];
+    if (!view.forwarded_blocks[edge.source.value] && !view.forwarded_blocks[edge.target.value]) continue;
+    Require(flow_.copies[b].expressions.empty() && flow_.copies[b].temporaries.empty(), TreeFlowError::kSequence);
+    visited_[b] = 1;
+  }
+  if (evaluation_.exceptions) for (std::size_t c = 0; c < evaluation_.exceptions->commits.size(); ++c) {
+    budget_.Step(); const auto& commit = evaluation_.exceptions->commits[c];
+    if (!view.forwarded_blocks[commit.block.value]) continue;
+    Require(commit.count == 0, TreeFlowError::kSequence); committed_[c] = 1;
+  }
+}
 void TreeEdgeFlow::Finish() {
   if (!evaluation_.phis) return;
   for (const auto visited : visited_) {
@@ -238,7 +255,7 @@ void TreeEdgeFlow::Finish() {
     const auto& value = graph_.values[i];
     const bool phi = (evaluation_.aliases.empty() || evaluation_.aliases[i] == analysis::ValueId{static_cast<std::uint32_t>(i)}) && value.life == analysis::ValueLife::kLive &&
         std::holds_alternative<analysis::PhiDefinition>(value.origin);
-    Require(flow_.phis[i].has_value() == (phi && (evaluation_.logical_values.empty() || !evaluation_.logical_values[i])), TreeFlowError::kSnapshot);
+    Require(flow_.phis[i].has_value() == (phi && (!evaluation_.for_in || !evaluation_.for_in->values[i]) && (evaluation_.logical_values.empty() || !evaluation_.logical_values[i])), TreeFlowError::kSnapshot);
   }
 }
 }  // namespace abcd::source

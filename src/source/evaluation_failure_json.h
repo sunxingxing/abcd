@@ -47,8 +47,8 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
       !FailureOptionalId(j,"selection_edge",v.selection_edge) || !FailureOptionalId(j,"expected_consumer",v.expected_consumer) || !FailureOptionalId(j,"actual_consumer",v.actual_consumer)) return {};
   if (j.contains("selection_exit")) { if (!FailureNumber(j,"selection_exit",n) || n > static_cast<unsigned>(SelectionExitReason::kKeepEdge)) return {}; v.selection_exit = static_cast<SelectionExitReason>(n); }
   if (j.contains("placement")) { if (!FailureNumber(j,"placement",n) || n > static_cast<unsigned>(EvaluationKind::kForInEvent)) return {}; v.placement = static_cast<EvaluationKind>(n); }
-  if (j.contains("temporary")) { if (!FailureNumber(j,"temporary",n) || n > static_cast<unsigned>(TemporaryReason::kDecisionPredicate)) return {}; v.temporary = static_cast<TemporaryReason>(n); }
-  if (j.contains("expected_temporary")) { if (!FailureNumber(j,"expected_temporary",n) || n > static_cast<unsigned>(TemporaryReason::kDecisionPredicate)) return {}; v.expected_temporary = static_cast<TemporaryReason>(n); }
+  if (j.contains("temporary")) { if (!FailureNumber(j,"temporary",n) || n > static_cast<unsigned>(TemporaryReason::kEnumerationKey)) return {}; v.temporary = static_cast<TemporaryReason>(n); }
+  if (j.contains("expected_temporary")) { if (!FailureNumber(j,"expected_temporary",n) || n > static_cast<unsigned>(TemporaryReason::kEnumerationKey)) return {}; v.expected_temporary = static_cast<TemporaryReason>(n); }
   if (j.contains("expected_owner")) { v.expected_owner = ParseTreeLocation(j["expected_owner"]); if (!v.expected_owner) return {}; }
   if (j.contains("actual_owner")) { v.actual_owner = ParseTreeLocation(j["actual_owner"]); if (!v.actual_owner) return {}; }
   return v;

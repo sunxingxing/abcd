@@ -204,7 +204,7 @@ target_sources(abcd_source PRIVATE src/source/tree_operands.cc src/source/tree_c
 target_sources(abcd_source PRIVATE src/source/edge_copies.cc src/source/edge_copy_verify.cc)
 target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_verify.cc src/source/phi_expression_inputs.cc)
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
-target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/exception_forwarding.cc)
+target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/for_in_emission.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
@@ -1166,6 +1166,9 @@ if(BUILD_TESTING)
   target_include_directories(for_in_plan_test PRIVATE tests/support)
   add_test(NAME for_in_plan_test COMMAND for_in_plan_test)
   add_test(NAME for_in_evaluation_test COMMAND for_in_plan_test --evaluation)
+  add_test(NAME for_in_emission_test COMMAND for_in_plan_test --emission)
+  add_test(NAME for_in_emission_fixture_test COMMAND for_in_plan_test --emission-file
+    ${CMAKE_SOURCE_DIR}/tests/integration/fixtures/for_in/loops.abc)
   add_test(NAME for_in_events_test COMMAND for_in_plan_test --events)
   add_test(NAME for_in_fixture_test COMMAND for_in_plan_test
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_in/loops.abc)

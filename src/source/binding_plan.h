@@ -5,6 +5,8 @@
 #include "parameter_plan.h"
 
 namespace abcd::source {
+struct ForInEmissionView;
+struct ForInKeyBinding { std::uint32_t loop; };
 struct UnboundValue {};
 struct ReceiverEntryBinding {};
 struct NativeReceiverBinding { ReceiverValue source; };
@@ -25,7 +27,7 @@ struct UpdateBinding { analysis::OpId producer; };
 struct CatchParameterBinding { analysis::ValueId value; analysis::WorkBlockId block; };
 struct CatchSlotBinding { CatchSlotId slot; };
 using BindingSource = std::variant<ParameterBinding, InvocationRestBinding, SnapshotBinding, PhiBinding, CycleBinding, CellBinding,
-                                   FunctionSelfBinding, CatchParameterBinding, CatchSlotBinding, HoleTokenBinding, UpdateBinding>;
+                                   FunctionSelfBinding, CatchParameterBinding, CatchSlotBinding, HoleTokenBinding, UpdateBinding, ForInKeyBinding>;
 // These source bindings already hold invocation-owned values. Loaded mutable
 // cells, phi/cycle locations and effect snapshots never qualify.
 inline bool IsInvocationBinding(const BindingSource& source) {
@@ -74,13 +76,13 @@ enum class BindingError : std::uint8_t {
 [[nodiscard]] std::variant<BindingPlan, BindingError> BuildBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, analysis::SemanticBudget budget = {},
-    ParameterForm parameters = ParameterForm::kFrameFormals);
+    ParameterForm parameters = ParameterForm::kFrameFormals, const ForInEmissionView* enumeration = nullptr);
 // Catch parameters retain their Catch block identity for lexical handler-scope
 // assignment. Staging slots are distinct invocation-private compiler symbols.
 // This allocation does not authorize hoisting a catch parameter into the body.
 [[nodiscard]] std::variant<BindingPlan, BindingError> BuildPhasedBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     std::uint32_t parameter_count, analysis::SemanticBudget budget = {},
-    ParameterForm parameters = ParameterForm::kFrameFormals);
+    ParameterForm parameters = ParameterForm::kFrameFormals, const ForInEmissionView* enumeration = nullptr);
 }  // namespace abcd::source
 #endif

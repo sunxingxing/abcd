@@ -1,4 +1,5 @@
 #include "tree_flow.h"
+#include "for_in_emission.h"
 
 #include <algorithm>
 #include <new>
@@ -129,6 +130,28 @@ class FlowCheck {
       Require(checked.has_value(), Error::kEvaluation);
       budget_.Step(*checked);
     }
+    if (evaluation_.for_in) {
+      Require(exceptions_, Error::kControl);
+      auto view = BuildForInEmissionView(graph_, exceptions_->regions, exceptions_->control,
+          *evaluation_.for_in, *evaluation_.for_in_events, budget_.Remaining());
+      if (const auto* failure = std::get_if<ForInFailure>(&view)) {
+        if (failure->kind == ForInError::kResourceLimit) throw Error::kResourceLimit;
+        if (failure->kind == ForInError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kControl;
+      }
+      enumeration_ = std::get<ForInEmissionView>(std::move(view));
+      budget_.Admit(enumeration_->allocated_bytes, 1); budget_.Step(enumeration_->work);
+      const auto copies = VerifyForInCopyState(graph_, evaluation_, *enumeration_, budget_.Remaining());
+      if (const auto* failure = std::get_if<ForInFailure>(&copies)) {
+        if (failure->kind == ForInError::kResourceLimit) throw Error::kResourceLimit;
+        if (failure->kind == ForInError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kControl;
+      }
+      budget_.Step(std::get<std::uint64_t>(copies));
+      budget_.Array(enumeration_statements_, enumeration_->loops.size());
+      budget_.Array(enumeration_scopes_, enumeration_->loops.size());
+      budget_.Array(flow_.enumerations, enumeration_->loops.size());
+    }
     IndexPlacements();
     ModulePairs();
     CheckBodyOrigin();
@@ -152,12 +175,15 @@ class FlowCheck {
         if (exceptions_ && std::holds_alternative<std::monostate>(node.synthetic)) {
           const auto& unit = exceptions_->control.units[cursor->value];
           if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
+            if (enumeration_ && enumeration_->forwarded_regions[region->region.value]) {
+              cursor = enumeration_->continuations[cursor->value]->next; continue;
+            }
             Try(region->region, block, child, pending);
             cursor = node.next;
             continue;
           }
           if (std::holds_alternative<TryExitUnit>(unit)) {
-            cursor = node.next;
+            cursor = enumeration_ && enumeration_->continuations[cursor->value] ? enumeration_->continuations[cursor->value]->next : node.next;
             continue;
           }
           const auto original = std::get<PhaseControlUnit>(unit).block;
@@ -166,6 +192,21 @@ class FlowCheck {
             edges_->Catch(original, block, child);
         }
         if (!std::holds_alternative<std::monostate>(node.synthetic)) {
+          if (enumeration_) if (const auto* wrapper = std::get_if<LoopControl>(&node.synthetic);
+              wrapper && enumeration_->wrappers[wrapper->loop.value]) {
+            const auto i = *enumeration_->wrappers[wrapper->loop.value];
+            Require(enumeration_statements_[i].has_value() && loops_[wrapper->loop.value].has_value(), Error::kControl);
+            const auto statement = *enumeration_statements_[i];
+            const auto& syntax = std::get<ForInStmt>(tree_.statements[statement.value].statement);
+            Require(child < block.child_count && sequences_.Child(block.first_child + child++) == statement &&
+                enumeration_scopes_[i] == block.scope, Error::kSequence);
+            if (enumeration_->loops[i].exhaustion_only) edges_->Consume(evaluation_.for_in->loops[i].done_edge, block, child);
+            const auto offset = cursor->value - flow_.first_control.value;
+            flow_.controls[offset] = tree_.statements[statement.value].origin; flow_.control_statements[offset] = statement;
+            Require(pending < tasks_.size(), Error::kResourceLimit);
+            tasks_[pending++] = {control_.loops[wrapper->loop.value].body, syntax.body, 0};
+            cursor = node.next; continue;
+          }
           Loop(*cursor, block, child, pending);
           cursor = node.next;
           continue;
@@ -187,6 +228,9 @@ class FlowCheck {
           const analysis::OpId id = predicate.value_or(analysis::OpId{source.first_op.value + i});
           LocationScope witness(*this, At(id)); location_.statement = region.block;
           const auto& op = graph_.ops[id.value];
+          if (enumeration_ && evaluation_.operations[id.value].kind == EvaluationKind::kForInEvent) {
+            Enumeration(id, block, child, predicate.has_value()); continue;
+          }
           if (exceptions_ && !predicate && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
             Require((evaluation_.operations[id.value].kind == EvaluationKind::kRoot ||
                 evaluation_.operations[id.value].kind == EvaluationKind::kLogicalValue) && source.edge_count == 1 && !edges_->HasCopies(source.first_edge), Error::kControl);
@@ -307,10 +351,15 @@ class FlowCheck {
             edges_->Consume(edge, block, child);
           }
         }
-        cursor = node.next;
+        if (enumeration_ && predicate) {
+          const auto member = evaluation_.for_in->operations[predicate->value];
+          if (member && member->role == ForInRole::kDecision) { cursor = enumeration_->loops[member->loop].body; continue; }
+        }
+        cursor = enumeration_ && enumeration_->continuations[cursor->value] ? enumeration_->continuations[cursor->value]->next : node.next;
       }
       Require(child == block.child_count, Error::kSequence);
     }
+    if (enumeration_) edges_->Forwarded(*enumeration_);
     edges_->Finish();
     Arrays();
     Objects();
@@ -334,10 +383,11 @@ class FlowCheck {
         const auto& value = graph_.values[i];
         Require(flow_.catch_parameters[i].has_value() ==
             (value.life == analysis::ValueLife::kLive &&
-             std::holds_alternative<analysis::CatchDefinition>(value.origin)), Error::kPlacement);
+             std::holds_alternative<analysis::CatchDefinition>(value.origin) &&
+             (!enumeration_ || !enumeration_->forwarded_blocks[std::get<analysis::CatchDefinition>(value.origin).block.value])), Error::kPlacement);
       }
-      for (const auto statement : flow_.tries) {
-        budget_.Step(); Require(statement.has_value(), Error::kControl);
+      for (std::size_t i = 0; i < flow_.tries.size(); ++i) {
+        budget_.Step(); Require(flow_.tries[i].has_value() == (!enumeration_ || !enumeration_->forwarded_regions[i]), Error::kControl);
       }
     }
     sequences_.Finish(flow_, budget_);
@@ -1075,7 +1125,8 @@ class FlowCheck {
       scopes[scope.value] = analysis::CatchScope{region, part}; resolved[scope.value] = 1;
     };
     for (std::size_t r = 0; r < flow_.tries.size(); ++r) {
-      budget_.Step(); Require(flow_.tries[r].has_value(), Error::kControl);
+      budget_.Step(); if (enumeration_ && enumeration_->forwarded_regions[r]) continue;
+      Require(flow_.tries[r].has_value(), Error::kControl);
       const auto& syntax = std::get<TryStmt>(tree_.statements[flow_.tries[r]->value].statement);
       Require(syntax.handler.has_value(), Error::kControl);
       const analysis::TryId region{static_cast<std::uint32_t>(r)};
@@ -1249,6 +1300,36 @@ class FlowCheck {
     }
     Require(count == tree_.properties.size(), Error::kPlacement);
   }
+  void Enumeration(analysis::OpId id, const BlockStmt& block, std::uint32_t& child, bool commit) {
+    const auto member = *evaluation_.for_in->operations[id.value];
+    const auto& protocol = evaluation_.for_in->loops[member.loop];
+    const auto& event = evaluation_.for_in_events->loops[member.loop];
+    const auto statement = *enumeration_statements_[member.loop];
+    const auto& syntax = std::get<ForInStmt>(tree_.statements[statement.value].statement);
+    if (id == protocol.acquisition) {
+      Require(syntax.binding == ForInBinding::kAssignment &&
+          tree_.statements[statement.value].origin.value == graph_.ops[id.value].origin.value, Error::kSequence);
+      const auto key = syntax.key; const auto& symbol = tree_.symbols[key.value];
+      Require(symbol.kind == BindingKind::kCompilerTemporary && symbol.declaration == DeclarationKind::kLet &&
+          symbol.scope == tree_.body_scope && symbol.temporary == TemporaryReason::kEnumerationKey &&
+          declared_[key.value] && !assigned_[key.value], Error::kSnapshot);
+      assigned_[key.value] = 1; enumeration_scopes_[member.loop] = block.scope;
+      flow_.enumerations[member.loop] = {event, statement, syntax.object, key, block.scope,
+          enumeration_->loops[member.loop].acquisition};
+      const auto loop = enumeration_->loops[member.loop].loop;
+      Require(!loops_[loop.value], Error::kControl); loops_[loop.value] = statement;
+      // Stage is still checked at the original acquisition, not at the loop's
+      // header or a body call. Forwarding never invents catch snapshots.
+      edges_->Stage(id, block, child);
+    }
+    if (member.role == ForInRole::kDecision && commit) {
+      if (!enumeration_->loops[member.loop].exhaustion_only) {
+        Require(!edges_->HasCopies(event.key.exhausted), Error::kSequence);
+        edges_->Consume(event.key.exhausted, block, child);
+      }
+      edges_->Consume(event.key.success, block, child);
+    }
+  }
   void Loop(ControlId id, const BlockStmt& block, std::uint32_t& child,
       std::size_t& pending) {
     Require(child < block.child_count, Error::kSequence);
@@ -1363,6 +1444,21 @@ class FlowCheck {
       if (op.life != analysis::ValueLife::kLive) continue;
       Require(placements_[i].has_value(), Error::kPlacement);
       const auto& placement = tree_.operations[*placements_[i]].node;
+      if (enumeration_) {
+        const auto member = evaluation_.for_in->operations[i];
+        const auto forwarded = enumeration_->forwarded_operations[i];
+        if (member || forwarded) {
+          const auto l = member ? member->loop : *forwarded;
+          const auto acquisition = evaluation_.for_in->loops[l].acquisition;
+          Require(placements_[acquisition.value].has_value(), Error::kPlacement);
+          const auto* statement = std::get_if<StmtId>(&placement);
+          const auto* owner = std::get_if<StmtId>(&tree_.operations[*placements_[acquisition.value]].node);
+          Require(statement && owner && *statement == *owner &&
+              std::holds_alternative<ForInStmt>(tree_.statements[owner->value].statement), Error::kPlacement);
+          enumeration_statements_[l] = *owner; flow_.statements[i] = *owner;
+          continue;
+        }
+      }
       // Class member installations retain a PC anchor, not an object-literal
       // PropertyId. Their class owner/body correspondence is checked separately.
       if (evaluation_.operations[i].kind == EvaluationKind::kCellGuard) {
@@ -1649,6 +1745,9 @@ class FlowCheck {
   const FunctionTree& tree_;
   TreeCheckBudget& budget_;
   const ExceptionTreeInput* exceptions_;
+  std::optional<ForInEmissionView> enumeration_;
+  std::vector<std::optional<StmtId>> enumeration_statements_;
+  std::vector<std::optional<ScopeId>> enumeration_scopes_;
   // Per deferred cell: the block statement of its allocation, which must
   // directly contain its declaring first store.
   std::vector<std::optional<StmtId>> deferred_blocks_;

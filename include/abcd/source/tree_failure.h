@@ -10,7 +10,7 @@ namespace abcd::source {
 enum class TreeObligation : std::uint8_t {
   kControlVerification, kCompletion, kDecisionEdgeCopies, kDecisionPrefix,
   kCatchScope, kCatchStaging, kExpressionOwnership, kDeferredDeclaration,
-  kStructure, kFlow, kSemantics, kBindings, kCapture, kPlacement, kForInCorrespondence
+  kStructure, kFlow, kSemantics, kBindings, kCapture, kPlacement, kForInCorrespondence, kForInRecovery
 };
 struct TreeSyntheticLocation {
   ControlOriginKind kind;

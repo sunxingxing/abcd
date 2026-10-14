@@ -1,4 +1,6 @@
 #include "function_tree.h"
+#include "for_in_emission.h"
+#include "for_in_evaluation.h"
 #include "evaluation_disposition.h"
 #include "completion_tree.h"
 #include "exception_tree.h"
@@ -51,7 +53,7 @@ class TreeBuilder {
         syntax_(std::move(syntax)), constants_(constants), budget_(budget),
         bytes_(budget.bytes), work_(budget.work), incoming_(incoming), exceptions_(exceptions), recovery_(recovery) {}
 
-  ConstructedFunction Build() {
+  ExceptionFunctionDraft Build() {
     if (evaluation_.for_in) {
       const auto checked = exceptions_ ? VerifyPhasedEvaluationPlan(graph_, evaluation_, {bytes_, work_}) :
           VerifyEvaluationPlan(graph_, evaluation_, {bytes_, work_});
@@ -61,9 +63,27 @@ class TreeBuilder {
         Fail(Error::kSemantics, *error, TreeObligation::kForInCorrespondence);
       }
       Step(std::get<std::uint64_t>(checked));
-      WitnessScope witness(*this, TreeObligation::kForInCorrespondence,
-          At(evaluation_.for_in->loops.front().acquisition));
-      Require(false, Error::kSemantics);
+      Require(exceptions_, Error::kControl);
+      auto projected = BuildForInEmissionView(graph_, exceptions_->regions, exceptions_->control,
+          *evaluation_.for_in, *evaluation_.for_in_events, {bytes_, work_});
+      if (const auto* error = std::get_if<ForInFailure>(&projected)) {
+        if (error->kind == ForInError::kResourceLimit) throw Error::kResourceLimit;
+        if (error->kind == ForInError::kWorkLimit) throw Error::kWorkLimit;
+        WitnessScope witness(*this, TreeObligation::kForInCorrespondence,
+            At(error->operation.value_or(error->acquisition.value_or(evaluation_.for_in->loops.front().acquisition))));
+        Fail(Error::kControl, ForInEvaluationFailure(graph_, *error), TreeObligation::kForInCorrespondence);
+      }
+      enumeration_ = std::get<ForInEmissionView>(std::move(projected));
+      Admit(enumeration_->allocated_bytes, 1); Step(enumeration_->work);
+      const auto copies = VerifyForInCopyState(graph_, evaluation_, *enumeration_, {bytes_, work_});
+      if (const auto* error = std::get_if<ForInFailure>(&copies)) {
+        if (error->kind == ForInError::kResourceLimit) throw Error::kResourceLimit;
+        if (error->kind == ForInError::kWorkLimit) throw Error::kWorkLimit;
+        WitnessScope witness(*this, TreeObligation::kForInCorrespondence,
+            At(error->operation.value_or(error->acquisition.value_or(evaluation_.for_in->loops.front().acquisition))));
+        Fail(Error::kControl, ForInEvaluationFailure(graph_, *error), TreeObligation::kForInCorrespondence);
+      }
+      Step(std::get<std::uint64_t>(copies));
     }
     if (exceptions_ && evaluation_.cells) CheckCellLifetimes();
     Require(syntax_.parameters.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
@@ -129,13 +149,14 @@ class TreeBuilder {
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
         constants_, {bytes_, work_}, modules,
         (incoming_ && !incoming_->cells.targets.empty()) || exceptions_ || !syntax_.captures.empty()
-            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_, syntax_.callable, Arithmetic(syntax_.identity.contract), Constructors(syntax_.identity.contract), syntax_.parameter_form);
+            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_, syntax_.callable, Arithmetic(syntax_.identity.contract), Constructors(syntax_.identity.contract), syntax_.parameter_form, enumeration_ ? &*enumeration_ : nullptr);
     if (const auto* error = std::get_if<ExpressionFailure>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;
       throw FunctionTreeFailure{Error::kExpression, *error, syntax_.method};
     }
     forest_ = std::get<ExpressionForest>(std::move(expressions));
+
     Admit(forest_.allocated_bytes, 1);
     Step(forest_.work);
     tree_.identity = syntax_.identity;
@@ -181,6 +202,7 @@ class TreeBuilder {
     tree_.origins = std::move(forest_.origins);
     tree_.origin_parts = std::move(forest_.origin_parts);
     Reserve();
+    if (enumeration_) { Grow(enumeration_drafts_, enumeration_->loops.size()); enumeration_drafts_.resize(enumeration_->loops.size()); Grow(enumeration_parents_, enumeration_->loops.size()); enumeration_parents_.resize(enumeration_->loops.size()); }
     ReservedNames();
     Bindings();
     Require(control_.entry.value < control_.nodes.size(), Error::kControl);
@@ -215,10 +237,35 @@ class TreeBuilder {
       while (next) {
         Step();
         const auto& region = control_.nodes[next->value];
+        if (enumeration_ && next->value < exceptions_->control.units.size()) {
+          if (const auto* source = std::get_if<TryControlUnit>(&exceptions_->control.units[next->value]);
+              source && enumeration_->forwarded_regions[source->region.value]) {
+            next = enumeration_->continuations[next->value]->next;
+            continue;
+          }
+        }
         if (!std::holds_alternative<std::monostate>(region.synthetic)) EmitLoop(region, task.draft);
         else if (exceptions_) EmitExceptionUnit(*next, task.draft);
         else EmitBlock(region, task.draft);
-        next = region.next;
+        if (enumeration_ && next->value < exceptions_->control.units.size()) {
+          if (const auto* phase = std::get_if<PhaseControlUnit>(&exceptions_->control.units[next->value])) {
+            const auto& identity = graph_.phases[phase->block.value];
+            if (identity.phase == analysis::ExceptionPhase::kCommit && identity.operation) {
+              const auto member = evaluation_.for_in->operations[identity.operation->value];
+              if (member && member->role == ForInRole::kDecision) {
+                next = enumeration_->loops[member->loop].body; continue;
+              }
+            }
+          }
+        }
+        next = enumeration_ && enumeration_->continuations[next->value] ? enumeration_->continuations[next->value]->next : region.next;
+      }
+    }
+    if (enumeration_) for (std::uint32_t o = 0; o < graph_.ops.size(); ++o) {
+      Step(); if (enumeration_->forwarded_operations[o] && graph_.ops[o].life == analysis::ValueLife::kLive) {
+        const auto l = *enumeration_->forwarded_operations[o];
+        Require(loops_[enumeration_->loops[l].loop.value].has_value(), Error::kControl);
+        tree_.operations.push_back({{o}, *loops_[enumeration_->loops[l].loop.value]});
       }
     }
     Flatten();
@@ -229,6 +276,26 @@ class TreeBuilder {
       Fail(Error::kStructure, *error, TreeObligation::kStructure);
     }
     Admit(std::get<TreeStorage>(labels).bytes, 1); Step(std::get<TreeStorage>(labels).work);
+    if (enumeration_) {
+      const auto measured = MeasureTreeStorage(tree_, {budget_.bytes, work_});
+      const auto* storage = std::get_if<TreeStorage>(&measured);
+      Require(storage && storage->bytes <= budget_.bytes - bytes_, Error::kResourceLimit);
+      Step(storage->work);
+      TreeLocation failed;
+      auto checked = VerifyExceptionTreeFlow(graph_, *exceptions_, evaluation_, tree_,
+          {bytes_ + storage->bytes, work_}, TreeControlCheck::kFresh, &failed);
+      if (const auto* error = std::get_if<TreeFlowError>(&checked)) {
+        witness_.location = failed;
+        if (*error == TreeFlowError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == TreeFlowError::kWorkLimit) throw Error::kWorkLimit;
+        Fail(Error::kSemantics, *error, TreeObligation::kFlow);
+      }
+      auto flow = std::get<TreeFlow>(std::move(checked));
+      Require(flow.allocated_bytes >= storage->bytes, Error::kResourceLimit);
+      Admit(flow.allocated_bytes - storage->bytes, 1); Step(flow.work);
+      // This is an unpublished draft only. OriginalFlow/recovery has not run.
+      return {std::move(tree_), budget_.bytes - bytes_, budget_.work - work_, std::move(flow)};
+    }
     if (forest_.recovery_stop) {
       const auto checked = VerifyTreeStructure(tree_, {bytes_, work_});
       if (const auto* error = std::get_if<TreeStructureError>(&checked)) {
@@ -700,7 +767,9 @@ class TreeBuilder {
       }
       TemporaryReason reason;
       std::u16string_view prefix;
-      if (const auto* snapshot = std::get_if<SnapshotBinding>(&binding)) {
+      if (std::holds_alternative<ForInKeyBinding>(binding)) {
+        reason = TemporaryReason::kEnumerationKey; prefix = u"$key";
+      } else if (const auto* snapshot = std::get_if<SnapshotBinding>(&binding)) {
         reason = snapshot->reason; prefix = u"$value";
       } else if (std::holds_alternative<PhiBinding>(binding)) {
         reason = TemporaryReason::kPhiJoin; prefix = u"$phi";
@@ -848,6 +917,9 @@ class TreeBuilder {
         return;
       }
       const auto& evaluation = evaluation_.operations[id.value];
+      if (enumeration_ && evaluation.kind == EvaluationKind::kForInEvent) {
+        EmitEnumeration(id, draft); continue;
+      }
       if (op.life != analysis::ValueLife::kLive) continue;
       if (selected_condition && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
         Require(forest_.operations[id.value].has_value(), Error::kOwnership);
@@ -1381,6 +1453,12 @@ class TreeBuilder {
     }
     if (phase.phase == analysis::ExceptionPhase::kCommit && phase.operation &&
         std::holds_alternative<analysis::ValueBranch>(graph_.ops[phase.operation->value].operation)) {
+      if (enumeration_) if (const auto member = evaluation_.for_in->operations[phase.operation->value];
+          member && member->role == ForInRole::kDecision) {
+        const auto& protocol = evaluation_.for_in->loops[member->loop];
+        if (!enumeration_->loops[member->loop].exhaustion_only) RequireNoCopies(protocol.done_edge);
+        EmitEdge(protocol.body_edge, draft); return;
+      }
       EmitBranch(*phase.operation, node, graph_.blocks[block.value].first_edge, draft);
       return;
     }
@@ -1441,11 +1519,38 @@ class TreeBuilder {
       Append(draft, Statement(DeclarationStmt{symbol, {}}, origin));
     }
   }
+  void EmitEnumeration(analysis::OpId op, std::size_t draft) {
+    const auto member = *evaluation_.for_in->operations[op.value];
+    const auto& protocol = evaluation_.for_in->loops[member.loop];
+    const auto loop = enumeration_->loops[member.loop].loop;
+    if (op == protocol.acquisition) {
+      const auto key = std::get_if<SymbolId>(&forest_.bindings.values[protocol.key.value]);
+      Require(key && forest_.operations[op.value] && !loops_[loop.value], Error::kBinding);
+      const TreeOriginId origin{graph_.ops[op.value].origin.value};
+      const ScopeId scope{static_cast<std::uint32_t>(tree_.scopes.size())};
+      tree_.scopes.push_back({ScopeKind::kBlock, drafts_[draft].scope});
+      const auto body = Block(scope, origin);
+      const auto statement = Statement(ForInStmt{*forest_.operations[op.value], *key, drafts_[body].statement}, origin);
+      enumeration_drafts_[member.loop] = body; enumeration_parents_[member.loop] = draft; loops_[loop.value] = statement;
+      // Only private, nonthrowing protocol transport lies before first next
+      // (ForInPlan). Emit its phi initialization before the native event; the
+      // acquisition's original origin/scope and exception route stay explicit.
+    }
+    Require(loops_[loop.value].has_value(), Error::kControl);
+    tree_.operations.push_back({op, *loops_[loop.value]});
+  }
   void EmitLoop(const ControlNode& region, std::size_t draft) {
     const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
     Require(tree_.origins.size() < tree_.origins.capacity(), Error::kResourceLimit);
     if (const auto* wrapper = std::get_if<LoopControl>(&region.synthetic)) {
       const auto& loop = control_.loops[wrapper->loop.value];
+      if (enumeration_ && enumeration_->wrappers[wrapper->loop.value]) {
+        const auto i = *enumeration_->wrappers[wrapper->loop.value];
+        Require(enumeration_drafts_[i].has_value() && enumeration_parents_[i] == draft, Error::kControl);
+        Append(draft, *loops_[wrapper->loop.value]);
+        if (enumeration_->loops[i].exhaustion_only) EmitEdge(evaluation_.for_in->loops[i].done_edge, draft);
+        tasks_.push_back({loop.body, *enumeration_drafts_[i]}); return;
+      }
       const auto header = exceptions_ ? ExceptionNodeBlock(*exceptions_, {loop.header.value}) :
           std::optional<analysis::WorkBlockId>{loop.header};
       Require(header.has_value(), Error::kOrigin);
@@ -1585,6 +1690,8 @@ class TreeBuilder {
   ExpressionForest forest_;
   FunctionTree tree_;
   std::optional<TreeFlow> flow_;
+  std::optional<ForInEmissionView> enumeration_;
+  std::vector<std::optional<std::size_t>> enumeration_drafts_, enumeration_parents_;
   std::vector<BlockDraft> drafts_;
   // Per deferred cell: the draft of its allocation's own block statement.
   std::vector<std::optional<std::size_t>> deferred_drafts_;
@@ -1610,8 +1717,9 @@ std::variant<ConstructedFunction, FunctionTreeFailure> BuildFunctionTree(
     ExpressionConstants constants, analysis::SemanticBudget budget,
     const IncomingCaptureTree* incoming, RecoveryMode recovery) {
   try {
-    return TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget, incoming,
+    auto draft = TreeBuilder(graph, control, evaluation, std::move(syntax), constants, budget, incoming,
                        nullptr, recovery).Build();
+    return ConstructedFunction{std::move(draft.tree), draft.allocated_bytes, draft.work, std::move(draft.flow)};
   } catch (Error error) { return error;
   } catch (const FunctionTreeFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
@@ -1624,7 +1732,27 @@ std::variant<ExceptionFunctionDraft, FunctionTreeFailure> BuildExceptionFunction
   try {
     auto built = TreeBuilder(graph, exceptions.control.skeleton, evaluation,
         std::move(syntax), constants, budget, incoming, &exceptions).Build();
-    return ExceptionFunctionDraft{std::move(built.tree), built.allocated_bytes, built.work, std::move(built.flow)};
+    if (evaluation.for_in) {
+      FunctionTreeFailure failure{Error::kSemantics}; failure.method = built.tree.method;
+      failure.tree = TreeFailureEvidence{TreeObligation::kForInRecovery,
+          OperationLocation(graph, evaluation.for_in->loops.front().acquisition, built.tree.method)};
+      return failure;
+    }
+    return built;
+  } catch (Error error) { return error;
+  } catch (const FunctionTreeFailure& failure) { return failure;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<ForInTreeDraft, FunctionTreeFailure> BuildForInTreeDraft(
+    const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
+    const EvaluationPlan& evaluation, FunctionSyntax syntax, ExpressionConstants constants,
+    analysis::SemanticBudget budget) {
+  if (!evaluation.for_in) return Error::kControl;
+  try {
+    auto built = TreeBuilder(graph, exceptions.control.skeleton, evaluation,
+        std::move(syntax), constants, budget, nullptr, &exceptions).Build();
+    return ForInTreeDraft{std::move(built.tree), built.allocated_bytes, built.work, std::move(*built.flow)};
   } catch (Error error) { return error;
   } catch (const FunctionTreeFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

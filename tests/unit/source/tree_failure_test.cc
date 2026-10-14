@@ -52,7 +52,7 @@ int main() {
   static_assert(static_cast<unsigned>(EvaluationError::kResourceLimit)==9);
   // Every obligation travels through both publication paths. Zero is a real
   // PC/ID; absence and synthetic origins must survive independently.
-  for(unsigned tag=0;tag<=static_cast<unsigned>(TreeObligation::kForInCorrespondence);++tag) {
+  for(unsigned tag=0;tag<=static_cast<unsigned>(TreeObligation::kForInRecovery);++tag) {
     FunctionTreeFailure f{FunctionTreeError::kControl};
     f.tree=TreeFailureEvidence{static_cast<TreeObligation>(tag),{}};
     auto& loc=f.tree->location;loc.method=abc::EntityOffset{77};loc.operation=analysis::OpId{0};

@@ -22,6 +22,7 @@ bool ValidTemporary(TemporaryReason reason) {
     case TemporaryReason::kUnprovedInline: case TemporaryReason::kPredicateSnapshot:
     case TemporaryReason::kExceptionSnapshot: case TemporaryReason::kPendingCompletion:
     case TemporaryReason::kInternalSentinel: case TemporaryReason::kNumericUpdate:
+    case TemporaryReason::kEnumerationKey:
     case TemporaryReason::kDecisionPredicate:
       return true;
   }

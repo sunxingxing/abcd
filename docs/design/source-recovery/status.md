@@ -12,6 +12,16 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 52 increment II：生产 draft 与 TreeFlow（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；497/620、534/620 不变，0 状态变化，0 文本变化；for-in 测试 9/9。审查重点：preheader 私有 phi 初始化先于 native 语句（依赖 acquisition→first-next 证明），耗尽 copies 仅在唯一正常退出时后置，其余以 kExit 拒绝。
+
+- 基线 `8cca4728`。新增 `ForInEmissionView`，只解释已验证 ControlPlan，不改节点、follow/decision 或 LoopId。生产 builder 发射赋值式 ForInStmt；枚举器、内部 next-result、成功边 key commit 分开，原始声明与普通 body/exit 保留。
+- 异常对应按原始入口记录 PhysicalCatch / ForwardedExceptionRoute；逐入口普查后才消费转发路径，混合共享入口和非空 catch staging 保守拒绝。TreeFlow 从不可变输入独立重建 view、协议事件、scope、copy 与 exit 对应。
+- 生产 builder 返回 unpublished draft；TreeFlow 成功后，公开入口以 `FunctionTreeError::kSemantics(9) > TreeObligation::kForInRecovery(15)` 拒绝。**没有 ConstructedFunction 包装或源码发布**；OriginalFlow/recovery 联合验证留到 III。
+- 完整 `cmake --build build/regression -j 6 -- -k` 成功；固定集串行 **65/65**；39 项定向 **38/39**，唯一失败为已登记的 `tree_structure_test`。for-in 相关 **9/9**，含新增生产 draft/真实 fixture、view/异常/作用域/跳转变异、共享 key live-out、200/201/400/800 与精确预算边界。
+- 两套对 `explore52/explore52s`：**497/620、534/620** 不变，**0 状态变化、0 文本漂移**；仅 core/assertContain/Filter/MockKit 四个目标诊断改为 recovery 门禁。六个循环的方法级 draft + TreeFlow 均通过；DataDriver 首拒绝仍是 m42717@153 的 getiterator；Filter 两循环共享首个 acquisition @28 的公开门禁。
+- 证据：`/private/tmp/r52ii-build-full.log`、`r52ii-fixed.log`、`r52ii-targeted.log`、`r52ii-target-drafts.log`、`r52ii-final-cohort.log`；最终导出 `/private/tmp/r52ii-final-cohort/`。设计、限制见 [property-enumeration.md](property-enumeration.md#round-52-increment-ii-native-draft-and-treeflow-unpublished)。未 commit/push/stash，未运行留出集、全套测试或 RSS 基准；不宣称 engine-output Node 差分。
+
 ## Round 52 increment I：生产求值接入（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；497/620、534/620 不变，0 状态变化，0 文本变化；for-in 测试 7/7。
 

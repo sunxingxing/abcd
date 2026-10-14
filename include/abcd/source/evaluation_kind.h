@@ -9,7 +9,7 @@ enum class TemporaryReason : std::uint8_t {
   kMultipleUses, kEffectSnapshot, kPhiJoin, kParallelCopyCycle,
   kCrossRegionValue, kReferenceSnapshot, kUnprovedInline, kPredicateSnapshot,
   kExceptionSnapshot, kPendingCompletion, kInternalSentinel, kNumericUpdate,
-  kDecisionPredicate
+  kDecisionPredicate, kEnumerationKey
 };
 }  // namespace abcd::source
 #endif

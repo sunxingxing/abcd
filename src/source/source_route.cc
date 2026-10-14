@@ -498,7 +498,7 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
           if (*number > static_cast<unsigned>(EvaluationKind::kGuardedCellRead)) return false;
           target = static_cast<T>(*number);
         } else if constexpr (std::is_same_v<T, TemporaryReason>) {
-          if (*number > static_cast<unsigned>(TemporaryReason::kDecisionPredicate)) return false;
+          if (*number > static_cast<unsigned>(TemporaryReason::kEnumerationKey)) return false;
           target = static_cast<T>(*number);
         } else target = T{*number};
         return true;

@@ -1,4 +1,8 @@
 #include "../../../src/source/for_in_plan.h"
+#include "../../../src/source/for_in_emission.h"
+#include "../../../src/source/exception_tree.h"
+#include "abcd/analysis/exception_locals.h"
+#include "../../../src/source/tree_constants.h"
 #include "../../../src/source/evaluation_plan.h"
 #include "../../../src/source/for_in_evaluation.h"
 #include "../../../src/source/evaluation_failure_json.h"
@@ -20,8 +24,13 @@ using namespace abcd::analysis;
 using namespace abcd::source;
 using test::Check;
 namespace {
+bool emission_checks = false;
+const corpus::AbcFile* emission_file = nullptr;
+const abc::Header* emission_header = nullptr;
+const abc::MetadataIndex* emission_index = nullptr;
+abc::EntityOffset emission_method{};
 ValueProgram Import(const abc::MethodBody& body, std::uint32_t locals, std::uint32_t parameters,
-                    abc::ProfileId profile = abc::ProfileId::kDynamic1206) {
+                    abc::ProfileId profile = abc::ProfileId::kDynamic1206, bool prove_locals = false) {
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(locals, parameters, {}));
   const auto flowed = BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame);
   if (!std::holds_alternative<ExceptionFlow>(flowed)) std::cerr << "flow variant " << flowed.index() << " instructions " << body.instructions.size() << std::endl;
@@ -37,8 +46,10 @@ ValueProgram Import(const abc::MethodBody& body, std::uint32_t locals, std::uint
         entries.push_back({{v}, ValueKinds::Language()});
   }
   const auto env = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  std::vector<ExceptionLoadFact> loads;
+  if (prove_locals) loads = std::get<ExceptionLocals>(ProveExceptionLocals(flow, env)).loads;
   const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries, quota, {},
-      PendingExceptionValues::kLanguage, {}, {}, CallResultValues::kLanguage, FrameReceiver::kInitialized));
+      PendingExceptionValues::kLanguage, loads, {}, CallResultValues::kLanguage, FrameReceiver::kInitialized));
   const auto checked = VerifyExceptionInputs(flow, ssa, env, values, kDefaultSemanticWork, nullptr, ExceptionInputDomain::kHoleTransport);
   if (const auto* failure = std::get_if<ExceptionInputFailure>(&checked))
     std::cerr << "input " << static_cast<unsigned>(failure->kind) << '\n';
@@ -48,13 +59,128 @@ ValueProgram Import(const abc::MethodBody& body, std::uint32_t locals, std::uint
   Check(std::holds_alternative<ValueProgram>(imported));
   auto graph = std::get<ValueProgram>(imported);
   Check(std::holds_alternative<PhasedImportProof>(VerifyImportedPhases(graph, input)));
+  if (emission_checks && std::holds_alternative<ForInPlan>(BuildForInPlan(graph))) {
+    const auto plan = std::get<ForInPlan>(BuildForInPlan(graph));
+    const auto events = std::get<ForInEvents>(BuildForInEvents(graph, plan));
+    const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
+    const auto controls = BuildExceptionControl(body, graph, input, regions);
+    Check(std::holds_alternative<ExceptionControl>(controls));
+    const auto& control = std::get<ExceptionControl>(controls);
+    const auto view = BuildForInEmissionView(graph, regions, control, plan, events);
+    if (const auto* e = std::get_if<ForInFailure>(&view)) std::cerr << "view failure " << unsigned(e->kind) << " op " << (e->operation ? e->operation->value : 99999) << '\n';
+    Check(std::holds_alternative<ForInEmissionView>(view));
+    Check(std::holds_alternative<std::uint64_t>(VerifyForInEmissionView(graph, regions, control, plan, events, std::get<ForInEmissionView>(view))));
+    auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+    FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+    syntax.parameters.resize(parameters);
+    TreeConstants constants{}; constants.operations.resize(graph.ops.size());
+    if (emission_file) constants = std::get<TreeConstants>(ResolveTreeConstants(*emission_file, *emission_header,
+        *emission_index, emission_method, graph));
+    syntax.names = constants.names; syntax.texts = constants.texts; syntax.method = emission_method;
+    const ExceptionTreeInput context{body, input, regions, control};
+    const auto tree = BuildForInTreeDraft(graph, context, evaluation, syntax, constants.View());
+    if (const auto* e = std::get_if<FunctionTreeFailure>(&tree)) {
+      std::cerr << "draft failure " << unsigned(e->kind) << " cause " << e->cause.index();
+      if (e->tree) { std::cerr << " obligation " << unsigned(e->tree->obligation); if(e->tree->location.operation) std::cerr << " op " << e->tree->location.operation->value; }
+      if (const auto* f = std::get_if<TreeFlowError>(&e->cause)) std::cerr << " flow " << unsigned(*f);
+      if (const auto* f = std::get_if<ExpressionFailure>(&e->cause)) std::cerr << " expr " << unsigned(f->kind);
+      std::cerr << std::endl;
+    }
+    Check(std::holds_alternative<ForInTreeDraft>(tree));
+    const auto& draft = std::get<ForInTreeDraft>(tree);
+    Check(!draft.flow.original); // OriginalFlow/recovery is deliberately absent.
+    Check(draft.flow.enumerations.size() == events.loops.size());
+    for (std::size_t i=0;i<events.loops.size();++i) {
+      Check(draft.flow.enumerations[i].original == events.loops[i]);
+      Check(!draft.flow.expressions[plan.loops[i].acquisition.value] && !draft.flow.expressions[plan.loops[i].advance.value]);
+    }
+    Check(std::count_if(draft.tree.statements.begin(), draft.tree.statements.end(), [](const auto& n) {
+      return std::holds_alternative<ForInStmt>(n.statement);
+    }) == plan.loops.size());
+    const auto denied = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, constants.View());
+    const auto* refusal = std::get_if<FunctionTreeFailure>(&denied);
+    Check(refusal && refusal->tree && refusal->tree->obligation == TreeObligation::kForInRecovery);
+    if (plan.loops.size() <= 2) {
+      auto forged = std::get<ForInEmissionView>(view);
+      forged.loops[0].body.reset();
+      Check(std::holds_alternative<ForInFailure>(VerifyForInEmissionView(graph, regions, control, plan, events, forged)));
+      forged = std::get<ForInEmissionView>(view);
+      if (const auto* route = std::get_if<ForwardedExceptionRoute>(&forged.loops[0].acquisition)) {
+        const auto exit = route->exit;
+        forged.loops[0].acquisition = PhysicalCatch{exit};
+        Check(std::holds_alternative<ForInFailure>(VerifyForInEmissionView(graph, regions, control, plan, events, forged)));
+        forged = std::get<ForInEmissionView>(view);
+        ++std::get<ForwardedExceptionRoute>(forged.loops[0].acquisition).payload.value;
+        Check(std::holds_alternative<ForInFailure>(VerifyForInEmissionView(graph, regions, control, plan, events, forged)));
+        forged = std::get<ForInEmissionView>(view);
+        ++std::get<ForwardedExceptionRoute>(forged.loops[0].acquisition).exit.value;
+        Check(std::holds_alternative<ForInFailure>(VerifyForInEmissionView(graph, regions, control, plan, events, forged)));
+        forged = std::get<ForInEmissionView>(view);
+        const auto handler = std::get<ForwardedExceptionRoute>(forged.loops[0].acquisition).handler;
+        forged.forwarded_blocks[handler.value].reset();
+        Check(std::holds_alternative<ForInFailure>(VerifyForInEmissionView(graph, regions, control, plan, events, forged)));
+      }
+      const auto reject = [&](FunctionTree changed) {
+        Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph, context, evaluation, changed)));
+      };
+      auto changed = draft.tree;
+      const auto at = std::find_if(changed.statements.begin(), changed.statements.end(), [](const auto& n) {
+        return std::holds_alternative<ForInStmt>(n.statement);
+      });
+      const auto si = std::size_t(at - changed.statements.begin());
+      std::get<ForInStmt>(at->statement).key = SymbolId{0}; reject(std::move(changed));
+      changed = draft.tree;
+      std::get<ForInStmt>(changed.statements[si].statement).binding = ForInBinding::kPerIterationLet; reject(std::move(changed));
+      changed = draft.tree;
+      changed.statements[si].origin = TreeOriginId{graph.ops[plan.loops[0].advance.value].origin.value}; reject(std::move(changed));
+      changed = draft.tree;
+      changed.operations.erase(std::find_if(changed.operations.begin(), changed.operations.end(), [&](const auto& p) { return p.operation == plan.loops[0].advance; })); reject(std::move(changed));
+      changed = draft.tree;
+      const auto key = std::get<ForInStmt>(changed.statements[si].statement).key;
+      const auto native_body = std::get<ForInStmt>(changed.statements[si].statement).body;
+      changed.symbols[key.value].scope = std::get<BlockStmt>(changed.statements[native_body.value].statement).scope;
+      reject(std::move(changed)); // RHS/assignment target cannot see a body-local key.
+      changed = draft.tree;
+      for (auto& n : changed.statements) if (auto* jump = std::get_if<ContinueStmt>(&n.statement)) {
+        jump->target = changed.body; reject(std::move(changed)); break;
+      }
+    }
+    if (plan.loops.size() >= 200) {
+      const auto boundary = [&](bool bytes) {
+        std::uint64_t low = 0, high = bytes ? SemanticBudget{}.bytes : SemanticBudget{}.work;
+        while (low < high) {
+          const auto middle = low + (high-low)/2;
+          SemanticBudget budget{}; if(bytes) budget.bytes = middle; else budget.work = middle;
+          const auto attempt = BuildForInTreeDraft(graph, context, evaluation, syntax, constants.View(), budget);
+          if(std::holds_alternative<ForInTreeDraft>(attempt)) high = middle;
+          else {
+            const auto& error = std::get<FunctionTreeFailure>(attempt);
+            Check(error.kind == (bytes ? FunctionTreeError::kResourceLimit : FunctionTreeError::kWorkLimit));
+            low = middle + 1;
+          }
+        }
+        Check(low != 0);
+        SemanticBudget exact{}; if(bytes) exact.bytes = low; else exact.work = low;
+        Check(std::holds_alternative<ForInTreeDraft>(BuildForInTreeDraft(graph, context, evaluation, syntax, constants.View(), exact)));
+        if(bytes) --exact.bytes; else --exact.work;
+        const auto denied = BuildForInTreeDraft(graph, context, evaluation, syntax, constants.View(), exact);
+        Check(std::holds_alternative<FunctionTreeFailure>(denied) &&
+            std::get<FunctionTreeFailure>(denied).kind == (bytes ? FunctionTreeError::kResourceLimit : FunctionTreeError::kWorkLimit));
+        return low;
+      };
+      const auto bytes = boundary(true), work = boundary(false);
+      std::cout << "emission scale " << plan.loops.size() << " minimum bytes " << bytes << " work " << work << '\n';
+    }
+  }
   return graph;
 }
 abc::MethodBody Body(unsigned count, bool caught, bool split = false,
                      std::vector<std::uint8_t> handler_bytes = {0x61, 4, 0x60, 4, 0xfe, 0},
-                     bool repeat_advance = false, bool identity_cycle = false) {
+                     bool repeat_advance = false, bool identity_cycle = false, bool key_cell = false) {
   const auto byte = [](abc::Opcode op) { return static_cast<std::uint8_t>(op); };
   std::vector<std::uint8_t> bytes;
+  if(key_cell) bytes = {byte(abc::Opcode::kNEWLEXENV_IMM8), 1,
+      byte(abc::Opcode::kLDA_V8), 3, byte(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0};
   struct Catch { std::uint32_t acquire, handler; };
   std::vector<Catch> catches;
   for (unsigned i = 0; i < count; ++i) {
@@ -76,13 +202,16 @@ abc::MethodBody Body(unsigned count, bool caught, bool split = false,
     const auto branch = bytes.size();
     bytes.insert(bytes.end(), {byte(abc::Opcode::kJNEZ_IMM8), 0,
         byte(abc::Opcode::kLDA_V8), 2, byte(abc::Opcode::kISTRUE), byte(abc::Opcode::kSTA_V8), 3});
+    if (key_cell) bytes.insert(bytes.end(), {byte(abc::Opcode::kLDA_V8), 2,
+        byte(abc::Opcode::kSTLEXVAR_IMM4_IMM4), 0});
     if (identity_cycle) bytes.insert(bytes.end(), {byte(abc::Opcode::kMOV_V8_V8), 6, 1,
         byte(abc::Opcode::kMOV_V8_V8), 1, 6});
     const auto back = bytes.size();
     bytes.insert(bytes.end(), {byte(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(header - back)});
     bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
   }
-  bytes.push_back(byte(abc::Opcode::kRETURNUNDEFINED));
+  if(key_cell) bytes.insert(bytes.end(), {byte(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, byte(abc::Opcode::kRETURN)});
+  else bytes.push_back(byte(abc::Opcode::kRETURNUNDEFINED));
   auto body = test::Body(bytes);
   for (const auto& item : catches) {
     abc::TryRegion region; region.offset = {item.acquire}; region.length = 1; region.handler_count = 1; region.first_handler = static_cast<std::uint32_t>(body.handlers.size());
@@ -407,6 +536,7 @@ void File(const char* path, unsigned target) {
     const auto body = std::get<abc::MethodBody>(abc::DecodeMethodBody(*file, header.profile, *method.code));
     if (std::none_of(body.instructions.begin(), body.instructions.end(), [](const auto& ins) { return ins.decoded.opcode == abc::Opcode::kGETPROPITERATOR; })) continue;
     std::cout << method.offset.value << ' ' << method.name << std::endl;
+    if (emission_checks) { emission_file=file.get(); emission_header=&header; emission_index=&index; emission_method=method.offset; }
     const auto graph = Import(body, method.code->registers, method.code->arguments, header.profile);
     if (!target) {
       for (const auto& op : graph.ops) if (const auto* enumeration = std::get_if<ValueEnumeration>(&op.operation)) {
@@ -444,6 +574,26 @@ void File(const char* path, unsigned target) {
 }
 }
 int main(int argc, char** argv) {
+  if (argc > 2 && std::string_view(argv[1]) == "--emission-file") { emission_checks = true; File(argv[2], argc > 3 ? static_cast<unsigned>(std::stoul(argv[3])) : 0); return 0; }
+  if (argc == 2 && std::string_view(argv[1]) == "--emission") {
+    emission_checks = true;
+    for(bool caught : {false,true}) for(bool split : {false,true}) Import(Body(2,caught,split),0,5);
+    Import(Body(1,false,false,{0x61,4,0x60,4,0xfe,0},false,true),0,7);
+    Import(Body(1,true,false,{0x61,4,0x60,4,0xfe,0},false,false,true),0,5,abc::ProfileId::kDynamic1206,true);
+    auto shared = Body(1,true);
+    const auto advance = std::find_if(shared.instructions.begin(),shared.instructions.end(),[](const auto& i) {
+      return i.decoded.opcode == abc::Opcode::kGETNEXTPROPNAME_V8;
+    });
+    Check(advance != shared.instructions.end());
+    auto region = shared.tries.front(); region.offset = advance->offset; region.length = 2;
+    region.first_handler = static_cast<std::uint32_t>(shared.handlers.size());
+    shared.handlers.push_back(shared.handlers.front()); shared.tries.push_back(region);
+    const auto shared_graph = Import(shared,0,5);
+    const auto rejected = BuildForInPlan(shared_graph);
+    Check(std::holds_alternative<ForInFailure>(rejected) && std::get<ForInFailure>(rejected).kind == ForInError::kCatchState);
+    for (unsigned size : {200U,201U,400U,800U}) Import(Body(size,true),0,5);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--evaluation") { Evaluation(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--events") { EventMutations(); EventScales(); return 0; }
   if (argc > 1) { File(argv[1], argc > 2 ? static_cast<unsigned>(std::stoul(argv[2])) : 0); return 0; }
