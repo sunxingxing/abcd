@@ -654,6 +654,9 @@ class FlowCheck {
           analysis::EdgeId{last.first_edge.value + (selected_taken ? 1U : 0U)}, pending);
     }
   }
+  bool DecisionCopies(const analysis::WorkBlock& block) const {
+    return edges_->HasCopies(block.first_edge) || edges_->HasCopies(analysis::EdgeId{block.first_edge.value + 1});
+  }
   void Decision(const ControlNode& node, const IfStmt& syntax, StmtId parent,
       std::uint32_t child, std::size_t& pending) {
     const auto& root = DecisionBlock(node);
@@ -664,8 +667,7 @@ class FlowCheck {
     std::optional<ControlId> linear_start;
     while (true) {
       budget_.Step(); const auto& block = DecisionBlock(*part);
-      Require(!edges_->HasCopies(block.first_edge) &&
-          !edges_->HasCopies(analysis::EdgeId{block.first_edge.value + 1}), Error::kControl);
+      const bool copies = DecisionCopies(block);
       const auto at = DecisionPredicate(*part).value;
       auto condition = expression;
       if (part->decision) {
@@ -698,6 +700,13 @@ class FlowCheck {
           next = *linear.next;
         }
       }
+      if (copies) {
+        const auto* choice = std::get_if<ConditionalExpr>(&tree_.expressions[condition.value].expression);
+        Require(choice, Error::kControl);
+        edges_->Decision(analysis::EdgeId{block.first_edge.value + (selected_taken ? 0U : 1U)}, choice->consequent, true);
+        edges_->Decision(analysis::EdgeId{block.first_edge.value + (selected_taken ? 1U : 0U)}, choice->alternate, false);
+        condition = choice->condition;
+      }
       flow_.expressions[at] = condition;
       flow_.branch_polarity[at] = selected_taken ? BranchPolarity::kTaken : BranchPolarity::kFallthrough;
       if (part != &node) {
@@ -709,7 +718,7 @@ class FlowCheck {
         } else for (std::uint32_t i = 0; i + 1 < block.op_count; ++i)
           DecisionOperation(analysis::OpId{block.first_op.value + i}, parent, child);
       }
-      for (std::uint8_t e = 0; e < block.edge_count; ++e) {
+      for (std::uint8_t e = 0; !copies && e < block.edge_count; ++e) {
         budget_.Step();
         if (part == &node && e == (node.arms->taken ? 0U : 1U)) continue;
         // A retained final fallback owns its original transfer in the alternate.
@@ -726,14 +735,14 @@ class FlowCheck {
     }
     const TreeOriginId origin{graph_.ops[root_predicate.value].origin.value};
     Arm(node.arms->taken ? node.arms->taken : node.arms->fallthrough, syntax.consequent, origin,
-        analysis::EdgeId{root.first_edge.value + (node.arms->taken ? 0U : 1U)}, pending);
+        analysis::EdgeId{root.first_edge.value + (node.arms->taken ? 0U : 1U)}, pending, !DecisionCopies(root));
     const auto fallback = selected_taken ? part->arms->fallthrough : part->arms->taken;
     Require(fallback.has_value() == syntax.alternate.has_value(), Error::kControl);
     if (fallback) {
       const auto& last = DecisionBlock(*part);
       const auto predicate = DecisionPredicate(*part);
       Arm(fallback, *syntax.alternate, TreeOriginId{graph_.ops[predicate.value].origin.value},
-          analysis::EdgeId{last.first_edge.value + (selected_taken ? 1U : 0U)}, pending);
+          analysis::EdgeId{last.first_edge.value + (selected_taken ? 1U : 0U)}, pending, !DecisionCopies(last));
     }
   }
   void LogicalBranch(const SelectionRegion& region, StmtId statement, StmtId parent, std::uint32_t child) {
@@ -1762,11 +1771,11 @@ class FlowCheck {
           OriginalResultDefinition{id,*graph_.ops[id.value].result},target->symbol,value};
   }
   void Arm(std::optional<ControlId> first, StmtId block, TreeOriginId origin,
-      analysis::EdgeId edge, std::size_t& pending) {
+      analysis::EdgeId edge, std::size_t& pending, bool copies = true) {
     Require(tree_.statements[block.value].origin == origin, Error::kPlacement);
     const auto& syntax = sequences_.Block(block);
     std::uint32_t child = 0;
-    edges_->Consume(edge, syntax, child);
+    if (copies) edges_->Consume(edge, syntax, child);
     if (!first) { Require(child == syntax.child_count, Error::kSequence); return; }
     Require(pending < tasks_.size(), Error::kResourceLimit);
     tasks_[pending++] = {*first, block, child};

@@ -16,6 +16,7 @@ class TreeEdgeFlow {
       std::vector<std::uint8_t>& assigned, TreeCheckBudget& budget,
       const CompletionTreeView& sequences);
   void Consume(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child);
+  void Decision(analysis::EdgeId incoming, ExprId expression, bool result);
   void Select(analysis::EdgeId incoming, analysis::ValueId phi, std::optional<SymbolId> target, ExprId value);
   void Stage(analysis::OpId operation, const BlockStmt& block, std::uint32_t& child);
   void Catch(analysis::WorkBlockId handler, const BlockStmt& block, std::uint32_t& child);
@@ -23,6 +24,8 @@ class TreeEdgeFlow {
   void Forwarded(const ForInEmissionView&);
   void Finish();
  private:
+  void ConsumeImpl(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child, std::optional<ExprId>* sequence);
+  void CheckAssignment(analysis::IncomingKey incoming, ExprId expression, bool allow_phi_expression);
   void Bind(std::optional<SymbolId>& binding, SymbolId symbol, TemporaryReason reason);
   ExprId Assignment(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child,
       bool allow_phi_expression = false);

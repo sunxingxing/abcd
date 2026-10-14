@@ -214,10 +214,13 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
   const ExceptionTreeInput context{body, input, regions, control};
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
   if (reject_decision) {
-    // Catch-carried state also creates selected-arm phi copies; the current
-    // control preflight refuses those before RHS staging is considered.
-    const auto expected = staging ? FunctionTreeError::kControl : FunctionTreeError::kOwnership;
-    test::Check(std::get_if<FunctionTreeFailure>(&built) && std::get<FunctionTreeFailure>(built) == expected);
+    // Round 60 handles selected-arm phi copies. The independent later
+    // boundary still refuses a conditional statement or catch staging; neither
+    // can be hoisted out of the short-circuit path.
+    const auto* failure = std::get_if<FunctionTreeFailure>(&built);
+    test::Check(failure && failure->kind == FunctionTreeError::kOwnership && failure->tree);
+    test::Check(failure->tree->obligation == (staging ? TreeObligation::kCatchStaging :
+        TreeObligation::kExpressionOwnership));
     return; // Neither refusal permits hoisting statements or catch state.
   }
   if (const auto* error = std::get_if<FunctionTreeFailure>(&built))

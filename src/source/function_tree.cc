@@ -41,6 +41,7 @@ constexpr std::size_t kBranchArms = 2;
 // Staging adds a save, guard read/complement, and final read per predicate;
 // statement storage covers saves/guards and the local declaration once.
 constexpr std::size_t kDecisionExpressionSlots = 4;
+constexpr std::size_t kDecisionCopyExpressionSlots = 3;
 constexpr std::size_t kDecisionStatementSlots = 3;
 
 class TreeBuilder {
@@ -469,6 +470,12 @@ class TreeBuilder {
       Require(graph_.ops.size() <= kMaxId - control_.nodes.size(), Error::kResourceLimit);
       Require(control_.nodes.size() <= (kMaxId - graph_.ops.size()) / kDecisionExpressionSlots, Error::kResourceLimit);
       decision_expressions = graph_.ops.size() + kDecisionExpressionSlots * control_.nodes.size();
+      if (decision_copies_) {
+        Require(control_.nodes.size() <= (kMaxId - decision_expressions) / kDecisionCopyExpressionSlots, Error::kResourceLimit);
+        decision_expressions += kDecisionCopyExpressionSlots * control_.nodes.size();
+        Require(forest_.edge_assignments.size() <= kMaxId - decision_expressions, Error::kResourceLimit);
+        decision_expressions += forest_.edge_assignments.size();
+      }
       Require(decision_expressions <= kMaxId - symbols - tree_.expressions.size(), Error::kResourceLimit);
     }
     const auto staging = decisions && !exceptions_ ? control_.nodes.size() : 0;
@@ -853,11 +860,11 @@ class TreeBuilder {
     return drafts_.size() - 1;
   }
   std::size_t Arm(std::size_t parent, TreeOriginId origin,
-                  std::optional<ControlId> first, analysis::EdgeId edge) {
+                  std::optional<ControlId> first, analysis::EdgeId edge, bool copies = true) {
     const ScopeId scope{static_cast<std::uint32_t>(tree_.scopes.size())};
     tree_.scopes.push_back({ScopeKind::kBlock, drafts_[parent].scope});
     const auto draft = Block(scope, origin);
-    EmitEdge(edge, draft);
+    if (copies) EmitEdge(edge, draft);
     if (first) tasks_.push_back({*first, draft});
     return draft;
   }
@@ -1157,12 +1164,7 @@ class TreeBuilder {
         const auto orient = [&](const ControlNode& condition, bool taken) {
           const auto branch = DecisionPredicate(condition);
           const auto& block = DecisionBlock(condition);
-          if (copied[block.first_edge.value] || copied[block.first_edge.value + 1]) {
-            auto location = At(branch); location.control = At(condition).control;
-            location.edge = analysis::EdgeId{block.first_edge.value + (copied[block.first_edge.value] ? 0U : 1U)};
-            WitnessScope witness(*this, TreeObligation::kDecisionEdgeCopies, location);
-            Require(false, Error::kControl);
-          }
+          decision_copies_ |= copied[block.first_edge.value] || copied[block.first_edge.value + 1];
           branch_polarity_[branch.value] = taken ? BranchPolarity::kTaken : BranchPolarity::kFallthrough;
         };
         orient(node, !node.decision->evaluate_on_taken);
@@ -1279,6 +1281,34 @@ class TreeBuilder {
     Append(parent, drafts_[wrapper].statement);
     tree_.operations.push_back({op, drafts_[wrapper].statement});
   }
+  bool DecisionCopies(const analysis::WorkBlock& block) const {
+    return HasCopies(block.first_edge) || HasCopies(analysis::EdgeId{block.first_edge.value + 1});
+  }
+  // A predicate is evaluated once. Its conditional arms own the original
+  // parallel-copy schedules before returning the oriented Boolean outcome.
+  // Never put these copies in the shared body: different short-circuit paths
+  // can reach it with different phi inputs. No new source binding is needed.
+  ExprId DecisionEdge(analysis::EdgeId edge, bool result, TreeOriginId origin) {
+    ExprId expression{static_cast<std::uint32_t>(tree_.expressions.size())};
+    tree_.expressions.push_back({TreeLiteral{BooleanLiteral{result}}, origin});
+    if (!edge_ranges_.empty() && edge_ranges_[edge.value]) {
+      const auto& range = forest_.edges[*edge_ranges_[edge.value]];
+      for (std::size_t i = range.count; i; --i) {
+        Step(); const ExprId next{static_cast<std::uint32_t>(tree_.expressions.size())};
+        tree_.expressions.push_back({SequenceExpr{forest_.edge_assignments[range.first + i - 1], expression}, origin});
+        expression = next;
+      }
+    }
+    return expression;
+  }
+  ExprId DecisionEdges(const analysis::WorkBlock& block, ExprId condition, bool taken, TreeOriginId origin) {
+    if (!DecisionCopies(block)) return condition;
+    const auto yes = DecisionEdge(analysis::EdgeId{block.first_edge.value + (taken ? 0U : 1U)}, true, origin);
+    const auto no = DecisionEdge(analysis::EdgeId{block.first_edge.value + (taken ? 1U : 0U)}, false, origin);
+    const ExprId result{static_cast<std::uint32_t>(tree_.expressions.size())};
+    tree_.expressions.push_back({ConditionalExpr{condition, yes, no}, origin});
+    return result;
+  }
   void EmitDecision(analysis::OpId op, const ControlNode& node, std::size_t draft) {
     WitnessScope witness(*this, TreeObligation::kDecisionPrefix, At(op));
     Require(node.decision && node.arms, Error::kControl);
@@ -1289,8 +1319,6 @@ class TreeBuilder {
     while (true) {
       Step(); WitnessScope predicate_witness(*this, TreeObligation::kDecisionPrefix, At(*part));
       const auto& block = DecisionBlock(*part);
-      RequireNoCopies(block.first_edge);
-      RequireNoCopies(analysis::EdgeId{block.first_edge.value + 1});
       const auto branch = DecisionPredicate(*part);
       witness_.location = At(branch);
       Require(forest_.operations[branch.value].has_value(), Error::kControl);
@@ -1304,6 +1332,7 @@ class TreeBuilder {
         else tree_.operations.push_back({branch, *forest_.operations[branch.value]});
       }
       auto condition = *forest_.operations[branch.value];
+      condition = DecisionEdges(block, condition, selected_taken, TreeOriginId{graph_.ops[branch.value].origin.value});
       Grow(tree_.expressions, tree_.expressions.size() + decision_roots_.size());
       for (auto i = decision_roots_.size(); i != 0; --i) {
         Step(); const auto prefix = decision_roots_[i - 1];
@@ -1347,7 +1376,7 @@ class TreeBuilder {
     const auto shared = node.arms->taken ? node.arms->taken : node.arms->fallthrough;
     const auto& block = graph_.blocks[node.block.value];
     const analysis::EdgeId edge{block.first_edge.value + (node.arms->taken ? 0U : 1U)};
-    const auto body = Arm(draft, origin, shared, edge);
+    const auto body = Arm(draft, origin, shared, edge, !DecisionCopies(DecisionBlock(node)));
     std::optional<StmtId> alternate;
     const auto fallback = selected_taken ? part->arms->fallthrough : part->arms->taken;
     if (fallback) {
@@ -1356,7 +1385,7 @@ class TreeBuilder {
       witness_.location = At(branch);
       const analysis::EdgeId fallback_edge{last.first_edge.value + (selected_taken ? 1U : 0U)};
       alternate = drafts_[Arm(draft, TreeOriginId{graph_.ops[branch.value].origin.value},
-          fallback, fallback_edge)].statement;
+          fallback, fallback_edge, !DecisionCopies(last))].statement;
     }
     const auto statement = Statement(IfStmt{condition, drafts_[body].statement, alternate}, origin);
     Append(draft, statement); tree_.operations.push_back({op, statement});
@@ -1669,6 +1698,7 @@ class TreeBuilder {
   std::vector<SelectionPath> selection_paths_;
   std::vector<SelectionRegion> logicals_;
   std::vector<BranchPolarity> branch_polarity_;
+  bool decision_copies_ = false;
   struct DecisionPart { analysis::OpId branch; ExprId condition; };
   std::vector<DecisionPart> decision_path_;
   std::vector<ExprId> decision_roots_;

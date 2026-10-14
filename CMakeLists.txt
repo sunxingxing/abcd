@@ -2649,3 +2649,15 @@ if(BUILD_TESTING)
 endif()
 
 include(tests/support/source/regression.cmake)
+
+if(BUILD_TESTING)
+  add_executable(decision_edge_copies_test tests/unit/source/decision_edge_copies_test.cc)
+  target_link_libraries(decision_edge_copies_test PRIVATE abcd_source)
+  add_test(NAME decision_edge_copies_test COMMAND decision_edge_copies_test)
+endif()
+if(BUILD_TESTING AND ABCD_NODE_EXECUTABLE)
+  add_test(NAME decision_edge_copies_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_edge_copies.mjs
+    $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_edge_copies)
+endif()

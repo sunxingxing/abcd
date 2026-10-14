@@ -12,6 +12,17 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 60：DecisionEdgeCopies（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 498 → **500/620**，`--language-source` 535 → **537/620**（ScanSize、Filter；Filter 含三个原生 for-in，`node --check` 通过）；0 回退，0 文本漂移；cli/corpus/failure 扫描 50/51，只有既有的 family_source_cli_test 失败。
+
+- 基线 `326fda68`。证据先行：o20/10622 m11730 PC139 e10 为 `v24 ← v23`（Use148）；o25/33281 m33743 PC421 e12 为 `v28 ← v27`（Use319）；o32/43537 m44496 PC252 e203 为 `v26 ← v35`（Use114）。均是最后谓词直接到 join 的 taken 边、单步无 cycle 临时量；真正的首拒绝位于 `OrientBranches`，早于 `EmitDecision`/`RequireNoCopies`。临时诊断已移除。
+- 在原标量谓词的条件执行边上复用已验证的 phi copy schedule，表达为 `predicate ? (yes copies, true) : (no copies, false)`；无 copy 的 decision 不变。TreeFlow 独立检查条件臂、极性、顺序、唯一消费、末尾 Boolean；TreeEdgeFlow 共用语句 copy 的身份/临时量/定义检查，原有 OriginalFlow/recovery 验证边限定定义。未改变控制计划、声明、catch staging、打印器或资源上限。见 [loop-discovery.md](loop-discovery.md#decision-edge-copies-round-60)。
+- 完整构建 `cmake --build build/regression -j 6 -- -k` 成功；固定集串行 **65/65**。decision/edge-copy/phi-copy/control/logical/evaluation/recovery 定向 **40/41**，仅既有 `decision_snapshots_source_test` 失败；`cli|corpus|failure|_receipt|manifest` 扫查 **49/50**，仅既有 `family_source_cli_test` 失败。
+- 新增 `decision_edge_copies_test` 与 `decision_edge_copies_cli_test` **2/2**：taken/fallthrough、copy/拆块、swap cycle schedule、错边/hoist/drop/duplicate 变异、200/201/400/800、精确 byte/work 边界；真实 es2abc fixture **96** 次 Node 差分、**6** 个源文本变异检出。200/201/400/800 的构建 scratch 最小预算为 8,148,463 / 8,188,154 / 16,283,271 / 32,552,887 bytes，work 为 1,674,167 / 1,684,143 / 3,393,649 / 6,811,969。
+- 严格更新两处过期期望：`for_in_evaluation.mjs` 将 Filter 的旧 DecisionEdgeCopies 拒绝改为 complete、三条 native for-in 及 CLI/manifest 源码一致性；`phased_shared_decision_refusal_test` 的 catch-staging 例仍拒绝，首错从 copy 门禁前移后的 `kControl` 改为实际 `kOwnership / kCatchStaging`，另组仍严格为 `kOwnership / kExpressionOwnership`。没有放宽 staging。
+- 对 explore59/explore59s：**500/620、537/620**（各 +2），**0 回退、0 已完成文本漂移**。每组仅三个目标诊断变化：ScanSize o25/33281 与 Filter o32/43537 complete；CustomAnimationTab o20/10622 → m12066 block3/control3 的 `FunctionTreeError=0 > TreeObligation=3`（DecisionPrefix，无可发布 PC）。新增完成文件两套 flags 均通过 `node --check`。
+- 证据：`/private/tmp/r60-o{20,25,32}.diag`、`r60-full-build-final.log`、`r60-fixed.log`、`r60-targeted-final.log`、`r60-sweep.log`、`r60-cohort.log`；导出在 `/private/tmp/r60-cohort/`。未 commit/push/stash，未运行留出集、全套测试、RSS 基准；for-of 继续暂停。
+
 ## Round 59：SnapshotCandidate 一致性（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；498/620、535/620 不变，0 回退，0 文本漂移；`snapshot_syntax_test` 在 a0302edb 上同样 rc 134（既有）。cc 另修正 `tree_failure.mjs` 中 o5/28303 的过期期望（Round 53–55 后首错为 m28799 TryId 0 的 kMultipleExits，body 1146/handler 1171），并对所有 cli/corpus/failure 类测试做了全量扫描：49 项中只有既有的 family_source_cli_test 失败。
 

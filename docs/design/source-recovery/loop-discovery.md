@@ -358,3 +358,60 @@ consumes the same verified placement disposition as ordinary blocks; initialized
 cell guards become boundary anchors, while throwing checked reads remain
 separate events. See [guarded-captures.md §12](guarded-captures.md#12-initialized-guards-in-decision-prefixes-round-45-wip)
 for refusal-location evidence and independent anchor checks.
+
+## Decision-edge copies (Round 60)
+
+A shared decision retains the original scalar predicates and every outgoing
+edge. Its shared statement body is not the owner of all incoming phi transfers:
+an early predicate and the final predicate may supply different values, and a
+final miss may transfer directly to the join without an alternate statement.
+`OrientBranches` formerly refused either predicate edge whenever its verified
+`PhiBundle` had a nonempty schedule. Ordinary `EmitEdge` already handled such
+schedules, but the shared logical condition had no statement boundary for them.
+
+For a predicate P oriented toward the shared arm, emission now uses
+`P ? (copies_yes, true) : (copies_no, false)` when either outgoing edge has
+copies. An empty schedule contributes only the Boolean literal. Each sequence
+uses the existing `ExpressionForest::edge_assignments` in the independently
+verified parallel-copy order, including cycle saves. P is evaluated once;
+copies execute only after its selected outcome and before the next predicate,
+shared body, or join. The Boolean is consumed only by the enclosing decision.
+The underlying scalar predicate retains its operation identity and truth test.
+Neither shared-body layout nor join/follow nor catch staging changes. Existing
+statement-staged decisions and effectful prefix edges retain their existing
+admission/refusal boundaries; this change does not add staging support.
+
+Fresh TreeFlow derives whether this representation is required from the original
+edge bundles, checks the actual ConditionalExpr and its oriented arms, consumes
+each schedule exactly once, and requires the terminal true/false values.
+TreeEdgeFlow reuses the same target, temporary, origin and phi-definition checks
+as statement copies. Tree operands check each source against the original
+schedule; OriginalFlow retains its edge-qualified phi definitions. Recovery's
+existing conditional control paths and joint original-definition proof recheck
+availability and edge execution, rather than accepting a builder consumed flag.
+Wrong-edge, hoisted, dropped and duplicated copies therefore cannot become
+publication-ready trees. No printer-specific rule or new language premise is
+used.
+
+Only previously refused decisions with nonempty edge schedules reserve extra
+expression storage: at most three nodes (conditional plus Boolean outcomes) per
+control node, and one comma per edge-assignment expression. Reservations are
+charged before emission. The remaining work is linear in predicates and copy
+steps; parallel scheduling retains its existing O(C log C) bound. Decisions
+without copies retain the old expression construction and budget reservation.
+
+The initial evidence was:
+
+| Record / method | Original edge | Original phi input / schedule | Meaning |
+| --- | --- | --- | --- |
+| o20/10622 m11730 PC139 | e10 B6 → B8 | Use148, v24 ← v23 (v23 is B5 phi) | Last predicate miss reaches join B8 |
+| o25/33281 m33743 PC421 | e12 B7 → B9 | Use319, v28 ← v27 (v27 is B6 phi) | Last predicate miss reaches join B9 |
+| o32/43537 m44496 PC252 | e203 B201 → B206 | Use114, v26 ← v35 | Phased last predicate miss reaches join B206 |
+
+All three are taken edges in the original graph and fallthrough outcomes of the
+oriented source predicate. Each schedule has one step and no cycle temporary.
+Tests also reverse predicate/edge identities together, exercise copies and block
+splits, consume a three-step swap schedule with a cycle save, and check exact
+byte/work boundaries at 200/201/400/800 decisions. The real es2abc fixture covers
+ordinary and handled decisions plus a loop with two live-out values; its Node
+oracle compares values, exception constructors and full getter/call traces.

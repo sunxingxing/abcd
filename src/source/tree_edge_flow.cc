@@ -78,6 +78,17 @@ void TreeEdgeFlow::Bind(std::optional<SymbolId>& binding, SymbolId symbol,
 
 void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& block,
     std::uint32_t& child) {
+  ConsumeImpl(incoming, block, child, nullptr);
+}
+void TreeEdgeFlow::Decision(analysis::EdgeId incoming, ExprId expression, bool result) {
+  std::optional<ExprId> sequence{expression}; std::uint32_t empty = 0;
+  ConsumeImpl(incoming, BlockStmt{}, empty, &sequence);
+  const auto* literal = std::get_if<TreeLiteral>(&tree_.expressions[sequence->value].expression);
+  const auto* boolean = literal ? std::get_if<BooleanLiteral>(literal) : nullptr;
+  Require(boolean && boolean->value == result, TreeFlowError::kControl);
+}
+void TreeEdgeFlow::ConsumeImpl(analysis::IncomingKey incoming, const BlockStmt& block,
+    std::uint32_t& child, std::optional<ExprId>* sequence) {
   budget_.Step();
   if (!evaluation_.phis) return;
   std::optional<std::size_t> bundle;
@@ -96,7 +107,13 @@ void TreeEdgeFlow::Consume(analysis::IncomingKey incoming, const BlockStmt& bloc
   auto& copies = flow_.copies[*bundle];
   for (std::size_t i = 0; i < schedule.steps.size(); ++i) {
     budget_.Step();
-    const auto expression = Assignment(incoming, block, child, true);
+    ExprId expression{};
+    if (sequence) {
+      const auto* comma = std::get_if<SequenceExpr>(&tree_.expressions[(*sequence)->value].expression);
+      Require(comma, TreeFlowError::kSequence);
+      expression = comma->left; *sequence = comma->right;
+      CheckAssignment(incoming, expression, true);
+    } else expression = Assignment(incoming, block, child, true);
     const auto& assignment = std::get<AssignmentExpr>(tree_.expressions[expression.value].expression);
     const auto& target = std::get<SymbolTarget>(assignment.target);
     const auto& destination = schedule.steps[i].destination;
@@ -158,18 +175,21 @@ ExprId TreeEdgeFlow::Assignment(analysis::IncomingKey incoming, const BlockStmt&
   const auto& statement = tree_.statements[sequences_.Child(block.first_child + child++).value];
   const auto* expression = std::get_if<ExpressionStmt>(&statement.statement);
   Require(expression != nullptr, TreeFlowError::kSequence);
-  const auto& node = tree_.expressions[expression->expression.value];
+  CheckAssignment(incoming, expression->expression, allow_phi_expression);
+  Require(statement.origin == tree_.expressions[expression->expression.value].origin, TreeFlowError::kPlacement);
+  return expression->expression;
+}
+void TreeEdgeFlow::CheckAssignment(analysis::IncomingKey incoming, ExprId expression, bool allow_phi_expression) {
+  const auto& node = tree_.expressions[expression.value];
   const auto& origin = tree_.origins[node.origin.value];
   if (const auto* edge = std::get_if<analysis::EdgeId>(&incoming)) {
     const auto* source = std::get_if<EdgeOrigin>(&origin);
     Require(source && source->edge == *edge, TreeFlowError::kPlacement);
   } else Require(std::holds_alternative<EntryOrigin>(origin), TreeFlowError::kPlacement);
-  Require(statement.origin == node.origin, TreeFlowError::kPlacement);
   const auto* assignment = std::get_if<AssignmentExpr>(&node.expression);
   Require(assignment && std::holds_alternative<SymbolTarget>(assignment->target) &&
       (allow_phi_expression || tree_.expressions[assignment->value.value].origin == node.origin),
       TreeFlowError::kPlacement);
-  return expression->expression;
 }
 
 void TreeEdgeFlow::Stage(analysis::OpId operation, const BlockStmt& block,
