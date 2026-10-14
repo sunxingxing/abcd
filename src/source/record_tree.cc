@@ -58,6 +58,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       if constexpr ((std::is_same_v<T, FunctionTreeFailure> || std::is_same_v<T, EvaluationFailure>)) {
         const auto detail = FamilyRouteFailure(alternative);
         failure.call_reference = detail.call_reference;
+        failure.exception_region = detail.exception_region;
         failure.evaluation = detail.evaluation;
         failure.tree = detail.tree; failure.deferred = detail.deferred;
         failure.method = detail.method.value_or(index.methods[entry.value].offset);

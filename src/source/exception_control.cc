@@ -78,7 +78,7 @@ void CheckProjection(const ValueProgram& graph, ExceptionTopology& topology,
   Compare(mapping.inactive_phases, actual.inactive_phases, quota);
 }
 }
-std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure> BuildExceptionControl(
+std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, ExceptionControlRegionFailure> BuildExceptionControl(
     const abc::MethodBody& body, const ValueProgram& graph,
     const PhasedValueInput& input, const ExceptionPlan& regions, SemanticBudget budget) {
   try {
@@ -123,6 +123,31 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure> B
         result.inactive_phases.capacity() * sizeof(WorkBlockId);
     result.work = budget.work - quota.RemainingWork();
     return result;
+  } catch (ExceptionControlRegionFailure failure) {
+    // All locations come from immutable input phases. PC 0 is a real value;
+    // synthetic summaries have a region identity, not an invented instruction.
+    if(failure.region.value>=body.tries.size())return Error::kInput;
+    const auto& region=body.tries[failure.region.value];
+    if(region.first_handler>=body.handlers.size())return Error::kInput;
+    const auto handler=body.handlers[region.first_handler].offset;
+    const auto locate=[&](WorkBlockId block,auto& pc,auto& working) {
+      if(block.value>=graph.phases.size())return;
+      const auto site=graph.phases[block.value].instruction.value;
+      if(site>=input.flow.instructions.size())return;
+      const auto& instruction=input.flow.instructions[site];
+      pc=instruction.origin.value_or(instruction.pc);working=instruction.pc;
+    };
+    for(auto& exit:failure.exits) {
+      if(exit.from)locate(*exit.from,exit.pc,exit.working_pc);
+      locate(exit.target,exit.target_pc,exit.target_working_pc);
+      locate(exit.continuation,exit.continuation_pc,exit.continuation_working_pc);
+    }
+    failure.exception_region=ExceptionRegionEvidence{failure.region,{},{},region.offset,handler,failure.exits};
+    if(failure.region.value>=regions.regions.size())return Error::kInput;
+    std::optional<abc::CodeOffset> working;
+    locate(regions.regions[failure.region.value].body,failure.exception_region->body_pc,working);
+    locate(regions.regions[failure.region.value].handler,failure.exception_region->handler_pc,working);
+    return failure;
   } catch (const ExceptionControlFailure& failure) { return failure;
   } catch (Error error) { return error;
   } catch (ControlError error) { return Translate(error);
@@ -139,6 +164,7 @@ std::variant<std::uint64_t, ExceptionControlError> VerifyExceptionControl(
     auto topology = ProjectExceptionControl(graph, regions, quota);
     CheckProjection(graph, topology, control, quota);
     return budget.work - quota.RemainingWork();
+  } catch (const ExceptionControlRegionFailure& failure) { return failure.kind;
   } catch (Error error) { return error;
   } catch (ControlError error) { return Translate(error);
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

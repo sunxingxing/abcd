@@ -360,6 +360,10 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     auto regions=std::get<ExceptionPlan>(std::move(planned_regions));
     quota.Admit(regions.allocated_bytes); quota.Step(regions.work);
     auto controlled = BuildExceptionControl(body, imported.graph, input, regions, quota.Remaining());
+    if (const auto* failure=std::get_if<ExceptionControlRegionFailure>(&controlled))
+      return PhasedControlFailure{Error::kControl,*failure,context.Target(),
+          failure->exception_region ? failure->exception_region->body_pc : std::nullopt,
+          failure->exception_region ? std::optional{failure->exception_region->working_body_pc} : std::nullopt};
     if (const auto* failure = std::get_if<ExceptionControlFailure>(&controlled))
       return PhasedControlFailure{PhaseError(*failure, Error::kControl), *failure, context.Target(),
           failure->cause.control.node.pc, failure->cause.control.node.working_pc};

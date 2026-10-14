@@ -32,10 +32,17 @@ try {
     // GETITERATOR now has raw semantics, but this for-of method still fails
     // before evaluation at multiple active-region exits. Round 54 proved and
     // projected the inactive acquisition handler; kRegion is no longer the
-    // first refusal. kMultipleExits owns no instruction PC.
+    // first refusal. Round 55 locates the conflict inside the close-call
+    // protection (TryId 0), not the outer loop-body protection.
     const driver=rows.find(r=>r.entity===42397).source_failure;
-    assert.equal(driver.method,42717);assert.equal(driver.pc,undefined);
-    assert.equal(driver.working_pc,undefined);
+    assert.equal(driver.method,42717);assert.equal(driver.pc,633);
+    assert.equal(driver.working_pc,633);
+    const region=driver.exception_region;
+    assert.equal(region.region,0);
+    assert.equal(region.body_pc,633);assert.equal(region.working_body_pc,633);
+    assert.equal(region.handler_pc,658);assert.equal(region.working_handler_pc,658);
+    assert.deepEqual(region.exits.map(e=>[e.origin,e.source,e.pc,e.target_pc,e.continuation_pc]),
+      [[0,544,656,660,660],[0,534,647,683,683]]);
     assert.deepEqual(driver.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
     const blocked=JSON.parse(run(semantic,[abc,'42717','--record-source','--value-source',...flags],1));
     assert.deepEqual(blocked.source_failure,driver);

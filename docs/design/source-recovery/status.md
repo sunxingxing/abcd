@@ -12,6 +12,11 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 55：kMultipleExits 位置证据（cc 审查通过）
+
+- 固定大小的区域/出口证据（TryId、body/handler 原始与工作 PC、原始 EdgeId 与 continuation），贯通 route/record-entry/JSON；仅在拒绝时做一次计入 work 预算的线性扫描。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；498/620、535/620 不变，0 状态变化，0 文本变化。cc 的“外层循环体保护区”假设被证据否定：首个冲突是 IteratorClose 内保护 `return` 读取/调用的 TryId 0，两个正常出口进入完成选择代码。下一步由 IteratorCloseEvidence 拥有内层关闭保护区、保存的异常及完成优先级。
+
 ## Round 54：不可达 handler 的 inactive 区域投影（cc 审查通过）
 
 - 从原始 ExceptionFlow 重算正常与异常可达性；只有 handler 整段不可达、且没有可达事件派往它时，才生成类型化 inactive 记录（保留 TryId、范围与 protected 指令分类计数）；inactive 区域不分配 try/catch，原始索引保留；recovery 独立重算完整 inactive 集合。kRegion 拒绝补上 region 与 body/handler 位置。新增单元与真实 es2abc（O0）fixture；默认优化产物的 handler 长度为 0，保持带位置的 `kHandlerShape` 拒绝。

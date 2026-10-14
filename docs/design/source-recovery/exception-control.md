@@ -1001,3 +1001,62 @@ comparison, while default optimization emits zero-size handler extents and
 retains a located kHandlerShape refusal. Active getter exceptions must still
 be caught. This is general
 reachability projection, not a return/NOP or register/opcode sequence rule.
+
+
+## Multiple-exit refusal evidence (Round 55, step 0 only)
+
+`ExceptionControlRegionFailure` keeps the existing `kMultipleExits` enum and
+resource classification. It records the original TryId and a fixed-size pair of
+exit witnesses with distinct normalized continuations. This pair is the minimal
+obstruction at the failed check, not an inventory of every exit. Each witness
+identifies an original EdgeId (source and target phase) or a nested TryId summary;
+the raw target is separate from the effect-free corridor's continuation.
+Original and working PCs come from immutable phase origins. Synthetic summaries
+have no invented source PC. A failure-only, budgeted O(U) census of projected
+units collects the pair; no heap index or admission rule is added. Route receipts,
+record failure JSON and `abc_semantic --record-source` retain the same evidence.
+
+The five probed methods all first fail in TryId 0, **inside the close operation's
+protection of the `return` property read/call**, not in the loop-body protection
+suggested before step 0. Constant-pool resolution confirms the property is
+`return` in every case. Original and working PCs coincide in this table:
+
+| Method | Protected body / handler PC | Two original exit PCs and targets |
+|---|---|---|
+| TimeUtils 28799 | 1146 / 1171 | 1169 → 1173; 1160 → 1182 |
+| ComponentFactory 7171 | 179 / 204 | 202 → 206; 193 → 215 |
+| DeepTypeUtils 39073 | 264 / 289 | 287 → 291; 278 → 300 |
+| configService 47128 | 398 / 423 | 421 → 425; 412 → 434 |
+| DataDriver 42717 | 633 / 658 | 656 → 660; 647 → 683 |
+
+For example, ComponentFactory reads `return` at PC 181, tests the result at
+190/193, and calls it at 197; these throwing operations dispatch to H204.
+The two normal exits enter PC 206 and PC 215, both of which rethrow the original
+payload (at 208 and 217). They are not the loop back edge or exhaustion exit.
+DataDriver instead enters the saved close-exception selection at 660 or skips
+to the saved completion at 683; PC 676 throws the close exception and PC 680
+checks its result under the enclosing H760. The close proof must therefore
+account for nested protection and completion priority, not merely claim the
+outer loop-body try.
+
+Per the round's explicit diagnostic stop condition, this increment stops here:
+no ForOfPlan, protocol-owned exception region, evaluation admission or source
+publication is added. A subsequent protocol design must prove these nested
+close-completion paths together with the outer protection. Existing handlers,
+multiple-exit refusal, loop and follow selection are unchanged.
+
+Tests extend the existing exception-plan, family-route, route serialization,
+record JSON and for-in CLI targets: real-edge identity, distinct continuations,
+original/working provenance (including PC zero), synthetic origins, malformed
+witnesses, resource classes, and 200/201/400/800 split-corridor cases. The CLI
+assertion compares the located DataDriver refusal in manifest and semantic output.
+
+Validation for this diagnostic increment: full keep-going build succeeded;
+fixed source-regression 65/65; the five updated diagnostic targets 5/5;
+exception/phased/for-in/recovery targets 76/79, with only the previously
+registered `tree_structure_test`, `phased_literal_test` and
+`phased_arm_selection_source_test` failures. Against explore54/explore54s,
+complete counts remain 498/620 and 535/620 with zero status or complete-text
+changes. Exactly the five rows above acquire diagnostic locations in each flag
+set; all other record fields are unchanged. Sixteen semantic CLI reports (eight
+candidate records, both contracts) match their manifest failures.

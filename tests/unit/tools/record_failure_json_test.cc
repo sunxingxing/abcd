@@ -41,6 +41,10 @@ int main() {
       {{5, source::ControlOriginKind::kPhase, 5}, source::ControlLocation{13, source::ControlOriginKind::kTryExit, 2}},
       {{0, source::ControlOriginKind::kPhase, 0}, {}}};
   chained.exception_region=source::ExceptionRegionEvidence{{2},abc::CodeOffset{0},{},{12},{19}};
+  chained.exception_region->exits = std::array<source::ExceptionExitEvidence,2>{
+      source::ExceptionExitEvidence{analysis::EdgeId{0}, analysis::WorkBlockId{0}, {1}, {2},
+          abc::CodeOffset{0}, abc::CodeOffset{12}},
+      source::ExceptionExitEvidence{analysis::TryId{3}, {}, {4}, {4}}};
   nlohmann::json with_causes;
   tools::DescribeRecordFailure(source::RouteRefusal{chained}, with_causes);
   Check(with_causes["source_failure"]["exception_region"]["body_pc"] == 0);
@@ -89,10 +93,17 @@ int main() {
   source::RecordProgramFailure located{source::RecordProgramError::kValue, abc::CodeOffset{73}};
   located.method=abc::EntityOffset{91}; located.working_pc=abc::CodeOffset{31};
   located.call_reference=chained.call_reference;
+  located.exception_region=chained.exception_region;
   nlohmann::json record_reference;
   tools::DescribeRecordFailure(located, record_reference);
   Check(record_reference["source_method"]==91 && record_reference["source_working_pc"]==31 &&
       record_reference["source_call_reference"]==with_causes["source_failure"]["call_reference"]);
+  Check(record_reference["source_exception_region"] == with_causes["source_failure"]["exception_region"]);
+  const auto& exits = record_reference["source_exception_region"]["exits"];
+  Check(exits[0]["origin"] == 0 && exits[0]["source"] == 0 && exits[0]["from"] == 0 &&
+      exits[0]["pc"] == 0 && exits[0]["working_pc"] == 12 && exits[0]["continuation"] == 2);
+  Check(exits[1]["origin"] == 1 && exits[1]["source"] == 3 &&
+      !exits[1].contains("from") && !exits[1].contains("pc") && !exits[1].contains("working_pc"));
   // Printed source is not a failure and adds no failure fields.
   nlohmann::json printed = nlohmann::json::object();
   tools::DescribeRecordFailure(source::PrintedSource{}, printed);

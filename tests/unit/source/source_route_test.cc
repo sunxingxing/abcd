@@ -80,7 +80,8 @@ bool SameReceipt(const MethodRouteReceipt& left,
            left.failure->creation_pc == right.failure->creation_pc &&
            left.failure->call_reference == right.failure->call_reference &&
            left.failure->capture == right.failure->capture &&
-           left.failure->control == right.failure->control));
+           left.failure->control == right.failure->control &&
+           left.failure->exception_region == right.failure->exception_region));
 }
 }  // namespace
 
@@ -235,8 +236,25 @@ int main() {
   auto no_method = capture_json; no_method["failure"]["capture"].erase("method");
   Check(std::holds_alternative<RouteReceiptError>(ParseRouteReceipt(no_method.dump())));
   caused.failure->exception_region=ExceptionRegionEvidence{{1},abc::CodeOffset{0},{},{12},{19}};
+  // Real PC zero, normalized PCs and a synthetic nested-try exit are distinct.
+  caused.failure->exception_region->exits = std::array<ExceptionExitEvidence,2>{
+      ExceptionExitEvidence{analysis::EdgeId{0}, analysis::WorkBlockId{0}, {1}, {2},
+          abc::CodeOffset{0}, abc::CodeOffset{12}, abc::CodeOffset{4}, abc::CodeOffset{16}},
+      ExceptionExitEvidence{analysis::TryId{3}, {}, {4}, {4}}};
   const auto region_roundtrip=std::get<MethodRouteReceipt>(ParseRouteReceipt(std::get<std::string>(SerializeRouteReceipt(caused))));
   Check(region_roundtrip.failure->exception_region==caused.failure->exception_region);
+  const auto region_json = nlohmann::json::parse(std::get<std::string>(SerializeRouteReceipt(caused)));
+  const auto bad_exit = [&](const auto& change) {
+    auto malformed = region_json;
+    change(malformed["failure"]["exception_region"]["exits"]);
+    Check(std::holds_alternative<RouteReceiptError>(ParseRouteReceipt(malformed.dump())));
+  };
+  bad_exit([](auto& exits) { exits[1]["continuation"] = exits[0]["continuation"]; });
+  bad_exit([](auto& exits) { exits[0]["origin"] = 2; });
+  bad_exit([](auto& exits) { exits[0].erase("from"); });
+  bad_exit([](auto& exits) { exits[1]["pc"] = 0; });
+  bad_exit([](auto& exits) { exits[0]["source"] = -1; });
+  bad_exit([](auto& exits) { exits.erase(1); });
   const auto samples = {RefusedReceipt(), caused, deep, complete_value};
   for (const auto& receipt : samples) {
     const auto serialized = SerializeRouteReceipt(receipt);

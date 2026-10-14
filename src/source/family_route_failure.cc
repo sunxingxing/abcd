@@ -78,7 +78,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       }
     }
     if constexpr (std::is_same_v<T, TreePrintFailure>) { result.printing=error;result.method=error.location.method;result.pc=error.location.pc;result.working_pc=error.location.working_pc; }
-    if constexpr (std::is_same_v<T, ExceptionPlanFailure>) result.exception_region = error.exception_region;
+    if constexpr (std::is_same_v<T, ExceptionPlanFailure> || std::is_same_v<T, ExceptionControlRegionFailure>) result.exception_region = error.exception_region;
     if constexpr (std::is_same_v<T, CallPlanFailure>) result.call_reference = error.reference;
     if constexpr (std::is_same_v<T, PhasedFlowFailure> || std::is_same_v<T, PhasedControlFailure>) {
       result.method = error.method; result.pc = error.pc; result.working_pc = error.working_pc;

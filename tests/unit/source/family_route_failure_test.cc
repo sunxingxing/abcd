@@ -42,6 +42,25 @@ void Failures() {
   projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{imported},
       abc::EntityOffset{91}, abc::EntityOffset{13}, abc::CodeOffset{7}}});
   Check(projected.failure_class == RouteFailureClass::kWorkLimit && !projected.pc && !projected.working_pc);
+  ExceptionControlRegionFailure exits{ExceptionControlError::kMultipleExits, {0}, {}};
+  exits.exits = {ExceptionExitEvidence{analysis::EdgeId{0}, analysis::WorkBlockId{0}, {1}, {1},
+                     abc::CodeOffset{0}, abc::CodeOffset{12}},
+                ExceptionExitEvidence{analysis::TryId{1}, {}, {2}, {2}}};
+  exits.exception_region = ExceptionRegionEvidence{{0}, abc::CodeOffset{0}, {}, {12}, {24}, exits.exits};
+  const PhasedControlFailure located{PhasedMethodError::kControl, exits, {91}, abc::CodeOffset{0}, abc::CodeOffset{12}};
+  projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{located}}});
+  Check(projected.failure_class == RouteFailureClass::kUnproved &&
+      projected.method == abc::EntityOffset{91} && projected.pc == abc::CodeOffset{0} &&
+      projected.working_pc == abc::CodeOffset{12} && projected.exception_region == exits.exception_region);
+  Check(projected.causes.View().back().domain == FailureDomain<ExceptionControlError>() &&
+      projected.causes.View().back().value == static_cast<unsigned>(ExceptionControlError::kMultipleExits));
+  for (const auto [error, category] : {
+      std::pair{ExceptionControlError::kResourceLimit, RouteFailureClass::kMemoryLimit},
+      std::pair{ExceptionControlError::kWorkLimit, RouteFailureClass::kWorkLimit}}) {
+    const PhasedControlFailure resource{PhasedMethodError::kControl, error, {91}};
+    projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{resource}}});
+    Check(projected.failure_class == category && !projected.exception_region);
+  }
   CallPlanFailure call{CallPlanError::kReference};
   call.cause = CallReferenceError::kNotInline;
   call.reference = CallReferenceEvidence{CallReferenceError::kNotInline, {17}, analysis::OpId{4},

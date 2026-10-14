@@ -307,9 +307,12 @@ void OldLocal(abc::ProfileId profile, bool normal_handler_entry) {
 }
 void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
                     std::optional<ExceptionControlError> expected = {}, std::ostream* output = nullptr,
-                    std::optional<std::uint32_t> backedge_pc = {}) {
+                    std::optional<std::uint32_t> backedge_pc = {}, bool normalized = false) {
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {}));
-  const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
+  auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, profile, frame.registers, {}, {}, &frame));
+  constexpr std::uint32_t kOriginalPcBase = 1000;
+  if (normalized) for (auto& instruction : flow.instructions)
+    instruction.origin = abc::CodeOffset{kOriginalPcBase + instruction.pc.value};
   IdfQuota quota{kDefaultSemanticWork};
   const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));
   std::vector<EntryValueFact> entries;
@@ -326,7 +329,32 @@ void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
   const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   if (expected) {
-    test::Check(std::get<ExceptionControlError>(BuildExceptionControl(body, graph, input, regions)) == *expected);
+    const auto rejected = BuildExceptionControl(body, graph, input, regions);
+    if (*expected == ExceptionControlError::kMultipleExits) {
+      const auto& failure = std::get<ExceptionControlRegionFailure>(rejected);
+      test::Check(failure.kind == *expected && failure.exception_region.has_value());
+      const auto& evidence = *failure.exception_region;
+      test::Check(evidence.region == failure.region && evidence.exits == failure.exits);
+      test::Check(evidence.working_body_pc == body.tries[failure.region.value].offset);
+      test::Check(evidence.working_handler_pc == body.handlers[body.tries[failure.region.value].first_handler].offset);
+      test::Check(failure.exits[0].continuation != failure.exits[1].continuation);
+      const auto delta = normalized ? kOriginalPcBase : 0;
+      test::Check(evidence.body_pc == abc::CodeOffset{evidence.working_body_pc.value + delta});
+      test::Check(evidence.handler_pc == abc::CodeOffset{evidence.working_handler_pc.value + delta});
+      test::Check(std::get<ExceptionControlError>(BuildExceptionControl(body, graph, input, regions, {0, kDefaultSemanticWork})) == ExceptionControlError::kResourceLimit);
+      test::Check(std::get<ExceptionControlError>(BuildExceptionControl(body, graph, input, regions, {64 * 1024 * 1024, 0})) == ExceptionControlError::kWorkLimit);
+      for (const auto& exit : failure.exits) {
+        const auto edge = std::get<EdgeId>(exit.source);
+        test::Check(edge.value < graph.edges.size());
+        test::Check(exit.from == graph.edges[edge.value].source && exit.target == graph.edges[edge.value].target);
+        const auto site = graph.phases[exit.from->value].instruction.value;
+        test::Check(exit.pc == flow.instructions[site].origin.value_or(flow.instructions[site].pc));
+        test::Check(exit.working_pc == flow.instructions[site].pc);
+      }
+      test::Check(std::get<ExceptionControlError>(VerifyExceptionControl(body, graph, input, regions, {})) == *expected);
+    } else {
+      test::Check(std::get<ExceptionControlError>(rejected) == *expected);
+    }
   } else {
     Control(body, graph, input, regions);
     const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
@@ -465,6 +493,18 @@ void BranchJoin(abc::ProfileId profile, std::ostream* output = nullptr) {
     outside.instructions = test::Body(effectful).instructions;
     outside.handlers[0].offset.value += kReadBytes;
     DecodedControl(outside, profile, ExceptionControlError::kMultipleExits);
+    DecodedControl(outside, profile, ExceptionControlError::kMultipleExits, nullptr, {}, true);
+    // Diagnostic collection is one charged linear census, also for split
+    // effectful exit corridors; it never changes the failed control proof.
+    for (const std::uint32_t count : {200U, 201U, 400U, 800U}) {
+      auto expanded = effectful;
+      expanded.insert(expanded.begin() + kGapPc + kReadBytes, count,
+          static_cast<std::uint8_t>(abc::Opcode::kNOP));
+      auto split = outside;
+      split.instructions = test::Body(expanded).instructions;
+      split.handlers[0].offset.value += count;
+      DecodedControl(split, profile, ExceptionControlError::kMultipleExits);
+    }
   }
   body.tries[0].length = 16;
   constexpr std::size_t kBackedgeOperand = 13;

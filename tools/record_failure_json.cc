@@ -66,6 +66,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
     } else if constexpr (std::is_same_v<T, source::RecordProgramFailure>) {
       record["source_failure_domain"] = "record_program";
       record["source_error"] = static_cast<unsigned>(failure.kind);
+      if (failure.exception_region) record["source_exception_region"] = source::ExceptionRegionJson(*failure.exception_region);
       if (failure.printing) record["source_printing"] = source::TreePrintFailureJson(*failure.printing);
       if (failure.evaluation) record["source_evaluation"] = source::EvaluationFailureJson(*failure.evaluation);
       if (failure.tree) record["source_tree"] = source::TreeFailureJson(*failure.tree);

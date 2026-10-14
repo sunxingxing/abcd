@@ -63,7 +63,13 @@ struct ExceptionControlFailure {
   ExceptionControlError kind;
   ControlFailure cause;
 };
-[[nodiscard]] std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure> BuildExceptionControl(
+struct ExceptionControlRegionFailure {
+  ExceptionControlError kind;
+  analysis::TryId region;
+  std::array<ExceptionExitEvidence,2> exits;
+  std::optional<ExceptionRegionEvidence> exception_region;
+};
+[[nodiscard]] std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, ExceptionControlRegionFailure> BuildExceptionControl(
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
     const analysis::PhasedValueInput& input, const ExceptionPlan& regions,
     analysis::SemanticBudget budget = {});

@@ -189,6 +189,27 @@ class Composition {
     Require(found != ports.end() && found->target == target);
     return static_cast<std::size_t>(found - ports.begin());
   }
+  [[noreturn]] void MultipleExits(TryId region, WorkBlockId first, WorkBlockId second) {
+    ExceptionControlRegionFailure failure{Error::kMultipleExits,region,{}};
+    std::array<bool,2> found{};
+    const std::array targets{first,second};
+    // Failure-only linear census: select an actual incoming exit occurrence
+    // for each distinct continuation, never manufacture a CFG edge for a try.
+    for(const auto& unit:t_.mapping.units) {
+      quota_.Work();const auto* exit=std::get_if<TryExitUnit>(&unit);
+      if(!exit||exit->region!=region)continue;
+      for(std::size_t i=0;i<targets.size();++i) {
+        if(found[i]||exit->target!=targets[i])continue;
+        auto& evidence=failure.exits[i];evidence.source=exit->source;evidence.continuation=targets[i];
+        if(const auto* edge=std::get_if<EdgeId>(&exit->source)) {
+          Require(edge->value<graph_.edges.size());const auto& raw=graph_.edges[edge->value];
+          evidence.from=raw.source;evidence.target=raw.target;
+        } else evidence.target=targets[i];
+        found[i]=true;
+      }
+    }
+    Require(found[0]&&found[1]);throw failure;
+  }
   void Route() {
     quota_.Size(destinations_, t_.blocks.size());
     quota_.Size(origins_, t_.blocks.size());
@@ -212,7 +233,7 @@ class Composition {
             !Contains(*scope, t_.loops.owners[port.destination.value]));
         abrupt[region.value][p] = transfer;
         if (!transfer) {
-          Require(!planned.exit, Error::kMultipleExits);
+          if(planned.exit) MultipleExits(region,*planned.exit,port.target);
           planned.exit = port.target; destinations_[planned.wrapper.value] = immediate;
         }
       }
