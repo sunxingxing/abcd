@@ -12,6 +12,11 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 51d：for-in 协议事件证据（cc 审查通过；生产接入待续）
+
+- `for_in_events` 分开记录 acquisition、advance 的正常 Commit 与 not-done 边上的 key commit；验证器重新核对原始 phase、结果定义、异常出口与 done 两侧边。新增 `for_in_events_test`（伪造 Commit、替换结果、错配异常出口、反转 done 边、耗尽边写 key、遗漏/重复事件，200/201/400/800 规模与精确预算）。尚无生产消费者；生产接线草稿因联合验证未完成而撤回。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；497/620、534/620 不变，0 状态变化，0 文本变化；for-in 测试 5/5。
+
 ## Round 51c：ForInStmt 语法、打印与恢复骨架（cc 审查通过；生产接入待续）
 
 - `ForInStmt` 分别持有 RHS、key、body，不引入源码枚举器；接入遍历、结构检查、break/continue 标签与 recovery 事件骨架（acquisition 一次、continue 回到 advance、exhaustion 不写 key）。打印赋值式 `for (key in object)`，保留原声明；`kPerIterationLet` 仍明确拒绝。尚未接入生产准入：advance 结果与源码 key 在 done 成功边上的提交对应、TreeFlow/OriginalFlow/recovery 的共同验证、捕获 key 的激活证明（m524：PC10 RHS 环境、PC39 逐迭代环境、PC47 初始化 key）。

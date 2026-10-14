@@ -208,7 +208,7 @@ and not evidence that native per-iteration binding is complete.
 
 ### D/E work in progress: native statement syntax, not source admission
 
-The current uncommitted continuation adds a typed `ForInStmt` with an owned
+The b5009dc7 continuation added a typed `ForInStmt` with an owned
 RHS, assignment target symbol and body. Structural checking and label planning
 recognize it as a loop. Its source-side recovery program evaluates the RHS
 once, acquires once, advances on normal/continue completion, and defines the
@@ -258,7 +258,7 @@ These measurements cover the source-side flow builder, not the outstanding
 original-flow correspondence or activation proof. Proxy, mutation and Symbol
 runtime gaps described above remain unchanged.
 
-WIP validation (not D/E completion): full keep-going build passed; fixed source
+Validation of b5009dc7 (not D/E completion): full keep-going build passed; fixed source
 regression 65/65; for-in tree/Node/plan/real-fixture tests 4/4; the bounded
 loop/exception/iterator/source slice 26/27, with only the documented pre-existing
 `tree_structure_test` abort. No assertion in that test was changed. Final
@@ -274,3 +274,54 @@ but source construction stops at the first loop. DataDriver still first fails
 at m42717@153, PhasedMethodError::kInput > SemanticError::kUnsupportedInstruction;
 its m42548 23/34 for-in protocol is independently proved. No target is newly
 complete, and the original for-in source refusal has not been removed.
+
+### Non-captured continuation: event evidence only (uncommitted)
+
+`ForInEvents` separates the acquisition and advance Before/Commit identities
+from the edge-qualified key write. An advance commits its raw next-result on
+normal completion, including the undefined exhaustion value. Only the proven
+not-done edge supplies that result to a source key binding; the exhausted edge
+has no key write. There is no shared `ExprId` for these boundaries.
+
+`BuildForInEvents` revalidates the B/C protocol and records operation, phase,
+result and exceptional-exit identities. `VerifyForInEvents` independently
+reads those identities and the decision's original successors, after checking
+the underlying protocol. Its dense operation indexes use quota-backed storage
+before allocation. The protocol pass finishes and releases its temporary
+storage before the event indexes are allocated. Complexity remains
+O((V+E+U) log V); the additional event pass is linear. Inputs and the supplied
+plan remain caller-owned and are not credited as newly allocated storage.
+
+This is **still not production D/E admission**. A trial evaluation/forest
+adapter was withdrawn because the joint native-statement correspondence was
+not implemented. In particular, the acquisition-only try ends before the raw
+loop, whereas the native statement owns both acquisition and loop execution.
+The pending TreeFlow/OriginalFlow adapter must consume the forwarding proof,
+retain the acquisition and advance exception exits, bind the success-only key
+write and verify all body/exit edges. Treating the protocol as inert anchors,
+or assigning the raw next result an ordinary source expression, does not
+satisfy that obligation. No production planner consumes `ForInEvents` yet.
+
+`for_in_events_test` checks forged Commit, result and exception identities,
+reversed done edges, a key write placed on exhaustion, omitted/duplicated
+events, missing original exception evidence, and missing forwarding evidence.
+It exercises 200/201/400/800 loops and exact byte/work boundaries. The existing
+real fixture also checks event evidence for its non-captured protocols; m524
+retains `kAcquisitionOrder`. These are IR/protocol checks, not engine-exported
+Node differential evidence. The latter and joint OriginalFlow/recovery
+mutation tests remain outstanding. The previously documented ordinary-object
+Node limitation and Ark runtime-verification gaps are unchanged.
+
+Validation of this event-evidence WIP: the full keep-going build passed;
+`ctest --preset source-regression -j 1` passed 65/65. Plan, event and real-fixture
+checks passed 3/3. The 30-test loop/exception/iterator/source/recovery slice
+passed 29/30; only the previously documented `tree_structure_test` aborted.
+Both exploration flag sets were compared with explore51d/explore51ds: 497/620
+and 534/620, zero status changes and zero source-byte changes. All six target
+raw protocols passed event verification, but none gained source admission.
+DataDriver still first refuses getiterator in m42717@153; its independently
+checked for-in is m42548@23/34. The other targets retain their acquisition
+EvaluationError::kUnsupportedOperation refusals. Logs and outputs are under
+`/private/tmp/r51e-{build-full,fixed,events,targeted,target-protocols,accept-cohort}`
+(with `.log` for logs). The targeted test-name list is
+`/private/tmp/r51e-targeted-names.txt`.

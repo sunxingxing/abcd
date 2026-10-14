@@ -1,4 +1,5 @@
 #include "../../../src/source/for_in_plan.h"
+#include "../../../src/source/for_in_events.h"
 #include "../../../src/source/exception_forwarding.h"
 #include "../../../src/analysis/phased_value_import.h"
 #include "../../../src/analysis/value_edits.h"
@@ -97,6 +98,11 @@ ForInPlan Prove(const ValueProgram& graph) {
   Check(std::holds_alternative<ForInPlan>(result));
   auto plan = std::get<ForInPlan>(std::move(result));
   Check(std::holds_alternative<std::uint64_t>(VerifyForInPlan(graph, plan)));
+  const auto events = BuildForInEvents(graph, plan);
+  if (const auto* error = std::get_if<ForInFailure>(&events))
+    std::cerr << "events " << static_cast<unsigned>(error->kind) << " op " << error->operation.value_or(OpId{UINT32_MAX}).value << std::endl;
+  Check(std::holds_alternative<ForInEvents>(events));
+  Check(std::holds_alternative<std::uint64_t>(VerifyForInEvents(graph, plan, std::get<ForInEvents>(events))));
   return plan;
 }
 void Mutations() {
@@ -227,6 +233,70 @@ void Scales() {
     Check(std::get<ForInFailure>(BuildForInPlan(graph, {low - 1})).kind == ForInError::kResourceLimit);
   }
 }
+void EventMutations() {
+  const auto graph = Import(Body(1, true, true), 0, 5);
+  const auto plan = Prove(graph);
+  const auto proof = std::get<ForInEvents>(BuildForInEvents(graph, plan));
+  const auto& pair = proof.loops[0];
+  Check(pair.advance.result == pair.key.next_result);
+  Check(pair.advance.before != pair.advance.commit);
+  Check(pair.key.success == plan.loops[0].body_edge);
+  Check(pair.key.exhausted == plan.loops[0].done_edge);
+  const auto reject = [&](const ForInEvents& changed) {
+    const auto checked = VerifyForInEvents(graph, plan, changed);
+    Check(std::holds_alternative<ForInFailure>(checked));
+    const auto& failure = std::get<ForInFailure>(checked);
+    Check(failure.kind != ForInError::kResourceLimit && failure.kind != ForInError::kWorkLimit);
+  };
+  for (unsigned mode = 0; mode < 10; ++mode) {
+    auto changed = proof;
+    switch (mode) {
+      case 0: changed.loops[0].advance.commit = pair.advance.before; break;
+      case 1: changed.loops[0].advance.result = pair.acquisition.result; break;
+      case 2: changed.loops[0].advance.exceptional_exit = pair.acquisition.exceptional_exit; break;
+      case 3: std::swap(changed.loops[0].key.success, changed.loops[0].key.exhausted); break;
+      // Key write on exhaustion is not an advance Commit, even though next
+      // completed normally and produced the undefined exhaustion sentinel.
+      case 4: changed.loops[0].key.success = pair.key.exhausted; break;
+      case 5: changed.loops.clear(); break;
+      case 6: changed.loops.push_back(pair); break;
+      case 7: changed.loops[0].acquisition = pair.advance; break;
+      case 8: ++changed.cfg_revision.value; break;
+      case 9: changed.loops[0].key.next_result = pair.acquisition.result; break;
+    }
+    reject(changed);
+  }
+  auto bad = graph;
+  // The raw Commit, rather than a reconstructed neighbouring PC, owns success.
+  std::get<OpResult>(bad.values[pair.advance.result.value].origin).commit = pair.advance.before;
+  Check(std::holds_alternative<ForInFailure>(VerifyForInEvents(bad, plan, proof)));
+  bad = graph;
+  bad.exceptional_exits.erase(bad.exceptional_exits.begin() + pair.advance.exceptional_exit.value);
+  Check(std::holds_alternative<ForInFailure>(VerifyForInEvents(bad, plan, proof)));
+  bad = graph;
+  bad.edges[pair.key.exhausted.value].target = bad.edges[pair.key.success.value].target;
+  Check(std::holds_alternative<ForInFailure>(VerifyForInEvents(bad, plan, proof)));
+  auto wrong_plan = plan;
+  wrong_plan.forwarding.clear();
+  Check(std::holds_alternative<ForInFailure>(VerifyForInEvents(graph, wrong_plan, proof)));
+}
+void EventScales() {
+  for (unsigned count : {200U, 201U, 400U, 800U}) {
+    const auto graph = Import(Body(count, true, true), 0, 5);
+    const auto plan = std::get<ForInPlan>(BuildForInPlan(graph));
+    const auto proof = std::get<ForInEvents>(BuildForInEvents(graph, plan));
+    Check(proof.loops.size() == count);
+    const auto work = std::get<std::uint64_t>(VerifyForInEvents(graph, plan, proof));
+    Check(std::holds_alternative<ForInEvents>(BuildForInEvents(graph, plan, {proof.allocated_bytes, proof.work})));
+    Check(std::get<ForInFailure>(BuildForInEvents(graph, plan, {proof.allocated_bytes - 1})).kind == ForInError::kResourceLimit);
+    Check(std::get<ForInFailure>(BuildForInEvents(graph, plan, {proof.allocated_bytes, proof.work - 1})).kind == ForInError::kWorkLimit);
+    Check(std::holds_alternative<std::uint64_t>(VerifyForInEvents(graph, plan, proof, {proof.allocated_bytes, work})));
+    Check(std::get<ForInFailure>(VerifyForInEvents(graph, plan, proof, {proof.allocated_bytes, work - 1})).kind == ForInError::kWorkLimit);
+    Check(proof.work < 1024 * (graph.ops.size() + graph.values.size() + graph.uses.size()) * std::bit_width(graph.blocks.size()));
+    std::cout << "event scale " << count << " build_work " << proof.work << " verify_work " << work
+              << " bytes " << proof.allocated_bytes << std::endl;
+  }
+}
 void File(const char* path, unsigned target) {
   const auto file = std::get<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
   const auto hash = std::get<corpus::FileFingerprint>(file->Fingerprint());
@@ -260,6 +330,9 @@ void File(const char* path, unsigned target) {
     } else {
       const auto& plan = std::get<ForInPlan>(result);
       Check(std::holds_alternative<std::uint64_t>(VerifyForInPlan(graph, plan)));
+      const auto events = BuildForInEvents(graph, plan);
+      Check(std::holds_alternative<ForInEvents>(events));
+      Check(std::holds_alternative<std::uint64_t>(VerifyForInEvents(graph, plan, std::get<ForInEvents>(events))));
       std::cout << "proved " << plan.loops.size() << " forwarding " << plan.forwarding.size() << std::endl;
       for (const auto& loop : plan.loops) std::cout << "acquire " << graph.origins[graph.ops[loop.acquisition.value].origin.value].pc.value
           << " next " << graph.origins[graph.ops[loop.advance.value].origin.value].pc.value << std::endl;
@@ -270,6 +343,7 @@ void File(const char* path, unsigned target) {
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--events") { EventMutations(); EventScales(); return 0; }
   if (argc > 1) { File(argv[1], argc > 2 ? static_cast<unsigned>(std::stoul(argv[2])) : 0); return 0; }
   for (bool caught : {false, true}) for (bool split : {false, true}) {
     const auto graph = Import(Body(1, caught, split), 0, 5);
