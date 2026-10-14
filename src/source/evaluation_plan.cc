@@ -1,4 +1,5 @@
 #include "evaluation_plan.h"
+#include "for_in_evaluation.h"
 #include "evaluation_failure.h"
 #include "assignment_values.h"
 #include "evaluation_flow.h"
@@ -58,6 +59,19 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
     plan.flow = flow;
+    bool has_enumeration = false;
+    for (const auto& op : graph.ops) {
+      step(); has_enumeration |= op.life == analysis::ValueLife::kLive &&
+          std::holds_alternative<analysis::ValueEnumeration>(op.operation);
+    }
+    // Increment I connects the two phased production callers. Normal-flow
+    // enumeration keeps its existing refusal until its event-order adapter is
+    // implemented; raw protocol proofs alone never authorize expression fusion.
+    if (has_enumeration && flow == EvaluationFlow::kPhased) {
+      analysis::SemanticBudget left{bytes, work};
+      if (const auto error = BuildForInEvaluation(graph, plan, left)) return *error;
+      bytes = left.bytes; work = left.work;
+    }
     if (!guarded.empty()) {
       Require(flow == EvaluationFlow::kPhased, Error::kOwnership);
       admit(guarded.size(), sizeof(analysis::GuardedRead));
@@ -196,7 +210,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     }
     if (has_phi) {
       auto copies = flow == EvaluationFlow::kNormal ? BuildPhiCopies(graph, {bytes, work})
-          : BuildPhasedPhiCopies(graph, {bytes, work}, plan.holes ? PhiDomain::kHoleTransport : PhiDomain::kLanguage);
+          : BuildPhasedPhiCopies(graph, {bytes, work}, plan.holes ? PhiDomain::kHoleTransport : PhiDomain::kLanguage, plan.for_in ? &*plan.for_in : nullptr);
       auto* phis = std::get_if<PhiCopies>(&copies);
       if (!phis) {
         const auto error = std::get<PhiCopyError>(copies);
@@ -338,6 +352,11 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(index)}, EvaluationObligation::kPlan);
         const auto& op = graph.ops[index];
         Require(op.block.value == b && op.order == order, Error::kInvalidGraph);
+        if (ForInOperation(plan, {static_cast<std::uint32_t>(index)})) {
+          plan.operations[index] = {EvaluationKind::kForInEvent, {}, {}};
+          // Ordered protocol boundary: never an elided effect or eager expression.
+          ++serial; continue;
+        }
         if (IsArrayInitialization(plan, {static_cast<std::uint32_t>(index)})) continue;
         if (op.life != analysis::ValueLife::kLive ||
             plan.operations[index].kind == EvaluationKind::kElidedPure ||
@@ -542,6 +561,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         (plan.literals ? plan.literals->allocated_bytes : 0) +
         (ArrayInitializations(plan) ? ArrayInitializations(plan)->allocated_bytes : 0);
     for (const auto& call : plan.phase_selections) plan.allocated_bytes += call.prefix.capacity() * sizeof(analysis::OpId) + call.ancestors.capacity() * sizeof(PhaseCallReference);
+    if (plan.for_in) plan.allocated_bytes += plan.for_in->allocated_bytes + plan.for_in_events->allocated_bytes;
     if (plan.self_order) plan.allocated_bytes += plan.self_order->AllocatedBytes();
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
     if (plan.exceptions) plan.allocated_bytes += plan.exceptions->allocated_bytes;

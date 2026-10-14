@@ -52,7 +52,7 @@ int main() {
   static_assert(static_cast<unsigned>(EvaluationError::kResourceLimit)==9);
   // Every obligation travels through both publication paths. Zero is a real
   // PC/ID; absence and synthetic origins must survive independently.
-  for(unsigned tag=0;tag<=static_cast<unsigned>(TreeObligation::kPlacement);++tag) {
+  for(unsigned tag=0;tag<=static_cast<unsigned>(TreeObligation::kForInCorrespondence);++tag) {
     FunctionTreeFailure f{FunctionTreeError::kControl};
     f.tree=TreeFailureEvidence{static_cast<TreeObligation>(tag),{}};
     auto& loc=f.tree->location;loc.method=abc::EntityOffset{77};loc.operation=analysis::OpId{0};
@@ -133,6 +133,18 @@ int main() {
     input.pc.reset();input.working_pc.reset();
     route=FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{input}}});
     Check(route.failure_class==RouteFailureClass::kMemoryLimit && !route.pc && !route.working_pc);
+  }
+  for (const auto kind : {ForInError::kEscape,ForInError::kResourceLimit,ForInError::kWorkLimit}) {
+    EvaluationFailure f{kind == ForInError::kResourceLimit ? EvaluationError::kResourceLimit :
+        kind == ForInError::kWorkLimit ? EvaluationError::kWorkLimit : EvaluationError::kUnsupportedOperation};
+    f.evaluation.for_in = ForInFailure{kind,analysis::OpId{0},analysis::OpId{2},analysis::ValueId{3},analysis::UseId{4}};
+    f.evaluation.location.method = abc::EntityOffset{77};
+    f.evaluation.location.pc = abc::CodeOffset{0}; f.evaluation.location.working_pc = abc::CodeOffset{9};
+    const auto projected = FamilyRouteFailure(f);
+    Check(projected.causes.count == 3);
+    Check(projected.failure_class == (kind == ForInError::kResourceLimit ? RouteFailureClass::kMemoryLimit :
+        kind == ForInError::kWorkLimit ? RouteFailureClass::kWorkLimit : RouteFailureClass::kUnproved));
+    RoundTrip(projected);
   }
   // The initializer's leaf owner must override the stale enclosing method.
   FunctionInputFailure input{analysis::SemanticProofFailure{analysis::SemanticProofError::kInternalValue,{12}},

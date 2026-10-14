@@ -362,7 +362,7 @@ class Proof {
       q.witness = {Error::kAdvance, loop.acquisition, loop.advance, {}, {}, {}, originals[e]};
       q.Require(Dominates(g.ops[loop.decision.value].block, {arcs[e].source.value}), Error::kAdvance);
     }
-    Uses(plan); Catches(plan);
+    Uses(plan); Catches(plan); Members(plan);
     plan.allocated_bytes = q.memory.Peak(); plan.work = q.initial - q.remaining; return plan;
   }
   void Uses(ForInPlan& plan) {
@@ -393,6 +393,40 @@ class Proof {
         const auto& loop = plan.loops[*key_loop[facts[value.value].advance.value]];
         q.witness.acquisition = loop.acquisition;
         q.Require(owner == loop.decision || inert_tests[owner.value], Error::kDone);
+      }
+    }
+  }
+  void Members(ForInPlan& plan) {
+    q.Reserve(plan.operations, g.ops.size()); plan.operations.resize(g.ops.size());
+    q.Reserve(plan.values, g.values.size()); plan.values.resize(g.values.size());
+    q.Reserve(plan.uses, g.uses.size()); plan.uses.resize(g.uses.size());
+    for (std::uint32_t v = 0; v < g.values.size(); ++v) {
+      q.Step(); if (g.values[v].life != ValueLife::kLive) continue;
+      const auto root = Canon({v});
+      const auto* result = std::get_if<OpResult>(&g.values[root.value].origin);
+      if (result && acquired[result->op.value])
+        plan.values[v] = ForInMember{*acquired[result->op.value], ForInRole::kEnumerator};
+      else if (result && key_loop[result->op.value])
+        plan.values[v] = ForInMember{*key_loop[result->op.value], ForInRole::kNextResult};
+      else if (facts[root.value].kind == FactKind::kTest && key_loop[facts[root.value].advance.value])
+        plan.values[v] = ForInMember{*key_loop[facts[root.value].advance.value], ForInRole::kDoneTest};
+    }
+    for (std::uint32_t o = 0; o < g.ops.size(); ++o) {
+      q.Step(); const auto& op = g.ops[o]; if (op.life != ValueLife::kLive) continue;
+      if (decisions[o]) plan.operations[o] = ForInMember{*decisions[o], ForInRole::kDecision};
+      else if (op.result && (std::holds_alternative<ValueEnumeration>(op.operation) ||
+          (std::holds_alternative<ValueCopy>(op.operation) && detail::Inert(op)) || inert_tests[o]))
+        plan.operations[o] = plan.values[op.result->value];
+    }
+    for (std::uint32_t u = 0; u < g.uses.size(); ++u) {
+      q.Step(); const auto& use = g.uses[u]; if (use.life != ValueLife::kLive) continue;
+      if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+        const auto member = plan.operations[owner->value];
+        // The RHS is an ordinary observation, evaluated before acquisition.
+        if (member && *owner != plan.loops[member->loop].acquisition) plan.uses[u] = member;
+      } else {
+        const auto phi = std::get<ValueId>(use.owner);
+        if (plan.values[phi.value]) plan.uses[u] = plan.values[phi.value];
       }
     }
   }
@@ -459,7 +493,8 @@ std::variant<std::uint64_t, ForInFailure> VerifyForInPlan(
   try {
     quota.Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision);
     auto checked = Proof(graph, quota).Build();
-    quota.Step(plan.loops.size() + plan.keys.size() + plan.forwarding.size());
+    quota.Step(plan.loops.size() + plan.keys.size() + plan.forwarding.size() + plan.operations.size() + plan.values.size() + plan.uses.size());
+    quota.Require(plan.operations == checked.operations && plan.values == checked.values && plan.uses == checked.uses);
     quota.Require(plan.loops == checked.loops && plan.keys == checked.keys && plan.forwarding == checked.forwarding);
     return quota.initial - quota.remaining;
   } catch (ForInFailure failure) { return failure; }

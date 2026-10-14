@@ -96,7 +96,8 @@ void Protocol(const ValueProgram& graph, const ForInPlan& plan, detail::ForInQuo
   if (const auto* error = std::get_if<ForInFailure>(&built)) throw *error;
   const auto& checked = std::get<ForInPlan>(built);
   q.memory.Observe(checked.allocated_bytes); q.Step(checked.work);
-  q.Step(plan.loops.size() + plan.keys.size() + plan.forwarding.size());
+  q.Step(plan.loops.size() + plan.keys.size() + plan.forwarding.size() + plan.operations.size() + plan.values.size() + plan.uses.size());
+  q.Require(plan.operations == checked.operations && plan.values == checked.values && plan.uses == checked.uses);
   q.Require(plan.revision == checked.revision && plan.cfg_revision == checked.cfg_revision &&
       plan.loops == checked.loops && plan.keys == checked.keys && plan.forwarding == checked.forwarding);
 }

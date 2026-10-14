@@ -325,3 +325,63 @@ EvaluationError::kUnsupportedOperation refusals. Logs and outputs are under
 `/private/tmp/r51e-{build-full,fixed,events,targeted,target-protocols,accept-cohort}`
 (with `.log` for logs). The targeted test-name list is
 `/private/tmp/r51e-targeted-names.txt`.
+
+## Round 52 increment I: production evaluation, publication still refused
+
+The two phased production callers (`phased_method` and `family_tree`) now use
+`BuildForInEvaluation` through the common evaluation constructor. Its entry is
+semantic: a live `ValueEnumeration` must have a complete `ForInPlan` and
+`ForInEvents` proof. No sample, instruction sequence, adjacency or graph-shape
+condition is added. Normal-flow source admission remains unchanged: its raw
+protocol proof is not yet a normal expression-order adapter.
+
+The raw proof retains dense operation, value and use membership. Enumerator,
+next-result, done-test and decision identities are separate. The acquisition
+RHS and the real key observations remain ordinary evaluation uses. Protocol
+copy/phi SCCs retain their canonical VM identity; this does not assign either
+the enumerator or the next-result a source symbol. Original phi occurrences
+remain in the copy table with `kForInProtocol` ownership and no executable
+parallel-copy schedule. Phi verification reconstructs that set from the graph;
+it does not trust a suppression flag. All other phi inputs keep their ordinary
+copy and exception-staging checks.
+
+`kForInEvent` is a protocol placement, not an effect-free anchor. Acquisition
+and advance still contribute ordered, throwing events to the phased corridors;
+this increment does not fuse expressions into them. The evaluation verifier
+reconstructs identities, uses, loop edges and event membership before accepting
+these placements. Independent ordinary uses and effects still go through the
+existing planner/verifier. All new vectors are charged before allocation using
+the existing quotas. Shared identity/dominance/loop indexes and a bounded number
+of verification passes keep total complexity O((V+E+U) log V).
+
+Tree entry re-verifies the evaluation plan and refuses *before expression-forest
+or source-symbol construction*, with `FunctionTreeError::kSemantics` and the
+new appended `TreeObligation::kForInCorrespondence`. The location is the first
+acquisition's real method/op/block and original/working PC. This is the explicit
+"native-statement correspondence not implemented" boundary, not a partial tree
+or a publication certificate. `ForInFailure` also survives evaluation failures
+as a fixed-size typed cause/location, including both JSON publication paths.
+Existing error enum values and resource classifications are unchanged.
+
+Tests include real fixture and target-method evaluation; escaped enumerators,
+duplicated next, altered done edges, removed uses, forged member/value/use
+indexes, protocol-event placement and Commit mutations; copy/block splits and
+a backedge copy SCC; forged/omitted protocol phi ownership; 200/201/400/800
+scaling and exact byte/work boundaries; diagnostic round trips (including PC 0)
+and CLI/manifest agreement. The captured-key fixture still refuses acquisition
+order. There is still no engine-exported native-for-in Node differential:
+increments II (tree/TreeFlow) and III (OriginalFlow/recovery/publication) remain.
+
+Final increment-I validation: the complete keep-going build passed; the fixed
+set passed 65/65 after the build completed. The 37-test targeted slice passed
+36/37, with only the previously recorded `tree_structure_test` failure. Both
+exploration flag sets against explore51e/explore51es remain 497/620 and 534/620,
+with zero status changes and zero source-byte changes. Only four target record
+diagnostics change to the new tree obligation. All six target loops pass the
+method-level evaluation check: acquisitions at m29450@90, m42548@23,
+m44469@28 and @179, m21553@47, m54047@230. DataDriver's first record failure
+remains the separate getiterator in m42717@153. Filter's two loops share the
+single method-entry tree refusal at its first acquisition, PC28; there is no
+fabricated second public refusal. CLI tests compare the actual record receipts
+with `abc_semantic --record-source`. Logs use the `/private/tmp/r52-` prefix,
+listed in status.md. No native-for-in source completion is claimed.

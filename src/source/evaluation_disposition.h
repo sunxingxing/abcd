@@ -7,10 +7,11 @@ namespace abcd::source {
 // Enclosing projections and environment declarations need their block owner.
 enum class EvaluationDisposition : std::uint8_t {
   kExpression, kAnchor, kEnclosingAnchor, kEnvironment, kInitializer,
-  kCheckedRead, kRemoved
+  kCheckedRead, kRemoved, kProtocol
 };
 constexpr EvaluationDisposition Disposition(EvaluationKind kind) {
   switch (kind) {
+    case EvaluationKind::kForInEvent: return EvaluationDisposition::kProtocol;
     case EvaluationKind::kRemoved: return EvaluationDisposition::kRemoved;
     case EvaluationKind::kCellGuard:
     case EvaluationKind::kAlias:

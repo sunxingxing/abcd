@@ -26,7 +26,7 @@ enum class FunctionTreeError : std::uint8_t {
 struct FunctionTreeFailure {
   FunctionTreeError kind;
   std::variant<std::monostate, ExpressionFailure, ControlError, ExceptionControlError, CompletionError,
-      TreeFlowError, TreeStructureError, TreeSemanticFailure> cause;
+      TreeFlowError, TreeStructureError, TreeSemanticFailure, EvaluationFailure> cause;
   std::optional<TreeFailureEvidence> tree;
   FunctionTreeFailure(FunctionTreeError value) : kind(value) {}  // NOLINT: implicit kind.
   std::optional<abc::EntityOffset> method;

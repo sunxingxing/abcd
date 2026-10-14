@@ -1,24 +1,9 @@
 #ifndef ABCD_SOURCE_FOR_IN_PLAN_H_
 #define ABCD_SOURCE_FOR_IN_PLAN_H_
 
-#include "abcd/analysis/value_ir.h"
+#include "abcd/source/for_in_failure.h"
 
 namespace abcd::source {
-enum class ForInError : std::uint8_t {
-  kIdentity, kEscape, kAcquisitionOrder, kAdvance, kDone, kKeyBinding,
-  kActivation, kExit, kCatchState, kExceptionCorrespondence, kCorrespondence,
-  kResourceLimit, kWorkLimit
-};
-// Missing locations stay missing. These are original working-IR identities;
-// callers map PCs through origins, never through a neighbouring instruction.
-struct ForInFailure {
-  ForInError kind;
-  std::optional<analysis::OpId> acquisition, operation;
-  std::optional<analysis::ValueId> value;
-  std::optional<analysis::UseId> use;
-  std::optional<analysis::WorkBlockId> block;
-  std::optional<analysis::EdgeId> edge;
-};
 struct ForInLoop {
   analysis::OpId acquisition, advance, decision;
   analysis::ValueId enumerator, key;
@@ -38,6 +23,12 @@ struct ForInForwarding {
   analysis::ValueId exception;
   bool operator==(const ForInForwarding&) const = default;
 };
+enum class ForInRole : std::uint8_t { kEnumerator, kNextResult, kDoneTest, kDecision };
+struct ForInMember {
+  std::uint32_t loop;
+  ForInRole role;
+  bool operator==(const ForInMember&) const = default;
+};
 // Raw protocol evidence, NOT a syntax/activation/publication certificate.
 // Key uses retain their original stores and scope. A later tree projection
 // must prove the chosen native binding, RHS scope and each dynamic activation.
@@ -47,6 +38,9 @@ struct ForInPlan {
   std::vector<ForInLoop> loops; // acquisition order
   std::vector<ForInKeyUse> keys; // original UseId order
   std::vector<ForInForwarding> forwarding;
+  // Dense occurrence indexes; absence means ordinary source planning. These
+  // retain protocol identity, never a source SymbolId or expression identity.
+  std::vector<std::optional<ForInMember>> operations, values, uses;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

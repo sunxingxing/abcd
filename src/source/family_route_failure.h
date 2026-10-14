@@ -24,7 +24,10 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     if constexpr (requires { error.cause; }) CollectFailureCauses(error.cause, out);
     else if constexpr (requires { error.error; }) CollectFailureCauses(error.error, out);
     else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);
-    if constexpr (std::is_same_v<T, EvaluationFailure>) CollectFailureCauses(error.evaluation.obligation, out);
+    if constexpr (std::is_same_v<T, EvaluationFailure>) {
+      CollectFailureCauses(error.evaluation.obligation, out);
+      if (error.evaluation.for_in) CollectFailureCauses(error.evaluation.for_in->kind, out);
+    }
     if constexpr (requires { error.tree; })
       if (error.tree) {
         CollectFailureCauses(error.tree->obligation, out);

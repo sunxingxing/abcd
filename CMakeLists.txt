@@ -204,7 +204,7 @@ target_sources(abcd_source PRIVATE src/source/tree_operands.cc src/source/tree_c
 target_sources(abcd_source PRIVATE src/source/edge_copies.cc src/source/edge_copy_verify.cc)
 target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_verify.cc src/source/phi_expression_inputs.cc)
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
-target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/exception_forwarding.cc)
+target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
@@ -1162,9 +1162,10 @@ if(BUILD_TESTING)
       ${CMAKE_SOURCE_DIR}/tests/integration/for_in_tree.mjs $<TARGET_FILE:for_in_tree_test>)
   endif()
   add_executable(for_in_plan_test tests/unit/source/for_in_plan_test.cc)
-  target_link_libraries(for_in_plan_test PRIVATE abcd_source)
+  target_link_libraries(for_in_plan_test PRIVATE abcd_source abcd_json)
   target_include_directories(for_in_plan_test PRIVATE tests/support)
   add_test(NAME for_in_plan_test COMMAND for_in_plan_test)
+  add_test(NAME for_in_evaluation_test COMMAND for_in_plan_test --evaluation)
   add_test(NAME for_in_events_test COMMAND for_in_plan_test --events)
   add_test(NAME for_in_fixture_test COMMAND for_in_plan_test
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_in/loops.abc)
@@ -2557,6 +2558,12 @@ if(BUILD_TESTING)
     target_include_directories(record_failure_json_test PRIVATE tools)
     target_link_libraries(record_failure_json_test PRIVATE abcd_source abcd_json)
     add_test(NAME record_failure_json_test COMMAND record_failure_json_test)
+    if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME for_in_evaluation_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_in_evaluation.mjs
+        $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+        ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo/artifacts/entry/default/default/modules/modules.abc)
+    endif()
     add_executable(tree_failure_test tests/unit/source/tree_failure_test.cc tools/record_failure_json.cc)
     target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME tree_failure_test COMMAND tree_failure_test)

@@ -110,6 +110,11 @@ std::variant<EvaluationAliasCost, EvaluationFailure> BuildEvaluationAliases(
     Require(identities.canonical.size()==graph.values.size(),Error::kOwnership);
     for (std::size_t i=0;i<graph.values.size();++i) {
       quota.Step(); const ValueId value{static_cast<std::uint32_t>(i)};
+      if (plan.for_in && plan.for_in->values[i]) {
+        // Closed protocol SCCs have an immutable raw definition, not a source
+        // phi location. This identity does not create a key or enumerator symbol.
+        plan.aliases[i] = identities.canonical[i]; continue;
+      }
       if (const auto root = SourcePhiAlias(graph, identities.canonical, value)) {
         plan.aliases[i] = *root; continue;
       }
@@ -156,6 +161,10 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationAliases(
     for (std::size_t i = 0; i < graph.values.size(); ++i) {
       quota.Step();
       const auto root = plan.aliases[i];
+      if (plan.for_in && plan.for_in->values[i]) {
+        Require(root == identities.canonical[i], Error::kOwnership);
+        continue;
+      }
       Require(root.value < graph.values.size() && plan.aliases[root.value] == root, Error::kOwnership);
       const auto* result = std::get_if<OpResult>(&graph.values[i].origin);
       if (std::holds_alternative<PhiDefinition>(graph.values[i].origin)) {

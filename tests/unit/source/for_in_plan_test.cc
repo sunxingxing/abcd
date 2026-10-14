@@ -1,4 +1,8 @@
 #include "../../../src/source/for_in_plan.h"
+#include "../../../src/source/evaluation_plan.h"
+#include "../../../src/source/for_in_evaluation.h"
+#include "../../../src/source/evaluation_failure_json.h"
+#include "../../../src/source/phase_corridor.h"
 #include "../../../src/source/for_in_events.h"
 #include "../../../src/source/exception_forwarding.h"
 #include "../../../src/analysis/phased_value_import.h"
@@ -48,7 +52,7 @@ ValueProgram Import(const abc::MethodBody& body, std::uint32_t locals, std::uint
 }
 abc::MethodBody Body(unsigned count, bool caught, bool split = false,
                      std::vector<std::uint8_t> handler_bytes = {0x61, 4, 0x60, 4, 0xfe, 0},
-                     bool repeat_advance = false) {
+                     bool repeat_advance = false, bool identity_cycle = false) {
   const auto byte = [](abc::Opcode op) { return static_cast<std::uint8_t>(op); };
   std::vector<std::uint8_t> bytes;
   struct Catch { std::uint32_t acquire, handler; };
@@ -72,6 +76,8 @@ abc::MethodBody Body(unsigned count, bool caught, bool split = false,
     const auto branch = bytes.size();
     bytes.insert(bytes.end(), {byte(abc::Opcode::kJNEZ_IMM8), 0,
         byte(abc::Opcode::kLDA_V8), 2, byte(abc::Opcode::kISTRUE), byte(abc::Opcode::kSTA_V8), 3});
+    if (identity_cycle) bytes.insert(bytes.end(), {byte(abc::Opcode::kMOV_V8_V8), 6, 1,
+        byte(abc::Opcode::kMOV_V8_V8), 1, 6});
     const auto back = bytes.size();
     bytes.insert(bytes.end(), {byte(abc::Opcode::kJMP_IMM8), static_cast<std::uint8_t>(header - back)});
     bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
@@ -212,6 +218,9 @@ void Normal() {
   const auto graph = std::get<ValueProgram>(ImportNormalValues(body, method, proof, frame));
   Check(!VerifyImportedValues(graph, method, proof, frame));
   Check(Prove(graph).loops.size() == 1);
+  // This increment integrates phased callers only; normal protocol proof is
+  // not yet a normal expression-order certificate.
+  Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(graph)));
 }
 void Scales() {
   for (unsigned count : {200U, 201U, 400U, 800U}) {
@@ -297,6 +306,96 @@ void EventScales() {
               << " bytes " << proof.allocated_bytes << std::endl;
   }
 }
+EvaluationPlan Evaluated(const ValueProgram& graph) {
+  auto result = BuildPhasedEvaluationPlan(graph);
+  if (const auto* e = std::get_if<EvaluationFailure>(&result)) {
+    std::cerr << "evaluation " << unsigned(e->kind) << " obligation " << unsigned(e->evaluation.obligation)
+      << " op " << e->evaluation.location.operation.value_or(OpId{UINT32_MAX}).value << std::endl;
+    if (e->evaluation.for_in) std::cerr << "protocol " << unsigned(e->evaluation.for_in->kind) << std::endl;
+  }
+  Check(std::holds_alternative<EvaluationPlan>(result));
+  auto plan = std::get<EvaluationPlan>(std::move(result));
+  Check(plan.for_in && plan.for_in_events);
+  Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, plan)));
+  for (const auto& loop : plan.for_in->loops) {
+    for (const auto op : {loop.acquisition, loop.advance}) {
+      Check(plan.operations[op.value].kind == EvaluationKind::kForInEvent);
+      Check(!plan.operations[op.value].consumer && !plan.operations[op.value].temporary);
+      Check(PhaseCorridors::Event(graph.ops[op.value], plan.operations[op.value]));
+    }
+    Check(!plan.for_in->uses[loop.object.value]); // RHS is a real source use.
+  }
+  for (const auto& key : plan.for_in->keys) Check(!plan.for_in->uses[key.use.value]);
+  return plan;
+}
+void Evaluation() {
+  for (bool caught : {false, true}) for (bool split : {false, true}) {
+    const auto graph = Import(Body(1, caught, split), 0, 5);
+    const auto plan = Evaluated(graph); Check(plan.for_in->loops.size() == 1);
+    const auto& loop = plan.for_in->loops.front();
+    for (unsigned mutation = 0; mutation < 6; ++mutation) {
+      auto bad = plan;
+      switch (mutation) {
+        case 0: bad.for_in->operations[loop.advance.value].reset(); break;
+        case 1: bad.for_in->uses[graph.ops[loop.advance.value].first_use.value].reset(); break;
+        case 2: bad.for_in->values[loop.enumerator.value]->role = ForInRole::kNextResult; break;
+        case 3: bad.operations[loop.acquisition.value].kind = EvaluationKind::kElidedPure; break;
+        case 4: std::swap(bad.for_in_events->loops[0].key.success,bad.for_in_events->loops[0].key.exhausted); break;
+        case 5: bad.for_in_events.reset(); break;
+      }
+      Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, bad)));
+    }
+    auto changed = graph;
+    changed.edges[loop.done_edge.value].target = changed.edges[loop.body_edge.value].target;
+    Check(std::holds_alternative<EvaluationFailure>(BuildPhasedEvaluationPlan(changed)));
+    changed = graph;
+    changed.uses[graph.ops[loop.advance.value].first_use.value].life = ValueLife::kRemoved;
+    Check(std::holds_alternative<EvaluationFailure>(BuildPhasedEvaluationPlan(changed)));
+    changed = graph;
+    // A body observation of the VM iterator is not a source key read.
+    Check(!plan.for_in->keys.empty());
+    changed.uses[plan.for_in->keys.front().use.value].operand = loop.enumerator;
+    Check(std::holds_alternative<EvaluationFailure>(BuildPhasedEvaluationPlan(changed)));
+  }
+  const auto cycle = Import(Body(1,true,true,{0x61,4,0x60,4,0xfe,0},false,true),0,7);
+  const auto cyclic = Evaluated(cycle);
+  Check(cyclic.for_in->loops.size() == 1 && cyclic.phis && !cyclic.phis->for_in_inputs.empty());
+  auto wrong_phi = cyclic;
+  wrong_phi.phis->for_in_inputs.pop_back();
+  Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(cycle,wrong_phi)));
+  wrong_phi = cyclic;
+  for (auto& projection : wrong_phi.phis->projection) if (projection == PhiCopyUse::kForInProtocol) {
+    projection = PhiCopyUse::kRetained; break;
+  }
+  Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(cycle,wrong_phi)));
+  for (std::size_t i=0;i<cyclic.phis->copies.size();++i)
+    if(cycle.values[cyclic.phis->copies[i].destination.value].domain == ValueKinds::PropertyEnumerator())
+      Check(cyclic.phis->projection[i] == PhiCopyUse::kForInProtocol);
+  const auto duplicate = Import(Body(1, true, false, {0x61,4,0x60,4,0xfe,0}, true), 0, 5);
+  Check(std::holds_alternative<EvaluationFailure>(BuildPhasedEvaluationPlan(duplicate)));
+  EvaluationEvidence e;
+  e.location.pc = abc::CodeOffset{0}; e.location.working_pc = abc::CodeOffset{7};
+  e.for_in = ForInFailure{ForInError::kEscape, OpId{0}, OpId{4}, ValueId{6}, UseId{2}, WorkBlockId{3}, EdgeId{5}};
+  Check(ParseEvaluationFailure(EvaluationFailureJson(e)) == e);
+  TreeFailureEvidence t; t.obligation = TreeObligation::kForInCorrespondence; t.location = e.location;
+  Check(ParseTreeFailure(TreeFailureJson(t)) == t);
+  for (unsigned count : {200U,201U,400U,800U}) {
+    const auto graph = Import(Body(count,true,true),0,5);
+    const auto plan = Evaluated(graph); Check(plan.for_in->loops.size() == count);
+    EvaluationPlan protocol{graph.revision,graph.cfg_revision,{}};
+    SemanticBudget left; const auto initial = left;
+    Check(!BuildForInEvaluation(graph,protocol,left));
+    const auto bytes = initial.bytes-left.bytes; const auto work = initial.work-left.work;
+    EvaluationPlan exact{graph.revision,graph.cfg_revision,{}};
+    SemanticBudget budget{bytes,work}; Check(!BuildForInEvaluation(graph,exact,budget));
+    EvaluationPlan low{graph.revision,graph.cfg_revision,{}};
+    budget = {bytes-1,work};
+    Check(BuildForInEvaluation(graph,low,budget)->kind == EvaluationError::kResourceLimit);
+    low = {graph.revision,graph.cfg_revision,{}}; budget = {bytes,work-1};
+    Check(BuildForInEvaluation(graph,low,budget)->kind == EvaluationError::kWorkLimit);
+    std::cout << "evaluation scale " << count << " bytes " << bytes << " work " << work << std::endl;
+  }
+}
 void File(const char* path, unsigned target) {
   const auto file = std::get<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
   const auto hash = std::get<corpus::FileFingerprint>(file->Fingerprint());
@@ -333,6 +432,8 @@ void File(const char* path, unsigned target) {
       const auto events = BuildForInEvents(graph, plan);
       Check(std::holds_alternative<ForInEvents>(events));
       Check(std::holds_alternative<std::uint64_t>(VerifyForInEvents(graph, plan, std::get<ForInEvents>(events))));
+      const auto evaluation = Evaluated(graph);
+      Check(evaluation.for_in->loops == plan.loops);
       std::cout << "proved " << plan.loops.size() << " forwarding " << plan.forwarding.size() << std::endl;
       for (const auto& loop : plan.loops) std::cout << "acquire " << graph.origins[graph.ops[loop.acquisition.value].origin.value].pc.value
           << " next " << graph.origins[graph.ops[loop.advance.value].origin.value].pc.value << std::endl;
@@ -343,6 +444,7 @@ void File(const char* path, unsigned target) {
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--evaluation") { Evaluation(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--events") { EventMutations(); EventScales(); return 0; }
   if (argc > 1) { File(argv[1], argc > 2 ? static_cast<unsigned>(std::stoul(argv[2])) : 0); return 0; }
   for (bool caught : {false, true}) for (bool split : {false, true}) {

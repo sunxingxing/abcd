@@ -12,6 +12,15 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 52 increment I：生产求值接入（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；497/620、534/620 不变，0 状态变化，0 文本变化；for-in 测试 7/7。
+
+- 基线 `4674e981`。两个 phased 调用点通过共享 evaluation constructor 构造并验证 `ForInPlan` / `ForInEvents`；协议成员/use 索引区分 enumerator、next-result、done 和真实 key 用法。内部 copy/phi SCC 保留身份和原始输入记录，不分配源码符号；acquire/next 保持有序可抛出事件。normal-flow 源码准入未扩展。
+- FunctionTree 在表达式/符号构造前独立复验，并以 `FunctionTreeError::kSemantics > TreeObligation::kForInCorrespondence` 在首个 acquisition 拒绝。尚未接入 TreeFlow/OriginalFlow/recovery 的 native-for-in 联合对应，不发布半验证树。
+- 完整 keep-going 构建通过；固定集串行 **65/65**；37 项定向 **36/37**，唯一失败为既有 `tree_structure_test`。新增 `for_in_evaluation_test`、`for_in_evaluation_cli_test` 均通过，含 SCC/phi、协议 use/事件变异、200/201/400/800 与精确预算边界、两条 JSON 路径及 abc_semantic/manifest 一致性。
+- 对 `explore51e/explore51es`：**497/620、534/620** 不变，**0 状态变化、0 文本变化**；仅 o32 的 core/assertContain/Filter/MockKit 四个 record 更新为新树拒绝。六个目标循环均通过方法级求值验证；DataDriver 仍先拒绝其他方法 m42717@153 的 getiterator，Filter 两循环共同由 m44469@28 的首个 acquisition 门禁表示。
+- 设计和范围见 [property-enumeration.md](property-enumeration.md)。证据：`/private/tmp/r52-build-delivery.log`、`r52-fixed-delivery.log`、`r52-targeted-delivery.log`、`r52-target-loops.log`、`r52-delivery-cohort.log`；新导出在 `/private/tmp/r52-delivery-cohort/`。未 commit/push/stash；II/III 尚未实施。
+
 ## Round 51d：for-in 协议事件证据（cc 审查通过；生产接入待续）
 
 - `for_in_events` 分开记录 acquisition、advance 的正常 Commit 与 not-done 边上的 key commit；验证器重新核对原始 phase、结果定义、异常出口与 done 两侧边。新增 `for_in_events_test`（伪造 Commit、替换结果、错配异常出口、反转 done 边、耗尽边写 key、遗漏/重复事件，200/201/400/800 规模与精确预算）。尚无生产消费者；生产接线草稿因联合验证未完成而撤回。

@@ -1,5 +1,6 @@
 #include "phi_copy_checks.h"
 #include "literal_plan.h"
+#include "for_in_plan.h"
 #include "tree_checks.h"
 
 #include <new>
@@ -9,7 +10,7 @@ namespace abcd::source {
 namespace {
 std::variant<PhiCopies, PhiCopyError> BuildCopies(
     const analysis::ValueProgram& graph, analysis::SemanticBudget allowance, PhiFlow flow,
-    PhiDomain domain = PhiDomain::kLanguage) {
+    PhiDomain domain = PhiDomain::kLanguage, const ForInPlan* for_in = nullptr) {
   try {
     CopyBudget budget(allowance);
     CheckPhiFlow(graph, budget, flow);
@@ -22,11 +23,18 @@ std::variant<PhiCopies, PhiCopyError> BuildCopies(
     budget.Admit(1, sizeof(result));
     budget.Reserve(result.inputs, count);
     budget.Reserve(result.copies, count);
+    if (for_in) {
+      // The common evaluation entry proved this certificate before phi work.
+      // VerifyPhiCopiesForFlow independently reconstructs it below.
+      RequirePhiCopy(for_in->uses.size() == graph.uses.size(), PhiCopyError::kInput);
+      budget.Reserve(result.for_in_inputs, count);
+    }
     for (std::size_t i = 0; i < graph.uses.size(); ++i) {
       budget.Step();
       const auto& use = graph.uses[i];
       if (!PhiInput(use)) continue;
-      CheckPhiDomain(graph, use, domain);
+      if (for_in && for_in->uses[i]) result.for_in_inputs.push_back({static_cast<std::uint32_t>(i)});
+      else CheckPhiDomain(graph, use, domain);
       result.inputs.push_back({static_cast<std::uint32_t>(i)});
     }
     std::sort(result.inputs.begin(), result.inputs.end(), [&](auto a, auto b) {
@@ -55,6 +63,9 @@ std::variant<PhiCopies, PhiCopyError> BuildCopies(
       effective.clear(); std::optional<analysis::UseId> expression_input;
       for (auto i=first;i<end;++i) {
         budget.Step();
+        if (for_in && for_in->uses[result.inputs[i].value]) {
+          result.projection[i] = PhiCopyUse::kForInProtocol; continue;
+        }
         if (SourcePhiAlias(graph,identities,result.copies[i].destination)) {
           result.projection[i] = PhiCopyUse::kIdentity; continue;
         }
@@ -73,7 +84,7 @@ std::variant<PhiCopies, PhiCopyError> BuildCopies(
     if (const auto* error = std::get_if<PhiCopyError>(&checked)) return *error;
     budget.Step(std::get<std::uint64_t>(checked));
     result.allocated_bytes = sizeof(result) + schedule_bytes +
-        result.inputs.capacity() * sizeof(analysis::UseId) + result.copies.capacity() * sizeof(ParallelCopy) +
+        (result.inputs.capacity() + result.for_in_inputs.capacity()) * sizeof(analysis::UseId) + result.copies.capacity() * sizeof(ParallelCopy) +
         result.projection.capacity() * sizeof(PhiCopyUse) +
         result.bundles.capacity() * sizeof(PhiBundle);
     result.work = budget.Work();
@@ -89,8 +100,8 @@ std::variant<PhiCopies, PhiCopyError> BuildPhiCopies(
   return BuildCopies(graph, allowance, PhiFlow::kNormal);
 }
 std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance, PhiDomain domain) {
-  return BuildCopies(graph, allowance, PhiFlow::kPhased, domain);
+    const analysis::ValueProgram& graph, analysis::SemanticBudget allowance, PhiDomain domain, const ForInPlan* for_in) {
+  return BuildCopies(graph, allowance, PhiFlow::kPhased, domain, for_in);
 }
 std::vector<std::optional<analysis::OpId>> IndexPhiLiteralEnds(
     const analysis::ValueProgram& graph, const LiteralPlan& literals, TreeCheckBudget& budget) {

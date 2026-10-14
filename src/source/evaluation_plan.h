@@ -6,6 +6,7 @@
 #include <variant>
 #include "abcd/source/source_tree.h"
 #include "phi_copies.h"
+#include "for_in_events.h"
 #include "abcd/source/evaluation_failure.h"
 #include "exception_copies.h"
 #include "literal_plan.h"
@@ -105,6 +106,8 @@ struct EvaluationPlan {
   // consume both inputs in one expression instead; this table still proves
   // original values/schedules, not their eventual AST edge placement.
   std::optional<PhiCopies> phis;
+  std::optional<ForInPlan> for_in;
+  std::optional<ForInEvents> for_in_events;
   std::optional<LiteralPlan> literals;
   std::optional<CellEvaluation> cells;
   std::vector<FunctionBinding> functions;

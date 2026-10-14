@@ -174,7 +174,7 @@ std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
   std::vector<std::uint8_t> identity_inputs;
   budget.Array(identity_inputs,graph.uses.size());
   for (std::size_t i=0;i<copies.inputs.size();++i) {
-    budget.Step(); if(copies.projection[i] == PhiCopyUse::kIdentity) identity_inputs[copies.inputs[i].value] = 1;
+    budget.Step(); if(copies.projection[i] != PhiCopyUse::kRetained) identity_inputs[copies.inputs[i].value] = 1;
   }
   std::vector<PhiObservation> observations;
   budget.Array(observations, graph.ops.size());

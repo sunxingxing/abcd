@@ -5,6 +5,7 @@
 
 namespace abcd::source {
 struct LiteralPlan;
+struct ForInPlan;
 class TreeCheckBudget;
 enum class PhiFlow : std::uint8_t { kNormal, kPhased };
 enum class PhiDomain : std::uint8_t { kLanguage, kHoleTransport };
@@ -15,7 +16,7 @@ struct PhiBundle {
   EdgeCopies schedule;
   std::optional<analysis::UseId> expression_input;
 };
-enum class PhiCopyUse : std::uint8_t { kRetained, kIdentity };
+enum class PhiCopyUse : std::uint8_t { kRetained, kIdentity, kForInProtocol };
 struct PhiCopies {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -29,6 +30,10 @@ struct PhiCopies {
   // Original occurrences remain complete; only proved normal phi identities
   // disappear from executable schedules. Exceptional staging stays intact.
   std::vector<PhiCopyUse> projection;
+  // Original phi occurrences consumed by the independently verified for-in
+  // identity graph. They have no source parallel-copy destination or symbol.
+  std::vector<analysis::UseId> for_in_inputs;
+
 };
 enum class PhiCopyError : std::uint8_t {
   kRevision, kFlow, kDomain, kInput, kBundle, kSchedule, kResourceLimit, kWorkLimit
@@ -66,7 +71,7 @@ enum class PhiCopyError : std::uint8_t {
 // Exceptional edges require separate staging and catch-entry commit placement.
 [[nodiscard]] std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
-    PhiDomain domain = PhiDomain::kLanguage);
+    PhiDomain domain = PhiDomain::kLanguage, const ForInPlan* for_in = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, PhiCopyError> VerifyPhasedPhiCopies(
     const analysis::ValueProgram& graph, const PhiCopies& plan,
     analysis::SemanticBudget budget = {});

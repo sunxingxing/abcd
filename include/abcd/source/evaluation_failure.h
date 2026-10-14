@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_EVALUATION_FAILURE_H_
 #define ABCD_SOURCE_EVALUATION_FAILURE_H_
 #include "abcd/source/tree_failure.h"
+#include "abcd/source/for_in_failure.h"
 #include "abcd/source/evaluation_kind.h"
 namespace abcd::source {
 enum class EvaluationError : std::uint8_t {
@@ -20,6 +21,7 @@ enum class SelectionExitReason : std::uint8_t {
 struct EvaluationEvidence {
   EvaluationObligation obligation = EvaluationObligation::kPlan;
   TreeLocation location;
+  std::optional<ForInFailure> for_in;
   std::optional<analysis::UseId> use, expected_consumer, actual_consumer;
   std::optional<analysis::ValueId> value;
   std::optional<SelectionExitReason> selection_exit;
@@ -32,6 +34,7 @@ struct EvaluationEvidence {
 struct EvaluationFailure {
   EvaluationError kind;
   EvaluationEvidence evaluation;
+
   EvaluationFailure(EvaluationError error) : kind(error) {} // NOLINT: typed envelope.
   EvaluationFailure(EvaluationError error, EvaluationEvidence evidence) : kind(error), evaluation(evidence) {}
   bool operator==(EvaluationError error) const { return kind == error; }

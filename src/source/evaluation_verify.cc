@@ -1,5 +1,6 @@
 #include "integer_nan.h"
 #include "evaluation_plan.h"
+#include "for_in_evaluation.h"
 #include "evaluation_failure.h"
 #include "assignment_values.h"
 #include "evaluation_flow.h"
@@ -48,6 +49,9 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const auto admit = [&](std::size_t count, std::size_t width) {
       Require(count <= bytes / width, Error::kResourceLimit); bytes -= count * width;
     };
+    const auto protocol = VerifyForInEvaluation(graph, plan, {bytes, work});
+    if (const auto* error = std::get_if<EvaluationFailure>(&protocol)) return *error;
+    step(std::get<std::uint64_t>(protocol));
     if (!plan.guarded_reads.empty()) {
       Require(flow == EvaluationFlow::kPhased && plan.cells, Error::kOwnership);
       auto proof = analysis::ProveGuardedReads(graph, {bytes, work});
@@ -317,6 +321,11 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
             placement.kind == EvaluationKind::kInline && placement.consumer == plan.closed_expressions[i] &&
             !placement.temporary, Error::kOwnership);
       }
+      if (ForInOperation(plan, {static_cast<std::uint32_t>(i)})) {
+        Require(placement.kind == EvaluationKind::kForInEvent && !placement.consumer && !placement.temporary, Error::kOwnership);
+        visits[i] = EvaluationVisit::kDone; continue;
+      }
+      Require(placement.kind != EvaluationKind::kForInEvent, Error::kOwnership);
       const bool nested = NestedLiteralUse(plan, {static_cast<std::uint32_t>(i)}).has_value();
       Require(nested == (placement.kind == EvaluationKind::kNestedLiteral), Error::kOwnership);
       if (op.life != analysis::ValueLife::kLive) {
@@ -475,6 +484,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kArrayCursor ||
+                                  ForInOperation(plan, {static_cast<std::uint32_t>(expected)}) ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kClassProjection ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kReceiverGuard ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kCellGuard ||
@@ -525,6 +535,16 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
               visits[result->value] = EvaluationVisit::kActive;
               stack[depth++] = {*result, 0};
             } else {
+              if (ForInOperation(plan, *result)) {
+                // The closed protocol proof checked all external key uses on
+                // the not-done edge. No ordinary expression/temporary is claimed.
+                const auto operand = ResolveEvaluationOperand(plan, graph.uses[use_id.value].operand);
+                const auto* value = std::get_if<analysis::ValueId>(&operand);
+                Require(value && value->value < plan.for_in->values.size(), Error::kOwnership);
+                const auto member = plan.for_in->values[value->value];
+                Require(member && member->role == ForInRole::kNextResult, Error::kOwnership);
+                continue;
+              }
               Require(placement.kind == EvaluationKind::kRoot, Error::kOwnership);
               Require(producer.block != op.block || visits[result->value] == EvaluationVisit::kDone,
                       Error::kUnavailableValue);

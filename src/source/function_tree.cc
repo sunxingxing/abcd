@@ -52,6 +52,19 @@ class TreeBuilder {
         bytes_(budget.bytes), work_(budget.work), incoming_(incoming), exceptions_(exceptions), recovery_(recovery) {}
 
   ConstructedFunction Build() {
+    if (evaluation_.for_in) {
+      const auto checked = exceptions_ ? VerifyPhasedEvaluationPlan(graph_, evaluation_, {bytes_, work_}) :
+          VerifyEvaluationPlan(graph_, evaluation_, {bytes_, work_});
+      if (const auto* error = std::get_if<EvaluationFailure>(&checked)) {
+        if (error->kind == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
+        if (error->kind == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
+        Fail(Error::kSemantics, *error, TreeObligation::kForInCorrespondence);
+      }
+      Step(std::get<std::uint64_t>(checked));
+      WitnessScope witness(*this, TreeObligation::kForInCorrespondence,
+          At(evaluation_.for_in->loops.front().acquisition));
+      Require(false, Error::kSemantics);
+    }
     if (exceptions_ && evaluation_.cells) CheckCellLifetimes();
     Require(syntax_.parameters.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
     Require(constants_.name_count == syntax_.names.size() &&
