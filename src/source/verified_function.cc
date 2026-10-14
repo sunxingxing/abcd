@@ -403,6 +403,7 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
     }
     if (function->tree.capture_scope || !function->tree.captures.empty() ||
         function->tree.parameters.size() != context->Frame().parameters ||
+        function->tree.home_object != (context->ClassContext() ? HomeObjectBinding::kClass : HomeObjectBinding::kNone) ||
         function->tree.callable != context->Callable() || function->tree.strictness != context->Mode() ||
         function->tree.method != context->Target() || function->tree.identity != context->Identity()) throw Error::kTree;
     if (function->allocated_bytes < transferred) throw Error::kTree;

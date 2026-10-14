@@ -1,4 +1,5 @@
 #include "abcd/analysis/register_effect.h"
+#include "abcd/analysis/property_delete.h"
 #include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/array_spread.h"
 
@@ -435,6 +436,15 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftFunctionCreation(instruction));
       !Unsupported(result))
     return result;
+  const auto deleted = LiftPropertyDelete(instruction, frame_size);
+  if (const auto* op = std::get_if<PropertyDelete>(&deleted)) {
+    auto effect = AccumulatorDefinition();
+    effect.reads[effect.read_count++] = op->object;
+    effect.reads[effect.read_count++] = Accumulator{};
+    return effect;
+  }
+  if (std::get<ScalarError>(deleted) != ScalarError::kUnsupportedOpcode)
+    return std::get<ScalarError>(deleted);
   const auto created_class = LiftClassCreation(instruction);
   if (const auto* created = std::get_if<ClassCreation>(&created_class)) {
     if (created->parent.value >= frame_size)

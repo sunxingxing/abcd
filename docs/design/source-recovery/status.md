@@ -12,6 +12,20 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 50：严格属性操作（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 495 → **497/620**，`--language-source` 532 → **534/620**；0 回退，0 文本漂移。cc 核对 `super.changeIndex(index, useAnimation)` 与 `LEVEL = ({["0"]: 1 << 24, ...})` 的输出形态。
+
+- 基线 `bdab7660`。新增严格 delete、私有对象初始化中的 indexed DefineField、
+  保留 home object/current-this 身份的 super named read；normal/phased 共用类型化语义。
+  无新增源语言前提；for-in/apply/iterator/sendable 仍不在本轮范围。
+- 完整 keep-going 构建成功；固定集串行 **65/65**；新增/扩展 **9/9**；
+  相关定向 **87/94**，失败为本页已登记的 7 个 literal 既有失败，未改断言。
+- 对 `explore48/explore48s`：原 flags **497/620**、source flags **534/620**，各 +2；
+  两套 **0 状态回退、0 文本漂移**。Constant 与 CustomAniamtionTabController 完成；
+  core/MockKit 越过 delete 后分别停在 m21553/PC47、m54047/PC230 的 GETPROPITERATOR。
+- 实现、测试、边界及日志见 [Round 50 results](round-50-results.md) 和
+  [strict property operations](strict-property-operations.md)。未 commit/push/stash。
+
 ## Round 48：TreePrint 存活期账本（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 488 → **495/620**，`--language-source` 522 → **532/620**；0 回退，0 文本漂移；
   10 个新完成输出 `node --check` 全部通过，文件字节数与 Round 47 计数 sink 预测完全一致。o4 的 RSS 增长（约 12 → 31 MB）来自原本就计费的 flow_kinds 依赖数组：旧版在分配前被拒，现在能执行到。

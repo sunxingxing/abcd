@@ -749,7 +749,19 @@ class TreePrinter {
   void Member(ExprId base, const MemberKey& key, PostfixContext context = PostfixContext::kMemberBase, bool optional = false) {
     PrintMemberKey(key, optional); Push(ExpressionOperand{base, {context}});
   }
-  void Expression(const MemberExpr& node) { Member(node.base, node.key); }
+  void SuperMember(const MemberExpr& node) {
+    const auto begin = written_; Append("super");
+    PrintMemberKey(node.key, false);
+    Push(ProjectedExpression{node.base, begin, written_});
+  }
+  void Expression(const MemberExpr& node) {
+    if (node.lookup == analysis::PropertyLookup::kSuper) SuperMember(node);
+    else Member(node.base, node.key);
+  }
+  void Expression(const DeleteExpr& node) {
+    if (Tree().strictness != Strictness::kStrict) throw Error::kUnsupportedContext;
+    Append("(delete "); Push(std::string_view(")")); Member(node.base, node.key);
+  }
   void Expression(AwaitExpr node) {
     Append("(await "); Push(std::string_view(")"));
     Push(ExpressionOperand{node.operand, {ExpressionPrecedence::kUnary}});
@@ -1354,6 +1366,7 @@ class TreePrinter {
         Expression(node, !grammar || *grammar != ExpressionGrammar::kAssignmentValue);
       }
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, MemberExpr>) {
+        if (node.lookup == analysis::PropertyLookup::kSuper) { SuperMember(node); return; }
         const auto* context = std::get_if<PostfixContext>(&operand.context.parent);
         Member(node.base, node.key, context && *context == PostfixContext::kConstructor ?
             PostfixContext::kConstructor : PostfixContext::kMemberBase);

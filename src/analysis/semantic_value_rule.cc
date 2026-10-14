@@ -17,6 +17,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     using T = std::decay_t<decltype(operation)>;
     if constexpr (std::is_same_v<T, ScalarAssignment>) {
       return DescribeScalarValue(operation, arithmetic);
+    } else if constexpr (std::is_same_v<T, PropertyDelete>) {
+      return ValueRule{ValueRuleKind::kFixed,ValueKinds::Boolean()};
     } else if constexpr (std::is_same_v<T, NamedRead> ||
                          std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
       return ValueRule{ValueRuleKind::kLanguageOperation, {}};

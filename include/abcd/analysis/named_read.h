@@ -5,8 +5,10 @@
 #include "abcd/abc/pool_reference.h"
 
 namespace abcd::analysis {
+enum class PropertyLookup : std::uint8_t { kObject, kSuper };
 struct NamedRead {
   abc::PoolIndex name;
+  PropertyLookup lookup = PropertyLookup::kObject;
 };
 enum class NamedReadError { kUnsupportedOpcode, kMalformedInstruction };
 

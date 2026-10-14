@@ -1,4 +1,5 @@
 #include "register_value_rule.h"
+#include "abcd/analysis/property_delete.h"
 
 #include <algorithm>
 #include <bit>
@@ -214,6 +215,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
   if (std::holds_alternative<PushEnvironment>(
           LiftLexicalInstruction(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Environment()};
+  if(std::holds_alternative<PropertyDelete>(LiftPropertyDelete(instruction,frame_size)))
+    return ValueRule{ValueRuleKind::kFixed,ValueKinds::Boolean()};
   if (std::holds_alternative<NamedRead>(LiftNamedRead(instruction)) ||
       std::holds_alternative<IndexedRead>(
           LiftIndexedRead(instruction, frame_size)))

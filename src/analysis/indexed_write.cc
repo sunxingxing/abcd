@@ -16,7 +16,15 @@ std::variant<IndexedWrite, IndexedWriteError> LiftIndexedWrite(
   std::size_t count = kinds.size();
   std::size_t object_operand = 1;
   std::size_t index_operand = 2;
+  auto definition = IndexedDefinition::kOwnStore;
   switch (instruction.opcode) {
+    case Opcode::kCALLRUNTIME_DEFINEFIELDBYINDEX_PREF_IMM8_IMM32_V8:
+      definition = IndexedDefinition::kDefineField;
+      kinds[1] = OperandKind::kImmediate;
+      kinds[2] = OperandKind::kRegister;
+      maxima[1] = kDwordMax; maxima[2] = kByteMax;
+      object_operand = 2; index_operand = 1;
+      break;
     case Opcode::kSTOWNBYINDEX_IMM8_V8_IMM16:
       break;
     case Opcode::kSTOWNBYINDEX_IMM16_V8_IMM16:
@@ -46,6 +54,6 @@ std::variant<IndexedWrite, IndexedWriteError> LiftIndexedWrite(
                           instruction.operands[index_operand].raw_bits),
                       object_operand == 0 ? std::nullopt
                           : std::optional<std::uint16_t>{
-                              static_cast<std::uint16_t>(instruction.operands[0].raw_bits)}};
+                              static_cast<std::uint16_t>(instruction.operands[0].raw_bits)}, definition};
 }
 }  // namespace abcd::analysis

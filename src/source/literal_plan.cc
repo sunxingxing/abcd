@@ -294,6 +294,8 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
   const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation);
   Require(op.life == analysis::ValueLife::kLive && (write || indexed) && !op.result && op.use_count == 2,
       Error::kDefinition);
+  if (indexed) Require(indexed->kind == analysis::IndexedDefinition::kOwnStore ||
+      indexed->kind == analysis::IndexedDefinition::kDefineField, Error::kDefinition);
   Require(indexed || write->kind == analysis::OwnWriteKind::kStore ||
       write->kind == analysis::OwnWriteKind::kDefineField, Error::kDefinition);
   const auto& base = graph.uses[op.first_use.value];
@@ -310,7 +312,8 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
   Require(result && result->op.value < graph.ops.size(), Error::kReceiver);
   const auto& allocation = graph.ops[result->op.value];
   Require(allocation.life == analysis::ValueLife::kLive &&
-      (indexed ? std::holds_alternative<analysis::ValueArrayAllocation>(allocation.operation) :
+      (indexed && indexed->kind == analysis::IndexedDefinition::kOwnStore ?
+                 std::holds_alternative<analysis::ValueArrayAllocation>(allocation.operation) :
                  std::holds_alternative<analysis::ValueObjectAllocation>(allocation.operation)) &&
       allocation.result == *value && allocation.use_count == 0 &&
       (!same_path || path.Before(allocation, op)), Error::kReceiver);
@@ -689,7 +692,8 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
         Require(Allocation(graph, id, path, object.form == LiteralForm::kExpression) == object.allocation && !owners[id.value], Error::kCoverage);
         Require(IsStagedLiteral(&plan, id) == (object.form == LiteralForm::kStatements), Error::kCoverage);
         const auto& op = graph.ops[id.value];
-        if (const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation)) {
+        if (const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation);
+            indexed && indexed->kind == analysis::IndexedDefinition::kOwnStore) {
           const auto& array = std::get<analysis::ValueArrayAllocation>(allocation.operation);
           // Buffered primitives may be replaced, but RHS evaluations must stay
           // in increasing element order. Constants/AST validation checks gaps.

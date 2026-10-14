@@ -64,6 +64,8 @@ inline LexicalDependency IntrinsicLexicalDependency(const TreeExpression& expres
   return std::visit([](const auto& node) {
     using T=std::decay_t<decltype(node)>;
     if constexpr(std::is_same_v<T,ThisExpr>) return LexicalDependency::kCallableOwner;
+    else if constexpr(std::is_same_v<T,MemberExpr>) return node.lookup == analysis::PropertyLookup::kSuper ?
+        LexicalDependency::kCallableOwner : LexicalDependency::kReferences;
     else if constexpr(std::is_same_v<T,FunctionExpr> ||
         std::is_same_v<T,ClassExpr> || std::is_same_v<T,RealmObjectExpr> ||
         std::is_same_v<T,SymbolConstructorExpr> || std::is_same_v<T,ArgumentSnapshotExpr> ||
@@ -71,7 +73,7 @@ inline LexicalDependency IntrinsicLexicalDependency(const TreeExpression& expres
     else {
       static_assert(std::is_same_v<T,TreeLiteral> || std::is_same_v<T,SymbolExpr> ||
           std::is_same_v<T,GlobalNameExpr> ||
-          std::is_same_v<T,MemberExpr> || std::is_same_v<T,UnaryExpr> ||
+          std::is_same_v<T,MemberExpr>||std::is_same_v<T,DeleteExpr> || std::is_same_v<T,UnaryExpr> ||
           std::is_same_v<T,AwaitExpr> || std::is_same_v<T,YieldExpr> ||
           std::is_same_v<T,BinaryExpr> || std::is_same_v<T,LogicalExpr> ||
           std::is_same_v<T,ConditionalExpr> || std::is_same_v<T,AssignmentExpr> ||
@@ -112,7 +114,8 @@ inline analysis::ValueKinds NormalValueKinds(const TreeExpression& expression,
   using K=analysis::ValueKinds;
   return std::visit([&](const auto& node)->K {
     using T=std::decay_t<decltype(node)>;
-    if constexpr(std::is_same_v<T,TreeLiteral>)return PrimitiveKinds(node);
+    if constexpr(std::is_same_v<T,DeleteExpr>)return K::Boolean();
+    else if constexpr(std::is_same_v<T,TreeLiteral>)return PrimitiveKinds(node);
     else if constexpr(std::is_same_v<T,UnaryExpr>) {
       switch(node.operation) {
         case TreeUnary::kNot:return K::Boolean();
@@ -154,7 +157,7 @@ inline analysis::ValueKinds NormalValueKinds(const TreeExpression& expression,
     else {
       static_assert(std::is_same_v<T,SymbolExpr>||std::is_same_v<T,GlobalNameExpr>||
           std::is_same_v<T,RealmObjectExpr>||std::is_same_v<T,SymbolConstructorExpr>||
-          std::is_same_v<T,ThisExpr>||std::is_same_v<T,MemberExpr>||std::is_same_v<T,AwaitExpr>||
+          std::is_same_v<T,ThisExpr>||std::is_same_v<T,MemberExpr>||std::is_same_v<T,DeleteExpr>||std::is_same_v<T,AwaitExpr>||
           std::is_same_v<T,YieldExpr>||std::is_same_v<T,UpdateExpr>||std::is_same_v<T,CallExpr>||
           std::is_same_v<T,ConstructExpr>||std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,EmptyObjectExpr>||
           std::is_same_v<T,ObjectExpr>||std::is_same_v<T,ArrayExpr>||std::is_same_v<T,ArrayElement>||std::is_same_v<T,FunctionExpr>||std::is_same_v<T,ArgumentSnapshotExpr>||
@@ -268,7 +271,7 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
     else if constexpr(std::is_same_v<T,AwaitExpr>||std::is_same_v<T,YieldExpr>)return CallbackEffects(L::kSuspension);
     else if constexpr(std::is_same_v<T,GlobalNameExpr>||std::is_same_v<T,RealmObjectExpr>||std::is_same_v<T,SymbolConstructorExpr>)return CallbackEffects(L::kGlobalAccess);
     else {
-      static_assert(std::is_same_v<T,MemberExpr>||
+      static_assert(std::is_same_v<T,MemberExpr>||std::is_same_v<T,DeleteExpr>||
           std::is_same_v<T,CallExpr>||std::is_same_v<T,ConstructExpr>||
           std::is_same_v<T,ArgumentSnapshotExpr>||std::is_same_v<T,ClassExpr>||
           std::is_same_v<T,FieldDefinitionExpr>||std::is_same_v<T,SuperCallExpr>);

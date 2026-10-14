@@ -72,8 +72,10 @@ ValueOperation Operation(const SemanticOperation& operation) {
           return ValuePropertyRead{};
         }
       }, op.expression);
+    } else if constexpr (std::is_same_v<T, PropertyDelete>) {
+      return ValuePropertyDelete{};
     } else if constexpr (std::is_same_v<T, NamedRead>) {
-      return ValueNamedRead{op.name};
+      return ValueNamedRead{op.name, op.lookup};
     } else if constexpr (std::is_same_v<T, EmptyObjectCreation>) {
       return ValueObjectAllocation{};
     } else if constexpr (std::is_same_v<T, IterResult>) {
@@ -114,7 +116,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, ArraySpread>) {
       return ValueArraySpread{};
     } else if constexpr (std::is_same_v<T, IndexedWrite>) {
-      return ValueIndexedWrite{op.index, op.cache_slot};
+      return ValueIndexedWrite{op.index, op.cache_slot, op.kind};
     } else if constexpr (std::is_same_v<T, OwnWrite>) {
       switch (op.kind) {
         case OwnWriteKind::kStore: case OwnWriteKind::kDefineField:

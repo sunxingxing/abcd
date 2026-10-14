@@ -79,7 +79,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveDef
     if (found->prototype) {
       if (found->prototype->value >= graph.ops.size()) return fail(Error::kSite);
       const auto* prototype = std::get_if<analysis::ValueNamedRead>(&graph.ops[found->prototype->value].operation);
-      if (!prototype || read(prototype->name) != u"prototype") return fail(Error::kName);
+      if (!prototype || prototype->lookup != analysis::PropertyLookup::kObject || read(prototype->name) != u"prototype") return fail(Error::kName);
     }
     auto name = read(found->key);
     // OH7 RuntimeStOwnByName preserves the function name/kind. Accessor

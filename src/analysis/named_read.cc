@@ -8,7 +8,12 @@ std::variant<NamedRead, NamedReadError> LiftNamedRead(
   constexpr std::size_t kNameOperand = 1;
   constexpr std::size_t kOperandCount = 2;
   std::uint64_t cache_max;
+  auto lookup = PropertyLookup::kObject;
   switch (instruction.opcode) {
+    case Opcode::kLDSUPERBYNAME_IMM8_ID16:
+      lookup = PropertyLookup::kSuper; cache_max = UINT8_MAX; break;
+    case Opcode::kLDSUPERBYNAME_IMM16_ID16:
+      lookup = PropertyLookup::kSuper; cache_max = UINT16_MAX; break;
     case Opcode::kLDOBJBYNAME_IMM8_ID16:
       cache_max = UINT8_MAX;
       break;
@@ -26,6 +31,6 @@ std::variant<NamedRead, NamedReadError> LiftNamedRead(
       instruction.operands[kNameOperand].raw_bits > UINT16_MAX)
     return NamedReadError::kMalformedInstruction;
   return NamedRead{{static_cast<std::uint32_t>(
-      instruction.operands[kNameOperand].raw_bits)}};
+      instruction.operands[kNameOperand].raw_bits)}, lookup};
 }
 }  // namespace abcd::analysis

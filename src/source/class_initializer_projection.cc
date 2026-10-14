@@ -158,7 +158,8 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
         // must occur after the call on all paths. Numeric placement says nothing
         // about an observer in a bypass arm or an earlier loop iteration.
         if (order.Before(graph, call.call, op.block, op.order)) continue;
-        require(std::holds_alternative<ValueNamedRead>(op.operation) && op.use_count == 1 &&
+        require(std::holds_alternative<ValueNamedRead>(op.operation) &&
+            std::get<ValueNamedRead>(op.operation).lookup == PropertyLookup::kObject && op.use_count == 1 &&
             occurrence.role == OperandRole::kBase && op.result &&
             !graph.values[op.result->value].first_use, Error::kFlow);
         // Named-read spelling remains an explicit source-level obligation.

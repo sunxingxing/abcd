@@ -376,8 +376,13 @@ std::variant<NullishSyntax, TreeStructureError> PlanNullishSyntax(
         // Summarize its stable starting reference bottom-up once, rather than
         // replaying every candidate's chain. Arbitrary keys stay opaque/owned;
         // the guard skips all of them only when its original receiver is nil.
-        if (const auto reference = StableReference(tree, member->base)) paths[id.value] = {reference, id};
-        else paths[id.value] = paths[member->base.value];
+        // super is a home-object reference, not an optional access on this.
+        // A value read from super may be tested later, but this reference itself
+        // must never become `this?.name` or the invalid `super?.name`.
+        if (member->lookup == analysis::PropertyLookup::kObject) {
+          if (const auto reference = StableReference(tree, member->base)) paths[id.value] = {reference, id};
+          else paths[id.value] = paths[member->base.value];
+        }
       } else if (const auto* call = std::get_if<CallExpr>(&tree.expressions[id.value].expression)) {
         if (call->reference == CallReference::kValue && StableReference(tree,call->callee))
           paths[id.value] = {StableReference(tree,call->callee),id};

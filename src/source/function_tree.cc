@@ -129,6 +129,7 @@ class TreeBuilder {
     tree_.method = syntax_.method;
     tree_.owner = syntax_.owner;
     tree_.callable = syntax_.callable;
+    tree_.home_object = syntax_.home_object;
     tree_.parameter_form = syntax_.parameter_form;
     tree_.constructor_form = constants_.implicit_constructor ? ConstructorForm::kImplicit : ConstructorForm::kExplicit;
     if (!constants_.receiver_guards.empty()) {

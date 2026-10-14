@@ -104,7 +104,7 @@ struct ValueUnary { UnaryOperator op; bool operator==(const ValueUnary&) const =
 struct ValueBinary { BinaryOperator op; bool operator==(const ValueBinary&) const = default; };
 struct ValueComputedOwnWrite { bool operator==(const ValueComputedOwnWrite&) const = default; };
 struct ValueArraySpread { bool operator==(const ValueArraySpread&) const = default; };
-struct ValueNamedRead { abc::PoolIndex name; bool operator==(const ValueNamedRead&) const = default; };
+struct ValueNamedRead { abc::PoolIndex name; PropertyLookup lookup = PropertyLookup::kObject; bool operator==(const ValueNamedRead&) const = default; };
 struct ValueNamedWrite { abc::PoolIndex name; bool operator==(const ValueNamedWrite&) const = default; };
 // Own definition is not [[Set]]. Keep the pinned operation family and IC slot
 // even when both forms target a named property; source equivalence needs an
@@ -120,12 +120,14 @@ struct ValueOwnWrite {
 struct ValueIndexedWrite {
   std::uint32_t index;
   std::optional<std::uint16_t> cache_slot;
+  IndexedDefinition kind = IndexedDefinition::kOwnStore;
   bool operator==(const ValueIndexedWrite&) const = default;
 };
 // DEFINEGETTERSETTERBYVALUE retains five ordered inputs and its accumulator
 // result. Name assignment is a protocol flag, never descriptor enumerability.
 // Native class folding needs separate ownership/descriptor evidence.
 struct ValueDefineAccessor { bool operator==(const ValueDefineAccessor&) const = default; };
+struct ValuePropertyDelete { bool operator==(const ValuePropertyDelete&) const = default; };
 struct ValuePropertyRead { bool operator==(const ValuePropertyRead&) const = default; };
 struct ValueBranch { UnaryOperator predicate; bool operator==(const ValueBranch&) const = default; };
 struct ValueJump { bool operator==(const ValueJump&) const = default; };
@@ -285,7 +287,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation, ValueIterResult,
     ValueInvoke, ValueConstruct, ValueConstructApply, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
-    ValueModuleWrite, ValuePropertyWrite, ValueDebugger, ValueFrameThis, ValueFrameFunction,
+    ValueModuleWrite, ValuePropertyWrite, ValuePropertyDelete, ValueDebugger, ValueFrameThis, ValueFrameFunction,
     ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite>;
 struct ValueOp {
   ValueOperation operation;

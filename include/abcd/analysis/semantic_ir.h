@@ -25,6 +25,7 @@
 #include "abcd/analysis/module_load.h"
 #include "abcd/analysis/module_store.h"
 #include "abcd/analysis/named_read.h"
+#include "abcd/analysis/property_delete.h"
 #include "abcd/analysis/named_invocation.h"
 #include "abcd/analysis/named_write.h"
 #include "abcd/analysis/normal_flow.h"
@@ -156,7 +157,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete>;
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

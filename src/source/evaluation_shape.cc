@@ -47,7 +47,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueModuleRead>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueModuleWrite>) return EvaluationShape{kCellStore, false};
     else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) return EvaluationShape{kCellStore, false};
-    else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>) return EvaluationShape{kPropertyRead, true};
+    else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead> || std::is_same_v<T, analysis::ValuePropertyDelete>) return EvaluationShape{kPropertyRead, true};
     else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>) {
       EvaluationShape shape{kPropertyWrite, false};
       shape.reference = ReferenceBoundary::kBeforeStoredValue;
@@ -261,7 +261,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                     std::is_same_v<T, analysis::ValueGlobalRead> ||
                     std::is_same_v<T, analysis::ValuePropertyRead> ||
-                    std::is_same_v<T, analysis::ValuePropertyWrite> ||
+                    std::is_same_v<T, analysis::ValuePropertyWrite> || std::is_same_v<T, analysis::ValuePropertyDelete> ||
                     std::is_same_v<T, analysis::ValueNamedWrite> ||
                     std::is_same_v<T, analysis::ValueOwnWrite> ||
                     std::is_same_v<T, analysis::ValueIndexedWrite> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> ||

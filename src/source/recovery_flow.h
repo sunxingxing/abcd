@@ -236,6 +236,7 @@ struct FlowPropertyReference {
   std::optional<StmtId> owner;
   // Checked original operands, not current binding/cell identity proofs.
   std::optional<OriginalInputRange> original_base,original_key;
+  analysis::PropertyLookup lookup = analysis::PropertyLookup::kObject;
 };
 // Free lexical names are observations, not bindings with local definitions.
 // Their original expression and current owner are distinct after forwarding.

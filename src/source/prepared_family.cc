@@ -247,6 +247,9 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Finish(
           (&member == &family.members[family.root.value] && root.ClassContext() &&
            (IsMethodCallable(member.tree.callable) || member.tree.callable == CallableKind::kBaseConstructor ||
             member.tree.callable == CallableKind::kDerivedConstructor)), Error::kCallable);
+      Require(member.tree.home_object ==
+          ((&member == &family.members[family.root.value] && root.ClassContext()) ?
+              HomeObjectBinding::kClass : HomeObjectBinding::kNone), Error::kCallable);
       if (member.tree.recovery_issues.empty()) {
         Require(member.abi.has_value(), Error::kAbi);
         Require(member.sources.has_value(), Error::kSources);

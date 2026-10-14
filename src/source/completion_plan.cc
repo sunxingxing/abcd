@@ -28,7 +28,7 @@ bool CleanupOperation(const ValueOperation& operation) {
     return std::is_same_v<T, ValueCopy> || std::is_same_v<T, ValueUnary> ||
         std::is_same_v<T, ValueBinary> || std::is_same_v<T, ValueString> ||
         std::is_same_v<T, ValueNamedRead> || std::is_same_v<T, ValueNamedWrite> ||
-        std::is_same_v<T, ValuePropertyRead> || std::is_same_v<T, ValuePropertyWrite> ||
+        std::is_same_v<T, ValuePropertyRead> || std::is_same_v<T, ValuePropertyWrite> || std::is_same_v<T, ValuePropertyDelete> ||
         std::is_same_v<T, ValueInvoke> || std::is_same_v<T, ValueSuperCall> || std::is_same_v<T, ValueSuperSpread> || std::is_same_v<T, ValueSuperCheck> || std::is_same_v<T, ValueConstruct> || std::is_same_v<T, ValueConstructApply> ||
         std::is_same_v<T, ValueArrayAllocation> || std::is_same_v<T, ValueObjectAllocation> ||
         std::is_same_v<T, ValueGlobalRead> || std::is_same_v<T, ValueGlobalObject> ||

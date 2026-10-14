@@ -463,6 +463,15 @@ class OperandCheck {
           original_.operations[i].intrinsic_expression=expression;
           const auto& member = Node<MemberExpr>(expression);
           Named(member.key, constants_.operations[i]);
+          RequireMeaning(member.lookup == operation.lookup, Error::kOperator);
+          if (operation.lookup == analysis::PropertyLookup::kSuper) {
+            RequireMeaning(tree_.home_object == HomeObjectBinding::kClass, Error::kSuperHomeObject);
+            const auto receiver = ResolveEvaluationOperand(evaluation_, input(0));
+            RequireMeaning(IsReceiverOperand(graph_, receiver) &&
+                std::holds_alternative<ThisExpr>(tree_.expressions[member.base.value].expression) &&
+                std::get<ThisExpr>(tree_.expressions[member.base.value].expression).owner == tree_.owner,
+                Error::kSuperReceiver);
+          } else RequireMeaning(operation.lookup == analysis::PropertyLookup::kObject, Error::kOperator);
           InputAt(0, member.base);
         } else if constexpr (std::is_same_v<T, analysis::ValueNamedWrite>) {
           original_.operations[i].intrinsic_expression=expression;
@@ -474,9 +483,17 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>) {
           original_.operations[i].intrinsic_expression=expression;
           const auto& member = Node<MemberExpr>(expression);
+          RequireMeaning(member.lookup == analysis::PropertyLookup::kObject, Error::kOperator);
           const auto* key = std::get_if<ComputedKey>(&member.key);
           RequireMeaning(key != nullptr, Error::kOperator);
           InputAt(0, member.base); InputAt(1, key->expression);
+        } else if constexpr (std::is_same_v<T, analysis::ValuePropertyDelete>) {
+          original_.operations[i].intrinsic_expression=expression;
+          RequireMeaning(tree_.strictness==Strictness::kStrict,Error::kDeleteStrictness);
+          const auto& node=Node<DeleteExpr>(expression);
+          const auto* key=std::get_if<ComputedKey>(&node.key);
+          RequireMeaning(key!=nullptr,Error::kOperator);
+          InputAt(0,node.base);InputAt(1,key->expression);
         } else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>) {
           original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(tree_.strictness == Strictness::kStrict, Error::kUnsupportedOperation);
@@ -488,6 +505,7 @@ class OperandCheck {
           InputAt(0, member->base); InputAt(1, key->expression);
           InputAt(2, assignment.value);
         } else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>) {
+          RequireMeaning(operation.kind==analysis::IndexedDefinition::kOwnStore || operation.kind==analysis::IndexedDefinition::kDefineField,Error::kOperator);
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
           const auto& property = tree_.properties[flow_.initializers[i]->value];
           original_.operations[i].intrinsic_property=flow_.initializers[i];

@@ -62,7 +62,8 @@ std::variant<ClassPrototypeReads, ClassPrototypeError> FindClassPrototypeReads(
       step(); const auto& op = graph.ops[i];
       if (op.life != ValueLife::kLive || !op.result) continue;
       const bool computed = std::holds_alternative<ValuePropertyRead>(op.operation);
-      if (!computed && !std::holds_alternative<ValueNamedRead>(op.operation)) continue;
+      if (!computed && (!std::holds_alternative<ValueNamedRead>(op.operation) ||
+          std::get<ValueNamedRead>(op.operation).lookup != PropertyLookup::kObject)) continue;
       std::optional<OpId> base, key;
       for (std::uint32_t j = 0; j < op.use_count; ++j) {
         step(); const auto& use = graph.uses[op.first_use.value + j];

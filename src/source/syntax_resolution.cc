@@ -56,6 +56,9 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     auto& syntax = result.syntax;
     syntax.identity = identity; syntax.method = method.offset; syntax.owner = owner;
     syntax.callable = context.Callable(); syntax.strictness = context.Mode();
+    // Only a validated class creation/member occurrence supplies this binding.
+    // DEFINEFUNC/arrow inheritance is deliberately not inferred from spelling.
+    syntax.home_object = context.ClassContext() ? HomeObjectBinding::kClass : HomeObjectBinding::kNone;
     syntax.names = std::move(constants.names);
     syntax.texts = std::move(constants.texts);
     // Method runtime names do not introduce a named-function self binding.

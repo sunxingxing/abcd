@@ -840,7 +840,7 @@ class FlowBuilder {
     return result;
   }
   Point Expr(ExprId id,Context context){tasks_.push_back(Expression{id,context});return expressions_[id.value];}
-  Point Property(ExprId site,ExprId base,MemberKey key,FlowReferenceKind kind,Point access,const Context& context) {
+  Point Property(ExprId site,ExprId base,MemberKey key,FlowReferenceKind kind,Point access,const Context& context, analysis::PropertyLookup lookup = analysis::PropertyLookup::kObject) {
     RequireTree(result_.properties.size()<std::numeric_limits<std::uint32_t>::max(),Error::kResourceLimit);
     const FlowPropertyId id{static_cast<std::uint32_t>(result_.properties.size())};
     const auto acquisition=New({FlowEventKind::kPropertyReference,{},{},site});
@@ -860,11 +860,15 @@ class FlowBuilder {
       return point;
     };
     const auto resources=ResourceFailures(tree_.identity.contract);
-    const auto receiver=phase(FlowPropertyPhase::kReceiver,NormalPropertyReceiverEffects(base,result_.normal_kinds,resources));
+    // A super reference resolves the current function's retained home object
+    // and its current prototype; it does not box/inspect the receiver as base.
+    const auto receiver=phase(FlowPropertyPhase::kReceiver,lookup == analysis::PropertyLookup::kSuper ?
+        CallbackEffects() : NormalPropertyReceiverEffects(base,result_.normal_kinds,resources));
     const auto conversion=phase(FlowPropertyPhase::kKey,NormalPropertyKeyEffects(key,result_.normal_kinds,resources));
     if(!result_.actions.empty())result_.actions[site.value]->before=receiver;
     Link(receiver,conversion);Link(conversion,access);
     FlowPropertyReference reference{acquisition,receiver,conversion,access,context.next,kind,site,base,key,{context.thrown,context.finalizer},context.owner};
+    reference.lookup = lookup;
     if(result_.original) {
       const auto range=result_.original->input_ranges[base.value];if(range.count)reference.original_base=range;
       if(const auto* computed=std::get_if<ComputedKey>(&key)) {
@@ -1048,8 +1052,14 @@ class FlowBuilder {
     // References retain input values once. GetValue precedes call arguments;
     // PutValue follows RHS writes. Receiver/key failures cannot publish access.
     // All motion/liveness/trial consumers see these same phase edges.
+    if(const auto* deleted=std::get_if<DeleteExpr>(&node)) {
+      auto next=Property(at.id,deleted->base,deleted->key,FlowReferenceKind::kWrite,effect,context);
+      Link(next,result_.properties.back().receiver);
+      if(const auto* key=std::get_if<ComputedKey>(&deleted->key))next=Expr(key->expression,context.Operand(next));
+      Link(start,Expr(deleted->base,context.Operand(next)));return;
+    }
     if(const auto* member=std::get_if<MemberExpr>(&node)) {
-      auto next=Property(at.id,member->base,member->key,FlowReferenceKind::kRead,effect,context);Link(next,result_.properties.back().receiver);
+      auto next=Property(at.id,member->base,member->key,FlowReferenceKind::kRead,effect,context,member->lookup);Link(next,result_.properties.back().receiver);
       if(const auto* key=std::get_if<ComputedKey>(&member->key))next=Expr(key->expression,context.Operand(next));
       Link(start,Expr(member->base,context.Operand(next)));return;
     }
@@ -1572,7 +1582,7 @@ FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const Functio
     SourceEffects effects;
     switch(event.property->phase) {
       case FlowPropertyPhase::kAcquisition:break;
-      case FlowPropertyPhase::kReceiver:effects=NormalPropertyReceiverEffects(reference.base,kinds,resources);break;
+      case FlowPropertyPhase::kReceiver:effects=reference.lookup == analysis::PropertyLookup::kSuper ? CallbackEffects() : NormalPropertyReceiverEffects(reference.base,kinds,resources);break;
       case FlowPropertyPhase::kKey:effects=NormalPropertyKeyEffects(reference.key,kinds,resources);break;
       case FlowPropertyPhase::kAccess:throw Error::kOwnership;
     }

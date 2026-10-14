@@ -323,8 +323,20 @@ class StructureCheck {
         // The receiver may be the original read's retained binding. Common
         // operand correspondence proves its identity; structure must not force
         // a new inline this read. Native field publication closes its context.
-      } else if constexpr (std::is_same_v<T, MemberExpr>) {
+      } else if constexpr (std::is_same_v<T, MemberExpr> || std::is_same_v<T, DeleteExpr>) {
         Key(expression.key);
+        if constexpr (std::is_same_v<T, MemberExpr>) {
+          RequireTree(expression.lookup == analysis::PropertyLookup::kObject ||
+              expression.lookup == analysis::PropertyLookup::kSuper, Error::kUnsupportedSyntax);
+          if (expression.lookup == analysis::PropertyLookup::kSuper)
+            RequireTree(tree_.home_object == HomeObjectBinding::kClass &&
+                (IsMethodCallable(tree_.callable) || tree_.callable == CallableKind::kBaseConstructor ||
+                 tree_.callable == CallableKind::kDerivedConstructor) &&
+                std::holds_alternative<NameId>(expression.key) &&
+                expression.base.value < tree_.expressions.size() &&
+                std::holds_alternative<ThisExpr>(tree_.expressions[expression.base.value].expression), Error::kUnsupportedSyntax);
+        }
+        if constexpr(std::is_same_v<T,DeleteExpr>)RequireTree(tree_.strictness==Strictness::kStrict,Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, UnaryExpr>) {
         RequireTree(ValidUnary(expression.operation), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, AwaitExpr>) {
@@ -565,7 +577,7 @@ class StructureCheck {
       }
       std::visit([&](const auto& node) {
         using T = std::decay_t<decltype(node)>;
-        if constexpr (std::is_same_v<T, MemberExpr>) { add(node.base); key(node.key); }
+        if constexpr (std::is_same_v<T, MemberExpr> || std::is_same_v<T, DeleteExpr>) { add(node.base); key(node.key); }
         else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr>) add(node.operand);
         else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr> || std::is_same_v<T, SequenceExpr>) {
           add(node.left); add(node.right);

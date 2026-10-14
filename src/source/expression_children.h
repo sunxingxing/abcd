@@ -15,7 +15,7 @@ void VisitExpressionChildren(const FunctionTree& tree, const TreeExpression& exp
   };
   std::visit([&](const auto& node) {
     using T = std::decay_t<decltype(node)>;
-    if constexpr (std::is_same_v<T, MemberExpr>) { visit(node.base); key(node.key); }
+    if constexpr (std::is_same_v<T, MemberExpr> || std::is_same_v<T, DeleteExpr>) { visit(node.base); key(node.key); }
     else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr>) visit(node.operand);
     else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr> || std::is_same_v<T, SequenceExpr>) {
       visit(node.left); visit(node.right);

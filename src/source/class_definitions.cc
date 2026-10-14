@@ -75,7 +75,8 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
         if (!flag || *flag != SpecialValue::kFalse) continue;
       } else key = std::get<ValueOwnWrite>(op.operation).name;
       std::optional<OpId> prototype;
-      if (std::holds_alternative<ValueNamedRead>(graph.ops[owner->value].operation)) {
+      if (const auto* read = std::get_if<ValueNamedRead>(&graph.ops[owner->value].operation);
+          read && read->lookup == PropertyLookup::kObject) {
         prototype = owner;
         require(graph.ops[owner->value].use_count == 1);
         owner = producer(input(*owner, 0, OperandRole::kBase));

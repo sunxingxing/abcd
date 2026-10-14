@@ -51,6 +51,7 @@ struct FunctionSyntax {
   // parameters retains physical frame metadata; a proven invocation-rest
   // projection introduces its own source binding instead of reusing slot zero.
   ParameterForm parameter_form = ParameterForm::kFrameFormals;
+  HomeObjectBinding home_object = HomeObjectBinding::kNone;
 };
 }  // namespace abcd::source
 #endif

@@ -1,4 +1,6 @@
 #include "abcd/analysis/indexed_write.h"
+#include "abcd/analysis/semantic_ir.h"
+#include "../../../src/analysis/value_operands.h"
 
 #include <array>
 #include <cstdlib>
@@ -42,4 +44,21 @@ int main() {
   Check(std::get<analysis::IndexedWriteError>(
             analysis::LiftIndexedWrite(instruction, 5)) ==
         analysis::IndexedWriteError::kMalformedInstruction);
+  instruction.opcode = abc::Opcode::kCALLRUNTIME_DEFINEFIELDBYINDEX_PREF_IMM8_IMM32_V8;
+  instruction.operand_count = 3;
+  instruction.operands[0] = {0, abc::OperandKind::kImmediate};
+  instruction.operands[1] = {UINT32_MAX, abc::OperandKind::kImmediate};
+  instruction.operands[2] = {4, abc::OperandKind::kRegister};
+  const auto field = std::get<analysis::IndexedWrite>(analysis::LiftIndexedWrite(instruction, 5));
+  Check(field.kind == analysis::IndexedDefinition::kDefineField && field.object.value == 4 && field.index == UINT32_MAX);
+  Check(std::get<analysis::IndexedWriteError>(analysis::LiftIndexedWrite(instruction, 4)) == analysis::IndexedWriteError::kRegisterRange);
+  instruction.operands[1].raw_bits = UINT64_MAX;
+  Check(std::get<analysis::IndexedWriteError>(analysis::LiftIndexedWrite(instruction, 5)) == analysis::IndexedWriteError::kMalformedInstruction);
+  instruction.operands[1].raw_bits = 201;
+  const abc::BodyInstruction site{{0}, instruction, {}};
+  const auto semantic = std::get<analysis::SemanticInstruction>(analysis::LiftSemanticInstruction(site, abc::ProfileId::kDynamic1301, 5));
+  const auto operands = std::get<analysis::ValueOperands>(analysis::DescribeValueOperands(semantic));
+  Check(operands.count == 2 && !operands.write);
+  Check(operands.operands[0].role == analysis::OperandRole::kBase && operands.operands[1].role == analysis::OperandRole::kStoredValue);
+  Check(semantic.effects.exceptional == analysis::ExceptionalCompletion::kMayThrow && semantic.effects.normal == semantic.effects.before_throw);
 }

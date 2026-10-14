@@ -1110,11 +1110,13 @@ class ForestBuilder {
         const auto* name = std::get_if<NameId>(&constant);
         Require(name && name->value < constants_.name_count, Error::kConstant);
         if constexpr (std::is_same_v<T, analysis::ValueNamedRead>)
-          return Add(MemberExpr{operands[0], *name}, origin);
+          return Add(MemberExpr{operands[0], *name, operation.lookup}, origin);
         else
           return Add(AssignmentExpr{MemberTarget{operands[0], *name}, operands[1]}, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>)
         return Add(MemberExpr{operands[0], ComputedKey{operands[1]}}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValuePropertyDelete>)
+        return Add(DeleteExpr{operands[0], ComputedKey{operands[1]}}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>)
         return Add(AssignmentExpr{MemberTarget{operands[0], ComputedKey{operands[1]}}, operands[2]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueString>) {

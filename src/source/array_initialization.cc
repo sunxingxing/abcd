@@ -57,7 +57,7 @@ ArrayInitializationMetadata Metadata(const ValueProgram& graph, ExpressionConsta
       }
       result.buffers[i] = buffer->count;
     }
-    if (std::holds_alternative<ValueNamedRead>(op.operation)) {
+    if (const auto* read = std::get_if<ValueNamedRead>(&op.operation); read && read->lookup == PropertyLookup::kObject) {
       const auto* name = std::get_if<NameId>(&constants.operations[i]);
       result.length_reads[i] = name && name->value < names.size() && names[name->value] == u"length";
     }
@@ -206,6 +206,7 @@ class Construction {
         } else {
           const auto* indexed = std::get_if<ValueIndexedWrite>(&op.operation);
           Require(indexed || std::holds_alternative<ValueComputedOwnWrite>(op.operation), Error::kDefinition);
+          Require(!indexed || indexed->kind == IndexedDefinition::kOwnStore, Error::kDefinition);
           Require(!op.result && op.use_count == (indexed ? 2U : 3U), Error::kDefinition);
           Role(op, 0, OperandRole::kBase);
           const auto index = indexed ? ArrayCursor{{}, indexed->index} : Cursor(Input(op, 1));

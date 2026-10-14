@@ -47,6 +47,7 @@ constexpr bool IsGeneratorCallable(CallableKind kind) {
 constexpr bool IsMethodCallable(CallableKind kind) {
   return kind == CallableKind::kMethod || kind == CallableKind::kAsyncMethod || kind == CallableKind::kGeneratorMethod;
 }
+enum class HomeObjectBinding : std::uint8_t { kNone, kClass };
 enum class Strictness : std::uint8_t { kStrict, kSloppy };
 enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule, kFunctionSelf, kCatch };
 enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture, kModule, kCatchParameter };
@@ -115,7 +116,7 @@ struct SymbolConstructorExpr {};
 struct ThisExpr { FunctionOwnerId owner; };
 struct ComputedKey { ExprId expression; };
 using MemberKey = std::variant<NameId, ComputedKey>;
-struct MemberExpr { ExprId base; MemberKey key; };
+struct MemberExpr { ExprId base; MemberKey key; analysis::PropertyLookup lookup = analysis::PropertyLookup::kObject; };
 enum class TreeUnary : std::uint8_t { kNot, kNegate, kBitNot, kPlus, kTypeof };
 // Unary operands are values, not unresolved References. In particular typeof
 // must perform GetValue (including a possible global lookup failure) first.
@@ -140,6 +141,7 @@ struct AssignmentExpr { AssignmentTarget target; ExprId value; };
 enum class UpdateDirection : std::uint8_t { kIncrement, kDecrement };
 enum class UpdateResult : std::uint8_t { kPrefix, kPostfix };
 struct UpdateExpr { SymbolId symbol; UpdateDirection direction; UpdateResult result; };
+struct DeleteExpr { ExprId base; MemberKey key; };
 struct SequenceExpr { ExprId left; ExprId right; };
 // Each argument slot and expression occurrence has exactly one syntax owner.
 // Call references are explicit: value calls must not acquire member this or
@@ -212,7 +214,7 @@ using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, Rea
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr, UpdateExpr, SequenceExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
 struct BlockStmt {
@@ -332,6 +334,7 @@ struct FunctionTree {
   // proof supplies its executable default behavior, including raw forwarding.
   ConstructorForm constructor_form = ConstructorForm::kExplicit;
   ParameterForm parameter_form = ParameterForm::kFrameFormals;
+  HomeObjectBinding home_object = HomeObjectBinding::kNone;
   bool ImplicitConstructor() const { return constructor_form == ConstructorForm::kImplicit; }
   // Original guard operations retained as non-executing source anchors.
   // The adapter proves the same derived protocol or an initialized captured
