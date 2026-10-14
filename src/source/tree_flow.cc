@@ -442,6 +442,16 @@ class FlowCheck {
     Require(node.block.value < graph_.blocks.size(), Error::kControl);
     return graph_.blocks[node.block.value];
   }
+  const SelectionRegion* DecisionSelection(const ControlNode& node) const {
+    if (exceptions_ || !node.arms || !node.next) return nullptr;
+    const auto branch = DecisionPredicate(node);
+    if (logical_branches_.empty() || !logical_branches_[branch.value] ||
+        evaluation_.operations[branch.value].kind != EvaluationKind::kLogicalValue) return nullptr;
+    const auto& selection = logicals_[*logical_branches_[branch.value]];
+    if (selection.parent || selection.prefix_parent ||
+        control_.nodes[node.next->value].block != selection.join) return nullptr;
+    return &selection;
+  }
   analysis::OpId DecisionPredicate(const ControlNode& node) const {
     const auto& block = DecisionBlock(node);
     if (exceptions_) {
@@ -532,6 +542,11 @@ class FlowCheck {
       if (op.life != analysis::ValueLife::kLive) continue;
       if (predicate && id == DecisionPredicate(node)) continue;
       const auto kind = evaluation_.operations[id.value].kind;
+      if (kind == EvaluationKind::kLogicalValue) {
+        const auto* selection = DecisionSelection(node);
+        Require(selection && selection->branch == id, Error::kControl);
+        LogicalValue(*selection, parent, child); continue;
+      }
       if (kind == EvaluationKind::kInline || kind == EvaluationKind::kPredicateSnapshot ||
           kind == EvaluationKind::kPhiInput || kind == EvaluationKind::kLogicalLeft ||
           kind == EvaluationKind::kNestedLiteral || kind == EvaluationKind::kInitializer ||
@@ -561,7 +576,7 @@ class FlowCheck {
         RootExpression(id, expression->expression);
       }
     }
-    if (!predicate) for (std::uint8_t e = 0; e < source.edge_count; ++e) {
+    if (!predicate && !DecisionSelection(node)) for (std::uint8_t e = 0; e < source.edge_count; ++e) {
       budget_.Step(); edges_->Consume(analysis::EdgeId{source.first_edge.value + e}, block, child);
     }
   }
@@ -629,7 +644,7 @@ class FlowCheck {
       const auto predicate = part->decision->predicate.value_or(next);
       while (next != predicate) {
         budget_.Step(); const auto& linear = control_.nodes[next.value];
-        Require(!linear.arms && !linear.decision && linear.next, Error::kControl);
+        Require(linear.next && ((!linear.arms && !linear.decision) || DecisionSelection(linear)), Error::kControl);
         DecisionStatements(linear, parent, child, false);
         next = *linear.next;
       }
@@ -681,7 +696,7 @@ class FlowCheck {
         while (next != terminal) {
           budget_.Step(); const auto& linear = control_.nodes[next.value];
           const auto& path = DecisionBlock(linear);
-          Require(!linear.arms && !linear.decision && linear.next, Error::kControl);
+          Require(linear.next && ((!linear.arms && !linear.decision) || DecisionSelection(linear)), Error::kControl);
           for (std::uint32_t i = 0; i < path.op_count; ++i) {
             const analysis::OpId op{path.first_op.value + i};
             if (exceptions_ && std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation)) {
@@ -689,9 +704,13 @@ class FlowCheck {
                   path.edge_count == 1 && !edges_->HasCopies(path.first_edge), Error::kControl);
               continue;
             }
-            DecisionOperation(op, parent, child, &condition, root_predicate, analysis::OpId{at});
+            if (evaluation_.operations[op.value].kind == EvaluationKind::kLogicalValue) {
+              const auto* selection = DecisionSelection(linear);
+              Require(selection && selection->branch == op, Error::kControl);
+              LogicalValue(*selection, parent, child);
+            } else DecisionOperation(op, parent, child, &condition, root_predicate, analysis::OpId{at});
           }
-          for (std::uint8_t e = 0; e < path.edge_count; ++e) {
+          for (std::uint8_t e = 0; !DecisionSelection(linear) && e < path.edge_count; ++e) {
             budget_.Step(); const analysis::EdgeId edge{path.first_edge.value + e};
             if (graph_.edges[edge.value].kind == analysis::FlowEdgeKind::kException) continue;
             std::uint32_t empty = 0;

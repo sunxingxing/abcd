@@ -73,6 +73,32 @@ int main() {
     auto forged=TreeFailureJson(*f.tree);forged["location"]["pc"]=0U;
     Check(!ParseTreeFailure(forged));
   }
+  static_assert(std::is_trivially_copyable_v<TreeFailureEvidence>);
+  for (unsigned tag = 0; tag <= static_cast<unsigned>(DecisionPrefixError::kStatementExpression); ++tag) {
+    FunctionTreeFailure f{FunctionTreeError::kControl};
+    f.tree = TreeFailureEvidence{TreeObligation::kDecisionPrefix, {}};
+    f.tree->decision_prefix = static_cast<DecisionPrefixError>(tag);
+    f.tree->location.method = abc::EntityOffset{77};
+    f.tree->location.control = ControlId{0};
+    f.tree->prefix_event = TreeLocation{};
+    f.tree->prefix_event->operation = analysis::OpId{0};
+    f.tree->prefix_event->pc = abc::CodeOffset{0};
+    f.tree->prefix_event->working_pc = abc::CodeOffset{17};
+    RoundTrip(FamilyRouteFailure(f));
+    f.tree->prefix_event = TreeLocation{};
+    f.tree->prefix_event->synthetic = TreeSyntheticLocation{ControlOriginKind::kTry, 0};
+    RoundTrip(FamilyRouteFailure(f));
+    f.tree->prefix_event.reset(); RoundTrip(FamilyRouteFailure(f));
+    auto forged = TreeFailureJson(*f.tree);
+    forged["decision_prefix"] = static_cast<unsigned>(DecisionPrefixError::kStatementExpression) + 1;
+    Check(!ParseTreeFailure(forged));
+    forged["decision_prefix"] = "prefix"; Check(!ParseTreeFailure(forged));
+    for (auto kind : {FunctionTreeError::kResourceLimit, FunctionTreeError::kWorkLimit}) {
+      f.kind = kind;
+      Check(FamilyRouteFailure(f).failure_class == (kind == FunctionTreeError::kResourceLimit ?
+          RouteFailureClass::kMemoryLimit : RouteFailureClass::kWorkLimit));
+    }
+  }
   for(auto reason:{DeferredCellError::kExternalRoot,DeferredCellError::kPhasedParent,DeferredCellError::kPlacement,DeferredCellError::kBinding}) {
     RouteFailure f{RouteFailureClass::kUnproved,ValueRouteError::kTreeStage,{}};
     f.deferred=DeferredCellEvidence{reason};auto& d=*f.deferred;

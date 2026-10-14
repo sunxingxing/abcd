@@ -1120,16 +1120,53 @@ class TreeBuilder {
       Append(draft, Statement(ExpressionStmt{expression}, tree_.expressions[expression.value].origin));
     }
   }
+  void RequireDecision(bool condition, DecisionPrefixError reason, Error error = Error::kControl) const {
+    if (condition) return;
+    witness_.decision_prefix = reason;
+    if (!witness_.prefix_event) witness_.prefix_event = witness_.location;
+    Require(false, error, TreeObligation::kDecisionPrefix);
+  }
+  const SelectionRegion* DecisionSelection(const ControlNode& node) const {
+    // A checked selected value already owns both arms and their phi edges.
+    // Its join is the continuation; it is not a second statement branch.
+    // Phased Commit/exception staging needs its separate event correspondence.
+    if (exceptions_ || !node.arms || !node.next) return nullptr;
+    const auto branch = DecisionPredicate(node);
+    if (logical_branches_.empty() || !logical_branches_[branch.value] ||
+        evaluation_.operations[branch.value].kind != EvaluationKind::kLogicalValue) return nullptr;
+    const auto& selection = logicals_[*logical_branches_[branch.value]];
+    if (selection.parent || selection.prefix_parent ||
+        control_.nodes[node.next->value].block != selection.join) return nullptr;
+    return &selection;
+  }
+  void RequireDecisionContinuation(const ControlNode& node) const {
+    witness_.location = At(node);
+    witness_.prefix_event = At(node);
+    if (std::holds_alternative<std::monostate>(node.synthetic) && node.block.value < graph_.blocks.size()) {
+      const auto& block = graph_.blocks[node.block.value];
+      std::optional<analysis::OpId> event;
+      if (exceptions_) event = graph_.phases[node.block.value].operation;
+      else if (block.op_count) event = analysis::OpId{block.first_op.value + block.op_count - 1};
+      if (event) {
+        witness_.prefix_event = At(*event);
+        witness_.placement = evaluation_.operations[event->value].kind;
+      }
+    }
+    const bool selected = DecisionSelection(node) != nullptr;
+    RequireDecision(!node.arms || selected, DecisionPrefixError::kPrefixArms);
+    RequireDecision(!node.decision || selected, DecisionPrefixError::kPrefixDecision);
+    RequireDecision(node.next.has_value(), DecisionPrefixError::kPrefixEnd);
+  }
   const analysis::WorkBlock& DecisionBlock(const ControlNode& node) const {
     WitnessScope witness(*this, TreeObligation::kDecisionPrefix, At(node));
-    Require(std::holds_alternative<std::monostate>(node.synthetic), Error::kControl);
+    RequireDecision(std::holds_alternative<std::monostate>(node.synthetic), DecisionPrefixError::kSyntheticNode);
     if (exceptions_) {
       const auto index = static_cast<std::size_t>(&node - control_.nodes.data());
-      Require(index < exceptions_->control.units.size(), Error::kControl);
+      RequireDecision(index < exceptions_->control.units.size(), DecisionPrefixError::kControlUnit);
       const auto* phase = std::get_if<PhaseControlUnit>(&exceptions_->control.units[index]);
-      Require(phase && phase->block == node.block, Error::kControl);
+      RequireDecision(phase && phase->block == node.block, DecisionPrefixError::kPhaseUnit);
     }
-    Require(node.block.value < graph_.blocks.size(), Error::kControl);
+    RequireDecision(node.block.value < graph_.blocks.size(), DecisionPrefixError::kBlock);
     return graph_.blocks[node.block.value];
   }
   analysis::OpId DecisionPredicate(const ControlNode& node) const {
@@ -1137,13 +1174,15 @@ class TreeBuilder {
     const auto& block = DecisionBlock(node);
     if (exceptions_) {
       const auto& phase = graph_.phases[node.block.value];
-      Require(phase.phase == analysis::ExceptionPhase::kCommit && phase.operation &&
-          std::holds_alternative<analysis::ValueBranch>(graph_.ops[phase.operation->value].operation), Error::kControl);
+      if (phase.operation) witness_.prefix_event = At(*phase.operation);
+      RequireDecision(phase.phase == analysis::ExceptionPhase::kCommit && phase.operation &&
+          std::holds_alternative<analysis::ValueBranch>(graph_.ops[phase.operation->value].operation), DecisionPrefixError::kCommitPredicate);
       return *phase.operation;
     }
-    Require(block.op_count != 0, Error::kControl);
+    RequireDecision(block.op_count != 0, DecisionPrefixError::kEmptyPredicate);
     const analysis::OpId op{block.first_op.value + block.op_count - 1};
-    Require(std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation), Error::kControl);
+    witness_.prefix_event = At(op);
+    RequireDecision(std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation), DecisionPrefixError::kBranchPredicate);
     return op;
   }
   void OrientBranches() {
@@ -1154,7 +1193,7 @@ class TreeBuilder {
     if (evaluation_.phis) for (const auto& bundle : evaluation_.phis->bundles) {
       Step();
       if (const auto* edge = std::get_if<analysis::EdgeId>(&bundle.incoming)) {
-        Require(edge->value < copied.size(), Error::kControl);
+        RequireDecision(edge->value < copied.size(), DecisionPrefixError::kCopyIndex);
         if (!bundle.schedule.steps.empty()) copied[edge->value] = 1;
       }
     }
@@ -1202,7 +1241,7 @@ class TreeBuilder {
               !std::holds_alternative<analysis::ValueJump>(graph_.ops[id].operation)) return true;
         }
         if (next == predicate) break;
-        Require(!node.arms && !node.decision && node.next, Error::kControl);
+        RequireDecisionContinuation(node);
         next = *node.next;
       }
       part = &control_.nodes[predicate.value];
@@ -1240,7 +1279,7 @@ class TreeBuilder {
       RequireNoCopies(block.first_edge);
       RequireNoCopies(analysis::EdgeId{block.first_edge.value + 1});
       const TreeOriginId here{graph_.ops[branch.value].origin.value};
-      Require(forest_.operations[branch.value].has_value(), Error::kOwnership);
+      RequireDecision(forest_.operations[branch.value].has_value(), DecisionPrefixError::kStatementExpression, Error::kOwnership);
       const auto save = DecisionExpression(AssignmentExpr{SymbolTarget{saved},
           *forest_.operations[branch.value]}, here);
       Append(current, Statement(ExpressionStmt{save}, here));
@@ -1256,7 +1295,7 @@ class TreeBuilder {
       const auto predicate = part->decision->predicate.value_or(next);
       while (next != predicate) {
         Step(); const auto& linear = control_.nodes[next.value];
-        Require(!linear.arms && !linear.decision && linear.next, Error::kControl);
+        RequireDecisionContinuation(linear);
         EmitBlock(linear, current);
         next = *linear.next;
       }
@@ -1311,7 +1350,7 @@ class TreeBuilder {
   }
   void EmitDecision(analysis::OpId op, const ControlNode& node, std::size_t draft) {
     WitnessScope witness(*this, TreeObligation::kDecisionPrefix, At(op));
-    Require(node.decision && node.arms, Error::kControl);
+    RequireDecision(node.decision && node.arms, DecisionPrefixError::kDecisionShape);
     if (DecisionStatements(node)) { EmitStatementDecision(op, node, draft); return; }
     decision_path_.clear(); decision_roots_.clear();
     const auto* part = &node;
@@ -1321,7 +1360,7 @@ class TreeBuilder {
       const auto& block = DecisionBlock(*part);
       const auto branch = DecisionPredicate(*part);
       witness_.location = At(branch);
-      Require(forest_.operations[branch.value].has_value(), Error::kControl);
+      RequireDecision(forest_.operations[branch.value].has_value(), DecisionPrefixError::kPredicateExpression);
 
       if (part != &node) {
         // Evaluation owns expression/anchor/statement placement. Reuse the
@@ -1348,7 +1387,7 @@ class TreeBuilder {
       while (next != predicate) {
         Step(); const auto& linear = control_.nodes[next.value];
         const auto& path = DecisionBlock(linear);
-        Require(!linear.arms && !linear.decision && linear.next, Error::kControl);
+        RequireDecisionContinuation(linear);
         for (std::uint8_t e = 0; e < path.edge_count; ++e) {
           Step(); const analysis::EdgeId edge{path.first_edge.value + e};
           if (graph_.edges[edge.value].kind != analysis::FlowEdgeKind::kException)

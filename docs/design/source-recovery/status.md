@@ -12,6 +12,17 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 62：DecisionPrefix（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 501 → **506/620**，`--language-source` 539 → **544/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 53/54，只有既有的 family_source_cli_test 失败。cc 对照原源码核对 KeyboardController：`isShiftKeyHold` 与原文几乎一致；调用处 `!(A && B) || C` 与原 `A && B && !C` 按德摩根律等价，分支互换，短路求值顺序相同。
+
+- 基线 `fc7b648f`；证据先行重数两套 explore61：各 **12** 个首拒绝，集合相同。`DecisionPrefixError` 保留实际失败检查，`prefix_event` 与控制位置分开，原始/工作 PC 来自 origin，Try 单元保留 synthetic 身份；贯通两条 JSON 路径及 abc_semantic。逐 record 表见 [round-62-decision-prefix.md](round-62-decision-prefix.md)。
+- 证据分为 **8 个 normal 的已验证 LogicalValue 前缀、3 个 phased root 分支、1 个 Try 单元**。本轮只修第一组：树发射消费现有 selection 的原始 phi/arms/join，TreeFlow 独立重算并验证，选择的边不再作为空直线边重复消费。没有新识别模板、联合 predicate/keep-edge 准入、catch/控制/declaration 改动、新前提或 recovery 豁免；未改变 for-of 暂停边界。
+- 最终双 cohort 对 explore61/explore61s：**501 → 506/620、539 → 544/620**；**0 状态回退、0 已完成文本漂移**。每组只变动这 12 个目标：5 complete、2 明确 INCOMPLETE class、1 后续 LoopExits、4 保持拒绝并增补证据。新增完成输出两套共 10 份全部通过 `node --check`。partial class 不算完成；目前该路径的 manifest 缺少被省略成员的具体叶子/位置，已如实记录。
+- 完整构建 `cmake --build build/regression -j 6 -- -k` 成功；固定集串行 **65/65**；`decision|logical|selection|evaluation|tree_failure|recovery|original_flow` 定向 **59/61**，仅既有 `phased_arm_selection_source_test`、`decision_snapshots_source_test` 失败；`cli|corpus|failure|_receipt|manifest` 串行扫描 **51/52**，仅既有 `family_source_cli_test` 失败（owner/origin arena 断言）。没有改这些失败断言。
+- 新增 `decision_selection_prefix_test`、`decision_selection_prefix_cli_test`，加 `tree_failure_test` 扩展均通过：copy/寄存器/拆块、statement/expression 两种前缀、错误 join/selection/arm/缺失与重复事件变异、recovery 的已验证输入与 revision 检查、200/201/400/800 精确 byte/work 边界。最小预算 **13,569,949 / 13,635,762 / 27,125,765 / 54,237,397 bytes**，work **4,820,569 / 4,844,794 / 9,744,722 / 19,697,078**。真实 es2abc fixture **1,344 次 Node 差分、10 个变异检出**，README 登记命令、sha256 与 oracle 边界。
+- `evaluation_failure.mjs` 的两项过期期望改成真实结果：DocsSample KeyboardController 为 partial class，Solutions KeyboardController 为 complete，均比对 CLI/manifest 源码；`tree_failure.mjs` 新增真实 phased prefix 的精确拒绝位置检查。
+- 日志：`/private/tmp/r62-full-build-final.log`、`r62-fixed.log`、`r62-targeted.log`、`r62-sweep.log`、`r62-final-cohort.log`、`r62-comparison.json`；最终导出 `/private/tmp/r62-final-cohort/explore62{,s}`。未 commit/push/stash，未运行留出集、全套测试或 RSS 基准。
+
 ## Round 61：LogicalCoverage（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 500 → **501/620**，`--language-source` 537 → **539/620**（assertClose、GridLayout）；0 回退，0 文本漂移；cli/corpus/failure 扫描 51/52，只有既有的 family_source_cli_test 失败。
 

@@ -73,3 +73,22 @@ alternative；有真实指令边界时同时记录原始/工作 PC，创建点�
 
 名称均带 `_test`。本组无失败；未重跑其他已知失败矩阵。
 探索集的完整重计和无漂移证据见 [round-42-refusals.md](round-42-refusals.md)。
+
+## Decision-prefix checks (Round 62)
+
+`DecisionPrefixError` is a fixed-size diagnostic enum, separate from unchanged
+`FunctionTreeError` and `TreeObligation` values. It names synthetic/control/phase
+unit, block, commit/empty/branch predicate, copy-index, prefix arms/decision/end,
+and missing predicate/statement-expression checks. It does not grant admission.
+`tree.decision_prefix` publishes the sub-reason; `tree.prefix_event` identifies
+the event that cannot be placed. The main `location` retains the actual owning
+control node. Normal control nodes do not acquire a guessed PC: their real
+branch event carries its own original/working PC in `prefix_event`. Synthetic
+Try units retain their typed identity. A selection's current placement is
+reported when known. Both record-entry and route JSON use the same fields and
+receipt parser; `abc_semantic --record-source` exposes the same witness.
+
+Every sub-reason is round-trip tested on both JSON paths, including real PC 0,
+normalized PC, missing PC, synthetic identity, invalid tags and unchanged
+resource/work classification. A real phased TCP prefix remains refused and
+its Op47 at original114/working111 is checked through the CLI and manifest.

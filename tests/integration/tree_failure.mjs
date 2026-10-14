@@ -11,6 +11,7 @@ const cases = [
   ['UI/CustomAnimationTab', 8166, 8556, 13],
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
   ['UI/CalendarViewSwitch', 28303, 28799, 1146],
+  ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket', 28264, 29676, 114],
   ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo', 29268, 29450, 90],
 ];
 const run = (exe,args) => {
@@ -49,6 +50,15 @@ try {
       const lines=instructions.stdout.trim().split('\n').map(line=>JSON.parse(line));
       assert.ok(lines.some(line=>line.pc===pc || line.offset===pc),`${entity}: real instruction boundary ${pc}`);
     }
+    if(entity===28264) {
+      const tree=report.source_failure.tree;
+      assert.deepEqual(report.source_failure.causes,[
+        {domain:'abcd::source::FunctionTreeError',value:0},{domain:'abcd::source::TreeObligation',value:3}]);
+      assert.equal(tree.decision_prefix,8); // kPrefixArms: phased event not projected.
+      assert.equal(tree.placement,1); // kRoot, not the verified selected value case.
+      assert.deepEqual(tree.location,{method:29676,block:94,control:95,operation:47,pc:114,working_pc:111});
+      assert.deepEqual(tree.prefix_event,{method:29676,block:94,operation:47,pc:114,working_pc:111});
+    }
     if(entity===24892) {
       assert.deepEqual(report.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
       assert.equal(report.source_pc,undefined);
@@ -68,5 +78,5 @@ try {
     }
 
   }
-  console.log('tree_failure_cli_test: four real refusals and one verified native loop agree across CLI and manifest');
+  console.log('tree_failure_cli_test: five real refusals and one verified native loop agree across CLI and manifest');
 } finally {rmSync(temp,{recursive:true,force:true});}

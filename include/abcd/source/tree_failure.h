@@ -30,6 +30,11 @@ struct TreeLocation {
   bool operator==(const TreeLocation&) const = default;
 };
 enum class ExpressionOwnershipError : std::uint8_t { kMissingExpression, kPlacement };
+enum class DecisionPrefixError : std::uint8_t {
+  kSyntheticNode, kControlUnit, kPhaseUnit, kBlock, kCommitPredicate,
+  kEmptyPredicate, kBranchPredicate, kCopyIndex, kPrefixArms, kPrefixDecision, kPrefixEnd,
+  kPredicateExpression, kDecisionShape, kStatementExpression
+};
 struct TreeFailureEvidence {
   TreeObligation obligation = TreeObligation::kExpressionOwnership;
   TreeLocation location;
@@ -37,6 +42,8 @@ struct TreeFailureEvidence {
   std::optional<ExpressionOwnershipError> ownership;
   std::optional<EvaluationKind> placement;
   std::optional<TreeLocation> decision_entry;
+  std::optional<DecisionPrefixError> decision_prefix;
+  std::optional<TreeLocation> prefix_event;
   bool operator==(const TreeFailureEvidence&) const = default;
 };
 enum class DeferredCellError : std::uint8_t { kExternalRoot, kPhasedParent, kPlacement, kBinding };

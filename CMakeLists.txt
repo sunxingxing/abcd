@@ -896,6 +896,16 @@ if(BUILD_TESTING)
   target_include_directories(decision_prefix_test PRIVATE tests/support)
   target_link_libraries(decision_prefix_test PRIVATE abcd_source)
   add_test(NAME decision_prefix_test COMMAND decision_prefix_test)
+  add_executable(decision_selection_prefix_test tests/unit/source/decision_selection_prefix_test.cc)
+  target_include_directories(decision_selection_prefix_test PRIVATE tests/support)
+  target_link_libraries(decision_selection_prefix_test PRIVATE abcd_source)
+  add_test(NAME decision_selection_prefix_test COMMAND decision_selection_prefix_test)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME decision_selection_prefix_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_selection_prefix.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_selection_prefix)
+  endif()
   add_executable(family_array_test tests/integration/family_array.cc)
   target_include_directories(family_array_test PRIVATE tests/support)
   target_link_libraries(family_array_test PRIVATE abcd_source abcd_json)

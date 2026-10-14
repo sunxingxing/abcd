@@ -415,3 +415,41 @@ splits, consume a three-step swap schedule with a cycle save, and check exact
 byte/work boundaries at 200/201/400/800 decisions. The real es2abc fixture covers
 ordinary and handled decisions plus a loop with two live-out values; its Node
 oracle compares values, exception constructors and full getter/call traces.
+
+## Verified selection events in decision prefixes (Round 62)
+
+Evidence at `fc7b648f` separates 12 DecisionPrefix records in each exploration
+flag set: eight normal prefixes containing an already-proved `kLogicalValue`,
+three phased prefixes containing a root branch, and one Try control unit where
+a phase was required. This increment consumes only the first group.
+
+`FindSelectionExpressions` already binds each selection to its original phi,
+branch, arm effects and join. The old decision-prefix walker nevertheless
+required every intermediate control node to have no arms. `DecisionSelection`
+now uses that existing proof and the exact control-to-join correspondence to
+recognize the selection's continuation. It requires a top-level selected value;
+a child/prefix-owned selection cannot be consumed a second time. This is not a
+new selection recognizer or a joint predicate/keep-edge admission. Normal
+statement prefixes and expression prefixes both reuse ordinary `EmitBlock` and
+the existing selection emitter. No follow, join, catch staging, allocation,
+declaration or symbol-placement rule changes.
+
+TreeFlow reconstructs selection regions from the immutable graph, control and
+evaluation plan. It checks the same join correspondence, then calls
+`LogicalValue` to verify the conditional value, truth events, arms, original
+phi edges and origin membership. The decision walker must not consume those
+edges again as empty linear edges. OriginalFlow/recovery continue to consume
+these independently verified ordinary selection facts; they gain no masks or
+verification exemptions. Changed arm values, forged joins, missing selection
+proof and missing/duplicate original placements are refused.
+
+The new lookups are O(1) through the existing OpId index. No new graph traversal
+or buffer is introduced; whole-method complexity stays within the existing
+O(N log N) bound. Fixed-size refusal witnesses are charged as builder storage.
+The decision walker still refuses unprojected phased branches and Try units.
+No new source-language premise is involved.
+
+Zero-drift rule: a previously accepted linear prefix takes exactly its old
+path. Only a node formerly rejected for having arms can use the already-proved
+selected-value continuation. Real es2abc and IR tests are in
+`decision_selection_prefix_cli_test` and `decision_selection_prefix_test`.
