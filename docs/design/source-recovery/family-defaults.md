@@ -1,5 +1,78 @@
 # 函数族默认参数迁移
 
+## 2026-10-15：Round 70 length 拒绝诊断（未扩大准入）
+
+以下是 HEAD `17b20ccd` 的 ABC-only 证据；未读取配对源码。表中的
+“当前 length”是 ABI 检查前的树签名计算结果，不是已发布函数的运行结果。
+创建点的 `length` 经 `FunctionContext::Length()` 取得；不是 CodeInfo
+的物理参数槽数。`AbiBuilder::Build()` 按第一个默认参数的位置计算源码
+length，再与创建元数据比较。这个等式没有错误，必须保留。
+
+| 探索 record / 方法 | ABC length | 当前 length / 默认位图 | 原始默认初始化 |
+| --- | ---: | --- | --- |
+| o10/16048 Index / m16233 | 2 | 3 / `000` | 第三个形参在 PC16 写本地 cell；PC18 测该 cell；PC28 读外层 depth1/slot0，PC30 HoleGuard，PC38 回写本地 cell |
+| o31/17804 FlowItemNode / m17994 | 2 | 3 / `000` | 第三个形参在 PC21 写本地 cell；PC23 测该 cell；PC33 读外层 depth1/slot0，PC35 HoleGuard，PC43 回写本地 cell |
+| o31/20739 SwiperView / m20927 | 2 | 3 / `000` | 同上，PC21/23/33/35/43；是独立方法、独立捕获身份 |
+| o13/3609 Logger / m3876 | 0 | 2 / `00` | 第一个形参缺省时 PC20 读字符串 pool84；第二个形参缺省时 PC35 取整数 65280 |
+
+四例在两组 flags 下都以 `FunctionAbiError::kLength`（枚举值 7）拒绝。
+前三例的 ABC 形参/局部调试信息分别给出 `elmtId, isInitialRender, name`
+和 `elmtId, isInitialRender, data`；第三项是本地 cell 的名字，不可据此
+把外层默认值 cell 合并为同一绑定。可表达的目标是第三个原生默认参数
+读取**独立的外层绑定**。Logger 则是两个直接 SSA 参数的常量默认值，
+不属于捕获 cell 组；这里只记录 pool 身份，不推测字符串内容。
+
+### 为什么本轮停在证据阶段
+
+当前两条证明不能直接拼接：
+
+- `FindDefaultCandidates` 要求 undefined 比较对象是 `ParameterEntry`；
+  前三例比较的是本地 cell 的读取。`FindCellDefaults` 可以找这种目标，
+  但其初始化 RHS 和独立 `CellDefaultProof` 都仅支持常量/字符串。
+- `DefaultValueProof::BuildCaptured` 已支持外层捕获默认值，但其前缀
+  效果检查显式以 `!capture_` 限定本地环境分配和初始化的交换。
+  不能只在候选发现器里新增 LexicalLoad/HoleGuard 分支就越过该限制。
+- `DefaultBody` 将已迁移的操作及异常出口从残余体移出，保留原始来源；
+  cell 路径的初始 store 保留，但输入解释为已完成默认初始化的形参。
+  捕获入口 demand、`SignatureCell`、签名验证当前仅消费直接 SSA 的
+  `CapturedDefaultBinding`。缺少同时覆盖外层读/guard 和本地参数 cell
+  初始化的联合证书，不能伪造一个直接 SSA 的候选代替它。
+- Logger 的第一条字符串默认值在直接 SSA 候选发现中未获支持
+  （该分支要求单输入 literal/copy 或数值负号；`ValueString` 没有输入）；
+  从第一个默认位置开始的发现因此停止，第二个数值默认值也未提交。
+
+需要补齐的是**参数初始化与残余 body cell 的联合对应**，不是新的源语言
+前提，也不是修改 `.length`。本轮按约定停止：没有修改生产代码、签名准入、
+guard 或 ABI 等式，没有新增完成 record。
+
+### 后续证明边界
+
+1. 类型化区分原始实参入口、按序完成的源码形参、私有本地 cell、外层
+   incoming cell；共享 allocation/use/cell 索引，不用邻接或固定寄存器
+   识别。用原始边和数据流证明 undefined 分支及最终写入来源。
+2. 对原生默认值提前到 body 环境分配之前，证明被跨过的初始化私有且
+   不可观察，外层读与这些写入互不别名，guard 的异常完成仍归属于同一
+   初始化事件。一般调用、早期闭包、handler 观察和 arguments 不能借此
+   获得准入。后续参数仍处 TDZ；较早参数引用必须使用已初始化的身份。
+3. 证书同时交给 residual 投影、家族需求重绑定和签名独立验证，分别
+   重算 cell 写入、外层捕获、作用域遮蔽、原始事件归属和 length；不能
+   仅向 `CellDefaultProof` 的操作白名单追加 load/guard。
+4. 验收除当前三例外，覆盖跨调用重赋值、missing/undefined、左右顺序、
+   较早/较晚参数、早期逃逸、TDZ、错误 cell/写入/guard 的变异，以及
+   copy/块拆分和 200/201/400/800 预算边界。需要新的联合证明实现后
+   才能声称这些验收已通过；本轮未实施这些行为测试。
+
+本轮还原插桩并重建后的核对：完整构建成功，固定集串行 65/65；
+`default|signature|function_abi|record_import_tree|parameter_plan|parameter_names|source_route`
+定向 15/15；`cli|corpus|failure|_receipt|manifest` 扫描 63/64，唯一失败为
+status.md 已登记的 `family_source_cli_test`。两组探索逐 record 对比
+`explore69/explore69s`，仍为 520/620、560/620；record manifest 条目、状态
+和已有源码字节均无变化。日志与命令在 `/private/tmp/r70/acceptance.json`、
+`/private/tmp/r70/cohort.log`；ABI 临时观测为 `o10-abi.log`、`o31-abi.log`、
+`o13-abi.log`。未新增行为测试，未跑留出集、全套测试或 RSS 基准。
+
+下文保留早期迁移设计与当时状态，不能作为当前验收结果。
+
 这是 T06/T07 集成缺口的实施约束，不是新增完成标准或已实现能力。
 保留原计划完整签名、作用域、捕获、效果与 PC 映射验收。
 
