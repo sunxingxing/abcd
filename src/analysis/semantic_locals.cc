@@ -1,4 +1,5 @@
 #include "semantic_locals.h"
+#include "cyclic_local_initialization.h"
 #include "abcd/analysis/block_order.h"
 
 #include <algorithm>
@@ -123,8 +124,8 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     remaining -= allocations.capacity() * sizeof(std::optional<InstructionId>);
     // Physical backward edges need not repeat an environment activation. Use
     // the shared CFG order to distinguish actual cycles from block placement.
-    // Cyclic cell lifetimes still require a separate initialization transfer
-    // proof; this existing dominance path must not pretend to establish it.
+    // An unclosed cyclic read gets the separate activation proof below;
+    // acyclic capture ranks are never manufactured for a cyclic graph.
     bool acyclic = false;
     std::optional<BlockOrder> order;
     if (!plan.cells.empty()) {
@@ -172,6 +173,7 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       for (std::size_t i = 0; i < plan.block_entries.size(); ++i)
         plan.block_entries[i] = dominance->nodes[i].begin;
     }
+    std::optional<SemanticProofFailure> cyclic_gap;
     std::size_t block = 0;
     std::size_t binding = 0;
     std::optional<InstructionId> creation;
@@ -269,11 +271,13 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
                                 stores[id] && stores[id]->value >= first;
         // DAG reads are checked after all initialization regions are collected;
         // physical scanning cannot know a dominating store at a later address.
-        if (!acyclic && (!allocated || allocated->value >= i || !same_block ||
+        if (!acyclic && !cyclic_gap && (!allocated || allocated->value >= i || !same_block ||
             (closure_writes == ClosureWrites::kUnknown && creation &&
              creation->value >= allocated->value)))
-          return SemanticProofFailure{SemanticProofError::kInternalValue,
-                                       method.instructions[i].pc};
+          cyclic_gap = SemanticProofFailure{SemanticProofError::kInternalValue,
+                                       method.instructions[i].pc, 0, 0,
+              InternalValueEvidence{InternalValueReason::kCyclicCellInitialization, {}, instruction, {}, {}, {},
+                  cell, allocated, stores[id]}};
         plan.accesses.push_back({instruction, {id}, LocalAccessKind::kLoad});
       } else {
         return SemanticProofFailure{SemanticProofError::kEnvironment,
@@ -283,6 +287,14 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
     if (preservation != preserved.size())
       return SemanticProofFailure{SemanticProofError::kEnvironment,
                                    preserved[preservation].pc};
+    // Existing successful plans retain their exact facts. Only an unclosed
+    // cyclic local-read obligation requests the general activation proof.
+    if (cyclic_gap) {
+      auto checked = ProveCyclicLocalInitialization(method, plan, allocations,
+          {remaining, remaining_work}, closure_writes);
+      if (const auto* failure = std::get_if<SemanticProofFailure>(&checked)) return *failure;
+      remaining_work -= std::get<std::uint64_t>(checked);
+    }
     if (acyclic) {
       std::sort(plan.initializations.begin(), plan.initializations.end(), [&](const auto& a, const auto& b) {
         charge(); return std::tuple(a.cell.value, a.begin, a.store.value) < std::tuple(b.cell.value, b.begin, b.store.value);
@@ -330,9 +342,13 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
         const auto allocated = allocations[plan.cells[access.cell.value].environment.value];
         // Debit the indexed query's comparison bound; exposure itself is O(1).
         for (auto comparisons = std::bit_width(plan.initializations.size()); comparisons; --comparisons) charge();
-        if (!allocated || !plan.InitializationBefore(access.cell, {static_cast<std::uint32_t>(block)}, site) ||
+        const auto initialized = plan.InitializationBefore(access.cell, {static_cast<std::uint32_t>(block)}, site);
+        if (!allocated || !initialized ||
             (closure_writes == ClosureWrites::kUnknown && !plan.PreservesSince(*allocated, site)))
-          return SemanticProofFailure{SemanticProofError::kInternalValue, method.instructions[site.value].pc};
+          return SemanticProofFailure{SemanticProofError::kInternalValue, method.instructions[site.value].pc, 0, 0,
+              InternalValueEvidence{!allocated || !initialized ? InternalValueReason::kCellInitialization :
+                  InternalValueReason::kCellPreservation, {}, site, {}, {}, {},
+                  plan.cells[access.cell.value], allocated, initialized}};
       }
     }
     std::sort(plan.stores.begin(), plan.stores.end(), [&](auto a, auto b) {

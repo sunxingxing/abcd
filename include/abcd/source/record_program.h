@@ -61,6 +61,7 @@ struct RecordProgramFailure {
   std::optional<DeferredCellEvidence> deferred;
   std::optional<TreePrintFailure> printing;
   std::optional<ExceptionRegionEvidence> exception_region;
+  std::optional<analysis::InternalValueEvidence> internal_value;
 };
 struct RecordProgramBudget {
   std::size_t bytes = 128 * 1024 * 1024;

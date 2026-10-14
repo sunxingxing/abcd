@@ -275,7 +275,9 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
           return SemanticProofFailure{SemanticProofError::kInternalValue, body.instructions[i].offset,
               budget.bytes - remaining + analyzed->AllocatedBytes(),
               argument_inputs.work + bound->instruction_visits + locals->work_units + initialization_work + quota.Consumed() +
-                  body.instructions.size() + method.ssa.AllReads().size()};
+                  body.instructions.size() + method.ssa.AllReads().size(),
+              InternalValueEvidence{InternalReason(kinds), read.value, read.instruction, read.ordinal,
+                  method.ssa.Values()[read.value.value].origin, kinds}};
       }
     }
     const auto bytes = method.allocated_bytes +

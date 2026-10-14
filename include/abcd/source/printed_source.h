@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_PRINTED_SOURCE_H_
 #define ABCD_SOURCE_PRINTED_SOURCE_H_
 
+#include "abcd/analysis/internal_value_failure.h"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -100,6 +101,7 @@ struct OmittedClassMember {
   std::optional<abc::CodeOffset> creation_pc;
   std::optional<analysis::ExceptionNodeId> node;
   std::optional<analysis::SsaValueId> value;
+  std::optional<analysis::InternalValueEvidence> internal_value;
 };
 struct PrintedSource {
   SourceText text;

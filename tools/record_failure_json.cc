@@ -1,3 +1,4 @@
+#include "../src/source/internal_value_json.h"
 #include "../src/source/exception_region_json.h"
 #include "../src/source/tree_print_failure_json.h"
 #include "record_failure_json.h"
@@ -38,8 +39,10 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       for (const auto& member : failure.omitted_members) {
         source::FailureCauseChain chain;
         std::visit([&](auto cause) { source::AppendFailureCause(chain, cause); }, member.cause);
+        if (member.internal_value) source::AppendFailureCause(chain, member.internal_value->reason);
         nlohmann::json item{{"constructor", member.constructor.value}, {"member", member.member.value},
             {"method", member.method.value}, {"pc", member.pc.value}, {"causes", DescribeCauses(chain)}};
+        if (member.internal_value) item["internal_value"] = source::InternalValueJson(*member.internal_value);
         if (member.working_pc) item["working_pc"] = member.working_pc->value;
         if (member.creation_method) item["creation_method"] = member.creation_method->value;
         if (member.creation_pc) item["creation_pc"] = member.creation_pc->value;
@@ -58,6 +61,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.failure.creation_method) record["source_failure"]["creation_method"] = failure.failure.creation_method->value;
       if (failure.failure.creation_pc) record["source_failure"]["creation_pc"] = failure.failure.creation_pc->value;
       if (failure.failure.exception_region) record["source_failure"]["exception_region"] = source::ExceptionRegionJson(*failure.failure.exception_region);
+      if (failure.failure.internal_value) record["source_failure"]["internal_value"] = source::InternalValueJson(*failure.failure.internal_value);
       if (failure.failure.printing) record["source_failure"]["printing"] = source::TreePrintFailureJson(*failure.failure.printing);
       if (failure.failure.evaluation) record["source_failure"]["evaluation"] = source::EvaluationFailureJson(*failure.failure.evaluation);
       if (failure.failure.tree) record["source_failure"]["tree"] = source::TreeFailureJson(*failure.failure.tree);
@@ -83,6 +87,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       record["source_failure_domain"] = "record_program";
       record["source_error"] = static_cast<unsigned>(failure.kind);
       if (failure.exception_region) record["source_exception_region"] = source::ExceptionRegionJson(*failure.exception_region);
+      if (failure.internal_value) record["source_internal_value"] = source::InternalValueJson(*failure.internal_value);
       if (failure.printing) record["source_printing"] = source::TreePrintFailureJson(*failure.printing);
       if (failure.evaluation) record["source_evaluation"] = source::EvaluationFailureJson(*failure.evaluation);
       if (failure.tree) record["source_tree"] = source::TreeFailureJson(*failure.tree);

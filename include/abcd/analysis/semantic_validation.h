@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_
 
 #include "abcd/analysis/environment_flow.h"
+#include "abcd/analysis/internal_value_failure.h"
 #include "abcd/analysis/capture_effect.h"
 #include "abcd/analysis/linear_lexicals.h"
 #include "abcd/analysis/instruction_rank.h"
@@ -78,7 +79,7 @@ struct LocalAccessPlan {
   std::vector<LocalAccessFact> accesses;
   std::vector<LocalStoreSite> stores;
   std::vector<std::optional<InstructionId>> allocations;
-  // DAG activation certificate: allocation dominates each retained store;
+  // Activation certificate: allocation dominates each retained store;
   // disjoint dominator subtrees are sorted by (cell, begin). Multiple branches
   // need separate regions, never a first store selected by address. These are
   // initialization witnesses, not reaching values. All stores remain Language
@@ -160,6 +161,7 @@ struct SemanticProofFailure {
   abc::CodeOffset pc;
   std::size_t allocated_bytes = 0;
   std::uint64_t work_units = 0;
+  std::optional<InternalValueEvidence> internal_value;
 };
 using SemanticProofResult = std::variant<SemanticProof,
                                          SemanticProofFailure>;

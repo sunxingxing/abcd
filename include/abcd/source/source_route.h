@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_SOURCE_ROUTE_H_
 #define ABCD_SOURCE_SOURCE_ROUTE_H_
+#include "abcd/analysis/internal_value_failure.h"
 #include "abcd/source/tree_print_failure.h"
 
 #include <cstdint>
@@ -112,6 +113,7 @@ struct RouteFailure {
   std::optional<DeferredCellEvidence> deferred = {};
   std::optional<TreePrintFailure> printing;
   std::optional<ExceptionRegionEvidence> exception_region;
+  std::optional<analysis::InternalValueEvidence> internal_value;
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

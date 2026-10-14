@@ -1,3 +1,4 @@
+#include "internal_value_json.h"
 #include "exception_region_json.h"
 #include "tree_print_failure_json.h"
 #include "guarded_call_json.h"
@@ -256,6 +257,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
     if (receipt.failure->exception_region) failure["exception_region"] = ExceptionRegionJson(*receipt.failure->exception_region);
+    if (receipt.failure->internal_value) failure["internal_value"] = InternalValueJson(*receipt.failure->internal_value);
     if (receipt.failure->printing) failure["printing"] = TreePrintFailureJson(*receipt.failure->printing);
     if (receipt.failure->evaluation) failure["evaluation"] = EvaluationFailureJson(*receipt.failure->evaluation);
     if (receipt.failure->tree) failure["tree"] = TreeFailureJson(*receipt.failure->tree);
@@ -443,6 +445,9 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
       return RouteReceiptError::kFailure;
     if (const auto item = failure->find("exception_region"); item != failure->end()) {
       typed.exception_region=ParseExceptionRegionJson(*item);if(!typed.exception_region)return RouteReceiptError::kFailure;
+    }
+    if (const auto item = failure->find("internal_value"); item != failure->end()) {
+      typed.internal_value = ParseInternalValue(*item); if (!typed.internal_value) return RouteReceiptError::kFailure;
     }
     if (const auto item = failure->find("printing"); item != failure->end()) {
       typed.printing=ParseTreePrintFailure(*item);if(!typed.printing)return RouteReceiptError::kFailure;

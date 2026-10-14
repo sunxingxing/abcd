@@ -63,6 +63,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       if constexpr (requires { std::optional<abc::CodeOffset>{error.pc}; }) result.pc = error.pc;
       else if constexpr (requires { std::optional<abc::CodeOffset>{error.offset}; }) result.pc = error.offset;
     }
+    if constexpr (std::is_same_v<T, analysis::SemanticProofFailure>) result.internal_value = error.internal_value;
     if constexpr (std::is_same_v<T, CaptureFailure>) {
       result.capture = error.occurrence;
       if (error.occurrence && error.occurrence->source) {

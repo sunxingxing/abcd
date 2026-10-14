@@ -7,9 +7,9 @@ namespace abcd::analysis {
 // Conditional initialization proof: all stores must subsequently pass the
 // register SSA Language check. An acyclic CFG requires allocation dominance
 // of the initializing store, then store dominance of later reads/captures.
-// Physical backward edges do not establish cycles. Cyclic graphs retain the
-// stricter same-block allocation/store/read proof until activation-sensitive
-// initialization transfer replaces it.
+// Physical backward edges do not establish cycles. An unclosed cyclic read
+// uses the same allocation/store/read dominance proof without DAG rank facts.
+// Unknown closure writers still refuse; all writes remain Language obligations.
 // Each cell may have disjoint initializing dominator regions. Original site
 // numbers order instructions only inside one block, never across blocks.
 // Function creation since allocation blocks reads unless the owner promises

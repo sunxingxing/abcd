@@ -78,6 +78,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/exception_locals.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_modules.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_captures.cc src/analysis/guarded_reads.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/semantic_validation.cc
+  src/analysis/cyclic_local_initialization.cc
   src/analysis/semantic_locals.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iterator.cc)
@@ -2626,6 +2627,10 @@ if(BUILD_TESTING)
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
         ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo/artifacts/entry/default/default/modules/modules.abc)
     endif()
+    add_executable(internal_value_test tests/unit/source/internal_value_test.cc tools/record_failure_json.cc)
+    target_include_directories(internal_value_test PRIVATE tests/support)
+    target_link_libraries(internal_value_test PRIVATE abcd_source abcd_json)
+    add_test(NAME internal_value_test COMMAND internal_value_test)
     add_executable(class_omissions_test tests/unit/source/class_omissions_test.cc tools/record_failure_json.cc)
     target_link_libraries(class_omissions_test PRIVATE abcd_source abcd_json)
     add_test(NAME class_omissions_test COMMAND class_omissions_test)
@@ -2633,6 +2638,10 @@ if(BUILD_TESTING)
     target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME tree_failure_test COMMAND tree_failure_test)
     if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME cyclic_cells_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cyclic_cells.mjs
+        $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/cyclic_cells)
       add_test(NAME class_omissions_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_omissions.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

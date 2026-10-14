@@ -51,6 +51,14 @@ try {
       const lines=instructions.stdout.trim().split('\n').map(line=>JSON.parse(line));
       assert.ok(lines.some(line=>line.pc===pc || line.offset===pc),`${entity}: real instruction boundary ${pc}`);
     }
+    if(entity===4660 || entity===8166) {
+      assert.deepEqual(report.source_failure.causes,[
+        {domain:'abcd::analysis::SemanticProofError',value:3},
+        {domain:'abcd::analysis::InternalValueReason',value:6}]);
+      assert.deepEqual(report.source_failure.internal_value,{
+        domains:[0,1,2,3,4],observer_instruction:6,producer_instruction:5,
+        producer_kind:1,read_ordinal:0,reason:6,value:entity===4660?14:22});
+    }
     if(entity===24892) {
       assert.deepEqual(report.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
       assert.equal(report.source_pc,undefined);

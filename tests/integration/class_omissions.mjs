@@ -1,4 +1,4 @@
-// Typed omissions are additional diagnostics. The class and record stay partial.
+// Typed omissions are additional diagnostics; a fully recovered member removes its gap.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
@@ -19,7 +19,17 @@ try{
   run(structure,[abc,out,'--value-source',...flags]);
   const row=JSON.parse(readFileSync(join(out,'manifest.json'))).records.find(r=>r.entity===record);
   const cli=JSON.parse(run(semantic,[abc,String(entry),'--record-source',...flags]).stdout);
-  const expected=[{...witness,causes:[{domain:'abcd::analysis::SemanticProofError',value:3}]}];
+  if(cohort===20) {
+   // Round 64 proves the loop-carried cell initialization; aboutToAppear is
+   // now recovered, so this formerly partial class must be complete.
+   assert.equal(row.source_status,0);assert.equal(cli.source_complete,true);
+   assert.equal(row.source_omitted_members,undefined);assert.equal(cli.source_omitted_members,undefined);
+   assert.equal(cli.source,readFileSync(join(out,row.source),'utf8'));
+   assert.ok(cli.source.includes('aboutToAppear() {'));continue;
+  }
+  const internal_value={domains:[0,1,2,3,4],observer_instruction:20,producer_instruction:19,
+   producer_kind:1,read_ordinal:0,reason:6,value:53};
+  const expected=[{...witness,internal_value,causes:[{domain:'abcd::analysis::SemanticProofError',value:3},{domain:'abcd::analysis::InternalValueReason',value:6}]}];
   assert.equal(row.source_status,4);assert.equal(row.source_complete,false);assert.equal(cli.source_complete,false);
   assert.deepEqual(row.source_omitted_members,expected);assert.deepEqual(cli.source_omitted_members,expected);
   assert.equal(cli.source,readFileSync(join(out,row.incomplete_source),'utf8'));
@@ -28,5 +38,5 @@ try{
   const dis=run(semantic,[abc,String(witness.method),'--instructions']);
   assert.ok(dis.stdout.trim().split('\n').map(JSON.parse).some(i=>i.pc===witness.pc));
  }
- console.log('class_omissions_cli_test: 4 partial records preserve typed member/descendant locations across both outputs');
+ console.log('class_omissions_cli_test: 2 partial records preserve typed member/descendant locations; 2 formerly partial records complete');
 }finally{rmSync(dir,{recursive:true,force:true});}
