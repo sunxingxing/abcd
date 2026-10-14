@@ -170,7 +170,7 @@ class WriteCheck {
  private:
   void Classes(std::size_t owner, const FamilyWriteInput& source) {
     if (source.classes.empty()) return;
-    Require(owner == FileFamily::kRoot.value && std::holds_alternative<CaptureFunction>(source.function), Error::kCoverage);
+    Require(owner < trees_.members.size() && std::holds_alternative<CaptureFunction>(source.function), Error::kCoverage);
     const auto& graph = Graph(source);
     const auto& target = trees_.members[owner];
     // Build one operation-owner index from actual composed ClassExpr bodies.

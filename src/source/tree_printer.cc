@@ -938,11 +938,10 @@ class TreePrinter {
         name.named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression);
   }
   void ClassCreation(const ClassExpr& node, ExprId expression, ClassPrintForm form) {
-    // Only the already composed module root admits class definitions here.
-    // Member families own their external root evidence. The already checked
-    // parent syntax is passed explicitly, without recovering scope/CFG here.
-    // Classes inside descendant functions still need their own composition.
-    if ((family_ && !ModuleBody()) || !node.definition || node.definition->identity != Tree().identity ||
+    // Final preparation and the family's original-barrier verification own
+    // admission. Printing checks the actual creator and lexical destination;
+    // a descendant is not a different class-emission language.
+    if (!node.definition || !node.definition->DraftPrepared() || node.definition->identity != Tree().identity ||
         node.definition->creation.creator != Tree().method) throw Error::kUnsupportedContext;
     if (node.heritage) {
       if (!node.definition->DraftPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)

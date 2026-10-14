@@ -22,14 +22,16 @@ try {
   const cli=JSON.parse(run(semantic,[fixture,String(factory.entity),'--record-source',...flags],1));
   assert.deepEqual(cli.source_failure,row.source_failure);
   const f=row.source_failure;
-  assert.deepEqual(f.causes,[{domain:'abcd::source::FamilyFileError',value:1},{domain:'abcd::source::FamilyCreationCheck',value:14}]);
+  assert.deepEqual(f.causes,[{domain:'abcd::source::FamilyFileError',value:1},{domain:'abcd::source::FamilyCreationCheck',value:15}]);
   assert.equal(f.method,factory.entity);assert.equal(f.pc,creation.pc);
   assert.equal(f.family_creation.occurrence,0); // A class-member family root is still a descendant creator.
   assert.equal(f.family_creation.root,factory.entity);
   assert.equal(f.family_creation.constructor_pool,creation.class_creation.constructor_pool);
   assert.equal(f.family_creation.literal_pool,creation.class_creation.literal_pool);
+
+
   assert.equal(f.family_creation.location.operation,f.family_creation.projected_class);
   assert.equal(row.executable,false);assert.equal(row.source,undefined);assert.equal(row.incomplete_source,undefined);
  }
- console.log('creator_classes_cli_test: class-member creator, both contracts, no publication, manifest/CLI agree');
+ console.log('creator_classes_cli_test: class-member capture requirement, both contracts, no publication, manifest/CLI agree');
 } finally {rmSync(dir,{recursive:true,force:true});}

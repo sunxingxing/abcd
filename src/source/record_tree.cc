@@ -621,8 +621,9 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       if(!result->flow)return fail(Error::kValue);
       auto* flow=&*result->flow;
       FamilyMember entry_tree{std::move(result->tree), std::move(*flow), {}, {}, {}, record.offset};
+      family->next_class_owner = pending_classes.empty() ? next_class_owner : pending_classes.back().owners->end;
       auto assembled = BuildRecordFamilyTrees(file, header, index, std::move(*family), std::move(entry_tree),
-          {budget.bytes}, &context, owner, &lookup);
+          {budget.bytes}, &context, owner, &lookup, &class_scope);
       if (const auto* error = std::get_if<FamilyTreeFailure>(&assembled))
         return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
       module_family.emplace(std::get<ConstructedFamily>(std::move(assembled)));

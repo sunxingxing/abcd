@@ -1,4 +1,5 @@
 #include "family_tree.h"
+#include "descendant_classes.h"
 #include "family_cells.h"
 #include "deferred_failure.h"
 #include "derived_projection.h"
@@ -38,18 +39,21 @@ class FamilyTrees {
     return {initial_.bytes - left_.bytes, initial_.work - left_.work};
   }
   ConstructedFamily Build(FileFamily& family, const FunctionContext* root, std::optional<FamilyMember> entry = {},
-      const ExternalFamilyCapture* external = nullptr) {
+      const ExternalFamilyCapture* external = nullptr, const GlobalScope* globals = nullptr, DescendantClasses* prepared_classes = nullptr) {
     Require(!family.members.empty() && (root != nullptr) != entry.has_value(), FamilyTreeError::kContext);
     Require(!family.root_capture || (external && root && root->ClassContext() && lookup_), FamilyTreeError::kContext);
     Require(family.members.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
     Require(family.members.size() - 1 <= std::numeric_limits<std::uint32_t>::max() - family.first_owner.value,
         FamilyTreeError::kResourceLimit);
-    // Only a supplied record root has already composed its ClassTree bodies.
-    // Their original barriers are checked against those bodies by FamilyWrites;
-    // ordinary child families cannot silently inherit this permission.
-    for (std::size_t i = 0; i < family.members.size(); ++i) {
-      Step(1);
-      Require(family.members[i].classes.empty() || (entry && i == FileFamily::kRoot.value), FamilyTreeError::kContext);
+    DescendantClasses own_classes;
+    auto& class_plans=prepared_classes?*prepared_classes:own_classes;
+    const bool has_descendant_classes=std::any_of(family.members.begin()+(entry?1:0),family.members.end(),
+        [&](const auto& member){Step(1);return !member.classes.empty();});
+    if(has_descendant_classes && !prepared_classes){
+      Require(lookup_!=nullptr,FamilyTreeError::kContext);
+      auto prepared=PrepareDescendantClasses(file_,header_,index_,*lookup_,family,entry.has_value(),globals,recovery_,left_);
+      if(const auto* error=std::get_if<FamilyTreeFailure>(&prepared))throw *error;
+      class_plans=std::get<DescendantClasses>(std::move(prepared));Account(class_plans);
     }
     Reserve(syntaxes_, family.members.size()); syntaxes_.resize(family.members.size());
     Reserve(normal_aliases_, family.members.size()); normal_aliases_.resize(family.members.size());
@@ -103,9 +107,14 @@ class FamilyTrees {
             FamilyTreeError::kModules);
         syntax.operations[write.operation.value] = write.binding;
       }
+      if(!class_plans.creators.empty() && class_plans.creators[i])
+        for(const auto& task:class_plans.creators[i]->tasks){
+          Step(1);Require(task.operation.value<syntax.operations.size(),FamilyTreeError::kContext);
+          syntax.operations[task.operation.value]=task.tree;
+        }
       syntaxes_[i] = std::move(syntax);
     }
-    ReferenceNames(family, entry.has_value());
+    ReferenceNames(family, entry.has_value(), class_plans.references);
     Reserve(receiver_cells_, family.members.size()); receiver_cells_.resize(family.members.size());
     Reserve(receiver_scopes_, family.members.size()); receiver_scopes_.resize(family.members.size());
     // External requests were collected before the creator AST was frozen. The
@@ -261,8 +270,9 @@ class FamilyTrees {
           BuildPhasedEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, {}, phase->Locals().writes, array_source, guarded) :
           BuildEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations, demands, {}, analysis::ClosureWrites::kLanguage, {},
-              guards, entries, nullptr, {}, array_source);
+              member.children, module_evaluations, demands, function.Normal().values.initializers.calls, analysis::ClosureWrites::kLanguage,
+              function.Normal().values.definitions.sites, guards, entries,
+              function.Normal().self_order ? &*function.Normal().self_order : nullptr, {}, array_source);
       if (array_error) Fail(*array_error);
       auto evaluation = Take<EvaluationPlan, EvaluationFailure>(std::move(evaluated));
       Account(evaluation);
@@ -308,6 +318,15 @@ class FamilyTrees {
             member.children.empty() && !family.members[i].function.Defaults() ? recovery_ : RecoveryMode::kCompleteOnly));
       }();
       Account(constructed);
+      if(!class_plans.creators.empty() && class_plans.creators[i]){
+        Require(!phase && constructed.flow.has_value(),FamilyTreeError::kContext);
+        const CaptureTree parent{constructed.tree,*constructed.flow};
+        auto finished=FinishDescendantClasses(file_,header_,index_,*lookup_,family,member_,*class_plans.creators[i],globals,parent,recovery_,left_);
+        if(const auto* error=std::get_if<FamilyTreeFailure>(&finished))throw *error;
+        Account(std::get<CreatorClassCost>(finished));
+        auto checked=Take<TreeSemantics,TreeSemanticError>(VerifyTreeSemantics(graph,control,evaluation,constructed.tree,constants,left_));
+        Account(checked);constructed.flow=std::move(checked.flow);
+      }
       // Naming evidence is creation-specific and must survive arena growth and
       // capture/module alias insertion. The runtime name stays creation-proven
       // even when a private self binding has a distinct synthetic spelling.
@@ -360,6 +379,7 @@ class FamilyTrees {
     }
     auto result = Take<ConstructedFamily, FamilyError>(BuildFunctionFamily(std::move(trees), family.Owner(FileFamily::kRoot), left_));
     Account(result);
+    result.owner_count = std::max(std::uint64_t{family.members.size()}, class_plans.owner_end > family.first_owner.value ? class_plans.owner_end-family.first_owner.value : 0);
     result.root_capture = std::move(family.root_capture);
     family.root_capture.reset();
     const auto enclosure = VerifyFamilyEnclosure(result, left_);
@@ -386,7 +406,7 @@ class FamilyTrees {
     return result;
   }
  private:
-  void ReferenceNames(const FileFamily& family, bool entry) {
+  void ReferenceNames(const FileFamily& family, bool entry, std::span<const NameReference> classes) {
     Reserve(subtree_end_, family.members.size()); subtree_end_.resize(family.members.size());
     for (std::size_t i = 0; i < family.members.size(); ++i) { Step(1); subtree_end_[i] = i + 1; }
     // FileFamily owns preorder occurrences and explicit incoming parent edges.
@@ -407,7 +427,10 @@ class FamilyTrees {
       Require(syntaxes_[i].syntax.modules.size() <= std::numeric_limits<std::size_t>::max() - count,
           FamilyTreeError::kResourceLimit); count += syntaxes_[i].syntax.modules.size();
     }
-    Reserve(references_, count);
+    Require(classes.size()<=SIZE_MAX-count,FamilyTreeError::kResourceLimit);
+    Reserve(references_, count+classes.size());
+    for(const auto& reference:classes){Step(reference.name.size()+1);Admit(reference.name.size()+1,sizeof(char16_t));
+      references_.push_back(reference);Admit(references_.back().name.capacity()-reference.name.size(),sizeof(char16_t));}
     for (std::size_t i = entry ? 1 : 0; i < family.members.size(); ++i) {
       member_ = FamilyId{static_cast<std::uint32_t>(i)};
       const auto& syntax = syntaxes_[i];
@@ -707,15 +730,37 @@ class FamilyTrees {
   std::vector<ReceiverScopes> receiver_scopes_;
 };
 }  // namespace
+FamilyTreeInput::FamilyTreeInput(FileFamily family,std::size_t bytes,std::uint64_t work,std::unique_ptr<DescendantClasses> classes)
+    :classes_(std::move(classes)),family_(std::move(family)),bytes_(bytes),work_(work){}
+FamilyTreeInput::FamilyTreeInput(FamilyTreeInput&&) noexcept=default;
+FamilyTreeInput::~FamilyTreeInput()=default;
+std::size_t FamilyTreeInput::OwnerCount() const {
+  return classes_?classes_->owner_end-family_.first_owner.value:family_.members.size();
+}
 std::variant<FamilyTreeInput, FamilyTreeFailure> FamilyTreeInput::Prepare(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     FileFamily family, const FunctionContext& root, analysis::SemanticBudget budget,
     const RecordModuleContext* modules, ModuleOwnerId owner, const abc::MethodLookup* lookup,
-    RecoveryMode recovery, const FileFunction* creator, const CaptureStorage* creator_storage) {
+    RecoveryMode recovery, const FileFunction* creator, const CaptureStorage* creator_storage, const GlobalScope* globals) {
   try {
     FamilyTrees builder(file, header, index, budget, modules, owner, lookup, recovery);
-    const auto cost = builder.Prepare(family, &root, creator, creator_storage);
-    return FamilyTreeInput(std::move(family), cost.allocated_bytes, cost.work);
+    auto cost = builder.Prepare(family, &root, creator, creator_storage);
+    std::unique_ptr<DescendantClasses> classes;
+    if(cost.work>budget.work || family.members.size()>budget.work-cost.work)
+      return FamilyTreeFailure{{0},FamilyTreeError::kWorkLimit};
+    cost.work+=family.members.size();
+    if(std::any_of(family.members.begin(),family.members.end(),[](const auto& m){return !m.classes.empty();})){
+      if(!lookup || cost.allocated_bytes>budget.bytes || sizeof(DescendantClasses)>budget.bytes-cost.allocated_bytes || cost.work>budget.work)
+        return FamilyTreeFailure{{0},FamilyTreeError::kResourceLimit};
+      cost.allocated_bytes+=sizeof(DescendantClasses);
+      auto prepared=PrepareDescendantClasses(file,header,index,*lookup,family,false,globals,recovery,
+          {budget.bytes-cost.allocated_bytes,budget.work-cost.work});
+      if(const auto* error=std::get_if<FamilyTreeFailure>(&prepared))return *error;
+      auto plan=std::get<DescendantClasses>(std::move(prepared));
+      cost.allocated_bytes+=plan.allocated_bytes;cost.work+=plan.work;
+      classes=std::make_unique<DescendantClasses>(std::move(plan));
+    }
+    return FamilyTreeInput(std::move(family), cost.allocated_bytes, cost.work,std::move(classes));
   } catch (const FamilyTreeFailure& error) {
     auto located = error;
     if (!located.method && error.member.value < family.members.size())
@@ -755,8 +800,8 @@ std::variant<ConstructedFamily, FamilyTreeFailure> FamilyTreeInput::Build(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const FunctionContext& root, analysis::SemanticBudget budget, const RecordModuleContext* modules,
     ModuleOwnerId owner, const abc::MethodLookup* lookup, RecoveryMode recovery,
-    const ExternalFamilyCapture* external) && {
-  try { return FamilyTrees(file, header, index, budget, modules, owner, lookup, recovery).Build(family_, &root, {}, external);
+    const ExternalFamilyCapture* external, const GlobalScope* globals) && {
+  try { return FamilyTrees(file, header, index, budget, modules, owner, lookup, recovery).Build(family_, &root, {}, external, globals, classes_.get());
   } catch (const FamilyTreeFailure& error) {
     auto located = error;
     const auto member = std::get_if<FamilyWriteFailure>(&error.cause)
@@ -788,11 +833,11 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildRecordFamilyTrees(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, FileFamily family, FamilyMember entry,
     analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner,
-    const abc::MethodLookup* lookup) {
+    const abc::MethodLookup* lookup, const GlobalScope* globals) {
   try {
     FamilyTrees builder(file, header, index, budget, modules, module_owner, lookup, RecoveryMode::kCompleteOnly);
     builder.Prepare(family, nullptr, nullptr);
-    return builder.Build(family, nullptr, std::move(entry));
+    return builder.Build(family, nullptr, std::move(entry), nullptr, globals);
   } catch (const FamilyTreeFailure& error) {
     auto located = error;
     const auto member = std::get_if<FamilyWriteFailure>(&error.cause)

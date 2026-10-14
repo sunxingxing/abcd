@@ -26,7 +26,7 @@ enum class FamilyTreeError : std::uint8_t {
 };
 struct FamilyTreeFailure {
   FamilyId member;
-  std::variant<FamilyTreeError, DerivedProjectionError, SyntaxResolutionFailure, ControlError, ControlFailure,
+  std::variant<FamilyTreeError, FamilyFileFailure, DerivedProjectionError, SyntaxResolutionFailure, ControlError, ControlFailure,
       EvaluationFailure, FunctionTreeFailure, TreeFlowError, FunctionAbiError,
       ModuleAliasFailure, ModuleAliasTreeError, FamilyError,
       ParameterPlanError, CellDefaultError, CellDefaultProofError, DefaultBodyError,
@@ -42,9 +42,12 @@ struct FamilyTreeFailure {
 };
 // Owns the final residual graphs and rebound occurrence demands, before any AST
 // exists. Only Prepare can construct it; Build consumes it without reprojection.
+struct DescendantClasses;
 class FamilyTreeInput {
  public:
-  FamilyTreeInput(FamilyTreeInput&&) noexcept = default;
+  FamilyTreeInput(FamilyTreeInput&&) noexcept;
+  ~FamilyTreeInput();
+  std::size_t OwnerCount() const;
   FamilyTreeInput& operator=(FamilyTreeInput&&) noexcept = delete;
   const FileFamily& Input() const { return family_; }
   std::size_t AllocatedBytes() const { return bytes_; }
@@ -53,7 +56,8 @@ class FamilyTreeInput {
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       FileFamily, const FunctionContext&, analysis::SemanticBudget,
       const RecordModuleContext*, ModuleOwnerId, const abc::MethodLookup*,
-      RecoveryMode, const FileFunction* creator, const CaptureStorage* creator_storage = nullptr);
+      RecoveryMode, const FileFunction* creator, const CaptureStorage* creator_storage = nullptr,
+      const GlobalScope* globals = nullptr);
   std::variant<FamilyCellCost, FamilyTreeFailure> BindCreator(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, const FunctionContext&, const FileFunction&,
@@ -61,10 +65,11 @@ class FamilyTreeInput {
   std::variant<ConstructedFamily, FamilyTreeFailure> Build(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const FunctionContext&, analysis::SemanticBudget, const RecordModuleContext*,
-      ModuleOwnerId, const abc::MethodLookup*, RecoveryMode, const ExternalFamilyCapture*) &&;
+      ModuleOwnerId, const abc::MethodLookup*, RecoveryMode, const ExternalFamilyCapture*,
+      const GlobalScope* globals = nullptr) &&;
  private:
-  FamilyTreeInput(FileFamily family, std::size_t bytes, std::uint64_t work)
-      : family_(std::move(family)), bytes_(bytes), work_(work) {}
+  FamilyTreeInput(FileFamily, std::size_t, std::uint64_t, std::unique_ptr<DescendantClasses>);
+  std::unique_ptr<DescendantClasses> classes_;
   FileFamily family_;
   std::size_t bytes_;
   std::uint64_t work_;
@@ -93,12 +98,12 @@ class FamilyTreeInput {
 // Reuse a record adapter's root tree and checked flow, then construct all actual
 // children with the same defaults/capture/ABI pipeline. No fictional creation
 // context or function parameters are supplied for the module entry. Input and
-// seed storage are caller-admitted. Root class obligations require actual ClassExpr
-// bodies; nested class families still require their own capture composition.
+// seed storage are caller-admitted. Class obligations require actual ClassExpr bodies; ordinary descendants
+// prepare closed member families against their real creator before printing.
 [[nodiscard]] std::variant<ConstructedFamily, FamilyTreeFailure> BuildRecordFamilyTrees(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, FileFamily family, FamilyMember entry,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
-    ModuleOwnerId module_owner = {}, const abc::MethodLookup* lookup = nullptr);
+    ModuleOwnerId module_owner = {}, const abc::MethodLookup* lookup = nullptr, const GlobalScope* globals = nullptr);
 }  // namespace abcd::source
 #endif

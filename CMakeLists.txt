@@ -240,7 +240,7 @@ target_sources(abcd_source PRIVATE src/source/family_file.cc)
 target_sources(abcd_source PRIVATE src/source/family_cells.cc)
 target_sources(abcd_source PRIVATE src/source/tree_labels.cc)
 target_sources(abcd_source PRIVATE src/source/family_tree.cc)
-target_sources(abcd_source PRIVATE src/source/prepared_family.cc src/source/creator_classes.cc)
+target_sources(abcd_source PRIVATE src/source/prepared_family.cc src/source/creator_classes.cc src/source/descendant_classes.cc)
 target_sources(abcd_source PRIVATE src/source/instruction_sources.cc)
 target_sources(abcd_source PRIVATE src/source/family_emission.cc)
 target_sources(abcd_source PRIVATE src/source/family_route_failure.cc)
@@ -969,6 +969,10 @@ if(BUILD_TESTING)
   add_executable(creator_requirements_test tests/unit/source/creator_requirements_test.cc)
   target_link_libraries(creator_requirements_test PRIVATE abcd_source)
   add_test(NAME creator_requirements_test COMMAND creator_requirements_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes)
+  add_executable(descendant_classes_test tests/unit/source/descendant_classes_test.cc)
+  target_link_libraries(descendant_classes_test PRIVATE abcd_source)
+  add_test(NAME descendant_classes_test COMMAND descendant_classes_test
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes)
   add_executable(creator_classes_test tests/unit/source/creator_classes_test.cc)
   target_link_libraries(creator_classes_test PRIVATE abcd_source)
@@ -2656,6 +2660,14 @@ if(BUILD_TESTING)
     target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME tree_failure_test COMMAND tree_failure_test)
     if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME descendant_class_refusals_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/descendant_class_refusals.mjs
+        $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes)
+      add_test(NAME descendant_classes_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/descendant_classes.mjs
+        $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes/closed.abc)
       add_test(NAME creator_classes_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/creator_classes.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

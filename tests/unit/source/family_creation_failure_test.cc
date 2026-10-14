@@ -51,7 +51,7 @@ int main() {
   static_assert(static_cast<unsigned>(FamilyFileError::kCreation)==1);
   static_assert(static_cast<unsigned>(FamilyFileError::kResourceLimit)==4);
   static_assert(static_cast<unsigned>(FamilyFileError::kWorkLimit)==5);
-  for(unsigned tag=0;tag<=static_cast<unsigned>(FamilyCreationCheck::kClassPreparationGate);++tag) {
+  for(unsigned tag=0;tag<=static_cast<unsigned>(FamilyCreationCheck::kClassCompletion);++tag) {
     FamilyFileFailure f{FamilyFileError::kCreation};
     auto& e=f.family_creation.emplace(FamilyCreationEvidence{static_cast<FamilyCreationCheck>(tag)});
     e.location.method=abc::EntityOffset{77}; e.location.operation=analysis::OpId{0};
@@ -80,7 +80,7 @@ int main() {
     f.cause=FamilyFileError::kCreation;
     e.location.pc.reset();e.location.working_pc.reset();e.descendant_source.reset();RoundTrip(f);
     auto j=nlohmann::json::parse(FamilyCreationJson(e).dump());
-    j["reason"]=static_cast<unsigned>(FamilyCreationCheck::kClassPreparationGate)+1;Check(!ParseFamilyCreation(j));
+    j["reason"]=static_cast<unsigned>(FamilyCreationCheck::kClassCompletion)+1;Check(!ParseFamilyCreation(j));
     j=nlohmann::json::parse(FamilyCreationJson(e).dump());j["kind"]=99U;Check(!ParseFamilyCreation(j));
     j=nlohmann::json::parse(FamilyCreationJson(e).dump());j["constructor_pool"]=UINT64_MAX;Check(!ParseFamilyCreation(j));
     j=nlohmann::json::parse(FamilyCreationJson(e).dump());j.erase("literal_pool");Check(!ParseFamilyCreation(j));

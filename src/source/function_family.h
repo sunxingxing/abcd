@@ -42,6 +42,9 @@ struct ConstructedFamily {
   // Owned external class-root cell evidence, separate from intra-family edges.
   // The actual enclosing syntax is borrowed anew at each embedding.
   std::optional<CaptureCells> root_capture;
+  // Full syntax namespace including prepared class-member families.
+  std::size_t owner_count = 0;
+  std::size_t OwnerCount() const { return owner_count ? owner_count : members.size(); }
 };
 enum class FamilyError : std::uint8_t {
   kRoot, kOwner, kMissingChild, kMultipleParents, kCycle, kCapture,

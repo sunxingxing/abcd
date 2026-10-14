@@ -256,10 +256,46 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyCreatorClassOwners(
       q.Require(task.preparation && task.owners && ValidClassOwnerRange(*task.owners,next),Error::kCreation);
       const auto& prepared=*task.preparation;
       for(const auto& body:prepared.bodies) {
-        q.Step();if(const auto* family=std::get_if<FamilyPreparation>(&body)) next+=family->MemberCount();
+        q.Step();if(const auto* family=std::get_if<FamilyPreparation>(&body)) next+=family->OwnerCount();
       }
       next+=task.initializer!=nullptr;
       q.Require(next==task.owners->end && next==prepared.next_owner,Error::kCreation);
+    }
+    return q.Cost();
+  });
+}
+std::variant<CreatorClassCost, CreatorClassFailure> VerifyFinishedClassOwners(
+    const CreatorClasses& plan, FunctionOwnerId first, analysis::SemanticBudget budget) {
+  return Run(budget,[&](Quota& q) {
+    std::uint64_t next=first.value;
+    for(const auto& task:plan.tasks) {
+      q.Step();q.operation=task.operation;
+      q.Require(task.tree && task.owners && ValidClassOwnerRange(*task.owners,next) && task.tree->DraftPrepared(),Error::kCreation);
+      const auto range=*task.owners;const auto count=range.end-range.begin;
+      q.Require(count<=SIZE_MAX,Error::kResourceLimit);
+      std::vector<const FunctionTree*> stack;q.Reserve(stack,static_cast<std::size_t>(count));
+      std::vector<std::uint8_t> seen;q.Reserve(seen,static_cast<std::size_t>(count));seen.resize(count);
+      const auto add_tree=[&](const FunctionTree& tree){
+        q.Step();q.Require(tree.identity==plan.identity && tree.owner.value>=range.begin && tree.owner.value<range.end,Error::kCreation);
+        const auto id=tree.owner.value-range.begin;q.Require(!seen[id] && stack.size()<count,Error::kCreation);
+        seen[id]=1;stack.push_back(&tree);
+      };
+      const auto add_class=[&](const ClassTree& tree){
+        q.Require(tree.DraftPrepared() && tree.identity==plan.identity,Error::kCreation);
+        const auto family=[&](const PreparedFamily& p){for(const auto& member:p.Family().members)add_tree(member.tree);};
+        family(*tree.constructor);for(const auto& member:tree.members){q.Step();if(member)family(*member);}
+        for(const auto& definition:tree.definitions)for(const auto& member:definition.bodies){q.Step();if(member)family(*member);}
+        if(tree.initializer)add_tree(tree.initializer->tree);
+      };
+      add_class(*task.tree);
+      while(!stack.empty()){
+        const auto* tree=stack.back();stack.pop_back();q.Step();
+        for(const auto& node:tree->expressions){q.Step();if(const auto* created=std::get_if<ClassExpr>(&node.expression)){
+          q.Require(created->definition && created->definition->creation.creator==tree->method,Error::kCreation);add_class(*created->definition);
+        }}
+      }
+      for(auto value:seen){q.Step();q.Require(value,Error::kCreation);}
+      next=range.end;
     }
     return q.Cost();
   });
@@ -268,6 +304,9 @@ std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
     const CreatorClassInput& input, CreatorClasses& plan, const GlobalScope* globals,
     FunctionOwnerId first_owner,const CaptureTree* parent,RecoveryMode recovery,analysis::SemanticBudget budget) {
   return Run(budget,[&](Quota& q) {
+    q.Require(plan.occurrence==input.occurrence && plan.identity==input.identity &&
+        plan.creator==input.creator.input.Method() && plan.value_revision==input.creator.values.graph.revision &&
+        plan.cfg_revision==input.creator.values.graph.cfg_revision,Error::kCreation);
     auto checked=VerifyCreatorClassOwners(plan,first_owner,q.Left());
     if(const auto* failure=std::get_if<CreatorClassFailure>(&checked)) throw *failure;
     q.Step(std::get<CreatorClassCost>(checked).work);
@@ -281,14 +320,17 @@ std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
       q.Require(definition.name==task.tree->name && definition.callable==task.tree->callable &&
           definition.member_sites==task.tree->member_sites && definition.DraftPrepared(),Error::kCreation);
       q.Admit(definition.allocated_bytes);q.Step(definition.work);
-      next+=definition.constructor->Family().members.size();
-      for(const auto& member:definition.members) if(member) next+=member->Family().members.size();
+      next+=definition.constructor->Family().OwnerCount();
+      for(const auto& member:definition.members) if(member) next+=member->Family().OwnerCount();
       for(const auto& site:definition.definitions) for(const auto& member:site.bodies)
-        if(member) next+=member->Family().members.size();
+        if(member) next+=member->Family().OwnerCount();
       next+=definition.initializer.has_value();
       q.Require(next==task.owners->end,Error::kCreation);
       *task.tree=std::move(definition);
     }
+    auto owners=VerifyFinishedClassOwners(plan,first_owner,q.Left());
+    if(const auto* failure=std::get_if<CreatorClassFailure>(&owners))throw *failure;
+    const auto cost=std::get<CreatorClassCost>(owners);q.Admit(cost.allocated_bytes);q.Step(cost.work);
     return q.Cost();
   });
 }

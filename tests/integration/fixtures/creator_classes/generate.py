@@ -28,3 +28,8 @@ for shape in ('forwardwidth','forwarddepth'):
         path=root/(name+'.js');path.write_text('export function outer(value) { return function factory() {\n'+body+'}; }\n')
         subprocess.run([str(compiler),'--module','--merge-abc','--opt-level=0',f'--record-name={name}',f'--source-file={name}.js','--output',str(root/(name+'.abc')),str(path)],check=True)
 subprocess.run([str(compiler),'--module','--merge-abc','--opt-level=0','--record-name=forward','--source-file=forward.js','--output',str(root/'forward.abc'),str(root/'forward.js')],check=True)
+
+# Production closed descendant classes and explicit unsupported obligations.
+for name in ('closed', 'deferred', 'heritage', 'nested'):
+    subprocess.run([str(compiler),'--module','--merge-abc','--opt-level=0',
+        f'--record-name={name}',f'--source-file={name}.js','--output',str(root/(name+'.abc')),str(root/(name+'.js'))],check=True)

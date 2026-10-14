@@ -52,8 +52,10 @@ class FamilyPreparation {
     const auto& capture = input_.Input().root_capture; return capture ? &*capture : nullptr;
   }
   const FunctionContext& Context() const { return root_; }
+  const FileFamily& Input() const { return input_.Input(); }
   std::span<const CaptureUse> RootUses() const { return input_.Input().members.front().function.Capture().Input().Captures(); }
   std::size_t MemberCount() const { return input_.Input().members.size(); }
+  std::size_t OwnerCount() const { return input_.OwnerCount(); }
   std::size_t AllocatedBytes() const { return bytes_; }
   std::uint64_t Work() const { return work_; }
  private:

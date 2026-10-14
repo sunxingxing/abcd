@@ -9,6 +9,7 @@
 #include <new>
 #include <stdexcept>
 #include <type_traits>
+#include <set>
 
 #include "abcd/corpus/abc_file.h"
 #include "phased_capture_evaluation.h"
@@ -17,6 +18,20 @@
 namespace abcd::source {
 namespace {
 using Error = FamilyFileError;
+// Ordered active-method set: storage/work depend on this occurrence family,
+// not on every unrelated method in the file. std::set gives logarithmic cycle
+// checks; its rebound allocator charges the actual node before allocation.
+template<class T> struct ActiveAllocator {
+  using value_type=T;std::size_t* bytes;
+  explicit ActiveAllocator(std::size_t& b):bytes(&b){}
+  template<class U>ActiveAllocator(const ActiveAllocator<U>& a):bytes(a.bytes){}
+  T* allocate(std::size_t n){
+    if(n>*bytes/sizeof(T))throw FamilyFileFailure{FamilyFileError::kResourceLimit};
+    *bytes-=n*sizeof(T);return std::allocator<T>{}.allocate(n);
+  }
+  void deallocate(T* p,std::size_t n){std::allocator<T>{}.deallocate(p,n);}
+  template<class U>bool operator==(const ActiveAllocator<U>& a)const{return bytes==a.bytes;}
+};
 struct FamilyCursor { FamilyId member; abc::MethodPosition method; std::size_t next = 0; };
 class FamilyReader {
  public:
@@ -25,19 +40,19 @@ class FamilyReader {
       const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
       RouteInputIdentity identity, analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner)
       : file_(file), header_(header), index_(index), lookup_(lookup), roles_(roles), sites_(sites),
-        identity_(identity), budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), module_owner_(module_owner) {}
+        identity_(identity), budget_(budget), bytes_(budget.bytes), work_(budget.work), modules_(modules), module_owner_(module_owner), active_(std::less<abc::MethodPosition>{},ActiveAllocator<abc::MethodPosition>{bytes_}) {}
 
   FileFamily Read(abc::MethodPosition root, const FunctionContext* owner, FamilyClassMode classes,
       const ParentModuleInput* root_modules, FunctionOwnerId first_owner, const FileFunction* root_creator, const analysis::ClassMethodSites* class_sites, const CaptureStorage* root_storage, ClassRootBinding root_binding) {
     class_sites_ = class_sites;
     class_mode_ = classes;
     result_.first_owner = first_owner;
+    result_.class_roles=&roles_; result_.class_functions=&sites_; result_.class_sites=class_sites;
     Require(root.value < index_.methods.size(), Error::kMethod);
     method_ = index_.methods[root.value].offset;
     root_ = method_;
     Admit(1, sizeof(FamilyReader));
-    Grow(active_, index_.methods.size()); Step(index_.methods.size());
-    active_.resize(index_.methods.size());
+    Step(); // Preserve the family-stage work gate before reading any child input.
     auto function = ReadMethod(root, owner, InputCaptureMode::kConditional, root_modules);
     if (!function.Phase() && modules_ && classes == FamilyClassMode::kRetainRoot) {
       auto qualified = ModuleCapturePrefix::Build(file_,header_,index_,lookup_,index_.methods[root.value],
@@ -61,7 +76,7 @@ class FamilyReader {
       const auto& parent = result_.members[cursor.member.value].function;
       method_ = parent.Method(); parent_.reset(); pc_.reset();
       if (cursor.next == parent.Children().size()) {
-        active_[cursor.method.value] = 0; stack_.pop_back(); continue;
+        Step(2*(std::bit_width(active_.size())+1));active_.erase(cursor.method); stack_.pop_back(); continue;
       }
       const auto site = parent.Children()[cursor.next];
       ++stack_.back().next;
@@ -102,7 +117,7 @@ class FamilyReader {
               (std::holds_alternative<analysis::FunctionCreation>(operation) &&
                std::get<analysis::FunctionCreation>(operation).kind == analysis::CreationKind::kMethod), FamilyCreationCheck::kProjectionKind, parent, cursor.member, site, creation);
           AppendRoom(member.classes); member.classes.push_back({site, current, *creation});
-          if(!prepared_record_root) {
+          if(!prepared_record_root && root_binding == ClassRootBinding::kRequirements) {
             const CreatorClassInput input{file_,header_,index_,lookup_,roles_,sites_,*class_sites_,parent.Normal(),identity_,{*root_,result_.first_owner,{cursor.member.value}}};
             auto tasks=DiscoverCreatorClasses(input,Remaining());
             const auto reject=[&](const CreatorClassFailure& error) {
@@ -130,9 +145,10 @@ class FamilyReader {
             auto checked=VerifyCreatorClasses(input,plan,Remaining());
             if(const auto* error=std::get_if<CreatorClassFailure>(&checked)) reject(*error);
             const auto cost=std::get<CreatorClassCost>(checked);Admit(cost.allocated_bytes,1);Step(cost.work);
-            // No binding, source owner, or AST is invented for these tasks.
-            // Increment II must merge all class-family requirements first.
-            throw CreationFailure(FamilyCreationCheck::kClassPreparationGate,parent,cursor.member,site,creation);
+            // Requirements-only member families cannot recursively schedule
+            // more class families. Retain a located representation gap until
+            // the inter-class preparation graph owns that additional level.
+            throw CreationFailure(FamilyCreationCheck::kClassNestedPreparation,parent,cursor.member,site,creation);
           }
           continue;
         }
@@ -192,7 +208,7 @@ class FamilyReader {
       const auto target = binding->target.position;
       Require(target.value < index_.methods.size(), Error::kMethod);
       method_ = index_.methods[target.value].offset;
-      Require(!active_[target.value], Error::kRecursiveCreation);
+      Step(2*(std::bit_width(active_.size())+1));Require(!active_.contains(target), Error::kRecursiveCreation);
       Step(std::bit_width(sites_.Size()) + 1);
       const auto occurrence = sites_.FindOccurrence(*method_, *parent_, *pc_);
       Require(occurrence.has_value(), Error::kOccurrence);
@@ -476,7 +492,7 @@ class FamilyReader {
       Admit(member.phase_creations->allocated_bytes, 1); Step(member.phase_creations->work);
     }
     result_.members.push_back(std::move(member));
-    stack_.push_back({id, method}); active_[method.value] = 1;
+    stack_.push_back({id, method});Step(2*(std::bit_width(active_.size())+1));active_.insert(method);
   }
   const corpus::AbcFile& file_;
   const abc::Header& header_;
@@ -494,7 +510,7 @@ class FamilyReader {
   FileFamily result_;
   FamilyClassMode class_mode_ = FamilyClassMode::kReject;
   std::vector<FamilyCursor> stack_;
-  std::vector<std::uint8_t> active_;
+  std::set<abc::MethodPosition,std::less<abc::MethodPosition>,ActiveAllocator<abc::MethodPosition>> active_;
   std::optional<abc::EntityOffset> method_;
   std::optional<abc::EntityOffset> root_;
   std::optional<abc::EntityOffset> parent_;

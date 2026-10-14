@@ -65,3 +65,40 @@ budget is not the constant-size binding budget reported for the deepest case.
 | forwardwidth201.abc | `981b61a6cac0e1fe7c9c0a15647d3ed9e3140e685c91bd7c20b3053c10324764` |
 | forwardwidth400.abc | `83e55fefb613e26162d06fd9b8e2062f13a59be0ca52e7711c0a8aa2a332bee5` |
 | forwardwidth800.abc | `70e267f65710f0b91ee16b05ad1e7798667adbf7915c8d88ccb851db20046ee4` |
+
+## Closed descendant production (640dd19f follow-up)
+
+`closed` is exported by the engine under both contracts and compared in Node
+with its adjacent source. It covers a local class in a function and in a class
+method, construction and instance [[Set]], an inherited Object.prototype setter,
+a throwing constructor, repeated loop creation with distinct identities, and
+copy/branch variants. A class method calls global `$value0`, deliberately using
+the generated-local spelling to check creator-enclosure name reservation.
+The test checks real class-creation instructions first;
+mutating [[Set]] into [[Define]] or removing the throw must change the trace.
+The engine never reads the JS oracle. The new files use the same pinned compiler
+and command as above; generate.py reproduces them.
+
+`member` remains refused for capture requirements; `deferred` requires a late
+declaration and stays refused separately. `heritage` stays refused by the new
+creator scheduler. `nested` is a class member which itself creates another
+class: requirements-only discovery retains a located nested-preparation gap,
+rather than recursively finishing an unbounded family graph.
+
+The width/depth unit tests now enter production family discovery and class
+preparation and measure exact byte/work acceptance boundaries at every size.
+These budgets include each tested phase's storage; they are not a claim that
+all whole-record verification fits at arbitrary width. In a separate export
+probe width 200/201/400 and depth 200/201/400/800 complete; width800 reaches
+FamilyEnclosureError::kResourceLimit under the unchanged record cap. Depth800
+is valid syntax with Node --stack_size=8192 --check; Node's default parser
+stack is exhausted on the generated 800-function expression nesting; the
+original declaration fixture passes the default parser stack.
+This is not a decompiler C++ recursion or a raised engine limit.
+
+| New ABC | SHA-256 |
+|---|---|
+| closed.abc | `0362108d33345a6f1efc46694ab601a097d2251bf0ddb59194da0142fb16a3b6` |
+| deferred.abc | `7a360f1a53411dd2e28b6c44b9df108286e6e9cd0343c0b8e426ae5e6504f39b` |
+| heritage.abc | `35eaafd8e78329213fe3f4520dd558c92e6de846fbcd70e8e8c9bc0738ae0953` |
+| nested.abc | `a411567312fa4529d17cec350cac442ec32d3fcfa18be98565bcc96cc983d358` |

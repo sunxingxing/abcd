@@ -212,7 +212,7 @@ std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
           std::move(root), destination, budget, recovery, &modules, &creator, &classes, creator_storage, root_binding);
       if (const auto* prepared = std::get_if<FamilyPreparation>(&body)) {
         admit(prepared->AllocatedBytes(), 1); step(prepared->Work());
-        result.next_owner += prepared->MemberCount();
+        result.next_owner += prepared->OwnerCount();
       } else {
         const auto& failure = std::get<FamilyPrepareFailure>(body);
         const auto* family = std::get_if<FamilyFileFailure>(&failure.cause);
@@ -302,7 +302,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     tree.constructor = Take<PreparedFamily>(preparation ? finish() : PreparedFamily::PrepareConstructor(file, header, index, lookup,
         roles, functions, creator, operation, identity, destination(), budget, recovery));
     admit(tree.constructor->AllocatedBytes(), 1); step(tree.constructor->Work());
-    next_owner += tree.constructor->Family().members.size();
+    next_owner += tree.constructor->Family().OwnerCount();
     const auto omission = [&](const auto& prepared, const auto& resolve) -> std::optional<ClassMemberOmission> {
       const auto* failed = std::get_if<FamilyPrepareFailure>(&prepared);
       if (!failed || recovery != RecoveryMode::kAllowPartial) return {};
@@ -357,7 +357,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       }
       auto member = Take<PreparedFamily>(std::move(prepared));
       admit(member.AllocatedBytes(), 1); step(member.Work());
-      next_owner += member.Family().members.size();
+      next_owner += member.Family().OwnerCount();
       tree.members.push_back(std::move(member));
     }
     for (auto& definition : tree.definitions) {
@@ -376,7 +376,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
         }
         auto member = Take<PreparedFamily>(std::move(prepared));
         admit(member.AllocatedBytes(), 1); step(member.Work());
-        next_owner += member.Family().members.size();
+        next_owner += member.Family().OwnerCount();
         definition.bodies[i] = std::move(member);
       }
     }

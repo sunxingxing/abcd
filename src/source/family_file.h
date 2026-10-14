@@ -69,6 +69,11 @@ struct FileFamily {
   // verification only. PreparedFamily never retains this reference.
   std::optional<ParentModuleInput> root_modules;
   FunctionOwnerId first_owner{};
+  // Borrowed same-file indexes survive synchronous family preparation/build.
+  const analysis::MethodRoleIndex* class_roles = nullptr;
+  const analysis::FunctionCreationSites* class_functions = nullptr;
+  const analysis::ClassMethodSites* class_sites = nullptr;
+  std::uint64_t next_class_owner = 0;
   // External root binding owns its cell evidence. It is not an intra-family
   // FunctionExpr edge and does not discharge source visibility or write checks.
   std::optional<CaptureCells> root_capture;

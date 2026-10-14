@@ -12,6 +12,15 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 67：闭合普通后代类生产贯通（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 513 → **516/620**，`--language-source` 552 → **556/620**；0 回退，0 文本漂移；cli/corpus/failure 扫描 63/64，只有既有的 family_source_cli_test 失败。输出形如 `(class SocketInfo {...}).prototype;`：es2abc 定义类后会读取 prototype，而类值在该函数中未被使用，所以这是对字节码的忠实投影；可读性另议。
+
+- 基线 `640dd19f`。本次窄切片接通无 creator-cell 需求、无 heritage、无静态初始化器的普通后代类；复用 record-root 的 CreatorClasses / PreparedFamily，真实 occurrence、Storage、CaptureTree、creation OpId 贯通准备与完成。冻结前收集需求；非空/延迟需求保留独立类型化拒绝，不移动声明。完整 owner 范围、嵌套类自由名预留、完成后实际 owner 覆盖、真实 creator 的 FamilyWrites 屏障均独立复验。见 [实现、边界和逐目标表](round-67-closed-descendants.md)。
+- 对 explore67b/explore67bs：原 flags **513 → 516/620**，source 契约 **552 → 556/620**；**0 状态回退、0 已 complete/partial 文本漂移**，包括 o32/49868。两组 manifest record 条目仅四个 o18 目标变化。52728、59564、60829 两组均 complete；63861 仅 source 契约 complete，原 flags 的下一叶为 m64229/PC62 的 `CaptureCellError=3 > CaptureError=1 > ScopeError=3`（ordinal2、depth0/slot7）。7 份新增 complete 输出均通过 `node --check`。证据 `/private/tmp/r67c-delivery-cohort/` 和 `/private/tmp/r67c-delivery-cohort.log`。
+- 最终完整 keep-going 构建通过；固定集串行 **65/65**；新增/扩展 **8/8**；`class|capture|deferred|guarded|family|creation|recovery` 定向 **72/86**（14 项均为下方既有失败，未改断言）；`cli|corpus|failure|_receipt|manifest` 扫描 **60/61**（仅既有 family_source_cli_test）。验收命令及日志 `/private/tmp/r67c-delivery-acceptance.json`。真实 es2abc fixture 的两契约 Node 差分覆盖 construction、[[Set]]/父 setter、throw、函数/方法 creator、多次 loop 创建、copy/branch 变体和自由全局 `$value0` 与 creator 临时名冲突；[[Define]]/删除 throw 变异检出。CLI/manifest 的 capture/deferred/heritage/nested 拒绝原因与位置一致。
+- 200/201/400/800 宽度与普通函数深度的生产发现/准备及精确 byte/work 边界通过。独立整 record 探针：width200/201/400 complete，width800 仍达既有 FamilyEnclosureError::kResourceLimit；depth800 导出 complete，但生成的嵌套表达式耗尽 Node 默认 parser stack，`node --stack_size=8192 --check` 通过（原始函数声明 fixture 默认 stack 可通过）。不把准备阶段证明当作无限宽度/深度的端到端保证，未提高任何 cap。
+- 保留范围：capturing/deferred/heritage/static initializer、requirements-only 类成员继续创建类、phased creator；更深层类任务图和声明 fulfilment 尚待后续。无新源语言前提。只读复核未发现阻断；补齐其指出的全局名冲突测试。未跑留出集、全套测试或 RSS 基准；未 commit/push/stash。
+
 ## Round 67 Increment II 基础 WIP（cc 审查通过；生产贯通待续）
 - cc 独立审查（增量 II 部分）：构建通过；固定集串行 65/65；配对样本逐字节相同；513/620、552/620 不变，0 状态变化，0 文本变化；cli/corpus/failure 扫描 60/61，只有既有的 family_source_cli_test 失败。
 

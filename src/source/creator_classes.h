@@ -75,6 +75,8 @@ struct CreatorClassCost { std::size_t allocated_bytes; std::uint64_t work; };
 [[nodiscard]] std::variant<CreatorClassCost, CreatorClassFailure> BindCreatorClasses(
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&, const abc::MethodLookup&,
     const FileFunction&, const CaptureStorage*, CreatorClasses&, analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<CreatorClassCost, CreatorClassFailure> VerifyFinishedClassOwners(
+    const CreatorClasses&, FunctionOwnerId, analysis::SemanticBudget = {});
 // Allocation-free validation used at preparation and final construction.
 [[nodiscard]] bool ValidClassOwnerRange(ClassOwnerRange range, std::uint64_t expected);
 }

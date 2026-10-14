@@ -1,4 +1,5 @@
 #include "../../../src/source/creator_classes.h"
+#include "../../../src/source/descendant_classes.h"
 #include "abcd/corpus/abc_file.h"
 #include <algorithm>
 #include "../../../src/source/runtime_name.h"
@@ -16,11 +17,13 @@ template<class T,class... U> T Take(std::variant<U...> v,std::source_location at
   if(auto* value=std::get_if<T>(&v)) return std::move(*value);
   std::cerr<<"creator classes variant "<<at.line()<<" index="<<v.index()<<'\n';std::abort();
 }
-template<class T,class F> void Boundary(F&& build,std::uint64_t work) {
+template<class T,class F> void Boundary(F&& build,std::uint64_t work,std::source_location where=std::source_location::current()) {
   const auto initial=analysis::SemanticBudget{};
   std::size_t low=0,high=initial.bytes;
   while(low<high){const auto mid=low+(high-low)/2;if(std::holds_alternative<T>(build({mid})))high=mid;else low=mid+1;}
-  Check(low>0);Check(std::holds_alternative<T>(build({low,work})));
+  Check(low>0);
+  if(!std::holds_alternative<T>(build({low,work})))std::cerr<<"boundary at "<<where.line()<<" bytes="<<low<<" charged_work="<<work<<'\n';
+  Check(std::holds_alternative<T>(build({low,work})));
   Check(!std::holds_alternative<T>(build({low-1,work})));
   Check(!std::holds_alternative<T>(build({low,work-1})));
 }
@@ -98,17 +101,31 @@ void Run(const std::filesystem::path& path,unsigned count,bool depth) {
     return ReadFunctionFamily(*file,header,index,lookup,roles,functions,*entry,identity,budget,&modules,nullptr,{},
         FamilyClassMode::kRetainRoot,nullptr,{},nullptr,&classes);
   };
-  const auto is_gate=[](const auto& result) {
-    const auto* failure=std::get_if<FamilyFileFailure>(&result);
-    return failure && failure->family_creation && failure->family_creation->reason==FamilyCreationCheck::kClassPreparationGate;
-  };
-  const auto result=discover({});
-  const auto& failure=std::get<FamilyFileFailure>(result);
-  Check(failure.family_creation && failure.family_creation->reason==FamilyCreationCheck::kClassPreparationGate);
-  Check(failure.family_creation->location.method==index.methods[creator->value].offset);
-  Check(failure.family_creation->occurrence->value==(depth?count:1));
+  const auto is_gate=[](const auto& result) { return std::holds_alternative<FileFamily>(result); };
+  auto result=discover({});
+  const auto& read_family=std::get<FileFamily>(result);
+  const auto creator_id=depth?count:1;
+  Check(creator_id<read_family.members.size());
+  Check(read_family.members[creator_id].function.Method()==index.methods[creator->value].offset);
+  Check(read_family.members[creator_id].classes.size()==(depth?1:count));
+  auto prepared=Take<DescendantClasses>(PrepareDescendantClasses(*file,header,index,lookup,read_family,true,nullptr,RecoveryMode::kCompleteOnly));
+  Check(prepared.creators[creator_id].has_value());
+  Check(prepared.owner_end==read_family.members.size()+(depth?1:count));
+  const auto prepare=[&](analysis::SemanticBudget b){return PrepareDescendantClasses(*file,header,index,lookup,read_family,true,nullptr,RecoveryMode::kCompleteOnly,b);};
+  // Nested passes have independent scratch-work admission floors. Measure
+  // the actual acceptance boundary, not the returned cumulative charge.
+  std::size_t pb=0,pe=analysis::SemanticBudget{}.bytes;
+  while(pb<pe){const auto mid=pb+(pe-pb)/2;if(std::holds_alternative<DescendantClasses>(prepare({mid})))pe=mid;else pb=mid+1;}
+  std::uint64_t wb=0,we=analysis::SemanticBudget{}.work;
+  Check(std::holds_alternative<DescendantClasses>(prepare({pb,we})));
+  while(wb<we){const auto mid=wb+(we-wb)/2;if(std::holds_alternative<DescendantClasses>(prepare({pb,mid})))we=mid;else wb=mid+1;}
+  Check(pb && wb && std::holds_alternative<DescendantClasses>(prepare({pb,wb})));
+  Check(!std::holds_alternative<DescendantClasses>(prepare({pb-1,wb})) && !std::holds_alternative<DescendantClasses>(prepare({pb,wb-1})));
+  std::cout<<"prepare_boundary="<<pb<<'/'<<wb<<' ';
+  auto& prepared_plan=*prepared.creators[creator_id];
+  Check(std::holds_alternative<CreatorClassFailure>(VerifyFinishedClassOwners(prepared_plan,{static_cast<std::uint32_t>(read_family.members.size())})));
   // Exact budgets for the real family work stack, including all preceding
-  // creator occurrences. Gate is the successful result of this unpublished stage.
+  // creator occurrences. The class barriers remain retained for tree verification.
   std::size_t bytes_low=0,bytes_high=analysis::SemanticBudget{}.bytes;
   while(bytes_low<bytes_high) {
     const auto mid=bytes_low+(bytes_high-bytes_low)/2;

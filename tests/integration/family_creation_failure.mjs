@@ -29,7 +29,23 @@ try {
    manifests.set(o,JSON.parse(readFileSync(join(out,'manifest.json'))).records);
   }
   for(const [o,record,method,pc,op,family,occurrence,constructor,literal,descendantPc] of cases) {
-   const row=manifests.get(o).find(r=>r.entity===record);assert.equal(row.source_status,3);
+   const row=manifests.get(o).find(r=>r.entity===record);
+   if(o===18 && !(record===63861 && label==='old')){
+    // Descendant class preparation now closes the original gate. Keep the real
+    // instruction/pool/reachability assertions below as well as source checks.
+    assert.equal(row.source_status,0,JSON.stringify(row));
+    const cli=JSON.parse(run(semantic,[inputs.get(o),String(method),'--record-source',...flags]));
+    assert.equal(cli.source_complete,true);assert.equal(cli.source_failure,undefined);
+    assert.equal(cli.source,readFileSync(join(dir,`${label}-${o}`,row.source),'utf8'));
+    run(process.execPath,['--check',join(dir,`${label}-${o}`,row.source)]);
+   }else if(record===63861 && label==='old'){
+    assert.equal(row.source_status,3);
+    const f=row.source_failure;assert.equal(f.method,64229);assert.equal(f.pc,62);
+    assert.deepEqual(f.causes,[{domain:'abcd::source::CaptureCellError',value:3},{domain:'abcd::source::CaptureError',value:1},{domain:'abcd::source::ScopeError',value:3}]);
+    assert.equal(f.capture.slot,7);assert.equal(f.capture.ordinal,2);
+    const cli=JSON.parse(run(semantic,[inputs.get(o),String(method),'--record-source',...flags],1));assert.deepEqual(cli.source_failure,f);
+   }else{
+   assert.equal(row.source_status,3);
    const cli=JSON.parse(run(semantic,[inputs.get(o),String(method),'--record-source',...flags],1));
    assert.deepEqual(cli.source_failure,row.source_failure);
    const failure=cli.source_failure,e=failure.family_creation;
@@ -46,6 +62,7 @@ try {
    assert.equal(e.kind,2);assert.equal(e.constructor_pool,constructor);assert.equal(e.literal_pool,literal);
    if(descendantPc===undefined)assert.equal(e.descendant_source,undefined);
    else {assert.equal(e.descendant_source.method,family);assert.equal(e.descendant_source.pc,descendantPc);}
+   }
    const instructions=run(semantic,[inputs.get(o),String(method),'--instructions']).trim().split('\n').map(JSON.parse);
    const creation=instructions.find(i=>i.pc===pc);
    assert.equal(creation.class_creation.constructor_pool,constructor);
@@ -60,5 +77,5 @@ try {
    }
   }
  }
- console.log('family_creation_failure_cli_test: 5 refusals x 2 contracts; CLI/manifest, pool identity and descendant origins agree');
+ console.log('family_creation_failure_cli_test: 4 completions + unchanged phased refusal x 2 contracts; CLI/manifest, pool identity and original CFG agree');
 } finally {rmSync(dir,{recursive:true,force:true});}

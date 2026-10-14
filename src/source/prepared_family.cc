@@ -183,7 +183,7 @@ std::variant<FamilyPreparation, FamilyPrepareFailure> FamilyPreparation::Read(
     auto input = Take<FileFamily, FamilyFileFailure>(std::move(read));
     budget.Account(input.allocated_bytes, input.work);
     auto prepared = Take<FamilyTreeInput, FamilyTreeFailure>(FamilyTreeInput::Prepare(
-        file, header, index, std::move(input), root, budget.Left(), modules, module_owner, &lookup, recovery, creator, creator_storage));
+        file, header, index, std::move(input), root, budget.Left(), modules, module_owner, &lookup, recovery, creator, creator_storage, destination.globals));
     budget.Account(prepared.AllocatedBytes(), prepared.Work());
     FamilyPreparation result(std::move(root), std::move(prepared), recovery,
         allowance.bytes - budget.Left().bytes, allowance.work - budget.Left().work);
@@ -244,7 +244,7 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Finish(
     }
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(std::move(preparation.input_).Build(
         file, header, index, root, budget.Left(), modules, module_owner, &lookup, recovery,
-        external ? &*external : nullptr));
+        external ? &*external : nullptr, destination.globals));
     budget.Account(family.allocated_bytes, family.work);
     for (const auto& member : family.members) {
       budget.Account(0, 1);

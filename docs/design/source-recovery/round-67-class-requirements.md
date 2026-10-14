@@ -1,6 +1,11 @@
 # Round 67 II: requirements and creator-storage foundation (incomplete)
 
-Baseline: `97ca420a`. This workspace does **not** complete increment II or III.
+Historical boundary committed as `640dd19f`, based on `97ca420a`. That increment did **not** complete II or III.
+The subsequent [closed descendant production slice](round-67-closed-descendants.md)
+adds publication for closed, non-derived classes; the broader requirements and
+declaration work described below remains open.
+
+At the boundary documented here:
 The production descendant preparation gate remains unchanged. No class-body,
 owner-range, name-reservation, enclosure or write-barrier permission is inferred
 from a requirement summary. There are no new source-language premises.
