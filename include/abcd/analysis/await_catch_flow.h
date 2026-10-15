@@ -1,10 +1,10 @@
 #ifndef ABCD_ANALYSIS_AWAIT_CATCH_FLOW_H_
 #define ABCD_ANALYSIS_AWAIT_CATCH_FLOW_H_
-#include "abcd/analysis/semantic_ir.h"
+#include "abcd/analysis/raw_event_graph.h"
 namespace abcd::analysis {
 // Original-body identities only. No normalized PC or source expression exists
 // at this boundary. Catch and ordinary entry at the same PC are distinct.
-enum class CatchFlowPhase : std::uint8_t { kBefore, kCommit, kCatch, kResume, kCallerExit };
+using CatchFlowPhase = RawEventPhase;
 enum class CatchFlowRole : std::uint8_t { kResult, kResumeMode };
 enum class CatchFlowOutcome : std::uint8_t {
   kUnobserved, kCovered, kTerminal, kCoveredAndTerminal, kObservedRead, kUnknownEffect

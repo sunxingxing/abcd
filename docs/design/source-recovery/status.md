@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 A1：共享原始事件图（cc 审查通过）
+
+- for-of 轨道恢复（Round 79 设计：PendingCompletion{kind,payload,target} 相关追踪，五个门禁增量 A/B/C/II/III，最终上界 6）。增量 A 一次过大，拆片；A1 只做纯重构：把 await_catch_flow 私有的原始事件图（节点、寄存器效果、真实 dispatch、后继、预付 arena）提取为 `raw_event_graph`，接口不依赖 AwaitRegion，coroutine 边作为可选扩展。新增 `raw_event_graph_test`。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变，0 状态变化，0 文本变化；await/raw_event 测试 3/3。
+
 ## Round 78：await catch 输入的原始 CFG 活跃性证明（cc 审查通过）
 
 - await_catch_flow：原始 Before/Commit/Catch/Resume/CallerExit 事件图、预付稀疏闭包、独立验证器；只有正常 Commit 能覆盖旧定义；读优先于写；资源耗尽返回拒绝；只补足快速证明的 kUnprovedPaths。o32 越过原拒绝，转为 effectful close 的 kMultipleExits（for-of 暂停轨道）。
