@@ -1,4 +1,5 @@
 #include "phased_function_file.h"
+#include "concurrent_async.h"
 
 #include <bit>
 #include <new>
@@ -156,15 +157,33 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
           identity.contract == SourceContract::kLanguageSourceV1 ||
           identity.contract == SourceContract::kLanguageSourceV2 ||
           identity.contract == SourceContract::kLanguageSourceV3, Error::kIdentity);
-      auto completion = ProveAsyncCompletion(body, frame, left.bytes, &source_pcs, &awaits,
+      AsyncCompletion completion = FunctionEmitError::kKind;
+      if (context.Concurrent()) {
+        auto projected = NormalizeConcurrentAsync(body, frame, header.profile, left);
+        if (auto* failure = std::get_if<ConcurrentFailure>(&projected)) {
+          failure->method = method.offset; failure->record = context.Concurrent()->location.record;
+          throw PhasedFileFailure{*failure};
+        }
+        if (auto* failure = std::get_if<AsyncCompletionFailure>(&projected)) {
+          failure->async.location.method = method.offset; throw PhasedFileFailure{*failure};
+        }
+        auto normalized = std::get<ConcurrentAsyncBody>(std::move(projected));
+        // Includes normalization scratch as well as returned arenas. Charge
+        // once here; ordinary async keeps its historical accounting below.
+        admit(normalized.allocated_bytes); step(normalized.work);
+        source_pcs = std::move(normalized.origins); awaits = std::move(normalized.awaits);
+        completion = std::move(normalized.body);
+      } else completion = ProveAsyncCompletion(body, frame, left.bytes, &source_pcs, &awaits,
           header.profile, ResourceFailureScope::kExcluded);
       if (auto* failure = std::get_if<AsyncCompletionFailure>(&completion)) {
         failure->async.location.method = method.offset;
         throw PhasedFileFailure{*failure};
       }
       auto normalized = std::get<abc::MethodBody>(std::move(completion));
-      arena(normalized.instructions); arena(normalized.tries); arena(normalized.handlers);
-      arena(source_pcs); arena(awaits);
+      if (!context.Concurrent()) {
+        arena(normalized.instructions); arena(normalized.tries); arena(normalized.handlers);
+        arena(source_pcs); arena(awaits);
+      }
       original.emplace(std::move(body)); body = std::move(normalized);
     }
     Require(mode == InputCaptureMode::kClosed || mode == InputCaptureMode::kConditional, Error::kIdentity);

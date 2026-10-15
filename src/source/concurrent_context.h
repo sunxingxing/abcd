@@ -4,6 +4,9 @@
 #include "abcd/source/source_contract.h"
 namespace abcd::source {
 struct ConcurrentMetadata {
+  // Kind metadata gives concurrency, not async flavor. Raw AsyncEnter only
+  // selects the owner; async normalization must still prove the full protocol.
+  bool asynchronous = false;
   abc::ModuleInfo module;
   abc::ConcurrentRequests requests;
   ConcurrentFailure location;

@@ -385,7 +385,7 @@ source 的 40 个 manifest 顶层及 562 个 record 契约标签由 V2 更新为
 
 同步 concurrent 的 callable 仍为普通 Function；`ConcurrentDirective` 是独立的已验证输出
 属性，仅 V3 启用，打印为函数体的第一条 `"use concurrent";`。创建表达式、名字推断和
-创建时机不变。遇到 AsyncEnter 仍以 `ConcurrentError::kAsync` 和真实子方法 PC 拒绝；
+创建时机不变。本增量当时遇到 AsyncEnter 以 `ConcurrentError::kAsync` 和真实子方法 PC 拒绝（后续增量 III 见下）；
 没有把 concurrent 函数当作 async，也没有扩大 V1/V2 的输出政策。
 
 `callruntime.notifyconcurrentresult` 的原始语义读取 acc 与当前调用帧的 function，不改写
@@ -428,3 +428,38 @@ export 名以 `kModuleSyntax` 拒绝（含尚未贯通 Unicode 标识符拼写�
 从 verified directive 取证，并跨 class/family printer 传递；这仅决定目标语法拼写，不能授予
 恢复准入。没有发射 concurrent 的 record 保持原有别名拼写。往返测试直接编译真实输出，
 没有机械改写输入文件；导出名、local alias 和模块表保持原值。
+
+### Round 73 增量 III：async concurrent 的 Promise 完成端口
+
+并发 kind 不蕴含同步性：动态前端先选择 CONCURRENT_FUNCTION，再选择 async kind。
+创建上下文仅用原始 typed AsyncEnter 选择 async owner；能否输出仍由完整 async 协议证明
+决定。输出保持原创建形式和名字，使用 `async function`，directive 仍是函数体第一条语句。
+V1/V2、其他 flags 的 concurrent 输出政策不变。
+
+`concurrent_async` 在原始普通 CFG 上反向求完成后缀摘要，以两个标量槽需求追踪通知和
+返回的输入，透过复制进行替换；后继必须同意同一物理通知/返回端口。settlement 的正常
+结果须同时满足两项需求。后缀不能包含其他效果、可抛出操作、外部入口、catch 入口或
+不终止路径；所有通知及返回都必须被覆盖。每条 resolve/reject 路径恰好通知一次，且通知
+属于当前 frame.function。这是值流与控制证明，不以相邻 opcode、寄存器号或同块为准。
+
+Pinned interpreter-inl.cpp:6659–6698 对 settlement 先检查 abrupt completion，再将结果
+提交到 acc；runtime_stubs-inl.h:396 的 RuntimeAsyncFunctionResolveOrReject 从同一个
+JSAsyncFuncObject 取 Promise 并返回该 Promise。asyncFunctionBuilder.cpp:24–32、:54–65
+在 resolve/reject 后通知并返回。故通知值是 **Promise**，不是源码 return 的解析值。
+证明后只折叠这些封闭后缀，再复用既有 async owner：它继续证明状态对象唯一性、Promise
+寄存器、await/resume、隐式 catch/reject、用户 handler 和来源映射，不准入新的 wrapper。
+
+verified directive 保存经计费的不可变原始方法与 frame/profile。TreeFlow 和每次 recovery
+投影从该输入重算完成后缀和 async owner，并核对全部原始/工作来源及返回位置。归一化图
+不制造一个“通知解析值”的虚假表达式；通知端口归属 native async 的 settlement 完成边界，
+隐式拒绝也不能伪造为源码 ReturnStmt。同步通知的显式事件验证路径保持不变。
+
+缓冲在分配前计费；反向摘要及成员归属为 O(V+E)，PC/范围重映射为 O(N log N)。请求
+注解仍由真实 ModuleSymbol 引用流核对，不插入 fake reads。普通调用 Node 差分与原始/重编译
+ABC 的 kind、sendable、async protocol、请求及两种通知完成端口检查分别提供证据；它们
+不替代 taskpool/跨线程的 Ark runtime 验证。
+
+夹具与 oracle 边界见 `tests/integration/fixtures/concurrent_async/README.md`。成功、await
+拒绝、前后抛出、返回 Promise 以及 catch-around-await 可走实际导出；finally-around-await
+仍受已有 catch-input 活性证明约束，保留类型化拒绝。本增量不放宽该门禁或 m16784 的
+环境合并证明。

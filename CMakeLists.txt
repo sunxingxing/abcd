@@ -223,7 +223,7 @@ target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
 target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/effect_order.cc src/source/class_definitions.cc src/source/class_definition_projection.cc src/source/defined_member_context.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_prototype.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/derived_projection.cc src/source/class_tree.cc)
-target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc src/source/concurrent_completion.cc src/source/concurrent_directive.cc src/source/concurrent_tree.cc src/source/concurrent_references.cc src/source/concurrent_boundary.cc)
+target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc src/source/concurrent_completion.cc src/source/concurrent_async.cc src/source/concurrent_directive.cc src/source/concurrent_tree.cc src/source/concurrent_references.cc src/source/concurrent_boundary.cc)
 target_sources(abcd_source PRIVATE src/source/rest_ownership.cc)
 target_sources(abcd_source PRIVATE src/source/function_input.cc)
 target_sources(abcd_source PRIVATE src/source/function_values.cc)
@@ -1400,6 +1400,9 @@ if(BUILD_TESTING)
   endif()
   add_executable(concurrent_roundtrip_probe tests/unit/source/concurrent_roundtrip_probe.cc)
   target_link_libraries(concurrent_roundtrip_probe PRIVATE abcd_source abcd_json)
+  add_executable(concurrent_async_test tests/unit/source/concurrent_async_test.cc)
+  target_link_libraries(concurrent_async_test PRIVATE abcd_source)
+  add_test(NAME concurrent_async_test COMMAND concurrent_async_test)
   add_executable(concurrent_completion_test tests/unit/source/concurrent_completion_test.cc)
   target_link_libraries(concurrent_completion_test PRIVATE abcd_source)
   add_test(NAME concurrent_completion_test COMMAND concurrent_completion_test)
@@ -2712,6 +2715,10 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes/member.abc)
       set(ABCD_CONCURRENT_COMPILER "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
       if(EXISTS "${ABCD_CONCURRENT_COMPILER}")
+        add_test(NAME concurrent_async_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/concurrent_async.mjs
+          $<TARGET_FILE:abc_structure> $<TARGET_FILE:concurrent_roundtrip_probe>
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/concurrent_async "${ABCD_CONCURRENT_COMPILER}")
         add_test(NAME concurrent_functions_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/concurrent_functions.mjs
           $<TARGET_FILE:abc_structure> $<TARGET_FILE:concurrent_roundtrip_probe>

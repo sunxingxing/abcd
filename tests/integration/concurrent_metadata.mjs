@@ -15,7 +15,7 @@ try {
   assert.equal(manifest.source_contract,label==='source'?'language_source_v3':'language_numeric_constructors_v1');
   for(const [entity,method,creator,pc,count] of cases) {
    const record=manifest.records.find(r=>r.entity===entity);
-   if(label==='source' && [18164,31477,25688].includes(entity)) {
+   if(label==='source' && [10719,18164,31477,25688].includes(entity)) {
     assert.equal(record.source_status,0);assert.ok(record.source);
     const source=readFileSync(join(out,record.source),'utf8');assert.ok(source.includes('"use concurrent";'));
     const cli=JSON.parse(run(semantic,[input,String(method),'--record-source',...flags]));assert.equal(cli.source_complete,true);assert.equal(cli.source,source);
@@ -29,6 +29,12 @@ try {
     for(const key of ['requests','request_phases','imports','namespace_imports','exports','indirect_exports','star_exports'])assert.deepEqual(after[key],owned[key],`${entity} ${key}`);
     const summarize=f=>({name:f.name,kind:f.kind,sendable:f.sendable,annotation_present:f.annotation_present,requests:f.requests});
     assert.deepEqual(after.functions.map(summarize).sort((a,b)=>a.name.localeCompare(b.name)),owned.functions.map(summarize).sort((a,b)=>a.name.localeCompare(b.name)));
+    if(entity===10719) {
+      const a=after.functions.find(f=>f.name==='updateBooks');
+      assert.equal(a.async_protocol,true);assert.equal(a.completion_verified,true);assert.equal(a.async_owner_verified,true);
+      assert.equal(a.resolve_ports,1);assert.equal(a.reject_ports,1);assert.deepEqual(a.requests,owned.functions.find(f=>f.name==='updateBooks').requests);
+      assert.deepEqual(a.requests.map(q=>after.requests.indexOf(q)),[1]);
+    }
     const reexport=join(dir,`${entity}-proof`);run(structure,[abc,reexport,'--value-source','--language-source']);
     // Recompilation may expose other unsupported class metadata/body forms.
     // The standalone fixture separately requires a complete second export.
@@ -47,5 +53,5 @@ try {
    assert.deepEqual(f.causes,[{domain:'abcd::source::CreationContextError',value:3},{domain:'abcd::source::ConcurrentError',value:label==='source'?7:0}]);
   }
  }
- console.log('5 records x 2 contracts: old policy/Mock capture unchanged; async explicit gate; collectFrame next environment refusal; 3 exported records round-trip kind/sendable/ordered requests/module tables');
+ console.log('5 records x 2 contracts: old policy/Mock capture unchanged; async promise/notify ports; collectFrame next environment refusal; 4 exported records round-trip kind/sendable/ordered requests/module tables');
 } finally {rmSync(dir,{recursive:true,force:true});}

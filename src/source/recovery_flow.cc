@@ -1378,7 +1378,10 @@ class FlowBuilder {
       }
       else if constexpr(std::is_same_v<T,ReturnStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
-        if(tree_.concurrent) {
+        // Async notification belongs to its verified settlement boundary and
+        // receives the Promise. Never attach it here to the resolution value;
+        // VerifyOriginalConcurrent replays that raw protocol for every recovery.
+        if(tree_.concurrent && !tree_.concurrent->Async()) {
           // A pending return first runs enclosing finally clauses. Only the
           // surviving completion notifies; overriding/throwing cleanup bypasses
           // this port. The result was evaluated and retained before cleanup.

@@ -50,7 +50,8 @@ bool ValidBinary(analysis::BinaryOperator operation) {
 void CheckCallable(const FunctionTree& tree) {
   if(tree.concurrent)RequireTree(tree.concurrent->Identity()==tree.identity&&tree.concurrent->Method()==tree.method&&
       tree.concurrent->Revision()==tree.value_revision&&tree.concurrent->CfgRevision()==tree.cfg_revision&&
-      tree.callable==CallableKind::kFunction&&tree.strictness==Strictness::kStrict&&
+      (tree.callable==CallableKind::kFunction||tree.callable==CallableKind::kAsyncFunction)&&
+      (tree.callable==CallableKind::kAsyncFunction)==(tree.concurrent->Async()!=nullptr)&&tree.strictness==Strictness::kStrict&&
       ConcurrentOutput(tree.identity.contract)==ConcurrentOutputPolicy::kArkDirectiveV1,Error::kUnsupportedSyntax);
   switch (tree.constructor_form) {
     case ConstructorForm::kExplicit: break;

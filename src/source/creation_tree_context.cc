@@ -64,7 +64,7 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
         auto lifted=analysis::LiftSemanticInstruction(instruction,header.profile,method.code->registers+std::uint64_t(method.code->arguments));
         const auto* semantic=std::get_if<analysis::SemanticInstruction>(&lifted);
         if(semantic&&std::holds_alternative<analysis::AsyncEnter>(semantic->operation))
-          return fail(ConcurrentError::kAsync,instruction.offset);
+          concurrent->asynchronous = true;
       }
     }
     CallableKind callable;
@@ -87,8 +87,9 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
       Require(mode == CreationContextMode::kFunction && creation.kind == analysis::CreationKind::kFunction &&
           creation.home_object == analysis::HomeObjectInput::kCurrentFunction, Error::kKind);
       switch (occurrence->resolved.attributes.kind) {
-      case abc::FunctionKind::kBaseConstructor:
-      case abc::FunctionKind::kConcurrent: callable = CallableKind::kFunction; break;
+      case abc::FunctionKind::kBaseConstructor: callable = CallableKind::kFunction; break;
+      case abc::FunctionKind::kConcurrent:
+        callable = concurrent->asynchronous ? CallableKind::kAsyncFunction : CallableKind::kFunction; break;
       case abc::FunctionKind::kArrow: callable = CallableKind::kArrow; break;
       case abc::FunctionKind::kAsync: callable = CallableKind::kAsyncFunction; break;
       // OH7 PandaGen::SetFunctionKind emits ASYNC_NC_FUNCTION for async arrows.

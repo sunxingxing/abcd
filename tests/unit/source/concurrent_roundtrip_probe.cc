@@ -8,6 +8,7 @@
 #include "abcd/corpus/abc_file.h"
 #include "../../../src/source/runtime_name.h"
 #include "../../../src/source/concurrent_completion.h"
+#include "../../../src/source/concurrent_async.h"
 #include "abcd/analysis/value_import.h"
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/exception_modules.h"
@@ -91,11 +92,40 @@ bool RawSuffix(const abc::MethodBody& body,abc::ProfileId profile,const abc::Fra
  return reached;
 }
 int main(int argc,char**argv) {
- test::Check(argc==2);
+ test::Check(argc==2 || argc==3);
  auto file=Take<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(argv[1]));
  auto hash=Take<corpus::FileFingerprint>(file->Fingerprint());
  auto header=Take<abc::Header>(abc::ParseHeader(std::span(hash.prefix).first(hash.prefix_size),hash.size));
  auto index=Take<abc::MetadataIndex>(abc::BuildMetadataIndex(*file,header));
+ if(argc==3) {
+  const auto entity=static_cast<std::uint32_t>(std::stoul(argv[2]));
+  const auto m=std::find_if(index.methods.begin(),index.methods.end(),[&](const auto& method){return method.offset.value==entity;});test::Check(m!=index.methods.end());
+  const auto body=Take<abc::MethodBody>(abc::DecodeMethodBody(*file,header.profile,*m->code));
+  const auto call=Take<abc::CallType>(abc::ReadCallType(*file,header,index,m->annotations));
+  const auto frame=Take<abc::FrameLayout>(abc::BuildFrameLayout(m->code->registers,m->code->arguments,abc::DecodeCallFlags(call.value)));
+  std::vector<abc::CodeOffset> origins;std::vector<analysis::AwaitSite> awaits;
+  auto normalized=Take<abc::MethodBody>(source::ProveAsyncCompletion(body,frame,analysis::SemanticBudget{}.bytes,&origins,&awaits,header.profile,source::ResourceFailureScope::kExcluded));
+  const auto flow=Take<analysis::ExceptionFlow>(analysis::BuildExceptionFlow(normalized,header.profile,frame.registers,{},awaits,&frame));
+  auto environments=analysis::AnalyzeExceptionEnvironments(flow);
+  const auto* error=std::get_if<analysis::EnvironmentFlowFailure>(&environments);test::Check(error!=nullptr);
+  const auto site=std::lower_bound(normalized.instructions.begin(),normalized.instructions.end(),error->offset,[](const auto& instruction,auto pc){return instruction.offset<pc;});
+  test::Check(site!=normalized.instructions.end()&&site->offset==error->offset);
+  nlohmann::json diagnostic{{"method",entity},{"environment_error",unsigned(error->kind)},{"working_pc",error->offset.value},{"pc",origins[site-normalized.instructions.begin()].value}};
+  if(error->environment_error)diagnostic["environment_cause"]=unsigned(*error->environment_error);
+  if(error->lexical_error)diagnostic["lexical_cause"]=unsigned(*error->lexical_error);
+  diagnostic["environment_changes"]=nlohmann::json::array();diagnostic["handler_incoming"]=nlohmann::json::array();
+  const auto raw_pc=[&](abc::CodeOffset pc){auto found=std::lower_bound(normalized.instructions.begin(),normalized.instructions.end(),pc,[](const auto& op,auto target){return op.offset<target;});test::Check(found!=normalized.instructions.end()&&found->offset==pc);return origins[found-normalized.instructions.begin()].value;};
+  for(const auto& instruction:flow.instructions) {
+    if(std::holds_alternative<analysis::PushEnvironment>(instruction.operation)||std::holds_alternative<analysis::PopEnvironment>(instruction.operation))
+      diagnostic["environment_changes"].push_back({{"push",std::holds_alternative<analysis::PushEnvironment>(instruction.operation)},{"pc",raw_pc(instruction.pc)}});
+  }
+  for(const auto& node:flow.nodes)for(unsigned e=0;e<node.successor_count;++e) {
+    const auto& edge=node.successors[e];const auto& target=flow.nodes[edge.target.value];
+    if(target.phase==analysis::ExceptionPhase::kCatch && flow.instructions[target.instruction.value].pc==error->offset)
+      diagnostic["handler_incoming"].push_back({{"pc",raw_pc(flow.instructions[node.instruction.value].pc)},{"phase",unsigned(node.phase)},{"arc",unsigned(edge.kind)}});
+  }
+  std::cout<<diagnostic.dump()<<'\n';return 0;
+ }
  auto text=[&](abc::EntityOffset id){auto value=Take<std::u16string>(abc::ReadStringEntity(*file,header,id));for(auto c:value)test::Check(c<128);return std::string(value.begin(),value.end());};
  nlohmann::json records=nlohmann::json::array();
  for(const auto& r:index.records) {
@@ -126,7 +156,25 @@ int main(int argc,char**argv) {
      if(std::holds_alternative<analysis::ReturnOperation>(s->operation))f["returns"]=f["returns"].get<unsigned>()+1;
     }
    }
-   if(asynchronous){f["completion_verified"]=false;f["async_gate"]=true;j["functions"].push_back(f);continue;}
+   if(asynchronous){
+    const auto call=Take<abc::CallType>(abc::ReadCallType(*file,header,index,m.annotations));
+    const auto frame=Take<abc::FrameLayout>(abc::BuildFrameLayout(m.code->registers,m.code->arguments,abc::DecodeCallFlags(call.value)));
+    auto completion=source::ProveAsyncNotifications(body,frame,header.profile);
+    f["async_protocol"]=true;f["completion_verified"]=std::holds_alternative<source::AsyncNotifications>(completion);
+    if(const auto* ports=std::get_if<source::AsyncNotifications>(&completion)) {
+     f["resolve_ports"]=0;f["reject_ports"]=0;
+     for(const auto& port:ports->ports) {
+      auto key=port.kind==analysis::AsyncSettlement::kResolve?"resolve_ports":"reject_ports";
+      f[key]=f[key].get<unsigned>()+1;
+     }
+     // Also require the existing async owner to prove Promise identity,
+     // implicit catch/reject input, and resume regions. A failed owner stays
+     // visible; notification suffix proof alone is never publication evidence.
+     auto normalized=source::NormalizeConcurrentAsync(body,frame,header.profile);
+     f["async_owner_verified"]=std::holds_alternative<source::ConcurrentAsyncBody>(normalized);
+    }
+    j["functions"].push_back(f);continue;
+   }
    // Raw protocol-only recheck on the recompilation. Other unsupported root
    // operations (e.g. set-name own stores) do not hide method completion proof.
    const auto call=Take<abc::CallType>(abc::ReadCallType(*file,header,index,m.annotations));

@@ -1,5 +1,6 @@
 #include "concurrent_tree.h"
 #include "concurrent_completion.h"
+#include "concurrent_async.h"
 namespace abcd::source {
 namespace {
 using Error=TreeStructureError;
@@ -7,7 +8,8 @@ void Match(const FunctionTree& tree,const analysis::ValueProgram& graph) {
   RequireTree(tree.concurrent && tree.concurrent->Identity()==tree.identity&&tree.concurrent->Method()==tree.method &&
       tree.concurrent->Revision()==graph.revision&&tree.concurrent->CfgRevision()==graph.cfg_revision&&
       ConcurrentOutput(tree.identity.contract)==ConcurrentOutputPolicy::kArkDirectiveV1&&
-      tree.callable==CallableKind::kFunction&&tree.strictness==Strictness::kStrict&&
+      (tree.callable==CallableKind::kFunction||tree.callable==CallableKind::kAsyncFunction)&&
+      (tree.callable==CallableKind::kAsyncFunction)==(tree.concurrent->Async()!=nullptr)&&tree.strictness==Strictness::kStrict&&
       tree.captures.empty()&&(!tree.self||tree.self_form!=SelfForm::kCreationBinding),Error::kOwnership);
 }
 ConcurrentCompletion Recompute(const analysis::ValueProgram& graph,TreeCheckBudget& budget) {
@@ -23,7 +25,18 @@ ConcurrentCompletion Recompute(const analysis::ValueProgram& graph,TreeCheckBudg
 void VerifyConcurrentTree(const analysis::ValueProgram& graph,const EvaluationPlan& evaluation,
     const FunctionTree& tree,TreeFlow& flow,TreeCheckBudget& budget) {
   if(!tree.concurrent){RequireTree(!evaluation.concurrent,Error::kOwnership);return;}
-  Match(tree,graph);auto proof=Recompute(graph,budget);
+  Match(tree,graph);
+  if (tree.concurrent->Async()) {
+    auto checked=VerifyConcurrentAsync(*tree.concurrent->Async(),graph,budget.Remaining());
+    if(const auto* error=std::get_if<ConcurrentFailure>(&checked)) {
+      if(error->kind==ConcurrentError::kResourceLimit)throw Error::kResourceLimit;
+      if(error->kind==ConcurrentError::kWorkLimit)throw Error::kWorkLimit;
+      throw Error::kOwnership;
+    }
+    budget.Step(std::get<std::uint64_t>(checked));
+    RequireTree(!evaluation.concurrent,Error::kOwnership);return;
+  }
+  auto proof=Recompute(graph,budget);
   RequireTree(!evaluation.concurrent || (proof.returns==evaluation.concurrent->returns&&proof.members==evaluation.concurrent->members&&proof.uses==evaluation.concurrent->uses),Error::kOwnership);
   std::vector<std::optional<AnchorId>> anchors;budget.Array(anchors,graph.ops.size());
   for(const auto& placement:tree.operations) {
@@ -54,7 +67,17 @@ void VerifyOriginalConcurrent(const FunctionTree& tree,const OriginalFlow& origi
     budget.Step();const auto& op=original.operations[i];RequireTree(op.block.value<graph.blocks.size()&&i>=graph.blocks[op.block.value].first_op.value,Error::kOwnership);
     graph.ops[i]={original.concurrent_operations[i],op.block,static_cast<std::uint32_t>(i-graph.blocks[op.block.value].first_op.value),op.first_use,op.use_count,op.result,op.normal,op.before_throw,op.exceptional,op.origin,op.life};
   }
-  Match(tree,graph);auto proof=Recompute(graph,budget);
+  Match(tree,graph);
+  if(tree.concurrent->Async()) {
+    auto checked=VerifyConcurrentAsync(*tree.concurrent->Async(),graph,budget.Remaining());
+    if(const auto* error=std::get_if<ConcurrentFailure>(&checked)) {
+      if(error->kind==ConcurrentError::kResourceLimit)throw Error::kResourceLimit;
+      if(error->kind==ConcurrentError::kWorkLimit)throw Error::kWorkLimit;
+      throw Error::kOwnership;
+    }
+    budget.Step(std::get<std::uint64_t>(checked)); RequireTree(original.notifications.empty(),Error::kOwnership);return;
+  }
+  auto proof=Recompute(graph,budget);
   RequireTree(proof.returns.size()==original.notifications.size(),Error::kOwnership);
   std::vector<std::optional<AnchorId>> anchors;budget.Array(anchors,graph.ops.size());
   for(const auto& placement:tree.operations) {

@@ -12,6 +12,17 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 73 增量 III：async concurrent（cc 审查通过）
+- cc 独立审查（增量 III）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 521/620 不变，`--language-source` 564 → **565/620**（GetRecentList：`async function(key, value) { "use concurrent"; await lruCache.put(key, value); }`）；0 回退，0 文本漂移；扫描 73/74，只有既有的 family_source_cli_test 失败。
+
+- 基线 `b2d0be5e`，未 commit/push/stash。原始 typed AsyncEnter 选择 async owner；闭合后缀的反向值流证明 resolve/reject → notify → return，通知与返回均使用成功 settlement 的 Promise acc。复制、跳转及分块不依赖相邻模板；每条通知/返回都被唯一端口覆盖。复用原 async owner 证明状态、await/resume、隐式拒绝和用户 handler。不可变原始证据及共享控制块按实际分配预扣，TreeFlow/recovery 重放证明并核对原始/工作来源。
+- o14/10719 GetRecentList 完整：m11357 updateBooks 输出 async function，`"use concurrent";` 为首条语句。实际输出直接用 DevEco es2abc 重编译，保持 concurrent kind、sendable=false、async 协议、存在的请求注解 [1]、完整模块表；成功和隐式拒绝各一条 Promise 通知端口。没有改写往返输入或插入假模块读取。
+- 对 explore73b/explore73bs：**521/620、565/620**（source +1），0 回退、0 既有源码字节变化。旧 flags 的 manifest 无变化；source 只 o14/10719 改变。目标 CLI/manifest 源码一致，通过 node --check。
+- 最终完整 keep-going 构建成功；固定集串行 **65/65**；新增 **2/2**，并发相关 **9/9**。async/concurrent/control-composition/recovery/tree-structure/source-route 定向 **26/28**，仅已登记的 tree_structure_test 和 async_semantics_test 失败；CLI/corpus/failure/receipt/manifest 扫描 **68/69**，仅已登记的 family_source_cli_test owner/origin arena 断言失败。没有弱化这三项断言。
+- 真实六函数 fixture 对实际导出执行 Node 普通调用差分：解析值、拒绝类型、微任务轨迹、前后抛出、返回 Promise/thenable、catch-around-await；直接重编译复核方法属性/请求/模块表/两类完成端口。通知变异、200/201/400/800 规模及 bytes/work 边界通过。finally-around-await 夹具保留既有 `AsyncCompletionCheck::kCatchInput > AwaitCatchError` 拒绝，仅验证其原始通知端口，未声称 engine-output 差分通过。taskpool/跨线程仍未验证。
+- o14/16446 未修复：m16784 的 PhasedMethodError::kEnvironment 不变；独立下层分析定位 EnvironmentFlowError::kAmbiguousJoin，原始 PC275 / 工作 PC272。H275 有来自不同环境身份的异常入口：PC59 分配后、PC243 pop / PC244 再分配的路径汇合，现有环境格不合并这些身份。
+- 证据入口 `/private/tmp/abcd-r73-iii/acceptance.md`；详见 [language-source.md](language-source.md) 增量 III 与 `tests/integration/fixtures/concurrent_async/README.md`。无留出集、全语料、全套测试或 RSS 基准运行。
+
 ## Round 73 增量 II：同步 concurrent 完成投影（cc 审查通过）
 - cc 独立审查（增量 II）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 521/620 不变，`--language-source` 561 → **564/620**（TaskpoolCancel、Mock、Worker）；0 回退，0 文本漂移；cli/corpus/failure/concurrent 扫描 71/72，只有既有的 family_source_cli_test 失败。cc 核对 TaskpoolCancel：`"use concurrent";` 是函数体首条语句，函数表达式形式保留。
 
