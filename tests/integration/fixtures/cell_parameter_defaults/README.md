@@ -1,4 +1,4 @@
-# Cell-backed captured default parameter (Round 77, increment I)
+# Cell-backed captured default parameter (Round 77, increments I/II)
 
 Source: `defaults.js`, authored for this test. `make` creates a local outer
 binding; `f` has a third-parameter default reading that binding, and its returned
@@ -25,8 +25,9 @@ outer load at depth 1, named hole guard propagating to the caller, and the local
 write-back. The incoming storage uses CapturedDepth 0: it is relative to function
 entry, unlike the instruction's lexical depth after its local allocation.
 
-Both contracts must keep FunctionAbiError::kLength and publish a verified joint
-proof as diagnostics only. abc_semantic --record-source must agree with the
+Both contracts now reach DefaultSignatureError::kCellParameterRecovery (9) after
+verified signature/residual construction and capture rebinding; increment I
+previously kept FunctionAbiError::kLength. The source publication gate stays. abc_semantic --record-source must agree with the
 manifest. No JS function is published by this increment; this is not a Node
 semantic differential or a recovered-signature round-trip. Those remain gated
-on parameter-scope, family-binding and recovery integration in increments II/III.
+on the joint original/signature recovery integration and ABI acceptance in increment III.

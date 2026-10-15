@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 77 增量 2：captured default 的签名与家族贯通（cc 审查通过）
+
+- 联合残余体投影（签名拥有迁移的 read/guard/写回与异常出口，`InitializedParameterCommit` 记录残余初始 store 消费的形参）；SignatureCell 按原始 read site 查找外层存储；签名读取携带 Guarded 义务并入既有格；DefaultSignatureVerify 独立复核。首因前移为 `DefaultSignatureError::kCellParameterRecovery`；recovery 的条件参数事件链留给增量 3。
+- cc 独立审查（增量 2）：构建通过；固定集串行 65/65；配对样本逐字节相同；521/620、567/620 不变，0 状态变化，0 文本变化；扫描 74/75，只有既有的 family_source_cli_test 失败。
+
 ## Round 77 增量 1：CellParameterDefaultProof（cc 审查通过）
 
 - 密封的联合证明：按参数/cell 数据流发现，独立 verifier 重建索引，核对两条参数选择路径、两个不同存储、guarded 外层读取与异常出口、私有初始化区、body 入口状态（参数测试必须支配 body 汇合点）。3 个目标均 verified，发布不变（仍为 kLength），证明状态作为诊断发布。

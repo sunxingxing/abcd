@@ -1,6 +1,7 @@
 #include "default_signature.h"
 
 #include <new>
+#include <bit>
 #include <stdexcept>
 
 #include "tree_checks.h"
@@ -68,6 +69,34 @@ class SignatureCheck {
       Require(expected_capture->value < tree_.symbols.size() &&
           tree_.symbols[expected_capture->value].kind == BindingKind::kCapture, Error::kContext);
     }
+    std::vector<std::optional<SymbolId>> joint_symbols;
+    if(body_.CellParameters()) {
+      budget_.Array(joint_symbols,tree_.parameters.size());
+      const auto source=body_.VerifyCellParameterSource(budget_.Remaining());
+      if(const auto* error=std::get_if<CellParameterDefaultFailure>(&source)) {
+        if(error->kind==CellParameterDefaultError::kResourceLimit)throw Error::kResourceLimit;
+        if(error->kind==CellParameterDefaultError::kWorkLimit)throw Error::kWorkLimit;
+        throw Error::kContext;
+      }
+      const auto cost=std::get<CellParameterDefaultCost>(source);budget_.Admit(cost.allocated_bytes,1);budget_.Step(cost.work);
+      Require(capture_&&capture_->evaluation.cells,Error::kContext);
+      const auto flow=VerifyTreeFlow(graph,capture_->control,capture_->evaluation,tree_,budget_.Remaining());
+      const auto* proof=std::get_if<TreeFlow>(&flow);
+      if(!proof){const auto error=std::get<TreeFlowError>(flow);throw error==TreeFlowError::kResourceLimit?Error::kResourceLimit:error==TreeFlowError::kWorkLimit?Error::kWorkLimit:Error::kContext;}
+      budget_.Admit(proof->allocated_bytes,1);budget_.Step(proof->work);
+      for(const auto& item:body_.SignatureCaptures()) {
+        budget_.Step(std::bit_width(capture_->evaluation.cells->cells.cells.size())+1);
+        const auto cell=FindCell(capture_->evaluation.cells->cells,item.storage);
+        Require(item.parameter<joint_symbols.size()&&cell&&cell->value<proof->cells.size()&&proof->cells[cell->value],Error::kContext);
+        const auto symbol=*proof->cells[cell->value];
+        Require(symbol.value<tree_.symbols.size()&&tree_.symbols[symbol.value].kind==BindingKind::kCapture,Error::kContext);
+        Require(tree_.parameters[item.parameter].symbol!=symbol,Error::kContext);
+        const auto& d=body_.CellParameters()->Defaults()[&item-body_.SignatureCaptures().data()];
+        const auto local=FindCell(capture_->evaluation.cells->cells,AllocatedCell{d.destination.allocation,d.destination.slot});
+        Require(local&&local->value<proof->cells.size()&&proof->cells[local->value]&&*proof->cells[local->value]!=symbol,Error::kContext);
+        joint_symbols[item.parameter]=symbol;
+      }
+    }
     std::vector<const DefaultInitializer*> formals;
     std::vector<std::optional<ParameterId>> operations;
     std::vector<std::uint8_t> initializers;
@@ -94,6 +123,9 @@ class SignatureCheck {
         const auto* expected = std::get_if<TextId>(&capture_->constants->operations[formals[i]->initializer.value]);
         const auto* text = literal ? std::get_if<TextId>(literal) : nullptr;
         Require(text && expected && *text == *expected && text->value < tree_.texts.size(), Error::kLiteral);
+      } else if(body_.CaptureParameter(static_cast<std::uint32_t>(i))) {
+        const auto* symbol=std::get_if<SymbolExpr>(&node.expression);
+        Require(symbol&&joint_symbols[i]==symbol->symbol,Error::kContext);
       } else if (body_.Capture() && body_.Capture()->candidate.shape.parameter == i) {
         const auto* symbol = std::get_if<SymbolExpr>(&node.expression);
         Require(symbol && expected_capture == symbol->symbol, Error::kContext);

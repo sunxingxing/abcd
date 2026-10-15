@@ -14,7 +14,7 @@ struct DefaultSignatureContext {
 };
 enum class DefaultSignatureError : std::uint8_t {
   kRevision, kContext, kParameter, kLiteral, kPlacement, kOrigin, kStructure,
-  kResourceLimit, kWorkLimit
+  kResourceLimit, kWorkLimit, kCellParameterRecovery
 };
 struct DefaultSignatureProof {
   analysis::IrRevision revision;

@@ -372,6 +372,19 @@ class FamilyTrees {
         auto signature = Take<DefaultSignatureProof, DefaultSignatureError>(
             BuildDefaultSignature(*family.members[i].function.Defaults(), constructed.tree, left_, &capture));
         Account(signature);
+        // Increment II proves signature/residual binding; publication still needs
+        // the original/recovery parameter-environment correspondence of III.
+        if(const auto* joint=family.members[i].function.Defaults()->CellParameters()) {
+          FamilyTreeFailure failure{member_,DefaultSignatureError::kCellParameterRecovery};
+          CellParameterDefaultDiagnostic evidence;evidence.verified=true;evidence.count=joint->Defaults().size();
+          const auto& d=joint->Defaults().front();evidence.evidence.parameter=d.parameter;evidence.evidence.local=d.destination;evidence.evidence.outer=d.source;
+          evidence.evidence.location=OperationLocation(graph,d.branch,function.Method());
+          evidence.initial_store=OperationLocation(graph,d.initial_store,function.Method());evidence.test=OperationLocation(graph,d.test,function.Method());
+          evidence.read=OperationLocation(graph,d.read,function.Method());evidence.guard=OperationLocation(graph,d.guard,function.Method());
+          evidence.fallback_store=OperationLocation(graph,d.fallback_store,function.Method());
+          // Body block identity belongs to the ORIGINAL certificate.
+          evidence.body=d.join;failure.cell_parameter_default=evidence;throw failure;
+        }
         auto semantics = Take<TreeSemantics, TreeSemanticError>(VerifyTreeSemantics(
             graph, control, evaluation, constructed.tree, constants, left_));
         Account(semantics);
@@ -643,9 +656,15 @@ class FamilyTrees {
         if (!values.cells) continue;
         auto candidates = Take<CellDefaults, CellDefaultError>(FindCellDefaults(values.graph, *values.cells, parameters, length, left_));
         Account(candidates); default_candidates_ = candidates.candidates.size();
-        if (candidates.candidates.empty()) continue;
         Require(values.environments.has_value(), FamilyTreeError::kContext);
-        projected.emplace(Take<DefaultBody, DefaultBodyError>(DefaultBody::BuildCell(values.graph,
+        if(candidates.candidates.empty()) {
+          auto joint=DefaultBody::BuildCellParameter(values.graph,*values.environments,*values.cells,parameters,length,left_);
+          if(const auto* error=std::get_if<DefaultBodyError>(&joint)) {
+            if(*error==DefaultBodyError::kResourceLimit||*error==DefaultBodyError::kWorkLimit)throw FamilyTreeFailure{member_,*error};
+            continue;
+          }
+          projected.emplace(std::get<DefaultBody>(std::move(joint)));
+        } else projected.emplace(Take<DefaultBody, DefaultBodyError>(DefaultBody::BuildCell(values.graph,
             *values.environments, *values.cells, parameters, candidates, length, left_)));
         defaults_proved_ = true;
       }

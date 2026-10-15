@@ -2,6 +2,7 @@
 
 #include <limits>
 #include <new>
+#include <bit>
 #include <stdexcept>
 
 #include "tree_checks.h"
@@ -72,6 +73,21 @@ std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature
       Require(cell && cell->value < flow->cells.size() && flow->cells[cell->value], Error::kContext);
       captured_symbol = flow->cells[cell->value];
     }
+    std::vector<std::optional<SymbolId>> joint_symbols;
+    if(body.CellParameters()) {
+      checked.Array(joint_symbols,tree.parameters.size());
+      Require(capture&&capture->evaluation.cells,Error::kContext);
+      auto flow=VerifyTreeFlow(graph,capture->control,capture->evaluation,tree,checked.Remaining());
+      const auto* proof=std::get_if<TreeFlow>(&flow);
+      if(!proof){const auto error=std::get<TreeFlowError>(flow);throw error==TreeFlowError::kResourceLimit?Error::kResourceLimit:error==TreeFlowError::kWorkLimit?Error::kWorkLimit:Error::kContext;}
+      checked.Admit(proof->allocated_bytes,1);checked.Step(proof->work);
+      for(const auto& item:body.SignatureCaptures()) {
+        checked.Step(std::bit_width(capture->evaluation.cells->cells.cells.size())+1);
+        const auto cell=FindCell(capture->evaluation.cells->cells,item.storage);
+        Require(item.parameter<joint_symbols.size()&&cell&&cell->value<proof->cells.size()&&proof->cells[cell->value],Error::kContext);
+        joint_symbols[item.parameter]=proof->cells[cell->value];
+      }
+    }
     Grow(tree.expressions, body.Signature().Defaults().size(), checked);
     Grow(tree.signature, body.Signature().Operations().size(), checked);
     for (const auto& candidate : body.Signature().Defaults()) {
@@ -85,6 +101,9 @@ std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature
         const auto* text = std::get_if<TextId>(&capture->constants->operations[candidate.initializer.value]);
         Require(text && text->value < tree.texts.size(), Error::kLiteral);
         tree.expressions.push_back({TreeLiteral{*text},{origin.value}});
+      } else if(body.CaptureParameter(candidate.parameter)) {
+        Require(joint_symbols[candidate.parameter].has_value(),Error::kContext);
+        tree.expressions.push_back({SymbolExpr{*joint_symbols[candidate.parameter]},{origin.value}});
       } else if (body.Capture() && body.Capture()->candidate.shape.parameter == candidate.parameter) {
         Require(captured_symbol.has_value(), Error::kContext);
         tree.expressions.push_back({SymbolExpr{*captured_symbol}, {origin.value}});

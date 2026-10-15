@@ -59,7 +59,16 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
     for (std::size_t i = family.members.size(); i-- > 0;) {
       step(); auto& member = family.members[i]; auto& function = member.function;
       const auto* capture = function.Defaults() ? function.Defaults()->Capture() : nullptr;
-      const auto entries = capture ? std::span<const IncomingCell>(&capture->storage,1) : std::span<const IncomingCell>{};
+      const auto* defaults = function.Defaults() ? &*function.Defaults() : nullptr;
+      const auto signature = defaults ? defaults->SignatureCaptures() : std::span<const SignatureCapture>{};
+      std::vector<IncomingCell> entry_storage;
+      std::span<const IncomingCell> entries=capture?std::span<const IncomingCell>(&capture->storage,1):std::span<const IncomingCell>{};
+      if(!signature.empty()) {
+        require(!capture,Error::kBinding);admit(signature.size(),sizeof(IncomingCell));entry_storage.reserve(signature.size());
+        admit(entry_storage.capacity()-signature.size(),sizeof(IncomingCell));
+        for(const auto& item:signature){step();entry_storage.push_back(item.storage);}
+        entries=entry_storage;
+      }
       if (!demands[i].empty() || !entries.empty()) {
         const auto base = function.Capture();
         require(base.Environments() != nullptr, Error::kCell);
@@ -89,8 +98,13 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
           step(std::bit_width(cells.cells.size()) + 1);
           const auto cell = FindCell(cells, entry);
           require(cell.has_value(), Error::kCell);
-          Combine(requirements[cell->value], analysis::CaptureDomain::kLanguage,
-              CaptureOrigin{function.Method(), {}, {}});
+          CaptureOrigin source{function.Method(), {}, {}};
+          if(!capture) {
+            const auto& item=signature[static_cast<std::size_t>(&entry-entries.data())];
+            const auto location=OperationLocation(function.Graph(),item.read,function.Method());
+            source.pc=location.pc;source.working_pc=location.working_pc;
+          }
+          Combine(requirements[cell->value], capture ? analysis::CaptureDomain::kLanguage : analysis::CaptureDomain::kGuarded,source);
         }
         const auto original = base.Input().Captures();
         std::size_t forwarded = 0;
@@ -101,6 +115,8 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
         CaptureStorage storage{std::move(cells), {}};
         storage.uses.reserve(original.size() + forwarded);
         admit(storage.uses.capacity() - (original.size() + forwarded), sizeof(CaptureUse));
+        const auto accesses=base.Input().CaptureAccesses();
+        std::size_t occurrence=0;
         for (const auto& use : original) {
           // Preserve the original per-instruction ledger; only the family
           // obligation is strengthened by descendant/signature requirements.
@@ -108,9 +124,12 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
           auto strengthened = use;
           const auto cell = FindCell(storage.cells, IncomingCell{use.cell.depth, use.cell.slot});
           require(cell.has_value(), Error::kCoverage);
-          strengthened.domain = JoinCaptureRequirement(use.domain, requirements[cell->value].value_or(use.domain));
+          const auto domain=use.domain!=analysis::CaptureDomain::kDefined && defaults && occurrence<accesses.size() && defaults->CaptureAt(accesses[occurrence].instruction)
+              ? analysis::CaptureDomain::kGuarded : use.domain;
+          ++occurrence;
+          strengthened.domain = JoinCaptureRequirement(domain, requirements[cell->value].value_or(domain));
           if (strengthened.domain != use.domain) strengthened.source = requirements[cell->value].source;
-          require(StrengthensCaptureRequirement(use.domain, strengthened.domain), Error::kBinding);
+          require(StrengthensCaptureRequirement(domain, strengthened.domain), Error::kBinding);
           storage.uses.push_back(strengthened);
         }
         for (std::size_t c = 0; c < storage.cells.cells.size(); ++c) {

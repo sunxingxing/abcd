@@ -11,7 +11,7 @@ try {
     const out=join(dir,label);run(structure,[abc,out,'--value-source',...flags]);
     const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
     assert.equal(records.length,1);const record=records[0];assert.equal(record.source_status,3);
-    const f=record.source_failure;assert.deepEqual(f.causes,[{domain:'abcd::source::FunctionAbiError',value:7}]);
+    const f=record.source_failure;assert.deepEqual(f.causes,[{domain:'abcd::source::DefaultSignatureError',value:9}]);
     const d=f.cell_parameter_default;assert.equal(d.verified,true);assert.equal(d.count,1);assert.equal(d.parameter,2);
     assert.equal(d.local.slot,0);assert.equal(d.outer.slot,0);assert.equal(d.outer.depth,0); // incoming depth, not instruction depth
     const instructions=run(semantic,[abc,String(d.location.method),'--instructions']).trim().split('\n').map(JSON.parse);
@@ -29,5 +29,5 @@ try {
     assert.deepEqual(find(report),d);
     assert.equal(record.source,undefined);
   }
-  console.log('cell_parameter_defaults_cli_test: both contracts retain kLength; verified original-IR evidence and CLI consistency');
+  console.log('cell_parameter_defaults_cli_test: both contracts reach the recovery publication gate; verified signature/residual evidence and CLI consistency');
 } finally {rmSync(dir,{recursive:true,force:true});}

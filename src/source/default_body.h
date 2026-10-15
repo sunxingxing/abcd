@@ -3,11 +3,26 @@
 
 #include "default_value_proof.h"
 #include "cell_default_proof.h"
+#include "cell_parameter_default.h"
+#include <memory>
 #include "expression_constants.h"
 
 namespace abcd::source {
 enum class DefaultBodyError : std::uint8_t {
   kRevision, kShape, kProof, kFlow, kOrigin, kResourceLimit, kWorkLimit
+};
+struct InitializedParameterCommit {
+  std::uint32_t parameter;
+  analysis::ValueId initialized_entry;
+  analysis::OpId store;
+  ParameterCellIdentity destination;
+};
+struct SignatureCapture {
+  std::uint32_t parameter;
+  analysis::OpId read, guard;
+  analysis::InstructionId site;
+  analysis::LexicalAddress address;
+  IncomingCell storage;
 };
 struct DefaultInitializer {
   std::uint32_t parameter;
@@ -46,25 +61,47 @@ class DefaultBody {
       const analysis::ValueProgram& original, const analysis::ValueEnvironments& environments,
       const CellPlan& cells, const ParameterPlan& parameters, const CellDefaults& candidates,
       std::uint32_t length, analysis::SemanticBudget budget = {});
+  [[nodiscard]] static std::variant<DefaultBody, DefaultBodyError> BuildCellParameter(
+      const analysis::ValueProgram&, const analysis::ValueEnvironments&, const CellPlan&,
+      const ParameterPlan&, std::uint32_t length, analysis::SemanticBudget budget = {});
+  const CellParameterDefaultProof* CellParameters() const { return std::get_if<CellParameterDefaultProof>(&proof_); }
+  std::span<const InitializedParameterCommit> ParameterCommits() const { return commits_; }
+  std::span<const SignatureCapture> SignatureCaptures() const { return captures_; }
+  std::span<const analysis::ValueExceptionalExit> SignatureExceptions() const { return exceptions_; }
+  const SignatureCapture* CaptureAt(analysis::InstructionId) const;
+  const SignatureCapture* CaptureParameter(std::uint32_t) const;
+  std::variant<CellParameterDefaultCost, CellParameterDefaultFailure> VerifyCellParameterSource(analysis::SemanticBudget) const;
   [[nodiscard]] const analysis::ValueProgram& Graph() const { return graph_; }
   [[nodiscard]] DefaultSignatureView Signature() const {
-    return {initializers_, std::visit([](const auto& proof) { return proof.Operations(); }, proof_)};
+    if (CellParameters()) return {initializers_, joint_operations_};
+    return {initializers_, std::visit([](const auto& proof) -> std::span<const DefaultOpPlacement> {
+      if constexpr (std::is_same_v<std::decay_t<decltype(proof)>, CellParameterDefaultProof>) return {};
+      else return proof.Operations();
+    }, proof_)};
   }
   [[nodiscard]] std::span<const SignatureString> Strings() const { return strings_; }
   [[nodiscard]] DefaultStorage Storage() const {
-    return std::holds_alternative<CellDefaultProof>(proof_) ? DefaultStorage::kCell : DefaultStorage::kValue;
+    return (std::holds_alternative<CellDefaultProof>(proof_) || CellParameters()) ? DefaultStorage::kCell : DefaultStorage::kValue;
   }
   [[nodiscard]] std::size_t AllocatedBytes() const { return allocated_bytes_; }
   [[nodiscard]] std::uint64_t Work() const { return work_; }
  private:
-  DefaultBody(analysis::ValueProgram graph, std::variant<DefaultValueProof, CellDefaultProof> proof,
+  DefaultBody(analysis::ValueProgram graph, std::variant<DefaultValueProof, CellDefaultProof, CellParameterDefaultProof> proof,
               std::vector<DefaultInitializer> initializers, std::vector<SignatureString> strings,
               std::size_t bytes, std::uint64_t work)
       : graph_(std::move(graph)), proof_(std::move(proof)), initializers_(std::move(initializers)), strings_(std::move(strings)), allocated_bytes_(bytes), work_(work) {}
   analysis::ValueProgram graph_;
-  std::variant<DefaultValueProof, CellDefaultProof> proof_;
+  std::variant<DefaultValueProof, CellDefaultProof, CellParameterDefaultProof> proof_;
   std::vector<DefaultInitializer> initializers_;
   std::vector<SignatureString> strings_;
+  // Original input remains immutable for independent signature verification.
+  std::unique_ptr<analysis::ValueProgram> original_;
+  std::vector<DefaultOpPlacement> joint_operations_;
+  std::vector<SignatureCapture> captures_;
+  std::vector<InitializedParameterCommit> commits_;
+  std::vector<std::uint32_t> capture_sites_;
+  std::vector<analysis::ValueExceptionalExit> exceptions_;
+  std::uint32_t formal_count_ = 0, length_ = 0;
   std::size_t allocated_bytes_;
   std::uint64_t work_;
 };

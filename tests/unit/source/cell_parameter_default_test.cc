@@ -1,4 +1,7 @@
 #include "../../../src/source/cell_parameter_default.h"
+#include "../../../src/source/default_body.h"
+#include "../../../src/source/default_signature.h"
+#include "../../../src/source/function_tree.h"
 #include "../../../src/source/cell_parameter_default_json.h"
 #include "../../../src/source/family_route_failure.h"
 #include "../../../tools/record_failure_json.h"
@@ -39,9 +42,10 @@ struct Builder {
   ValueOperand Copy(ValueOperand v,bool copies){return copies?ValueOperand{Result(Op(ValueCopy{},{{OperandRole::kInput,v}},true))}:v;}
 };
 enum class Adverse { kNone, kDuplicateGuard, kDoubleRead, kProvidedRead, kPrefixObservation, kMissingGuard, kBypass };
-ValueProgram Chain(std::uint32_t count,bool copies=false,bool split=false,Adverse adverse=Adverse::kNone) {
+ValueProgram Chain(std::uint32_t count,bool copies=false,bool split=false,Adverse adverse=Adverse::kNone,bool provided_split=false) {
   Builder b;for(std::uint32_t i=0;i<count;++i)b.g.values.push_back({EntryDefinition{ParameterEntry{i}},ValueKinds::Language()});
-  b.Block();b.Op(ValueEnvironmentPush{static_cast<std::uint16_t>(count),{}},{},false,LanguageEffect::kEnvironmentWrite);
+  b.Block();const auto environment=b.Op(ValueEnvironmentPush{static_cast<std::uint16_t>(count),{}},{},true,LanguageEffect::kEnvironmentWrite);
+  b.g.values[b.Result(environment).value].domain=ValueKinds::Environment();
   std::optional<std::size_t> bypass;
   if(adverse==Adverse::kBypass){
     b.Op(ValueBranch{UnaryOperator::kTrueOrNonzeroNumber},{{OperandRole::kCondition,SpecialValue::kTrue}});
@@ -57,8 +61,10 @@ ValueProgram Chain(std::uint32_t count,bool copies=false,bool split=false,Advers
     if(split){b.Edge({b.block.value+1},FlowEdgeKind::kFallthrough);b.Block();}
     auto comparison=b.Result(b.Op(ValueBinary{BinaryOperator::kStrictEqual},{{OperandRole::kLeft,compared},{OperandRole::kRight,SpecialValue::kUndefined}},true));
     b.Op(ValueBranch{UnaryOperator::kTrueOrNonzeroNumber},{{OperandRole::kCondition,b.Copy(comparison,copies)}});
-    const auto header=b.block.value;const auto join=header+(split?4U:2U);
-    b.Edge({header+1},FlowEdgeKind::kTaken);b.Edge({join},FlowEdgeKind::kFallthrough);b.Block();
+    const auto header=b.block.value;const auto join=header+(split?4U:2U)+(provided_split?1U:0U);
+    b.Edge({header+(provided_split?2U:1U)},FlowEdgeKind::kTaken);b.Edge({provided_split?header+1:join},FlowEdgeKind::kFallthrough);
+    if(provided_split){b.Block();b.Op(ValueNop{});b.Edge({join},FlowEdgeKind::kFallthrough);}
+    b.Block();
     auto read=b.Result(b.Op(ValueLexicalLoad{{{1},{0}}},{},true,LanguageEffect::kLexicalRead|LanguageEffect::kEnvironmentRead));
     if(adverse==Adverse::kDoubleRead)b.Op(ValueLexicalLoad{{{1},{0}}},{},true,LanguageEffect::kLexicalRead|LanguageEffect::kEnvironmentRead);
     const auto rhs=b.Copy(read,copies);
@@ -142,6 +148,68 @@ void Mutations() {
   changed=g;changed.ops[original[0].comparison.value].normal=LanguageEffect::kGuard;
   Check(std::holds_alternative<CellParameterDefaultFailure>(VerifyCellParameterDefaults(changed,in.environments,in.cells,in.parameters,0,original)));
 }
+void Residual() {
+  for(auto n:{2U,200U,201U,400U,800U})for(bool split:{false,true}) {
+    auto g=Chain(n,true,split,Adverse::kNone,split);Input in(g,n);
+    auto result=DefaultBody::BuildCellParameter(g,in.environments,in.cells,in.parameters,0);
+    Check(std::holds_alternative<DefaultBody>(result));
+    const auto& body=std::get<DefaultBody>(result);Check(body.CellParameters()!=nullptr);
+    Check(body.SignatureCaptures().size()==n);Check(body.SignatureExceptions().size()==n);
+    Check(body.ParameterCommits().size()==n);
+    Check(std::holds_alternative<CellParameterDefaultCost>(body.VerifyCellParameterSource({})));
+    auto exact=DefaultBody::BuildCellParameter(g,in.environments,in.cells,in.parameters,0,{body.AllocatedBytes(),body.Work()});
+    Check(std::holds_alternative<DefaultBody>(exact));
+    auto bytes=DefaultBody::BuildCellParameter(g,in.environments,in.cells,in.parameters,0,{body.AllocatedBytes()-1,body.Work()});
+    Check(std::get<DefaultBodyError>(bytes)==DefaultBodyError::kResourceLimit);
+    auto work=DefaultBody::BuildCellParameter(g,in.environments,in.cells,in.parameters,0,{body.AllocatedBytes(),body.Work()-1});
+    Check(std::get<DefaultBodyError>(work)==DefaultBodyError::kWorkLimit);
+    for(const auto& d:body.CellParameters()->Defaults()) {
+      Check(body.Graph().ops[d.initial_store.value].life==ValueLife::kLive);
+      Check(body.Graph().ops[d.read.value].life==ValueLife::kRemoved);
+      Check(body.Graph().ops[d.guard.value].life==ValueLife::kRemoved);
+    }
+    Check(body.Graph().exceptional_exits.empty());
+    Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(body.Graph())));
+  }
+}
+void Signature() {
+  auto g=Chain(2,false,false);Input in(g,2);
+  auto body=std::get<DefaultBody>(DefaultBody::BuildCellParameter(g,in.environments,in.cells,in.parameters,0));
+  std::vector<IncomingCell> entries;for(const auto& c:body.SignatureCaptures())entries.push_back(c.storage);
+  auto planned=BuildEvaluationPlan(body.Graph(),{},IncomingCells::kConditional,{},{},{},{},ClosureWrites::kLanguage,{},{},entries);
+  if(const auto* e=std::get_if<EvaluationFailure>(&planned)){std::cerr<<"evaluation "<<static_cast<unsigned>(e->kind)<<" op "<<(e->evaluation.location.operation?e->evaluation.location.operation->value:9999)<<" cause ";std::visit([](const auto& c){if constexpr(std::is_enum_v<std::decay_t<decltype(c)>>)std::cerr<<static_cast<unsigned>(c);},e->evaluation.plan_cause);std::cerr<<'\n';}
+  Check(std::holds_alternative<EvaluationPlan>(planned));auto evaluation=std::get<EvaluationPlan>(std::move(planned));
+  auto controlled=BuildControlPlan(body.Graph());Check(std::holds_alternative<ControlPlan>(controlled));auto control=std::get<ControlPlan>(std::move(controlled));
+  FunctionSyntax syntax{{},{1},{1},CallableKind::kFunction,Strictness::kStrict,
+      {{NameId{0},NameEvidence::kDebugRange},{NameId{1},NameEvidence::kDebugRange}},{u"a",u"b",u"outer"},{}};
+  const auto cell=FindCell(evaluation.cells->cells,entries[0]);Check(cell.has_value());
+  syntax.captures.push_back({*cell,{{0},{0}},NameId{2}});
+  std::vector<ExpressionConstant> constants(body.Graph().ops.size());
+  auto built=BuildFunctionTree(body.Graph(),control,evaluation,std::move(syntax),{constants,3});
+  Check(std::holds_alternative<ConstructedFunction>(built));auto tree=std::get<ConstructedFunction>(std::move(built)).tree;
+  DefaultSignatureContext context{control,evaluation};
+  auto verified=BuildDefaultSignature(body,tree,{},&context);
+  if(const auto* e=std::get_if<DefaultSignatureError>(&verified))std::cerr<<"signature "<<static_cast<unsigned>(*e)<<'\n';
+  Check(std::holds_alternative<DefaultSignatureProof>(verified));
+  Check(std::holds_alternative<DefaultSignatureProof>(VerifyDefaultSignature(body,tree,{},&context)));
+  auto wrong=tree;wrong.expressions[wrong.parameters[0].initializer->value].expression=SymbolExpr{wrong.parameters[0].symbol};
+  Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,wrong,{},&context)));
+  wrong=tree;std::swap(wrong.parameters[0].initializer,wrong.parameters[1].initializer);
+  Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,wrong,{},&context)));
+  wrong=tree;wrong.names[wrong.symbols[wrong.parameters[0].symbol.value].name.value]=u"outer";
+  Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,wrong,{},&context)));
+  wrong=tree;wrong.signature.pop_back();
+  Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,wrong,{},&context)));
+  // Mutation of the residual commit must not be accepted by the independent
+  // source/residual verifier, even though its original certificate is sealed.
+  auto& graph=const_cast<ValueProgram&>(body.Graph());const auto commit=body.ParameterCommits()[0];
+  const auto use=graph.ops[commit.store.value].first_use;const auto saved=graph.uses[use.value].operand;
+  graph.uses[use.value].operand=body.ParameterCommits()[1].initialized_entry;
+  Check(std::holds_alternative<CellParameterDefaultFailure>(body.VerifyCellParameterSource({})));
+  graph.uses[use.value].operand=saved;
+  auto exceptions=body.SignatureExceptions();auto& exit=const_cast<ValueExceptionalExit&>(exceptions[0]);exit.handler=ValueHandler{{},{0}};
+  Check(std::holds_alternative<CellParameterDefaultFailure>(body.VerifyCellParameterSource({})));
+}
 void Json() {
   auto g=Chain(1);Input in(g,1);
   const auto diagnosis=DiagnoseCellParameterDefaults(g,in.environments,in.cells,in.parameters,0,{777},{});
@@ -181,4 +249,4 @@ void Json() {
   }
 }
 }
-int main(){static_assert(!std::is_default_constructible_v<CellParameterDefaultProof>);Scale();Variants();Mutations();Json();}
+int main(){static_assert(!std::is_default_constructible_v<CellParameterDefaultProof>);Scale();Variants();Mutations();Residual();Signature();Json();}

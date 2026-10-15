@@ -137,7 +137,10 @@ void Owner(CaptureChild function, Quota& quota, bool check_uses = true) {
     // requirements. Original per-instruction proofs remain untouched.
     Require(uses[i].cell.depth == original[i].cell.depth &&
         uses[i].cell.slot.value == original[i].cell.slot.value &&
-        StrengthensCaptureRequirement(original[i].domain, uses[i].domain),
+        StrengthensCaptureRequirement(
+          original[i].domain!=analysis::CaptureDomain::kDefined && function.Defaults() && i<function.OriginalInput().CaptureAccesses().size() &&
+              function.Defaults()->CaptureAt(function.OriginalInput().CaptureAccesses()[i].instruction)
+            ? analysis::CaptureDomain::kGuarded : original[i].domain, uses[i].domain),
         Error::kBinding);
   }
   const auto* cells = function.Cells(); const auto* environments = function.Environments();
@@ -213,6 +216,19 @@ analysis::OpId Operation(const analysis::ValueProgram& graph,
 // ordinary reads must continue through the live-operation map below.
 std::optional<CellId> SignatureCell(CaptureChild child, analysis::InstructionId site, Quota& quota) {
   const auto* body = child.Defaults();
+  if(body)if(const auto* joint=body->CaptureAt(site)) {
+    quota.Step();const auto& graph=child.Graph();
+    Require(graph.revision==body->Graph().revision&&graph.cfg_revision==body->Graph().cfg_revision,Error::kRevision);
+    Require(joint->read.value<graph.ops.size()&&child.Cells(),Error::kCell);
+    const auto& op=graph.ops[joint->read.value];Require(op.origin.value<graph.origins.size(),Error::kCell);
+    const auto& origin=graph.origins[op.origin.value];const auto input=child.Input().Instructions();
+    Require(site.value<input.size()&&origin.site.value==site.value&&origin.pc==input[site.value].pc&&origin.original==input[site.value].origin&&
+        origin.disposition==analysis::OriginDisposition::kRetained&&op.life==analysis::ValueLife::kRemoved&&std::holds_alternative<analysis::ValueNop>(op.operation),Error::kCell);
+    const auto* load=std::get_if<analysis::LexicalLoad>(&input[site.value].operation);
+    Require(load&&load->address.depth.value==joint->address.depth.value&&load->address.slot.value==joint->address.slot.value,Error::kCell);
+    quota.Step(std::bit_width(child.Cells()->cells.size())+1);
+    const auto cell=FindCell(*child.Cells(),joint->storage);Require(cell.has_value(),Error::kCell);return cell;
+  }
   const auto* capture = body ? body->Capture() : nullptr;
   if (!capture) return {};
   quota.Step();

@@ -218,3 +218,65 @@ in each flag set were the new diagnostic for o10/16048 (m16233), o31/17804
 the original FunctionAbiError::kLength cause remained. All 3,580/3,718 non-manifest
 per-ABC export files were byte-identical. Full logs and comparison exports are
 under /private/tmp/r77; no holdout evaluation was run.
+
+## Round 77 increment II: signature ownership and initialized-formal commits
+
+The additional projection is selected only when the existing direct and cell
+constant projections do not cover the prefix. `DefaultBody::BuildCellParameter`
+seals the joint original-IR proof, retains the original graph for independent
+verification, and builds the residual before family Rebind. It neither changes
+existing successful default projections nor allocates names while proving.
+
+`SignatureCapture` records the original read site, lexical address and incoming
+storage. `SignatureCell` resolves that exact site to incoming storage; it never
+uses the local parameter cell merely because its slot number matches. Each
+`InitializedParameterCommit` records the source-formal ordinal, initialized entry
+value, original initial store and allocated destination. The residual keeps this
+store, removes the conditional read/guard/write-back from execution, and retains
+their origins as signature placements. Signature exception records retain the
+original guard exits and caller propagation. Copy identities and split arms are
+handled through def-use and reachability, not instruction adjacency. Dead pure
+arm blocks are tombstones attached to the preceding residual arena; escaping
+values, retained effects or lost phi inputs cause refusal, not silent erasure.
+
+The family entry demand is Guarded. Only an occurrence matched by the sealed
+signature certificate can use that access proof; other accesses and descendant
+requirements still join normally, Language dominates, and Defined stays strict.
+The rebuilt working storage is passed to capture rebinding. Signature checking
+independently rebuilds original and residual storage, verifies the initialized
+entry consumed by each body store, parameter order, distinct outer binding,
+actual initializer symbol, original guard exit and removed-site ownership.
+It does not assume original and residual CellIds are equal.
+
+Time is O((V+E+U) log(V+E+U)); all indexes, worklists, original/residual arenas,
+proof records and transient replacement storage are charged before allocation.
+The retained original graph costs additional linear memory within the existing
+record cap; it is not borrowed without an owner charge.
+
+Publication remains refused with DefaultSignatureError::kCellParameterRecovery
+(value 9), after the signature checks. RecoveryFlow currently defines ordinary
+parameters unconditionally at entry; it does not yet model a conditional native
+default evaluation, its throwing guard and its initialized-parameter commit.
+Increment III must connect those ports to original parameter initialization and
+then prove ABI length and final recovery. Passing a residual-body check cannot
+stand in for that proof. No native-default source, Node output differential or
+emitted-signature recompilation is claimed by increment II.
+
+Tests extend cell_parameter_default_test with residual ownership, explicit
+commits, independent signature construction/verification, wrong parameter-symbol
+and placement mutations, a forged residual write and moved exception handler.
+Both missing and provided arms have block-split variants. 200/201/400/800 cases
+check exact bytes/work boundaries. The real es2abc fixture still captures c in
+a body closure; its CLI test now expects the recovery gate instead of kLength,
+while asserting the same distinct original storages and named HoleGuard.
+
+Increment II acceptance (2026-10-15, uncommitted): full keep-going build passed,
+fixed set 65/65, extended tests 2/2, default/signature/ABI/parameter/capture/family
+and source-route targeted tests 22/22. The CLI/corpus/failure/receipt/manifest
+sweep passed 73/74; only the registered family_source_cli_test owner/origin arena
+failure remains, with its assertion unchanged. Against explore77/explore77s,
+completion stays 521/620 and 567/620. Only o10/16048 m16233 and o31/17804 m17994,
+o31/20739 m20927 change their first refusal to the explicit recovery gate (9),
+with verified signature diagnostics under both contracts. All 3,580/3,718
+non-manifest per-ABC artifacts remain byte-identical; there are no new complete
+outputs. Logs, the six-row target table and comparisons are in /private/tmp/r77b.
