@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "record_tree.h"
+#include "sendable_metadata.h"
 
 namespace abcd::source {
 RecordSourceResult BuildRecordSource(
@@ -42,7 +43,11 @@ RecordSourceResult BuildRecordSource(
           ? Error::kFileChanged : Error::kModule, error.kind);
     }
     if (flags->common_js.value_or(false)) return fail_with(Error::kModule, RecordModuleKindError::kCommonJs);
-    if (flags->shared.value_or(false)) return fail_with(Error::kModule, RecordModuleKindError::kShared);
+    if (flags->shared.value_or(false)) {
+      auto result = fail_with(Error::kModule, RecordModuleKindError::kShared);
+      result.shared_module = InspectSharedModule(context, file, record.offset, identity.contract);
+      return result;
+    }
     if (flags->top_level_await.value_or(false)) return fail_with(Error::kModule, RecordModuleKindError::kTopLevelAwait);
     if (flags->json_content) return fail_with(Error::kModule, RecordModuleKindError::kJson);
     if (record.first_method > index.methods.size() ||
@@ -61,8 +66,34 @@ RecordSourceResult BuildRecordSource(
     if (!entry || !entry->code) return fail(Error::kEntry);
     const auto position = lookup.Find(entry->offset);
     if (!position) return fail(Error::kEntry);
-    return BuildRecordTree(file, header, index, record, context, *position, identity,
+    auto result = BuildRecordTree(file, header, index, record, context, *position, identity,
                            budget, lookup, roles, functions, classes, diagnostics);
+    // Enrich a real failed occurrence only. Complete records take no extra
+    // planning path, and metadata diagnostics cannot replace the first cause.
+    std::visit([&](auto& failed) {
+      using T = std::decay_t<decltype(failed)>;
+      if constexpr (!std::is_same_v<T, PrintedSource>) {
+        auto& detail = [&]() -> auto& {
+          if constexpr (std::is_same_v<T, RouteRefusal>) return failed.failure;
+          else return failed;
+        }();
+        if (!detail.method || !detail.pc || detail.sendable) return;
+        const auto read = ReadSendableMetadata(file, header, index, lookup, record.offset,
+            *detail.method, *detail.pc, {budget.bytes > sizeof(result) ? budget.bytes - sizeof(result) : 0, analysis::kDefaultSemanticWork});
+        if (const auto* ready = std::get_if<SendableMetadata>(&read)) {
+          detail.sendable = ready->location;
+          detail.sendable->kind = SendableOutput(identity.contract) == SendableOutputPolicy::kArkDirectiveV1 ?
+              SendableError::kPreparationGate : SendableError::kOutputPolicy;
+        } else {
+          const auto& error = std::get<SendableFailure>(read);
+          // pc is attached only after a Sendable creation was independently
+          // decoded. Other failures do not gain a fabricated class diagnosis.
+          if (error.pc) detail.sendable = error;
+        }
+        if (detail.sendable) detail.sendable->working_pc = detail.working_pc;
+      }
+    }, result);
+    return result;
   } catch (const RecordProgramFailure& failure) {
     return failure;
   } catch (const std::bad_alloc&) {

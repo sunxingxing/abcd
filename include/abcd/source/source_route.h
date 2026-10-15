@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_SOURCE_ROUTE_H_
 #define ABCD_SOURCE_SOURCE_ROUTE_H_
 #include "abcd/source/concurrent_failure.h"
+#include "abcd/source/sendable_failure.h"
 #include "abcd/analysis/internal_value_failure.h"
 #include "abcd/source/tree_print_failure.h"
 #include "abcd/source/family_creation_failure.h"
@@ -120,6 +121,8 @@ struct RouteFailure {
   std::optional<analysis::InternalValueEvidence> internal_value;
   std::optional<FamilyCreationEvidence> family_creation;
   std::optional<ConcurrentFailure> concurrent;
+  std::optional<SendableFailure> sendable;
+  std::optional<SharedModuleFailure> shared_module;
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

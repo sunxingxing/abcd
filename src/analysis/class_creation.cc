@@ -4,12 +4,17 @@ namespace abcd::analysis {
 std::variant<ClassCreation, CreationError> LiftClassCreation(
     const abc::DecodedInstruction& instruction) {
   std::uint64_t cache_max;
+  auto kind = abc::ClassKind::kOrdinary;
   switch (instruction.opcode) {
     case abc::Opcode::kDEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8:
       cache_max = UINT8_MAX;
       break;
     case abc::Opcode::kDEFINECLASSWITHBUFFER_IMM16_ID16_ID16_IMM16_V8:
       cache_max = UINT16_MAX;
+      break;
+    case abc::Opcode::kCALLRUNTIME_DEFINESENDABLECLASS_PREF_IMM16_ID16_ID16_IMM16_V8:
+      cache_max = UINT16_MAX;
+      kind = abc::ClassKind::kSendable;
       break;
     default:
       return CreationError::kUnsupportedOpcode;
@@ -35,6 +40,6 @@ std::variant<ClassCreation, CreationError> LiftClassCreation(
       {static_cast<std::uint32_t>(instruction.operands[kLiteral].raw_bits)},
       static_cast<std::uint16_t>(instruction.operands[kLength].raw_bits),
       {static_cast<std::uint32_t>(instruction.operands[kParent].raw_bits)},
-      static_cast<std::uint16_t>(instruction.operands[0].raw_bits)};
+      static_cast<std::uint16_t>(instruction.operands[0].raw_bits), kind};
 }
 }  // namespace abcd::analysis

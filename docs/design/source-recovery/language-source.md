@@ -463,3 +463,17 @@ ABC 的 kind、sendable、async protocol、请求及两种通知完成端口检�
 拒绝、前后抛出、返回 Promise 以及 catch-around-await 可走实际导出；finally-around-await
 仍受已有 catch-input 活性证明约束，保留类型化拒绝。本增量不放宽该门禁或 m16784 的
 环境合并证明。
+
+### Round 74 增量 I：Sendable/shared 元数据与证据
+
+只建立元数据和诊断，不开放源码准入：两个 V3 谓词仍为 `kNotEnabled`。
+创建指令给出 `ClassKind`，据此选择 ordinary/sendable literal 格式；字段缓冲保留
+字段顺序、运行时类型 mask 与实例/静态分界。GENERIC/NONE 不是可猜测的名义类型。
+共享属性保留 absent/false/true，和真实所属 record 的模块表绑定，不能冒充
+`OrdinarySynchronous`。固定大小失败证据在 receipt、两条 manifest 路径及
+`abc_semantic --record-source` 中一致，原首因和资源分类保持不变。
+
+后续闭合类增量才会采用无 initializer 的 TS 字段存储描述、构造器首条
+`"use sendable"` 和原有 [[Set]] 写入；需要类型注解的 `.ets` 用 `--extension=ts`
+重编译，并标记 `source_language: arkts`。GENERIC 仍须有真实 binding 支撑的可验证
+拼写，否则 `kTypeSpelling`。详见 [Sendable/shared 设计](sendable-shared.md)。

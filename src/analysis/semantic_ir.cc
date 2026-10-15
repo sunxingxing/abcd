@@ -135,6 +135,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
     return Fail(SemanticError::kMalformedInstruction, site.offset);
   const auto class_creation = LiftClassCreation(decoded);
   if (const auto* created = std::get_if<ClassCreation>(&class_creation)) {
+    // Round 74 increment I exposes raw metadata, not source admission. A
+    // Sendable class needs independent field/environment/tree correspondence.
+    if (created->kind != abc::ClassKind::kOrdinary)
+      return Fail(SemanticError::kUnsupportedInstruction, site.offset);
     if (created->parent.value >= frame_size)
       return Fail(SemanticError::kMalformedInstruction, site.offset);
     return *created;

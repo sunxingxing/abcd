@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_RECORD_PROGRAM_H_
 #define ABCD_SOURCE_RECORD_PROGRAM_H_
 #include "abcd/source/concurrent_failure.h"
+#include "abcd/source/sendable_failure.h"
 #include "abcd/source/tree_print_failure.h"
 
 #include "abcd/abc/header.h"
@@ -66,6 +67,8 @@ struct RecordProgramFailure {
   std::optional<analysis::InternalValueEvidence> internal_value;
   std::optional<FamilyCreationEvidence> family_creation;
   std::optional<ConcurrentFailure> concurrent;
+  std::optional<SendableFailure> sendable;
+  std::optional<SharedModuleFailure> shared_module;
 };
 struct RecordProgramBudget {
   std::size_t bytes = 128 * 1024 * 1024;

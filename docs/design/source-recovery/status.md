@@ -12,6 +12,31 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 74 增量 I：Sendable/shared 元数据（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；521/620、565/620 不变，0 状态变化，0 文本变化；扫描 71/72，只有既有的 family_source_cli_test 失败。
+
+- 基线 `544e0854`。本片只交付增量 I，**未开始增量 II**；没有 commit/push/stash。
+  raw `ClassCreation` 与 `ValueClassCreation` 保留 ordinary/sendable kind；按实际创建种类
+  选择 literal 格式，独立保留成员缓冲、字段直接引用、字段顺序、mask 和实例/静态分界。
+  实例字段使用独立的 `SendableFieldPlacement::kInstance`，不会混作 prototype 成员。
+- 原始 occurrence 的区域池、constructor/member owner、字段 key 都被复核；元数据验证器
+  从不可变输入重算并返回类型化失败。shared 的 absent/false/true 属性与真实 owner/module
+  表一起保留，仍不构成 `OrdinarySynchronous`。两个 V3 输出政策仍 disabled，语义和类准备
+  门禁保持；原首因和资源分类不变。两条 JSON 路径、receipt 与 abc_semantic 增加固定大小证据。
+- 完整 `cmake --build build/regression -j 6 -- -k` **成功**；新增三项及修改的原始类/value
+  测试 **5/5**；固定集 `ctest --preset source-regression -j 1` **65/65**；定向 **24/25**，
+  仅已登记的 `class_tree_source_test`（匿名 class 正则期望）；CLI/corpus/failure/receipt/manifest
+  扫查 **69/70**，仅已登记的 `family_source_cli_test`。未弱化这两项断言。
+- 对 explore73c/explore73cs：**521/620、565/620**，0 状态变化、0 既有源码或扩展名变化；
+  已 complete 的结构产物也逐字节相同。每组只有 o14/28934、o14/24892 的 manifest 新增诊断，
+  原有字段和首因不变。前者确认 fields29289=taskId/NUMBER1；后者 shared/module25407，
+  独立 metadata probe 确认 fields25544=lock_/GENERIC32、books_/GENERIC32。
+- 真实 DevEco fixtures 已编译并记录 compiler/fixture SHA-256；包含 metadata/owner/pool/field
+  变异、JSON 所有原因类型、PC0/缺失 PC、200/201/400/800 和真实 byte/work 准入边界。
+  这不是引擎输出 Node 差分或目标重编译：这些仍是增量 II 的未完成验收，不能当作通过。
+- 证据：`/private/tmp/abcd-round74/{final-build.log,new-tests.log,acceptance.json,cohort-comparison.json}`。
+  设计与边界见 [Sendable/shared](sendable-shared.md)。
+
 ## Round 73 增量 III：async concurrent（cc 审查通过）
 - cc 独立审查（增量 III）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 521/620 不变，`--language-source` 564 → **565/620**（GetRecentList：`async function(key, value) { "use concurrent"; await lruCache.put(key, value); }`）；0 回退，0 文本漂移；扫描 73/74，只有既有的 family_source_cli_test 失败。
 

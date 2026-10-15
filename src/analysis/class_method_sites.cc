@@ -54,6 +54,10 @@ void ScanClasses(const corpus::AbcFile& file, const abc::Header& header,
       budget.Step();
       const auto lifted = LiftClassCreation(instruction.decoded);
       const auto* creation = std::get_if<ClassCreation>(&lifted);
+      // Source class preparation is still ordinary-only in increment I. The
+      // diagnostic reader validates Sendable buffers without changing this
+      // file-wide production index or admitting their bodies.
+      if (creation && creation->kind != abc::ClassKind::kOrdinary) continue;
       if (!creation) {
         if (std::get<CreationError>(lifted) != CreationError::kUnsupportedOpcode)
           throw ClassSiteFailure{ClassSiteError::kMalformedCreation};

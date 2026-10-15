@@ -255,13 +255,14 @@ int main() {
                 op.exceptional == ExceptionalCompletion::kMayThrow);
           }
           auto& first = std::get<ValueClassCreation>(graph.ops[kPrefix].operation);
-          for (unsigned field = 0; field < 4; ++field) {
+          for (unsigned field = 0; field < 5; ++field) {
             const auto saved = first;
             switch (field) {
               case 0: ++first.constructor.value; break;
               case 1: ++first.literal.value; break;
               case 2: ++first.length; break;
               case 3: ++first.cache_slot; break;
+              case 4: first.kind = abc::ClassKind::kSendable; break;
             }
             test::Check(VerifyImportedValues(graph, method, proof, frame)->kind == ValueImportError::kInputMismatch);
             first = saved;

@@ -28,4 +28,18 @@ int main() {
   }
   check(std::get<analysis::CreationError>(analysis::LiftClassCreation({})) ==
         analysis::CreationError::kUnsupportedOpcode);
+  // Sendable is a distinct raw class creation, even while source admission
+  // remains gated. Dropping its kind would select the ordinary literal format.
+  const std::vector<std::uint8_t> sendable{
+      0xfb, 0x07, 0, 0, 1, 0, 2, 0, 1, 0, 3};
+  const auto instruction = std::get<abc::DecodedInstruction>(
+      abc::DecodeInstruction(sendable, abc::ProfileId::kDynamic2400));
+  const auto lifted = std::get<analysis::ClassCreation>(analysis::LiftClassCreation(instruction));
+  check(lifted.kind == abc::ClassKind::kSendable && lifted.constructor.value == 1 &&
+        lifted.literal.value == 2 && lifted.length == 1 && lifted.parent.value == 3);
+  for (std::size_t i = 0; i < instruction.operand_count; ++i) {
+    auto changed = instruction; changed.operands[i].raw_bits = UINT64_MAX;
+    check(std::get<analysis::CreationError>(analysis::LiftClassCreation(changed)) ==
+        analysis::CreationError::kMalformedInstruction);
+  }
 }

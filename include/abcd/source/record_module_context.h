@@ -30,6 +30,11 @@ struct RecordModuleBudget {
 class RecordModuleContext {
  public:
   abc::EntityOffset record() const { return record_; }
+  // Immutable same-owner attributes, including absent versus false shared.
+  // Holding these facts does not admit shared source or certify initialization.
+  const abc::RecordAttributes* Attributes(const corpus::AbcFile& file, abc::EntityOffset owner) const {
+    return &file == file_ && owner == record_ ? &attributes_ : nullptr;
+  }
   // Same-file ordinary synchronous module metadata only. This is not a
   // no-reentry, resource-failure or capture-initialization certificate.
   bool OrdinarySynchronous(const corpus::AbcFile& file, abc::EntityOffset owner) const {
@@ -46,12 +51,14 @@ class RecordModuleContext {
                           const abc::MetadataIndex&, const abc::RecordInfo&,
                           abc::FilePackaging, RecordModuleBudget);
   RecordModuleContext(const corpus::AbcFile& file, abc::EntityOffset record,
-                      std::shared_ptr<const abc::ModuleInfo> module, bool ordinary_synchronous = false)
-      : file_(&file), record_(record), module_(std::move(module)), ordinary_synchronous_(ordinary_synchronous) {}
+                      std::shared_ptr<const abc::ModuleInfo> module, bool ordinary_synchronous = false,
+                      abc::RecordAttributes attributes = {})
+      : file_(&file), record_(record), module_(std::move(module)), ordinary_synchronous_(ordinary_synchronous), attributes_(attributes) {}
   const corpus::AbcFile* file_;
   abc::EntityOffset record_;
   std::shared_ptr<const abc::ModuleInfo> module_;
   bool ordinary_synchronous_ = false;
+  abc::RecordAttributes attributes_;
 };
 using RecordModuleResult =
     std::variant<RecordModuleContext, RecordModuleFailure>;

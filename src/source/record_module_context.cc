@@ -21,7 +21,7 @@ RecordModuleResult ReadRecordModuleContext(
   if (attributes.common_js && *attributes.common_js)
     return RecordModuleFailure{RecordModuleError::kCommonJs};
   if (!attributes.module)
-    return RecordModuleContext(file, record.offset, {});
+    return RecordModuleContext(file, record.offset, {}, false, attributes);
   auto decoded = abc::ReadModuleInfo(file, header, *attributes.module,
                                      budget.module, attributes.request_phases);
   if (const auto* failure = std::get_if<abc::ModuleFailure>(&decoded))
@@ -31,7 +31,7 @@ RecordModuleResult ReadRecordModuleContext(
         file, record.offset,
         std::make_shared<const abc::ModuleInfo>(
             std::get<abc::ModuleInfo>(std::move(decoded))),
-        !attributes.shared.value_or(false) && !attributes.top_level_await.value_or(false));
+        !attributes.shared.value_or(false) && !attributes.top_level_await.value_or(false), attributes);
   } catch (const std::bad_alloc&) {
     return RecordModuleFailure{RecordModuleError::kResourceLimit};
   }

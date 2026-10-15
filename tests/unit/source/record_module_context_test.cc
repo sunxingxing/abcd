@@ -73,6 +73,8 @@ int main() {
   const auto result = read();
   const auto& context = std::get<source::RecordModuleContext>(result);
   Check(context.record() == record.offset);
+  Check(context.Attributes(file, record.offset) && !context.Attributes(file, record.offset)->shared);
+  Check(!context.Attributes(file, {kRecord + 1}));
   Check(context.OrdinarySynchronous(file, record.offset));
   Check(!context.OrdinarySynchronous(file, {kRecord + 1}));
   Check(context.ForOwner(file, record.offset) != nullptr);
@@ -97,6 +99,7 @@ int main() {
   const auto& second = *std::get<std::unique_ptr<corpus::AbcFile>>(second_opened);
   Check(context.ForOwner(second, record.offset) == nullptr);
   Check(!context.OrdinarySynchronous(second, record.offset));
+  Check(!context.Attributes(second, record.offset));
   std::shared_ptr<const abc::ModuleInfo> retained;
   {
     const auto temporary = read();

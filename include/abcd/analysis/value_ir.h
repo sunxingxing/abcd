@@ -226,6 +226,7 @@ struct ValueClassCreation {
   abc::PoolIndex literal;
   std::uint16_t length;
   std::uint16_t cache_slot;
+  abc::ClassKind kind = abc::ClassKind::kOrdinary;
   bool operator==(const ValueClassCreation&) const = default;
 };
 // Depth/slot stay relative to the ORIGINAL environment state at this origin.

@@ -10,6 +10,7 @@ add_library(abcd_abc
   src/abc/call_type.cc
   src/abc/concurrent_requests.cc
   src/abc/class_buffer.cc
+  src/abc/sendable_fields.cc
   src/abc/control_transfer.cc
   src/abc/debug_info.cc
   src/abc/debug_scopes.cc
@@ -223,7 +224,7 @@ target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
 target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/effect_order.cc src/source/class_definitions.cc src/source/class_definition_projection.cc src/source/defined_member_context.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_prototype.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/derived_projection.cc src/source/class_tree.cc)
-target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc src/source/concurrent_completion.cc src/source/concurrent_async.cc src/source/concurrent_directive.cc src/source/concurrent_tree.cc src/source/concurrent_references.cc src/source/concurrent_boundary.cc)
+target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc src/source/sendable_metadata.cc src/source/concurrent_completion.cc src/source/concurrent_async.cc src/source/concurrent_directive.cc src/source/concurrent_tree.cc src/source/concurrent_references.cc src/source/concurrent_boundary.cc)
 target_sources(abcd_source PRIVATE src/source/rest_ownership.cc)
 target_sources(abcd_source PRIVATE src/source/function_input.cc)
 target_sources(abcd_source PRIVATE src/source/function_values.cc)
@@ -397,6 +398,9 @@ if(BUILD_TESTING)
   add_executable(class_buffer_test tests/unit/abc/class_buffer_test.cc)
   target_link_libraries(class_buffer_test PRIVATE abcd_abc)
   add_test(NAME class_buffer_test COMMAND class_buffer_test)
+  add_executable(sendable_fields_test tests/unit/abc/sendable_fields_test.cc)
+  target_link_libraries(sendable_fields_test PRIVATE abcd_abc)
+  add_test(NAME sendable_fields_test COMMAND sendable_fields_test)
   add_executable(class_creation_test tests/unit/analysis/class_creation_test.cc)
   target_link_libraries(class_creation_test PRIVATE abcd_analysis)
   add_test(NAME class_creation_test COMMAND class_creation_test)
@@ -2688,6 +2692,13 @@ if(BUILD_TESTING)
     add_executable(class_omissions_test tests/unit/source/class_omissions_test.cc tools/record_failure_json.cc)
     target_link_libraries(class_omissions_test PRIVATE abcd_source abcd_json)
     add_test(NAME class_omissions_test COMMAND class_omissions_test)
+    add_executable(sendable_metadata_probe tests/unit/source/sendable_metadata_probe.cc)
+    target_link_libraries(sendable_metadata_probe PRIVATE abcd_source abcd_json)
+    add_executable(sendable_metadata_test tests/unit/source/sendable_metadata_test.cc tools/record_failure_json.cc)
+    target_link_libraries(sendable_metadata_test PRIVATE abcd_source abcd_json)
+    add_test(NAME sendable_metadata_test COMMAND sendable_metadata_test
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/sendable_metadata/classes.abc
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/sendable_metadata/shared.abc)
     add_executable(concurrent_failure_test tests/unit/source/concurrent_failure_test.cc tools/record_failure_json.cc)
     target_link_libraries(concurrent_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME concurrent_failure_test COMMAND concurrent_failure_test)
@@ -2723,6 +2734,12 @@ if(BUILD_TESTING)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/concurrent_functions.mjs
           $<TARGET_FILE:abc_structure> $<TARGET_FILE:concurrent_roundtrip_probe>
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/concurrent_functions "${ABCD_CONCURRENT_COMPILER}")
+      endif()
+      if(EXISTS "${ABCD_CONCURRENT_INPUT}" AND EXISTS "${ABCD_CONCURRENT_COMPILER}")
+        add_test(NAME sendable_metadata_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sendable_metadata.mjs
+          $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic> $<TARGET_FILE:sendable_metadata_test>
+          "${ABCD_CONCURRENT_COMPILER}" "${ABCD_CONCURRENT_INPUT}" $<TARGET_FILE:sendable_metadata_probe>)
       endif()
       if(EXISTS "${ABCD_CONCURRENT_INPUT}")
         add_test(NAME concurrent_metadata_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}

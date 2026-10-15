@@ -42,13 +42,34 @@ bool Scalar(const LiteralEntry& entry) {
 }  // namespace
 std::variant<ClassBuffer, ClassBufferError> DecodeClassBuffer(
     const LiteralArray& literals, ClassBufferBudget budget) {
-  const auto& entries = literals.entries;
+  return DecodeClassLiteral(literals, ClassKind::kOrdinary, budget);
+}
+std::variant<ClassBuffer, ClassBufferError> DecodeClassLiteral(
+    const LiteralArray& literals, ClassKind kind, ClassBufferBudget budget) {
+  if (kind != ClassKind::kOrdinary && kind != ClassKind::kSendable) return ClassBufferError::kShape;
+  auto entries = std::span<const LiteralEntry>(literals.entries);
+  std::optional<EntityOffset> field_types;
+  switch (kind) {
+    case ClassKind::kOrdinary: break;
+    case ClassKind::kSendable: {
+      if (entries.empty() || entries.back().tag != LiteralTag::kLiteralArray)
+        return ClassBufferError::kShape;
+      const auto* target = std::get_if<EntityOffset>(&entries.back().value);
+      if (!target || target->value < kDynamicHeaderSize)
+        return ClassBufferError::kValue;
+      field_types = *target;
+      entries = entries.first(entries.size() - 1);
+      break;
+    }
+  }
   if (entries.empty() || entries.back().tag != LiteralTag::kInteger)
     return ClassBufferError::kShape;
   const auto* split = std::get_if<LiteralBits>(&entries.back().value);
   if (!split || split->value > UINT32_MAX) return ClassBufferError::kSplit;
   try {
     ClassBuffer result;
+    result.kind = kind;
+    result.field_types = field_types;
     // Each member has at least key/value; method+affiliate consumes one extra
     // entry. Upper-bound reserve avoids reallocations and quadratic growth.
     constexpr std::size_t kPairEntries = 2;

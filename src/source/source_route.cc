@@ -1,3 +1,4 @@
+#include "sendable_failure_json.h"
 #include "concurrent_failure_json.h"
 #include "async_failure_json.h"
 #include "internal_value_json.h"
@@ -260,6 +261,8 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
+    if (receipt.failure->sendable) failure["sendable"] = SendableJson(*receipt.failure->sendable);
+    if (receipt.failure->shared_module) failure["shared_module"] = SharedModuleJson(*receipt.failure->shared_module);
     if (receipt.failure->concurrent) failure["concurrent"] = ConcurrentJson(*receipt.failure->concurrent);
     if (receipt.failure->async) failure["async"] = AsyncCompletionJson(*receipt.failure->async);
     if (receipt.failure->exception_region) failure["exception_region"] = ExceptionRegionJson(*receipt.failure->exception_region);
@@ -450,6 +453,12 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     if (!location("method", typed.method) || !location("working_pc", typed.working_pc) ||
         !location("creation_method", typed.creation_method) || !location("creation_pc", typed.creation_pc))
       return RouteReceiptError::kFailure;
+    if (const auto item = failure->find("sendable"); item != failure->end()) {
+      typed.sendable = ParseSendable(*item); if (!typed.sendable) return RouteReceiptError::kFailure;
+    }
+    if (const auto item = failure->find("shared_module"); item != failure->end()) {
+      typed.shared_module = ParseSharedModule(*item); if (!typed.shared_module) return RouteReceiptError::kFailure;
+    }
     if (const auto item = failure->find("concurrent"); item != failure->end()) {
       typed.concurrent = ParseConcurrent(*item); if (!typed.concurrent) return RouteReceiptError::kFailure;
     }
