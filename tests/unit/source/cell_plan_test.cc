@@ -62,6 +62,14 @@ void Run(std::uint32_t count) {
     // must not allow it to become a printable source value.
     observed.values[observed.ops[0].result->value].domain = ValueKinds::Language();
     test::Check(std::get<CellEvaluationError>(BuildCellEvaluation(observed)) == CellEvaluationError::kInternalIdentity);
+    EvaluationInputSite site;
+    test::Check(std::get<CellEvaluationError>(BuildCellEvaluation(observed, {}, IncomingCells::kReject,
+        ClosureWrites::kUnknown, {}, {}, &site)) == CellEvaluationError::kInternalIdentity);
+    test::Check(site.check == EvaluationInputCheck::kCellIdentity && site.operation == OpId{0});
+    auto verified_cells = std::get<CellEvaluation>(BuildCellEvaluation(graph));
+    test::Check(std::get<CellEvaluationError>(VerifyCellEvaluation(observed, verified_cells, {}, &site)) == CellEvaluationError::kInternalIdentity);
+    test::Check(site.check == EvaluationInputCheck::kCellIdentity && site.operation == OpId{0});
+
   }
   test::Check(std::holds_alternative<std::uint64_t>(VerifyCellPlan(graph, environments, *plan)));
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));

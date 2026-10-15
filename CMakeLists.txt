@@ -643,6 +643,10 @@ if(BUILD_TESTING)
   add_executable(selection_consumer_test tests/unit/source/selection_consumer_test.cc)
   target_link_libraries(selection_consumer_test PRIVATE abcd_source abcd_json)
   add_test(NAME selection_consumer_test COMMAND selection_consumer_test)
+  add_executable(evaluation_input_test tests/unit/source/evaluation_input_test.cc)
+  target_link_libraries(evaluation_input_test PRIVATE abcd_source abcd_json)
+  add_test(NAME evaluation_input_test COMMAND evaluation_input_test)
+
   add_executable(logical_coverage_test tests/unit/source/logical_coverage_test.cc)
   target_link_libraries(logical_coverage_test PRIVATE abcd_source abcd_json)
   add_test(NAME logical_coverage_test COMMAND logical_coverage_test)
@@ -2796,6 +2800,9 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_omissions.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
         ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects)
+      add_test(NAME evaluation_input_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/evaluation_input.mjs
+        $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR})
       add_test(NAME evaluation_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/evaluation_failure.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

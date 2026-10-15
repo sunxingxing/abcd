@@ -50,6 +50,30 @@ int main() {
   static_assert(static_cast<unsigned>(EvaluationError::kOwnership)==5);
   static_assert(static_cast<unsigned>(EvaluationError::kWorkLimit)==8);
   static_assert(static_cast<unsigned>(EvaluationError::kResourceLimit)==9);
+  // Evaluation subanalyses retain their stable enum domain on both JSON
+  // publication paths. Real PC zero, normalized PC, and absent origins differ.
+  for (const EvaluationPlanCause cause : {
+      EvaluationPlanCause{HoleProtocolError::kEscape},
+      EvaluationPlanCause{CellEvaluationError::kInternalIdentity},
+      EvaluationPlanCause{LiteralError::kDefinition},
+      EvaluationPlanCause{EvaluationShapeError::kMissingShape}}) {
+    EvaluationFailure f{EvaluationError::kUnsupportedOperation};
+    f.evaluation.plan_cause = cause;
+    f.evaluation.location.method = abc::EntityOffset{77};
+    f.evaluation.location.operation = analysis::OpId{0};
+    f.evaluation.location.pc = abc::CodeOffset{0};
+    f.evaluation.location.working_pc = abc::CodeOffset{17};
+    f.evaluation.use = analysis::UseId{0};
+    RoundTrip(FamilyRouteFailure(f));
+    f.evaluation.location = {}; RoundTrip(FamilyRouteFailure(f));
+    for (auto kind : {EvaluationError::kResourceLimit, EvaluationError::kWorkLimit}) {
+      f.kind = kind;
+      const auto r = FamilyRouteFailure(f);
+      Check(r.failure_class == (kind == EvaluationError::kResourceLimit ?
+          RouteFailureClass::kMemoryLimit : RouteFailureClass::kWorkLimit));
+      RoundTrip(r);
+    }
+  }
   // Every obligation travels through both publication paths. Zero is a real
   // PC/ID; absence and synthetic origins must survive independently.
   for(unsigned tag=0;tag<=static_cast<unsigned>(TreeObligation::kForInRecovery);++tag) {

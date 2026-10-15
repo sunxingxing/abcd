@@ -357,6 +357,18 @@ void ClassCreation(unsigned count, bool absent, bool barrier) {
   use.role = analysis::OperandRole::kReturnValue;
   fixture.graph.ops[last.value].operation = analysis::ValueReturn{};
   Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(fixture.graph)) == HoleProtocolError::kEscape);
+  EvaluationInputSite site;
+  Check(std::get<HoleProtocolError>(AnalyzeHoleProtocol(fixture.graph, {}, &site)) == HoleProtocolError::kEscape);
+  if (absent) {
+    Check(site.check == EvaluationInputCheck::kHoleUse && site.operation == last);
+    Check(site.use == fixture.graph.ops[last.value].first_use);
+  } else {
+    // This variant forges Hole on a member-read result; transport rejects
+    // the producer before it can reach the later sentinel-use census.
+    Check(site.check == EvaluationInputCheck::kHoleTransport && site.operation == analysis::OpId{0});
+    Check(site.value == analysis::ValueId{1} && !site.use);
+  }
+
 }
 int main() {
   ConstructorProtocol();

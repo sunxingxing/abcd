@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_LITERAL_PLAN_H_
 #define ABCD_SOURCE_LITERAL_PLAN_H_
 
+#include "abcd/source/evaluation_plan_cause.h"
 #include "abcd/analysis/value_ir.h"
 #include <span>
 #include "array_initialization.h"
@@ -59,10 +60,7 @@ struct LiteralPlan {
 inline bool IsStagedLiteral(const LiteralPlan* plan, analysis::OpId id) {
   return plan && id.value < plan->staged.size() && plan->staged[id.value];
 }
-enum class LiteralError : std::uint8_t {
-  kRevision, kFlow, kDefinition, kReceiver, kObserved, kLateValue, kDomain,
-  kCoverage, kResourceLimit, kWorkLimit
-};
+
 // Initial domain: fresh ordinary object with named definitions, or fresh array
 // with dense indexed definitions 0..N-1, or increasing buffered-array writes,
 // with available RHSs across normal CFGs, or late owned trees in a local/phase
@@ -96,7 +94,7 @@ enum class LiteralError : std::uint8_t {
     std::span<const std::optional<analysis::OpId>> module_guards = {},
     std::span<const std::optional<analysis::OpId>> class_projection = {},
     std::span<const analysis::OpId> receiver_guards = {},
-    const CellEvaluation* cells = nullptr);
+    const CellEvaluation* cells = nullptr, EvaluationInputSite* failure = nullptr);
 // Checks supplied groups against use chains and fresh flow, without regrouping.
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
@@ -104,7 +102,7 @@ enum class LiteralError : std::uint8_t {
     std::span<const std::optional<analysis::OpId>> module_guards = {},
     std::span<const std::optional<analysis::OpId>> class_projection = {},
     std::span<const analysis::OpId> receiver_guards = {},
-    const CellEvaluation* cells = nullptr);
+    const CellEvaluation* cells = nullptr, EvaluationInputSite* failure = nullptr);
 // Same initializer model across unique normal phase corridors. The original
 // phase graph stays intact; copy aliases must have their independent proof.
 // No observations (including exceptional snapshots) before the last define,
@@ -120,11 +118,11 @@ enum class LiteralError : std::uint8_t {
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
     analysis::SemanticBudget budget = {},
     std::span<const std::optional<analysis::OpId>> module_guards = {},
-    std::span<const std::optional<analysis::OpId>> projected = {});
+    std::span<const std::optional<analysis::OpId>> projected = {}, EvaluationInputSite* failure = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const EvaluationPlan& evaluation, analysis::SemanticBudget budget = {},
     std::span<const std::optional<analysis::OpId>> module_guards = {},
-    std::span<const std::optional<analysis::OpId>> projected = {});
+    std::span<const std::optional<analysis::OpId>> projected = {}, EvaluationInputSite* failure = nullptr);
 }  // namespace abcd::source
 #endif

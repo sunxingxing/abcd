@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_HOLE_PROTOCOL_H_
 #define ABCD_SOURCE_HOLE_PROTOCOL_H_
 
+#include "abcd/source/evaluation_plan_cause.h"
 #include <algorithm>
 #include "abcd/analysis/value_ir.h"
 
@@ -30,13 +31,7 @@ inline analysis::BinaryOperator HoleSourceOperator(const HoleProtocol* protocol,
   if (found == protocol->comparisons.end() || found->operation != operation) return original;
   return found->equal ? analysis::BinaryOperator::kStrictEqual : analysis::BinaryOperator::kStrictNotEqual;
 }
-enum class HoleProtocolError : std::uint8_t {
-  kInput,
-  kEscape,
-  kUnguardedThrow,
-  kResourceLimit,
-  kWorkLimit
-};
+
 // Normal IR admits only closed copy transport to definite-Hole class heritage.
 // Phased IR additionally finds closed Hole transport through copies/phis,
 // identity tests with a definite Hole on the left, and rethrows on a unique
@@ -44,6 +39,6 @@ enum class HoleProtocolError : std::uint8_t {
 // upgrade any value domain. Other consumers, joins losing the guard, and
 // environment/unknown VM values reject. O(V+O+U+B+E), iterative throughout.
 [[nodiscard]] std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {});
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {}, EvaluationInputSite* failure = nullptr);
 }  // namespace abcd::source
 #endif

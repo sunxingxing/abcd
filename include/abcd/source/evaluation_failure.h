@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_EVALUATION_FAILURE_H_
 #define ABCD_SOURCE_EVALUATION_FAILURE_H_
 #include "abcd/source/tree_failure.h"
+#include "abcd/source/evaluation_plan_cause.h"
 #include "abcd/source/for_in_failure.h"
 #include "abcd/source/concurrent_failure.h"
 #include "abcd/source/evaluation_kind.h"
@@ -44,6 +45,8 @@ struct LogicalCoverageEvidence {
 struct EvaluationEvidence {
   EvaluationObligation obligation = EvaluationObligation::kPlan;
   TreeLocation location;
+  EvaluationPlanCause plan_cause;
+  std::optional<EvaluationInputCheck> input_check;
   std::optional<ForInFailure> for_in;
   std::optional<ConcurrentFailure> concurrent;
   std::optional<SnapshotCandidateEvidence> snapshot_candidate;

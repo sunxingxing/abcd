@@ -6,6 +6,17 @@
 namespace abcd::source {
 inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
   nlohmann::json j{{"obligation", static_cast<unsigned>(v.obligation)}, {"location", TreeLocationJson(v.location)}};
+  std::visit([&](const auto& cause) {
+    using T = std::decay_t<decltype(cause)>;
+    if constexpr (!std::is_same_v<T, std::monostate>) {
+      const char* domain = nullptr;
+      if constexpr (std::is_same_v<T, HoleProtocolError>) domain = "HoleProtocolError";
+      else if constexpr (std::is_same_v<T, CellEvaluationError>) domain = "CellEvaluationError";
+      else if constexpr (std::is_same_v<T, LiteralError>) domain = "LiteralError";
+      else if constexpr (std::is_same_v<T, EvaluationShapeError>) domain = "EvaluationShapeError";
+      j["plan_cause"] = {{"domain", domain}, {"value", static_cast<unsigned>(cause)}};
+    }
+  }, v.plan_cause);
   if(v.concurrent)j["concurrent"]=ConcurrentJson(*v.concurrent);
   if (v.for_in) {
     const auto& f = *v.for_in;
@@ -34,6 +45,7 @@ inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
     if (c.route_exit) item["route_exit"] = c.route_exit->value;
     j["logical_coverage"] = std::move(item);
   }
+  if (v.input_check) j["input_check"] = static_cast<unsigned>(*v.input_check);
   if (v.use) j["use"] = v.use->value;
   if (v.value) j["value"] = v.value->value;
   if (v.selection_exit) j["selection_exit"] = static_cast<unsigned>(*v.selection_exit);
@@ -52,6 +64,16 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
   if (!j.is_object() || !FailureNumber(j,"obligation",n) || n > static_cast<unsigned>(EvaluationObligation::kUse) || !j.contains("location")) return {};
   EvaluationEvidence v; v.obligation = static_cast<EvaluationObligation>(n);
   auto location = ParseTreeLocation(j["location"]); if (!location) return {}; v.location = *location;
+  if (j.contains("plan_cause")) {
+    const auto& c = j["plan_cause"];
+    if (!c.is_object() || !c.contains("domain") || !c["domain"].is_string() || !FailureNumber(c,"value",n)) return {};
+    const auto domain = c["domain"].get<std::string>();
+    if (domain == "HoleProtocolError" && n <= static_cast<unsigned>(HoleProtocolError::kWorkLimit)) v.plan_cause = static_cast<HoleProtocolError>(n);
+    else if (domain == "CellEvaluationError" && n <= static_cast<unsigned>(CellEvaluationError::kWorkLimit)) v.plan_cause = static_cast<CellEvaluationError>(n);
+    else if (domain == "LiteralError" && n <= static_cast<unsigned>(LiteralError::kWorkLimit)) v.plan_cause = static_cast<LiteralError>(n);
+    else if (domain == "EvaluationShapeError" && n <= static_cast<unsigned>(EvaluationShapeError::kMissingShape)) v.plan_cause = static_cast<EvaluationShapeError>(n);
+    else return {};
+  }
   if(j.contains("concurrent")){v.concurrent=ParseConcurrent(j["concurrent"]);if(!v.concurrent)return {};}
   if (j.contains("for_in")) {
     const auto& f = j["for_in"];
@@ -82,6 +104,7 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
         !FailureOptionalId(c,"route_exit",evidence.route_exit)) return {};
     v.logical_coverage = evidence;
   }
+  if (j.contains("input_check")) { if (!FailureNumber(j,"input_check",n) || n > static_cast<unsigned>(EvaluationInputCheck::kLiteralStagedAcyclic)) return {}; v.input_check = static_cast<EvaluationInputCheck>(n); }
   if (!FailureOptionalId(j,"use",v.use) || !FailureOptionalId(j,"value",v.value) ||
       !FailureOptionalId(j,"selection_edge",v.selection_edge) || !FailureOptionalId(j,"expected_consumer",v.expected_consumer) || !FailureOptionalId(j,"actual_consumer",v.actual_consumer)) return {};
   if (j.contains("selection_exit")) { if (!FailureNumber(j,"selection_exit",n) || n > static_cast<unsigned>(SelectionExitReason::kKeepEdge)) return {}; v.selection_exit = static_cast<SelectionExitReason>(n); }

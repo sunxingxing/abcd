@@ -721,3 +721,58 @@ Buffered objects, arrays with holes/length, computed keys, later-produced RHS,
 cross-block initialization, escaped receivers, prototype/descriptor mutation,
 and closure captures remain separate required extensions. This initial domain
 does not redefine T07 or the corpus-wide goal around easy empty-object examples.
+
+## Round 75: evaluation-input refusal evidence (2026-10-15)
+
+This increment changes diagnostics only. `EvaluationPlanCause` retains the
+original `HoleProtocolError`, `CellEvaluationError`, `LiteralError`, or a typed
+missing-shape cause under the existing `EvaluationError` and `kPlan` obligation.
+The old enum values and resource/work classification remain unchanged. The
+builder and verifier use the same diagnostic envelope; neither uses diagnostic
+fields to grant admission. Both record-entry and route JSON, and
+`abc_semantic --record-source`, retain the cause.
+
+Subanalysis sites are fixed-size witnesses. An exception-scope witness records
+only the innermost check that actually fails; successful iterations leave no
+stale operation behind. Working and original PCs come from `ValueOrigin`.
+A graph-wide refusal has no invented instruction PC. These witnesses allocate
+no buffers, add constant work per existing visited operation, and do not change
+any analysis budget or asymptotic complexity.
+
+The three KeyMenu methods (o8/42040 m42490, o28/41167 m41622,
+o15/20252 m20697 under `--language-source`) all fail
+`LiteralError::kDefinition / kLiteralStagedStorage` at allocation op17, PC47.
+The first two methods allocate an empty array at47, evaluate conditional
+strings across branches80/116 and joins, define index0 at126, install the array
+in an outer buffered object at133, then pass that object to a member call at144.
+The o15 method uses lazy module reads: its corresponding branches are81/118,
+indexed definition128, outer definition135 and member call146.
+This reconstruction uses ABC instructions, not paired source. The old flags
+for o15 still stop earlier at `ModuleEnclosureError=10`.
+
+This is **not** an orphaned selection-consumption registration. `NativeBefore`
+selects statement storage for the nonlocal initializer; `VerifyStaged` then
+requires an already-buffered object. Its tree lowering relies on every assigned
+name already being a writable own data property. An empty array has no such
+property: replacing `stownbyindex` with an assignment could invoke an inherited
+setter. `ExpressionForest` also has no standalone staged indexed-definition
+projection. Merely allowing arrays in `VerifyStaged` would therefore skip both
+an operation-semantics proof and tree/original-flow correspondence.
+
+Per the round's stop rule, no admission is changed. A later increment must
+prove a selection-aware array initializer event (allocation, predicate/selected
+arm, phi value, indexed definition, completion/escape and exception order),
+then verify its `ArrayExpr`/literal ownership through the tree and recovery.
+That requires a cross-layer proof, not another opcode or block-shape case.
+The selection must remain once-only, preserve earlier/later getter and call
+ordering, and never expose the partially initialized array. It needs no new
+source-language premise if those obligations are discharged.
+
+CameraService o24/37520 m38333 is a separate staged-flow refusal. Its method
+contains ordinary loops, including backedges1780->1323 and2134->1815. The
+staged literal verifier currently requires its entire working CFG to be
+acyclic, rather than an activation-aware construction interval. The diagnostic
+is `LiteralError::kFlow / kLiteralStagedAcyclic`, with the method but no PC:
+the failed check owns the full CFG, not either arbitrarily chosen backedge.
+Replacing that proof requires construction-activation and escape/order facts
+for cyclic flow; it is not part of this evidence increment.

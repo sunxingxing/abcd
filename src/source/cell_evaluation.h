@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_CELL_EVALUATION_H_
 #define ABCD_SOURCE_CELL_EVALUATION_H_
 
+#include "abcd/source/evaluation_plan_cause.h"
 #include "cell_initialization.h"
 #include "../analysis/value_phi.h"
 
@@ -23,9 +24,7 @@ struct CellEvaluation {
   // lexical declaration, because a child may observe its TDZ before it.
   std::vector<std::optional<analysis::OpId>> deferred;
 };
-enum class CellEvaluationError : std::uint8_t {
-  kEnvironment, kCells, kInitialization, kInternalIdentity, kResourceLimit, kWorkLimit
-};
+
 // O(1) after fresh CellEvaluation verification. Incoming witnesses retain the
 // existing enclosing-owner obligation; they never authorize standalone output.
 // Check and record deferred TDZ initializations on a fresh normal-flow plan:
@@ -54,17 +53,17 @@ enum class CellEvaluationError : std::uint8_t {
     IncomingCells incoming = IncomingCells::kReject,
     analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown,
     std::span<const CellDemand> demands = {},
-    std::span<const IncomingCell> entry_demands = {});
+    std::span<const IncomingCell> entry_demands = {}, EvaluationInputSite* failure = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
-    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget = {});
+    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget = {}, EvaluationInputSite* failure = nullptr);
 // Phase-aware storage and completed-store witnesses, not source lifetimes.
 // Keep publication closed until exception scopes/capture ownership are proved.
 [[nodiscard]] std::variant<CellEvaluation, CellEvaluationError> BuildPhasedCellEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     analysis::ClosureWrites writes = analysis::ClosureWrites::kUnknown,
-    std::span<const CellDemand> demands = {});
+    std::span<const CellDemand> demands = {}, EvaluationInputSite* failure = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, CellEvaluationError> VerifyPhasedCellEvaluation(
-    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget = {});
+    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget = {}, EvaluationInputSite* failure = nullptr);
 }  // namespace abcd::source
 #endif

@@ -104,9 +104,13 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     for (const auto& op : graph.ops) { step(); has_holes |= std::holds_alternative<analysis::ValueHole>(op.operation); }
     Require(plan.holes.has_value() == has_holes, Error::kOwnership);
     if (plan.holes) {
-      const auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work});
+      EvaluationInputSite failure;
+      const auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work}, &failure);
       const auto* protocol = std::get_if<HoleProtocol>(&analyzed);
       if (!protocol) {
+        witness.plan_cause = std::get<HoleProtocolError>(analyzed);
+        witness.input_check = failure.check; witness.use = failure.use; witness.value = failure.value;
+        if (failure.operation) witness.location = OperationLocation(graph, *failure.operation);
         switch (std::get<HoleProtocolError>(analyzed)) {
           case HoleProtocolError::kInput: throw Error::kInvalidGraph;
           case HoleProtocolError::kResourceLimit: throw Error::kResourceLimit;
@@ -191,11 +195,15 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       Require(plan.cells->initialization.closure_writes == (plan.functions.empty()
           ? plan.closure_writes : analysis::ClosureWrites::kLanguage), Error::kOwnership);
       const auto verify_cells = flow == EvaluationFlow::kPhased ? VerifyPhasedCellEvaluation : VerifyCellEvaluation;
-      const auto checked = verify_cells(graph, *plan.cells, {bytes, work});
+      EvaluationInputSite failure;
+      const auto checked = verify_cells(graph, *plan.cells, {bytes, work}, &failure);
       if (const auto* error = std::get_if<CellEvaluationError>(&checked)) {
-        if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
-        if (*error == CellEvaluationError::kWorkLimit) return Error::kWorkLimit;
-        return Error::kUnsupportedOperation;
+        witness.plan_cause = *error;
+        witness.input_check = failure.check; witness.use = failure.use; witness.value = failure.value;
+        if (failure.operation) witness.location = OperationLocation(graph, *failure.operation);
+        if (*error == CellEvaluationError::kResourceLimit) return EvaluationFailure{Error::kResourceLimit, witness};
+        if (*error == CellEvaluationError::kWorkLimit) return EvaluationFailure{Error::kWorkLimit, witness};
+        return EvaluationFailure{Error::kUnsupportedOperation, witness};
       }
       step(std::get<std::uint64_t>(checked));
     }
@@ -230,13 +238,17 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       }
     }
     if (plan.literals) {
+      EvaluationInputSite failure;
       const auto checked = flow == EvaluationFlow::kPhased ?
-          VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}, module_index.peers, projected_literals) :
-          VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr);
+          VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}, module_index.peers, projected_literals, &failure) :
+          VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr, &failure);
       if (const auto* error = std::get_if<LiteralError>(&checked)) {
-        if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
-        if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;
-        return Error::kUnsupportedOperation;
+        witness.plan_cause = *error;
+        witness.input_check = failure.check; witness.use = failure.use; witness.value = failure.value;
+        if (failure.operation) witness.location = OperationLocation(graph, *failure.operation);
+        if (*error == LiteralError::kResourceLimit) return EvaluationFailure{Error::kResourceLimit, witness};
+        if (*error == LiteralError::kWorkLimit) return EvaluationFailure{Error::kWorkLimit, witness};
+        return EvaluationFailure{Error::kUnsupportedOperation, witness};
       }
       step(std::get<std::uint64_t>(checked));
       for (const auto& object : plan.literals->objects) {

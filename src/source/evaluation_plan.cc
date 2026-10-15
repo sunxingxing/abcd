@@ -193,9 +193,13 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     bool has_holes = false;
     for (const auto& op : graph.ops) { step(); has_holes |= std::holds_alternative<analysis::ValueHole>(op.operation); }
     if (has_holes) {
-      auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work});
+      EvaluationInputSite failure;
+      auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work}, &failure);
       const auto* protocol = std::get_if<HoleProtocol>(&analyzed);
       if (!protocol) {
+        witness.plan_cause = std::get<HoleProtocolError>(analyzed);
+        witness.input_check = failure.check; witness.use = failure.use; witness.value = failure.value;
+        if (failure.operation) witness.location = OperationLocation(graph, *failure.operation);
         switch (std::get<HoleProtocolError>(analyzed)) {
           case HoleProtocolError::kInput: throw Error::kInvalidGraph;
           case HoleProtocolError::kResourceLimit: throw Error::kResourceLimit;
@@ -209,13 +213,17 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     }
     if (has_cells) {
       const auto writes = functions.empty() ? closure_writes : analysis::ClosureWrites::kLanguage;
+      EvaluationInputSite failure;
       auto built = flow == EvaluationFlow::kPhased
-          ? BuildPhasedCellEvaluation(graph, {bytes, work}, incoming, writes, demands)
-          : BuildCellEvaluation(graph, {bytes, work}, incoming, writes, demands, entry_demands);
+          ? BuildPhasedCellEvaluation(graph, {bytes, work}, incoming, writes, demands, &failure)
+          : BuildCellEvaluation(graph, {bytes, work}, incoming, writes, demands, entry_demands, &failure);
       if (const auto* error = std::get_if<CellEvaluationError>(&built)) {
-        if (*error == CellEvaluationError::kResourceLimit) return Error::kResourceLimit;
-        if (*error == CellEvaluationError::kWorkLimit) return Error::kWorkLimit;
-        return Error::kUnsupportedOperation;
+        witness.plan_cause = *error;
+        witness.input_check = failure.check; witness.use = failure.use; witness.value = failure.value;
+        if (failure.operation) witness.location = OperationLocation(graph, *failure.operation);
+        if (*error == CellEvaluationError::kResourceLimit) return EvaluationFailure{Error::kResourceLimit, witness};
+        if (*error == CellEvaluationError::kWorkLimit) return EvaluationFailure{Error::kWorkLimit, witness};
+        return EvaluationFailure{Error::kUnsupportedOperation, witness};
       }
       plan.cells = std::get<CellEvaluation>(std::move(built));
       admit(plan.cells->allocated_bytes, 1); step(plan.cells->work);
@@ -294,13 +302,17 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       projected_literals = literal_projection;
     }
     if (has_definitions || has_spread) {
-      auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}, module_index.peers, projected_literals) :
-          BuildLiteralPlan(graph, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr);
+      EvaluationInputSite failure;
+      auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}, module_index.peers, projected_literals, &failure) :
+          BuildLiteralPlan(graph, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr, &failure);
       const auto* error = std::get_if<LiteralError>(&built);
       if (error) {
-        if (*error == LiteralError::kResourceLimit) return Error::kResourceLimit;
-        if (*error == LiteralError::kWorkLimit) return Error::kWorkLimit;
-        return Error::kUnsupportedOperation;
+        witness.plan_cause = *error;
+        witness.input_check = failure.check; witness.use = failure.use; witness.value = failure.value;
+        if (failure.operation) witness.location = OperationLocation(graph, *failure.operation);
+        if (*error == LiteralError::kResourceLimit) return EvaluationFailure{Error::kResourceLimit, witness};
+        if (*error == LiteralError::kWorkLimit) return EvaluationFailure{Error::kWorkLimit, witness};
+        return EvaluationFailure{Error::kUnsupportedOperation, witness};
       }
       plan.literals = std::get<LiteralPlan>(std::move(built));
       plan.literals->arrays = std::move(arrays);
@@ -411,7 +423,10 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         if (projected_op(index)) { plan.operations[index].kind = EvaluationKind::kClassProjection; continue; }
         const auto shape = DescribeEvaluation(op.operation);
         if (const auto error = CheckArgumentSnapshot(graph, op)) return *error;
-        Require(shape.has_value(), Error::kUnsupportedOperation);
+        if (!shape) {
+          witness.plan_cause = EvaluationShapeError::kMissingShape;
+          throw EvaluationFailure{Error::kUnsupportedOperation, witness};
+        }
         Require(op.use_count == shape->Count() && shape->expression == op.result.has_value(),
                 Error::kInvalidGraph);
         auto& placement = plan.operations[index];

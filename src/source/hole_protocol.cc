@@ -1,4 +1,5 @@
 #include "hole_protocol.h"
+#include "evaluation_input_scope.h"
 
 #include <algorithm>
 #include <new>
@@ -28,8 +29,9 @@ bool Transport(ValueKinds kinds) {
 }  // namespace
 
 std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, EvaluationInputSite* failure) {
   const auto initial = budget;
+  if (failure) *failure = {};
   try {
     Require(!graph.blocks.empty() &&
             (graph.phases.empty() || graph.phases.size() == graph.blocks.size()));
@@ -63,6 +65,9 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
       step();
       roots[v] = {v};
       const auto& value = graph.values[v];
+      EvaluationInputScope site(failure, {EvaluationInputCheck::kHoleTransport,
+          std::get_if<OpResult>(&value.origin) ? std::optional{std::get<OpResult>(value.origin).op} : std::nullopt,
+          {}, ValueId{v}});
       if (value.first_use && value.domain.Contains(VmValueKind::kHole)) {
         Require(Transport(value.domain), Error::kEscape);
         if (const auto* produced = std::get_if<OpResult>(&value.origin)) {
@@ -226,6 +231,10 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
       }
     }
     for (const auto& use : graph.uses) {
+      EvaluationInputScope site(failure, {EvaluationInputCheck::kHoleUse,
+          std::get_if<OpId>(&use.owner) ? std::optional{std::get<OpId>(use.owner)} : std::nullopt,
+          UseId{static_cast<std::uint32_t>(&use - graph.uses.data())},
+          std::get_if<ValueId>(&use.operand) ? std::optional{std::get<ValueId>(use.operand)} : std::nullopt});
       step();
       const auto* value = std::get_if<ValueId>(&use.operand);
       if (!value) continue;

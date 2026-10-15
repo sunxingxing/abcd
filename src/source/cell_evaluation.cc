@@ -1,4 +1,5 @@
 #include "cell_evaluation.h"
+#include "evaluation_input_scope.h"
 #include "recovery_scratch.h"
 #include "../analysis/value_flow.h"
 
@@ -28,7 +29,7 @@ class Quota {
  private:
   analysis::SemanticBudget initial_, left_;
 };
-void Identities(const analysis::ValueProgram& graph, const CellPlan& cells, IncomingCells incoming, Quota& quota) {
+void Identities(const analysis::ValueProgram& graph, const CellPlan& cells, IncomingCells incoming, Quota& quota, EvaluationInputSite* failure = nullptr) {
   switch (incoming) {
     case IncomingCells::kReject: case IncomingCells::kConditional: break;
     default: throw Error::kInitialization;
@@ -41,6 +42,8 @@ void Identities(const analysis::ValueProgram& graph, const CellPlan& cells, Inco
   for (const auto& op : graph.ops) {
     quota.Step(1);
     if (op.life != analysis::ValueLife::kLive || !IsEnvironmentState(op.operation)) continue;
+    EvaluationInputScope site(failure, {EvaluationInputCheck::kCellIdentity,
+        analysis::OpId{static_cast<std::uint32_t>(&op - graph.ops.data())}, {}, op.result});
     const bool result = !std::holds_alternative<analysis::ValueEnvironmentPop>(op.operation);
     if (op.use_count != 0 || op.result.has_value() != result) throw Error::kInternalIdentity;
     if (op.result && (graph.values[op.result->value].first_use ||
@@ -179,7 +182,7 @@ bool NeedsCellEvaluation(const analysis::ValueOperation& operation) {
 namespace {
 std::variant<std::uint64_t, CellEvaluationError> VerifyEvaluation(
     const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget,
-    CellFlow flow) {
+    CellFlow flow, EvaluationInputSite* failure) {
   try {
     Quota quota(budget);
     if (!plan.environments) throw Error::kEnvironment;
@@ -190,7 +193,7 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyEvaluation(
         ? VerifyPhasedCellInitializations : VerifyCellInitializations;
     quota.Step(Take(verify_initialization(graph, environments, plan.cells,
         plan.initialization.closure_writes, plan.initialization, quota.Remaining()), Error::kInitialization));
-    Identities(graph, plan.cells, plan.incoming, quota);
+    Identities(graph, plan.cells, plan.incoming, quota, failure);
     const auto identities=Take(analysis::AnalyzeValueIdentities(graph,quota.Remaining()),Error::kInternalIdentity);
     quota.Admit(identities.allocated_bytes);quota.Step(identities.work);
     if(plan.identities.canonical!=identities.canonical)throw Error::kInternalIdentity;
@@ -202,7 +205,7 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyEvaluation(
 std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     analysis::ClosureWrites writes, CellFlow flow, std::span<const CellDemand> demands,
-    std::span<const IncomingCell> entry_demands = {}) {
+    std::span<const IncomingCell> entry_demands, EvaluationInputSite* failure) {
   try {
     Quota quota(budget); quota.Admit(sizeof(CellEvaluation));
     const auto build_environments = flow == CellFlow::kPhased
@@ -218,7 +221,7 @@ std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
     auto initialization = Take(build_initialization(graph, environments, cells,
         writes, quota.Remaining()), Error::kInitialization);
     quota.Admit(initialization.allocated_bytes); quota.Step(initialization.work);
-    Identities(graph, cells, incoming, quota);
+    Identities(graph, cells, incoming, quota, failure);
     auto identities=Take(analysis::AnalyzeValueIdentities(graph,quota.Remaining()),Error::kInternalIdentity);
     quota.Admit(identities.allocated_bytes);quota.Step(identities.work);
     TreeCheckBudget ownership(quota.Remaining());
@@ -240,20 +243,24 @@ std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
 std::variant<CellEvaluation, CellEvaluationError> BuildCellEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     analysis::ClosureWrites writes, std::span<const CellDemand> demands,
-    std::span<const IncomingCell> entry_demands) {
-  return BuildEvaluation(graph, budget, incoming, writes, CellFlow::kNormal, demands, entry_demands);
+    std::span<const IncomingCell> entry_demands, EvaluationInputSite* failure) {
+  if (failure) *failure = {};
+  return BuildEvaluation(graph, budget, incoming, writes, CellFlow::kNormal, demands, entry_demands, failure);
 }
 std::variant<std::uint64_t, CellEvaluationError> VerifyCellEvaluation(
-    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget) {
-  return VerifyEvaluation(graph, plan, budget, CellFlow::kNormal);
+    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget, EvaluationInputSite* failure) {
+  if (failure) *failure = {};
+  return VerifyEvaluation(graph, plan, budget, CellFlow::kNormal, failure);
 }
 std::variant<CellEvaluation, CellEvaluationError> BuildPhasedCellEvaluation(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    analysis::ClosureWrites writes, std::span<const CellDemand> demands) {
-  return BuildEvaluation(graph, budget, incoming, writes, CellFlow::kPhased, demands);
+    analysis::ClosureWrites writes, std::span<const CellDemand> demands, EvaluationInputSite* failure) {
+  if (failure) *failure = {};
+  return BuildEvaluation(graph, budget, incoming, writes, CellFlow::kPhased, demands, {}, failure);
 }
 std::variant<std::uint64_t, CellEvaluationError> VerifyPhasedCellEvaluation(
-    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget) {
-  return VerifyEvaluation(graph, plan, budget, CellFlow::kPhased);
+    const analysis::ValueProgram& graph, const CellEvaluation& plan, analysis::SemanticBudget budget, EvaluationInputSite* failure) {
+  if (failure) *failure = {};
+  return VerifyEvaluation(graph, plan, budget, CellFlow::kPhased, failure);
 }
 }  // namespace abcd::source

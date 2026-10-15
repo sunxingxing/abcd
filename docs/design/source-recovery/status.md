@@ -12,6 +12,35 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 75：Evaluation 输入失败证据（cc 审查通过）
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；521/620、567/620 不变，0 状态变化，0 文本变化；扫描 73/74，只有既有的 family_source_cli_test 失败。
+
+- 基线 `4e3e9be9`；保留 HoleProtocolError / CellEvaluationError / LiteralError 和
+  missing-shape 叶子及固定大小的 check/op/use/value 证据，builder、verifier、两条 JSON
+  路径和 `abc_semantic --record-source` 贯通。原枚举、资源分类、准入和预算不变。
+- o8/42040 m42490、o28/41167 m41622、source 下 o15/20252 m20697 均为
+  `LiteralError::kDefinition > kLiteralStagedStorage`，allocation op17，原始/工作 PC47。
+  跨选择的数组初始化需要保留 indexed [[Define]] 的事件及树/恢复对应；现有暂存路径
+  只证明 buffered object 的已有属性赋值，不是消费登记的一处局部遗漏。
+- o24/37520 m38333 为 `LiteralError::kFlow > kLiteralStagedAcyclic`：当前检查整个 CFG
+  无环，故只有方法位置，没有虚构 PC。需要构造区间的 activation/escape/order 证明。
+  按本轮停止条件未实施准入修复。设计与逐目标证据见
+  [literal-initialization.md](literal-initialization.md#round-75-evaluation-input-refusal-evidence-2026-10-15)。
+- 完整 keep-going 构建通过；固定集串行 **65/65**；新增与直接相关 **5/5**。
+  evaluation/literal/cell/hole/tree-failure/source-route/logical-coverage 定向 **47/54**，
+  失败仅已登记的七项 literal 测试，未弱化断言。新测试覆盖两条 JSON、真实 CLI、
+  PC0/缺失/规范化位置、资源分类、伪造证明、copy/register/block 变体、200/201/400/800
+  和精确 byte/work 边界。
+- CLI/corpus/failure/receipt/manifest 扫描最终 **72/73**，仅已登记的
+  family_source_cli_test 失败。首轮另发现 guarded_captures 的 branch 旧期望缺少新增的
+  `EvaluationShapeError::kMissingShape`；补全精确原因链后重跑整个扫描通过该项，
+  拒绝状态、禁止发布源码和 TDZ 变异断言均保留。
+- 对 explore74c/explore74cs：旧 flags **521/620**、source **567/620**；**0 状态变化、
+  0 完整或不完整源码/扩展名漂移**。manifest 只有上述目标的 3/4 条原因证据变化；
+  o15 旧 flags 仍为 ModuleEnclosureError=10。无新 complete，新增输出的 Node 检查不适用。
+- 日志与逐记录比较：`/private/tmp/abcd-round75/`。未运行全套测试、留出集或 RSS 基准；
+  未 commit/push/stash。没有新增源语言前提。
+
 ## Round 74 增量 III/IV：Sendable 模块域与 shared 发布（cc 审查通过）
 - cc 独立审查（增量 III/IV）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 521/620 不变，`--language-source` 566 → **567/620**（LruCache.ets：首行 `"use shared"`、经真实 ArkTSUtils import 拼写的 GENERIC 字段类型、构造器首条 `"use sendable"`、async 成员内闭包捕获自身的 this/key/value）；0 回退，0 文本漂移；扫描 76/77，只有既有的 family_source_cli_test 失败。
 
