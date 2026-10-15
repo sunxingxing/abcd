@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/semantic_ir.h"
 #include "abcd/analysis/yield_region.h"
+#include "abcd/analysis/await_catch_flow.h"
 
 namespace abcd::analysis {
 enum class AwaitCatchError { kRegion, kObservedRegister, kResourceLimit };
@@ -44,6 +45,12 @@ ProveAwaitCatchInputs(const abc::MethodBody& body,
                      abc::CodeOffset completion_handler,
                      SemanticBudget budget = {},
                      std::optional<abc::CodeOffset> implicit_exit = std::nullopt);
+// Rechecks the raw-flow certificate, then supplements ONLY fast-proof unknown
+// queries. Actual fast reads remain refusals. Generator/yield callers never use it.
+[[nodiscard]] std::variant<AwaitCatchProof, AwaitCatchFailure>
+ProveAwaitCatchInputsWithFlow(const abc::MethodBody&, std::span<const AwaitRegion>,
+    abc::ProfileId, std::uint64_t frame_size, abc::CodeOffset completion_handler,
+    const AwaitCatchFlowProof&, SemanticBudget = {});
 // Same catch-input analysis for exact single-entry synchronous/async yields.
 // Native yield throws before committing result/mode, whereas the VM's THROW
 // route commits both. Admit that projection only when a selected user handler

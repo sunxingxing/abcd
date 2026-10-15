@@ -85,7 +85,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/semantic_validation.cc
 target_sources(abcd_analysis PRIVATE src/analysis/constant_object.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iterator.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/coroutine.cc)
-target_sources(abcd_analysis PRIVATE src/analysis/await_region.cc src/analysis/await_catch.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/await_region.cc src/analysis/await_catch.cc src/analysis/await_catch_flow.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/iter_result.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/rest_arguments.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/private_property.cc)
@@ -527,6 +527,11 @@ if(BUILD_TESTING)
   target_link_libraries(exception_plan_test PRIVATE abcd_source)
   target_include_directories(exception_plan_test PRIVATE tests/support)
   add_test(NAME exception_plan_test COMMAND exception_plan_test)
+  add_executable(await_catch_flow_probe tests/unit/analysis/await_catch_flow_probe.cc)
+  target_link_libraries(await_catch_flow_probe PRIVATE abcd_source abcd_json)
+  add_executable(await_catch_flow_test tests/unit/analysis/await_catch_flow_test.cc)
+  target_link_libraries(await_catch_flow_test PRIVATE abcd_analysis)
+  add_test(NAME await_catch_flow_test COMMAND await_catch_flow_test)
   add_executable(control_composition_test tests/unit/source/control_composition_test.cc)
   target_link_libraries(control_composition_test PRIVATE abcd_source)
   target_include_directories(control_composition_test PRIVATE tests/support)
@@ -2746,6 +2751,10 @@ if(BUILD_TESTING)
     target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME tree_failure_test COMMAND tree_failure_test)
     if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME await_catch_flow_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/await_catch_flow.mjs
+        $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic> $<TARGET_FILE:await_catch_flow_probe>
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/await_catch_flow/flow.abc)
       add_test(NAME cell_parameter_defaults_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cell_parameter_defaults.mjs
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>

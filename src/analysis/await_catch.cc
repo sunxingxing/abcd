@@ -74,7 +74,8 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
     abc::ProfileId profile, std::uint64_t frame_size,
     abc::CodeOffset completion_handler, SemanticBudget budget,
     std::optional<abc::CodeOffset> implicit_exit = std::nullopt,
-    std::span<const AwaitRegion> awaits = {}) {
+    std::span<const AwaitRegion> awaits = {},
+    std::span<const CatchFlowEvidence> flow = {}) {
   const auto fail = [](AwaitCatchError kind, std::optional<abc::CodeOffset> pc = {}) {
     return AwaitCatchFailure{kind, pc};
   };
@@ -366,6 +367,28 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveCatchInputs(
         const bool unread_suffix = suffix_known && (!suffix_target || *suffix_target >= probe.handler) &&
             suffix_reads.At(position(probe.slot.value)) == FirstUse::kExit;
         if (use != FirstUse::kWrite && use != FirstUse::kExit && !unread_suffix) {
+          // The raw proof is validated by the public wrapper before this scan.
+          // Its queries are in original await order, with two storage roles.
+          if (use != FirstUse::kRead && !flow.empty()) {
+            auto at = std::lower_bound(flow.begin(), flow.end(), probe.suspension,
+                [&](const CatchFlowEvidence& evidence, abc::CodeOffset pc) {
+                  charge(); return evidence.query.await < pc;
+                });
+            bool covered = false;
+            for (; at != flow.end() && at->query.await == probe.suspension; ++at) {
+              charge();
+              if (at->query.handler == probe.handler && at->query.slot == probe.slot)
+                switch (at->outcome) {
+                  case CatchFlowOutcome::kUnobserved:
+                  case CatchFlowOutcome::kCovered:
+                  case CatchFlowOutcome::kTerminal:
+                  case CatchFlowOutcome::kCoveredAndTerminal: covered = true; break;
+                  case CatchFlowOutcome::kObservedRead:
+                  case CatchFlowOutcome::kUnknownEffect: covered = false; break;
+                }
+            }
+            if (covered) continue;
+          }
           auto failure = fail(AwaitCatchError::kObservedRegister, probe.suspension);
           failure.observation = AwaitCatchObservation{probe.handler, probe.slot,
               use == FirstUse::kRead ? CatchInputPrefix::kRead : CatchInputPrefix::kUnprovedPaths,
@@ -387,6 +410,22 @@ std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputs(
     abc::ProfileId profile, std::uint64_t frame_size,
     abc::CodeOffset completion_handler, SemanticBudget budget, std::optional<abc::CodeOffset> implicit_exit) {
   return ProveCatchInputs(body, regions, profile, frame_size, completion_handler, budget, implicit_exit);
+}
+std::variant<AwaitCatchProof, AwaitCatchFailure> ProveAwaitCatchInputsWithFlow(
+    const abc::MethodBody& body, std::span<const AwaitRegion> regions,
+    abc::ProfileId profile, std::uint64_t frame_size, abc::CodeOffset completion_handler,
+    const AwaitCatchFlowProof& proof, SemanticBudget budget) {
+  const auto verified = VerifyAwaitCatchFlow(body, regions, profile, frame_size, completion_handler, proof, budget);
+  if (const auto* error = std::get_if<CatchFlowFailure>(&verified))
+    return AwaitCatchFailure{error->kind == CatchFlowError::kResourceLimit || error->kind == CatchFlowError::kWorkLimit
+        ? AwaitCatchError::kResourceLimit : AwaitCatchError::kRegion, error->pc};
+  const auto cost = std::get<CatchFlowCost>(verified);
+  if (cost.work > budget.work) return AwaitCatchFailure{AwaitCatchError::kResourceLimit, {}};
+  budget.work -= cost.work;
+  auto result = ProveCatchInputs(body, regions, profile, frame_size, completion_handler,
+      budget, std::nullopt, {}, proof.queries);
+  if (auto* accepted = std::get_if<AwaitCatchProof>(&result)) accepted->work_units += cost.work;
+  return result;
 }
 std::variant<AwaitCatchProof, AwaitCatchFailure> ProveYieldCatchInputs(
     const abc::MethodBody& body, std::span<const YieldSite> regions,

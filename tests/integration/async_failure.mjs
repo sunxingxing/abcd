@@ -19,7 +19,22 @@ try{
   const manifests=new Map();
   for(const [n,input] of inputs){const out=join(dir,label+n);run(structure,[input,out,'--value-source',...flags]);manifests.set(n,JSON.parse(readFileSync(join(out,'manifest.json'))).records);}
   for(const [n,record,method,pc,handler,slot,confined] of cases){
-   const r=manifests.get(n).find(r=>r.entity===record);assert.equal(r.source_status,3);assert.equal(r.source,undefined);
+   const r=manifests.get(n).find(r=>r.entity===record);
+   // Round 78: raw catch-input coverage closes these two previous refusals.
+   if(n===9||n===39){
+    assert.equal(r.source_status,0);assert.equal(r.source_complete,true);assert.ok(r.source);
+    const cli=JSON.parse(run(semantic,[inputs.get(n),String(method),'--record-source',...flags]));
+    assert.equal(cli.source_complete,true);assert.equal(cli.source,readFileSync(join(dir,label+n,r.source),'utf8'));continue;
+   }
+   assert.equal(r.source_status,3);assert.equal(r.source,undefined);
+   // The input-register proof authorizes no effectful IteratorClose projection.
+   if(record===23058){
+    const f=r.source_failure;assert.equal(f.method,23306);assert.equal(f.pc,149);assert.equal(f.working_pc,125);
+    assert.deepEqual(f.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
+    assert.equal(f.exception_region.region,0);assert.equal(f.exception_region.body_pc,149);assert.equal(f.exception_region.handler_pc,174);
+    assert.equal(f.exception_region.exits.length,2);
+    const cli=JSON.parse(run(semantic,[inputs.get(n),String(method),'--record-source',...flags],1));assert.deepEqual(cli.source_failure,f);continue;
+   }
    const f=r.source_failure;assert.equal(f.class,'unproved');assert.equal(f.method,method);assert.equal(f.pc,pc);
    assert.equal(f.working_pc,undefined);assert.deepEqual(f.async.location,{method,pc});
    const expected=[{domain:'abcd::source::FunctionEmitError',value:1},
@@ -36,5 +51,5 @@ try{
    else{assert.equal(actual.opcode,0x33);assert.equal(actual.operands[1].method_entity,59227);}
   }
  }
- console.log('async failures: four first refusals x two contracts; exact check, original PC, handler/register, CLI/manifest equality');
+ console.log('async failures: two completions, close still refused, prelude refusal unchanged; two contracts, CLI/manifest equality');
 }finally{rmSync(dir,{recursive:true,force:true});}

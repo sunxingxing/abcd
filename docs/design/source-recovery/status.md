@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 78：await catch 输入的原始 CFG 活跃性证明（cc 审查通过）
+
+- await_catch_flow：原始 Before/Commit/Catch/Resume/CallerExit 事件图、预付稀疏闭包、独立验证器；只有正常 Commit 能覆盖旧定义；读优先于写；资源耗尽返回拒绝；只补足快速证明的 kUnprovedPaths。o32 越过原拒绝，转为 effectful close 的 kMultipleExits（for-of 暂停轨道）。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 524 → **526/620**，`--language-source` 570 → **572/620**（o9 RdbDataPersistence、o39 WebSaveImage）；0 回退，0 文本漂移；扫描 75/76，只有既有的 family_source_cli_test 失败。
+
 ## Round 77 增量 3：captured default 的 recovery 与发布（cc 审查通过）
 
 - recovery 加入实参入口 → undefined 分支 → provided/missing 提交 → initialized-parameter 定义；只有 missing 路径执行签名表达式，不伪造 ExprId；parameter_recovery 独立重建。kCellParameterRecovery 门禁只对通过验证的方法解除。DevEco es2abc 往返核对 length 2、条件初始化、外层与局部 cell 分离、闭包目标与 HoleGuard。

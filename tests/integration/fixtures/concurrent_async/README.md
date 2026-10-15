@@ -39,9 +39,10 @@ Promise, catch around await, and microtask traces. Directive erasure is detected
 by recompilation; a changed resolution value is detected by Node. Node does not
 check Ark taskpool callbacks, cross-thread scheduling or concurrency isolation.
 
-The finally-around-await fixture is a deliberate typed refusal at the existing
-`AsyncCompletionCheck::kCatchInput > AwaitCatchError` gate. Raw completion ports
-are checked, but their proof does not bypass register liveness at user handlers.
-It is not counted as an engine-output differential. This round does not change
-that separate async-analysis boundary. No finally-throw source oracle is used:
+Round 78's original exception-CFG catch-input proof now admits the finally-around-
+await fixture. The test independently checks the async/concurrent owner, recompiles
+actual engine output, compares kind/annotation and notification completion ports,
+and executes fulfilled/rejected ordinary calls with microtask traces under Node.
+The finally itself does not throw. No finally-throw source oracle is used:
 es2abc's protected inlined finalizers must be compared against ABC handler ranges.
+Taskpool/cross-thread behaviour remains unverified by Node.

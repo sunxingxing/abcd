@@ -39,11 +39,25 @@ try {
  const mutation=join(dir,'mutation.mjs');writeFileSync(mutation,source.replace('return $arg0;', 'return 31;'));
  assert.notEqual(run(process.execPath,[harness,mutation]),expected,'wrong Promise resolution mutation');
  run(process.execPath,['--check',recovered]);
- // Preserve the existing catch-input gate. No liveness/exception proof is
- // weakened to make a finally-around-await fixture publish in this round.
+ // Round 78 independently proves this wrapper's formerly-unproved catch
+ // inputs. Keep the completion, notification and directive checks end to end.
  const cleanup=join(dir,'cleanup');run(structure,[join(fixture,'finally.abc'),cleanup,'--value-source','--language-source']);
- const c=JSON.parse(readFileSync(join(cleanup,'manifest.json'))).records.find(r=>r.source_status!==2);assert.equal(c.source_status,3);
- assert.equal(c.source_failure.async.check,20);assert.equal(c.source_failure.causes.at(-1).domain,'abcd::analysis::AwaitCatchError');
- assert.ok(inspect(join(fixture,'finally.abc')).find(r=>r.functions.length).functions.every(f=>f.completion_verified));
- console.log('6 async concurrent functions: exact kind/annotation/module table round trip; raw Promise/resolve/reject notify ports; Node resolution, rejection and microtask traces; mutations. Finally-await stays at existing catch-input proof. Taskpool unverified.');
+ const c=JSON.parse(readFileSync(join(cleanup,'manifest.json'))).records.find(r=>r.source_status!==2);assert.equal(c.source_status,0);
+ const cleanupSource=readFileSync(join(cleanup,c.source),'utf8');assert.equal((cleanupSource.match(/"use concurrent";/g)||[]).length,1);
+ const cleanupBefore=inspect(join(fixture,'finally.abc')).find(r=>r.functions.length);
+ assert.ok(cleanupBefore.functions.every(f=>f.completion_verified&&f.async_owner_verified));
+ const cleanupJs=join(dir,'cleanup.js'),cleanupAbc=join(dir,'cleanup.abc');writeFileSync(cleanupJs,cleanupSource);
+ run(compiler,['--module','--merge-abc','--opt-level=0',`--record-name=${cleanupBefore.record.slice(1,-1)}`,'--source-file=finally.js',`--output=${cleanupAbc}`,cleanupJs]);
+ const cleanupAfter=inspect(cleanupAbc).find(r=>r.record===cleanupBefore.record);assert.ok(cleanupAfter);
+ assert.deepEqual(cleanupAfter.functions.map(summarize),cleanupBefore.functions.map(summarize));
+ assert.ok(cleanupAfter.functions.every(f=>f.completion_verified&&f.async_owner_verified));
+ const cleanupOriginal=join(dir,'cleanup-original.mjs'),cleanupRecovered=join(dir,'cleanup-recovered.mjs');
+ copyFileSync(join(fixture,'finally.js'),cleanupOriginal);writeFileSync(cleanupRecovered,cleanupSource);
+ const cleanupHarness=join(dir,'cleanup-harness.mjs');writeFileSync(cleanupHarness,`
+ const m=await import(process.argv[2]);const trace=[],values=[];
+ for(const reject of [false,true]){trace.push('call');const input=reject?Promise.reject(new TypeError('input')):Promise.resolve(7);const p=m.cleanup(input,trace);trace.push('returned');queueMicrotask(()=>trace.push('micro'));try{values.push(await p)}catch(e){values.push(e.constructor.name)}trace.push('settled')}
+ console.log(JSON.stringify({values,trace}));`);
+ assert.equal(run(process.execPath,[cleanupHarness,cleanupRecovered]),run(process.execPath,[cleanupHarness,cleanupOriginal]));
+ run(process.execPath,['--check',cleanupRecovered]);
+ console.log('6 async concurrent functions: exact kind/annotation/module table round trip; raw Promise/resolve/reject notify ports; Node resolution, rejection and microtask traces; mutations. Finally-await now independently verified, recompiled and Node-compared (benign finally only). Taskpool unverified.');
 } finally {rmSync(dir,{recursive:true,force:true});}

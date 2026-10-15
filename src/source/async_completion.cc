@@ -19,6 +19,23 @@
 
 namespace abcd::source {
 namespace {
+// allocate_shared's implementation-owned control block is charged before its
+// actual allocation, rather than guessing its size from the standard library.
+template<class T> struct CatchDiagnosticAllocator {
+  using value_type = T;
+  std::size_t allowance;
+  explicit CatchDiagnosticAllocator(std::size_t bytes) : allowance(bytes) {}
+  template<class U> CatchDiagnosticAllocator(const CatchDiagnosticAllocator<U>& a) : allowance(a.allowance) {}
+  T* allocate(std::size_t n) {
+    if (n > allowance / sizeof(T)) throw std::bad_alloc{};
+    return std::allocator<T>{}.allocate(n);
+  }
+  void deallocate(T* p, std::size_t n) { std::allocator<T>{}.deallocate(p,n); }
+  template<class U> bool operator==(const CatchDiagnosticAllocator<U>& a) const { return allowance == a.allowance; }
+};
+// Allocation admission for a small diagnostic object and shared ownership;
+// the rebound allocator checks the implementation's real request against it.
+constexpr std::size_t kCatchDiagnosticBytes = 256;
 bool IsRegister(const abc::BodyInstruction& instruction,
                 abc::Opcode opcode, abc::RegisterId* register_id) {
   const auto& decoded = instruction.decoded;
@@ -258,13 +275,51 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   const auto region_bytes = regions.capacity() * sizeof(analysis::AwaitRegion);
   if (region_bytes > bytes) return FunctionEmitError::kResourceLimit;
   bytes -= region_bytes;
-  const auto catch_inputs = analysis::ProveAwaitCatchInputs(
+  auto catch_inputs = analysis::ProveAwaitCatchInputs(
       body, regions, profile, frame.registers, sites[handler].offset, {bytes});
+  bool catch_flow_proved = false;
   if (const auto* failure = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs)) {
     AsyncCompletionFailure result{Check::kCatchInput, failure->pc}; result.cause = failure->kind;
     result.async.catch_input = failure->observation;
+    // Supplement only fast-proof unknowns. Already accepted normalizations keep
+    // their original path; raw-flow proof never authorizes close projection.
+    if (failure->kind == analysis::AwaitCatchError::kObservedRegister) {
+      constexpr auto overhead = kCatchDiagnosticBytes;
+      if (bytes >= overhead) {
+        const auto available = bytes - overhead;
+        auto proven = analysis::ProveAwaitCatchFlow(body, regions, profile, frame.registers,
+            sites[handler].offset, {available});
+        auto report = std::allocate_shared<analysis::AwaitCatchFlowDiagnostic>(
+            CatchDiagnosticAllocator<analysis::AwaitCatchFlowDiagnostic>{overhead});
+        if (const auto* error = std::get_if<analysis::CatchFlowFailure>(&proven)) report->failure = *error;
+        else {
+          auto& proof = std::get<analysis::AwaitCatchFlowProof>(proven);
+          const auto held = proof.states.capacity() * sizeof(analysis::CatchFlowState) +
+              proof.queries.capacity() * sizeof(analysis::CatchFlowEvidence);
+          if (held > available) report->failure = analysis::CatchFlowFailure{analysis::CatchFlowError::kResourceLimit, {}};
+          else {
+            const auto checked = analysis::VerifyAwaitCatchFlow(body, regions, profile,
+                frame.registers, sites[handler].offset, proof, {available - held});
+            if (const auto* error = std::get_if<analysis::CatchFlowFailure>(&checked)) report->failure = *error;
+            else {
+              report->verified = true;
+              if (failure->observation && failure->observation->prefix == analysis::CatchInputPrefix::kUnprovedPaths) {
+                auto supplemented = analysis::ProveAwaitCatchInputsWithFlow(body, regions, profile,
+                    frame.registers, sites[handler].offset, proof, {available - held});
+                // Failed supplementary proofs cannot erase the original witness.
+                // Only successful proof composition authorizes normalization.
+                if (std::holds_alternative<analysis::AwaitCatchProof>(supplemented))
+                  catch_flow_proved = true;
+              }
+              report->queries = std::move(proof.queries);
+            }
+          }
+        }
+        result.async.catch_flow = std::move(report);
+      }
+    }
     if (failure->kind == analysis::AwaitCatchError::kResourceLimit) result.kind = FunctionEmitError::kResourceLimit;
-    return result;
+    if (!catch_flow_proved) return result;
   }
   std::size_t next_region = 0;
   for (std::size_t i = enter + 2; i < handler - 2; ++i) {

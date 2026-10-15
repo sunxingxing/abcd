@@ -46,7 +46,7 @@ void RoundTrip(AsyncCompletionFailure error) {
 }
 }
 int main() {
-  static_assert(std::is_trivially_copyable_v<AsyncCompletionEvidence>);
+  static_assert(sizeof(AsyncCompletionEvidence) <= 256); // query storage is separately owned
   static_assert(static_cast<unsigned>(FunctionEmitError::kKind)==1);
   static_assert(static_cast<unsigned>(FunctionEmitError::kResourceLimit)==6);
   test::Check(std::holds_alternative<abc::MethodBody>(Run(Body())));
@@ -107,9 +107,18 @@ int main() {
     RoundTrip(e);e.async.location.method=abc::EntityOffset{77};e.async.location.pc=abc::CodeOffset{0};
     e.async.location.working_pc=abc::CodeOffset{13};e.async.related_pc=abc::CodeOffset{21};
     e.async.catch_input=AwaitCatchObservation{{21},{0},CatchInputPrefix::kUnprovedPaths,false,true};
+    auto flow=std::make_shared<AwaitCatchFlowDiagnostic>();flow->verified=true;
+    flow->queries.push_back({{{0},{3},{21},{0},CatchFlowRole::kResult},CatchFlowOutcome::kCovered,{},{},abc::CodeOffset{0},{}});
+    e.async.catch_flow=flow;
     RoundTrip(e);e.cause=AwaitCatchError::kObservedRegister;RoundTrip(e);
     e.cause=AwaitRegionError::kInteriorEntry;RoundTrip(e);
     auto j=nlohmann::json::parse(AsyncCompletionJson(e.async).dump());test::Check(ParseAsyncCompletion(j)==e.async);
+    auto broken=j;broken["catch_flow"]["queries"][0]["register"]=-1;test::Check(!ParseAsyncCompletion(broken));
+    broken=j;broken["catch_flow"]["close_projection_authorized"]=true;test::Check(!ParseAsyncCompletion(broken));
+    broken=j;broken["catch_flow"]["queries"][0]["read_pc"]=0U;
+    const auto pc0=ParseAsyncCompletion(broken);test::Check(pc0.has_value());test::Check(pc0->catch_flow && !pc0->catch_flow->queries.empty());
+    test::Check(pc0->catch_flow->queries[0].read==abc::CodeOffset{0});
+    flow->verified=false;flow->failure=CatchFlowFailure{CatchFlowError::kResourceLimit,{}};RoundTrip(e);
     j["check"]=UINT32_MAX;test::Check(!ParseAsyncCompletion(j));
     j=AsyncCompletionJson(e.async);j["catch_input"]["register"]=-1;test::Check(!ParseAsyncCompletion(j));
   }

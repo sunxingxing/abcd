@@ -4,6 +4,8 @@
 #include "abcd/source/tree_failure.h"
 #include "abcd/analysis/await_region.h"
 #include "abcd/analysis/await_catch.h"
+#include "abcd/analysis/await_catch_flow.h"
+#include <memory>
 namespace abcd::source {
 // Diagnostic checks only; no new normalization admission. Original PCs remain
 // original while no working body exists. Missing sites are not encoded as PC0.
@@ -22,7 +24,13 @@ struct AsyncCompletionEvidence {
   TreeLocation location;
   std::optional<abc::CodeOffset> related_pc;
   std::optional<analysis::AwaitCatchObservation> catch_input;
-  bool operator==(const AsyncCompletionEvidence&) const = default;
+  // Separately charged immutable query report; the failure witness stays fixed-size.
+  std::shared_ptr<const analysis::AwaitCatchFlowDiagnostic> catch_flow;
+  bool operator==(const AsyncCompletionEvidence& e) const {
+    return check == e.check && location == e.location && related_pc == e.related_pc &&
+        catch_input == e.catch_input && ((!catch_flow && !e.catch_flow) ||
+        (catch_flow && e.catch_flow && *catch_flow == *e.catch_flow));
+  }
 };
 struct AsyncCompletionFailure {
   FunctionEmitError kind;

@@ -62,3 +62,6 @@ handler/register 证据和 manifest/abc_semantic 一致性。它依赖本地 cor
 
 由于本轮不放宽准入，没有新增 complete，也没有声称完成 await/microtask
 Node 差分或修复组的语义变异矩阵。实际构建、回归和 cohort 数字见 status.md。
+
+Round 78 已补充原始异常 CFG 的 catch-input 证明，见 [await-catch-flow.md](await-catch-flow.md)。
+本文件保留 Round 69 当时的拒绝事实；当前准入与验证边界以新文档和交付证据为准。
