@@ -64,6 +64,9 @@ class DefaultBody {
   [[nodiscard]] static std::variant<DefaultBody, DefaultBodyError> BuildCellParameter(
       const analysis::ValueProgram&, const analysis::ValueEnvironments&, const CellPlan&,
       const ParameterPlan&, std::uint32_t length, analysis::SemanticBudget budget = {});
+  std::shared_ptr<const analysis::ValueProgram> CellParameterOriginal() const { return original_; }
+  std::uint32_t FormalCount() const { return formal_count_; }
+  std::uint32_t Length() const { return length_; }
   const CellParameterDefaultProof* CellParameters() const { return std::get_if<CellParameterDefaultProof>(&proof_); }
   std::span<const InitializedParameterCommit> ParameterCommits() const { return commits_; }
   std::span<const SignatureCapture> SignatureCaptures() const { return captures_; }
@@ -95,7 +98,7 @@ class DefaultBody {
   std::vector<DefaultInitializer> initializers_;
   std::vector<SignatureString> strings_;
   // Original input remains immutable for independent signature verification.
-  std::unique_ptr<analysis::ValueProgram> original_;
+  std::shared_ptr<const analysis::ValueProgram> original_;
   std::vector<DefaultOpPlacement> joint_operations_;
   std::vector<SignatureCapture> captures_;
   std::vector<InitializedParameterCommit> commits_;

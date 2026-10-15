@@ -1,4 +1,5 @@
 #include "concurrent_tree.h"
+#include "parameter_recovery.h"
 #include "binding_normalization.h"
 #include "recovery_flow.h"
 #include "flow_units.h"
@@ -60,6 +61,7 @@ class FlowBuilder {
     result_.argument_carriers.clear();
     result_.snapshot_slots.clear();
     result_.invocation_values.clear();
+    result_.parameter_defaults.clear();
     result_.captured_inputs.clear();
     result_.unit_captures.clear();
   }
@@ -161,6 +163,8 @@ class FlowBuilder {
     }
     native_scopes_=projection_.loops&&std::any_of(native_bindings_.begin(),native_bindings_.end(),[](const auto& member){return member.has_value();});
     if(native_scopes_){budget_.Step(tree_.statements.size());Resize(loop_scopes_,tree_.statements.size());}
+    if(result_.original && result_.original->parameter_defaults)
+      VerifyParameterDefaultInput(tree_,*result_.original->parameter_defaults,budget_);
     terminal_=New(); dispatch_=New();
     if(native_scopes_)loop_scope_events_[terminal_.value]={IncomingScope{},IncomingScope{}};
     current_loop_=IncomingScope{};
@@ -185,10 +189,25 @@ class FlowBuilder {
       const auto initialized=Define(SymbolId{static_cast<std::uint32_t>(i)},FlowDefinitionKind::kFunctionSelf);
       Link(previous,initialized);previous=initialized;
     }
+    std::size_t default_index=0;
     for(std::size_t i=0;i<tree_.parameters.size();++i) {
       budget_.Step();const auto& parameter=tree_.parameters[i];
       const auto initialized=Define(parameter.symbol,parameter.rest?FlowDefinitionKind::kRestParameter:FlowDefinitionKind::kParameter);
-      if(parameter.rest) {
+      const OriginalParameterDefault* joint=nullptr;
+      if(result_.original&&result_.original->parameter_defaults) {
+        const auto& entries=result_.original->parameter_defaults->entries;
+        if(default_index<entries.size()&&entries[default_index].proof.parameter==i)joint=&entries[default_index++];
+      }
+      if(joint) {
+        RequireTree(!parameter.rest&&parameter.initializer==joint->initializer,Error::kOwnership);
+        const auto argument=New(),decision=New(),provided=New(),missing=New();
+        Context invocation{missing,terminal_,{}};invocation.entry_evaluation=true;
+        Link(previous,argument);Link(argument,decision);
+        Link(decision,provided,FlowCompletion::kNotTaken);
+        Link(decision,Expr(joint->initializer,invocation),FlowCompletion::kTaken);
+        Link(provided,initialized);Link(missing,initialized);
+        Append(result_.parameter_defaults,{ParameterId{static_cast<std::uint32_t>(i)},argument,decision,provided,missing,initialized,joint->initializer,terminal_});
+      } else if(parameter.rest) {
         const auto creation=New({FlowEventKind::kEvaluation});
         const auto effects=NormalValueEffects(EmptyArrayExpr{},{},ResourceFailures(tree_.identity.contract));
         events_[creation.value].effects=effects;events_[creation.value].effect=effects.Evaluation();
@@ -327,6 +346,7 @@ class FlowBuilder {
     result.source_names=std::move(names.index);
     ProjectOriginal();
     VerifyForInRecovery(tree_, result, budget_);
+    VerifyParameterDefaultFlow(tree_,result,budget_);
     result.allocated_bytes=budget_.Bytes();
     // Published buffers own their actual capacities. Construction admission
     // includes old/new growth overlap, PMR traversal scratch and subordinate
@@ -344,7 +364,7 @@ class FlowBuilder {
     };
     // Ownership census, not semantic dispatch. Add any new owned flow buffer
     // here; original evidence is borrowed and scopes are charged separately.
-    add(flow.enumerations);
+    add(flow.enumerations);add(flow.parameter_defaults);
     add(flow.normal_kinds);add(flow.normal_truths);add(flow.normal_exits);
     add(flow.actions);add(flow.aggregates);add(flow.argument_carriers);
     add(flow.snapshot_slots);add(flow.property_initializers);add(flow.original_actions);

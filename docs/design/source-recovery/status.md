@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 77 增量 3：captured default 的 recovery 与发布（cc 审查通过）
+
+- recovery 加入实参入口 → undefined 分支 → provided/missing 提交 → initialized-parameter 定义；只有 missing 路径执行签名表达式，不伪造 ExprId；parameter_recovery 独立重建。kCellParameterRecovery 门禁只对通过验证的方法解除。DevEco es2abc 往返核对 length 2、条件初始化、外层与局部 cell 分离、闭包目标与 HoleGuard。
+- cc 独立审查（增量 3）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 521 → **524/620**，`--language-source` 567 → **570/620**（o10 Index、o31 FlowItemNode、o31 SwiperView；签名形如 `(elmtId, isInitialRender, data = __data__) => {...}`）；0 回退，0 文本漂移；扫描 74/75，只有既有的 family_source_cli_test 失败。
+
 ## Round 77 增量 2：captured default 的签名与家族贯通（cc 审查通过）
 
 - 联合残余体投影（签名拥有迁移的 read/guard/写回与异常出口，`InitializedParameterCommit` 记录残余初始 store 消费的形参）；SignatureCell 按原始 read site 查找外层存储；签名读取携带 Guarded 义务并入既有格；DefaultSignatureVerify 独立复核。首因前移为 `DefaultSignatureError::kCellParameterRecovery`；recovery 的条件参数事件链留给增量 3。

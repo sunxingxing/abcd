@@ -1,4 +1,5 @@
 #include "default_body.h"
+#include "recovery_scratch.h"
 #include "../analysis/value_flow.h"
 #include <algorithm>
 #include <bit>
@@ -97,7 +98,9 @@ std::variant<DefaultBody,DefaultBodyError> DefaultBody::BuildCellParameter(const
     const auto independent=VerifyCellParameterDefaults(g,env,cells,parameters,length,proof.Defaults(),q.left);
     if(const auto* e=std::get_if<CellParameterDefaultFailure>(&independent))CheckFailure(*e);q.Cost(std::get<CellParameterDefaultCost>(independent));
     q.Admit(1,sizeof(DefaultBody));q.Admit(1,sizeof(ValueProgram));
-    auto original=std::make_unique<ValueProgram>(Clone(g,q));std::vector<DefaultOpPlacement> operations;
+    auto original_copy=Clone(g,q);TreeCheckBudget ownership(q.left);
+    auto original=std::allocate_shared<ValueProgram>(RecoveryAllocator<ValueProgram>{ownership},std::move(original_copy));
+    q.Admit(ownership.Bytes(),1);std::vector<DefaultOpPlacement> operations;
     auto residual=Residual(g,proof,operations,q);
     std::vector<DefaultInitializer> initializers;std::vector<SignatureCapture> captures;std::vector<InitializedParameterCommit> commits;std::vector<std::uint32_t> sites;
     std::vector<ValueExceptionalExit> exceptions;std::vector<std::optional<std::uint32_t>> exits;
@@ -112,7 +115,7 @@ std::variant<DefaultBody,DefaultBodyError> DefaultBody::BuildCellParameter(const
     q.Step(sites.size()*std::bit_width(sites.size()+1));std::sort(sites.begin(),sites.end(),[&](auto a,auto b){return captures[a].site.value<captures[b].site.value;});
     DefaultBody body{std::move(residual),std::move(proof),std::move(initializers),{},budget.bytes-q.left.bytes,budget.work-q.left.work};
     body.original_=std::move(original);body.joint_operations_=std::move(operations);body.captures_=std::move(captures);body.commits_=std::move(commits);body.capture_sites_=std::move(sites);body.exceptions_=std::move(exceptions);body.formal_count_=parameters.formals.size();body.length_=length;return body;
-  }catch(Error e){return e;}catch(const std::bad_alloc&){return Error::kResourceLimit;}catch(const std::length_error&){return Error::kResourceLimit;}
+  }catch(TreeStructureError e){return e==TreeStructureError::kWorkLimit?Error::kWorkLimit:Error::kResourceLimit;}catch(Error e){return e;}catch(const std::bad_alloc&){return Error::kResourceLimit;}catch(const std::length_error&){return Error::kResourceLimit;}
 }
 const SignatureCapture* DefaultBody::CaptureAt(analysis::InstructionId site) const {
   const auto it=std::lower_bound(capture_sites_.begin(),capture_sites_.end(),site.value,[&](auto i,auto s){return captures_[i].site.value<s;});

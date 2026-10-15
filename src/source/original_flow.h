@@ -4,6 +4,7 @@
 #include "abcd/analysis/value_ir.h"
 #include "truth_domains.h"
 #include "cell_plan.h"
+#include "cell_parameter_default.h"
 #include "for_in_emission.h"
 #include "abcd/analysis/exception_regions.h"
 #include <memory>
@@ -156,7 +157,20 @@ struct OriginalInputRange {std::size_t first=0,count=0;};
 struct OriginalExceptionRegion {
   analysis::InstructionRange body, handler;
 };
+// Invocation-only input is retained separately from the initialized-formal
+// residual. Raw argument and body entry are different value identities.
+struct OriginalParameterDefault {
+  CellParameterDefault proof;
+  ExprId initializer;
+  SymbolId parameter, outer;
+};
+struct OriginalParameterDefaults {
+  std::shared_ptr<const analysis::ValueProgram> input;
+  std::uint32_t formal_count = 0, length = 0;
+  std::vector<OriginalParameterDefault> entries;
+};
 struct OriginalFlow {
+  std::optional<OriginalParameterDefaults> parameter_defaults;
   std::vector<OriginalConcurrentNotification> notifications;
   // Retain exact immutable operations only for concurrent completion recovery.
   // This prevents a cached tree port from inventing a raw notification/return.

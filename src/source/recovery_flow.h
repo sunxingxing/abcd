@@ -44,6 +44,14 @@ struct FlowEnumeration {
   FlowPoint thrown;
   std::optional<FlowPoint> finalizer;
 };
+// Commits are path qualified; only initialized commits define the formal in
+// the residual. The raw argument value has no fabricated source ExprId.
+struct FlowParameterDefault {
+  ParameterId parameter;
+  FlowPoint argument, decision, provided, missing, initialized;
+  ExprId initializer;
+  FlowPoint caller_exception;
+};
 struct FlowDefinitionId { std::uint32_t value = 0; auto operator<=>(const FlowDefinitionId&) const = default; };
 struct FlowInputId { std::uint32_t value = 0; auto operator<=>(const FlowInputId&) const = default; };
 struct DiscardedId { std::uint32_t value = 0; auto operator<=>(const DiscardedId&) const = default; };
@@ -445,6 +453,7 @@ struct FlowLoop {
   std::optional<FlowPoint> entry_allocation,repeat_allocation;
 };
 struct RecoveryFlow {
+  std::vector<FlowParameterDefault> parameter_defaults;
   // The common lifetime/activation owner decides current-unit capability.
   // Consumers must not repeat a scope/loop shape test. Partial point contexts
   // remain unknown at TransferBinding; a known site alone never equates cells.

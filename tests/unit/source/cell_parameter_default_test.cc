@@ -1,5 +1,7 @@
 #include "../../../src/source/cell_parameter_default.h"
 #include "../../../src/source/default_body.h"
+#include "../../../src/source/parameter_recovery.h"
+#include "../../../src/source/tree_semantics.h"
 #include "../../../src/source/default_signature.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/cell_parameter_default_json.h"
@@ -172,8 +174,8 @@ void Residual() {
     Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(body.Graph())));
   }
 }
-void Signature() {
-  auto g=Chain(2,false,false);Input in(g,2);
+void Signature(unsigned count=2) {
+  auto g=Chain(count,false,false);Input in(g,count);
   auto body=std::get<DefaultBody>(DefaultBody::BuildCellParameter(g,in.environments,in.cells,in.parameters,0));
   std::vector<IncomingCell> entries;for(const auto& c:body.SignatureCaptures())entries.push_back(c.storage);
   auto planned=BuildEvaluationPlan(body.Graph(),{},IncomingCells::kConditional,{},{},{},{},ClosureWrites::kLanguage,{},{},entries);
@@ -182,10 +184,13 @@ void Signature() {
   auto controlled=BuildControlPlan(body.Graph());Check(std::holds_alternative<ControlPlan>(controlled));auto control=std::get<ControlPlan>(std::move(controlled));
   FunctionSyntax syntax{{},{1},{1},CallableKind::kFunction,Strictness::kStrict,
       {{NameId{0},NameEvidence::kDebugRange},{NameId{1},NameEvidence::kDebugRange}},{u"a",u"b",u"outer"},{}};
+  syntax.parameters.clear();syntax.names.clear();
+  for(unsigned i=0;i<count;++i){syntax.parameters.push_back({NameId{i},NameEvidence::kDebugRange});const auto name=std::to_string(i);std::u16string text=u"p";for(char c:name)text.push_back(c);syntax.names.push_back(text);}
+  syntax.names.push_back(u"outer");
   const auto cell=FindCell(evaluation.cells->cells,entries[0]);Check(cell.has_value());
-  syntax.captures.push_back({*cell,{{0},{0}},NameId{2}});
+  syntax.captures.push_back({*cell,{{0},{0}},NameId{count}});
   std::vector<ExpressionConstant> constants(body.Graph().ops.size());
-  auto built=BuildFunctionTree(body.Graph(),control,evaluation,std::move(syntax),{constants,3});
+  auto built=BuildFunctionTree(body.Graph(),control,evaluation,std::move(syntax),{constants,count+1});
   Check(std::holds_alternative<ConstructedFunction>(built));auto tree=std::get<ConstructedFunction>(std::move(built)).tree;
   DefaultSignatureContext context{control,evaluation};
   auto verified=BuildDefaultSignature(body,tree,{},&context);
@@ -200,6 +205,36 @@ void Signature() {
   Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,wrong,{},&context)));
   wrong=tree;wrong.signature.pop_back();
   Check(std::holds_alternative<DefaultSignatureError>(VerifyDefaultSignature(body,wrong,{},&context)));
+  auto semantics=VerifyTreeSemantics(body.Graph(),control,evaluation,tree,{constants,count+1});
+  Check(std::holds_alternative<TreeSemantics>(semantics));auto flow=std::move(std::get<TreeSemantics>(semantics).flow);
+  Check(std::holds_alternative<DefaultSignatureProof>(RetainParameterDefaults(body,tree,flow,context,{})));
+  std::vector<std::optional<SymbolId>> aliases(tree.symbols.size());
+  std::vector<std::optional<PrimitiveId>> literals(tree.symbols.size());
+  std::vector<std::optional<ExprId>> replacements(tree.expressions.size());
+  std::vector<std::uint8_t> omitted(tree.statements.size()),normal(tree.expressions.size());
+  std::vector<ExpressionEvaluation> evaluations(tree.expressions.size(),ExpressionEvaluation::kRequired);
+  LegacyFlowProjection projection{aliases,literals,replacements,omitted,evaluations,normal};projection.original=flow.original.get();
+  auto recovered=BuildRecoveryFlow(tree,projection);
+  if(const auto* e=std::get_if<TreeStructureError>(&recovered))std::cerr<<"recovery "<<static_cast<unsigned>(*e)<<'\n';
+  Check(std::holds_alternative<RecoveryFlow>(recovered));
+  auto& recovery=std::get<RecoveryFlow>(recovered);Check(recovery.parameter_defaults.size()==count);
+  const auto exact=BuildRecoveryFlow(tree,projection,{recovery.allocated_bytes,recovery.work});Check(std::holds_alternative<RecoveryFlow>(exact));
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{recovery.allocated_bytes-1,recovery.work}))==TreeStructureError::kResourceLimit);
+  Check(std::get<TreeStructureError>(BuildRecoveryFlow(tree,projection,{recovery.allocated_bytes,recovery.work-1}))==TreeStructureError::kWorkLimit);
+  const auto rejected=[&](const RecoveryFlow& mutated){try{TreeCheckBudget b({});VerifyParameterDefaultFlow(tree,mutated,b);return false;}catch(TreeStructureError){return true;}};
+  auto mutation=recovery;mutation.parameter_defaults[0].missing=mutation.parameter_defaults[0].provided;Check(rejected(mutation));
+  mutation=recovery;mutation.parameter_defaults[0].caller_exception=mutation.entry;Check(rejected(mutation));
+  mutation=recovery;mutation.parameter_defaults[0].initialized=mutation.parameter_defaults[0].missing;Check(rejected(mutation));
+  mutation=recovery;mutation.parameter_defaults.push_back(mutation.parameter_defaults[0]);Check(rejected(mutation));
+  mutation=recovery;const auto decision=mutation.parameter_defaults[0].decision;
+  mutation.edges[*mutation.events[decision.value].outgoing].to=mutation.parameter_defaults[0].missing;Check(rejected(mutation));
+  mutation=recovery;const auto action=*mutation.actions[mutation.parameter_defaults[0].initializer.value];
+  for(auto& edge:mutation.edges)if(edge.from==action.before&&edge.completion==FlowCompletion::kThrow)edge.to=mutation.entry;
+  Check(rejected(mutation));
+  mutation=recovery;const auto provided=mutation.parameter_defaults[0].provided;
+  mutation.edges[*mutation.events[provided.value].outgoing].to=mutation.terminal;Check(rejected(mutation));
+  mutation=recovery;auto extra=mutation.edges[*mutation.events[provided.value].outgoing];extra.outgoing=mutation.events[provided.value].outgoing;
+  mutation.events[provided.value].outgoing=mutation.edges.size();mutation.edges.push_back(extra);Check(rejected(mutation));
   // Mutation of the residual commit must not be accepted by the independent
   // source/residual verifier, even though its original certificate is sealed.
   auto& graph=const_cast<ValueProgram&>(body.Graph());const auto commit=body.ParameterCommits()[0];
@@ -249,4 +284,4 @@ void Json() {
   }
 }
 }
-int main(){static_assert(!std::is_default_constructible_v<CellParameterDefaultProof>);Scale();Variants();Mutations();Residual();Signature();Json();}
+int main(){static_assert(!std::is_default_constructible_v<CellParameterDefaultProof>);Scale();Variants();Mutations();Residual();Signature();for(unsigned n:{200U,201U,400U,800U})Signature(n);Json();}

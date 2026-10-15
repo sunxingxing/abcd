@@ -280,3 +280,45 @@ o31/20739 m20927 change their first refusal to the explicit recovery gate (9),
 with verified signature diagnostics under both contracts. All 3,580/3,718
 non-manifest per-ABC artifacts remain byte-identical; there are no new complete
 outputs. Logs, the six-row target table and comparisons are in /private/tmp/r77b.
+
+
+### Round 77 increment III: conditional invocation recovery
+
+Cell-backed captured defaults now retain their immutable original input alongside
+the initialized-formal residual. `OriginalParameterDefaults` records parameter,
+outer binding, actual signature expression and the sealed raw-IR certificate.
+`RetainParameterDefaults` repeats signature/source verification before retaining
+this evidence; recovery independently rebuilds environments, cells and parameter
+facts and checks the certificate on each projection.
+
+RecoveryFlow gives each certified default an argument entry, undefined decision,
+provided commit, missing-path commit and initialized-formal definition. Only the
+missing edge evaluates the real signature expression. Its guarded capture read
+has the caller exception exit, outside all body handlers. The two successful
+paths converge before the residual's initial cell store. No expression is
+invented for the raw argument or the merged formal. Ordinary signatures keep
+the existing entry graph. The flow verifier checks exact edge sets, unique
+ports, actual binding/storage identity, signature expression identity, parameter
+order and the continuation into the body. The raw source/residual verifier
+continues to prove the initial store consumes that initialized formal.
+
+All retained input and scratch are charged before allocation (including the
+shared input's allocator control block). Indexing is linear apart from the
+existing dominance/storage proofs, bounded by O(N log N). Tests cover graph-edge
+mutations, 200/201/400/800 parameters and exact byte/work budgets. The real
+es2abc/Node fixture covers reassignment, per-call cell isolation, provided-value
+bypass, early TDZ, closure writes and length 2. See the fixture README for the
+compiler export-alias syntax adaptation and the scope of round-trip acceptance.
+
+Validation of this uncommitted increment (2026-10-15): full regression build
+passed; fixed set 65/65; the two cell-parameter tests 2/2; default/signature/ABI/
+parameter/capture/family/recovery-flow targeted tests 23/23. The prescribed
+CLI/corpus/failure/receipt/manifest sweep passed 73/74, with only the already
+registered `family_source_cli_test` (`node escaped its owner or origin arena`).
+Both flags were compared with explore77b/explore77bs: 524/620 and 570/620,
+respectively. Only o10/16048 m16233, o31/17804 m17994 and o31/20739 m20927
+became complete; all six new outputs passed `node --check`. No existing status
+regressed and no existing text changed; all 3580/3718 old non-manifest artifacts
+were also byte-identical. Evidence is in `/private/tmp/r77c/`, including
+`acceptance.json`, the `*-final.log` files and `final-comparison/`. No holdout,
+full-suite or RSS benchmark was run. No commit/push/stash was performed.
