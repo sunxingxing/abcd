@@ -27,3 +27,19 @@ test. Break/return/throw/nested syntax makes real expanded close code available
 for further verification, but the current test does not establish that its
 completion selection implements native IteratorClose. It performs no Node
 differential and grants no protocol region ownership.
+
+## Round 79 A2: correlated completion relation
+
+`completion_relation_abc_test` reuses this exact ABC (it is not regenerated).
+It checks all raw may-exit tuples of m423's break close (PC 87..158), m423's
+return close (178..249), and m451's original-throw close (76..134). Expected
+relations contain 7, 7, and 2 tuples respectively, with original edge, payload
+and handler/caller target identities checked individually. The last case
+retains the original throw payload after the inner return getter/call Catch.
+
+This remains a raw abstract relation under explicit entry-completion premises,
+not a native IteratorClose certificate or source-publication test. Unknown
+Hole comparisons retain both paths, including an extra possible Hole rethrow;
+all original exception exits remain. The next slice must prove entry, guard,
+priority, activation and ownership obligations before consuming it. No Node
+oracle or cross-runtime equivalence is claimed by this test.

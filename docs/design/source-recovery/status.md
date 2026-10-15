@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 A2：相关联的 completion 关系（cc 审查通过）
+
+- `completion_relation`：在原始 ExceptionFlow/SSA 与 RawEventGraph 上传播完整的 PendingCompletion{kind,payload,target} 元组（不拆成独立集合），处理正常 Commit、异常路径、Catch、同时 phi 与嵌套的当前 completion；预付持久化 SSA 环境，预算耗尽时拒绝整个查询；独立 verifier 重算。真实 fixture：Break close 7 个出口元组、Return close 7 个、Throw close 2 个。保守的 may 关系；尚未接入生产，不授予拓扑所有权。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变；相关测试 5/5。
+
 ## Round 79 A1：共享原始事件图（cc 审查通过）
 
 - for-of 轨道恢复（Round 79 设计：PendingCompletion{kind,payload,target} 相关追踪，五个门禁增量 A/B/C/II/III，最终上界 6）。增量 A 一次过大，拆片；A1 只做纯重构：把 await_catch_flow 私有的原始事件图（节点、寄存器效果、真实 dispatch、后继、预付 arena）提取为 `raw_event_graph`，接口不依赖 AwaitRegion，coroutine 边作为可选扩展。新增 `raw_event_graph_test`。
