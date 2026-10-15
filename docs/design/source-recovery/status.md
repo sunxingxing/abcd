@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 A3d：不抛出的比较与哨兵路径（cc 审查通过）
+
+- 路径限定的 `NonThrowingComparison`：由 SSA 值流证明操作数为 undefined/null 时，EQ/STRICTEQ/NOTEQ/STRICTNOTEQ 不抛出（依据 pinned 解释器 FastEqual），裁剪其异常边；Hole 判断是保存 close error 的哨兵，正常路径两侧均为 Hole 时裁剪虚假分支。m423 Break/Return 的剩余见证后移到 PC139/230：Catch payload 是否可能为 Hole 尚无证明（SetException 不排除 Hole），未引入假定。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变；相关测试全部通过。
+
 ## Round 79 A3c：按关闭结果索引的 completion（cc 审查通过）
 
 - `close_outcome_relation`：传播状态同时保存入口、SSA 环境、completion 与 outcome（成功对象、缺失/nullish、getter 抛出、call 抛出、primitive 结果），getter/call 异常保留各自原始出口身份；builder 与 verifier 用相反工作列表顺序独立计算；去掉 outcome 后与 A2 may 关系完全一致。m423 Break/Return 入口五类 outcome 全部出现，优先级仍为 missing：nullish 比较（PC114/205）保留保守的异常边（`kOtherException`），Hole sentinel 路径也保留。

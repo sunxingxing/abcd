@@ -127,6 +127,8 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   bad=summary;bad.regions[0].call=OpId{0};reject(bad);
   Check(summary.regions[0].outcomes && !summary.regions[0].outcomes->leaving.empty());
   bad=summary;bad.regions[0].outcomes->leaving[0].outcome.kind=CloseOutcomeKind::kSuccessObject;reject(bad);
+  Check(!summary.regions[0].outcomes->comparisons.empty());
+  bad=summary;bad.regions[0].outcomes->comparisons.clear();reject(bad);
   bad=summary;bad.regions[0].members.push_back(bad.regions[0].members.front());reject(bad);
   bad=summary;bad.regions[0].edges[0].successor=2;reject(bad);
   bad=summary;bad.entries[0].obligations[static_cast<unsigned>(CloseObligation::kPriority)]={CloseProofState::kVerified,{}};

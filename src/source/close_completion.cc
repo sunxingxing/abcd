@@ -229,7 +229,8 @@ class Proof {
           c.protocol,c.read,f->entry,f->node,f->edge};
     r.outcomes=std::get<CloseOutcomeRelation>(std::move(result));
     q_.memory.Observe(r.outcomes->peak_bytes);q_.Step(r.outcomes->work);
-    q_.memory.Retain(r.outcomes->arrivals.capacity()*sizeof(CompletionArrival)+r.outcomes->leaving.capacity()*sizeof(CloseOutcomeLeaving));
+    q_.memory.Retain(r.outcomes->arrivals.capacity()*sizeof(CompletionArrival)+r.outcomes->leaving.capacity()*sizeof(CloseOutcomeLeaving)+
+        r.outcomes->comparisons.capacity()*sizeof(NonThrowingComparison));
     if(verify_) {
       const auto verified=VerifyCloseOutcomeRelation(body_,profile_,in_.frame.registers,in_.flow,in_.ssa,
           query,incoming,c.exits,*r.outcomes,{q_.Remaining()});
@@ -369,6 +370,11 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
     if(a.outcomes) {
       if(a.outcomes->arrivals.size()!=b.outcomes->arrivals.size() || a.outcomes->leaving.size()!=b.outcomes->leaving.size())
         return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+      if(a.outcomes->comparisons.size()!=b.outcomes->comparisons.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+      for(std::size_t e=0;e<a.outcomes->comparisons.size();++e) {
+        if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
+        if(a.outcomes->comparisons[e]!=b.outcomes->comparisons[e])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+      }
       for(std::size_t e=0;e<a.outcomes->arrivals.size();++e) {
         if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
         if(a.outcomes->arrivals[e]!=b.outcomes->arrivals[e])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};

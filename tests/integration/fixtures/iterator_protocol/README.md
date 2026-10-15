@@ -80,3 +80,19 @@ pending Return value or original body Throw. Mutation tests reject changing
 those identities, swapping outcomes, calling a primitive result successful, or
 clearing uncertainty. This is symbolic raw-ABC analysis, not execution of ABC in
 Node and not a new source-publication or native-for-of acceptance claim.
+
+
+## A3d: comparison-domain evidence
+
+The artifact and compiler hashes above are unchanged. The outcome query now
+removes the conservative EQ exception at m423 PC114/205 only after deriving an
+undefined/null operand domain. The saved-error sentinel is distinct from the
+closed flag: v15 starts as Hole (PC100), Catch128 writes its payload, then
+v16/v17 feed NOTEQ at 139; the Return copy's NOTEQ is at 230. A normal-path
+Hole/Hole state proves NOTEQ false. The raw Catch payload has no non-Hole
+certificate, so its NOTEQ exception and both unresolved branch paths remain.
+Break/Return therefore still report missing at 139/230; no native-for-of or
+runtime equivalence claim is made. The unit mutants replace undefined by null
+or true, alias the sentinel read to v10, and exercise all four equality
+operators. Only domain-proven edges may be discharged. See the design note for
+pinned runtime file/line citations.

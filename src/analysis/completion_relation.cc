@@ -119,7 +119,8 @@ template<bool Outcomes> class Relation {
           detail::CompletionLess<PhiKey>{&arena_},arena_.Resource()),
         exits_(detail::CompletionLess<CompletionExit>{&arena_},arena_.Resource()),
         seen_(detail::CompletionLess<State>{&arena_},arena_.Resource()),
-        queue_(arena_.Resource()),leaving_(detail::CompletionLess<Leaving>{&arena_},arena_.Resource()),query_(query) {
+        queue_(arena_.Resource()),leaving_(detail::CompletionLess<Leaving>{&arena_},arena_.Resource()),
+        comparisons_(detail::CompletionLess<NonThrowingComparison>{&arena_},arena_.Resource()),query_(query) {
     for(const auto size:{body.instructions.size(),flow.nodes.size(),ssa.Values().size(),
         ssa.AllInputs().size(),entries.size(),exits.size()})
       if(size>UINT32_MAX) Fail(CompletionRelationError::kResourceLimit);
@@ -196,6 +197,12 @@ template<bool Outcomes> class Relation {
     const auto expected=Run(true);
     if(expected.arrivals.size()!=supplied.arrivals.size() || expected.leaving.size()!=supplied.leaving.size())
       Fail(CompletionRelationError::kCorrespondence);
+    if constexpr(Outcomes) {
+      if(expected.comparisons.size()!=supplied.comparisons.size())Fail(CompletionRelationError::kCorrespondence);
+      for(std::size_t i=0;i<expected.comparisons.size();++i) {
+        arena_.Step();if(expected.comparisons[i]!=supplied.comparisons[i])Fail(CompletionRelationError::kCorrespondence);
+      }
+    }
     for(std::size_t i=0;i<expected.arrivals.size();++i) {
       arena_.Step();if(expected.arrivals[i]!=supplied.arrivals[i]) Fail(CompletionRelationError::kCorrespondence);
     }
@@ -256,9 +263,19 @@ template<bool Outcomes> class Relation {
       if(original.phase==ExceptionPhase::kCommit)
         if(const auto* b=std::get_if<BranchOperation>(&op))
           branch=Truth(Scalar(b->predicate.input,original.instruction,state.environment),b->predicate.op);
+      std::optional<NonThrowingComparison> comparison;
+      if constexpr(Outcomes)if(original.phase==ExceptionPhase::kBefore) {
+        if(const auto* assignment=std::get_if<ScalarAssignment>(&op))
+          if(const auto* binary=std::get_if<BinaryExpression>(&assignment->expression))
+            comparison=Comparison(*binary,original.instruction,state.environment,state.entry,node);
+        if(comparison)comparisons_.insert(*comparison);
+      }
       const auto& raw_node=raw_.Nodes()[state.node];
       for(std::uint8_t i=0;i<raw_node.count;++i) {
         arena_.Step();const auto exit=*outgoing_[state.node][i];
+        // A3d is a standalone refinement only. Keep the immutable raw graph and
+        // A2 specialization intact; this witness discharges this ONE path's edge.
+        if constexpr(Outcomes)if(comparison && IsException(exit))continue;
         if(branch) {
           const auto* edge=std::get_if<CompletionEdge>(&exit);
           if(!edge) Fail(CompletionRelationError::kInput,node);
@@ -303,6 +320,10 @@ template<bool Outcomes> class Relation {
     Reserve(result.arrivals,entries_.size());Reserve(result.leaving,leaving_.size());
     for(std::uint32_t e=0;e<entries_.size();++e) result.arrivals.push_back({e,entries_[e].pending});
     result.leaving.assign(leaving_.begin(),leaving_.end());
+    if constexpr(Outcomes) {
+      Reserve(result.comparisons,comparisons_.size());
+      result.comparisons.assign(comparisons_.begin(),comparisons_.end());
+    }
     result.peak_bytes=arena_.Peak();result.states=seen_.size();result.work=arena_.Work();
     return result;
   }
@@ -463,6 +484,42 @@ template<bool Outcomes> class Relation {
     if(std::holds_alternative<Accumulator>(value)) return Get(Read(instruction,Accumulator{}),root);
     return Literal(value);
   }
+  static ComparisonDomain Domain(const Value& value) {
+    switch(value.constant) {
+      case Constant::kUnknown:return ComparisonDomain::kUnknown;
+      case Constant::kUndefined:return ComparisonDomain::kUndefined;
+      case Constant::kNull:return ComparisonDomain::kNull;
+      case Constant::kHole:return ComparisonDomain::kHole;
+      case Constant::kFalse:return ComparisonDomain::kFalse;
+      case Constant::kTrue:return ComparisonDomain::kTrue;
+      case Constant::kInteger:return ComparisonDomain::kInteger;
+    }
+    std::terminate();
+  }
+  std::optional<NonThrowingComparison> Comparison(const BinaryExpression& b,InstructionId instruction,
+      std::uint32_t root,std::uint32_t entry,ExceptionNodeId node) requires(Outcomes) {
+    switch(b.op) {
+      case BinaryOperator::kEqual:case BinaryOperator::kNotEqual:
+      case BinaryOperator::kStrictEqual:case BinaryOperator::kStrictNotEqual:break;
+      default:return {};
+    }
+    const auto left=Scalar(b.left,instruction,root),right=Scalar(b.right,instruction,root);
+    const auto a=Domain(left),z=Domain(right);
+    const auto nullish=[](ComparisonDomain d){return d==ComparisonDomain::kUndefined || d==ComparisonDomain::kNull;};
+    const bool known=a!=ComparisonDomain::kUnknown && z!=ComparisonDomain::kUnknown;
+    if(!nullish(a) && !nullish(z) && !known)return {};
+    // OH7 f04900cf: interpreter-inl.cpp:1934/1954/2375/2394;
+    // fast_runtime_stub-inl.h:90-153. A nullish operand returns a Boolean
+    // without slow coercion. Concrete primitive constants cannot invoke user
+    // conversion (js_tagged_value.cpp:493-640). Unknown operands, including
+    // unqualified Catch payloads, are NOT a proven non-Hole domain.
+    // Hole==Hole is raw tagged identity, NOT EqualNullOrUndefined's slow case.
+    auto equal=Equal(left,right,b.op==BinaryOperator::kStrictEqual || b.op==BinaryOperator::kStrictNotEqual);
+    if(known && (a==ComparisonDomain::kHole || z==ComparisonDomain::kHole))
+      equal=a==ComparisonDomain::kHole && z==ComparisonDomain::kHole;
+    return NonThrowingComparison{entry,node,b.op,a,z,left.payload,right.payload,
+        nullish(a)||nullish(z)?ComparisonProofKind::kNullishOperand:ComparisonProofKind::kKnownOperands,equal};
+  }
   Value Expression(const ScalarExpression& expression,InstructionId instruction,std::uint32_t root,SsaValueId destination) {
     if(const auto* scalar=std::get_if<ScalarValue>(&expression)) {
       auto value=Scalar(*scalar,instruction,root);
@@ -493,9 +550,14 @@ template<bool Outcomes> class Relation {
     if constexpr(Outcomes) {
       if(const auto* binary=std::get_if<BinaryExpression>(&expression)) {
         const auto left=Scalar(binary->left,instruction,root),right=Scalar(binary->right,instruction,root);
+        const auto proof=Comparison(*binary,instruction,root,*current_,*raw_to_flow_[instruction.value*kPhases]);
+        if(proof && proof->equal) {
+          boolean=proof->equal;
+          if(binary->op==BinaryOperator::kNotEqual || binary->op==BinaryOperator::kStrictNotEqual)boolean=!*boolean;
+        }
         if((binary->op==BinaryOperator::kEqual || binary->op==BinaryOperator::kNotEqual ||
             binary->op==BinaryOperator::kStrictEqual || binary->op==BinaryOperator::kStrictNotEqual) &&
-            (left.constant==Constant::kHole || right.constant==Constant::kHole))result.sentinel_test=true;
+            (left.constant==Constant::kHole || right.constant==Constant::kHole) && !proof)result.sentinel_test=true;
         const auto nullish=[](const Value& v){return v.constant==Constant::kUndefined || v.constant==Constant::kNull;};
         if((left.observed==ObservedValue::kReturnMethod && nullish(right)) ||
             (right.observed==ObservedValue::kReturnMethod && nullish(left))) {
@@ -541,7 +603,10 @@ template<bool Outcomes> class Relation {
     if(original.phase==ExceptionPhase::kBefore && before==query_.call) {
       const auto* call=std::get_if<ReceiverCall>(&op);
       const auto callee=call?Get(Read(original.instruction,Accumulator{}),state.environment):Value{};
-      if(trace.stage!=OutcomeStage::kRead || callee.observed!=ObservedValue::kReturnMethod) {
+      if(trace.stage!=OutcomeStage::kRead) {
+        Unproved(state,CloseOutcomeGap::kRepeatedEvent,node);return;
+      }
+      if(callee.observed!=ObservedValue::kReturnMethod) {
         Unproved(state,CloseOutcomeGap::kUnprovedResult,node);return;
       }
       if(exceptional) {
@@ -706,6 +771,7 @@ template<bool Outcomes> class Relation {
   std::pmr::set<State,detail::CompletionLess<State>> seen_;
   std::pmr::vector<State> queue_;
   std::pmr::set<Leaving,detail::CompletionLess<Leaving>> leaving_;
+  std::pmr::set<NonThrowingComparison,detail::CompletionLess<NonThrowingComparison>> comparisons_;
   CloseOutcomeQuery query_;
   std::size_t limit_=0;
   std::uint64_t work_limit_=0;

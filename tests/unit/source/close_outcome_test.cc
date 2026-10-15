@@ -15,7 +15,7 @@ ExceptionNodeId Node(const ExceptionFlow& flow, unsigned pc, ExceptionPhase phas
     if(flow.nodes[n].phase==phase && flow.instructions[flow.nodes[n].instruction.value].pc.value==pc) return {n};
   Check(false);return {};
 }
-enum class Mutation { kNone,kRegisters,kSplitDone };
+enum class Mutation { kNone,kRegisters,kSplitDone,kNonNullish,kNull,kAliasSentinel,kNotEqual,kStrictEqual,kStrictNotEqual };
 void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned padding=0,Mutation mutation=Mutation::kNone) {
   auto body=std::get<abc::MethodBody>(abc::DecodeMethodBody(file.file,file.header.profile,*method.code));
   if(mutation==Mutation::kSplitDone) {
@@ -31,6 +31,14 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
     body.instructions.push_back(jump);
   }
   if(mutation!=Mutation::kNone)for(auto& i:body.instructions) {
+    if(i.offset.value==113 && (mutation==Mutation::kNonNullish || mutation==Mutation::kNull))
+      i.decoded=test::Body({static_cast<std::uint8_t>(mutation==Mutation::kNull?0x01:0x02)}).instructions.front().decoded;
+    if(i.offset.value==130 && mutation==Mutation::kAliasSentinel)i.decoded.operands[0].raw_bits=10;
+    if(i.offset.value==114) {
+      if(mutation==Mutation::kNotEqual)i.decoded.opcode=abc::Opcode::kNOTEQ_IMM8_V8;
+      if(mutation==Mutation::kStrictEqual)i.decoded.opcode=abc::Opcode::kSTRICTEQ_IMM8_V8;
+      if(mutation==Mutation::kStrictNotEqual)i.decoded.opcode=abc::Opcode::kSTRICTNOTEQ_IMM8_V8;
+    }
     if(mutation==Mutation::kRegisters)for(auto& operand:i.decoded.operands)
       if(operand.kind==abc::OperandKind::kRegister) {
         if(operand.raw_bits==7)operand.raw_bits=15;else if(operand.raw_bits==15)operand.raw_bits=7;
@@ -89,6 +97,7 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
     auto analyzed=AnalyzeCloseOutcomeRelation(body,file.header.profile,frame.registers,flow,ssa,{read,*call},incoming,c.exits);
     Check(std::holds_alternative<CloseOutcomeRelation>(analyzed));
     const auto& relation=std::get<CloseOutcomeRelation>(analyzed);
+    if(incoming.front().pending.kind!=PendingCompletionKind::kThrow)Check(!relation.comparisons.empty());
     const auto verified=VerifyCloseOutcomeRelation(body,file.header.profile,frame.registers,flow,ssa,{read,*call},incoming,c.exits,relation);
     Check(std::holds_alternative<CompletionRelationCost>(verified));
     std::array<bool,6> kinds{};
@@ -117,10 +126,32 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
         <<" gap="<<unsigned(x.outcome.gap)<<'\n';
     }
     std::sort(projection.begin(),projection.end());projection.erase(std::unique(projection.begin(),projection.end()),projection.end());
-    Check(projection==c.relation.leaving); // Outcome tracking cannot lose raw may exits.
-    if(incoming.front().pending.kind!=PendingCompletionKind::kThrow) {
+    Check(std::includes(c.relation.leaving.begin(),c.relation.leaving.end(),projection.begin(),projection.end()));
+    const auto read_pc=flow.instructions[flow.nodes[read.value].instruction.value].pc.value;
+    const bool ordinary=mutation==Mutation::kNone || mutation==Mutation::kRegisters || mutation==Mutation::kSplitDone || mutation==Mutation::kNull;
+    if(method.offset.value==423 && !padding && read_pc==105) {
+      const auto fact_at=[&](unsigned pc){return std::find_if(relation.comparisons.begin(),relation.comparisons.end(),[&](const auto& f){
+        return flow.instructions[flow.nodes[f.node.value].instruction.value].pc.value==pc;});};
+      const auto nullish=fact_at(114);
+      Check((nullish!=relation.comparisons.end())==(mutation!=Mutation::kNonNullish));
+      if(nullish!=relation.comparisons.end())Check(nullish->kind==ComparisonProofKind::kNullishOperand);
+      if(mutation==Mutation::kAliasSentinel)Check(fact_at(139)==relation.comparisons.end());
+      else {
+        const auto hole=fact_at(139);Check(hole!=relation.comparisons.end());
+        Check(hole->left==ComparisonDomain::kHole && hole->right==ComparisonDomain::kHole && hole->equal==true);
+      }
+      const auto bad_pc=mutation==Mutation::kNonNullish?114u:139u;
+      Check(std::any_of(relation.leaving.begin(),relation.leaving.end(),[&](const auto& x){
+        return x.outcome.gap==CloseOutcomeGap::kOtherException && x.outcome.event &&
+          flow.instructions[flow.nodes[x.outcome.event->value].instruction.value].pc.value==bad_pc;}));
+    }
+    if(ordinary && incoming.front().pending.kind!=PendingCompletionKind::kThrow) {
       for(unsigned k=1;k<kinds.size();++k)Check(kinds[k]);
       Check(sentinel);
+      for(const auto& x:relation.leaving)if(x.outcome.gap==CloseOutcomeGap::kSentinelPath) {
+        Check(x.outcome.uncertain_at.has_value());
+        Check(flow.instructions[flow.nodes[x.outcome.uncertain_at->value].instruction.value].pc.value==read_pc+37);
+      }
       const auto uncertain=std::find_if(relation.leaving.begin(),relation.leaving.end(),[](const auto& x){return x.outcome.gap==CloseOutcomeGap::kSentinelPath;});
       auto cleared=relation;cleared.leaving[uncertain-relation.leaving.begin()].outcome.gap=CloseOutcomeGap::kNone;
       Check(std::get<CompletionRelationFailure>(VerifyCloseOutcomeRelation(body,file.header.profile,frame.registers,flow,ssa,{read,*call},incoming,c.exits,cleared)).kind==CompletionRelationError::kCorrespondence);
@@ -140,6 +171,11 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
       Check(std::get<CompletionRelationFailure>(VerifyCloseOutcomeRelation(body,file.header.profile,frame.registers,flow,ssa,{read,*call},incoming,c.exits,success)).kind==CompletionRelationError::kCorrespondence);
     }
     auto bad=relation;Check(!bad.leaving.empty());
+    if(!bad.comparisons.empty()) {
+      bad.comparisons.front().left=bad.comparisons.front().left==ComparisonDomain::kUnknown?ComparisonDomain::kHole:ComparisonDomain::kUnknown;
+      Check(std::holds_alternative<CompletionRelationFailure>(VerifyCloseOutcomeRelation(body,file.header.profile,frame.registers,flow,ssa,{read,*call},incoming,c.exits,bad)));
+    }
+    bad=relation;
     bad.leaving[0].outcome.kind=bad.leaving[0].outcome.kind==CloseOutcomeKind::kSuccessObject?
         CloseOutcomeKind::kPrimitiveResult:CloseOutcomeKind::kSuccessObject;
     Check(std::holds_alternative<CompletionRelationFailure>(VerifyCloseOutcomeRelation(body,file.header.profile,frame.registers,flow,ssa,{read,*call},incoming,c.exits,bad)));
@@ -217,6 +253,8 @@ int main(int argc,char** argv) {
     Method({*file,header,index},method,0,Mutation::kRegisters);
     Method({*file,header,index},method,0,Mutation::kSplitDone);
     for(unsigned n:{200,201,400,800})Method({*file,header,index},method,n);
+    if(method.offset.value==423)for(const auto m:{Mutation::kNonNullish,Mutation::kNull,Mutation::kAliasSentinel,
+        Mutation::kNotEqual,Mutation::kStrictEqual,Mutation::kStrictNotEqual})Method({*file,header,index},method,0,m);
 
   }
   Check(tested==2);

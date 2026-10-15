@@ -3,7 +3,8 @@
 `close_completion` is standalone and has no production hook. It re-derives
 `close_entries` and the original completion relation, and records original
 members and edges (including exception cuts). It does not grant topology
-ownership or source admission. No region, instruction or exception is removed.
+ownership or source admission. No original region, instruction or edge is
+mutated; A3d discharges impossible query paths only with comparison witnesses.
 
 The proof states are intentionally separate:
 
@@ -76,7 +77,8 @@ Commit, separately from the builder's event-stage transitions. Pinned scalar and
 Boolean meanings are shared. Supplied outcomes and classification are not proof
 inputs. The source verifier also checks every saved outcome tuple.
 
-Every raw may-exit remains. Unknown non-protocol exceptions are Unproved with
+At A3c every raw may-exit remained (A3d below refines proven comparisons).
+Unknown non-protocol exceptions are Unproved with
 OtherException and the real source node. An unresolved Hole comparison retains
 its two successors, the observed outcome, and a SentinelPath uncertainty witness;
 it is never silently resolved. For example, m423 can conservatively reach Break
@@ -100,3 +102,61 @@ with exact producer byte/work and verifier work boundaries and state exhaustion.
 All new PMR nodes, state/output capacities and retained results are prepaid.
 The existing linear sparse-state cap and input-sized N log N admitted-work cap
 apply; there is no resource-limit increase or production hook.
+
+
+## A3d: domain-qualified comparison refinement
+
+This remains a standalone outcome analysis, not production topology ownership.
+`NonThrowingComparison` records entry, original Before node, typed operator,
+operand domains/identities and optional equality. The verifier re-derives these
+witnesses; a supplied fact never suppresses an edge. Facts and their retained
+output capacity are prepaid. Only the outcome specialization consumes them;
+A2's original may relation and raw exception CFG remain unchanged.
+
+PC114/205 of m423 are **EQ_IMM8_V8**, with a proven undefined accumulator
+(loaded at PC113/204) and the return-method value in v16/v17. The pinned runtime
+is OH7 `f04900cf951c66c2ea18b2bab5b591d5336c34b9`:
+
+- [EQ/NOTEQ dispatch](../../../references/openharmony/arkcompiler/ets_runtime/ecmascript/interpreter/interpreter-inl.cpp#L1934)
+  uses FastEqual before any slow call. The strict dispatches are at 2375/2394.
+- [FastEqual](../../../references/openharmony/arkcompiler/ets_runtime/ecmascript/interpreter/fast_runtime_stub-inl.h#L90)
+  returns directly when either operand is undefined/null; no ToPrimitive, call
+  or language exception occurs. FastStrictEqual at 123 likewise returns without
+  string/BigInt comparison when one operand is nullish.
+- [Slow equality cases](../../../references/openharmony/arkcompiler/ets_runtime/ecmascript/js_tagged_value.cpp#L462)
+  at 493-640 show the primitive conversions and the object ToPrimitive gate;
+  null/undefined comparisons do not enter that gate. Concrete constant pairs
+  (the tracked Boolean/int/null/undefined/Hole domains) cannot execute user code.
+
+The fact is derived from the actual SSA operands, not opcode adjacency. Equality,
+inequality and their strict variants share the pinned typed semantics. An
+unknown operand paired with a non-null constant does not qualify; its exception
+edge remains. Bytecode branches that are already non-throwing need no such fact.
+
+The Hole test is **not** the closed Boolean flag. It is the saved-close-error
+sentinel: m423 PC100 puts Hole in v15; Catch128 overwrites v15 with the close
+exception. PCs130/132 copy it to v16, PCs134/135 put Hole in v17, and PC139 is
+NOTEQ_IMM8_V8 followed by the decision at 142. The Return copy uses the analogous
+NOTEQ at 230 and decision at 233. The actual closed flag remains v7.
+
+On the normal close path, SSA/copy/phi flow proves Hole versus Hole.
+FastEqual's tagged-identity test returns true, so NOTEQ is false: both that
+comparison's exception edge and the spurious explicit-Hole rethrow are excluded.
+There is no register/PC/shape admission rule and no new language premise.
+
+The Catch path is still **unknown**, not automatically non-Hole. This raw API
+has no qualified exception-domain certificate. In particular,
+[JSThread::SetException](../../../references/openharmony/arkcompiler/ets_runtime/ecmascript/js_thread.cpp#L335)
+accepts the tagged value without excluding Hole; interpreter THROW at 4049 and
+Catch dispatch at 3999/4024 do not establish a non-Hole payload proof. We do not
+import an unstated "all caught values are language" premise. Thus the first
+missing non-Throw witnesses move from PC114/205 to **PC139/230**
+(`kOutcomeUnproved > kOtherException`), and unknown-sentinel branches retain
+`kSentinelPath` at their real decisions. Break and Return remain missing.
+
+Tests re-use the pinned ABC. They assert the nullish facts and pruned exception
+exits, concrete Hole==Hole evidence, unknown-sentinel preservation, all four
+equality operators, null vs a non-null Boolean mutation, and a sentinel read
+aliased to an unknown register. Forged/removed comparison facts are rejected by
+both verification APIs. 200/201/400/800 traversed-path and exact resource tests
+remain. The refined projection must be a subset of A2's unchanged may exits.

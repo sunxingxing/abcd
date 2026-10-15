@@ -29,9 +29,22 @@ struct CloseOutcomeLeaving {
   CloseOutcome outcome;
   auto operator<=>(const CloseOutcomeLeaving&) const = default;
 };
+enum class ComparisonDomain : std::uint8_t { kUnknown, kUndefined, kNull, kHole, kFalse, kTrue, kInteger };
+enum class ComparisonProofKind : std::uint8_t { kNullishOperand, kKnownOperands };
+struct NonThrowingComparison {
+  std::uint32_t entry;
+  ExceptionNodeId node; // Original Before identity; facts are path-qualified.
+  BinaryOperator operation;
+  ComparisonDomain left, right;
+  CompletionPayload left_value, right_value;
+  ComparisonProofKind kind;
+  std::optional<bool> equal; // Underlying equality, before the NotEqual inversion.
+  auto operator<=>(const NonThrowingComparison&) const = default;
+};
 struct CloseOutcomeRelation {
   std::vector<CompletionArrival> arrivals;
   std::vector<CloseOutcomeLeaving> leaving;
+  std::vector<NonThrowingComparison> comparisons;
   std::size_t peak_bytes = 0, states = 0;
   std::uint64_t work = 0;
 };
@@ -41,6 +54,9 @@ struct CloseOutcomeRelation {
 // loose equality with null/undefined and typed Boolean predicates. A check is
 // a result check only on this call's successful result, on that same path.
 // Outcome, entry, payload, target and SSA environment are ONE correlated state.
+// A3d: per-path operand-domain comparison witnesses can discharge an exception
+// edge and resolve concrete Hole equality. Unknown Catch payloads never acquire
+// a non-Hole premise. The original graph and the A2 API are not changed.
 // Unknown exceptions/sentinel paths stay unproved; exhaustion refuses the query.
 [[nodiscard]] std::variant<CloseOutcomeRelation, CompletionRelationFailure> AnalyzeCloseOutcomeRelation(
     const abc::MethodBody&, abc::ProfileId, std::uint64_t frame_size,
