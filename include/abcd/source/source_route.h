@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_SOURCE_ROUTE_H_
 #define ABCD_SOURCE_SOURCE_ROUTE_H_
+#include "abcd/source/cell_parameter_default_failure.h"
 #include "abcd/source/concurrent_failure.h"
 #include "abcd/source/sendable_failure.h"
 #include "abcd/analysis/internal_value_failure.h"
@@ -123,6 +124,7 @@ struct RouteFailure {
   std::optional<ConcurrentFailure> concurrent;
   std::optional<SendableFailure> sendable;
   std::optional<SharedModuleFailure> shared_module;
+  std::optional<CellParameterDefaultDiagnostic> cell_parameter_default;
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

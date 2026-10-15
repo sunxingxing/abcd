@@ -1,3 +1,4 @@
+#include "cell_parameter_default.h"
 #include "family_tree.h"
 #include "concurrent_boundary.h"
 #include "descendant_classes.h"
@@ -382,8 +383,24 @@ class FamilyTrees {
       auto flow = std::move(*constructed.flow);
       if (aliases) Step(Take<std::uint64_t, ModuleAliasTreeError>(
           VerifyModuleAliasTree(*aliases, evaluation, constructed.tree, left_)));
-      auto abi = Take<ConstructedAbi, FunctionAbiError>(phase ? BuildPhasedFunctionAbi(graph, evaluation, constructed.tree,
-          context.Frame(), context.Length(), left_) : BuildFunctionAbi(graph, constructed.tree, context.Frame(), context.Length(), left_));
+      auto abi_result = phase ? BuildPhasedFunctionAbi(graph, evaluation, constructed.tree,
+          context.Frame(), context.Length(), left_) : BuildFunctionAbi(graph, constructed.tree, context.Frame(), context.Length(), left_);
+      // Evidence only, after the original refusal. Never spend analysis budget
+      // or change the plan of a successful function; never replace its first cause.
+      if (const auto* error=std::get_if<FunctionAbiError>(&abi_result);
+          error && *error==FunctionAbiError::kLength && !phase && !function.Defaults() &&
+          function.Normal().values.cells && function.Normal().values.environments) {
+        FamilyTreeFailure failure{member_,*error,default_candidates_,defaults_proved_};
+        auto parameters=BuildParameterPlan(graph,context.Frame().parameters,left_);
+        if(const auto* plan=std::get_if<ParameterPlan>(&parameters)) {
+          auto diagnostic_budget=left_;
+          diagnostic_budget.bytes-=plan->allocated_bytes;diagnostic_budget.work-=plan->work;
+          failure.cell_parameter_default=DiagnoseCellParameterDefaults(graph,*function.Normal().values.environments,
+              *function.Normal().values.cells,*plan,context.Length(),function.Method(),diagnostic_budget);
+        }
+        throw failure;
+      }
+      auto abi = Take<ConstructedAbi, FunctionAbiError>(std::move(abi_result));
       Account(abi);
       auto sources = Take<InstructionSources, InstructionSourceError>(phase ?
           BuildInstructionSources(phase->Phases(), phase->Body(), constructed.tree, left_) :

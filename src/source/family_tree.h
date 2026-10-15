@@ -39,6 +39,7 @@ struct FamilyTreeFailure {
   // Resolved while the owned family is still alive; never a creation PC.
   std::optional<abc::EntityOffset> method;
   std::optional<DeferredCellEvidence> deferred;
+  std::optional<CellParameterDefaultDiagnostic> cell_parameter_default;
 };
 // Owns the final residual graphs and rebound occurrence demands, before any AST
 // exists. Only Prepare can construct it; Build consumes it without reprojection.

@@ -69,6 +69,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       result.pc = error.family_creation->location.pc;
       result.working_pc = error.family_creation->location.working_pc;
     }
+    if constexpr (requires { error.cell_parameter_default; }) if(error.cell_parameter_default) result.cell_parameter_default=error.cell_parameter_default;
     if constexpr (requires { error.concurrent; }) if (error.concurrent) {
       result.concurrent = error.concurrent;
       if(error.concurrent->method.value)result.method = error.concurrent->method;

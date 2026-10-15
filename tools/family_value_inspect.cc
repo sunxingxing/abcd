@@ -1,3 +1,4 @@
+#include "../src/source/cell_parameter_default_json.h"
 #include "family_value_inspect.h"
 #include "tree_position_json.h"
 
@@ -283,6 +284,7 @@ nlohmann::json InspectFamilyValues(const abcd::corpus::AbcFile& file,
     const auto& failure = std::get<FamilyTreeFailure>(constructed);
     report["family_tree_member"] = failure.member.value;
     report["family_tree_failure"] = failure.cause.index();
+    if (failure.cell_parameter_default) report["cell_parameter_default"]=abcd::source::CellParameterDefaultJson(*failure.cell_parameter_default);
     if (failure.cell_default_candidates)
       report["cell_default_candidates"] = *failure.cell_default_candidates;
     report["cell_defaults_proved"] = failure.cell_defaults_proved;

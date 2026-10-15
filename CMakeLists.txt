@@ -247,7 +247,7 @@ target_sources(abcd_source PRIVATE src/source/instruction_sources.cc)
 target_sources(abcd_source PRIVATE src/source/family_emission.cc)
 target_sources(abcd_source PRIVATE src/source/family_route_failure.cc)
 target_sources(abcd_source PRIVATE src/source/environment_cleanup.cc src/source/cleanup_body.cc src/source/class_self.cc src/source/closed_class_fields.cc src/source/closed_values.cc src/source/class_self_order.cc)
-target_sources(abcd_source PRIVATE src/source/cell_defaults.cc)
+target_sources(abcd_source PRIVATE src/source/cell_defaults.cc src/source/cell_parameter_default.cc)
 target_sources(abcd_source PRIVATE src/source/cell_default_proof.cc)
 target_sources(abcd_source PRIVATE src/source/module_reads.cc)
 target_sources(abcd_source PRIVATE src/source/module_guards.cc src/source/module_state_flow.cc src/source/module_phase_order.cc)
@@ -733,6 +733,9 @@ if(BUILD_TESTING)
     add_test(NAME environment_cleanup_entry_test COMMAND environment_cleanup_test
       "${ABCD_PAIRED_CORPUS_ROOT}/push-kit-sample-code-clientdemo-arkts/modules.abc" 12208)
   endif()
+  add_executable(cell_parameter_default_test tests/unit/source/cell_parameter_default_test.cc tools/record_failure_json.cc)
+  target_link_libraries(cell_parameter_default_test PRIVATE abcd_source abcd_json)
+  add_test(NAME cell_parameter_default_test COMMAND cell_parameter_default_test)
   add_executable(string_defaults_test tests/unit/source/string_defaults_test.cc)
   target_link_libraries(string_defaults_test PRIVATE abcd_source)
   add_test(NAME string_defaults_test COMMAND string_defaults_test)
@@ -2743,6 +2746,10 @@ if(BUILD_TESTING)
     target_link_libraries(tree_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME tree_failure_test COMMAND tree_failure_test)
     if(ABCD_NODE_EXECUTABLE)
+      add_test(NAME cell_parameter_defaults_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/cell_parameter_defaults.mjs
+        $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/cell_parameter_defaults/defaults.abc)
       add_test(NAME descendant_class_refusals_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/descendant_class_refusals.mjs
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>

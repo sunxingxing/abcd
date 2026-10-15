@@ -1,3 +1,4 @@
+#include "cell_parameter_default_json.h"
 #include "sendable_failure_json.h"
 #include "concurrent_failure_json.h"
 #include "async_failure_json.h"
@@ -271,6 +272,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
     if (receipt.failure->printing) failure["printing"] = TreePrintFailureJson(*receipt.failure->printing);
     if (receipt.failure->evaluation) failure["evaluation"] = EvaluationFailureJson(*receipt.failure->evaluation);
     if (receipt.failure->tree) failure["tree"] = TreeFailureJson(*receipt.failure->tree);
+    if (receipt.failure->cell_parameter_default) failure["cell_parameter_default"]=CellParameterDefaultJson(*receipt.failure->cell_parameter_default);
     if (receipt.failure->deferred) failure["deferred"] = DeferredCellJson(*receipt.failure->deferred);
     if (receipt.failure->control) failure["control"] = ControlJson(*receipt.failure->control);
     if (receipt.failure->capture) {
@@ -482,6 +484,9 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     }
     if (const auto item = failure->find("tree"); item != failure->end()) {
       typed.tree = ParseTreeFailure(*item); if (!typed.tree) return RouteReceiptError::kFailure;
+    }
+    if (const auto item = failure->find("cell_parameter_default"); item != failure->end()) {
+      typed.cell_parameter_default=ParseCellParameterDefault(*item); if(!typed.cell_parameter_default)return RouteReceiptError::kFailure;
     }
     if (const auto item = failure->find("deferred"); item != failure->end()) {
       typed.deferred = ParseDeferredCell(*item); if (!typed.deferred) return RouteReceiptError::kFailure;

@@ -162,3 +162,59 @@ cell 分支现已接入共享 DefaultBody 残余投影：保留环境和初始 c
 - 实际 7449 的四成员必须全部到共享树并保持三个创建关系；完整 P3 的异常/async
   义务仍保留。另一个应用/profile 的同类输入用于泛化证据，不能仅调整这个样本。
 - 源码同时保留正确签名与函数体效果，PC 映射可核查；未闭合义务不得发布 executable。
+
+## Round 77 increment I: cell parameter and outer default joint evidence
+
+`CellParameterDefaultProof` is original-IR evidence only. It distinguishes the
+raw ParameterEntry, the initialized source-formal ordinal, the allocated local
+parameter cell, and the incoming default cell. It does not mutate DefaultBody,
+relax ABI length, allocate source symbols, or authorize publication.
+
+The shared index verifies environments/cells and normal value availability,
+canonicalizes copy identity once, indexes guard/branch/exception occurrences,
+and builds entry dominance plus real normal postdominance. Discovery follows
+cell and value identities. The independent verifier rebuilds those indexes and
+checks the proposed records, the undefined edges, private prefix coverage,
+exact guarded-read/write-back order, caller exception exit, and the body-entry
+cell state. Restricted values cannot escape into body/phi/unrelated uses.
+The parameter decision must dominate its body join as well as having that join
+as its normal postdominator: an entry path bypassing initialization is rejected.
+All paths in the initialization regions must converge without a back edge;
+copy insertion and block splitting do not introduce new match branches.
+
+Time is O((V+E+U) log(V+E+U)), scratch O(V+E+U+P). Region walks are disjoint,
+then the entire prefix is visited once. Each cell access list is visited once;
+there is no per-parameter whole-method traversal. All variable buffers and
+retained proof records are charged before allocation, with old and new scratch
+charges retained conservatively during independent verification.
+
+Production runs this analysis only after the existing normal-family ABI length
+refusal, using the remaining budget. The first refusal and resource class are
+unchanged, even when the additional analysis itself cannot establish a proof.
+`cell_parameter_default` (route) / `source_cell_parameter_default` (record-entry)
+contains a bounded status, exact original/working locations and distinct storage
+identities. Incoming depth is relative to entry, not lexical instruction depth.
+There is no new source-language premise and no change to the capture requirement
+lattice. This certificate does not yet establish native parameter scope or
+fulfil the incoming binding's source TDZ obligation: both remain increment II.
+
+Tests: cell_parameter_default_test independently checks forged certificates and
+changed graphs (identity/order/guard/read/write/exception mutations), copy and
+block variants, entry-ID renumbering, and 200/201/400/800 exact bytes/work budgets.
+cell_parameter_defaults_cli_test uses a real es2abc fixture and checks both
+contracts and manifest/abc_semantic consistency. No generated-source differential
+is claimed while publication is gated. The three corpus targets retain kLength;
+acceptance results and the complete manifest-change list are reported in the
+Round 77 delivery rather than inferred from proof status.
+
+Increment I acceptance (2026-10-15, uncommitted implementation): full keep-going
+build passed; new tests 2/2, fixed source-regression 65/65, default/signature/ABI/
+parameter/capture targeted tests 23/23. CLI/corpus/failure/receipt/manifest sweep
+was 73/74; only the already registered family_source_cli_test owner/origin arena
+assertion failed, unchanged. Against explore75/explore75s, completion remained
+521/620 and 567/620, with zero status or text changes. The only manifest changes
+in each flag set were the new diagnostic for o10/16048 (m16233), o31/17804
+(m17994), and o31/20739 (m20927), all verified with one third-parameter proof;
+the original FunctionAbiError::kLength cause remained. All 3,580/3,718 non-manifest
+per-ABC export files were byte-identical. Full logs and comparison exports are
+under /private/tmp/r77; no holdout evaluation was run.
