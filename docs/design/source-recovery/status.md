@@ -12,6 +12,30 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 76：静态初始化器 self-binding（证据阶段停止，待 cc 审查）
+
+- 基线 `a19178ed`。仅新增[证据记录](round-76-static-self.md)，没有修改生产代码或测试，
+  没有放宽 guard、capture、静态初始化时序、命名或准入；未 commit/push/stash。
+- 实际 ABC 顺序与任务中的待核实假设不同：o0/4660 creator m4850 为
+  class13 → inner self-store28 → initializer m5040 创建40/调用51；o20/8166 creator
+  m8392 为 class39 → inner self-store54 → m8556 创建250/调用261。外层发布均在之后。
+  FindClassSelfStores 证明私有 parent 区间与支配；conditional 读取探针将 self Guarded
+  义务重绑定为已初始化 local，均不需要 deferred。m8556 还捕获两个普通外层函数。
+- 现有 ClassSelfOrder 仍要求空 captures 和 ClosedClassFields；两目标 conditional
+  探针分别在 kOwner/kUnsupported 拒绝。initializer tree 用 IncomingCells::kReject，
+  static-field destination 禁止 capture/self。现有 class naming 防遮蔽原绑定，不能将
+  cell 重绑定为 native inner name。需要内层名字/外层 cell、重入、所有写入及静态
+  初始化事件的跨层对应证明，按本轮明确停止规则未擅自实现。无新前提申请。
+- 两个首因不变：SemanticProofError::kInternalValue > InternalValueReason=6，
+  m5040@12、m8556@13。完整构建通过；固定集串行 **65/65**；class/self/initializer/
+  capture 定向 **14/15**，仅已登记的 unguarded_captured_receiver_source_test 失败；
+  CLI/corpus/failure/receipt/manifest 扫描 **72/73**，仅已登记的 family_source_cli_test。
+- 重跑两组探索对 explore75/explore75s：旧 flags **521/620**、source **567/620**；
+  **0 manifest 变化、0 状态变化、0 完整或不完整源码/扩展名漂移**。无新 complete，
+  新输出 Node 检查不适用。没有实施新投影，未把临时 probe 当作 Node 差分或规模验收。
+- 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
+  未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
+
 ## Round 75：Evaluation 输入失败证据（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；521/620、567/620 不变，0 状态变化，0 文本变化；扫描 73/74，只有既有的 family_source_cli_test 失败。
 
