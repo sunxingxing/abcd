@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 A3c：按关闭结果索引的 completion（cc 审查通过）
+
+- `close_outcome_relation`：传播状态同时保存入口、SSA 环境、completion 与 outcome（成功对象、缺失/nullish、getter 抛出、call 抛出、primitive 结果），getter/call 异常保留各自原始出口身份；builder 与 verifier 用相反工作列表顺序独立计算；去掉 outcome 后与 A2 may 关系完全一致。m423 Break/Return 入口五类 outcome 全部出现，优先级仍为 missing：nullish 比较（PC114/205）保留保守的异常边（`kOtherException`），Hole sentinel 路径也保留。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变；相关测试 5/5。
+
 ## Round 79 A3b（部分）：close 摘要与 return 引用（cc 审查通过）
 
 - `close_completion`：重新派生入口，记录原始成员与边，核对 return 引用（base/callee/receiver）与 Throw payload；Throw 入口的优先级 verified（m423 6/6、m451 1/1）。缺口：completion_relation 不记录关闭结果（成功、getter 失败、call 失败、primitive 结果），相同的 Break/Return 出口元组无法区分正常成功与吞掉 close error，因此非 Throw 入口的优先级保持 missing；ownership、嵌套关联待续。

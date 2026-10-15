@@ -55,3 +55,28 @@ The same ABC is reused without regeneration. See
 [`close-entries.md`](../../../../docs/design/source-recovery/close-entries.md)
 for the independent boundary verification, exact-budget tests and the remaining
 ownership/priority boundary. No production hook or Node oracle is added.
+
+
+## A3c: outcome-indexed close relation
+
+`close_outcome_test` reuses the unchanged compiler artifact and hashes above.
+No additional fixture is necessary for the five outcomes: `xs` is opaque, so
+m423's same break/return close code covers a throwing return getter, throwing
+return call, primitive result, null/missing method and object result. The unit
+oracle checks ORIGINAL events and identities, not paired application source:
+
+| close | return read | call | nullish branch | result check |
+|---|---:|---:|---:|---:|
+| m423 Break | 105 | 121 | 117 | 150 |
+| m423 Return | 196 | 212 | 208 | 241 |
+| m451 Throw | 96 | 112 | 108 | unreachable check at 127 |
+
+A2's may-exit projection is retained exactly. In m423, unresolved Hole
+comparisons can still take a spurious completion arm. These paths retain their
+outcome plus a typed uncertainty witness and cannot pass priority. Likewise the
+raw comparison exception exits remain unproved (m423 PC114/205). Getter/call
+errors are always identified by their own original exception exit, never by the
+pending Return value or original body Throw. Mutation tests reject changing
+those identities, swapping outcomes, calling a primitive result successful, or
+clearing uncertainty. This is symbolic raw-ABC analysis, not execution of ABC in
+Node and not a new source-publication or native-for-of acceptance claim.

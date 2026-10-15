@@ -20,19 +20,20 @@ template<class T> struct CompletionLess {
 // points. The 32 levels come from SsaValueId's specified width, not graph shape.
 // All nodes, interning entries and overlapping vector growth use the prepaid
 // arena. IDs/values are never addresses into a reallocating vector.
-class CompletionValues {
+template<class Value = CompletionValue>
+class BasicCompletionValues {
   struct Node {
     std::uint32_t left = 0, right = 0, atom = 0;
     auto operator<=>(const Node&) const = default;
   };
  public:
-  explicit CompletionValues(RawEventArena& arena)
+  explicit BasicCompletionValues(RawEventArena& arena)
       : arena_(arena), nodes_(arena.Resource()), values_(arena.Resource()),
         nodes_index_(CompletionLess<Node>{&arena},arena.Resource()),
-        values_index_(CompletionLess<CompletionValue>{&arena},arena.Resource()) {
+        values_index_(CompletionLess<Value>{&arena},arena.Resource()) {
     nodes_.push_back({}); values_.push_back({});
   }
-  std::optional<CompletionValue> Get(std::uint32_t root, SsaValueId key) const {
+  std::optional<Value> Get(std::uint32_t root, SsaValueId key) const {
     for (unsigned bit = kBits; root && bit; --bit) {
       arena_.Step(); const auto n = nodes_[root];
       root = (key.value >> (bit - 1)) & 1 ? n.right : n.left;
@@ -40,7 +41,7 @@ class CompletionValues {
     if (!root) return {};
     return values_[nodes_[root].atom];
   }
-  std::uint32_t Set(std::uint32_t root, SsaValueId key, const CompletionValue& value) {
+  std::uint32_t Set(std::uint32_t root, SsaValueId key, const Value& value) {
     const auto found = Get(root,key); if (found && *found == value) return root;
     std::array<std::uint32_t,kBits> path{};
     auto cursor=root;
@@ -76,9 +77,10 @@ class CompletionValues {
   }
   RawEventArena& arena_;
   std::pmr::vector<Node> nodes_;
-  std::pmr::vector<CompletionValue> values_;
+  std::pmr::vector<Value> values_;
   std::pmr::map<Node,std::uint32_t,CompletionLess<Node>> nodes_index_;
-  std::pmr::map<CompletionValue,std::uint32_t,CompletionLess<CompletionValue>> values_index_;
+  std::pmr::map<Value,std::uint32_t,CompletionLess<Value>> values_index_;
 };
+using CompletionValues = BasicCompletionValues<>;
 }  // namespace abcd::analysis::detail
 #endif

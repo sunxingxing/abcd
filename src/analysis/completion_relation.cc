@@ -1,4 +1,5 @@
 #include "abcd/analysis/completion_relation.h"
+#include "abcd/analysis/close_outcome_relation.h"
 #include "completion_values.h"
 #include <algorithm>
 #include <bit>
@@ -32,9 +33,32 @@ struct PhiKey {
   SsaValueId phi;
   auto operator<=>(const PhiKey&) const = default;
 };
-struct State {
+struct NoOutcome { auto operator<=>(const NoOutcome&) const = default; };
+enum class OutcomeStage : std::uint8_t { kEntry, kRead, kCalled, kFinished, kFailed, kUnproved };
+struct OutcomeTrace {
+  CloseOutcome outcome{CloseOutcomeKind::kUnproved,{},{},CloseOutcomeGap::kNotObserved};
+  std::optional<ExceptionNodeId> sentinel;
+  OutcomeStage stage = OutcomeStage::kEntry;
+  auto operator<=>(const OutcomeTrace&) const = default;
+};
+template<class Trace> struct RelationState {
   std::uint32_t node,entry,environment;
-  auto operator<=>(const State&) const = default;
+  [[no_unique_address]] Trace trace;
+  auto operator<=>(const RelationState&) const = default;
+};
+enum class ObservedValue : std::uint8_t { kNone, kReturnMethod, kReturnResult };
+struct NullishPredicate {
+  bool when_nullish=true, when_present=false;
+  auto operator<=>(const NullishPredicate&) const = default;
+};
+struct OutcomeValue : Value {
+  ObservedValue observed = ObservedValue::kNone;
+  std::optional<NullishPredicate> test;
+  bool sentinel_test=false;
+  OutcomeValue() = default;
+  OutcomeValue(detail::CompletionValue v):detail::CompletionValue(std::move(v)) {}
+  OutcomeValue(CompletionPayload p):detail::CompletionValue{std::move(p)} {}
+  auto operator<=>(const OutcomeValue&) const = default;
 };
 Value Literal(const ScalarValue& scalar) {
   Value value;
@@ -78,19 +102,24 @@ std::optional<bool> Equal(const Value& a,const Value& b,bool strict) {
   // a scalar-operation admission whitelist or execution of user conversions.
   return {};
 }
-class Relation {
+template<bool Outcomes> class Relation {
+  using Value = std::conditional_t<Outcomes,OutcomeValue,detail::CompletionValue>;
+  using Trace = std::conditional_t<Outcomes,OutcomeTrace,NoOutcome>;
+  using State = RelationState<Trace>;
+  using Leaving = std::conditional_t<Outcomes,CloseOutcomeLeaving,CompletionLeaving>;
+  using Result = std::conditional_t<Outcomes,CloseOutcomeRelation,CompletionRelation>;
  public:
   Relation(const abc::MethodBody& body,abc::ProfileId profile,std::uint64_t frame,
       const ExceptionFlow& flow,const ExceptionSsa& ssa,
       std::span<const CompletionEntry> entries,std::span<const CompletionExit> exits,
-      CompletionRelationBudget budget)
+      CompletionRelationBudget budget,CloseOutcomeQuery query={})
       : flow_(flow),ssa_(ssa),entries_(entries),arena_(budget.resources),raw_(body,arena_),
         values_(arena_),raw_to_flow_(arena_.Resource()),flow_to_raw_(arena_.Resource()),
         outgoing_(arena_.Resource()),phi_count_(arena_.Resource()),fallback_(arena_.Resource()),phi_index_(
           detail::CompletionLess<PhiKey>{&arena_},arena_.Resource()),
         exits_(detail::CompletionLess<CompletionExit>{&arena_},arena_.Resource()),
         seen_(detail::CompletionLess<State>{&arena_},arena_.Resource()),
-        queue_(arena_.Resource()),leaving_(detail::CompletionLess<CompletionLeaving>{&arena_},arena_.Resource()) {
+        queue_(arena_.Resource()),leaving_(detail::CompletionLess<Leaving>{&arena_},arena_.Resource()),query_(query) {
     for(const auto size:{body.instructions.size(),flow.nodes.size(),ssa.Values().size(),
         ssa.AllInputs().size(),entries.size(),exits.size()})
       if(size>UINT32_MAX) Fail(CompletionRelationError::kResourceLimit);
@@ -154,8 +183,16 @@ class Relation {
       if(e.binding && e.binding->value>=ssa_.Values().size()) Fail(CompletionRelationError::kPayload,{},e.binding);
     }
     AvailableEntries();
+    if constexpr(Outcomes) {
+      if(query_.read.value>=flow_.nodes.size() || query_.call.value>=flow_.nodes.size())Fail(CompletionRelationError::kInput);
+      const auto& read=flow_.nodes[query_.read.value];const auto& call=flow_.nodes[query_.call.value];
+      if(read.phase!=ExceptionPhase::kBefore || call.phase!=ExceptionPhase::kBefore ||
+          !std::holds_alternative<NamedRead>(flow_.instructions[read.instruction.value].operation) ||
+          !std::holds_alternative<ReceiverCall>(flow_.instructions[call.instruction.value].operation))
+        Fail(CompletionRelationError::kInput);
+    }
   }
-  CompletionRelationCost Verify(const CompletionRelation& supplied) {
+  CompletionRelationCost Verify(const Result& supplied) {
     const auto expected=Run(true);
     if(expected.arrivals.size()!=supplied.arrivals.size() || expected.leaving.size()!=supplied.leaving.size())
       Fail(CompletionRelationError::kCorrespondence);
@@ -167,14 +204,14 @@ class Relation {
     }
     return {arena_.Peak(),seen_.size(),arena_.Work()};
   }
-  CompletionRelation Run(bool reverse) {
+  Result Run(bool reverse) {
     try { return RunImpl(reverse); }
     catch(CompletionRelationFailure failure) {
       if(!failure.entry) failure.entry=current_;
       throw failure;
     }
   }
-  CompletionRelation RunImpl(bool reverse) {
+  Result RunImpl(bool reverse) {
     for(std::uint32_t e=0;e<entries_.size();++e) {
       arena_.Step();current_=e;
       auto root=std::uint32_t{0};const auto& entry=entries_[e];
@@ -208,6 +245,10 @@ class Relation {
           if(const auto* scalar=std::get_if<ScalarAssignment>(&op))
             value=Expression(scalar->expression,original.instruction,state.environment,*write);
           else if(std::holds_alternative<LoadHole>(op)) value.constant=Constant::kHole;
+          if constexpr(Outcomes) {
+            if(query_.read==*raw_to_flow_[original.instruction.value*kPhases])value.observed=ObservedValue::kReturnMethod;
+            if(query_.call==*raw_to_flow_[original.instruction.value*kPhases])value.observed=ObservedValue::kReturnResult;
+          }
           state.environment=values_.Set(state.environment,*write,value);
         }
       }
@@ -223,6 +264,10 @@ class Relation {
           if(!edge) Fail(CompletionRelationError::kInput,node);
           const auto taken=flow_.nodes[edge->source.value].successors[edge->successor].kind==ExceptionArcKind::kTaken;
           if(taken!=*branch) continue;
+        }
+        State next_state=state;
+        if constexpr(Outcomes) {
+          if(reverse)ObserveByEdge(next_state,exit);else Observe(next_state,exit);
         }
         if(exits_.contains(exit)) {
           auto pending=entries_[state.entry].pending;
@@ -240,14 +285,21 @@ class Relation {
               pending={PendingCompletionKind::kReturn,value.payload,CompletionCaller{}};
             }
           CheckPending(pending);
-          leaving_.insert({state.entry,exit,pending});
+          if constexpr(Outcomes) {
+            auto outcome=next_state.trace.outcome;
+            if(next_state.trace.sentinel) {
+              outcome.gap=CloseOutcomeGap::kSentinelPath;outcome.uncertain_at=next_state.trace.sentinel;
+            }
+            leaving_.insert({state.entry,exit,pending,outcome});
+          }
+          else leaving_.insert({state.entry,exit,pending});
         } else {
           if(std::holds_alternative<CompletionCallerExit>(exit)) Fail(CompletionRelationError::kExit,node);
-          Arrive(state,i);
+          Arrive(next_state,i);
         }
       }
     }
-    CompletionRelation result;
+    Result result;
     Reserve(result.arrivals,entries_.size());Reserve(result.leaving,leaving_.size());
     for(std::uint32_t e=0;e<entries_.size();++e) result.arrivals.push_back({e,entries_[e].pending});
     result.leaving.assign(leaving_.begin(),leaving_.end());
@@ -420,6 +472,13 @@ class Relation {
     Value result{destination};std::optional<bool> boolean;
     if(const auto* unary=std::get_if<UnaryExpression>(&expression))
       boolean=Truth(Scalar(unary->input,instruction,root),unary->op);
+    if constexpr(Outcomes) {
+      if(const auto* unary=std::get_if<UnaryExpression>(&expression)) {
+        const auto input=Scalar(unary->input,instruction,root);
+        if(input.test)result.test=Predicate(*input.test,unary->op);
+        result.sentinel_test=input.sentinel_test;
+      }
+    }
     if(const auto* binary=std::get_if<BinaryExpression>(&expression)) {
       switch(binary->op) {
         case BinaryOperator::kEqual:case BinaryOperator::kNotEqual:
@@ -431,8 +490,174 @@ class Relation {
         default:break;
       }
     }
+    if constexpr(Outcomes) {
+      if(const auto* binary=std::get_if<BinaryExpression>(&expression)) {
+        const auto left=Scalar(binary->left,instruction,root),right=Scalar(binary->right,instruction,root);
+        if((binary->op==BinaryOperator::kEqual || binary->op==BinaryOperator::kNotEqual ||
+            binary->op==BinaryOperator::kStrictEqual || binary->op==BinaryOperator::kStrictNotEqual) &&
+            (left.constant==Constant::kHole || right.constant==Constant::kHole))result.sentinel_test=true;
+        const auto nullish=[](const Value& v){return v.constant==Constant::kUndefined || v.constant==Constant::kNull;};
+        if((left.observed==ObservedValue::kReturnMethod && nullish(right)) ||
+            (right.observed==ObservedValue::kReturnMethod && nullish(left))) {
+          if(binary->op==BinaryOperator::kEqual)result.test=NullishPredicate{};
+          if(binary->op==BinaryOperator::kNotEqual)result.test=NullishPredicate{false,true};
+        }
+      }
+    }
     if(boolean) result.constant=*boolean?Constant::kTrue:Constant::kFalse;
     return result;
+  }
+  static std::optional<NullishPredicate> Predicate(NullishPredicate p,UnaryOperator op) {
+    switch(op) {
+      case UnaryOperator::kToBoolean:case UnaryOperator::kTrueOrNonzeroNumber:return p;
+      case UnaryOperator::kLogicalNot:case UnaryOperator::kFalseOrZero:return NullishPredicate{!p.when_nullish,!p.when_present};
+      default:return {};
+    }
+  }
+  void Unproved(State& state,CloseOutcomeGap gap,ExceptionNodeId event) requires(Outcomes) {
+    state.trace.stage=OutcomeStage::kUnproved;
+    state.trace.outcome={CloseOutcomeKind::kUnproved,event,{},gap};
+  }
+  void Observe(State& state,const CompletionExit& exit) requires(Outcomes) {
+    const auto node=*raw_to_flow_[state.node];const auto& original=flow_.nodes[node.value];
+    const auto& op=flow_.instructions[original.instruction.value].operation;
+    auto& trace=state.trace;
+    // Once provenance was lost, a later successful check cannot repair it.
+    if(trace.stage==OutcomeStage::kUnproved)return;
+    const bool exceptional=IsException(exit);
+    const auto before=*raw_to_flow_[original.instruction.value*kPhases];
+    if(original.phase==ExceptionPhase::kBefore && before==query_.read) {
+      if(trace.stage!=OutcomeStage::kEntry){Unproved(state,CloseOutcomeGap::kRepeatedEvent,node);return;}
+      if(exceptional) {
+        trace.stage=OutcomeStage::kFailed;
+        trace.outcome={CloseOutcomeKind::kGetterThrow,node,Exception(state).payload};
+      }
+      return;
+    }
+    if(original.phase==ExceptionPhase::kCommit && before==query_.read) {
+      if(trace.stage!=OutcomeStage::kEntry){Unproved(state,CloseOutcomeGap::kRepeatedEvent,node);return;}
+      trace.stage=OutcomeStage::kRead;return;
+    }
+    if(original.phase==ExceptionPhase::kBefore && before==query_.call) {
+      const auto* call=std::get_if<ReceiverCall>(&op);
+      const auto callee=call?Get(Read(original.instruction,Accumulator{}),state.environment):Value{};
+      if(trace.stage!=OutcomeStage::kRead || callee.observed!=ObservedValue::kReturnMethod) {
+        Unproved(state,CloseOutcomeGap::kUnprovedResult,node);return;
+      }
+      if(exceptional) {
+        trace.stage=OutcomeStage::kFailed;
+        trace.outcome={CloseOutcomeKind::kCallThrow,node,Exception(state).payload};
+      }
+      return;
+    }
+    if(original.phase==ExceptionPhase::kCommit && before==query_.call) {
+      if(trace.stage!=OutcomeStage::kRead){Unproved(state,CloseOutcomeGap::kRepeatedEvent,node);return;}
+      trace.stage=OutcomeStage::kCalled;return;
+    }
+    if(const auto* check=std::get_if<ObjectCheck>(&op);
+        check && original.phase==ExceptionPhase::kBefore && trace.stage==OutcomeStage::kCalled) {
+      const auto value=Get(Read(original.instruction,check->value),state.environment);
+      if(value.observed==ObservedValue::kReturnResult) {
+        trace.stage=exceptional?OutcomeStage::kFailed:OutcomeStage::kFinished;
+        trace.outcome={exceptional?CloseOutcomeKind::kPrimitiveResult:CloseOutcomeKind::kSuccessObject,
+            node,exceptional?std::optional{Exception(state).payload}:std::nullopt};
+        return;
+      }
+    }
+    if(original.phase==ExceptionPhase::kCommit) {
+      if(const auto* b=std::get_if<BranchOperation>(&op)) {
+        const auto predicate=Scalar(b->predicate.input,original.instruction,state.environment);
+        if(predicate.sentinel_test && !trace.sentinel)trace.sentinel=node;
+        if(trace.stage!=OutcomeStage::kRead)return;
+        if(predicate.test)if(const auto p=Predicate(*predicate.test,b->predicate.op)) {
+          const auto* edge=std::get_if<CompletionEdge>(&exit);
+          if(!edge)Fail(CompletionRelationError::kInput,node);
+          const bool taken=flow_.nodes[edge->source.value].successors[edge->successor].kind==ExceptionArcKind::kTaken;
+          if(taken==p->when_nullish && p->when_nullish!=p->when_present) {
+            trace.stage=OutcomeStage::kFinished;
+            trace.outcome={CloseOutcomeKind::kMissingOrNullish,node,{}};
+          }
+        }
+      }
+    }
+    if(original.phase==ExceptionPhase::kBefore && exceptional) {
+      if(const auto* thrown=std::get_if<ThrowOperation>(&op))
+        if(Scalar(thrown->value,original.instruction,state.environment).constant==Constant::kHole) {
+          Unproved(state,CloseOutcomeGap::kSentinelPath,node);return;
+        }
+    }
+    // Explicit THROW only transports the current payload, including a caught
+    // getter/call failure. Any other exception has unproved close provenance.
+    if(exceptional && !std::holds_alternative<ThrowOperation>(op))
+      Unproved(state,CloseOutcomeGap::kOtherException,node);
+  }
+  // Verifier replay derives event success from the ORIGINAL edge entering a
+  // Commit, rather than the builder's departure from that Commit. This uses
+  // neither supplied outcomes nor the builder's event-stage transitions.
+  // Scalar/Boolean transfer and pinned operation meanings remain shared.
+  void ObserveByEdge(State& state,const CompletionExit& exit) requires(Outcomes) {
+    auto& trace=state.trace;if(trace.stage==OutcomeStage::kUnproved)return;
+    const auto source=*raw_to_flow_[state.node];const auto& node=flow_.nodes[source.value];
+    const auto& op=flow_.instructions[node.instruction.value].operation;
+    const bool exceptional=IsException(exit);
+    if(source==query_.read || source==query_.call) {
+      const bool read=source==query_.read;
+      const auto expected=read?OutcomeStage::kEntry:OutcomeStage::kRead;
+      if(trace.stage!=expected) {Unproved(state,CloseOutcomeGap::kRepeatedEvent,source);return;}
+      if(!read && Get(Read(node.instruction,Accumulator{}),state.environment).observed!=ObservedValue::kReturnMethod) {
+        Unproved(state,CloseOutcomeGap::kUnprovedResult,source);return;
+      }
+      if(exceptional) {
+        trace.stage=OutcomeStage::kFailed;
+        trace.outcome={read?CloseOutcomeKind::kGetterThrow:CloseOutcomeKind::kCallThrow,source,Exception(state).payload};
+      } else {
+        const auto* edge=std::get_if<CompletionEdge>(&exit);
+        if(!edge)Fail(CompletionRelationError::kInput,source);
+        const auto& target=flow_.nodes[node.successors[edge->successor].target.value];
+        if(target.phase!=ExceptionPhase::kCommit || target.instruction!=node.instruction)
+          Fail(CompletionRelationError::kInput,source);
+        trace.stage=read?OutcomeStage::kRead:OutcomeStage::kCalled;
+      }
+      return;
+    }
+    if(node.phase==ExceptionPhase::kBefore && std::holds_alternative<ObjectCheck>(op) && trace.stage==OutcomeStage::kCalled) {
+      const auto& check=std::get<ObjectCheck>(op);
+      if(Get(Read(node.instruction,check.value),state.environment).observed==ObservedValue::kReturnResult) {
+        if(!exceptional) {
+          const auto* edge=std::get_if<CompletionEdge>(&exit);
+          if(!edge)Fail(CompletionRelationError::kInput,source);
+          const auto& target=flow_.nodes[node.successors[edge->successor].target.value];
+          if(target.phase!=ExceptionPhase::kCommit || target.instruction!=node.instruction)
+            Fail(CompletionRelationError::kInput,source);
+        }
+        trace.stage=exceptional?OutcomeStage::kFailed:OutcomeStage::kFinished;
+        trace.outcome={exceptional?CloseOutcomeKind::kPrimitiveResult:CloseOutcomeKind::kSuccessObject,
+            source,exceptional?std::optional{Exception(state).payload}:std::nullopt};
+        return;
+      }
+    }
+    if(node.phase==ExceptionPhase::kCommit) {
+      if(const auto* branch=std::get_if<BranchOperation>(&op)) {
+        const auto value=Scalar(branch->predicate.input,node.instruction,state.environment);
+        if(value.sentinel_test && !trace.sentinel)trace.sentinel=source;
+        if(trace.stage==OutcomeStage::kRead && value.test) {
+          const auto predicate=Predicate(*value.test,branch->predicate.op);
+          const auto* edge=std::get_if<CompletionEdge>(&exit);
+          if(!edge)Fail(CompletionRelationError::kInput,source);
+          const auto taken=node.successors[edge->successor].kind==ExceptionArcKind::kTaken;
+          if(predicate && predicate->when_nullish!=predicate->when_present && taken==predicate->when_nullish) {
+            trace.stage=OutcomeStage::kFinished;
+            trace.outcome={CloseOutcomeKind::kMissingOrNullish,source,{}};
+          }
+        }
+      }
+    }
+    if(exceptional) {
+      if(const auto* thrown=std::get_if<ThrowOperation>(&op)) {
+        if(Scalar(thrown->value,node.instruction,state.environment).constant==Constant::kHole)
+          Unproved(state,CloseOutcomeGap::kSentinelPath,source);
+      } else Unproved(state,CloseOutcomeGap::kOtherException,source);
+    }
   }
   bool IsException(const CompletionExit& exit) const {
     if(const auto* e=std::get_if<CompletionEdge>(&exit))
@@ -463,14 +688,14 @@ class Relation {
       const auto write=ssa_.Write(target);if(!write) Fail(CompletionRelationError::kInput,target);
       root=values_.Set(root,*write,Exception(state));
     }
-    State next{flow_to_raw_[target.value],state.entry,root};
+    State next{flow_to_raw_[target.value],state.entry,root,state.trace};
     if(seen_.contains(next)) return;
     if(seen_.size()>=limit_) Fail(CompletionRelationError::kResourceLimit,target);
     seen_.insert(next);queue_.push_back(next);
   }
   const ExceptionFlow& flow_;const ExceptionSsa& ssa_;
   std::span<const CompletionEntry> entries_;
-  RawEventArena arena_;RawEventGraph raw_;detail::CompletionValues values_;
+  RawEventArena arena_;RawEventGraph raw_;detail::BasicCompletionValues<Value> values_;
   std::pmr::vector<std::optional<ExceptionNodeId>> raw_to_flow_;
   std::pmr::vector<std::uint32_t> flow_to_raw_;
   std::pmr::vector<std::array<std::optional<CompletionExit>,3>> outgoing_;
@@ -480,7 +705,8 @@ class Relation {
   std::pmr::set<CompletionExit,detail::CompletionLess<CompletionExit>> exits_;
   std::pmr::set<State,detail::CompletionLess<State>> seen_;
   std::pmr::vector<State> queue_;
-  std::pmr::set<CompletionLeaving,detail::CompletionLess<CompletionLeaving>> leaving_;
+  std::pmr::set<Leaving,detail::CompletionLess<Leaving>> leaving_;
+  CloseOutcomeQuery query_;
   std::size_t limit_=0;
   std::uint64_t work_limit_=0;
   std::optional<std::uint32_t> current_;
@@ -497,7 +723,7 @@ std::variant<CompletionRelation,CompletionRelationFailure> AnalyzeCompletionRela
     const abc::MethodBody& body,abc::ProfileId profile,std::uint64_t frame,
     const ExceptionFlow& flow,const ExceptionSsa& ssa,std::span<const CompletionEntry> entries,
     std::span<const CompletionExit> exits,CompletionRelationBudget budget) {
-  try {return Relation(body,profile,frame,flow,ssa,entries,exits,budget).Run(false);}
+  try {return Relation<false>(body,profile,frame,flow,ssa,entries,exits,budget).Run(false);}
   catch(const CompletionRelationFailure& f){return f;}
   catch(const RawEventFailure& f){return RawFailure(f);}
   catch(const std::bad_alloc&){return CompletionRelationFailure{CompletionRelationError::kResourceLimit};}
@@ -508,8 +734,28 @@ std::variant<CompletionRelationCost,CompletionRelationFailure> VerifyCompletionR
     const ExceptionFlow& flow,const ExceptionSsa& ssa,std::span<const CompletionEntry> entries,
     std::span<const CompletionExit> exits,const CompletionRelation& relation,CompletionRelationBudget budget) {
   try {
-    return Relation(body,profile,frame,flow,ssa,entries,exits,budget).Verify(relation);
+    return Relation<false>(body,profile,frame,flow,ssa,entries,exits,budget).Verify(relation);
   } catch(const CompletionRelationFailure& f){return f;}
+  catch(const RawEventFailure& f){return RawFailure(f);}
+  catch(const std::bad_alloc&){return CompletionRelationFailure{CompletionRelationError::kResourceLimit};}
+  catch(const std::length_error&){return CompletionRelationFailure{CompletionRelationError::kResourceLimit};}
+}
+std::variant<CloseOutcomeRelation,CompletionRelationFailure> AnalyzeCloseOutcomeRelation(
+    const abc::MethodBody& body,abc::ProfileId profile,std::uint64_t frame,const ExceptionFlow& flow,
+    const ExceptionSsa& ssa,CloseOutcomeQuery query,std::span<const CompletionEntry> entries,
+    std::span<const CompletionExit> exits,CompletionRelationBudget budget) {
+  try {return Relation<true>(body,profile,frame,flow,ssa,entries,exits,budget,query).Run(false);}
+  catch(const CompletionRelationFailure& f){return f;}
+  catch(const RawEventFailure& f){return RawFailure(f);}
+  catch(const std::bad_alloc&){return CompletionRelationFailure{CompletionRelationError::kResourceLimit};}
+  catch(const std::length_error&){return CompletionRelationFailure{CompletionRelationError::kResourceLimit};}
+}
+std::variant<CompletionRelationCost,CompletionRelationFailure> VerifyCloseOutcomeRelation(
+    const abc::MethodBody& body,abc::ProfileId profile,std::uint64_t frame,const ExceptionFlow& flow,
+    const ExceptionSsa& ssa,CloseOutcomeQuery query,std::span<const CompletionEntry> entries,
+    std::span<const CompletionExit> exits,const CloseOutcomeRelation& relation,CompletionRelationBudget budget) {
+  try {return Relation<true>(body,profile,frame,flow,ssa,entries,exits,budget,query).Verify(relation);}
+  catch(const CompletionRelationFailure& f){return f;}
   catch(const RawEventFailure& f){return RawFailure(f);}
   catch(const std::bad_alloc&){return CompletionRelationFailure{CompletionRelationError::kResourceLimit};}
   catch(const std::length_error&){return CompletionRelationFailure{CompletionRelationError::kResourceLimit};}

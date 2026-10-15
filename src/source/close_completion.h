@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CLOSE_COMPLETION_H_
 
 #include "close_entries.h"
+#include "abcd/analysis/close_outcome_relation.h"
 
 namespace abcd::source {
 // These are separate obligations: a priority fact never grants region ownership.
@@ -13,6 +14,14 @@ enum class CloseCompletionError : std::uint8_t {
   kExceptionCorrespondence, kOwnership, kExternalEntry, kNested,
   kCorrespondence, kResourceLimit, kWorkLimit
 };
+enum class ClosePriorityReason : std::uint8_t {
+  kOutcomeUnproved, kSentinelPath, kExpectedOriginal, kExpectedCloseError,
+  kExpectedTypeError, kMissingExit
+};
+// Priority-table transfer only. The outcome derivation must be verified before
+// this function can contribute to a certificate; it grants no provenance.
+[[nodiscard]] std::optional<ClosePriorityReason> ClosePriorityMismatch(
+    const analysis::PendingCompletion&, const analysis::CloseOutcomeLeaving&);
 struct CloseCompletionFailure {
   CloseCompletionError kind;
   std::optional<IteratorProtocolId> protocol;
@@ -21,11 +30,13 @@ struct CloseCompletionFailure {
   std::optional<analysis::ExceptionNodeId> node;
   std::optional<analysis::CompletionEdge> edge;
   std::optional<CloseEntryFailure> derivation;
+  std::optional<ClosePriorityReason> priority;
+  std::optional<analysis::CloseOutcomeGap> outcome_gap;
   bool operator==(const CloseCompletionFailure& b) const {
     // Derivation failures are returned as whole-query failures, never embedded
     // in a successful summary. Do not invent equality for opaque subproofs.
     return kind==b.kind && protocol==b.protocol && read==b.read && entry==b.entry &&
-        node==b.node && edge==b.edge && !derivation && !b.derivation;
+        node==b.node && edge==b.edge && priority==b.priority && outcome_gap==b.outcome_gap && !derivation && !b.derivation;
   }
 };
 enum class CloseProofState : std::uint8_t { kMissing, kVerified };
@@ -58,7 +69,7 @@ struct CloseCompletionRegion {
   std::optional<analysis::OpId> call;
   std::vector<CloseMember> members; // Original node order.
   std::vector<analysis::CompletionEdge> edges; // Every original member edge, cuts included.
-  bool operator==(const CloseCompletionRegion&) const = default;
+  std::optional<analysis::CloseOutcomeRelation> outcomes;
 };
 struct CloseCompletionSummary {
   abc::EntityOffset method;

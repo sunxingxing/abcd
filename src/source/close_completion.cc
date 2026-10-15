@@ -69,6 +69,7 @@ class Proof {
     for(const auto& c:entries_.closes) {
       auto region=Members(c);
       const auto reference=Reference(c,region);
+      if(reference.state==CloseProofState::kVerified)Outcomes(c,region);
       const auto ownership=Ownership(c,region);
       for(std::uint32_t i=0;i<c.entries.size();++i) {
         q_.Step();CloseCompletionEntry e{c.protocol,c.read,c.entries[i].entry.edge,c.entries[i].entry.pending};
@@ -214,14 +215,57 @@ class Proof {
     if(found==r.members.end() || found->node!=call_node)return Missing(c,CloseCompletionError::kReference,call_node);
     return {CloseProofState::kVerified,{}};
   }
-  CloseObligationResult Priority(const DerivedClose& c,std::uint32_t entry,const CloseCompletionRegion&) {
+  void Outcomes(const DerivedClose& c,CloseCompletionRegion& r) {
+    q_.Require(r.call.has_value());
+    std::pmr::vector<CompletionEntry> incoming(&q_.memory);
+    for(const auto& e:c.entries){q_.Step();incoming.push_back(e.entry);}
+    const CloseOutcomeQuery query{g_.phases[g_.ops[c.read.value].block.value].input,
+        g_.phases[g_.ops[r.call->value].block.value].input};
+    auto result=AnalyzeCloseOutcomeRelation(body_,profile_,in_.frame.registers,in_.flow,in_.ssa,
+        query,incoming,c.exits,{q_.Remaining()});
+    if(const auto* f=std::get_if<CompletionRelationFailure>(&result))
+      throw CloseCompletionFailure{f->kind==CompletionRelationError::kResourceLimit?CloseCompletionError::kResourceLimit:
+          f->kind==CompletionRelationError::kWorkLimit?CloseCompletionError::kWorkLimit:CloseCompletionError::kCorrespondence,
+          c.protocol,c.read,f->entry,f->node,f->edge};
+    r.outcomes=std::get<CloseOutcomeRelation>(std::move(result));
+    q_.memory.Observe(r.outcomes->peak_bytes);q_.Step(r.outcomes->work);
+    q_.memory.Retain(r.outcomes->arrivals.capacity()*sizeof(CompletionArrival)+r.outcomes->leaving.capacity()*sizeof(CloseOutcomeLeaving));
+    if(verify_) {
+      const auto verified=VerifyCloseOutcomeRelation(body_,profile_,in_.frame.registers,in_.flow,in_.ssa,
+          query,incoming,c.exits,*r.outcomes,{q_.Remaining()});
+      if(const auto* f=std::get_if<CompletionRelationFailure>(&verified))
+        throw CloseCompletionFailure{f->kind==CompletionRelationError::kResourceLimit?CloseCompletionError::kResourceLimit:
+            f->kind==CompletionRelationError::kWorkLimit?CloseCompletionError::kWorkLimit:CloseCompletionError::kCorrespondence,
+            c.protocol,c.read,f->entry,f->node,f->edge};
+      const auto cost=std::get<CompletionRelationCost>(verified);
+      q_.memory.Observe(cost.peak_bytes);q_.Step(cost.work);
+    }
+  }
+  CloseObligationResult PriorityGap(const DerivedClose& c,std::uint32_t entry,ClosePriorityReason reason,
+      std::optional<ExceptionNodeId> node={},std::optional<CloseOutcomeGap> gap={}) {
+    auto result=Missing(c,CloseCompletionError::kClosePriority,node,entry);
+    result.missing->priority=reason;result.missing->outcome_gap=gap;return result;
+  }
+  CloseObligationResult Priority(const DerivedClose& c,std::uint32_t entry,const CloseCompletionRegion& r) {
     const auto& pending=c.entries[entry].entry.pending;bool leaves=false;
-    // A2 correlates kind/payload/target, not the path's close outcome. An
-    // unchanged Break/Return tuple cannot distinguish success from a swallowed
-    // getter/call error. Do not certify this half of the priority table until
-    // that outcome-to-exception relation exists (even if all tuples match).
-    if(pending.kind!=PendingCompletionKind::kThrow)
-      return Missing(c,CloseCompletionError::kClosePriority,{},entry);
+    if(pending.kind!=PendingCompletionKind::kThrow) {
+      if(!r.outcomes)return PriorityGap(c,entry,ClosePriorityReason::kOutcomeUnproved);
+      const auto& exits=r.outcomes->leaving;
+      const auto first=std::lower_bound(exits.begin(),exits.end(),entry,
+          [&](const CloseOutcomeLeaving& a,std::uint32_t b){q_.Step();return a.entry<b;});
+      bool covered=false;std::optional<CloseObligationResult> missing;
+      for(auto it=first;it!=exits.end() && it->entry==entry;++it) {
+        q_.Step();covered=true;
+        if(const auto mismatch=ClosePriorityMismatch(pending,*it);mismatch && !missing) {
+          const auto& outcome=it->outcome;
+          missing=PriorityGap(c,entry,*mismatch,outcome.uncertain_at?outcome.uncertain_at:outcome.event,
+              outcome.gap==CloseOutcomeGap::kNone?std::nullopt:std::optional{outcome.gap});
+        }
+      }
+      if(missing)return *missing;
+      if(!covered)return PriorityGap(c,entry,ClosePriorityReason::kMissingExit);
+      return {CloseProofState::kVerified,{}};
+    }
     // Partition by entry instead of rescanning the complete relation per entry.
     const auto begin=std::lower_bound(c.relation.leaving.begin(),c.relation.leaving.end(),entry,
         [&](const CompletionLeaving& a,std::uint32_t b){q_.Step();return a.entry<b;});
@@ -273,6 +317,30 @@ std::variant<CloseCompletionSummary,CloseCompletionFailure> Build(const abc::Met
   catch(const std::length_error&){return CloseCompletionFailure{CloseCompletionError::kResourceLimit};}
 }
 }
+std::optional<ClosePriorityReason> ClosePriorityMismatch(const analysis::PendingCompletion& entry,
+    const analysis::CloseOutcomeLeaving& leaving) {
+  using namespace analysis;
+  if(entry.kind==PendingCompletionKind::kThrow)
+    return leaving.pending==entry?std::nullopt:std::optional{ClosePriorityReason::kExpectedOriginal};
+  const auto& outcome=leaving.outcome;
+  if(outcome.gap!=CloseOutcomeGap::kNone)return outcome.gap==CloseOutcomeGap::kSentinelPath?
+      ClosePriorityReason::kSentinelPath:ClosePriorityReason::kOutcomeUnproved;
+  switch(outcome.kind) {
+    case CloseOutcomeKind::kUnproved:return ClosePriorityReason::kOutcomeUnproved;
+    case CloseOutcomeKind::kSuccessObject:case CloseOutcomeKind::kMissingOrNullish:
+      return leaving.pending==entry?std::nullopt:std::optional{ClosePriorityReason::kExpectedOriginal};
+    case CloseOutcomeKind::kGetterThrow:case CloseOutcomeKind::kCallThrow:
+    case CloseOutcomeKind::kPrimitiveResult: {
+      const auto reason=outcome.kind==CloseOutcomeKind::kPrimitiveResult?
+          ClosePriorityReason::kExpectedTypeError:ClosePriorityReason::kExpectedCloseError;
+      if(!outcome.event || !outcome.exception ||
+          *outcome.exception!=CompletionPayload{CompletionExceptionValue{*outcome.event}} ||
+          leaving.pending.kind!=PendingCompletionKind::kThrow || leaving.pending.payload!=*outcome.exception)return reason;
+      return {};
+    }
+  }
+  std::terminate();
+}
 std::variant<CloseCompletionSummary,CloseCompletionFailure> AnalyzeCloseCompletion(const abc::MethodBody& body,
     abc::ProfileId profile,const ValueProgram& g,const PhasedValueInput& in,const ExceptionPlan& plan,
     const IteratorKeys& keys,const IteratorProtocolScan& scan,SemanticBudget budget) {
@@ -297,6 +365,19 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
     if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
     if(a.protocol!=b.protocol || a.read!=b.read || a.call!=b.call || a.members.size()!=b.members.size() || a.edges.size()!=b.edges.size())
       return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+    if(a.outcomes.has_value()!=b.outcomes.has_value())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+    if(a.outcomes) {
+      if(a.outcomes->arrivals.size()!=b.outcomes->arrivals.size() || a.outcomes->leaving.size()!=b.outcomes->leaving.size())
+        return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+      for(std::size_t e=0;e<a.outcomes->arrivals.size();++e) {
+        if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
+        if(a.outcomes->arrivals[e]!=b.outcomes->arrivals[e])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+      }
+      for(std::size_t e=0;e<a.outcomes->leaving.size();++e) {
+        if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
+        if(a.outcomes->leaving[e]!=b.outcomes->leaving[e])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+      }
+    }
     for(std::size_t m=0;m<a.members.size();++m) {
       if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
       if(a.members[m]!=b.members[m])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};

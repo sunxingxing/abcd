@@ -102,7 +102,14 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
     Check(e.obligations[static_cast<unsigned>(CloseObligation::kReference)].state==CloseProofState::kVerified);
     const auto priority=e.obligations[static_cast<unsigned>(CloseObligation::kPriority)].state;
     if(e.pending.kind==PendingCompletionKind::kThrow)Check(priority==CloseProofState::kVerified);
-    else Check(priority==CloseProofState::kMissing); // The unexcluded Hole path is NOT a pass.
+    else {
+      Check(priority==CloseProofState::kMissing); // Conservative paths are NOT a pass.
+      const auto& missing=e.obligations[static_cast<unsigned>(CloseObligation::kPriority)].missing;
+      Check(missing && missing->priority && missing->node && missing->outcome_gap);
+      if(!padding && mutation==Mutation::kNone)std::cout<<"priority-gap="<<unsigned(*missing->priority)
+        <<" outcome-gap="<<unsigned(*missing->outcome_gap)<<" pc="
+        <<flow.instructions[flow.nodes[missing->node->value].instruction.value].pc.value<<'\n';
+    }
     Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state==CloseProofState::kMissing);
     if(!padding && mutation==Mutation::kNone)std::cout<<"entry-pc="<<flow.instructions[flow.nodes[e.source.source.value].instruction.value].pc.value
       <<" kind="<<unsigned(e.pending.kind)<<" priority="<<unsigned(priority)<<" ownership=missing\n";
@@ -118,6 +125,8 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   bad=summary;bad.regions[0].members.pop_back();reject(bad);
   bad=summary;bad.regions[0].edges.pop_back();reject(bad);
   bad=summary;bad.regions[0].call=OpId{0};reject(bad);
+  Check(summary.regions[0].outcomes && !summary.regions[0].outcomes->leaving.empty());
+  bad=summary;bad.regions[0].outcomes->leaving[0].outcome.kind=CloseOutcomeKind::kSuccessObject;reject(bad);
   bad=summary;bad.regions[0].members.push_back(bad.regions[0].members.front());reject(bad);
   bad=summary;bad.regions[0].edges[0].successor=2;reject(bad);
   bad=summary;bad.entries[0].obligations[static_cast<unsigned>(CloseObligation::kPriority)]={CloseProofState::kVerified,{}};
