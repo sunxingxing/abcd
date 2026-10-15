@@ -1,0 +1,89 @@
+#ifndef ABCD_SOURCE_CLOSE_COMPLETION_H_
+#define ABCD_SOURCE_CLOSE_COMPLETION_H_
+
+#include "close_entries.h"
+
+namespace abcd::source {
+// These are separate obligations: a priority fact never grants region ownership.
+enum class CloseObligation : std::uint8_t {
+  kGuard, kReference, kPriority, kOwnership, kNested, kCount
+};
+enum class CloseCompletionError : std::uint8_t {
+  kInput, kCloseGuard, kReference, kClosePriority, kCompletion,
+  kExceptionCorrespondence, kOwnership, kExternalEntry, kNested,
+  kCorrespondence, kResourceLimit, kWorkLimit
+};
+struct CloseCompletionFailure {
+  CloseCompletionError kind;
+  std::optional<IteratorProtocolId> protocol;
+  std::optional<analysis::OpId> read;
+  std::optional<std::uint32_t> entry;
+  std::optional<analysis::ExceptionNodeId> node;
+  std::optional<analysis::CompletionEdge> edge;
+  std::optional<CloseEntryFailure> derivation;
+  bool operator==(const CloseCompletionFailure& b) const {
+    // Derivation failures are returned as whole-query failures, never embedded
+    // in a successful summary. Do not invent equality for opaque subproofs.
+    return kind==b.kind && protocol==b.protocol && read==b.read && entry==b.entry &&
+        node==b.node && edge==b.edge && !derivation && !b.derivation;
+  }
+};
+enum class CloseProofState : std::uint8_t { kMissing, kVerified };
+struct CloseObligationResult {
+  CloseProofState state = CloseProofState::kMissing;
+  std::optional<CloseCompletionFailure> missing;
+  bool operator==(const CloseObligationResult&) const = default;
+};
+// Raw member roles account for state and control even when an obligation is
+// missing. No mask from this diagnostic result authorizes elimination.
+enum class CloseMemberRole : std::uint8_t {
+  kScalar, kCatch, kReturnRead, kReturnCall, kResultCheck, kCompletion, kUnproved
+};
+struct CloseMember {
+  analysis::ExceptionNodeId node;
+  CloseMemberRole role;
+  bool operator==(const CloseMember&) const = default;
+};
+struct CloseCompletionEntry {
+  IteratorProtocolId protocol;
+  analysis::OpId read;
+  analysis::CompletionEdge source;
+  analysis::PendingCompletion pending;
+  std::array<CloseObligationResult, static_cast<std::size_t>(CloseObligation::kCount)> obligations;
+  bool operator==(const CloseCompletionEntry&) const = default;
+};
+struct CloseCompletionRegion {
+  IteratorProtocolId protocol;
+  analysis::OpId read;
+  std::optional<analysis::OpId> call;
+  std::vector<CloseMember> members; // Original node order.
+  std::vector<analysis::CompletionEdge> edges; // Every original member edge, cuts included.
+  bool operator==(const CloseCompletionRegion&) const = default;
+};
+struct CloseCompletionSummary {
+  abc::EntityOffset method;
+  analysis::IrRevision revision;
+  analysis::CfgRevision cfg_revision;
+  std::vector<CloseCompletionEntry> entries;
+  std::vector<CloseCompletionRegion> regions;
+  std::size_t peak_bytes = 0;
+  std::uint64_t work = 0;
+};
+// Standalone synchronous diagnostic analysis. Derives/validates its own entries;
+// not caller-supplied assumptions. A result can contain missing obligations;
+// it is NOT VerifiedProtocolRegionOwnership and has no production consumer.
+// Conservative sentinel paths are never erased. Sparse walks are globally
+// bounded by an input-sized N log N work grant, and all storage is prepaid.
+[[nodiscard]] std::variant<CloseCompletionSummary, CloseCompletionFailure> AnalyzeCloseCompletion(
+    const abc::MethodBody&, abc::ProfileId, const analysis::ValueProgram&,
+    const analysis::PhasedValueInput&, const ExceptionPlan&, const IteratorKeys&,
+    const IteratorProtocolScan&, analysis::SemanticBudget = {});
+// Revalidates entries using A3a's backwards proof, recomputes raw membership,
+// references and the exit relation from immutable inputs. Supplied flags,
+// members, omissions and telemetry are never inputs to discovery.
+[[nodiscard]] std::variant<std::uint64_t, CloseCompletionFailure> VerifyCloseCompletion(
+    const abc::MethodBody&, abc::ProfileId, const analysis::ValueProgram&,
+    const analysis::PhasedValueInput&, const ExceptionPlan&, const IteratorKeys&,
+    const IteratorProtocolScan&, const CloseCompletionSummary&, analysis::SemanticBudget = {});
+}  // namespace abcd::source
+#endif
