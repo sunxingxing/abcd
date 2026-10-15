@@ -69,6 +69,13 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       result.pc = error.family_creation->location.pc;
       result.working_pc = error.family_creation->location.working_pc;
     }
+    if constexpr (requires { error.concurrent; }) if (error.concurrent) {
+      result.concurrent = error.concurrent;
+      result.method = error.concurrent->method;
+      result.pc.reset(); result.working_pc.reset();
+      result.creation_method = error.concurrent->creator;
+      result.creation_pc = error.concurrent->creation_pc;
+    }
     if constexpr (std::is_same_v<T, AsyncCompletionFailure>) {
       result.async = error.async; result.method = error.async.location.method;
       result.pc = error.async.location.pc; result.working_pc = error.async.location.working_pc;
@@ -125,6 +132,10 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     if constexpr (std::is_same_v<T, TreePrintFailure>) result.failure_class=Classify(error.kind);
     if constexpr (std::is_same_v<T, FunctionTreeFailure>)
       if (!std::holds_alternative<ExpressionFailure>(error.cause)) result.failure_class = Classify(error.kind);
+    if (result.concurrent) {
+      result.method = result.concurrent->method; result.pc.reset(); result.working_pc.reset();
+      result.creation_method = result.concurrent->creator; result.creation_pc = result.concurrent->creation_pc;
+    }
     return result;
   }
 }

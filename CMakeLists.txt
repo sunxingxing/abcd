@@ -8,6 +8,7 @@ include(cmake/IsaDependency.cmake)
 add_library(abcd_abc
   src/abc/byte_reader.cc
   src/abc/call_type.cc
+  src/abc/concurrent_requests.cc
   src/abc/class_buffer.cc
   src/abc/control_transfer.cc
   src/abc/debug_info.cc
@@ -222,7 +223,7 @@ target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
 target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/effect_order.cc src/source/class_definitions.cc src/source/class_definition_projection.cc src/source/defined_member_context.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_prototype.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/derived_projection.cc src/source/class_tree.cc)
-target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc)
+target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc)
 target_sources(abcd_source PRIVATE src/source/rest_ownership.cc)
 target_sources(abcd_source PRIVATE src/source/function_input.cc)
 target_sources(abcd_source PRIVATE src/source/function_values.cc)
@@ -1391,6 +1392,15 @@ if(BUILD_TESTING)
   add_executable(branch_condition_test tests/unit/analysis/branch_condition_test.cc)
   target_link_libraries(branch_condition_test PRIVATE abcd_analysis)
   add_test(NAME branch_condition_test COMMAND branch_condition_test)
+  add_executable(concurrent_metadata_test tests/unit/abc/concurrent_metadata_test.cc)
+  target_link_libraries(concurrent_metadata_test PRIVATE abcd_abc)
+  set(ABCD_CONCURRENT_INPUT "${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond/artifacts/entry/default/default/modules/modules.abc")
+  if(EXISTS "${ABCD_CONCURRENT_INPUT}")
+    add_test(NAME concurrent_metadata_test COMMAND concurrent_metadata_test "${ABCD_CONCURRENT_INPUT}")
+  endif()
+  add_executable(concurrent_requests_test tests/unit/abc/concurrent_requests_test.cc)
+  target_link_libraries(concurrent_requests_test PRIVATE abcd_abc)
+  add_test(NAME concurrent_requests_test COMMAND concurrent_requests_test)
   add_executable(call_type_test tests/unit/abc/call_type_test.cc)
   target_link_libraries(call_type_test PRIVATE abcd_abc)
   add_test(NAME call_type_test COMMAND call_type_test)
@@ -2667,6 +2677,9 @@ if(BUILD_TESTING)
     add_executable(class_omissions_test tests/unit/source/class_omissions_test.cc tools/record_failure_json.cc)
     target_link_libraries(class_omissions_test PRIVATE abcd_source abcd_json)
     add_test(NAME class_omissions_test COMMAND class_omissions_test)
+    add_executable(concurrent_failure_test tests/unit/source/concurrent_failure_test.cc tools/record_failure_json.cc)
+    target_link_libraries(concurrent_failure_test PRIVATE abcd_source abcd_json)
+    add_test(NAME concurrent_failure_test COMMAND concurrent_failure_test)
     add_executable(async_failure_test tests/unit/source/async_failure_test.cc tools/record_failure_json.cc)
     target_link_libraries(async_failure_test PRIVATE abcd_source abcd_json)
     add_test(NAME async_failure_test COMMAND async_failure_test)
@@ -2689,6 +2702,11 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/creator_classes.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes/member.abc)
+      if(EXISTS "${ABCD_CONCURRENT_INPUT}")
+        add_test(NAME concurrent_metadata_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/concurrent_metadata.mjs
+          $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure> "${ABCD_CONCURRENT_INPUT}")
+      endif()
       add_test(NAME async_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_failure.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

@@ -12,6 +12,11 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 73 增量 I：V3 输出政策与 concurrent 元数据证据（cc 审查通过）
+
+- 用户 2026-10-15 批准保留语义的 ArkTS 形式（concurrent/Sendable/共享模块），apply 展开暂不批准。新增 `kLanguageSourceV3` 与三个独立谓词，只有 ConcurrentOutput 启用。方法级并发模块请求注解解析，区分缺失与空注解；目标细化为 `ConcurrentError::kPreparationGate`。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；521/620、561/620 不变，0 状态变化，0 文本变化（`--language-source` 下契约标签由 V2 变为 V3）；cli/corpus/failure/concurrent 扫描 69/70，只有既有的 family_source_cli_test 失败。
+
 ## Round 71：直接 SSA 字符串默认参数（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 520 → **521/620**，`--language-source` 560 → **561/620**（Logger：`constructor(prefix = "", domain = 65280)`）；0 回退，0 文本漂移；cli/corpus/failure 扫描 66/67，只有既有的 family_source_cli_test 失败。
 

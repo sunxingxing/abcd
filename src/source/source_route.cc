@@ -1,3 +1,4 @@
+#include "concurrent_failure_json.h"
 #include "async_failure_json.h"
 #include "internal_value_json.h"
 #include "family_creation_json.h"
@@ -34,7 +35,7 @@ constexpr std::array kProfiles{
     abc::ProfileId::kDynamic2400, abc::ProfileId::kStatic0107};
 // Derived from the single serialization map, indexed by the dense enum, so
 // every contract that can be written can also be read back.
-constexpr std::size_t kContractCount = static_cast<std::size_t>(SourceContract::kLanguageSourceV2) + 1;
+constexpr std::size_t kContractCount = static_cast<std::size_t>(SourceContract::kLanguageSourceV3) + 1;
 constexpr auto kContractNames = [] {
   std::array<std::string_view, kContractCount> names{};
   for (std::size_t i = 0; i < kContractCount; ++i) names[i] = SourceContractName(static_cast<SourceContract>(i));
@@ -139,7 +140,8 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
        identity.contract != SourceContract::kLanguageArithmeticConstructorsV1 &&
        identity.contract != SourceContract::kLanguageNumericConstructorsV1 &&
        identity.contract != SourceContract::kLanguageSourceV1 &&
-       identity.contract != SourceContract::kLanguageSourceV2))
+       identity.contract != SourceContract::kLanguageSourceV2 &&
+       identity.contract != SourceContract::kLanguageSourceV3))
     return RouteReceiptError::kIdentity;
   const auto valid_entity = [&](const auto& entity) {
     return !entity || (entity->value >= abc::kDynamicHeaderSize &&
@@ -258,6 +260,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
       causes.push_back(Json{{"domain", cause.domain}, {"value", cause.value}});
     failure["causes"] = std::move(causes);
     failure["causes_truncated"] = receipt.failure->causes.truncated;
+    if (receipt.failure->concurrent) failure["concurrent"] = ConcurrentJson(*receipt.failure->concurrent);
     if (receipt.failure->async) failure["async"] = AsyncCompletionJson(*receipt.failure->async);
     if (receipt.failure->exception_region) failure["exception_region"] = ExceptionRegionJson(*receipt.failure->exception_region);
     if (receipt.failure->family_creation) failure["family_creation"] = FamilyCreationJson(*receipt.failure->family_creation);
@@ -447,6 +450,9 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     if (!location("method", typed.method) || !location("working_pc", typed.working_pc) ||
         !location("creation_method", typed.creation_method) || !location("creation_pc", typed.creation_pc))
       return RouteReceiptError::kFailure;
+    if (const auto item = failure->find("concurrent"); item != failure->end()) {
+      typed.concurrent = ParseConcurrent(*item); if (!typed.concurrent) return RouteReceiptError::kFailure;
+    }
     if (const auto item = failure->find("async"); item != failure->end()) {
       typed.async=ParseAsyncCompletion(*item);if(!typed.async)return RouteReceiptError::kFailure;
     }

@@ -1,4 +1,5 @@
 #include "creation_tree_context.h"
+#include "concurrent_context.h"
 #include "abcd/abc/profile_capabilities.h"
 
 #include <new>
@@ -37,6 +38,12 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     Require(roles.At(*position) == analysis::MethodRole::kUnseen, Error::kRole);
     const auto& creation = occurrence->creation;
     Require(!occurrence->resolved.attributes.sendable, Error::kKind);
+    if (occurrence->resolved.attributes.kind == abc::FunctionKind::kConcurrent) {
+      auto evidence = InspectConcurrentCreation(file, header, index, method, *occurrence, site, identity.contract, budget);
+      const auto kind = evidence.kind == ConcurrentError::kResourceLimit ? Error::kResourceLimit :
+          evidence.kind == ConcurrentError::kWorkLimit ? Error::kWorkLimit : Error::kKind;
+      return CreationContextFailure{kind, evidence};
+    }
     CallableKind callable;
     if (mode == CreationContextMode::kMethodBody) {
       // OH7 ObjectFactory::NewJSFunctionForDefineMethod selects AsyncFunction

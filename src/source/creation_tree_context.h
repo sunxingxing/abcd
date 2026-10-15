@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_CREATION_TREE_CONTEXT_H_
 
 #include "class_tree_context.h"
+#include "abcd/source/concurrent_failure.h"
 #include "abcd/analysis/function_creation_sites.h"
 
 namespace abcd::source {
@@ -10,6 +11,7 @@ enum class CreationContextError : std::uint8_t {
 };
 struct CreationContextFailure {
   std::variant<CreationContextError, abc::MetadataError, abc::FrameError> error;
+  std::optional<ConcurrentFailure> concurrent;
 };
 enum class CreationContextMode : std::uint8_t { kFunction, kMethodBody };
 // Actual DEFINEFUNC occurrence, not a class-buffer member or a proof that

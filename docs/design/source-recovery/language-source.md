@@ -1,8 +1,9 @@
-# 源语言契约：LanguageSourceV1 与 V2
+# 源语言契约：LanguageSourceV1、V2 与 V3
 
 `SourceContract::kLanguageSourceV1`（序列化名 `language_source_v1`）保留原有四项前提。
-2026-10-14 新增 `kLanguageSourceV2`（`language_source_v2`），由 CLI 的 `--language-source`
-选择；V2 继承 V1，并加入 §5 的独立标准迭代获取前提。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
+2026-10-14 新增 `kLanguageSourceV2`（`language_source_v2`）；V2 继承 V1，并加入 §5 的独立标准迭代获取前提。
+2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），CLI 的 `--language-source` 现选择 V3；
+V3 继承 V2，并增加文末列出的独立 Ark 输出政策。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
 `--language-constructors` 组合。它包含 `LanguageNumericConstructorsV1` 的全部前提（numeric 算术、
 原生 super 语义），并另外加入下面四项源语言前提。默认契约 V3 以及其他已有 opt-in 都不变。
 
@@ -109,7 +110,7 @@ invocation-frame forwarding。新增数组迭代过程引起的可观察差异�
 不能改为原生类字段声明的 `[[DefineOwnProperty]]`：父类可能有 setter 或只读属性。
 rest 数组分配的资源耗尽差异沿用本契约已有的资源前提，不增加其他可观察差异。
 
-**实现边界。** `ConstructorForwarding()` 在 `kLanguageSourceV1` 及继承它的 V2 启用，独立于旧的
+**实现边界。** `ConstructorForwarding()` 在 `kLanguageSourceV1` 及继承它的 V2/V3 启用，独立于旧的
 `Constructors()` 前提。纯转发且已接受的隐式构造器保持原输出。显式投影依次通过
 共同帧/协议证明、物理参数与源码 rest 签名分离、树构建、独立复验及普通语法打印。
 第一增量不支持构造器自身 handler、arguments/new.target 的正文观察、需保留的形参或
@@ -291,7 +292,7 @@ RHS 调用、getter、receiver、抛出、顺序及重复读取变异。结果�
 **用户批准的精确差异。** 在完整的同步 for-of 协议已经被证明时，允许输出原生
 `for (... of ...)`。当 `@@iterator` 不可调用，或调用后返回非对象时，原生 for-of
 较早抛出 `TypeError`；原 ABC 随后对 `next` 的读取、调用及其效果不再发生。这是
-独立前提 `IterationAcquisition() == kStandardV1`，仅由 `kLanguageSourceV2` 启用。
+独立前提 `IterationAcquisition() == kStandardV1`，由 `kLanguageSourceV2` 及继承它的 V3 启用。
 V1 的四项前提、各旧契约的枚举值和序列化名称不变；契约名称仍从枚举生成并做往返验证。
 
 **不包含。** 每个循环仍须独立证明 next 缓存、done/value 的顺序、IteratorClose
@@ -325,3 +326,57 @@ DataDriver 的旧 CLI 断言随实际首拒绝从 unsupported@153 改为 kContro
 日志与比较 JSON 在 `/private/tmp/round53-{full-build,targeted-final,fixed,cohort}.log` 和
 `/private/tmp/round53-cohort/comparison.json`。这些结果只验证当前 raw/契约增量；
 不能代替尚未实现的 acquisition-semantics 门禁、close/completion 协议及独立求值验证。
+
+
+## 2026-10-15：LanguageSourceV3 的 Ark 输出政策（Round 73）
+
+用户批准 concurrent 函数、Sendable 类和 shared 模块的**保留语义输出**：分别使用
+`"use concurrent"` 函数体 directive（或由 SDK 转换的 `@Concurrent`）、`@Sendable`/
+构造器 `"use sendable"`、模块 `"use shared"`。这不是擦除授权；输出必须能由锁定的
+动态前端重新编译为相同 kind/opcode 和元数据。Node 无法验证跨线程和共享语义。
+`apply -> f(...args)` 没有获准，仍须走完整实参数组构造的无前提证明。
+
+`--language-source` 从本增量起选择 `kLanguageSourceV3`，序列化为
+`language_source_v3`。V1、V2 保持其原有含义；V3 继承它们已批准的独立前提，新增三个
+穷尽枚举的输出政策谓词：
+
+| 谓词 | V1/V2 及其他契约 | V3 当前值 | 发布状态 |
+|---|---|---|---|
+| `ConcurrentOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 仅元数据证据；完成/通知证明未实现，仍拒绝 |
+| `SendableOutput()` | `kNotEnabled` | `kNotEnabled` | 等待各自实现与编译往返验证 |
+| `SharedModuleOutput()` | `kNotEnabled` | `kNotEnabled` | 等待各自实现与编译往返验证 |
+
+Round 73 增量 I 不修改 callable、创建时间、名字或任何打印动作。`CreationContextError::kKind`
+保持外层枚举；附加 `ConcurrentFailure` 区分输出政策未启用、准备门禁、所属 record、模块表、
+请求注解和资源失败。证据保存子方法、真实 creator occurrence/创建 PC、注解地址、是否存在、
+元素数与出错元素；不存在子函数失败 PC 时不借用父创建 PC。固定大小错误对象不携带任意长列表。
+
+`ReadConcurrentRequests` 独立读取方法注解，验证所属 record 与其请求表的映射；U32 元素类型
+来自 OH7 `emitter.cpp::GenConcurrentModuleRequestsAnnotation`。保留编码顺序和重复请求。
+缺失注解与存在的空注解不同：OH7 `MethodLiteral::GetConcurrentRequestedModules` 前者返回
+`nullopt`，后者返回空集合，`SourceTextModule::ModuleEvaluation` 对应“遍历全部请求”与
+“全部跳过”。未知元素名/类型、越界请求均拒绝，不猜测或丢弃。
+
+读取器两次流式遍历注解，用第一次计数在分配前预留结果容量；名称边界比较不分配字符串。
+时间为 O(A log R + E)，A 为注解引用数，R 为索引区域数，E 为展开后的元素数（也是输出维度），
+空间 O(E)。模块表存活时，其容量从后续请求读取 allowance 中扣除。没有新增无界缓存。
+record 属性读入沿用已有 reader；调用前按每字段四次文件长度上界加区域查找预扣工作量，
+覆盖名称验证、转换和几何扩容复制，重复引用长名称及缺失模块也不能跳过扣款。
+乘法前通过除法检查预算，拒绝时尚未解码名称。该保守扣款不改变既有 reader 的语义。
+
+新增验证包括缺失/空注解、错误所属 record、请求越界、错误类型/名称、顺序和重复项，
+200/201/400/800 元素以及精确 bytes/work 边界；固定大小错误的两条 JSON 路径往返；
+真实 ABC 六个方法的请求和五个 record 的 CLI/manifest 一致性。同期元数据验收不是编译往返
+或 taskpool 运行验收：后续增量必须证明通知是实际完成事件、同步/async 协议和导入使用，
+再通过引擎输出→es2abc 的 kind/请求注解/相关 literal 身份比较，才能解除发布门禁。
+
+**增量 I 自检（未提交）。** 完整 `cmake --build build/regression -j 6 -- -k` 成功；
+`ctest --preset source-regression -j 1` 为 65/65；并发/契约/元数据及 CLI 定向 17/17
+（含新增四项）；`cli|corpus|failure|_receipt|manifest` 串行扫描 66/67，唯一失败为
+既有 `family_source_cli_test` 的 owner/origin arena 断言，未修改该断言。
+预算补充回归先在旧实现 rc134，预扣修复后通过。相对 `explore71/explore71s`，
+最终二进制的两组结果仍为 521/620、561/620，状态变化 0、源码字节变化 0。
+旧 flags 仅 o14 的 10719/16446/18164/31477 新增并发原因；source flags 另含 25688。
+source 的 40 个 manifest 顶层及 562 个 record 契约标签由 V2 更新为 V3；无其他字段变化。
+完整命令、逐字段差异和六个方法的请求表在 `/private/tmp/abcd-r73/acceptance.json`、
+`old-comparison.json`、`source-comparison.json`、`method-requests.txt`。

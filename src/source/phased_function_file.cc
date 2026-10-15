@@ -154,7 +154,8 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
           identity.contract == SourceContract::kLanguageArithmeticConstructorsV1 ||
           identity.contract == SourceContract::kLanguageNumericConstructorsV1 ||
           identity.contract == SourceContract::kLanguageSourceV1 ||
-          identity.contract == SourceContract::kLanguageSourceV2, Error::kIdentity);
+          identity.contract == SourceContract::kLanguageSourceV2 ||
+          identity.contract == SourceContract::kLanguageSourceV3, Error::kIdentity);
       auto completion = ProveAsyncCompletion(body, frame, left.bytes, &source_pcs, &awaits,
           header.profile, ResourceFailureScope::kExcluded);
       if (auto* failure = std::get_if<AsyncCompletionFailure>(&completion)) {

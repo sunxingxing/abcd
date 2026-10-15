@@ -1,3 +1,4 @@
+#include "../src/source/concurrent_failure_json.h"
 #include "../src/source/async_failure_json.h"
 #include "../src/source/internal_value_json.h"
 #include "../src/source/family_creation_json.h"
@@ -62,6 +63,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.failure.working_pc) record["source_failure"]["working_pc"] = failure.failure.working_pc->value;
       if (failure.failure.creation_method) record["source_failure"]["creation_method"] = failure.failure.creation_method->value;
       if (failure.failure.creation_pc) record["source_failure"]["creation_pc"] = failure.failure.creation_pc->value;
+      if (failure.failure.concurrent) record["source_failure"]["concurrent"] = source::ConcurrentJson(*failure.failure.concurrent);
       if (failure.failure.async) record["source_failure"]["async"] = source::AsyncCompletionJson(*failure.failure.async);
       if (failure.failure.exception_region) record["source_failure"]["exception_region"] = source::ExceptionRegionJson(*failure.failure.exception_region);
       if (failure.failure.family_creation) record["source_failure"]["family_creation"] = source::FamilyCreationJson(*failure.failure.family_creation);
@@ -90,6 +92,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
     } else if constexpr (std::is_same_v<T, source::RecordProgramFailure>) {
       record["source_failure_domain"] = "record_program";
       record["source_error"] = static_cast<unsigned>(failure.kind);
+      if (failure.concurrent) record["source_concurrent"] = source::ConcurrentJson(*failure.concurrent);
       if (failure.async) record["source_async"] = source::AsyncCompletionJson(*failure.async);
       if (failure.exception_region) record["source_exception_region"] = source::ExceptionRegionJson(*failure.exception_region);
       if (failure.family_creation) record["source_family_creation"] = source::FamilyCreationJson(*failure.family_creation);
