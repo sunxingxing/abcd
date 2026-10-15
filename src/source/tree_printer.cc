@@ -2294,6 +2294,28 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
           }
         }
         append(": ");bool first=true;
+        if(field.type.bits==static_cast<unsigned>(abc::SendableFieldType::kGeneric)) {
+          if(std::bit_width(tree.sendable_types.size())+1>budget.work)throw Failure::kWorkLimit;
+          budget.work-=std::bit_width(tree.sendable_types.size())+1;
+          const auto found=std::lower_bound(tree.sendable_types.begin(),tree.sendable_types.end(),i,[](const auto& item,auto ordinal){return item.field<ordinal;});
+          if(found==tree.sendable_types.end()||found->field!=i)throw Failure::kInvalidLiteral;
+          const auto& family=tree.constructor->Family();const auto& body=family.members[family.root.value].tree;
+          if(found->depth>budget.bytes/sizeof(NameId))throw Failure::kResourceLimit;
+          budget.bytes-=found->depth*sizeof(NameId);
+          std::vector<NameId> path;path.reserve(found->depth);
+          if(path.capacity()-found->depth>budget.bytes/sizeof(NameId))throw Failure::kResourceLimit;
+          budget.bytes-=(path.capacity()-found->depth)*sizeof(NameId);
+          auto at=found->constructor;
+          for(std::uint32_t n=0;n<found->depth;++n) {
+            if(!budget.work)throw Failure::kWorkLimit;--budget.work;
+            const auto& member=std::get<MemberExpr>(body.expressions[at.value].expression);
+            path.push_back(std::get<NameId>(member.key));at=member.base;
+          }
+          const auto emit_name=[&](NameId name){const auto& text=body.names[name.value];if(text.size()>budget.work)throw Failure::kWorkLimit;budget.work-=text.size();for(const auto unit:text){const char c=static_cast<char>(unit);append({&c,1});}};
+          emit_name(body.symbols[found->imported.value].name);
+          for(auto part=path.rbegin();part!=path.rend();++part){append(".");emit_name(*part);}
+          first=false;
+        }
         for(const auto& [bit,name]:types)if(field.type.bits & static_cast<unsigned>(bit)) {
           if(!first)append(" | ");first=false;append(name);
         }

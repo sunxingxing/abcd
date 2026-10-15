@@ -12,6 +12,41 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 74 增量 III/IV：Sendable 模块域与 shared 发布（cc 审查通过）
+- cc 独立审查（增量 III/IV）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 521/620 不变，`--language-source` 566 → **567/620**（LruCache.ets：首行 `"use shared"`、经真实 ArkTSUtils import 拼写的 GENERIC 字段类型、构造器首条 `"use sendable"`、async 成员内闭包捕获自身的 this/key/value）；0 回退，0 文本漂移；扫描 76/77，只有既有的 family_source_cli_test 失败。
+
+- 基线 `646fb819`；工作区实现，未 commit/push/stash。III 和 IV 均已接入。
+- raw/Value/树保留独立 `ModuleDomain`；imm8/wide Sendable external read 保持可抛出、
+  正常 acc 提交和 hole guard，没有伪造 initialized。创建上下文、guard、enclosure 与
+  recovery 复验域及 import 身份。成员内普通箭头保留其自身捕获环境，外层根捕获仍拒绝。
+- `SendableTypeSpelling` 从真实 import binding 与原构造器 [[Set]]/new 路径导出 GENERIC32
+  的可重编译拼写（含直接 import 的零深度路径），独立重算；没有新增 import/初始化，
+  不声称恢复唯一原始名义类型。未知或歧义拼写仍 `kTypeSpelling`。
+- `SharedModuleProof` 独立证明 shared kind/模块表，未冒充 OrdinarySynchronous；完整
+  入口恢复仍检查 class/construct/put/export 效果。模块首行 directive 来自该证明；部分
+  shared 输出不能发布。新记录 `.ets`/arkts，所有既有输出扩展名不变。
+- 最终完整构建成功；固定集串行 **65/65**。新增三项测试 **3/3**，覆盖真实 raw/SSA/tree
+  模块域、guard/异常与提交、类型/绑定/owner 变异、shared 导出身份、真实编译往返及
+  Node 普通调用差分、200/201/400/800 与精确 byte/work 边界。
+- 定向正则 `module|sendable|shared|async|capture|concurrent|source_route|class_tree|recovery`：
+  **105/113**；失败仅已登记的 class_tree_source_test、六项 captured_receiver 变体和
+  async_semantics_test。`cli|corpus|failure|_receipt|manifest` 扫描 **71/72**，仅已登记的
+  family_source_cli_test 失败；更新 LruCache 旧期望后的 tree_failure_cli_test 通过。
+- 对 explore74b/explore74bs：旧 flags **521/620**，source **566→567/620**；唯一 manifest
+  变化是 o14/24892 LruCache complete，**0 回退、0 既有源码/扩展名/位置文件漂移**。
+- 实际 DevEco es2abc `--module --merge-abc --extension=ts --opt-level=0` 往返匹配：
+  shared=true、非 CJS/TLA、request/import/export、Sendable class/length0、lock_/32、books_/32、
+  instanceCount2、三 async 成员/回调、无额外 sendable env、两次 guarded Sendable slot0 read、
+  两次 [[Set]]/四次 put/导出 slot0 顺序及效果事件的 handler 分派。初始化捕获的冗余
+  HoleGuard 原始数量不要求相等；其可用性仍由 cell/recovery 证明。Node 不验证共享堆、
+  字段类型检查、真实锁与跨线程行为。
+- 仍保留静态初始化器、继承、未证明 GENERIC、Sendable local/lazy load、普通内层箭头直接
+  读取 Sendable import 的继承域等门禁。ModuleCapturePrefix 没有放宽。
+- 更新过期测试：sendable_metadata 的 V3 policy/目标结果，以及 tree_failure 中 LruCache
+  的 source 契约 complete 结果；旧契约拒绝继续严格断言。没有修改既有失败测试。
+- 日志、逐 record 比较与目标往返报告：`/private/tmp/abcd-round74iii/`。未运行全套测试、
+  全语料、留出集或 RSS 基准。独立只读生产审查未发现阻断，不能替代 cc 最终审查。
+
 ## Round 74 增量 II：闭合 Sendable 实例类（cc 审查通过）
 - cc 独立审查（增量 II）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 521/620 不变，`--language-source` 565 → **566/620**（Sendable.ets：`taskId: number;` + 构造器首条 `"use sendable"` + 两次原始 [[Set]]）；0 回退，0 文本漂移；扫描 73/74，只有既有的 family_source_cli_test 失败。
 

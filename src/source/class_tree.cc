@@ -1,5 +1,6 @@
 #include "class_tree.h"
 #include "sendable_class.h"
+#include "sendable_types.h"
 #include <bit>
 #include <algorithm>
 #include <new>
@@ -468,6 +469,11 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     }
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
     tree.initializer = std::move(fields);
+    if(tree.sendable) {
+      auto types=PrepareSendableTypes(tree,budget);
+      if(const auto* error=std::get_if<SendableFailure>(&types))throw ClassTreeFailure{LocateSendable(*error,creator,operation)};
+      const auto cost=std::get<SendableTypeCost>(types);admit(cost.allocated_bytes,1);step(cost.work);
+    }
     std::uint64_t sendable_work=0;
     if(const auto error=VerifySendableClass(tree,true,budget,&sendable_work))throw ClassTreeFailure{LocateSendable(*error,creator,operation)};
     step(sendable_work);

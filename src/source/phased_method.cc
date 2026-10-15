@@ -177,6 +177,14 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       }, flow_result);
     }
     auto flow = std::get<ExceptionFlow>(std::move(flow_result));
+    for(std::size_t i=0;i<flow.instructions.size();++i) {
+      quota.Step();const auto& instruction=flow.instructions[i];
+      if(const auto* load=std::get_if<ModuleLoad>(&instruction.operation);load&&load->space==ModuleSpace::kExternal&&(load->domain==ModuleDomain::kSendable||context.ModuleDomain()==ModuleDomain::kSendable)) {
+        if(SendableOutput(context.Identity().contract)!=SendableOutputPolicy::kArkDirectiveV1)
+          return PhasedFlowFailure{Error::kInput,SemanticFailure{SemanticError::kUnsupportedInstruction,instruction.pc},context.Target(),source_pcs.empty()?instruction.pc:source_pcs[i],instruction.pc};
+        if(context.ModuleDomain()!=load->domain)return Error::kModules;
+      }
+    }
     for (std::size_t i = 0; i < source_pcs.size(); ++i) {
       if (i && source_pcs[i] <= source_pcs[i - 1]) return Error::kInput;
       flow.instructions[i].origin = source_pcs[i];

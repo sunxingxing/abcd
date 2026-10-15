@@ -1,4 +1,4 @@
-// Increment I: real metadata and diagnostic consistency; no source admission.
+// Metadata/diagnostic consistency: old contracts refuse; V3 publishes verified classes/shared modules.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
@@ -38,6 +38,11 @@ try {
     const cli=JSON.parse(run(semantic,[input,'29066','--record-source',...flags],1));
     assert.deepEqual(cli.source_failure,sendable.source_failure);
     }
+    if(label==='source') {
+      assert.equal(shared.source_complete,true);assert.equal(shared.source_language,'arkts');assert.match(shared.source,/\.ets$/);
+      const text=readFileSync(join(out,shared.source),'utf8');assert.match(text,/^"use shared";/);
+      const cli=JSON.parse(run(semantic,[input,'25192','--record-source',...flags]));assert.equal(cli.source_language,'arkts');assert.equal(cli.source_failure,undefined);
+    } else {
     assert.equal(shared.source_status,3);assert.equal(shared.source,undefined);
     assert.equal(shared.source_error,2);assert.deepEqual(shared.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
     const m=shared.source_shared_module;
@@ -46,6 +51,7 @@ try {
     assert.equal(m.namespace_imports,0);assert.equal(m.indirect_exports,0);assert.equal(m.star_exports,0);
     const sharedCli=JSON.parse(run(semantic,[input,'25192','--record-source',...flags],1));
     assert.deepEqual(sharedCli.source_shared_module,m);
+    }
   }
-  console.log('metadata scale 200/201/400/800 + exact reader budgets; old Sendable gate preserved; V3 Sendable publishes; shared gate preserved; CLI/manifest agree; CLI/manifest agree');
+  console.log('metadata scale 200/201/400/800 + exact reader budgets; old Sendable gate preserved; V3 Sendable publishes; old shared gate preserved; V3 shared publishes; CLI/manifest agree');
 } finally { rmSync(dir,{recursive:true,force:true}); }

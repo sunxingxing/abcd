@@ -107,7 +107,7 @@ struct IntegerLiteral { std::int32_t value; };
 struct NumberLiteral { std::uint64_t bits; };
 using TreeLiteral = std::variant<UndefinedLiteral, NullLiteral, BooleanLiteral,
                                  IntegerLiteral, NumberLiteral, TextId>;
-struct SymbolExpr { SymbolId symbol; analysis::ModuleLoading loading = analysis::ModuleLoading::kOrdinary; };
+struct SymbolExpr { SymbolId symbol; analysis::ModuleLoading loading = analysis::ModuleLoading::kOrdinary; analysis::ModuleDomain domain = analysis::ModuleDomain::kOrdinary; };
 // Free global-name lookup, not a lexical Symbol or globalThis property read.
 // Publication additionally requires an unshadowed enclosing source context.
 struct GlobalNameExpr { NameId name; };
@@ -409,6 +409,7 @@ struct FunctionTree {
   std::optional<SymbolId> hole;
   std::optional<ConcurrentDirective> concurrent;
   std::optional<SendableConstructorDirective> sendable;
+  analysis::ModuleDomain module_domain = analysis::ModuleDomain::kOrdinary;
 };
 // FunctionTree is the direct printer input, not a source-publication token.
 // Structural safety checks do not imply complete recovery or IR equivalence.

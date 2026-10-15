@@ -174,6 +174,17 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
         if (creation && creation->kind == abc::ClassKind::kSendable)
           return FunctionInputFailure{analysis::SemanticFailure{analysis::SemanticError::kUnsupportedInstruction, instruction.pc}, method, instruction.pc};
       }
+    for (const auto& instruction : input->instructions) {
+      quota.Step();
+      if (const auto* load = std::get_if<analysis::ModuleLoad>(&instruction.operation);
+          load && load->space == analysis::ModuleSpace::kExternal &&
+          (load->domain == analysis::ModuleDomain::kSendable || (owner && owner->ModuleDomain()==analysis::ModuleDomain::kSendable))) {
+        if (SendableOutput(identity.contract) != SendableOutputPolicy::kArkDirectiveV1)
+          return FunctionInputFailure{analysis::SemanticFailure{analysis::SemanticError::kUnsupportedInstruction, instruction.pc}, method, instruction.pc};
+        if (!owner || owner->ModuleDomain() != load->domain)
+          return FunctionInputFailure{FunctionInputError::kModuleOwner, method, instruction.pc};
+      }
+    }
     // An initialized entry premise is not a proof across receiver-changing
     // protocols. Super/resume ownership must supply a phase-specific proof.
     for (const auto& instruction : input->instructions) {

@@ -25,15 +25,25 @@ try {
     const exported=run(structure,[abc,dest,'--value-source','--language-source']);
     assert.equal(exported.status,0,exported.stderr);
     const row=JSON.parse(readFileSync(join(dest,'manifest.json'),'utf8')).records.find(r=>r.entity===entity);
-    if(entity===29268 || entity===28264) {
+    if(entity===29268 || entity===28264 || entity===24892) {
       // For-in increment III completes 29268; Round 63 independently verifies
-      // the retained phased selection prefix in 28264. Both must publish exact source.
+      // the retained phased selection prefix in 28264. Round 74 III/IV completes
+      // shared LruCache 24892. All must publish exactly the CLI source.
       assert.equal(row.source_complete,true);
       const cli=run(semantic,[abc,String(method),'--record-source','--value-source','--language-source']);
       assert.equal(cli.status,0);const report=JSON.parse(cli.stdout);
       assert.equal(report.record,entity);assert.equal(report.source_complete,true);
       assert.equal(report.source,readFileSync(join(dest,row.source),'utf8'));
       assert.equal(report.source_failure,undefined);
+      if(entity===24892) {
+        assert.equal(row.source_language,'arkts');assert.match(row.source,/\.ets$/);
+        assert.match(report.source,/^"use shared";/);
+        const old=run(semantic,[abc,String(method),'--record-source','--language-numeric','--language-constructors']);
+        assert.equal(old.status,1);const refused=JSON.parse(old.stdout);
+        assert.deepEqual(refused.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
+        assert.equal(refused.source_pc,undefined);
+      }
+
       continue;
     }
     assert.equal(row.source_complete,false);
@@ -59,10 +69,6 @@ try {
         domains:[0,1,2,3,4],observer_instruction:6,producer_instruction:5,
         producer_kind:1,read_ordinal:0,reason:6,value:entity===4660?14:22});
     }
-    if(entity===24892) {
-      assert.deepEqual(report.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
-      assert.equal(report.source_pc,undefined);
-    }
     // Round 43 fulfilled the former ExternalRoot requirement for 28303.
     // Round 53 lifted its getiterator and Round 54 projected the inactive
     // region; the first refusal is now the for-of close-protection region
@@ -78,5 +84,5 @@ try {
     }
 
   }
-  console.log('tree_failure_cli_test: four real refusals and two verified complete records agree across CLI and manifest');
+  console.log('tree_failure_cli_test: three real refusals and three verified complete records agree across CLI and manifest');
 } finally {rmSync(temp,{recursive:true,force:true});}

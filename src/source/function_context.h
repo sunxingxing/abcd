@@ -43,6 +43,11 @@ class FunctionContext {
   std::u16string_view Name() const {
     return std::visit([](const auto& context) { return context.Name(); }, context_);
   }
+  analysis::ModuleDomain ModuleDomain() const {
+    if (const auto* site = ConstructorSite()) return site->creation.kind == abc::ClassKind::kSendable ? analysis::ModuleDomain::kSendable : analysis::ModuleDomain::kOrdinary;
+    if (const auto* site = ClassSite()) return site->creation.kind == abc::ClassKind::kSendable ? analysis::ModuleDomain::kSendable : analysis::ModuleDomain::kOrdinary;
+    return analysis::ModuleDomain::kOrdinary;
+  }
   const ConcurrentMetadata* Concurrent() const { const auto* context=std::get_if<CreationTreeContext>(&context_);return context?context->Concurrent():nullptr; }
   CallableKind Callable() const { return std::visit([](const auto& c) { return c.Callable(); }, context_); }
   Strictness Mode() const { return std::visit([](const auto& c) { return c.Mode(); }, context_); }

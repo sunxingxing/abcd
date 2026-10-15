@@ -119,7 +119,8 @@ int main(int argc,char** argv) {
       Check(!context.Attributes(*file,{0}));
       auto shared=InspectSharedModule(context,*file,record.offset,SourceContract::kLanguageSourceV3);
       if (!context.ForOwner(*file,record.offset)) { Check(shared.kind==SharedModuleError::kOwner); continue; }
-      Check(shared.kind==SharedModuleError::kOutputPolicy);
+      Check(shared.kind==SharedModuleError::kPreparationGate);
+      Check(InspectSharedModule(context,*file,record.offset,SourceContract::kLanguageSourceV2).kind==SharedModuleError::kOutputPolicy);
       Check(ParseSharedModule(nlohmann::json::parse(SharedModuleJson(shared).dump()))==shared);
       RouteFailure route{RouteFailureClass::kUnproved,ValueRouteError::kTreeStage};route.shared_module=shared;
       RecordProgramFailure entry{RecordProgramError::kModule,{}};entry.shared_module=shared;

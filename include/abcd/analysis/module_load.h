@@ -9,11 +9,15 @@ struct ModuleSlot {
   std::uint16_t value;
   auto operator<=>(const ModuleSlot&) const = default;
 };
+// OH7 GetSendableModuleValueOuter reads JSFunction::GetModule; ordinary
+// external reads use the current module. Keep that identity orthogonal to lazy.
+enum class ModuleDomain : std::uint8_t { kOrdinary, kSendable };
 enum class ModuleLoading : std::uint8_t { kOrdinary, kLazy };
 struct ModuleLoad {
   ModuleSpace space;
   ModuleSlot slot;
   ModuleLoading loading = ModuleLoading::kOrdinary;
+  ModuleDomain domain = ModuleDomain::kOrdinary;
 };
 enum class ModuleLoadError { kUnsupportedOpcode, kMalformedInstruction };
 // Pinned v7.0 local/external module value reads. Slot is NOT a string pool or

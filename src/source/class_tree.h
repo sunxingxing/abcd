@@ -47,6 +47,14 @@ struct ClassDefinitionTree {
   std::array<std::optional<PreparedFamily>, 2> bodies;
   std::array<std::optional<ClassMemberOmission>, 2> omissions;
 };
+struct SendableTypeSpelling {
+  std::uint32_t field;
+  ExprId assignment, constructor;
+  SymbolId imported;
+  ModuleSymbol binding;
+  std::uint32_t depth;
+  bool operator==(const SendableTypeSpelling&) const = default;
+};
 struct ClassTree {
   RouteInputIdentity identity;
   ClassConstructorSite creation;
@@ -58,6 +66,7 @@ struct ClassTree {
   CallableKind callable = CallableKind::kMethod;
   std::shared_ptr<const analysis::IndexedSendableLiteral> sendable;
   std::vector<analysis::ClassSiteId> member_sites;
+  std::vector<SendableTypeSpelling> sendable_types;
   std::optional<ClassInitializerCall> initializer_site;
   std::optional<PreparedFamily> constructor;
   std::vector<std::optional<PreparedFamily>> members;

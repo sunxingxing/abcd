@@ -40,7 +40,7 @@ int main(int argc,char** argv) {
   Check(!VerifySendableClass(tree,false));
   const auto original=tree.sendable;
   auto forged=std::make_shared<analysis::IndexedSendableLiteral>(*original);
-  forged->fields.fields.front().type.bits=32;tree.sendable=forged;
+  forged->fields.fields.front().type.bits=8;tree.sendable=forged;
   Check(VerifySendableClass(tree,false)->kind==SendableError::kTypeSpelling);
   Check(std::holds_alternative<CreatorClassFailure>(VerifyCreatorClasses(input,plan)));
   tree.sendable=original;

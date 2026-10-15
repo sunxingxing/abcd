@@ -96,7 +96,7 @@ int main() {
     const auto contract = static_cast<SourceContract>(i);
     Check(ConcurrentOutput(contract) == (contract == SourceContract::kLanguageSourceV3 ? ConcurrentOutputPolicy::kArkDirectiveV1 : ConcurrentOutputPolicy::kNotEnabled));
     Check(SendableOutput(contract) == (contract==SourceContract::kLanguageSourceV3 ? SendableOutputPolicy::kArkDirectiveV1 : SendableOutputPolicy::kNotEnabled));
-    Check(SharedModuleOutput(contract) == SharedModuleOutputPolicy::kNotEnabled);
+    Check(SharedModuleOutput(contract) == (contract==SourceContract::kLanguageSourceV3 ? SharedModuleOutputPolicy::kArkDirectiveV1 : SharedModuleOutputPolicy::kNotEnabled));
     Check(IterationAcquisition(contract) == ((contract == SourceContract::kLanguageSourceV2 || contract == SourceContract::kLanguageSourceV3)
         ? IterationAcquisitionSemantics::kStandardV1 : IterationAcquisitionSemantics::kPinnedRuntime));
     const bool source = (contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || contract == SourceContract::kLanguageSourceV3);

@@ -283,6 +283,10 @@ class StructureCheck {
         }
       } else if constexpr (std::is_same_v<T, SymbolExpr>) {
         scopes_.Reference(expression.symbol);
+        if (expression.domain == analysis::ModuleDomain::kSendable)
+          RequireTree(tree_.module_domain == expression.domain &&
+              SendableOutput(tree_.identity.contract) == SendableOutputPolicy::kArkDirectiveV1 &&
+              tree_.symbols[expression.symbol.value].kind == BindingKind::kModule, Error::kBinding);
         switch (expression.loading) {
           case analysis::ModuleLoading::kOrdinary: break;
           case analysis::ModuleLoading::kLazy:

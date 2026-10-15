@@ -6,6 +6,7 @@
 
 #include "record_tree.h"
 #include "sendable_metadata.h"
+#include "shared_module.h"
 
 namespace abcd::source {
 RecordSourceResult BuildRecordSource(
@@ -44,9 +45,11 @@ RecordSourceResult BuildRecordSource(
     }
     if (flags->common_js.value_or(false)) return fail_with(Error::kModule, RecordModuleKindError::kCommonJs);
     if (flags->shared.value_or(false)) {
-      auto result = fail_with(Error::kModule, RecordModuleKindError::kShared);
-      result.shared_module = InspectSharedModule(context, file, record.offset, identity.contract);
-      return result;
+      const auto shared=SharedModuleProof::Build(context,file,record.offset,identity.contract);
+      if(const auto* failure=std::get_if<SharedModuleFailure>(&shared)) {
+        auto result = fail_with(Error::kModule, RecordModuleKindError::kShared);
+        result.shared_module = *failure;return result;
+      }
     }
     if (flags->top_level_await.value_or(false)) return fail_with(Error::kModule, RecordModuleKindError::kTopLevelAwait);
     if (flags->json_content) return fail_with(Error::kModule, RecordModuleKindError::kJson);

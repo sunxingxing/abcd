@@ -56,6 +56,20 @@ int main() {
     decoded.operand_count = 0;
     Check(std::get<ModuleLoadError>(LiftModuleLoad(decoded)) == ModuleLoadError::kMalformedInstruction);
   }
+  // Sendable external loads resolve through this function's module. The raw
+  // operation must retain that domain and commit acc only on success.
+  for (const auto bytes : {std::vector<std::uint8_t>{0xfb, 0x09, 201}, {0xfb, 0x0a, 201, 0}}) {
+    auto decoded = std::get<abc::DecodedInstruction>(abc::DecodeInstruction(bytes, abc::ProfileId::kDynamic2400));
+    const auto load=std::get<ModuleLoad>(LiftModuleLoad(decoded));
+    Check(load.domain==ModuleDomain::kSendable&&load.space==ModuleSpace::kExternal&&load.slot.value==201&&load.loading==ModuleLoading::kOrdinary);
+    const auto semantic=std::get<SemanticInstruction>(LiftSemanticInstruction({{},decoded},abc::ProfileId::kDynamic2400,3));
+    Check(semantic.effects.exceptional==ExceptionalCompletion::kMayThrow&&semantic.effects.normal==LanguageEffect::kModuleRead&&semantic.effects.before_throw==semantic.effects.normal);
+    Check(semantic.effects.normal_registers.write&&std::holds_alternative<Accumulator>(*semantic.effects.normal_registers.write)&&semantic.effects.normal_registers.read_count==0);
+    auto wrong=decoded;wrong.operands[0].raw_bits=UINT64_MAX;
+    Check(std::get<ModuleLoadError>(LiftModuleLoad(wrong))==ModuleLoadError::kMalformedInstruction);
+    wrong=decoded;wrong.operands[0].kind=abc::OperandKind::kString;
+    Check(std::get<ModuleLoadError>(LiftModuleLoad(wrong))==ModuleLoadError::kMalformedInstruction);
+  }
   for (const auto opcode : {abc::Opcode::kCALLRUNTIME_LDLAZYSENDABLEMODULEVAR_PREF_IMM8,
                            abc::Opcode::kCALLRUNTIME_WIDELDLAZYSENDABLEMODULEVAR_PREF_IMM16}) {
     abc::DecodedInstruction decoded; decoded.opcode = opcode;

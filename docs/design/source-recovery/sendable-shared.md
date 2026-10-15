@@ -115,3 +115,52 @@ shared index, so an invalid mask/split/key refuses the owning class instead of
 poisoning unrelated records. Resource/work exhaustion remains an index-owner
 failure. The class refusal retains the field ordinal, known raw mask and leaf
 field-decoder cause.
+
+
+## Round 74 increments III/IV: imported types and shared initialization
+
+Baseline 646fb819. The shared access proof is separate from ordinary synchronous
+module admission. `ModuleDomain` survives raw semantics, Value IR, SymbolExpr,
+creation context, guard verification and recovery. Sendable loads may throw and
+commit acc only on success; a named hole check remains an ordered source read.
+No external-initialization premise is synthesized. Domain and slot/binding/request
+identity are rechecked at the original/working guard pair and final enclosure.
+Member-root environments and ordinary nested closure environments remain distinct.
+Static initializer and inherited nested-arrow module domains remain gated.
+
+`sendable_types.cc` indexes import aliases, expression paths and field names once.
+It associates an exact GENERIC field with its original instance [[Set]] and the
+import-backed constructor path. This selects a recompilation spelling, not a
+unique source type. No initializer, import or effect is added. Preparation and
+independent verification derive the same witnesses from the finished constructor;
+printing only renders witnesses already checked with the full ClassTree. Scratch
+and retained witnesses are charged before reserve; sorting is O(F log F), with
+string-comparison work charged by code units; expression indexing is O(E).
+Printer path work is linear in the emitted type paths. Budgets remain unchanged.
+
+`SharedModuleProof` binds the real shared attribute/table to its record and file;
+CJS, TLA, JSON and unsupported lazy requests fail explicitly. Entry recovery still
+proves all effects and exports. No shared partial record is published. Import
+printing rechecks the proof and includes the directive in its byte count.
+
+For o14/24892, engine output recompiled with DevEco es2abc, `--module --merge-abc
+--extension=ts --opt-level=0 --record-name=&entry/src/main/ets/utils/LruCache&`,
+retains shared=true, non-CJS/non-TLA, request/import/export identities, Sendable
+creation, constructor length 0, lock_/32 and books_/32 with instanceCount2, three
+async members and their ordinary callback relations, no extra sendable env, two
+guarded Sendable external slot-0 reads, constructor [[Set]] and four put calls in
+order. The richer test probe compares these facts and async protocol counts; it
+does not replace the engine's independent SSA/control/exception recovery proof.
+See the fixture README for compiler identity and oracle limitations.
+
+
+Acceptance for III/IV (workspace WIP, no commit): full build passed; fixed65/65;
+new tests3/3; targeted105/113 (the eight registered class/captured-receiver/async
+failures); CLI/corpus/failure/receipt/manifest sweep71/72 (registered family source
+failure only). Stale V3 shared-policy and LruCache refusal expectations were
+updated to exact new completion plus retained old-contract rejection. Both
+exploration comparisons against explore74b/explore74bs report old521/620 and
+source567/620, only LruCache changed, zero status regressions and zero existing
+text/extension/position drift. Logs, comparison JSON and target round-trip JSON
+are under `/private/tmp/abcd-round74iii/`. No held-out/full-corpus/RSS benchmark
+or full-suite run was performed.

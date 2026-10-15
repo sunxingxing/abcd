@@ -342,9 +342,9 @@ DataDriver 的旧 CLI 断言随实际首拒绝从 unsupported@153 改为 kContro
 
 | 谓词 | V1/V2 及其他契约 | V3 当前值 | 发布状态 |
 |---|---|---|---|
-| `ConcurrentOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 同步完成投影已接入；async 仍有显式门禁；编译往返见增量 II 验收 |
-| `SendableOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 增量 II：闭合类、primitive/union 存储描述；独立证明和实际编译往返 |
-| `SharedModuleOutput()` | `kNotEnabled` | `kNotEnabled` | 等待各自实现与编译往返验证 |
+| `ConcurrentOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 同步和 async 完成投影已接入；编译往返见增量 II/III 验收 |
+| `SendableOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 增量 II/III：primitive/union 与真实 import 支撑的 GENERIC 存储描述；独立证明和实际编译往返 |
+| `SharedModuleOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 增量 IV：独立 shared kind/模块表/入口恢复证明；实际编译往返 |
 
 Round 73 增量 I 不修改 callable、创建时间、名字或任何打印动作。`CreationContextError::kKind`
 保持外层枚举；附加 `ConcurrentFailure` 区分输出政策未启用、准备门禁、所属 record、模块表、
@@ -512,3 +512,33 @@ Node 只比较擦除存储描述后的普通调用值、异常类型和轨迹；
 同文件无关记录；资源/work 失败仍归索引所有者。需要字符串 import/export 名而
 锁定 TS 前端没有获证拼写时，返回记录级 `kBinding`，不发布无法重编译的 `.ets`，
 且没有伪造指令 PC。
+
+
+### Round 74 增量 III/IV：Sendable 模块读取、成员环境与 shared 发布
+
+`ModuleDomain::{kOrdinary,kSendable}` 独立于 eager/lazy loading。imm8/wide 的
+Sendable external load 保留函数对象→模块→import slot→binding→request 身份、原始
+可能抛出事件和正常完成后的 acc 提交。所有实际 Sendable 读取必须有原始命名 hole guard；
+不能借外部模块已初始化的前提消除它。normal/phased 输入、模块 guard、树操作数、模块
+enclosure 和 recovery 分别复验域及来源。lazy-sendable/local-sendable 未获此支持。
+
+Sendable 构造器/成员根使用原创建上下文的模块域；成员内普通箭头仍是普通闭包，可以捕获
+该成员自己的 this/key/value。外层 lexical cell 跨 Sendable 根的捕获仍拒绝；
+ModuleCapturePrefix 的普通同步模块条件没有删除。静态初始化器保留独立的环境模式和准备
+门禁。本增量未支持在普通内层箭头中直接读取 Sendable import 的继承域证明。
+
+GENERIC(32) 没有唯一原始类型。`SendableTypeSpelling` 只为已验证构造器中的
+`this.field = new importBinding.member.path(...)` 选择一个真实 import 支撑的可重编译
+类型拼写。该路径与原赋值/constructor ExprId、binding、字段 ordinal 绑定；独立验证器
+重算，不增加 import、运行时读取或初始化，也不替换原 [[Set]]。未证明的类型、歧义赋值、
+NONE/TYPE_REF、静态字段继续类型化拒绝；并非将 GENERIC 擦除为 any/Object。
+
+shared record 由 `SharedModuleProof` 独立验证所属文件/record/模块表、shared=true、
+非 CommonJS/非 TLA/非 JSON 和当前 eager 请求范围；不调用 OrdinarySynchronous 冒充普通
+模块。完整 record tree/recovery 仍核对入口效果与 export identity；shared 部分恢复不能
+发布。模块级 `"use shared";` 来自该证明，作为首行输出并计入 import 前缀字节/位置。
+新发布记录为 `.ets` / `source_language: arkts`，原 flags 的门禁不变。
+
+真实 es2abc 往返和普通调用 Node oracle 见
+[fixture](../../../tests/integration/fixtures/sendable_modules/README.md)。Node 对 shared
+heap、锁、跨线程和运行时字段类型检查没有验证能力；这些保留为 runtime-verification gap。

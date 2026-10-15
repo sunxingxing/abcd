@@ -177,6 +177,7 @@ struct ValueModuleRead {
   ModuleSpace space;
   ModuleSlot slot;
   ModuleLoading loading = ModuleLoading::kOrdinary;
+  ModuleDomain domain = ModuleDomain::kOrdinary;
   bool operator==(const ValueModuleRead&) const = default;
 };
 // Store to this record's live local module cell. The stored-value operand is

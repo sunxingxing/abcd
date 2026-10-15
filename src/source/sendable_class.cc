@@ -1,4 +1,5 @@
 #include "sendable_class.h"
+#include "sendable_types.h"
 #include <bit>
 namespace abcd::source {
 bool PrimitiveSendableType(abc::SendableTypeMask type) {
@@ -44,7 +45,8 @@ std::optional<SendableFailure> VerifySendableClass(const ClassTree& tree,bool fi
     if(*name==u"constructor" || (*name==u"prototype" &&
         source.fields.fields[i].placement==abc::SendableFieldPlacement::kStatic))
       return fail(SendableError::kTypeSpelling);
-    if(!PrimitiveSendableType(source.fields.fields[i].type))return fail(SendableError::kTypeSpelling);
+    if(!PrimitiveSendableType(source.fields.fields[i].type) &&
+        source.fields.fields[i].type.bits != static_cast<unsigned>(abc::SendableFieldType::kGeneric))return fail(SendableError::kTypeSpelling);
     // The pinned frontend adds a static-initializer member for static storage.
     // Its timing/literal correspondence is not part of this closed-instance
     // projection. Do not generate an unmatched initializer from a descriptor.
@@ -54,6 +56,9 @@ std::optional<SendableFailure> VerifySendableClass(const ClassTree& tree,bool fi
   at.field.reset();at.mask.reset();
   if(!finished)return {};
   if(!tree.BodiesPrepared() || tree.initializer || !tree.omissions.empty())return fail(SendableError::kPreparationGate);
+  const auto types=VerifySendableTypes(tree,budget);
+  if(const auto* failure=std::get_if<SendableFailure>(&types))return *failure;
+  if(!step(std::get<SendableTypeCost>(types).work))return fail(SendableError::kWorkLimit);
   const auto& constructor=tree.constructor->Family();
   if(constructor.root.value>=constructor.members.size())return fail(SendableError::kCorrespondence);
   const auto& root=constructor.members[constructor.root.value].tree;
@@ -65,11 +70,16 @@ std::optional<SendableFailure> VerifySendableClass(const ClassTree& tree,bool fi
     const auto& family=prepared.Family();
     if(family.root.value>=family.members.size())return fail(SendableError::kCorrespondence);
     const auto& body=family.members[family.root.value].tree;
+    if(body.module_domain!=analysis::ModuleDomain::kSendable)return fail(SendableError::kEnvironment);
     if((family.root_capture && !family.root_capture->targets.empty()) || !body.captures.empty())return fail(SendableError::kCapture);
     for(const auto& member:family.members) {
       if(!step())return fail(SendableError::kWorkLimit);
       if(!member.tree.recovery_issues.empty())return fail(SendableError::kPreparationGate);
-      if(!member.tree.modules.empty())return fail(SendableError::kEnvironment);
+      for(const auto& alias:member.tree.modules) {
+        if(!step())return fail(SendableError::kWorkLimit);
+        if(alias.local || alias.access!=ModuleAccess::kReadOnly || alias.symbol.value>=member.tree.symbols.size() ||
+            member.tree.symbols[alias.symbol.value].kind!=BindingKind::kModule)return fail(SendableError::kEnvironment);
+      }
       if(member.tree.sendable && (!ctor || member.tree.owner!=body.owner))return fail(SendableError::kCorrespondence);
     }
     return {};

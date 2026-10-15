@@ -328,7 +328,7 @@ constexpr SharedModuleOutputPolicy SharedModuleOutput(SourceContract contract) {
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
       return SharedModuleOutputPolicy::kNotEnabled;
-    case SourceContract::kLanguageSourceV3: return SharedModuleOutputPolicy::kNotEnabled;
+    case SourceContract::kLanguageSourceV3: return SharedModuleOutputPolicy::kArkDirectiveV1;
   }
   std::terminate();
 }

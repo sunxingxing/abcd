@@ -54,6 +54,7 @@ struct FunctionSyntax {
   HomeObjectBinding home_object = HomeObjectBinding::kNone;
   std::optional<ConcurrentDirective> concurrent;
   std::optional<SendableConstructorDirective> sendable;
+  analysis::ModuleDomain module_domain = analysis::ModuleDomain::kOrdinary;
 };
 }  // namespace abcd::source
 #endif

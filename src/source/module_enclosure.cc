@@ -1,5 +1,6 @@
 #include "tree_print_trace.h"
 #include "abcd/source/module_enclosure.h"
+#include "shared_module.h"
 
 #include <algorithm>
 #include <new>
@@ -58,6 +59,12 @@ std::variant<ModuleEnclosure, ModuleEnclosureError> ModuleEnclosure::Build(
     Require(module != nullptr, Error::kMissingModule);
     Require(!file.CheckUnchanged(), Error::kFileChanged);
     ModuleEnclosure result(context, identity, owner);
+    if(const auto* flags=context.Attributes(file,context.record());flags&&flags->shared.value_or(false)) {
+      budget.Step(module->request_phases.size()+1);
+      const auto proof=SharedModuleProof::Build(context,file,context.record(),identity.contract);
+      Require(std::holds_alternative<SharedModuleProof>(proof),Error::kModuleKind);
+      result.shared_=true;
+    }
     const auto count = module->imports.size() + module->namespace_imports.size();
     budget.Reserve(result.names_, count); budget.Reserve(result.sorted_, count);
     budget.Reserve(result.loadings_, count);
@@ -114,7 +121,19 @@ ModuleImportResult ModuleEnclosure::WriteImports(const corpus::AbcFile& file,
   const auto module = context_.ForOwner(file, context_.record());
   if (!module || !Matches(identity_, header) || file.CheckUnchanged())
     return ModuleImportFailure{ModuleImportError::kString, context_.record(), {}};
-  return WriteModuleImports(file, header, *module, output, budget, strings, names_, identity_.contract);
+  std::size_t prefix=0;
+  if(shared_) {
+    const auto proof=SharedModuleProof::Build(context_,file,context_.record(),identity_.contract);
+    if(!std::holds_alternative<SharedModuleProof>(proof))return ModuleImportFailure{ModuleImportError::kModuleKind,context_.record(),{}};
+    constexpr std::string_view directive="\"use shared\";\n";
+    if(directive.size()>budget.bytes)return ModuleImportFailure{ModuleImportError::kOutputLimit,context_.record(),{}};
+    output.write(directive.data(),directive.size());
+    if(!output)return ModuleImportFailure{ModuleImportError::kWrite,context_.record(),{}};
+    prefix=directive.size();budget.bytes-=prefix;
+  }
+  auto result=WriteModuleImports(file, header, *module, output, budget, strings, names_, identity_.contract);
+  if(auto* bytes=std::get_if<std::size_t>(&result))*bytes+=prefix;
+  return result;
 }
 
 std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
@@ -126,7 +145,7 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
       Require(!tree.module_scope, Error::kBinding);
       for(const auto& node:tree.expressions) {
         budget.Step();if(const auto* read=std::get_if<SymbolExpr>(&node.expression))
-          Require(read->loading==analysis::ModuleLoading::kOrdinary,Error::kBinding);
+          Require(read->loading==analysis::ModuleLoading::kOrdinary && read->domain==analysis::ModuleDomain::kOrdinary,Error::kBinding);
       }
       return ModuleDestination{allowance.work - budget.remaining.work};
     }
@@ -146,6 +165,9 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
       const auto& symbol = tree.symbols[alias.symbol.value];
       const auto slot = alias.target.symbol.value;
       const bool local = slot >= enclosure.Names().size();
+      // A Sendable module access is a function->module external import. Local
+      // module cells need their own sendable-local proof; readonly is not enough.
+      Require(tree.module_domain!=analysis::ModuleDomain::kSendable || !local,Error::kBinding);
       if(!local && enclosure.HasLazy()) {Require(slot<enclosure.Loadings().size(),Error::kBinding);loadings[alias.symbol.value]=enclosure.Loadings()[slot];}
       const auto evidence = local && !scope->module_local_evidence.empty()
           ? scope->module_local_evidence[slot - enclosure.Names().size()] : NameEvidence::kMetadata;
@@ -172,8 +194,12 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
           (!scope->argument_snapshot_binding || !budget.Equal(name, scope->argument_snapshot_binding->name)), Error::kShadowed);
     }
     for(const auto& node:tree.expressions) {
-      budget.Step();if(const auto* read=std::get_if<SymbolExpr>(&node.expression))
+      budget.Step();if(const auto* read=std::get_if<SymbolExpr>(&node.expression)) {
+        Require(read->symbol.value<tree.symbols.size(),Error::kBinding);
+        const bool module=tree.symbols[read->symbol.value].kind==BindingKind::kModule;
+        Require(read->domain==(module?tree.module_domain:analysis::ModuleDomain::kOrdinary),Error::kBinding);
         Require(enclosure.HasLazy() ? read->symbol.value<loadings.size()&&read->loading==loadings[read->symbol.value] : read->loading==analysis::ModuleLoading::kOrdinary,Error::kBinding);
+      }
     }
     return ModuleDestination{allowance.work - budget.remaining.work};
   } catch (Error error) { return error;

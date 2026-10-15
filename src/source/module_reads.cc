@@ -123,6 +123,14 @@ class ReadResolver {
   }
   ModuleReadTarget Target(analysis::ValueModuleRead read) const {
     const std::size_t slot = read.slot.value;
+    switch (read.domain) {
+      case analysis::ModuleDomain::kOrdinary: break;
+      case analysis::ModuleDomain::kSendable:
+        if (SendableOutput(contract_) != SendableOutputPolicy::kArkDirectiveV1) throw Error::kContract;
+        if (read.space != analysis::ModuleSpace::kExternal || read.loading != analysis::ModuleLoading::kOrdinary)
+          throw Error::kBinding;
+        break;
+    }
     switch (read.space) {
       case analysis::ModuleSpace::kLocal:
         if (read.loading != analysis::ModuleLoading::kOrdinary) throw Error::kBinding;

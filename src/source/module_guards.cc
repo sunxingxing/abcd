@@ -61,7 +61,7 @@ class Correspondence {
     const auto& check = graph_.ops[guard.value];
     const auto* original = std::get_if<analysis::ModuleLoad>(&input_.Input().instructions[fact.instruction.value].operation);
     const auto* current = std::get_if<analysis::ValueModuleRead>(&load.operation);
-    Require(original && current && original->space == current->space && original->slot == current->slot && original->loading == current->loading &&
+    Require(original && current && original->space == current->space && original->slot == current->slot && original->loading == current->loading && original->domain == current->domain &&
         load.use_count == 0 && load.result && load.result->value < graph_.values.size(), Error::kRead);
     const auto* result = std::get_if<analysis::OpResult>(&graph_.values[load.result->value].origin);
     Require(result && result->op == read && graph_.values[load.result->value].life == analysis::ValueLife::kLive, Error::kRead);
@@ -141,7 +141,7 @@ std::variant<std::uint64_t, ModuleGuardError> VerifyLazyModuleReads(
   for(std::size_t i=0;i<graph.ops.size();++i) {
     while(next<plan.pairs.size()&&plan.pairs[next].read.value<i)++next;
     const auto* read=std::get_if<analysis::ValueModuleRead>(&graph.ops[i].operation);
-    if(graph.ops[i].life!=analysis::ValueLife::kLive||!read||read->loading!=analysis::ModuleLoading::kLazy)continue;
+    if(graph.ops[i].life!=analysis::ValueLife::kLive||!read||(read->loading!=analysis::ModuleLoading::kLazy && read->domain!=analysis::ModuleDomain::kSendable))continue;
     if(next==plan.pairs.size()||plan.pairs[next].read.value!=i||!plan.pairs[next].guard)return Error::kReadProof;
   }
   return work;

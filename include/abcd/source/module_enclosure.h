@@ -31,6 +31,7 @@ class ModuleEnclosure {
   ModuleOwnerId Owner() const { return owner_; }
   std::span<const std::string> Names() const { return names_; }
   bool HasLazy() const { return has_lazy_; }
+  bool Shared() const { return shared_; }
   std::span<const analysis::ModuleLoading> Loadings() const { return loadings_; }
   std::span<const std::string_view> SortedNames() const { return sorted_; }
   std::size_t AllocatedBytes() const { return allocated_bytes_; }
@@ -48,6 +49,7 @@ class ModuleEnclosure {
   std::vector<std::string> names_;
   std::vector<analysis::ModuleLoading> loadings_;
   bool has_lazy_ = false;
+  bool shared_ = false;
   // Views point into the moved vector buffer. Copying this owner is forbidden.
   std::vector<std::string_view> sorted_;
   std::size_t allocated_bytes_ = 0;

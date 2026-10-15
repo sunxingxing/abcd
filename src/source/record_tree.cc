@@ -7,6 +7,7 @@
 #include "cell_names.h"
 #include "deferred_failure.h"
 #include "record_tree.h"
+#include "sendable_metadata.h"
 #include "abcd/source/module_exports.h"
 
 #include <algorithm>
@@ -776,7 +777,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           case ModuleImportError::kString: throw fail_with(Error::kModule, import_error);
         }
       }
-      bool incomplete = false;bool arkts=false;
+      bool incomplete = false;bool arkts=enclosure->Shared();
       std::size_t peak=0;std::uint64_t work=0;
       auto printed = [&]() -> std::variant<std::size_t, TreePrintFailure> {
         if (!module_family) {
@@ -784,7 +785,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
               {budget.output.bytes - *prelude_bytes}, {scratch.Bytes(),remaining_work}, &class_scope, default_export,result->flow?result->flow->original.get():nullptr);
           if (const auto* error = std::get_if<TreePrintFailure>(&emitted)) return *error;
           const auto& positions = std::get<PrintedFunction>(emitted);
-          incomplete = positions.incomplete;arkts=positions.arkts;peak=positions.allocated_bytes;work=positions.work;
+          incomplete = positions.incomplete;arkts|=positions.arkts;peak=positions.allocated_bytes;work=positions.work;
           return positions.bytes;
         }
         auto emitted = PrintModuleFamilyDraft(*module_family, output,
@@ -807,6 +808,12 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           case TreePrintError::kWorkLimit:
             throw RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{print_error})};
         }
+      }
+      if(enclosure->Shared()&&incomplete) {
+        RecordProgramFailure failure{Error::kModule,{}};
+        failure.shared_module=InspectSharedModule(context,file,record.offset,identity.contract);
+        failure.shared_module->kind=SharedModuleError::kCorrespondence;
+        AppendFailureCause(failure.causes,SharedModuleError::kCorrespondence);throw failure;
       }
       const auto arkts_binding_failure=[&] {
         RecordProgramFailure failure{Error::kModule,{}};
