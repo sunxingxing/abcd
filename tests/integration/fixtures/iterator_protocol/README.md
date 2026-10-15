@@ -43,3 +43,15 @@ Hole comparisons retain both paths, including an extra possible Hole rethrow;
 all original exception exits remain. The next slice must prove entry, guard,
 priority, activation and ownership obligations before consuming it. No Node
 oracle or cross-runtime equivalence is claimed by this test.
+
+## Round 79 A3a: derived close entries
+
+`close_entries_test` derives the original edges and pending completions instead
+of supplying them as A2 API assumptions. It checks m423's Break/Return entries,
+m451's body-Throw entry, and m423's six current exceptions entering the outer
+close after an earlier close failed. Known edge-qualified state narrows the
+latter to one rethrow per entry. Unproved Hole comparisons remain conservative.
+The same ABC is reused without regeneration. See
+[`close-entries.md`](../../../../docs/design/source-recovery/close-entries.md)
+for the independent boundary verification, exact-budget tests and the remaining
+ownership/priority boundary. No production hook or Node oracle is added.

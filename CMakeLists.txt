@@ -210,6 +210,7 @@ target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/for_in_emission.cc src/source/for_in_recovery.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/iterator_keys.cc src/source/iterator_protocol_scan.cc)
+target_sources(abcd_source PRIVATE src/source/close_entries.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
@@ -531,6 +532,11 @@ if(BUILD_TESTING)
   add_executable(await_catch_flow_probe tests/unit/analysis/await_catch_flow_probe.cc)
   target_link_libraries(await_catch_flow_probe PRIVATE abcd_source abcd_json)
   add_executable(completion_relation_abc_test tests/unit/analysis/completion_relation_abc_test.cc)
+  add_executable(close_entries_test tests/unit/source/close_entries_test.cc)
+  target_link_libraries(close_entries_test PRIVATE abcd_source abcd_json)
+  target_include_directories(close_entries_test PRIVATE tests/support)
+  add_test(NAME close_entries_test COMMAND close_entries_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
   target_link_libraries(completion_relation_abc_test PRIVATE abcd_analysis)
   add_test(NAME completion_relation_abc_test COMMAND completion_relation_abc_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
