@@ -78,6 +78,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
         result.creation_pc = error.concurrent->creation_pc;
       }
     }
+    if constexpr (std::is_same_v<T, SendableFailure>) {result.sendable=error;result.method=error.method;result.pc=error.pc;result.working_pc=error.working_pc;}
     if constexpr (std::is_same_v<T, ConcurrentFailure>) result.concurrent=error;
     if constexpr (std::is_same_v<T, EvaluationFailure>) if(error.evaluation.concurrent) result.concurrent=error.evaluation.concurrent;
     if constexpr (std::is_same_v<T, AsyncCompletionFailure>) {

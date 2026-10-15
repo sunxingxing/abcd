@@ -40,6 +40,7 @@ struct PrintedFunction {
   std::vector<PrintedFunction> class_members;
   // Recovery completeness only, not a claim of behavioral verification.
   bool incomplete = false;
+  bool arkts = false;
   // Formal ordinal indexes complete parameter syntax (name and initializer),
   // excluding separators. Signature migration maps to these events, not to a
   // body-wide range or a search for matching generated text.

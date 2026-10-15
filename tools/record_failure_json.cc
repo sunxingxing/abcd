@@ -37,6 +37,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
   std::visit([&](const auto& failure) {
     using T = std::decay_t<decltype(failure)>;
     if constexpr (std::is_same_v<T, source::PrintedSource>) {
+      if(failure.arkts)record["source_language"]="arkts";
       if (failure.omitted_members.empty()) return;
       auto& omissions = record["source_omitted_members"];
       omissions = nlohmann::json::array();

@@ -13,6 +13,7 @@
 
 #include "tree_checks.h"
 #include "class_tree.h"
+#include "sendable_class.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/source/scalar_expression.h"
 
@@ -48,6 +49,10 @@ bool ValidBinary(analysis::BinaryOperator operation) {
   return false;
 }
 void CheckCallable(const FunctionTree& tree) {
+  if(tree.sendable) RequireTree(tree.sendable->method==tree.method && !tree.concurrent &&
+      tree.callable==CallableKind::kBaseConstructor && tree.strictness==Strictness::kStrict &&
+      !tree.ImplicitConstructor() && SendableOutput(tree.identity.contract)==SendableOutputPolicy::kArkDirectiveV1,
+      Error::kUnsupportedSyntax);
   if(tree.concurrent)RequireTree(tree.concurrent->Identity()==tree.identity&&tree.concurrent->Method()==tree.method&&
       tree.concurrent->Revision()==tree.value_revision&&tree.concurrent->CfgRevision()==tree.cfg_revision&&
       (tree.callable==CallableKind::kFunction||tree.callable==CallableKind::kAsyncFunction)&&
@@ -663,6 +668,12 @@ class StructureCheck {
   }
 
   void ClassCaptures(const ClassTree& definition) {
+    std::uint64_t sendable_work=0;
+    if(const auto failure=VerifySendableClass(definition,definition.DraftPrepared(),budget_.Remaining(),&sendable_work)) {
+      if(failure->kind==SendableError::kWorkLimit)throw Error::kWorkLimit;
+      throw Error::kBinding;
+    }
+    budget_.Step(sendable_work);
     const auto family = [&](const PreparedFamily& prepared) {
       const auto& built = prepared.Family();
       RequireTree(built.root.value < built.members.size(), Error::kOwnership);

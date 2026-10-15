@@ -373,6 +373,11 @@ int Export(const std::filesystem::path& input,
             record_manifest["source_complete"] = false;
             record_manifest["executable"] = false;
             if (const auto* artifact = std::get_if<source::PrintedSource>(&built)) {
+              if(artifact->arkts) {
+                source_path=source_stem.string()+".ets";
+                record_manifest["planned_source"]=source_path;
+                record_manifest["source_language"]="arkts";
+              }
               tools::DescribeRecordFailure(built, record_manifest);
               std::filesystem::create_directories(
                   (tree.path / source_stem).parent_path());

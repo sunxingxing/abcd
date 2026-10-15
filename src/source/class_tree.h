@@ -6,6 +6,7 @@
 #include "function_tree.h"
 #include "module_aliases.h"
 #include "abcd/abc/class_buffer.h"
+#include "abcd/source/sendable_failure.h"
 namespace abcd::source {
 // One class-creation expression, with optional native static fields whose
 // actual invocation is projected by the enclosing tree. Decorators, export
@@ -55,6 +56,7 @@ struct ClassTree {
   // AST. Body preparation fills this same construction-owned object only while
   // no consumers run; publication/printing requires every occurrence below.
   CallableKind callable = CallableKind::kMethod;
+  std::shared_ptr<const analysis::IndexedSendableLiteral> sendable;
   std::vector<analysis::ClassSiteId> member_sites;
   std::optional<ClassInitializerCall> initializer_site;
   std::optional<PreparedFamily> constructor;
@@ -74,7 +76,7 @@ struct ClassParentScope { bool independent; std::uint64_t work; };
 // initializer/defined-member projection needs its own phase bridge.
 [[nodiscard]] std::variant<ClassParentScope, ClassTreeError> CheckClassParentScope(
     const ClassTree&, std::uint64_t work = analysis::kDefaultSemanticWork);
-using ClassTreeFailure = std::variant<ClassTreeError, ClassContextFailure, FamilyPrepareFailure,
+using ClassTreeFailure = std::variant<SendableFailure, ClassTreeError, ClassContextFailure, FamilyPrepareFailure,
     abc::MetadataError, abc::LiteralFailure, abc::ClassBufferError, ClassInitializerReadFailure,
     SyntaxResolutionFailure, EvaluationFailure, ControlError, ControlFailure, FunctionTreeFailure, ModuleAliasFailure, ModuleAliasTreeError, ArrayInitializationError>;
 // Resolve the actual creation and member inventory without preparing bodies.
@@ -131,6 +133,7 @@ struct PrintedClassTree {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   bool incomplete = false;
+  bool arkts = false;
 };
 // The caller supplies the unchanged built tree and discards partial output on failure.
 [[nodiscard]] std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClassTree(

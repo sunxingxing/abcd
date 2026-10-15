@@ -12,6 +12,40 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 74 增量 II：闭合 Sendable 实例类（cc 审查通过）
+- cc 独立审查（增量 II）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 521/620 不变，`--language-source` 565 → **566/620**（Sendable.ets：`taskId: number;` + 构造器首条 `"use sendable"` + 两次原始 [[Set]]）；0 回退，0 文本漂移；扫描 73/74，只有既有的 family_source_cli_test 失败。
+
+- 基线 `201e667f`。未 commit/push/stash。V3 的 `SendableOutput()` 现在为
+  `kArkDirectiveV1`，V1/V2/其他契约和 `SharedModuleOutput()` 保持原义。
+  普通类路径复用原 ClassTree/family，创建种类贯通原始/值/树对应；构造器属性
+  绑定实际创建点和池身份。字段为无 initializer 的 primitive/union 存储描述，
+  原 [[Set]] 保留；只有实际新发布的 Sendable record 改用 `.ets` / arkts。
+- 文件级 Sendable literal 索引按实体共享，创建者复用既有不可变输入，不逐 creation
+  重解码整方法；字段 key 实体排序去重，所有缓存、共享控制块和字符串先计费。
+  字段解码的 mask/split/key 拒绝缓存为所属类的类型化失败；资源/work 仍归索引预算。
+  无可用 TS 模块名拼写返回记录级 kBinding，不伪造指令 PC。静态初始化器、外部
+  capture/module 环境、heritage、未恢复成员/前缀、NONE/TYPE_REF/GENERIC 继续门禁。
+- 最终完整 `cmake --build build/regression -j 6 -- -k` 成功；新增两项及 Sendable
+  相关共 **5/5**。覆盖真实生产准备/完成、错误 creator/pool/kind/mask/member/directive、
+  部分恢复/环境/capture、malformed mask 的同文件隔离、模块拼写拒绝、63 种 primitive
+  union、200/201/400/800 和精确 byte/work 边界、实际源码发射/重编译与 Node 普通调用。
+- 最终固定集串行 **65/65**。期间一次 rich_text worker 未正常返回（约 67 秒），
+  单独复跑 **1/1**（13.43 秒），随后完整固定集 **65/65**，未改代码/断言。
+  相关定向 **28/30**，仅既有 `tree_structure_test` abort 和 `class_tree_source_test`
+  匿名 class 正则期望；CLI/corpus/failure/receipt/manifest 扫查 **70/71**，仅既有
+  `family_source_cli_test` owner/origin arena 失败，均未弱化。
+- 最终对 explore74/explore74s：旧 flags **521/620** 不变，source **565→566/620**，
+  仅 SendableTest（o14/28934）complete；**0 回退、0 既有文本/扩展名/位置文件漂移**。
+  原合同仍在 m29066@9 报 SemanticError::kUnsupportedInstruction。
+- 真实 `.ets` 按原 record 名用 DevEco `--module --merge-abc --extension=ts --opt-level=0`
+  重编译：shared=false；definesendableclass；constructor serialized kind NONE、sendable=false、
+  length=1、无 heritage；getTaskId；taskId/NUMBER(1)/instanceCount1；整 record 无额外
+  sendable-env；两次有序 taskId [[Set]]；export slot0 与模块表匹配。编译器 hash、
+  fixture 命令与 oracle 边界见 [fixture README](../../../tests/integration/fixtures/sendable_source/README.md)。
+  Node 不验证共享堆、类型检查或跨线程行为；这些仍是 runtime gap。
+- 本轮日志/比较/往返报告位于 `/private/tmp/abcd-round74ii/`，没有跑全套、全语料、
+  RSS 基准或留出集。没有改动用户的 sample.tar.gz。
+
 ## Round 74 增量 I：Sendable/shared 元数据（cc 审查通过）
 - cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；521/620、565/620 不变，0 状态变化，0 文本变化；扫描 71/72，只有既有的 family_source_cli_test 失败。
 

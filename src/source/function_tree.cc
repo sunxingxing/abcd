@@ -170,6 +170,7 @@ class TreeBuilder {
     tree_.identity = syntax_.identity;
     tree_.method = syntax_.method;
     tree_.owner = syntax_.owner;
+    tree_.sendable = syntax_.sendable;
     tree_.concurrent = std::move(syntax_.concurrent); tree_.callable = syntax_.callable;
     tree_.home_object = syntax_.home_object;
     tree_.parameter_form = syntax_.parameter_form;

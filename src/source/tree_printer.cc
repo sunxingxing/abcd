@@ -1,3 +1,4 @@
+#include "sendable_class.h"
 #include "concurrent_references.h"
 #include "concurrent_print.h"
 #include "tree_print_trace.h"
@@ -1001,6 +1002,7 @@ class TreePrinter {
     }
     auto positions = std::get<PrintedClassTree>(std::move(emitted));
     Result().incomplete |= positions.incomplete;
+    Result().arkts |= positions.arkts;
     Admit(positions.allocated_bytes, 1); Step(positions.work);
     const auto retain = [&](PrintedFunction function, std::size_t offset) {
       TreePrintSiteScope site(TreePrintSite::kClassMemberRetention);
@@ -1032,6 +1034,13 @@ class TreePrinter {
     Push(BeginFunction{}); current_ = parent;
   }
   void Run(BeginFunction) {
+    if(Tree().sendable) {
+      const auto* site=ClassRoot()?class_root_->Constructor():nullptr;
+      if(!site || site->creation.kind!=abc::ClassKind::kSendable ||
+          Tree().sendable!=SendableConstructorDirective{site->target,site->creator,site->pc,site->creation.constructor,site->creation.literal})
+        throw Error::kUnsupportedContext;
+      Result().arkts=true;
+    }
     if(Tree().concurrent)ConcurrentPrint::Directive(*Tree().concurrent);
     if(Tree().concurrent || (!concurrent_frames_.empty()&&concurrent_frames_.back().proof)) {
       if(concurrent_frames_.size()==concurrent_frames_.capacity()) {
@@ -1504,6 +1513,9 @@ class TreePrinter {
     if (!ModuleBody() || at.id != Tree().body) Append("{\n");
     if(at.id==Tree().body && Tree().concurrent) {
       Run(Indent{at.depth+1});Append("\"use concurrent\";\n");
+    }
+    if(at.id==Tree().body && Tree().sendable) {
+      Run(Indent{at.depth+1});Append("\"use sendable\";\n");
     }
     Push(BlockCursor{at.id, 0, at.depth});
   }
@@ -2225,7 +2237,7 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
       if (const auto* failure = std::get_if<FamilyPrepareFailure>(&printed)) throw *failure;
       if (const auto* failure = std::get_if<TreePrintFailure>(&printed)) throw *failure;
       auto positions = std::get<PrintedFamilyDraft>(std::move(printed));
-      for (const auto& body : positions.members) result.incomplete |= body.incomplete;
+      for (const auto& body : positions.members) {result.incomplete |= body.incomplete;result.arkts |= body.arkts;}
       if (positions.allocated_bytes > budget.bytes) {PrintByteCharge(positions.allocated_bytes,1,budget.bytes,initial.bytes,initial.bytes-budget.bytes);throw Failure::kResourceLimit;}
       if (positions.work > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,positions.work,budget.work,initial.work);throw trace.Capture(Failure::kWorkLimit);}
       budget.bytes -= positions.allocated_bytes; budget.work -= positions.work;
@@ -2246,6 +2258,48 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
     }
     else if (form == ClassPrintForm::kInferredExpression) append("class {\n");
     else append(" {\n");
+    std::uint64_t sendable_work=0;
+    if(const auto failure=VerifySendableClass(tree,true,budget,&sendable_work)) {
+      if(failure->kind==SendableError::kWorkLimit)throw Failure::kWorkLimit;
+      throw FamilyPrepareFailure{FamilyPrepareError::kPlacement};
+    }
+    budget.work-=sendable_work;
+    if(tree.sendable) {
+      result.arkts=true;
+      // Storage descriptions have no initializer. OH7's TS transform erases
+      // these descriptions while retaining every constructor [[Set]]. Do not
+      // enable --use-define-semantic when recompiling this output.
+      constexpr std::array<std::pair<abc::SendableFieldType,std::string_view>,6> types{{
+        {abc::SendableFieldType::kNumber,"number"},{abc::SendableFieldType::kString,"string"},
+        {abc::SendableFieldType::kBoolean,"boolean"},{abc::SendableFieldType::kBigInt,"bigint"},
+        {abc::SendableFieldType::kNull,"null"},{abc::SendableFieldType::kUndefined,"undefined"}}};
+      for(std::size_t i=0;i<tree.sendable->fields.fields.size();++i) {
+        if(!budget.work)throw Failure::kWorkLimit;--budget.work;
+        for(std::size_t level=0;level<=indent;++level)append("  ");
+        const auto& field=tree.sendable->fields.fields[i];
+        if(field.placement==abc::SendableFieldPlacement::kStatic)append("static ");
+        const auto search=std::bit_width(tree.sendable->field_names.size())+1;
+        if(search>budget.work)throw Failure::kWorkLimit;budget.work-=search;
+        const auto& key=*tree.sendable->FieldName(i);
+        if(key.size()>budget.work)throw Failure::kWorkLimit;budget.work-=key.size();
+        if(ClassifyMemberKey(key)==MemberKeySyntax::kIdentifier) {
+          for(const auto unit:key){const char c=static_cast<char>(unit);append({&c,1});}
+        } else {
+          const auto printed=WriteStringLiteral(key,output,{limit.bytes-result.bytes});
+          if(const auto* bytes=std::get_if<std::size_t>(&printed))result.bytes+=*bytes;
+          else switch(std::get<EmitError>(printed)) {
+            case EmitError::kOutputLimit:throw Failure::kOutputLimit;
+            case EmitError::kWrite:throw Failure::kWrite;
+            default:throw Failure::kInvalidLiteral;
+          }
+        }
+        append(": ");bool first=true;
+        for(const auto& [bit,name]:types)if(field.type.bits & static_cast<unsigned>(bit)) {
+          if(!first)append(" | ");first=false;append(name);
+        }
+        append(";\n");
+      }
+    }
     member(*tree.constructor);
     const auto omitted_member = [&](const ClassMemberOmission& omitted) {
       append("; method "); number(omitted.context.Target().value);

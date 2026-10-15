@@ -340,6 +340,12 @@ struct YieldReturnComposition {
 };
 enum class ParameterForm : std::uint8_t { kFrameFormals, kInvocationRest };
 enum class ConstructorForm : std::uint8_t { kExplicit, kImplicit };
+struct SendableConstructorDirective {
+  abc::EntityOffset method, creator;
+  abc::CodeOffset creation_pc;
+  abc::PoolIndex constructor, literal;
+  bool operator==(const SendableConstructorDirective&)const=default;
+};
 struct FunctionTree {
   // Native class absence of an explicit constructor; whole-function CFG/SSA
   // proof supplies its executable default behavior, including raw forwarding.
@@ -402,6 +408,7 @@ struct FunctionTree {
   // Invocation-private identity used only by a closed VM Hole protocol.
   std::optional<SymbolId> hole;
   std::optional<ConcurrentDirective> concurrent;
+  std::optional<SendableConstructorDirective> sendable;
 };
 // FunctionTree is the direct printer input, not a source-publication token.
 // Structural safety checks do not imply complete recovery or IR equivalence.

@@ -254,7 +254,7 @@ class CaptureProof {
     CaptureScratch scratch(bytes_);
     scratch.Take(literal->entries.capacity() * sizeof(abc::LiteralEntry));
     Charge(literal->entries.size());
-    const auto parsed = abc::DecodeClassBuffer(*literal, {bytes_});
+    const auto parsed = abc::DecodeClassLiteral(*literal, creation.kind, {bytes_});
     const auto* members = std::get_if<abc::ClassBuffer>(&parsed);
     if (!members) {
       if (std::get<abc::ClassBufferError>(parsed) == abc::ClassBufferError::kResourceLimit)

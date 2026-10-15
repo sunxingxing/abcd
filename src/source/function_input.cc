@@ -165,6 +165,15 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       const auto failure = std::get<analysis::SemanticFailure>(lifted);
       return FunctionInputFailure{failure, method, failure.pc};
     }
+    // Raw lifting preserves the Sendable VM event. Source admission is a
+    // separate policy; old contracts keep their original unsupported leaf.
+    if (SendableOutput(identity.contract) == SendableOutputPolicy::kNotEnabled)
+      for (const auto& instruction : input->instructions) {
+        quota.Step();
+        const auto* creation = std::get_if<analysis::ClassCreation>(&instruction.operation);
+        if (creation && creation->kind == abc::ClassKind::kSendable)
+          return FunctionInputFailure{analysis::SemanticFailure{analysis::SemanticError::kUnsupportedInstruction, instruction.pc}, method, instruction.pc};
+      }
     // An initialized entry premise is not a proof across receiver-changing
     // protocols. Super/resume ownership must supply a phase-specific proof.
     for (const auto& instruction : input->instructions) {

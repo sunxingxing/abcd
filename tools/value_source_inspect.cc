@@ -72,6 +72,10 @@ template <class T> RouteFailureClass IndexClass(const T& error) {
       case abc::MethodAttributeError::kUnsupportedProfile: return Class::kUnsupported;
       case abc::MethodAttributeError::kUnknownKind: return Class::kInvalidInput;
     }
+  } else if constexpr (std::is_same_v<T, abc::SendableFieldFailure>) {
+    if(error.kind==abc::SendableFieldError::kResourceLimit)return Class::kMemoryLimit;
+    if(error.kind==abc::SendableFieldError::kWorkLimit)return Class::kWorkLimit;
+    return Class::kInvalidInput;
   } else if constexpr (std::is_same_v<T, abc::MethodLookupError> ||
                        std::is_same_v<T, abc::ClassBufferError>) {
     return error == T::kResourceLimit ? Class::kMemoryLimit : Class::kInvalidInput;

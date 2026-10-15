@@ -224,7 +224,7 @@ target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
 target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/effect_order.cc src/source/class_definitions.cc src/source/class_definition_projection.cc src/source/defined_member_context.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_prototype.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/derived_projection.cc src/source/class_tree.cc)
-target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc src/source/sendable_metadata.cc src/source/concurrent_completion.cc src/source/concurrent_async.cc src/source/concurrent_directive.cc src/source/concurrent_tree.cc src/source/concurrent_references.cc src/source/concurrent_boundary.cc)
+target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc src/source/sendable_metadata.cc src/source/sendable_class.cc src/source/concurrent_completion.cc src/source/concurrent_async.cc src/source/concurrent_directive.cc src/source/concurrent_tree.cc src/source/concurrent_references.cc src/source/concurrent_boundary.cc)
 target_sources(abcd_source PRIVATE src/source/rest_ownership.cc)
 target_sources(abcd_source PRIVATE src/source/function_input.cc)
 target_sources(abcd_source PRIVATE src/source/function_values.cc)
@@ -2692,6 +2692,12 @@ if(BUILD_TESTING)
     add_executable(class_omissions_test tests/unit/source/class_omissions_test.cc tools/record_failure_json.cc)
     target_link_libraries(class_omissions_test PRIVATE abcd_source abcd_json)
     add_test(NAME class_omissions_test COMMAND class_omissions_test)
+    add_executable(sendable_class_test tests/unit/source/sendable_class_test.cc)
+    target_link_libraries(sendable_class_test PRIVATE abcd_source)
+    add_test(NAME sendable_class_test COMMAND sendable_class_test
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/sendable_source/closed.abc)
+    add_executable(sendable_roundtrip_probe tests/unit/source/sendable_roundtrip_probe.cc)
+    target_link_libraries(sendable_roundtrip_probe PRIVATE abcd_source abcd_json)
     add_executable(sendable_metadata_probe tests/unit/source/sendable_metadata_probe.cc)
     target_link_libraries(sendable_metadata_probe PRIVATE abcd_source abcd_json)
     add_executable(sendable_metadata_test tests/unit/source/sendable_metadata_test.cc tools/record_failure_json.cc)
@@ -2736,6 +2742,12 @@ if(BUILD_TESTING)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/concurrent_functions "${ABCD_CONCURRENT_COMPILER}")
       endif()
       if(EXISTS "${ABCD_CONCURRENT_INPUT}" AND EXISTS "${ABCD_CONCURRENT_COMPILER}")
+        add_test(NAME sendable_source_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sendable_source.mjs
+          $<TARGET_FILE:abc_structure> "${ABCD_CONCURRENT_COMPILER}"
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/sendable_source/closed.abc
+          $<TARGET_FILE:sendable_roundtrip_probe> $<TARGET_FILE:sendable_class_test>
+          "${ABCD_CONCURRENT_INPUT}" $<TARGET_FILE:sendable_metadata_probe>)
         add_test(NAME sendable_metadata_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sendable_metadata.mjs
           $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic> $<TARGET_FILE:sendable_metadata_test>

@@ -8,6 +8,7 @@
 #include "tree_correspondence.h"
 #include "original_flow.h"
 #include "class_tree.h"
+#include "sendable_class.h"
 #include "phase_evaluation.h"
 #include "logical_evaluation.h"
 #include "logical_regions.h"
@@ -764,7 +765,14 @@ class OperandCheck {
               definition.creation.creation.constructor == operation.constructor &&
               definition.creation.creation.literal == operation.literal &&
               definition.creation.creation.length == operation.length &&
-              definition.creation.creation.cache_slot == operation.cache_slot && op.use_count == 1, Error::kOperand);
+              definition.creation.creation.cache_slot == operation.cache_slot &&
+              definition.creation.creation.kind == operation.kind && op.use_count == 1, Error::kOperand);
+          std::uint64_t sendable_work=0;
+          if(const auto failure=VerifySendableClass(definition,definition.DraftPrepared(),budget_.Remaining(),&sendable_work)) {
+            if(failure->kind==SendableError::kWorkLimit)throw Error::kWorkLimit;
+            throw Error::kOperand;
+          }
+          budget_.Step(sendable_work);
           const auto* heritage = std::get_if<analysis::ValueId>(&input(0));
           const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
           if (evaluation_.flow == EvaluationFlow::kPhased) {

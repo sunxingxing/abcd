@@ -77,7 +77,8 @@ RecordSourceResult BuildRecordSource(
           if constexpr (std::is_same_v<T, RouteRefusal>) return failed.failure;
           else return failed;
         }();
-        if (!detail.method || !detail.pc || detail.sendable) return;
+        if(detail.sendable) { detail.sendable->record=record.offset;return; }
+        if (!detail.method || !detail.pc) return;
         const auto read = ReadSendableMetadata(file, header, index, lookup, record.offset,
             *detail.method, *detail.pc, {budget.bytes > sizeof(result) ? budget.bytes - sizeof(result) : 0, analysis::kDefaultSemanticWork});
         if (const auto* ready = std::get_if<SendableMetadata>(&read)) {

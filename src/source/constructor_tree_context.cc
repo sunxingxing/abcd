@@ -47,7 +47,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveCon
     const auto* working = std::get_if<analysis::ValueClassCreation>(&op.operation);
     if (!creation || !working || origin.pc != original.pc ||
         creation->constructor != working->constructor || creation->literal != working->literal ||
-        creation->length != working->length || creation->cache_slot != working->cache_slot)
+        creation->length != working->length || creation->cache_slot != working->cache_slot || creation->kind != working->kind)
       return fail(Error::kKind);
     const auto& use = graph.uses[op.first_use.value];
     const auto* parent = std::get_if<analysis::ValueId>(&use.operand);

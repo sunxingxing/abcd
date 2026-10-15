@@ -438,7 +438,18 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     const auto class_failure = [&](const ClassTreeFailure& failure, std::optional<analysis::OpId> creation) -> RecordSourceResult {
       const auto classify = [&](auto&& self, const auto& error) -> RecordSourceResult {
         using T = std::decay_t<decltype(error)>;
-        if constexpr (std::is_same_v<T, FamilyPrepareFailure>)
+        if constexpr (std::is_same_v<T, SendableFailure>) {
+          if(error.kind==SendableError::kResourceLimit || error.kind==SendableError::kWorkLimit) {
+            RouteFailure failure{error.kind==SendableError::kResourceLimit?RouteFailureClass::kMemoryLimit:RouteFailureClass::kWorkLimit,ValueRouteError::kTreeStage,error.pc};
+            failure.sendable=error;failure.sendable->record=record.offset;failure.method=error.method;failure.working_pc=error.working_pc;
+            AppendFailureCause(failure.causes,error.kind);return RouteRefusal{failure};
+          }
+          RecordProgramFailure failure{Error::kClass,error.pc};failure.sendable=error;
+          failure.sendable->record=record.offset;failure.method=error.method;failure.working_pc=error.working_pc;
+          AppendFailureCause(failure.causes,error.kind);
+          std::visit([&](auto cause){if constexpr(!std::is_same_v<decltype(cause),std::monostate>)AppendFailureCause(failure.causes,cause);},error.cause);
+          return failure;
+        } else if constexpr (std::is_same_v<T, FamilyPrepareFailure>)
           return RouteRefusal{FamilyRouteFailure(error)};
         else if constexpr (std::is_same_v<T, ClassContextFailure> || std::is_same_v<T, CreationContextFailure>)
           return std::visit([&](const auto& nested) { return self(self, nested); }, error.error);
@@ -741,7 +752,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     if (omission_work > analysis::kDefaultSemanticWork - borrowed.Work())
       throw RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{FamilyPrepareError::kWorkLimit})};
     std::uint64_t remaining_work=analysis::kDefaultSemanticWork-borrowed.Work()-omission_work;
-    struct PrintPass {std::size_t bytes,peak;bool incomplete;};
+    struct PrintPass {std::size_t bytes,peak;bool incomplete;bool arkts;};
     const auto write=[&](std::ostream& output)->PrintPass {
     // Reserve the nested phase allowance before it can allocate. Its own
     // ledgers enforce that allowance. The lease ends only after every returned
@@ -765,7 +776,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           case ModuleImportError::kString: throw fail_with(Error::kModule, import_error);
         }
       }
-      bool incomplete = false;
+      bool incomplete = false;bool arkts=false;
       std::size_t peak=0;std::uint64_t work=0;
       auto printed = [&]() -> std::variant<std::size_t, TreePrintFailure> {
         if (!module_family) {
@@ -773,14 +784,15 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
               {budget.output.bytes - *prelude_bytes}, {scratch.Bytes(),remaining_work}, &class_scope, default_export,result->flow?result->flow->original.get():nullptr);
           if (const auto* error = std::get_if<TreePrintFailure>(&emitted)) return *error;
           const auto& positions = std::get<PrintedFunction>(emitted);
-          incomplete = positions.incomplete;peak=positions.allocated_bytes;work=positions.work;
+          incomplete = positions.incomplete;arkts=positions.arkts;peak=positions.allocated_bytes;work=positions.work;
           return positions.bytes;
         }
         auto emitted = PrintModuleFamilyDraft(*module_family, output,
             {budget.output.bytes - *prelude_bytes}, {scratch.Bytes(),remaining_work}, &class_scope, default_export);
         if (const auto* error = std::get_if<TreePrintFailure>(&emitted)) return *error;
         const auto& positions = std::get<PrintedFamilyDraft>(emitted);
-        incomplete = positions.members[module_family->root.value].incomplete;peak=positions.allocated_bytes;work=positions.work;
+        incomplete = positions.members[module_family->root.value].incomplete;
+        for(const auto& member:positions.members)arkts|=member.arkts;peak=positions.allocated_bytes;work=positions.work;
         return positions.bytes;
       }();
       const auto* body = std::get_if<std::size_t>(&printed);
@@ -796,6 +808,16 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
             throw RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{print_error})};
         }
       }
+      const auto arkts_binding_failure=[&] {
+        RecordProgramFailure failure{Error::kModule,{}};
+        failure.method=index.methods[entry.value].offset;
+        SendableFailure detail;detail.kind=SendableError::kBinding;detail.record=record.offset;detail.method=*failure.method;
+        failure.sendable=detail;AppendFailureCause(failure.causes,detail.kind);return failure;
+      };
+      // .ets uses the pinned dynamic TS parser, which cannot spell quoted
+      // ModuleExportName imports. Refuse metadata syntax, never fake a read or
+      // publish a file the required frontend cannot parse.
+      if(arkts && output_syntax.HasQuotedModuleName())throw arkts_binding_failure();
       if(output_syntax.Method()&&output_syntax.HasQuotedModuleName()) {
         ConcurrentFailure failure;failure.kind=ConcurrentError::kModuleSyntax;
         failure.method=*output_syntax.Method();failure.record=record.offset;
@@ -812,10 +834,11 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         append("export { ");
         for (const auto unit : names[alias_slots[i]]) append(std::string(1, static_cast<char>(unit)));
         append(" as ");
-        if(output_syntax.Method()) {
-          // Formatting of newly emitted Ark concurrent modules only; arbitrary
+        if(output_syntax.Method() || arkts) {
+          // Formatting of newly emitted Ark modules only; arbitrary
           // string names cannot be round-tripped by the pinned frontend.
           if(ClassifyMemberKey(aliases[i])!=MemberKeySyntax::kIdentifier) {
+            if(arkts)throw arkts_binding_failure();
             ConcurrentFailure failure;failure.kind=ConcurrentError::kModuleSyntax;
             failure.method=*output_syntax.Method();failure.record=record.offset;
             TreePrintFailure error{TreePrintError::kUnsupportedContext};error.concurrent=failure;
@@ -835,7 +858,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       if(work>remaining_work||framing>remaining_work-work)
         throw RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{TreePrintFailure{TreePrintError::kWorkLimit}})};
       remaining_work-=work+framing;
-      return PrintPass{bytes,peak,incomplete};
+      return PrintPass{bytes,peak,incomplete,arkts};
     };
     CountingSink counter;std::ostream counted(&counter);
     TreePrintCensus census;
@@ -864,7 +887,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     }
     RecordPrintSink sink(memory,measure.bytes);std::ostream output(&sink);
     const auto printed=write(output);
-    if(printed.bytes!=measure.bytes||printed.incomplete!=measure.incomplete)throw fail(Error::kValue);
+    if(printed.bytes!=measure.bytes||printed.incomplete!=measure.incomplete||printed.arkts!=measure.arkts)throw fail(Error::kValue);
     if (file.CheckUnchanged()) return fail(Error::kFileChanged);
     PrintedSource source;
     // The selected contract owns the entire recovered family, including partial
@@ -872,7 +895,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     // default when transferring it across the common record boundary.
     source.contract = identity.contract;
     source.text = sink.Finish();
-    source.incomplete = printed.incomplete;
+    source.incomplete = printed.incomplete;source.arkts=printed.arkts;
     source.omitted_members = std::move(omitted_members);
     source.environment_cleanup = std::move(cleanup_sites);
     return source;

@@ -23,6 +23,11 @@ try {
     const out=join(dir,label);run(structure,[input,out,'--value-source',...flags]);
     const manifest=JSON.parse(readFileSync(join(out,'manifest.json')));
     const sendable=manifest.records.find(r=>r.entity===28934),shared=manifest.records.find(r=>r.entity===24892);
+    if(label==='source') {
+      assert.equal(sendable.source_complete,true);assert.equal(sendable.source_language,'arkts');assert.match(sendable.source,/\.ets$/);
+      const cli=JSON.parse(run(semantic,[input,'29066','--record-source',...flags]));
+      assert.equal(cli.source_language,'arkts');assert.equal(cli.source_failure,undefined);
+    } else {
     assert.equal(sendable.source_status,3);assert.equal(sendable.source,undefined);
     assert.deepEqual(sendable.source_failure.causes,[{domain:'abcd::analysis::SemanticError',value:1}]);
     const s=sendable.source_failure.sendable;
@@ -32,6 +37,7 @@ try {
     assert.equal(s.field_count,1);assert.equal(s.instance_count,1);assert.equal(s.member_count,1);
     const cli=JSON.parse(run(semantic,[input,'29066','--record-source',...flags],1));
     assert.deepEqual(cli.source_failure,sendable.source_failure);
+    }
     assert.equal(shared.source_status,3);assert.equal(shared.source,undefined);
     assert.equal(shared.source_error,2);assert.deepEqual(shared.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
     const m=shared.source_shared_module;
@@ -41,5 +47,5 @@ try {
     const sharedCli=JSON.parse(run(semantic,[input,'25192','--record-source',...flags],1));
     assert.deepEqual(sharedCli.source_shared_module,m);
   }
-  console.log('metadata scale 200/201/400/800 + exact reader budgets; 2 records x 2 contracts keep first causes/status/gates; CLI/manifest agree');
+  console.log('metadata scale 200/201/400/800 + exact reader budgets; old Sendable gate preserved; V3 Sendable publishes; shared gate preserved; CLI/manifest agree; CLI/manifest agree');
 } finally { rmSync(dir,{recursive:true,force:true}); }

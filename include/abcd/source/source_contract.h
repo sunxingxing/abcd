@@ -276,8 +276,8 @@ constexpr IterationAcquisitionSemantics IterationAcquisition(SourceContract cont
   std::terminate();
 }
 // Approved 2026-10-15: Ark output policies preserve kind and metadata, never
-// erase concurrent/sendable/shared semantics. Only concurrent evidence is enabled
-// in increment I; publication still requires completion and recompilation proof.
+// erase concurrent/sendable/shared semantics. Each policy has independent
+// admission; publication requires completion and recompilation proof.
 enum class ConcurrentOutputPolicy : std::uint8_t { kNotEnabled, kArkDirectiveV1 };
 constexpr ConcurrentOutputPolicy ConcurrentOutput(SourceContract contract) {
   switch (contract) {
@@ -310,7 +310,7 @@ constexpr SendableOutputPolicy SendableOutput(SourceContract contract) {
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
       return SendableOutputPolicy::kNotEnabled;
-    case SourceContract::kLanguageSourceV3: return SendableOutputPolicy::kNotEnabled;
+    case SourceContract::kLanguageSourceV3: return SendableOutputPolicy::kArkDirectiveV1;
   }
   std::terminate();
 }

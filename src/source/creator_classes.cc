@@ -140,7 +140,7 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyCreatorClasses(
       q.Admit(expected.allocated_bytes); q.Step(expected.work);
       q.Require(tree.creation.target==expected.creation.target && tree.creation.pc==expected.creation.pc &&
           tree.creation.creation==expected.creation.creation &&
-          tree.member_sites==expected.member_sites && tree.callable==expected.callable && tree.name==expected.name,Error::kCreation);
+          tree.member_sites==expected.member_sites && tree.callable==expected.callable && tree.name==expected.name && tree.sendable==expected.sendable,Error::kCreation);
       q.Require(tree.initializer_site==expected.initializer_site && tree.definitions.size()==expected.definitions.size(),Error::kCreation);
       for(std::size_t d=0;d<tree.definitions.size();++d) {
         q.Step();const auto& definition=tree.definitions[d];

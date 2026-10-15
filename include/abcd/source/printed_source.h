@@ -118,6 +118,7 @@ struct PrintedSource {
   // A retained class/member gap makes the surrounding record incomplete.
   // This is recovery status, never permission to execute a partial artifact.
   bool incomplete = false;
+  bool arkts = false;
   std::vector<OmittedClassMember> omitted_members;
   std::vector<EnvironmentCleanupSite> environment_cleanup;
 };

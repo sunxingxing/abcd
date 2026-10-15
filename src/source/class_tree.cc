@@ -1,4 +1,5 @@
 #include "class_tree.h"
+#include "sendable_class.h"
 #include <bit>
 #include <algorithm>
 #include <new>
@@ -38,6 +39,18 @@ std::variant<ClassParentScope, ClassTreeError> CheckClassParentScope(
 
 namespace {
 using Error = ClassTreeError;
+SendableFailure LocateSendable(SendableFailure failure,const FileFunction& creator,analysis::OpId operation) {
+  failure.record=creator.input.Record();failure.method=creator.input.Method();
+  const auto& graph=creator.values.graph;
+  if(operation.value<graph.ops.size() && graph.ops[operation.value].origin.value<graph.origins.size()) {
+    const auto site=graph.origins[graph.ops[operation.value].origin.value].site;
+    if(site.value<creator.input.Input().instructions.size()) {
+      const auto& instruction=creator.input.Input().instructions[site.value];
+      failure.pc=instruction.origin.value_or(instruction.pc);failure.working_pc=instruction.pc;
+    }
+  }
+  return failure;
+}
 template<class T, class... U> T Take(std::variant<U...> value) {
   if (auto* result = std::get_if<T>(&value)) return std::move(*result);
   std::visit([](const auto& error) {
@@ -109,14 +122,26 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     const auto site = *context.Constructor();
     const auto resolved = Take<abc::PoolReference>(abc::ResolvePoolReference(file, header, index,
         site.creator, site.creation.literal, abc::PoolEntityKind::kLiteralArray));
-    const auto literal = Take<abc::LiteralArray>(abc::ReadLiteralArray(file, header, resolved.offset, {budget.bytes}));
-    admit(literal.entries.capacity(), sizeof(abc::LiteralEntry)); step(literal.entries.size());
-    const auto buffer = Take<abc::ClassBuffer>(abc::DecodeClassBuffer(literal, {budget.bytes}));
-    admit(buffer.properties.capacity(), sizeof(abc::ClassProperty));
+    std::optional<abc::ClassBuffer> ordinary;
+    std::shared_ptr<const analysis::IndexedSendableLiteral> sendable;
+    if(site.creation.kind==abc::ClassKind::kSendable) {
+      sendable=classes.SendableLiteral(resolved.offset);
+      if(index.methods[context.Position().value].owner_offset!=creator.input.Record()) {
+        SendableFailure e;e.kind=SendableError::kOwner;e.record=creator.input.Record();e.method=site.creator;e.pc=site.pc;
+        throw ClassTreeFailure{e};
+      }
+      if(!sendable) {SendableFailure e;e.kind=SendableError::kClassLiteral;e.method=site.creator;e.pc=site.pc;throw ClassTreeFailure{e};}
+    } else {
+      const auto literal=Take<abc::LiteralArray>(abc::ReadLiteralArray(file,header,resolved.offset,{budget.bytes}));
+      admit(literal.entries.capacity(),sizeof(abc::LiteralEntry));step(literal.entries.size());
+      ordinary=Take<abc::ClassBuffer>(abc::DecodeClassLiteral(literal,site.creation.kind,{budget.bytes}));
+      admit(ordinary->properties.capacity(),sizeof(abc::ClassProperty));
+    }
+    const auto& buffer=sendable?sendable->members:*ordinary;
     const auto name = RuntimeName(index.methods[context.Position().value]);
     if (!name) return ClassTreeFailure{Error::kName};
     ClassTree tree;
-    tree.identity = identity; tree.creation = site; tree.operation = operation; tree.callable = context.Callable();
+    tree.identity = identity; tree.creation = site; tree.operation = operation; tree.callable = context.Callable();tree.sendable=std::move(sendable);
     admit(name->size() + 1, sizeof(char16_t)); step(name->size());
     tree.name.assign(name->begin(), name->end());
     admit(tree.name.capacity() - tree.name.size(), sizeof(char16_t));
@@ -159,6 +184,9 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
       if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};
       tree.initializer_site = *initializer;
     }
+    std::uint64_t layout_work=0;
+    if(const auto error=VerifySendableClass(tree,false,budget,&layout_work))throw ClassTreeFailure{LocateSendable(*error,creator,operation)};
+    step(layout_work);
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
     tree.allocated_bytes = initial.bytes - budget.bytes; tree.work = initial.work - budget.work;
     return tree;
@@ -276,6 +304,14 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     auto tree = preparation ? std::move(preparation->layout) : Take<ClassTree>(BuildClassLayout(file, header, index, lookup, roles, classes,
         creator, operation, identity, budget, initializer, definitions));
     if (!preparation) { admit(tree.allocated_bytes, 1); step(tree.work); }
+    if(tree.sendable) {
+      const auto resolved=Take<abc::PoolReference>(abc::ResolvePoolReference(file,header,index,
+          creator.input.Method(),tree.creation.creation.literal,abc::PoolEntityKind::kLiteralArray));
+      if(tree.sendable!=classes.SendableLiteral(resolved.offset)) {
+        SendableFailure e;e.kind=SendableError::kCorrespondence;e.record=creator.input.Record();
+        e.method=creator.input.Method();e.pc=tree.creation.pc;throw ClassTreeFailure{e};
+      }
+    }
     if (preparation && preparation->recovery != recovery) throw ClassTreeFailure{Error::kCreation};
     if (tree.identity != identity || tree.operation != operation || tree.creation.creator != creator.input.Method())
       throw ClassTreeFailure{Error::kCreation};
@@ -432,6 +468,9 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     }
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
     tree.initializer = std::move(fields);
+    std::uint64_t sendable_work=0;
+    if(const auto error=VerifySendableClass(tree,true,budget,&sendable_work))throw ClassTreeFailure{LocateSendable(*error,creator,operation)};
+    step(sendable_work);
     tree.allocated_bytes = initial.bytes - budget.bytes; tree.work = initial.work - budget.work;
     return tree;
   } catch (const ClassTreeFailure& failure) { return failure; }

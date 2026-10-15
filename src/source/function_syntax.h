@@ -53,6 +53,7 @@ struct FunctionSyntax {
   ParameterForm parameter_form = ParameterForm::kFrameFormals;
   HomeObjectBinding home_object = HomeObjectBinding::kNone;
   std::optional<ConcurrentDirective> concurrent;
+  std::optional<SendableConstructorDirective> sendable;
 };
 }  // namespace abcd::source
 #endif

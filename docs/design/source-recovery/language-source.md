@@ -343,7 +343,7 @@ DataDriver 的旧 CLI 断言随实际首拒绝从 unsupported@153 改为 kContro
 | 谓词 | V1/V2 及其他契约 | V3 当前值 | 发布状态 |
 |---|---|---|---|
 | `ConcurrentOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 同步完成投影已接入；async 仍有显式门禁；编译往返见增量 II 验收 |
-| `SendableOutput()` | `kNotEnabled` | `kNotEnabled` | 等待各自实现与编译往返验证 |
+| `SendableOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 增量 II：闭合类、primitive/union 存储描述；独立证明和实际编译往返 |
 | `SharedModuleOutput()` | `kNotEnabled` | `kNotEnabled` | 等待各自实现与编译往返验证 |
 
 Round 73 增量 I 不修改 callable、创建时间、名字或任何打印动作。`CreationContextError::kKind`
@@ -466,7 +466,7 @@ ABC 的 kind、sendable、async protocol、请求及两种通知完成端口检�
 
 ### Round 74 增量 I：Sendable/shared 元数据与证据
 
-只建立元数据和诊断，不开放源码准入：两个 V3 谓词仍为 `kNotEnabled`。
+增量 I 当时只建立元数据和诊断，不开放源码准入；两个 V3 谓词当时均为 `kNotEnabled`。
 创建指令给出 `ClassKind`，据此选择 ordinary/sendable literal 格式；字段缓冲保留
 字段顺序、运行时类型 mask 与实例/静态分界。GENERIC/NONE 不是可猜测的名义类型。
 共享属性保留 absent/false/true，和真实所属 record 的模块表绑定，不能冒充
@@ -477,3 +477,38 @@ ABC 的 kind、sendable、async protocol、请求及两种通知完成端口检�
 `"use sendable"` 和原有 [[Set]] 写入；需要类型注解的 `.ets` 用 `--extension=ts`
 重编译，并标记 `source_language: arkts`。GENERIC 仍须有真实 binding 支撑的可验证
 拼写，否则 `kTypeSpelling`。详见 [Sendable/shared 设计](sendable-shared.md)。
+
+
+### Round 74 增量 II：闭合 Sendable 类
+
+`SendableOutput(V3)` 现在启用 `kArkDirectiveV1`，其他契约保持 disabled；
+`SharedModuleOutput` 仍 disabled。按原始创建种类选择 literal 格式，类准备复用
+ClassTree/family。创建者使用已解码的不可变输入，文件级 literal 索引按实体共享
+Sendable 字段/成员缓冲；字段名按字符串实体排序去重，避免别名长字符串重复读取。
+索引是 O(N log N)，保存 O(N) 输入/唯一文本；输出的重复文本另按实际输出计费。
+新增索引、共享控制块、字符串和所有 arena 都在分配前计费。
+
+完整证据只允许无 heritage、无外部 capture/模块环境依赖、无待恢复 static initializer
+或 defined member、无成员遗漏的闭合类；静态存储的初始化器对应仍为类型化门禁。每个构造器的 directive 属性绑定实际创建点、
+constructor/literal 池和方法身份；发射器仅从该属性输出首条 `"use sendable"`。
+字段保留顺序、实例/静态位置和 mask。number/string/boolean/bigint/null/undefined
+及其 union 输出为**没有 initializer** 的 TS 存储描述，原构造器 [[Set]] 不变。
+NONE、TYPE_REF、GENERIC(32) 没有获证的拼写，继续 `kTypeSpelling`；带环境/捕获/
+heritage 或其他缺口的类继续类型化拒绝。没有把 shared 类当作普通类。
+
+树、类准备结束及来源对应独立复核原始 kind、canonical literal、构造器属性和闭合
+条件。字段描述是同一创建事件的存储元数据，不是额外的 [[Define]] 语句。
+新发布且实际含此语法的 record 才使用 `.ets` / `source_language: arkts`；已有记录
+不因契约选择而改扩展名。用 DevEco `--module --merge-abc --extension=ts --opt-level=0`
+重编译输出，保持原 record 名；禁止 `--use-define-semantic`。
+
+测试比较实际输出重编译后的 class kind、字段缓冲、成员、constructor length、
+sendable env、模块/导出映射及有序 [[Set]]，并做 directive/mask/写入变异检测。
+Node 只比较擦除存储描述后的普通调用值、异常类型和轨迹；共享堆、字段类型检查和
+跨线程行为仍是 runtime 验证缺口。fixture 来源与命令见
+[closed Sendable fixture](../../../tests/integration/fixtures/sendable_source/README.md)。
+
+字段解码的 mask/split/key 失败缓存为所属类的拒绝，不能让新字段证明的失败影响
+同文件无关记录；资源/work 失败仍归索引所有者。需要字符串 import/export 名而
+锁定 TS 前端没有获证拼写时，返回记录级 `kBinding`，不发布无法重编译的 `.ets`，
+且没有伪造指令 PC。

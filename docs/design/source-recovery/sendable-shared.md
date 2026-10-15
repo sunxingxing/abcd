@@ -41,9 +41,9 @@ metadata reader does not invent a normalized PC. Failure decoration runs only
 on an actual refused occurrence. Existing first causes and resource classes
 are unchanged. No symbols, owners, or names are allocated by a metadata proof.
 
-Production gates remain: semantic lifting refuses Sendable source; the source
+At increment I, production gates remained: semantic lifting refused Sendable source; the source
 class-site index remains ordinary-only; shared entry remains kModule/kShared;
-both V3 policy predicates remain disabled. The new Value kind is groundwork,
+both V3 policy predicates were disabled. The new Value kind is groundwork,
 not permission to recover an ordinary lexical environment for a Sendable class.
 
 ## Target evidence
@@ -70,3 +70,48 @@ Exploration vs explore73c/explore73cs:521/620 and565/620, no status or source/
 extension drift, complete structural artifacts unchanged. Each manifest set
 changes only the two target witnesses; first causes stay unchanged. Full logs
 and comparisons are in /private/tmp/abcd-round74. Increment II is not started.
+
+
+## Round 74 increment II: closed class publication
+
+The common ClassMethodSites index now retains typed Sendable member/field
+literals once per unique original entity. Existing immutable creator input owns
+the original decoded operations; layout/finishing never re-decodes a creator per
+class. Distinct field key entities are sorted/deduplicated before string reads.
+The actual allocator charges shared control blocks before allocation. The
+file/index owner retains this charge while class layouts borrow immutable
+literals; class output does not obtain another unbudgeted buffer.
+
+Sendable kind survives the normal class context, layout, preparation, value
+operand verification and original creation/commit/exception mapping. A typed
+constructor directive binds the exact method and creation pool identity. The
+closed proof checks external capture targets, every member family's module
+uses, heritage, omissions, initializer/definition gaps, canonical literal and
+primitive type spellings; the finished and tree checks repeat it independently.
+No capture guard, creation event, constructor assignment or exception edge is
+removed. Resource/work failures retain their classes.
+
+Primitive masks are emitted as storage-only TS descriptions with no initializer,
+and the constructor directive is first. NONE/TYPE_REF/GENERIC remain a located
+kTypeSpelling; shared module/read support remains separately gated. Newly
+published Sendable output alone becomes .ets/arkts; ordinary and concurrent
+records retain their existing syntax and extensions.
+
+Acceptance uses actual engine output recompilation with DevEco's dynamic TS
+parser, exact record identity and no --use-define-semantic. The independent probe
+compares kind, constructor length/flags, heritage, member literal order, field
+mask/order/split, ordered [[Set]], environments and module exports/requests. Node
+covers ordinary calls and discriminating setter traces only; shared heap/type
+checks are not verified there. See the fixture README for compiler identity,
+options, hashes, scale/budget and mutation coverage.
+
+Static storage requiring the frontend's static-initializer member remains a
+typed preparation gate in II; no initializer is synthesized or silently dropped.
+Class-field grammar also rejects constructor/static-prototype keys rather than
+using MemberExpression IdentifierName rules or crashing the pinned frontend.
+
+Malformed field descriptions are retained as typed per-literal failures in the
+shared index, so an invalid mask/split/key refuses the owning class instead of
+poisoning unrelated records. Resource/work exhaustion remains an index-owner
+failure. The class refusal retains the field ordinal, known raw mask and leaf
+field-decoder cause.

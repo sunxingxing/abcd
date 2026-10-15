@@ -57,6 +57,10 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     auto& syntax = result.syntax;
     syntax.identity = identity; syntax.method = method.offset; syntax.owner = owner;
     syntax.callable = context.Callable(); syntax.strictness = context.Mode();
+    if(const auto* site=context.ConstructorSite();site && site->creation.kind==abc::ClassKind::kSendable) {
+      Require(SendableOutput(identity.contract)==SendableOutputPolicy::kArkDirectiveV1,Error::kContext);
+      syntax.sendable=SendableConstructorDirective{method.offset,site->creator,site->pc,site->creation.constructor,site->creation.literal};
+    }
     if(context.Concurrent()) {
       if (!IsAsyncCallable(context.Callable())) {
         auto proof=BuildConcurrentCompletion(graph,{bytes,work});
