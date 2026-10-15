@@ -2,9 +2,11 @@
 #define ABCD_SOURCE_EVALUATION_FAILURE_JSON_H_
 #include "abcd/source/evaluation_failure.h"
 #include "tree_failure_json.h"
+#include "concurrent_failure_json.h"
 namespace abcd::source {
 inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
   nlohmann::json j{{"obligation", static_cast<unsigned>(v.obligation)}, {"location", TreeLocationJson(v.location)}};
+  if(v.concurrent)j["concurrent"]=ConcurrentJson(*v.concurrent);
   if (v.for_in) {
     const auto& f = *v.for_in;
     nlohmann::json item{{"kind", static_cast<unsigned>(f.kind)}};
@@ -50,6 +52,7 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
   if (!j.is_object() || !FailureNumber(j,"obligation",n) || n > static_cast<unsigned>(EvaluationObligation::kUse) || !j.contains("location")) return {};
   EvaluationEvidence v; v.obligation = static_cast<EvaluationObligation>(n);
   auto location = ParseTreeLocation(j["location"]); if (!location) return {}; v.location = *location;
+  if(j.contains("concurrent")){v.concurrent=ParseConcurrent(j["concurrent"]);if(!v.concurrent)return {};}
   if (j.contains("for_in")) {
     const auto& f = j["for_in"];
     if (!f.is_object() || !FailureNumber(f,"kind",n) || n > static_cast<unsigned>(ForInError::kWorkLimit)) return {};
@@ -64,8 +67,8 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
     if (!c.is_object() || !FailureNumber(c,"reason",n) || n > static_cast<unsigned>(SnapshotCandidateReason::kConsumerPlacement)) return {};
     evidence.reason = static_cast<SnapshotCandidateReason>(n);
     if (!FailureOptionalId(c,"occurrence",evidence.occurrence)) return {};
-    if (c.contains("producer")) { if (!FailureNumber(c,"producer",n) || n > static_cast<unsigned>(EvaluationKind::kForInEvent)) return {}; evidence.producer = static_cast<EvaluationKind>(n); }
-    if (c.contains("consumer")) { if (!FailureNumber(c,"consumer",n) || n > static_cast<unsigned>(EvaluationKind::kForInEvent)) return {}; evidence.consumer = static_cast<EvaluationKind>(n); }
+    if (c.contains("producer")) { if (!FailureNumber(c,"producer",n) || n > static_cast<unsigned>(EvaluationKind::kConcurrentNotification)) return {}; evidence.producer = static_cast<EvaluationKind>(n); }
+    if (c.contains("consumer")) { if (!FailureNumber(c,"consumer",n) || n > static_cast<unsigned>(EvaluationKind::kConcurrentNotification)) return {}; evidence.consumer = static_cast<EvaluationKind>(n); }
     v.snapshot_candidate = evidence;
   }
   if (j.contains("logical_coverage")) {
@@ -82,7 +85,7 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
   if (!FailureOptionalId(j,"use",v.use) || !FailureOptionalId(j,"value",v.value) ||
       !FailureOptionalId(j,"selection_edge",v.selection_edge) || !FailureOptionalId(j,"expected_consumer",v.expected_consumer) || !FailureOptionalId(j,"actual_consumer",v.actual_consumer)) return {};
   if (j.contains("selection_exit")) { if (!FailureNumber(j,"selection_exit",n) || n > static_cast<unsigned>(SelectionExitReason::kKeepEdge)) return {}; v.selection_exit = static_cast<SelectionExitReason>(n); }
-  if (j.contains("placement")) { if (!FailureNumber(j,"placement",n) || n > static_cast<unsigned>(EvaluationKind::kForInEvent)) return {}; v.placement = static_cast<EvaluationKind>(n); }
+  if (j.contains("placement")) { if (!FailureNumber(j,"placement",n) || n > static_cast<unsigned>(EvaluationKind::kConcurrentNotification)) return {}; v.placement = static_cast<EvaluationKind>(n); }
   if (j.contains("temporary")) { if (!FailureNumber(j,"temporary",n) || n > static_cast<unsigned>(TemporaryReason::kEnumerationKey)) return {}; v.temporary = static_cast<TemporaryReason>(n); }
   if (j.contains("expected_temporary")) { if (!FailureNumber(j,"expected_temporary",n) || n > static_cast<unsigned>(TemporaryReason::kEnumerationKey)) return {}; v.expected_temporary = static_cast<TemporaryReason>(n); }
   if (j.contains("expected_owner")) { v.expected_owner = ParseTreeLocation(j["expected_owner"]); if (!v.expected_owner) return {}; }

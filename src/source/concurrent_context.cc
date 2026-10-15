@@ -3,12 +3,13 @@
 #include <algorithm>
 #include <bit>
 namespace abcd::source {
-ConcurrentFailure InspectConcurrentCreation(
+std::variant<ConcurrentMetadata,ConcurrentFailure> ReadConcurrentCreation(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodInfo& method,
     const analysis::FunctionCreationSite& site,
-    analysis::FunctionSiteId occurrence, SourceContract contract,
+    analysis::FunctionSiteId occurrence,
     analysis::SemanticBudget budget) {
+  const auto initial_work=budget.work;
   ConcurrentFailure failure;
   failure.method = method.offset;
   failure.record = method.owner_offset;
@@ -67,7 +68,7 @@ ConcurrentFailure InspectConcurrentCreation(
     failure.kind = ConcurrentError::kWorkLimit;
     return failure;
   }
-  const auto decoded = abc::ReadModuleInfo(
+  auto decoded = abc::ReadModuleInfo(
       file, header, *attrs.module, {budget.bytes}, attrs.request_phases);
   if (const auto* e = std::get_if<abc::ModuleFailure>(&decoded)) {
     failure.kind = e->kind == abc::ModuleError::kResourceLimit
@@ -89,7 +90,7 @@ ConcurrentFailure InspectConcurrentCreation(
     failure.kind = ConcurrentError::kResourceLimit;
     return failure;
   }
-  const auto requests = abc::ReadConcurrentRequests(
+  auto requests = abc::ReadConcurrentRequests(
       file, header, index, method, record->offset, module.requests,
       {budget.bytes - retained, budget.work});
   if (const auto* e = std::get_if<abc::ConcurrentRequestFailure>(&requests)) {
@@ -113,10 +114,23 @@ ConcurrentFailure InspectConcurrentCreation(
   failure.annotation = evidence.first_annotation;
   failure.annotation_present = evidence.present;
   failure.request_count = static_cast<std::uint32_t>(evidence.entries.size());
-  failure.kind =
-      ConcurrentOutput(contract) == ConcurrentOutputPolicy::kArkDirectiveV1
-          ? ConcurrentError::kPreparationGate
-          : ConcurrentError::kOutputPolicy;
+  ConcurrentMetadata result;
+  result.allocated_bytes=retained+evidence.allocated_bytes;
+  result.work=initial_work-budget.work+evidence.work;
+  result.location=failure;
+  result.module=std::get<abc::ModuleInfo>(std::move(decoded));
+  result.requests=std::get<abc::ConcurrentRequests>(std::move(requests));
+  return result;
+}
+ConcurrentFailure InspectConcurrentCreation(const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index,const abc::MethodInfo& method,
+    const analysis::FunctionCreationSite& site,analysis::FunctionSiteId occurrence,
+    SourceContract contract,analysis::SemanticBudget budget) {
+  auto read=ReadConcurrentCreation(file,header,index,method,site,occurrence,budget);
+  if(const auto* failure=std::get_if<ConcurrentFailure>(&read))return *failure;
+  auto failure=std::get<ConcurrentMetadata>(read).location;
+  failure.kind=ConcurrentOutput(contract)==ConcurrentOutputPolicy::kArkDirectiveV1?
+      ConcurrentError::kPreparationGate:ConcurrentError::kOutputPolicy;
   return failure;
 }
 }  // namespace abcd::source

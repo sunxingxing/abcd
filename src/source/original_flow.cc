@@ -54,6 +54,11 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
     }
   }
   // Keep immutable protocol evidence; these copies have their own admission.
+  copy(result->notifications,flow.notifications);
+  if(tree.concurrent) {
+    budget.Array(result->concurrent_operations,graph.ops.size());
+    for(std::size_t i=0;i<graph.ops.size();++i){budget.Step();result->concurrent_operations[i]=graph.ops[i].operation;}
+  }
   copy(result->enumerations,flow.enumerations);
   copy(result->forwarded_operations,flow.forwarded_operations);
   copy(result->forwarded_blocks,flow.forwarded_blocks);

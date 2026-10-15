@@ -57,6 +57,7 @@ enum class LanguageEffect : std::uint16_t {
   kArgumentsRead = 1 << 12,
   kSuspension = 1 << 13,
   kDebugger = 1 << 14,
+  kConcurrentNotification = 1 << 15,
 };
 constexpr LanguageEffect operator|(LanguageEffect left, LanguageEffect right) {
   return static_cast<LanguageEffect>(static_cast<std::uint16_t>(left) |
@@ -104,6 +105,13 @@ struct NoOperation {};
 // Pinned DEBUGGER notifies the debugger without assigning accumulator state.
 // Keep an ordered observation point; never canonicalize this to NoOperation.
 struct DebuggerOperation {};
+// CALLRUNTIME_NOTIFYCONCURRENTRESULT reads frame.function, not its writable
+// ABI register copy. It calls TriggerConcurrentCallback(acc, frame.function),
+// has no abrupt-completion dispatch and leaves acc unchanged (OH7 interpreter).
+enum class NotificationOwner : std::uint8_t { kInvocationFunction };
+struct ConcurrentNotification {
+  NotificationOwner owner = NotificationOwner::kInvocationFunction;
+};
 struct StringLoad {
   abc::PoolIndex value;
 };
@@ -158,7 +166,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck, ConcurrentNotification>;
 // Exact VM-enumerator transport only. Does not prove acquisition identity,
 // closed use, loop advancement or source admission.
 [[nodiscard]] bool AcceptsPropertyEnumerator(const SemanticOperation& operation);

@@ -170,7 +170,7 @@ class TreeBuilder {
     tree_.identity = syntax_.identity;
     tree_.method = syntax_.method;
     tree_.owner = syntax_.owner;
-    tree_.callable = syntax_.callable;
+    tree_.concurrent = std::move(syntax_.concurrent); tree_.callable = syntax_.callable;
     tree_.home_object = syntax_.home_object;
     tree_.parameter_form = syntax_.parameter_form;
     tree_.constructor_form = constants_.implicit_constructor ? ConstructorForm::kImplicit : ConstructorForm::kExplicit;
@@ -945,7 +945,7 @@ class TreeBuilder {
       const TreeOriginId origin{op.origin.value};
       const auto expression = forest_.operations[id.value];
       const auto disposition = Disposition(evaluation.kind);
-      if (IsReceiverGuard(tree_, id) || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+      if (evaluation.kind == EvaluationKind::kConcurrentNotification || IsReceiverGuard(tree_, id) || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
           disposition == EvaluationDisposition::kAnchor || disposition == EvaluationDisposition::kEnclosingAnchor ||
           disposition == EvaluationDisposition::kEnvironment) {
         // A projected pure elision keeps its PC at this lexical boundary, not
@@ -1094,7 +1094,7 @@ class TreeBuilder {
       }
       // An initialized guard owns only its original boundary. The checked,
       // possibly-throwing read disposition deliberately cannot enter this path.
-      if (Disposition(placement.kind) == EvaluationDisposition::kAnchor ||
+      if (placement.kind == EvaluationKind::kConcurrentNotification || Disposition(placement.kind) == EvaluationDisposition::kAnchor ||
           std::holds_alternative<analysis::ValueJump>(op.operation)) {
         const AnchorId anchor{static_cast<std::uint32_t>(tree_.anchors.size())};
         tree_.anchors.push_back({BlockBoundary{drafts_[draft].statement, drafts_[draft].count}, TreeOriginId{op.origin.value}});

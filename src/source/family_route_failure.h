@@ -36,6 +36,7 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     if constexpr (std::is_same_v<T, EvaluationFailure>) {
       CollectFailureCauses(error.evaluation.obligation, out);
       if (error.evaluation.for_in) CollectFailureCauses(error.evaluation.for_in->kind, out);
+      if (error.evaluation.concurrent) CollectFailureCauses(*error.evaluation.concurrent,out);
     }
     if constexpr (requires { error.tree; })
       if (error.tree) {

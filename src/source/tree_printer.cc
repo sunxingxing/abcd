@@ -1,3 +1,5 @@
+#include "concurrent_references.h"
+#include "concurrent_print.h"
 #include "tree_print_trace.h"
 #include "source_variables.h"
 #include "tail_completion.h"
@@ -340,6 +342,14 @@ class TreePrinter {
     return std::move(draft_);
   }
  private:
+  void ConcurrentRefusal(const ConcurrentFailure& detail) {
+    auto failure=TreePrintFailure{TreePrintError::kUnsupportedContext};failure.concurrent=detail;
+    failure.location.method=detail.method;failure.written_bytes=written_;throw failure;
+  }
+  struct ConcurrentFrame {bool owns=false;std::optional<ConcurrentReferenceProof> proof;};
+  std::vector<ConcurrentFrame> concurrent_frames_;
+  std::vector<std::vector<std::optional<ModuleSymbol>>> concurrent_modules_;
+  std::vector<std::optional<ModuleSymbol>> direct_concurrent_modules_;
   std::u16string_view ContextName(NameContext context) const {
     if (const auto* name = std::get_if<NameId>(&context)) return Tree().names[name->value];
     if (std::holds_alternative<DefaultInferredName>(context)) return u"default";
@@ -678,7 +688,15 @@ class TreePrinter {
     if (IsSourceIdentifier(name)) Identifier(name);
     else Quoted(name);
   }
-  void Name(SymbolId id) { Identifier(Tree().names[Tree().symbols[Initializers().Storage(id).value].name.value]); }
+  void Name(SymbolId id) {
+    const auto stored=Initializers().Storage(id);
+    if(!concurrent_frames_.empty()&&concurrent_frames_.back().proof) {
+      const auto& modules=family_?concurrent_modules_[current_]:direct_concurrent_modules_;
+      if(stored.value<modules.size()&&modules[stored.value])
+        if(const auto failure=concurrent_frames_.back().proof->Observe(*modules[stored.value]))ConcurrentRefusal(*failure);
+    }
+    Identifier(Tree().names[Tree().symbols[stored.value].name.value]);
+  }
   template <class T> void Numeric(T value) {
     // General to_chars uses a shortest round-tripping representation. The fixed
     // scratch covers sign, max_digits10, exponent marker/sign and decimal exponent.
@@ -928,6 +946,10 @@ class TreePrinter {
   }
   void Expression(EmptyObjectExpr, bool grouped = true) { Append(grouped ? "({})" : "{}"); }
   void Expression(const ClassExpr& node, ExprId expression, NameContext inferred_name = {}) {
+    if(!concurrent_frames_.empty()&&concurrent_frames_.back().proof) {
+      ConcurrentFailure e;e.kind=ConcurrentError::kRequestUses;e.method=Tree().method;ConcurrentRefusal(e);
+    }
+
     if (!node.definition) throw Error::kUnsupportedContext;
     // Identifier initialization/assignment performs NamedEvaluation without
     // adding an immutable inner class binding. Other naming contexts use the
@@ -1010,6 +1032,26 @@ class TreePrinter {
     Push(BeginFunction{}); current_ = parent;
   }
   void Run(BeginFunction) {
+    if(Tree().concurrent)ConcurrentPrint::Directive(*Tree().concurrent);
+    if(Tree().concurrent || (!concurrent_frames_.empty()&&concurrent_frames_.back().proof)) {
+      if(concurrent_frames_.size()==concurrent_frames_.capacity()) {
+        const auto capacity=concurrent_frames_.capacity();const auto next=capacity?capacity*2:1;
+        if(next<=capacity)throw Error::kResourceLimit;
+        Admit(next,sizeof(ConcurrentFrame));concurrent_frames_.reserve(next);Admit(concurrent_frames_.capacity()-next,sizeof(ConcurrentFrame));
+      }
+      auto inherited=concurrent_frames_.empty()?std::optional<ConcurrentReferenceProof>{}:concurrent_frames_.back().proof;
+      concurrent_frames_.push_back({Tree().concurrent.has_value(),Tree().concurrent?std::optional<ConcurrentReferenceProof>{*Tree().concurrent}:inherited});
+      if(Tree().concurrent&&(!Tree().captures.empty()||(Tree().self&&Tree().self_form==SelfForm::kCreationBinding))) {
+        ConcurrentFailure e;e.kind=ConcurrentError::kCaptures;e.method=Tree().method;ConcurrentRefusal(e);
+      }
+      if(family_&&concurrent_modules_.empty())Array(concurrent_modules_,family_->members.size());
+      auto& modules=family_?concurrent_modules_[current_]:direct_concurrent_modules_;
+      if(modules.empty()) {
+        Array(modules,Tree().symbols.size());
+        for(const auto& alias:Tree().modules){Step();modules[alias.symbol.value]=alias.target;}
+      }
+    }
+
     if (family_) {
       if (printed_[current_]) throw Error::kUnsupportedContext;
       printed_[current_] = true; draft_.functions[current_].begin = written_;
@@ -1083,6 +1125,12 @@ class TreePrinter {
     Push(ParameterCursor{0});
   }
   void Run(EndFunction) {
+    if(!concurrent_frames_.empty()&&concurrent_frames_.back().proof) {
+      auto frame=concurrent_frames_.back();concurrent_frames_.pop_back();
+      if(frame.owns){if(const auto failure=frame.proof->Finish())ConcurrentRefusal(*failure);}
+      else if(!concurrent_frames_.empty())concurrent_frames_.back().proof=frame.proof;
+    }
+
     for (std::size_t i = 0; i < Tree().anchors.size(); ++i) {
       Step(); if (std::holds_alternative<FunctionExit>(Tree().anchors[i].position)) Result().anchors[i] = written_;
     }
@@ -1454,6 +1502,9 @@ class TreePrinter {
   void StatementNode(const BlockStmt& node, Statement at) {
     if (node.label) { Label(*node.label); Append(": "); }
     if (!ModuleBody() || at.id != Tree().body) Append("{\n");
+    if(at.id==Tree().body && Tree().concurrent) {
+      Run(Indent{at.depth+1});Append("\"use concurrent\";\n");
+    }
     Push(BlockCursor{at.id, 0, at.depth});
   }
   void StatementNode(const DeclarationStmt& node, Statement at) {

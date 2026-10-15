@@ -6,15 +6,18 @@ namespace abcd::source {
 inline nlohmann::json ConcurrentJson(const ConcurrentFailure& v) {
   nlohmann::json j{{"kind", static_cast<unsigned>(v.kind)},
                    {"method", v.method.value},
-                   {"record", v.record.value},
-                   {"creator", v.creator.value},
-                   {"occurrence", v.occurrence.value},
-                   {"creation_pc", v.creation_pc.value}};
+                   {"record", v.record.value}};
+  if(v.creator.value) {j["creator"]=v.creator.value;j["occurrence"]=v.occurrence.value;j["creation_pc"]=v.creation_pc.value;}
   if (v.annotation) j["annotation"] = v.annotation->value;
   if (v.annotation_present) j["annotation_present"] = *v.annotation_present;
   if (v.request_count) j["request_count"] = *v.request_count;
   if (v.element) j["element"] = *v.element;
   if (v.request) j["request"] = *v.request;
+  if(v.operation)j["operation"]=v.operation->value;
+  if(v.returned)j["returned"]=v.returned->value;
+  if(v.use)j["use"]=v.use->value;
+  if(v.pc)j["pc"]=v.pc->value;
+  if(v.working_pc)j["working_pc"]=v.working_pc->value;
   if (v.metadata) j["metadata_error"] = static_cast<unsigned>(*v.metadata);
   std::visit(
       [&](auto cause) {
@@ -30,15 +33,20 @@ inline std::optional<ConcurrentFailure> ParseConcurrent(
   ConcurrentFailure v;
   std::uint32_t kind;
   if (!j.is_object() || !FailureNumber(j, "kind", kind) ||
-      kind > static_cast<unsigned>(ConcurrentError::kWorkLimit) ||
+      kind > static_cast<unsigned>(ConcurrentError::kModuleSyntax) ||
       !FailureNumber(j, "method", v.method.value) ||
-      !FailureNumber(j, "record", v.record.value) ||
-      !FailureNumber(j, "creator", v.creator.value) ||
-      !FailureNumber(j, "occurrence", v.occurrence.value) ||
-      !FailureNumber(j, "creation_pc", v.creation_pc.value))
+      !FailureNumber(j, "record", v.record.value))
     return {};
   v.kind = static_cast<ConcurrentError>(kind);
+  if(j.contains("creator")||j.contains("occurrence")||j.contains("creation_pc")) {
+    if(!FailureNumber(j,"creator",v.creator.value)||!v.creator.value||
+        !FailureNumber(j,"occurrence",v.occurrence.value)||!FailureNumber(j,"creation_pc",v.creation_pc.value))return {};
+  }
   if (!FailureOptionalId(j, "annotation", v.annotation)) return {};
+  if(!FailureOptionalId(j,"operation",v.operation)||!FailureOptionalId(j,"returned",v.returned)||
+      !FailureOptionalId(j,"use",v.use)||!FailureOptionalId(j,"pc",v.pc)||
+      !FailureOptionalId(j,"working_pc",v.working_pc))return {};
+
   const auto number = [&](const char* name,
                           std::optional<std::uint32_t>& field) {
     if (!j.contains(name)) return true;

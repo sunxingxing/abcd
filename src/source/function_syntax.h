@@ -52,6 +52,7 @@ struct FunctionSyntax {
   // projection introduces its own source binding instead of reusing slot zero.
   ParameterForm parameter_form = ParameterForm::kFrameFormals;
   HomeObjectBinding home_object = HomeObjectBinding::kNone;
+  std::optional<ConcurrentDirective> concurrent;
 };
 }  // namespace abcd::source
 #endif

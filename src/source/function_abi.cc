@@ -110,6 +110,8 @@ class AbiBuilder {
         if (owner && std::holds_alternative<analysis::ValueSuperSpread>(graph_.ops[owner->value].operation))
           continue; // Original invocation identity is owned by derived projection.
       }
+      if(const auto* owner=std::get_if<analysis::OpId>(&use.owner);owner&&tree_.concurrent&&
+          std::holds_alternative<analysis::ValueConcurrentNotification>(graph_.ops[owner->value].operation)) continue;
       const auto* id = std::get_if<analysis::ValueId>(&use.operand);
       if (!id) continue;
       Require(id->value < graph_.values.size(), Error::kEntry);

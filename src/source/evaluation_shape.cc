@@ -72,7 +72,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
         shape.source = SourceEvaluation::kSnapshotInputs;
       return shape;
     }
-    else if constexpr (std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
     else if constexpr (std::is_same_v<T, analysis::ValueThrow>) return EvaluationShape{kThrow, false};
     else if constexpr (std::is_same_v<T, analysis::ValueJump> || std::is_same_v<T, analysis::ValueNop>) {
       EvaluationShape shape{kNoOperands, false}; shape.control = ControlEvaluation::kNormal; return shape;
@@ -246,7 +246,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                   std::is_same_v<T, analysis::ValueString> || std::is_same_v<T, analysis::ValueHole>) return false;
     else {
       static_assert(std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield> || std::is_same_v<T, analysis::ValueNamedRead> ||
-                    std::is_same_v<T, analysis::ValueDebugger> ||
+                    std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger> ||
                     std::is_same_v<T, analysis::ValueFrameThis> ||
                     std::is_same_v<T, analysis::ValueFrameFunction> ||
                     std::is_same_v<T, analysis::ValueGlobalObject> ||

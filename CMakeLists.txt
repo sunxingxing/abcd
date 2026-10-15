@@ -223,7 +223,7 @@ target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
 target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/effect_order.cc src/source/class_definitions.cc src/source/class_definition_projection.cc src/source/defined_member_context.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_prototype.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/derived_projection.cc src/source/class_tree.cc)
-target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc)
+target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc src/source/concurrent_completion.cc src/source/concurrent_directive.cc src/source/concurrent_tree.cc src/source/concurrent_references.cc src/source/concurrent_boundary.cc)
 target_sources(abcd_source PRIVATE src/source/rest_ownership.cc)
 target_sources(abcd_source PRIVATE src/source/function_input.cc)
 target_sources(abcd_source PRIVATE src/source/function_values.cc)
@@ -1398,6 +1398,14 @@ if(BUILD_TESTING)
   if(EXISTS "${ABCD_CONCURRENT_INPUT}")
     add_test(NAME concurrent_metadata_test COMMAND concurrent_metadata_test "${ABCD_CONCURRENT_INPUT}")
   endif()
+  add_executable(concurrent_roundtrip_probe tests/unit/source/concurrent_roundtrip_probe.cc)
+  target_link_libraries(concurrent_roundtrip_probe PRIVATE abcd_source abcd_json)
+  add_executable(concurrent_completion_test tests/unit/source/concurrent_completion_test.cc)
+  target_link_libraries(concurrent_completion_test PRIVATE abcd_source)
+  add_test(NAME concurrent_completion_test COMMAND concurrent_completion_test)
+  add_executable(concurrent_notification_test tests/unit/analysis/concurrent_notification_test.cc)
+  target_link_libraries(concurrent_notification_test PRIVATE abcd_analysis)
+  add_test(NAME concurrent_notification_test COMMAND concurrent_notification_test)
   add_executable(concurrent_requests_test tests/unit/abc/concurrent_requests_test.cc)
   target_link_libraries(concurrent_requests_test PRIVATE abcd_abc)
   add_test(NAME concurrent_requests_test COMMAND concurrent_requests_test)
@@ -2702,10 +2710,18 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/creator_classes.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes/member.abc)
+      set(ABCD_CONCURRENT_COMPILER "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+      if(EXISTS "${ABCD_CONCURRENT_COMPILER}")
+        add_test(NAME concurrent_functions_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/concurrent_functions.mjs
+          $<TARGET_FILE:abc_structure> $<TARGET_FILE:concurrent_roundtrip_probe>
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/concurrent_functions "${ABCD_CONCURRENT_COMPILER}")
+      endif()
       if(EXISTS "${ABCD_CONCURRENT_INPUT}")
         add_test(NAME concurrent_metadata_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/concurrent_metadata.mjs
-          $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure> "${ABCD_CONCURRENT_INPUT}")
+          $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure> "${ABCD_CONCURRENT_INPUT}"
+          $<TARGET_FILE:concurrent_roundtrip_probe> "${ABCD_CONCURRENT_COMPILER}")
       endif()
       add_test(NAME async_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/async_failure.mjs

@@ -3,9 +3,10 @@
 #include "abcd/abc/concurrent_requests.h"
 #include "abcd/abc/record_attributes.h"
 #include "abcd/analysis/function_creation_sites.h"
+#include "abcd/analysis/value_ir.h"
 namespace abcd::source {
 enum class ConcurrentError : std::uint8_t {
-  kOutputPolicy, kPreparationGate, kOwner, kModule, kRequests, kResourceLimit, kWorkLimit
+  kOutputPolicy, kPreparationGate, kOwner, kModule, kRequests, kResourceLimit, kWorkLimit, kAsync, kCaptures, kRequestUses, kAnnotationPresence, kNotificationValue, kMissingNotification, kDuplicateNotification, kEarlyNotification, kNotificationOwner, kCompletion, kCorrespondence, kModuleSyntax
 };
 // Fixed-size witness. Arbitrary request lists remain in the separately budgeted
 // metadata reader; their annotation identity/count is sufficient to locate them.
@@ -22,6 +23,9 @@ struct ConcurrentFailure {
   std::variant<std::monostate, abc::ConcurrentRequestError, abc::MetadataError,
       abc::AttributeError, abc::ModuleError> cause;
   std::optional<abc::MetadataError> metadata;
+  std::optional<analysis::OpId> operation, returned;
+  std::optional<analysis::UseId> use;
+  std::optional<abc::CodeOffset> pc, working_pc;
   bool operator==(const ConcurrentFailure&) const = default;
 };
 }

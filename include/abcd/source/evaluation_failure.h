@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_EVALUATION_FAILURE_H_
 #include "abcd/source/tree_failure.h"
 #include "abcd/source/for_in_failure.h"
+#include "abcd/source/concurrent_failure.h"
 #include "abcd/source/evaluation_kind.h"
 namespace abcd::source {
 enum class EvaluationError : std::uint8_t {
@@ -44,6 +45,7 @@ struct EvaluationEvidence {
   EvaluationObligation obligation = EvaluationObligation::kPlan;
   TreeLocation location;
   std::optional<ForInFailure> for_in;
+  std::optional<ConcurrentFailure> concurrent;
   std::optional<SnapshotCandidateEvidence> snapshot_candidate;
   std::optional<LogicalCoverageEvidence> logical_coverage;
   std::optional<analysis::UseId> use, expected_consumer, actual_consumer;

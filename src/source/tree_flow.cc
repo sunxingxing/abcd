@@ -1,3 +1,4 @@
+#include "concurrent_tree.h"
 #include "tree_flow.h"
 #include "for_in_emission.h"
 
@@ -279,7 +280,7 @@ class FlowCheck {
               (evaluation_.operations[id.value].kind == EvaluationKind::kGuardedCellRead &&
                evaluation_.operations[GuardedPeer(evaluation_, id)->value].kind == EvaluationKind::kInline)) continue;
           const auto& placement = tree_.operations[*placements_[id.value]].node;
-          if (IsReceiverGuard(tree_, id) || evaluation_.operations[id.value].kind == EvaluationKind::kCellGuard || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+          if (evaluation_.operations[id.value].kind == EvaluationKind::kConcurrentNotification || IsReceiverGuard(tree_, id) || evaluation_.operations[id.value].kind == EvaluationKind::kCellGuard || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
               std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
               evaluation_.operations[id.value].kind == EvaluationKind::kElidedPure ||
               evaluation_.operations[id.value].kind == EvaluationKind::kAlias || evaluation_.operations[id.value].kind == EvaluationKind::kArrayCursor) {
@@ -418,6 +419,7 @@ class FlowCheck {
             (!enumeration_ || !enumeration_->forwarded_regions[i])), Error::kControl);
       }
     }
+    VerifyConcurrentTree(graph_,evaluation_,tree_,flow_,budget_);
     sequences_.Finish(flow_, budget_);
     flow_.value_revision = graph_.revision;
     flow_.cfg_revision = graph_.cfg_revision;
@@ -553,7 +555,7 @@ class FlowCheck {
           kind == EvaluationKind::kNestedLiteral || kind == EvaluationKind::kInitializer ||
           kind == EvaluationKind::kModuleGuard) continue;
       const auto& placement = tree_.operations[*placements_[id.value]].node;
-      if (IsReceiverGuard(tree_, id) || kind == EvaluationKind::kCellGuard ||
+      if (kind == EvaluationKind::kConcurrentNotification || IsReceiverGuard(tree_, id) || kind == EvaluationKind::kCellGuard ||
           kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
           std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
           kind == EvaluationKind::kElidedPure || kind == EvaluationKind::kAlias || kind == EvaluationKind::kArrayCursor) {
@@ -1591,6 +1593,8 @@ class FlowCheck {
         // exact prefix position. Merely indexing it does not prove execution.
         Require(evaluation_.operations[i].kind == EvaluationKind::kRoot, Error::kPlacement);
         flow_.expressions[i] = std::get<ExprId>(placement);
+      } else if (evaluation_.operations[i].kind==EvaluationKind::kConcurrentNotification) {
+        Require(std::holds_alternative<AnchorId>(placement),Error::kPlacement);
       } else if (std::holds_alternative<analysis::ValueBranch>(op.operation) ||
           std::holds_alternative<analysis::ValueDebugger>(op.operation) ||
           std::holds_alternative<analysis::ValueThrow>(op.operation) ||

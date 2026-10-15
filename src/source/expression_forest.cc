@@ -331,7 +331,7 @@ class ForestBuilder {
         }
         if (evaluation_.operations[i].kind == EvaluationKind::kInitializer ||
             evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral) continue;
-        if (evaluation_.operations[i].kind == EvaluationKind::kEnvironment ||
+        if (evaluation_.operations[i].kind == EvaluationKind::kConcurrentNotification || evaluation_.operations[i].kind == EvaluationKind::kEnvironment ||
             evaluation_.operations[i].kind == EvaluationKind::kClassProjection ||
             evaluation_.operations[i].kind == EvaluationKind::kArrayCursor) continue;
         if (const auto* array = ArrayLiteralFor(evaluation_, {static_cast<std::uint32_t>(i)})) {
@@ -1140,7 +1140,7 @@ class ForestBuilder {
                            std::is_same_v<T, analysis::ValueThrow>)
         return operands[0];
       else if constexpr (std::is_same_v<T, analysis::ValueJump> ||
-                         std::is_same_v<T, analysis::ValueDebugger>)
+                         std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger>)
         return {};
       else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
         if (operation.literal) {

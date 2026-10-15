@@ -1,3 +1,5 @@
+#include "concurrent_print.h"
+#include "member_key.h"
 #include "tree_print_trace.h"
 #include "borrowed_print_trees.h"
 #include "record_print_sink.h"
@@ -49,7 +51,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       failure.internal_value = detail.internal_value;
       failure.method = detail.method; failure.pc = detail.pc; failure.working_pc = detail.working_pc;
     }
-    if constexpr(std::is_same_v<E,TreePrintFailure>) { failure.printing=cause;failure.method=cause.location.method;failure.pc=cause.location.pc;failure.working_pc=cause.location.working_pc; }
+    if constexpr(std::is_same_v<E,TreePrintFailure>) { failure.concurrent=cause.concurrent; failure.printing=cause;failure.method=cause.location.method;failure.pc=cause.location.pc;failure.working_pc=cause.location.working_pc; }
     return failure;
   };
   // Record failure carrying the typed error alternative of a stage result.
@@ -745,6 +747,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     // ledgers enforce that allowance. The lease ends only after every returned
     // position table and checker has been destroyed; output lives outside it.
     auto scratch=memory.Reserve(memory.Remaining());
+      ConcurrentPrint output_syntax;
       const auto prelude = enclosure->WriteImports(file, header, output, budget.output,
           {std::min(budget.strings.bytes, scratch.Bytes())});
       const auto* prelude_bytes = std::get_if<std::size_t>(&prelude);
@@ -793,6 +796,12 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
             throw RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{print_error})};
         }
       }
+      if(output_syntax.Method()&&output_syntax.HasQuotedModuleName()) {
+        ConcurrentFailure failure;failure.kind=ConcurrentError::kModuleSyntax;
+        failure.method=*output_syntax.Method();failure.record=record.offset;
+        TreePrintFailure error{TreePrintError::kUnsupportedContext};error.concurrent=failure;
+        throw RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{error})};
+      }
       std::size_t remaining = budget.output.bytes - *prelude_bytes - *body;
       const auto append = [&](std::string_view text) {
         if (text.size() > remaining) throw fail(Error::kOutputLimit);
@@ -803,9 +812,22 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         append("export { ");
         for (const auto unit : names[alias_slots[i]]) append(std::string(1, static_cast<char>(unit)));
         append(" as ");
-        const auto literal = WriteStringLiteral(aliases[i], output, {remaining});
-        if (!std::holds_alternative<std::size_t>(literal)) throw fail(Error::kOutputLimit);
-        remaining -= std::get<std::size_t>(literal); append(" };\n");
+        if(output_syntax.Method()) {
+          // Formatting of newly emitted Ark concurrent modules only; arbitrary
+          // string names cannot be round-tripped by the pinned frontend.
+          if(ClassifyMemberKey(aliases[i])!=MemberKeySyntax::kIdentifier) {
+            ConcurrentFailure failure;failure.kind=ConcurrentError::kModuleSyntax;
+            failure.method=*output_syntax.Method();failure.record=record.offset;
+            TreePrintFailure error{TreePrintError::kUnsupportedContext};error.concurrent=failure;
+            throw RouteRefusal{FamilyRouteFailure(FamilyEmitFailure{error})};
+          }
+          for(const auto unit:aliases[i]){const char c=static_cast<char>(unit);append({&c,1});}
+        }else {
+          const auto literal = WriteStringLiteral(aliases[i], output, {remaining});
+          if (!std::holds_alternative<std::size_t>(literal)) throw fail(Error::kOutputLimit);
+          remaining -= std::get<std::size_t>(literal);
+        }
+        append(" };\n");
       }
       if(!output)throw fail(Error::kWrite);
       const auto bytes=budget.output.bytes-remaining;

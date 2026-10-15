@@ -215,6 +215,11 @@ class OperandCheck {
           evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
       current_ = {static_cast<std::uint32_t>(i)};
       origin_ = {op.origin.value};
+      if (std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation)) {
+        RequireMeaning(tree_.concurrent.has_value() && evaluation_.concurrent &&
+            evaluation_.concurrent->members[i] && !flow_.expressions[i],Error::kOperand);
+        continue; // Payload identity is independently coupled to the return port.
+      }
       if (std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation)) continue;
       if (std::holds_alternative<analysis::ValueDebugger>(op.operation)) {
         RequireMeaning(!op.result && op.use_count == 0 && !flow_.expressions[i], Error::kOperand);
@@ -781,7 +786,7 @@ class OperandCheck {
                         std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
-                        std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueDebugger> ||
+                        std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger> ||
                         std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;
         }

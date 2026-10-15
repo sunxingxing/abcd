@@ -9,6 +9,13 @@
 #include <memory>
 namespace abcd::source {
 struct TreeFlow;
+struct OriginalConcurrentNotification {
+  analysis::OpId notification,returned;
+  analysis::UseId value;
+  StmtId statement;
+  AnchorId anchor;
+  bool operator==(const OriginalConcurrentNotification&)const=default;
+};
 // Checked native ports retain raw Commit identities, never fabricated ExprIds.
 struct OriginalEnumeration {
   ForInEventPair original;
@@ -150,6 +157,11 @@ struct OriginalExceptionRegion {
   analysis::InstructionRange body, handler;
 };
 struct OriginalFlow {
+  std::vector<OriginalConcurrentNotification> notifications;
+  // Retain exact immutable operations only for concurrent completion recovery.
+  // This prevents a cached tree port from inventing a raw notification/return.
+  std::vector<analysis::ValueOperation> concurrent_operations;
+
   RouteInputIdentity identity;
   abc::EntityOffset method;
   analysis::IrRevision value_revision;

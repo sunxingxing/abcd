@@ -71,11 +71,15 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     }
     if constexpr (requires { error.concurrent; }) if (error.concurrent) {
       result.concurrent = error.concurrent;
-      result.method = error.concurrent->method;
-      result.pc.reset(); result.working_pc.reset();
-      result.creation_method = error.concurrent->creator;
-      result.creation_pc = error.concurrent->creation_pc;
+      if(error.concurrent->method.value)result.method = error.concurrent->method;
+      result.pc = error.concurrent->pc; result.working_pc = error.concurrent->working_pc;
+      if(error.concurrent->creator.value) {
+        result.creation_method = error.concurrent->creator;
+        result.creation_pc = error.concurrent->creation_pc;
+      }
     }
+    if constexpr (std::is_same_v<T, ConcurrentFailure>) result.concurrent=error;
+    if constexpr (std::is_same_v<T, EvaluationFailure>) if(error.evaluation.concurrent) result.concurrent=error.evaluation.concurrent;
     if constexpr (std::is_same_v<T, AsyncCompletionFailure>) {
       result.async = error.async; result.method = error.async.location.method;
       result.pc = error.async.location.pc; result.working_pc = error.async.location.working_pc;
@@ -119,7 +123,8 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
       result.working_pc = error.deferred->creation.working_pc;
     }
     if constexpr (requires { error.working_pc; }) result.working_pc = error.working_pc;
-    if constexpr (requires { error.method; }) if (!result.method) result.method = error.method;
+    if constexpr (std::is_same_v<T,ConcurrentFailure>) {if(error.method.value)result.method=error.method;}
+    else if constexpr (requires { error.method; }) if (!result.method || result.method->value==0) result.method = error.method;
     if constexpr (requires { error.creation_pc; error.parent; }) {
       result.creation_pc = error.creation_pc;
       result.creation_method = error.parent;
@@ -133,8 +138,10 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     if constexpr (std::is_same_v<T, FunctionTreeFailure>)
       if (!std::holds_alternative<ExpressionFailure>(error.cause)) result.failure_class = Classify(error.kind);
     if (result.concurrent) {
-      result.method = result.concurrent->method; result.pc.reset(); result.working_pc.reset();
-      result.creation_method = result.concurrent->creator; result.creation_pc = result.concurrent->creation_pc;
+      if(result.concurrent->method.value)result.method=result.concurrent->method;
+      else if(result.method)result.concurrent->method=*result.method;
+      result.pc = result.concurrent->pc; result.working_pc = result.concurrent->working_pc;
+      if(result.concurrent->creator.value){result.creation_method = result.concurrent->creator; result.creation_pc = result.concurrent->creation_pc;}
     }
     return result;
   }

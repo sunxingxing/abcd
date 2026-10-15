@@ -62,6 +62,11 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       break;
   }
   if (decoded.opcode == Opcode::kNOP) return NoOperation{};
+  if (decoded.opcode == Opcode::kCALLRUNTIME_NOTIFYCONCURRENTRESULT_PREF_NONE) {
+    if (decoded.operand_count != 0)
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    return ConcurrentNotification{};
+  }
   if (decoded.opcode == Opcode::kASYNCFUNCTIONENTER) {
     if (decoded.operand_count != 0)
       return Fail(SemanticError::kMalformedInstruction, site.offset);
@@ -286,6 +291,8 @@ SemanticEffects Effects(const SemanticOperation& operation,
             effects.before_throw = effects.normal;
             effects.exceptional = ExceptionalCompletion::kMayThrow;
           }
+        } else if constexpr (std::is_same_v<T, ConcurrentNotification>) {
+          effects.normal = LanguageEffect::kConcurrentNotification | LanguageEffect::kUserCode;
         } else if constexpr (std::is_same_v<T, AsyncEnter>) {
           // Pinned RuntimeAsyncFunctionEnter uses the retained intrinsic,
           // not a lookup or call of the application-visible Promise binding.

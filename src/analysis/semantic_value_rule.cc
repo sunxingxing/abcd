@@ -100,7 +100,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
                          std::is_same_v<T, CurrentEnvironment>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
     } else {
-      static_assert(std::is_same_v<T, NoOperation> ||
+      static_assert(std::is_same_v<T, ConcurrentNotification> || std::is_same_v<T, NoOperation> ||
                     std::is_same_v<T, DebuggerOperation> ||
                     std::is_same_v<T, NamedWrite> ||
                     std::is_same_v<T, OwnWrite> ||

@@ -1,3 +1,4 @@
+#include "concurrent_print.h"
 #include "abcd/source/module_imports.h"
 
 #include <algorithm>
@@ -181,6 +182,7 @@ class ImportWriter {
         }
         break;
       case MemberKeySyntax::kQuoted:
+        ConcurrentPrint::QuotedModuleName();
         Literal(value, offset);
         break;
     }

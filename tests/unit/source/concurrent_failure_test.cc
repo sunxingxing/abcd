@@ -17,8 +17,8 @@ void RoundTrip(ConcurrentFailure e,
                CreationContextError kind = CreationContextError::kKind) {
   auto route =
       FamilyRouteFailure(FamilyPrepareFailure{CreationContextFailure{kind, e}});
-  Check(route.concurrent == e && route.method == e.method && !route.pc &&
-        !route.working_pc);
+  Check(route.concurrent == e && route.method == e.method && route.pc == e.pc &&
+        route.working_pc == e.working_pc);
   Check(route.creation_method == e.creator &&
         route.creation_pc == e.creation_pc);
   Check(route.causes.count >= 2 &&
@@ -101,7 +101,7 @@ int main() {
   AttributeWork();
   static_assert(std::is_trivially_copyable_v<ConcurrentFailure>);
   for (unsigned kind = 0;
-       kind <= static_cast<unsigned>(ConcurrentError::kWorkLimit); ++kind) {
+       kind <= static_cast<unsigned>(ConcurrentError::kModuleSyntax); ++kind) {
     ConcurrentFailure e;
     e.kind = static_cast<ConcurrentError>(kind);
     e.method = {77};
@@ -119,6 +119,7 @@ int main() {
     e.element = 0;
     e.request = 0;
     RoundTrip(e);
+    e.pc=abc::CodeOffset{0};e.working_pc=abc::CodeOffset{7};e.operation=analysis::OpId{0};e.use=analysis::UseId{0};
     e.metadata = abc::MetadataError::kBadString;
     RoundTrip(e);
     RoundTrip(e, CreationContextError::kResourceLimit);
@@ -133,6 +134,11 @@ int main() {
     json["annotation_present"] = false;
     Check(!ParseConcurrent(json));
   }
+  ConcurrentFailure printing;printing.kind=ConcurrentError::kRequestUses;printing.method={77};printing.pc=abc::CodeOffset{0};
+  TreePrintFailure output{TreePrintError::kUnsupportedContext};output.concurrent=printing;
+  auto refusal=FamilyRouteFailure(FamilyEmitFailure{output});
+  Check(refusal.method==printing.method&&refusal.pc==printing.pc&&!refusal.creation_method&&!refusal.creation_pc);
+  Check(ParseConcurrent(ConcurrentJson(printing))==printing);
   std::cout << "concurrent failure: fixed-size witnesses, PC0 versus absent "
                "child PC, resource classes and both JSON paths\n";
 }

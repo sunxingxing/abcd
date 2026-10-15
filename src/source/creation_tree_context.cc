@@ -38,14 +38,38 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     Require(roles.At(*position) == analysis::MethodRole::kUnseen, Error::kRole);
     const auto& creation = occurrence->creation;
     Require(!occurrence->resolved.attributes.sendable, Error::kKind);
+    std::optional<ConcurrentMetadata> concurrent;
     if (occurrence->resolved.attributes.kind == abc::FunctionKind::kConcurrent) {
-      auto evidence = InspectConcurrentCreation(file, header, index, method, *occurrence, site, identity.contract, budget);
-      const auto kind = evidence.kind == ConcurrentError::kResourceLimit ? Error::kResourceLimit :
-          evidence.kind == ConcurrentError::kWorkLimit ? Error::kWorkLimit : Error::kKind;
-      return CreationContextFailure{kind, evidence};
+      auto read=ReadConcurrentCreation(file,header,index,method,*occurrence,site,budget);
+      if(const auto* failure=std::get_if<ConcurrentFailure>(&read)) {
+        const auto kind=failure->kind==ConcurrentError::kResourceLimit?Error::kResourceLimit:
+            failure->kind==ConcurrentError::kWorkLimit?Error::kWorkLimit:Error::kKind;
+        return CreationContextFailure{kind,*failure};
+      }
+      concurrent.emplace(std::get<ConcurrentMetadata>(std::move(read)));
+      auto fail=[&](ConcurrentError kind,std::optional<abc::CodeOffset> pc={}) {
+        auto evidence=concurrent->location;evidence.kind=kind;evidence.pc=pc;evidence.working_pc=pc;
+        return CreationContextFailure{Error::kKind,evidence};
+      };
+      if(ConcurrentOutput(identity.contract)!=ConcurrentOutputPolicy::kArkDirectiveV1)
+        return fail(ConcurrentError::kOutputPolicy);
+      if(!concurrent->requests.present)return fail(ConcurrentError::kAnnotationPresence);
+      Require(concurrent->allocated_bytes<=budget.bytes && concurrent->work<=budget.work,Error::kResourceLimit);
+      auto body=abc::DecodeMethodBody(file,header.profile,*method.code,{budget.bytes-concurrent->allocated_bytes});
+      if(const auto* error=std::get_if<abc::BodyFailure>(&body))return CreationContextFailure{error->kind==abc::BodyError::kResourceLimit?Error::kResourceLimit:Error::kKind,concurrent->location};
+      const auto& decoded=std::get<abc::MethodBody>(body);
+      Require(decoded.instructions.size()<=budget.work-concurrent->work,Error::kWorkLimit);
+      concurrent->work+=decoded.instructions.size();
+      for(const auto& instruction:decoded.instructions) {
+        auto lifted=analysis::LiftSemanticInstruction(instruction,header.profile,method.code->registers+std::uint64_t(method.code->arguments));
+        const auto* semantic=std::get_if<analysis::SemanticInstruction>(&lifted);
+        if(semantic&&std::holds_alternative<analysis::AsyncEnter>(semantic->operation))
+          return fail(ConcurrentError::kAsync,instruction.offset);
+      }
     }
     CallableKind callable;
     if (mode == CreationContextMode::kMethodBody) {
+      Require(!concurrent,Error::kKind);
       // OH7 ObjectFactory::NewJSFunctionForDefineMethod selects AsyncFunction
       // for ASYNC_FUNCTION, the no-prototype class for NONE, and installs the
       // actual accumulator home. Keep that callable kind through common body
@@ -63,7 +87,8 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
       Require(mode == CreationContextMode::kFunction && creation.kind == analysis::CreationKind::kFunction &&
           creation.home_object == analysis::HomeObjectInput::kCurrentFunction, Error::kKind);
       switch (occurrence->resolved.attributes.kind) {
-      case abc::FunctionKind::kBaseConstructor: callable = CallableKind::kFunction; break;
+      case abc::FunctionKind::kBaseConstructor:
+      case abc::FunctionKind::kConcurrent: callable = CallableKind::kFunction; break;
       case abc::FunctionKind::kArrow: callable = CallableKind::kArrow; break;
       case abc::FunctionKind::kAsync: callable = CallableKind::kAsyncFunction; break;
       // OH7 PandaGen::SetFunctionKind emits ASYNC_NC_FUNCTION for async arrows.
@@ -72,7 +97,6 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
       case abc::FunctionKind::kGenerator: callable = CallableKind::kGenerator; break;
       case abc::FunctionKind::kAsyncGenerator: callable = CallableKind::kAsyncGenerator; break;
       case abc::FunctionKind::kNone:
-      case abc::FunctionKind::kConcurrent:
       default: throw CreationContextFailure{Error::kKind};
       }
     }
@@ -81,6 +105,7 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     Require(method.name.size() < budget.work, Error::kWorkLimit);
     Require(sizeof(CreationTreeContext) <= budget.bytes, Error::kResourceLimit);
     auto bytes = budget.bytes - sizeof(CreationTreeContext);
+    if(concurrent){Require(concurrent->allocated_bytes<=bytes,Error::kResourceLimit);bytes-=concurrent->allocated_bytes;Require(concurrent->work<=budget.work,Error::kWorkLimit);budget.work-=concurrent->work;}
     Require(name->size() < bytes / sizeof(char16_t), Error::kResourceLimit);
     CreationTreeContext result;
     result.name_.assign(name->begin(), name->end());
@@ -95,7 +120,8 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     Require(result.frame_.parameters >= creation.length.value, Error::kSignature);
     if (file.CheckUnchanged()) return CreationContextFailure{abc::MetadataError::kFileChanged};
     result.identity_ = identity; result.site_ = *occurrence;
-    result.callable_ = callable; result.work_ = method.name.size() + 1;
+    result.callable_ = callable; result.work_ = method.name.size() + 1 + (concurrent?concurrent->work:0);
+    result.concurrent_=std::move(concurrent);
     return result;
   } catch (const CreationContextFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return CreationContextFailure{Error::kResourceLimit};

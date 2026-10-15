@@ -24,6 +24,7 @@ std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
       !arena(tree.receiver_guards) || !arena(tree.children) || !arena(tree.closure_captures) || !arena(tree.origins) || !arena(tree.origin_parts) ||
       !arena(tree.anchors) || !arena(tree.operations) || !arena(tree.signature) || !arena(tree.recovery_issues) || !arena(tree.labels) || !arena(tree.finalizers) || !arena(tree.yield_returns))
     return TreeStorageError::kResourceLimit;
+  if(tree.concurrent&&!admit(tree.concurrent->AllocatedBytes(),1))return TreeStorageError::kResourceLimit;
   const auto payloads = [&](const auto& strings) -> std::optional<TreeStorageError> {
     for (const auto& text : strings) {
       if (work == 0) { PrintCharge(TreePrintBudgetKind::kWork,1,work,budget.work); return TreeStorageError::kWorkLimit; }

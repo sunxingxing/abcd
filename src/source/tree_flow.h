@@ -37,6 +37,7 @@ struct TreeSelectionTruth {
 using TreeForInEvents = OriginalEnumeration;
 enum class EnumerationControl : std::uint8_t { kLoop, kExhausted };
 struct TreeFlow {
+  std::vector<OriginalConcurrentNotification> notifications;
   // Independent typed protocol correspondence. Advance Commit and success-only
   // key assignment remain distinct; neither is an ordinary shared expression.
   std::vector<TreeForInEvents> enumerations;

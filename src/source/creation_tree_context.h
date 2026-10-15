@@ -2,7 +2,7 @@
 #define ABCD_SOURCE_CREATION_TREE_CONTEXT_H_
 
 #include "class_tree_context.h"
-#include "abcd/source/concurrent_failure.h"
+#include "concurrent_context.h"
 #include "abcd/analysis/function_creation_sites.h"
 
 namespace abcd::source {
@@ -33,8 +33,9 @@ class CreationTreeContext {
   const abc::FrameLayout& Frame() const { return frame_; }
   std::u16string_view Name() const { return name_; }
   CallableKind Callable() const { return callable_; }
+  const ConcurrentMetadata* Concurrent() const { return concurrent_ ? &*concurrent_ : nullptr; }
   Strictness Mode() const { return Strictness::kStrict; }
-  std::size_t AllocatedBytes() const { return sizeof(*this) + (name_.capacity() + 1) * sizeof(char16_t); }
+  std::size_t AllocatedBytes() const { return sizeof(*this) + (name_.capacity() + 1) * sizeof(char16_t) + (concurrent_ ? concurrent_->allocated_bytes : 0); }
   std::uint64_t Work() const { return work_; }
  private:
   CreationTreeContext() = default;
@@ -44,6 +45,7 @@ class CreationTreeContext {
   std::u16string name_;
   CallableKind callable_ = CallableKind::kFunction;
   std::uint64_t work_ = 0;
+  std::optional<ConcurrentMetadata> concurrent_;
 };
 }  // namespace abcd::source
 #endif

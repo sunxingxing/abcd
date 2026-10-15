@@ -1,3 +1,4 @@
+#include "concurrent_tree.h"
 #include "binding_normalization.h"
 #include "recovery_flow.h"
 #include "flow_units.h"
@@ -74,7 +75,7 @@ class FlowBuilder {
     if(!projection_.cells){owned_cells=AnalyzeSourceCells(tree_,budget_);projection_.cells=&*owned_cells;}
     RequireTree(projection_.cells->owner==&tree_&&projection_.cells->access.size()==tree_.symbols.size(),Error::kOwnership);
     result_.unit_captures_complete=projection_.cells->captures_complete;
-    if(result_.original) { CheckOriginalFlow(tree_,*result_.original); VerifyInactiveOriginalRegions(*result_.original,budget_); }
+    if(result_.original) { CheckOriginalFlow(tree_,*result_.original); VerifyInactiveOriginalRegions(*result_.original,budget_); VerifyOriginalConcurrent(tree_,*result_.original,budget_); }
     RequireTree(projection_.normal_kinds.empty()||projection_.normal_kinds.size()==tree_.expressions.size(),Error::kOwnership);
     Resize(result_.normal_kinds,projection_.normal_kinds.size());
     std::copy(projection_.normal_kinds.begin(),projection_.normal_kinds.end(),result_.normal_kinds.begin());
@@ -103,6 +104,7 @@ class FlowBuilder {
     for(auto& action:result_.original_actions){budget_.Step();action.reset();}
     for(auto& action:result_.actions){budget_.Step();action.reset();}
     if(projection_.original)budget_.Array(statement_actions_,tree_.statements.size());
+    if(tree_.concurrent)budget_.Array(statement_notifications_,tree_.statements.size());
     Resize(result_.property_initializers,tree_.properties.size());
     for(auto& property:result_.property_initializers){budget_.Step();property.reset();}
     RequireTree(projection_.statement_values.empty()||projection_.statement_values.size()==tree_.statements.size(),Error::kOwnership);
@@ -500,6 +502,11 @@ class FlowBuilder {
           }
         }
       }
+    }
+    if(result.original) for(const auto& port:result.original->notifications) {
+      budget_.Step();RequireTree(port.notification.value<result.original_actions.size()&&port.statement.value<statement_notifications_.size()&&statement_notifications_[port.statement.value],Error::kOwnership);
+      RequireTree(!result.original_actions[port.notification.value],Error::kOwnership);
+      result.original_actions[port.notification.value]=statement_notifications_[port.statement.value];
     }
     // Publish each native action once. Phase and exception consumers use this
     // same index; they must not independently guess an action from an anchor.
@@ -1371,9 +1378,25 @@ class FlowBuilder {
       }
       else if constexpr(std::is_same_v<T,ReturnStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
-        auto returned=New();Abrupt(returned,terminal_,context,FlowCompletion::kReturn);
-        if(!statement_actions_.empty())statement_actions_[at.id.value]=FlowStatementAction{OriginalStatementKind::kReturn,{returned,context.finalizer?std::nullopt:std::optional{terminal_},{context.thrown,context.finalizer}}};
-        Link(start,node.value?Expr(*node.value,context.Operand(returned)):returned);
+        if(tree_.concurrent) {
+          // A pending return first runs enclosing finally clauses. Only the
+          // surviving completion notifies; overriding/throwing cleanup bypasses
+          // this port. The result was evaluated and retained before cleanup.
+          const auto returned=New();Link(returned,terminal_,FlowCompletion::kReturn);
+          const auto notified=New({FlowEventKind::kConcurrentNotification});Link(notified,returned);
+          events_[notified.value].effects=SourceEffects{
+              analysis::LanguageEffect::kConcurrentNotification|analysis::LanguageEffect::kUserCode,
+              analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kImpossible};
+          events_[notified.value].effect=ExpressionEvaluation::kRequired;
+          const auto pending=New();Abrupt(pending,notified,context,FlowCompletion::kReturn);
+          if(!statement_actions_.empty())statement_actions_[at.id.value]=FlowStatementAction{OriginalStatementKind::kReturn,{returned,terminal_,{}}};
+          if(!statement_notifications_.empty())statement_notifications_[at.id.value]=FlowOriginalAction{notified,returned,{}};
+          Link(start,node.value?Expr(*node.value,context.Operand(pending)):pending);
+        } else {
+          auto returned=New();Abrupt(returned,terminal_,context,FlowCompletion::kReturn);
+          if(!statement_actions_.empty())statement_actions_[at.id.value]=FlowStatementAction{OriginalStatementKind::kReturn,{returned,context.finalizer?std::nullopt:std::optional{terminal_},{context.thrown,context.finalizer}}};
+          Link(start,node.value?Expr(*node.value,context.Operand(returned)):returned);
+        }
       } else if constexpr(std::is_same_v<T,ThrowStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
         const auto thrown=New();Link(thrown,context.thrown,FlowCompletion::kThrow);
@@ -1420,6 +1443,7 @@ class FlowBuilder {
   const FunctionTree& tree_;LegacyFlowProjection projection_;TreeCheckBudget budget_;RecoveryScratch memory_;
   std::vector<FlowEvent> events_;std::vector<FlowEdge> edges_;
   std::vector<std::optional<FlowStatementAction>> statement_actions_;
+  std::vector<std::optional<FlowOriginalAction>> statement_notifications_;
   std::pmr::vector<Point> statements_,expressions_,exits_;std::pmr::vector<Task> tasks_;
   std::pmr::vector<std::uint8_t> seen_;std::vector<FlowDefinition> definitions_;
   std::pmr::vector<std::optional<SymbolId>> reads_;std::pmr::vector<ReadState> read_states_;

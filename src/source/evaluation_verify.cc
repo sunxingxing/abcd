@@ -52,6 +52,17 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const auto protocol = VerifyForInEvaluation(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<EvaluationFailure>(&protocol)) return *error;
     step(std::get<std::uint64_t>(protocol));
+    bool has_notification=false;
+    for(const auto& op:graph.ops){step();has_notification|=std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);}
+    Require(has_notification==plan.concurrent.has_value(),Error::kOwnership);
+    if(plan.concurrent) {
+      auto checked=VerifyConcurrentCompletion(graph,*plan.concurrent,{bytes,work});
+      if(const auto* failure=std::get_if<ConcurrentFailure>(&checked)) {
+        EvaluationFailure e{failure->kind==ConcurrentError::kResourceLimit?Error::kResourceLimit:
+            failure->kind==ConcurrentError::kWorkLimit?Error::kWorkLimit:Error::kOwnership};
+        e.evaluation.concurrent=*failure;if(failure->operation)e.evaluation.location=OperationLocation(graph,*failure->operation);return e;
+      }step(std::get<std::uint64_t>(checked));
+    }
     if (!plan.guarded_reads.empty()) {
       Require(flow == EvaluationFlow::kPhased && plan.cells, Error::kOwnership);
       auto proof = analysis::ProveGuardedReads(graph, {bytes, work});
@@ -321,6 +332,11 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
             placement.kind == EvaluationKind::kInline && placement.consumer == plan.closed_expressions[i] &&
             !placement.temporary, Error::kOwnership);
       }
+      if(op.life==analysis::ValueLife::kLive&&std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation)) {
+        Require(plan.concurrent&&plan.concurrent->members[i]&&placement.kind==EvaluationKind::kConcurrentNotification&&!placement.consumer&&!placement.temporary,Error::kOwnership);
+        visits[i]=EvaluationVisit::kDone;continue;
+      }
+      Require(placement.kind!=EvaluationKind::kConcurrentNotification,Error::kOwnership);
       if (ForInOperation(plan, {static_cast<std::uint32_t>(i)})) {
         Require(placement.kind == EvaluationKind::kForInEvent && !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone; continue;
@@ -485,6 +501,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kArrayCursor ||
                                   ForInOperation(plan, {static_cast<std::uint32_t>(expected)}) ||
+                                  BeforeLogicalFusion(graph,plan,expected).kind == EvaluationKind::kConcurrentNotification ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kClassProjection ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kReceiverGuard ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kCellGuard ||

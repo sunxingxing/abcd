@@ -1,3 +1,4 @@
+#include "concurrent_completion.h"
 #include "syntax_resolution.h"
 #include "rest_ownership.h"
 
@@ -56,6 +57,18 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     auto& syntax = result.syntax;
     syntax.identity = identity; syntax.method = method.offset; syntax.owner = owner;
     syntax.callable = context.Callable(); syntax.strictness = context.Mode();
+    if(context.Concurrent()) {
+      auto proof=BuildConcurrentCompletion(graph,{bytes,work});
+      if(const auto* e=std::get_if<ConcurrentFailure>(&proof)) {
+        auto failure=context.Concurrent()->location;failure.kind=e->kind;failure.operation=e->operation;failure.use=e->use;failure.returned=e->returned;failure.pc=e->pc;failure.working_pc=e->working_pc;
+        return SyntaxResolutionFailure{failure};
+      }
+      const auto& completion=std::get<ConcurrentCompletion>(proof);admit(completion.allocated_bytes,1);step(completion.work);
+      auto directive=ProveConcurrentDirective(context,graph,{bytes,work});
+      if(const auto* e=std::get_if<ConcurrentFailure>(&directive))return SyntaxResolutionFailure{*e};
+      syntax.concurrent=std::get<ConcurrentDirective>(std::move(directive));
+      step(syntax.concurrent->Work());admit(syntax.concurrent->AllocatedBytes(),1);
+    }
     // Only a validated class creation/member occurrence supplies this binding.
     // DEFINEFUNC/arrow inheritance is deliberately not inferred from spelling.
     syntax.home_object = context.ClassContext() ? HomeObjectBinding::kClass : HomeObjectBinding::kNone;

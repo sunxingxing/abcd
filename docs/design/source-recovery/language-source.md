@@ -342,7 +342,7 @@ DataDriver 的旧 CLI 断言随实际首拒绝从 unsupported@153 改为 kContro
 
 | 谓词 | V1/V2 及其他契约 | V3 当前值 | 发布状态 |
 |---|---|---|---|
-| `ConcurrentOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 仅元数据证据；完成/通知证明未实现，仍拒绝 |
+| `ConcurrentOutput()` | `kNotEnabled` | `kArkDirectiveV1` | 同步完成投影已接入；async 仍有显式门禁；编译往返见增量 II 验收 |
 | `SendableOutput()` | `kNotEnabled` | `kNotEnabled` | 等待各自实现与编译往返验证 |
 | `SharedModuleOutput()` | `kNotEnabled` | `kNotEnabled` | 等待各自实现与编译往返验证 |
 
@@ -380,3 +380,51 @@ record 属性读入沿用已有 reader；调用前按每字段四次文件长度
 source 的 40 个 manifest 顶层及 562 个 record 契约标签由 V2 更新为 V3；无其他字段变化。
 完整命令、逐字段差异和六个方法的请求表在 `/private/tmp/abcd-r73/acceptance.json`、
 `old-comparison.json`、`source-comparison.json`、`method-requests.txt`。
+
+### Round 73 增量 II：同步 concurrent 完成投影
+
+同步 concurrent 的 callable 仍为普通 Function；`ConcurrentDirective` 是独立的已验证输出
+属性，仅 V3 启用，打印为函数体的第一条 `"use concurrent";`。创建表达式、名字推断和
+创建时机不变。遇到 AsyncEnter 仍以 `ConcurrentError::kAsync` 和真实子方法 PC 拒绝；
+没有把 concurrent 函数当作 async，也没有扩大 V1/V2 的输出政策。
+
+`callruntime.notifyconcurrentresult` 的原始语义读取 acc 与当前调用帧的 function，不改写
+acc、不提交新的结果。依据 OH7 interpreter-inl.cpp 的对应 handler、runtime_stubs-inl.h
+及 functionBuilder.cpp，保留为不可擦除的有序宿主完成事件。异常抛出路径无需通知；
+每条成功返回路径须恰有一次属于本函数的通知，值与返回值经 SSA/copy/phi 身份一致，
+且通知之后不能有可抛出/有效果操作或不终止的后缀。该证明基于有限格数据流和 DAG 检查，
+不是相邻指令模板。当前端口表示保守拒绝一个通知分流到不同物理 Return 的情况；后续若要
+支持，须增加路径相关端口，不能靠近邻条件或静默复制通知。
+
+共同求值入口在 temporary/phi 消费前接入该证明。通知保留专用 evaluation kind、Anchor
+及通知/返回两个事件端口，不能走纯 anchor、初始化 guard 或普通表达式。TreeFlow 从
+原始图重算；OriginalFlow 保留原始 typed operations，recovery 对每次投影重新推导，
+在最终存活的 Return 完成上保留通知。待返回值先求值并保存，enclosing finally 先执行；
+finally 改写/抛弃 pending return 时不能继续该通知。
+
+捕获边界检查消费包含后代转发需求的真实 CellPlan：IncomingCell 不能跨越 concurrent
+边界，即使 concurrent 自身没有访问。参数、自己的局部 cell、全局以及 external import
+绑定不受此禁止；local module binding 和 module store 仍拒绝。ModuleCapturePrefix 对
+concurrent 创建的排除保持不变，不能把普通 outer cell 冒充 import。
+
+指令属性携带已验证的请求序列和 import-slot→request 映射。输出阶段的独立引用证明仅消费
+最终 variable projection 实际发射的 typed ModuleSymbol，不分析名字/源码文本；逐项核对
+拥有者、slot、请求身份、顺序和次数，且要求耗尽。普通子函数继承最近 concurrent 作用域，
+与前端 binder 一致。缺失注解仍拒绝，存在的空注解须没有引用；不插入 fake reads。
+目前 concurrent 内的 class body 跨独立 class printer 的引用普查尚未贯通，保守给出
+`kRequestUses`，而非漏记内部使用。该边界不影响本轮五个同步方法。
+
+证明与索引为 O((V+E) log V) 以内，缓冲在分配前收费；通知工作队列为有限格有界队列，
+请求检查为流式计数。资源/工作外层枚举不变，细节原因和原始/工作 PC 走两条 JSON 路径。
+原始指令、完成证明、捕获边界和 JSON 的单测含伪造/删除/重复/错误 owner/值、实际
+200/201/400/800 大小与精确 bytes/work 边界；真实 fixture 记录在
+`tests/integration/fixtures/concurrent_functions/README.md`。Node 只验证普通调用值、异常
+类型和轨迹；跨线程语义仍是明确的 Ark runtime 验证缺口。
+
+**动态前端语法边界。** pinned es2panda 的 named-export parser 不接受带引号的导出别名。
+实际发射了 verified concurrent directive 的新 record，以 IdentifierName 输出合法的导出名，
+例如 `export { query as query }`；当前 formatter 需引用字符串拼写的 import/re-export/
+export 名以 `kModuleSyntax` 拒绝（含尚未贯通 Unicode 标识符拼写的覆盖缺口，并非语言限制）。同步输出 scope
+从 verified directive 取证，并跨 class/family printer 传递；这仅决定目标语法拼写，不能授予
+恢复准入。没有发射 concurrent 的 record 保持原有别名拼写。往返测试直接编译真实输出，
+没有机械改写输入文件；导出名、local alias 和模块表保持原值。

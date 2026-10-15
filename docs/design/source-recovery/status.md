@@ -12,6 +12,16 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## Round 73 增量 II：同步 concurrent 完成投影（cc 审查通过）
+- cc 独立审查（增量 II）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 521/620 不变，`--language-source` 561 → **564/620**（TaskpoolCancel、Mock、Worker）；0 回退，0 文本漂移；cli/corpus/failure/concurrent 扫描 71/72，只有既有的 family_source_cli_test 失败。cc 核对 TaskpoolCancel：`"use concurrent";` 是函数体首条语句，函数表达式形式保留。
+
+- 基线 `7eee8402`；未 commit/push/stash。普通 Function 与 verified directive 分离；原始 notify 保留 acc 和调用帧 owner，有限格完成证明、专用事件端口及 TreeFlow/OriginalFlow/recovery 重算贯通。实际输出引用逐项核对请求注解；普通 outer cell（含转发）仍拒绝，ModuleCapturePrefix 的 concurrent 排除未改。
+- 三个 record 完整：o14/18164（cancel/delayed）、25688（query）、31477（parallelTask）。collectFrame m16922 的通知证明通过，但 16446 首拒绝推进至另一方法 m16784 的 `PhasedMethodError::kEnvironment`（创建点 m16700@123；没有虚构子 PC）。10719 的 async m11357 明确保留 `kAsync` 门禁，原始/工作 PC10。
+- pinned parser 不接受 quoted export aliases。仅实际发射 verified concurrent 的新 record 改用 IdentifierName；当前 formatter 需字符串拼写的 import/re-export/export 名返回 `kModuleSyntax`，Unicode 夹具验证这一覆盖边界。未改写往返编译输入，未改变无 concurrent 输出的格式。
+- 最终完整构建成功；固定集串行 **65/65**；相关定向 **14/14**（并发 **7/7**）；CLI/corpus/failure/receipt/manifest 扫描 **67/68**，仅已登记的 `family_source_cli_test` owner/origin 断言失败，未弱化。新完整输出通过 Node syntax check。三个真实 record 的直接 es2abc 往返及六方法真实夹具通过 kind/sendable/注解/请求顺序/模块表与通知完成核对；Node 只验证普通调用值/异常类型/轨迹，不验证 taskpool/跨线程。
+- 相对 explore73/explore73s，结果 **521/620、564/620**，0 回退、0 既有完整文本漂移。旧 flags 的 manifest 无变化；source 仅 o14 的 10719/16446/18164/25688/31477 五个候选变化。无留出集、全语料、RSS 基准或全套测试运行。
+- 同步 increment 的边界、编译器身份/命令和测试 oracle 见 [language-source.md](language-source.md) 增量 II 及 `tests/integration/fixtures/concurrent_functions/README.md`。日志、逐字段比较、目标表和完整改动清单在 `/private/tmp/abcd-r73-ii/`；入口 `acceptance.md`。async、concurrent 内 class-body 引用普查，以及一个通知对应多个物理 Return 的端口仍严格拒绝。
+
 ## Round 73 增量 I：V3 输出政策与 concurrent 元数据证据（cc 审查通过）
 
 - 用户 2026-10-15 批准保留语义的 ArkTS 形式（concurrent/Sendable/共享模块），apply 展开暂不批准。新增 `kLanguageSourceV3` 与三个独立谓词，只有 ConcurrentOutput 启用。方法级并发模块请求注解解析，区分缺失与空注解；目标细化为 `ConcurrentError::kPreparationGate`。

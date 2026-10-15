@@ -1,4 +1,5 @@
 #include "family_tree.h"
+#include "concurrent_boundary.h"
 #include "descendant_classes.h"
 #include "family_cells.h"
 #include "deferred_failure.h"
@@ -69,6 +70,15 @@ class FamilyTrees {
           ConstructorForwarding(context.Identity().contract) == ConstructorForwardingSemantics::kSourceRestSpread)
         throw FamilyTreeFailure{member_, DerivedProjectionError::kForwardingHandlers};
       const auto& graph = function.Graph();
+      if(context.Concurrent()) {
+        auto checked=VerifyConcurrentBoundary(graph,function.Cells(),left_);
+        if(const auto* error=std::get_if<ConcurrentFailure>(&checked)) {
+          auto failure=context.Concurrent()->location;failure.kind=error->kind;
+          failure.operation=error->operation;failure.pc=error->pc;failure.working_pc=error->working_pc;
+          throw FamilyTreeFailure{member_,failure};
+        }
+        Step(std::get<std::uint64_t>(checked));
+      }
       auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
           file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_, function.Defaults() ? function.Defaults()->Strings() : std::span<const SignatureString>{}, function.Cells()));
       Account(syntax);
@@ -274,6 +284,11 @@ class FamilyTrees {
               function.Normal().values.definitions.sites, guards, entries,
               function.Normal().self_order ? &*function.Normal().self_order : nullptr, {}, array_source);
       if (array_error) Fail(*array_error);
+      if(auto* error=std::get_if<EvaluationFailure>(&evaluated);error&&error->evaluation.concurrent&&context.Concurrent()) {
+        const auto detail=*error->evaluation.concurrent;auto located=context.Concurrent()->location;
+        located.kind=detail.kind;located.operation=detail.operation;located.returned=detail.returned;located.use=detail.use;located.pc=detail.pc;located.working_pc=detail.working_pc;
+        error->evaluation.concurrent=located;error->evaluation.location.method=context.Target();
+      }
       auto evaluation = Take<EvaluationPlan, EvaluationFailure>(std::move(evaluated));
       Account(evaluation);
       if (!deferred[i].empty()) {

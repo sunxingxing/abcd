@@ -518,6 +518,7 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
           instruction.conditional)
         return ScalarError::kMalformedInstruction;
       return RegisterEffect{};
+    case Opcode::kCALLRUNTIME_NOTIFYCONCURRENTRESULT_PREF_NONE:
     case Opcode::kNOP:
     case Opcode::kRETURNUNDEFINED:
     case Opcode::kRETURN:
@@ -525,7 +526,8 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       if (instruction.operand_count != 0)
         return ScalarError::kMalformedInstruction;
       RegisterEffect effect;
-      if (instruction.opcode == Opcode::kRETURN ||
+      if (instruction.opcode == Opcode::kCALLRUNTIME_NOTIFYCONCURRENTRESULT_PREF_NONE ||
+          instruction.opcode == Opcode::kRETURN ||
           instruction.opcode == Opcode::kTHROW_PREF_NONE)
         effect.reads[effect.read_count++] = Accumulator{};
       return effect;

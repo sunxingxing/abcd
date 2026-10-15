@@ -27,7 +27,7 @@ enum class SyntaxResolutionError : std::uint8_t {
   kContext, kParameters, kResourceLimit, kWorkLimit
 };
 using SyntaxResolutionFailure = std::variant<SyntaxResolutionError,
-    TreeConstantError, abc::MetadataError>;
+    TreeConstantError, abc::MetadataError, ConcurrentFailure>;
 // Shared by standalone and family preparation. Context, body and verified
 // graph belong to the same unchanged file/method; the context supplies actual
 // callable/strictness/frame facts. Owner identifies this syntax occurrence,

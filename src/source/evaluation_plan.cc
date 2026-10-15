@@ -59,6 +59,18 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
     plan.flow = flow;
+    bool has_notification=false;
+    for(const auto& op:graph.ops){step();has_notification|=std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);}
+    if(has_notification) {
+      auto proof=BuildConcurrentCompletion(graph,{bytes,work});
+      if(const auto* failure=std::get_if<ConcurrentFailure>(&proof)) {
+        EvaluationFailure e{failure->kind==ConcurrentError::kResourceLimit?Error::kResourceLimit:
+            failure->kind==ConcurrentError::kWorkLimit?Error::kWorkLimit:Error::kOwnership};
+        e.evaluation.concurrent=*failure;if(failure->operation)e.evaluation.location=OperationLocation(graph,*failure->operation);return e;
+      }
+      plan.concurrent=std::get<ConcurrentCompletion>(std::move(proof));admit(plan.concurrent->allocated_bytes,1);step(plan.concurrent->work);
+    }
+
     bool has_enumeration = false;
     for (const auto& op : graph.ops) {
       step(); has_enumeration |= op.life == analysis::ValueLife::kLive &&
@@ -352,6 +364,10 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(index)}, EvaluationObligation::kPlan);
         const auto& op = graph.ops[index];
         Require(op.block.value == b && op.order == order, Error::kInvalidGraph);
+        if(op.life==analysis::ValueLife::kLive&&std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation)) {
+          Require(plan.concurrent&&plan.concurrent->members[index],Error::kOwnership);
+          plan.operations[index]={EvaluationKind::kConcurrentNotification,{},{}};++serial;continue;
+        }
         if (ForInOperation(plan, {static_cast<std::uint32_t>(index)})) {
           plan.operations[index] = {EvaluationKind::kForInEvent, {}, {}};
           // Ordered protocol boundary: never an elided effect or eager expression.

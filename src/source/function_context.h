@@ -43,6 +43,7 @@ class FunctionContext {
   std::u16string_view Name() const {
     return std::visit([](const auto& context) { return context.Name(); }, context_);
   }
+  const ConcurrentMetadata* Concurrent() const { const auto* context=std::get_if<CreationTreeContext>(&context_);return context?context->Concurrent():nullptr; }
   CallableKind Callable() const { return std::visit([](const auto& c) { return c.Callable(); }, context_); }
   Strictness Mode() const { return std::visit([](const auto& c) { return c.Mode(); }, context_); }
   std::size_t AllocatedBytes() const { return std::visit([](const auto& c) { return c.AllocatedBytes(); }, context_); }

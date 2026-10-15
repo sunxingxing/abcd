@@ -11,6 +11,7 @@ enum class EvaluationDisposition : std::uint8_t {
 };
 constexpr EvaluationDisposition Disposition(EvaluationKind kind) {
   switch (kind) {
+    case EvaluationKind::kConcurrentNotification:
     case EvaluationKind::kForInEvent: return EvaluationDisposition::kProtocol;
     case EvaluationKind::kRemoved: return EvaluationDisposition::kRemoved;
     case EvaluationKind::kCellGuard:

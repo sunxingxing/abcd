@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_SOURCE_TREE_H_
 
 #include "abcd/source/evaluation_kind.h"
+#include "abcd/source/concurrent_directive.h"
 
 #include <string>
 #include <algorithm>
@@ -400,6 +401,7 @@ struct FunctionTree {
   std::vector<YieldReturnComposition> yield_returns;
   // Invocation-private identity used only by a closed VM Hole protocol.
   std::optional<SymbolId> hole;
+  std::optional<ConcurrentDirective> concurrent;
 };
 // FunctionTree is the direct printer input, not a source-publication token.
 // Structural safety checks do not imply complete recovery or IR equivalence.

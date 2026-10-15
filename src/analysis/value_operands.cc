@@ -95,6 +95,8 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kStoredValue, Accumulator{});
     } else if constexpr (std::is_same_v<T, BranchOperation>) {
       Append(plan, OperandRole::kCondition, op.predicate.input);
+    } else if constexpr (std::is_same_v<T, ConcurrentNotification>) {
+      Append(plan, OperandRole::kReturnValue, Accumulator{}, ReadPurpose::kProtocol);
     } else if constexpr (std::is_same_v<T, ReturnOperation>) {
       Append(plan, OperandRole::kReturnValue, op.value);
     } else if constexpr (std::is_same_v<T, ThrowOperation>) {

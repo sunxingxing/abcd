@@ -347,6 +347,10 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
         } else if constexpr (std::is_same_v<T, TreeConstantError>) {
           if (error == TreeConstantError::kResourceLimit) throw Error::kResourceLimit;
           if (error == TreeConstantError::kWorkLimit) throw Error::kWorkLimit;
+        } else if constexpr (std::is_same_v<T, ConcurrentFailure>) {
+          if(error.kind==ConcurrentError::kResourceLimit)throw Error::kResourceLimit;
+          if(error.kind==ConcurrentError::kWorkLimit)throw Error::kWorkLimit;
+          throw Error::kContext;
         } else {
           static_assert(std::is_same_v<T, abc::MetadataError>);
           if (error == abc::MetadataError::kResourceLimit) throw Error::kResourceLimit;

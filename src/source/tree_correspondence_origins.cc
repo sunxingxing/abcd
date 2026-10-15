@@ -120,6 +120,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     }
     if (std::holds_alternative<analysis::ValueJump>(op.operation) ||
         std::holds_alternative<analysis::ValueDebugger>(op.operation) ||
+        std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation) ||
         std::holds_alternative<analysis::ValueThrow>(op.operation) ||
         std::holds_alternative<analysis::ValueReturn>(op.operation) || IsEnvironmentState(op.operation) ||
         ((std::holds_alternative<analysis::ValueModuleWrite>(op.operation) ||

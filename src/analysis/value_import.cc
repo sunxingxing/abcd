@@ -139,6 +139,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueReturn{};
     } else if constexpr (std::is_same_v<T, ThrowOperation>) {
       return ValueThrow{};
+    } else if constexpr (std::is_same_v<T, ConcurrentNotification>) {
+      return ValueConcurrentNotification{op.owner};
     } else if constexpr (std::is_same_v<T, NoOperation>) {
       return ValueNop{};
     } else if constexpr (std::is_same_v<T, DebuggerOperation>) {

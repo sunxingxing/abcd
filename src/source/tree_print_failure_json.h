@@ -2,11 +2,13 @@
 #define ABCD_SOURCE_TREE_PRINT_FAILURE_JSON_H_
 #include "abcd/source/tree_print_failure.h"
 #include "tree_failure_json.h"
+#include "concurrent_failure_json.h"
 namespace abcd::source {
 inline nlohmann::json TreePrintFailureJson(const TreePrintFailure& f) {
   nlohmann::json j{{"kind",static_cast<unsigned>(f.kind)}, {"site",static_cast<unsigned>(f.site)},
     {"written_bytes",f.written_bytes},{"location",TreeLocationJson(f.location)}};
   if(const auto* cause=std::get_if<TreeStructureError>(&f.cause))j["structure_error"]=static_cast<unsigned>(*cause);
+  if(f.concurrent)j["concurrent"]=ConcurrentJson(*f.concurrent);
   if(f.owner)j["owner"]=f.owner->value;
   if(f.anchor)j["anchor"]=f.anchor->value;
   if(f.budget) {
@@ -36,6 +38,7 @@ inline std::optional<TreePrintFailure> ParseTreePrintFailure(const nlohmann::jso
   };
   std::uint64_t written;
   if(!number(j,"written_bytes",written)||written>SIZE_MAX)return {};f.written_bytes=written;
+  if(j.contains("concurrent")){f.concurrent=ParseConcurrent(j["concurrent"]);if(!f.concurrent)return {};}
   if(j.contains("budget")) {
     const auto& b=j["budget"];TreeBudgetEvidence e;
     if(!FailureNumber(b,"kind",kind)||kind>static_cast<unsigned>(TreePrintBudgetKind::kHostAllocation))return {};
