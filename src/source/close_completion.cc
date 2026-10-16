@@ -1,4 +1,5 @@
 #include "close_completion.h"
+#include "close_boundary.h"
 
 #include "../analysis/idf_scratch.h"
 #include "../analysis/value_phi.h"
@@ -297,29 +298,26 @@ class Proof {
     if(!leaves)return Missing(c,CloseCompletionError::kCompletion,{},entry);
     return {CloseProofState::kVerified,{}};
   }
-  CloseObligationResult Ownership(const DerivedClose& c,const CloseCompletionRegion& r) {
-    std::pmr::vector<CompletionEdge> entries(&q_.memory);
-    for(const auto& e:c.entries){q_.Step();entries.push_back(e.entry.edge);}Sort(entries);
-    const auto stamp=++generation_;q_.Require(stamp!=0,CloseCompletionError::kResourceLimit);
-    for(const auto& m:r.members){q_.Step();marks_[m.node.value]=stamp;}
+  CloseObligationResult Ownership(const DerivedClose& c,CloseCompletionRegion& r) {
+    if(!r.outcomes)return Missing(c,CloseCompletionError::kOwnership);
+    auto proof=ProveCloseBoundary(body_,profile_,in_.flow,in_.frame.registers,plan_,scan_,c,r,q_.Remaining(),verify_);
+    if(const auto* f=std::get_if<CloseCompletionFailure>(&proof))throw *f;
+    r.boundary=std::get<CloseBoundaryProof>(std::move(proof));
+    q_.memory.Observe(r.boundary->peak_bytes);q_.Step(r.boundary->work);
+    q_.memory.Retain(r.boundary->ports.capacity()*sizeof(CloseOutcomeLeaving)+
+        r.boundary->unreachable_entries.capacity()*sizeof(CompletionEdge)+
+        r.boundary->private_slots.capacity()*sizeof(ClosePrivateSlot)+
+        r.boundary->regions.capacity()*sizeof(TryId));
+    if(r.boundary->missing)return {CloseProofState::kMissing,r.boundary->missing};
     for(const auto& m:r.members) {
-      q_.Step();for(auto i=pred_offsets_[m.node.value];i<pred_offsets_[m.node.value+1];++i) {
-        q_.Step();const auto edge=preds_[i];
-        if(marks_[edge.source.value]!=stamp && !Cut(entries,edge))
-          return Missing(c,CloseCompletionError::kExternalEntry,m.node,{},edge);
-      }
-      if(m.role==CloseMemberRole::kUnproved) {
+      q_.Step();if(m.role==CloseMemberRole::kUnproved) {
         auto missing=Missing(c,CloseCompletionError::kOwnership,m.node);
         missing.missing->ownership_gap=CloseOwnershipGap::kEventCoverage;return missing;
       }
     }
-    // This slice records complete raw members/edges, but does not yet prove
-    // private scalar live-outs or classify an overlapping user try. Such a
-    // membership table MUST NOT mint topology ownership.
-    auto missing=Missing(c,CloseCompletionError::kOwnership);
-    missing.missing->ownership_gap=CloseOwnershipGap::kPrivateState;
-    return missing;
+    return {CloseProofState::kVerified,{}};
   }
+
   const abc::MethodBody& body_;abc::ProfileId profile_;const ValueProgram& g_;const PhasedValueInput& in_;
   const ExceptionPlan& plan_;const IteratorKeys& keys_;const IteratorProtocolScan& scan_;
   Quota q_;CloseEntries entries_;ValueIdentities ids_;
@@ -391,6 +389,26 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
     if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
     if(a.protocol!=b.protocol || a.read!=b.read || a.call!=b.call || a.members.size()!=b.members.size() || a.edges.size()!=b.edges.size())
       return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+    if(a.boundary.has_value()!=b.boundary.has_value())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+    if(a.boundary) {
+      if(a.boundary->entry_coverage!=b.boundary->entry_coverage || a.boundary->port_coverage!=b.boundary->port_coverage ||
+          a.boundary->private_state!=b.boundary->private_state || a.boundary->region_coverage!=b.boundary->region_coverage ||
+          a.boundary->missing!=b.boundary->missing || a.boundary->ports.size()!=b.boundary->ports.size() ||
+          a.boundary->unreachable_entries.size()!=b.boundary->unreachable_entries.size() ||
+          a.boundary->private_slots.size()!=b.boundary->private_slots.size() || a.boundary->regions.size()!=b.boundary->regions.size())
+        return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+      const auto equal=[&](const auto& x,const auto& y)->std::optional<CloseCompletionFailure> {
+        for(std::size_t k=0;k<x.size();++k) {
+          if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
+          if(x[k]!=y[k])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+        }
+        return {};
+      };
+      if(const auto f=equal(a.boundary->ports,b.boundary->ports))return *f;
+      if(const auto f=equal(a.boundary->unreachable_entries,b.boundary->unreachable_entries))return *f;
+      if(const auto f=equal(a.boundary->private_slots,b.boundary->private_slots))return *f;
+      if(const auto f=equal(a.boundary->regions,b.boundary->regions))return *f;
+    }
     if(a.outcomes.has_value()!=b.outcomes.has_value())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
     if(a.outcomes) {
       if(a.outcomes->arrivals.size()!=b.outcomes->arrivals.size() || a.outcomes->leaving.size()!=b.outcomes->leaving.size())

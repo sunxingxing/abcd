@@ -23,7 +23,7 @@ enum class ClosePriorityReason : std::uint8_t {
 // this function can contribute to a certificate; it grants no provenance.
 [[nodiscard]] std::optional<ClosePriorityReason> ClosePriorityMismatch(
     const analysis::PendingCompletion&, const analysis::CloseOutcomeLeaving&);
-enum class CloseOwnershipGap : std::uint8_t { kEventCoverage, kPrivateState, kRegionCoverage };
+enum class CloseOwnershipGap : std::uint8_t { kEventCoverage, kPrivateState, kRegionCoverage, kLiveOut, kUserTry, kPort, kRawFlow };
 struct CloseCompletionFailure {
   CloseCompletionError kind;
   std::optional<IteratorProtocolId> protocol;
@@ -35,11 +35,12 @@ struct CloseCompletionFailure {
   std::optional<ClosePriorityReason> priority;
   std::optional<analysis::CloseOutcomeGap> outcome_gap;
   std::optional<CloseOwnershipGap> ownership_gap;
+  std::optional<analysis::TryId> region;
   bool operator==(const CloseCompletionFailure& b) const {
     // Derivation failures are returned as whole-query failures, never embedded
     // in a successful summary. Do not invent equality for opaque subproofs.
     return kind==b.kind && protocol==b.protocol && read==b.read && entry==b.entry &&
-        node==b.node && edge==b.edge && priority==b.priority && outcome_gap==b.outcome_gap && ownership_gap==b.ownership_gap && !derivation && !b.derivation;
+        node==b.node && edge==b.edge && priority==b.priority && outcome_gap==b.outcome_gap && ownership_gap==b.ownership_gap && region==b.region && !derivation && !b.derivation;
   }
 };
 enum class CloseProofState : std::uint8_t { kMissing, kVerified };
@@ -67,6 +68,25 @@ struct CloseCompletionEntry {
   std::array<CloseObligationResult, static_cast<std::size_t>(CloseObligation::kCount)> obligations;
   bool operator==(const CloseCompletionEntry&) const = default;
 };
+// A port is an original relation exit with its entry-qualified completion and
+// outcome. No join PC or source ExprId substitutes for the physical edge.
+struct ClosePrivateSlot {
+  std::optional<abc::RegisterId> reg; // absent = acc, not an absent slot
+  auto operator<=>(const ClosePrivateSlot&) const = default;
+};
+struct CloseBoundaryProof {
+  CloseProofState entry_coverage = CloseProofState::kMissing;
+  CloseProofState port_coverage = CloseProofState::kMissing;
+  CloseProofState private_state = CloseProofState::kMissing;
+  CloseProofState region_coverage = CloseProofState::kMissing;
+  std::vector<analysis::CloseOutcomeLeaving> ports;
+  std::vector<analysis::CompletionEdge> unreachable_entries;
+  std::vector<ClosePrivateSlot> private_slots;
+  std::vector<analysis::TryId> regions;
+  std::optional<CloseCompletionFailure> missing;
+  std::size_t peak_bytes = 0;
+  std::uint64_t work = 0;
+};
 struct CloseCompletionRegion {
   IteratorProtocolId protocol;
   analysis::OpId read;
@@ -74,6 +94,7 @@ struct CloseCompletionRegion {
   std::vector<CloseMember> members; // Original node order.
   std::vector<analysis::CompletionEdge> edges; // Every original member edge, cuts included.
   std::optional<analysis::CloseOutcomeRelation> outcomes;
+  std::optional<CloseBoundaryProof> boundary;
 };
 struct CloseCompletionSummary {
   abc::EntityOffset method;

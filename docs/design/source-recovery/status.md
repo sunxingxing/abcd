@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 A3h（部分）：close 区域边界与私有状态（cc 审查通过）
+
+- 6 个 `kExternalEntry` 见证均为原始 CFG 中不可达的 ObjectCheck 正常 Commit 边，经可达性证明排除（不是放宽）。`close_boundary`：从 completion relation 导出携带 completion/outcome 的端口，检查全部入边/出边与私有状态 live-out（acc 与寄存器，cell-backed 状态仍拒绝），用户 try 必须核对真实 dispatch/Catch 角色。5 个方法的剩余缺口均为 `kRegionCoverage`：外层 body-protection 范围包含 close 成员集之外的普通循环正文。fixture 中发现一处真实的私有状态 live-out（PC253），该路径保持拒绝。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变；相关测试全部通过。
+
 ## Round 79 A3g（部分）：事件覆盖与真实方法 probe（cc 审查通过）
 
 - 事件覆盖事实（对所有到达状态取合取）与独立复核；用其细化成员分类。7 个真实方法在 V4 下：5 个优先级 verified，ownership 首个缺口都是成员边界上的 `kExternalEntry` 见证（还需完整的区域边界证明来判定是否为合法端口）；m42717 嵌套入口推导停在 `kContinuation`（PC692）；async m23306 停在 `kExternalEntry`（原始 PC99/工作 PC96）。私有状态 live-out、用户 try 排除与嵌套传播待续。

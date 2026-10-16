@@ -127,6 +127,7 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
         <<flow.instructions[flow.nodes[missing->node->value].instruction.value].pc.value<<'\n';
     }
     Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state==CloseProofState::kMissing);
+    Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].missing->kind!=CloseCompletionError::kExternalEntry);
     if(!padding && mutation==Mutation::kNone)std::cout<<"entry-pc="<<flow.instructions[flow.nodes[e.source.source.value].instruction.value].pc.value
       <<" contract="<<SourceContractName(contract)<<" kind="<<unsigned(e.pending.kind)<<" priority="<<unsigned(priority)<<" ownership=missing\n";
   }
@@ -145,7 +146,17 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   bad=summary;bad.entries[0].pending.payload=CompletionEntryPayload{99};reject(bad);
   bad=summary;bad.entries[0].pending.target=ExceptionNodeId{0};reject(bad);
   bad=summary;bad.entries.erase(bad.entries.begin());reject(bad);
-  bad=summary;bad.entries[0].obligations[static_cast<unsigned>(CloseObligation::kOwnership)]={CloseProofState::kVerified,{}};reject(bad);
+  bad=summary;auto& ownership=bad.entries[0].obligations[static_cast<unsigned>(CloseObligation::kOwnership)];
+  ownership.state=ownership.state==CloseProofState::kVerified?CloseProofState::kMissing:CloseProofState::kVerified;reject(bad);
+  Check(summary.regions[0].boundary.has_value());
+  bad=summary;bad.regions[0].boundary->entry_coverage=CloseProofState::kMissing;reject(bad);
+  bad=summary;bad.regions[0].boundary->port_coverage=CloseProofState::kMissing;reject(bad);
+  bad=summary;bad.regions[0].boundary->private_state=bad.regions[0].boundary->private_state==CloseProofState::kVerified?CloseProofState::kMissing:CloseProofState::kVerified;reject(bad);
+  bad=summary;bad.regions[0].boundary->ports.clear();reject(bad);
+  bad=summary;bad.regions[0].boundary->ports[0].pending.target=ExceptionNodeId{0};reject(bad);
+  bad=summary;bad.regions[0].boundary->private_slots.push_back({abc::RegisterId{999}});reject(bad);
+  bad=summary;bad.regions[0].boundary->unreachable_entries.push_back({{0},0});reject(bad);
+  bad=summary;bad.regions[0].boundary->regions.push_back({999});reject(bad);
   bad=summary;bad.regions[0].members.pop_back();reject(bad);
   bad=summary;bad.regions[0].edges.pop_back();reject(bad);
   bad=summary;bad.regions[0].call=OpId{0};reject(bad);
@@ -165,6 +176,8 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   Check(std::get<CloseCompletionFailure>(analyze({64*1024*1024,0})).kind==CloseCompletionError::kWorkLimit);
   if(padding || mutation==Mutation::kNone) {
     const auto used=std::get<std::uint64_t>(verified);
+    if(!padding && mutation==Mutation::kNone)for(const auto fraction:{1u,2u,3u})
+      Check(std::get<CloseCompletionFailure>(verify(summary,{64*1024*1024,used*fraction/4})).kind==CloseCompletionError::kWorkLimit);
     Check(std::holds_alternative<std::uint64_t>(verify(summary,{64*1024*1024,used})));
     Check(std::get<CloseCompletionFailure>(verify(summary,{64*1024*1024,used-1})).kind==CloseCompletionError::kWorkLimit);
     std::size_t low=0,high=summary.peak_bytes;

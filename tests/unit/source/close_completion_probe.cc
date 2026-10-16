@@ -77,9 +77,33 @@ int main(int argc,char**argv) {
     auto keys=Take<IteratorKeys>(ResolveIteratorKeys({*file,header,index},method->offset,graph),"keys");
     auto scan=Take<IteratorProtocolScan>(ScanIteratorProtocols(graph,input,plan,keys),"scan");
     std::cout<<"method="<<entity<<" acquisitions="<<scan.candidates.size()<<" regions="<<plan.regions.size()<<'\n';
-    if(argc>3 && std::string_view(argv[3])=="--members")for(const auto& r:scan.regions) {
+    if(argc>3 && (std::string_view(argv[3])=="--members" || std::string_view(argv[3])=="--boundary"))for(const auto& r:scan.regions) {
       const auto& x=plan.layout.regions[r.region.value];
-      std::cout<<"try="<<r.region.value<<" protocol="<<r.protocol.value<<" role="<<unsigned(r.role)<<" body="<<flow.instructions[x.body.begin.value].pc.value<<" handler="<<flow.instructions[x.handler.begin.value].pc.value<<" read="<<r.read.working_pc.value<<'\n';
+      std::cout<<"try="<<r.region.value<<" protocol="<<r.protocol.value<<" role="<<unsigned(r.role)<<" body="<<flow.instructions[x.body.begin.value].pc.value<<" handler="<<flow.instructions[x.handler.begin.value].pc.value<<" body-end-site="<<x.body.end.value<<" handler-end-site="<<x.handler.end.value<<" read="<<r.read.working_pc.value<<'\n';
+    }
+    if(argc>3 && std::string_view(argv[3])=="--boundary") {
+      auto entries=Take<CloseEntries>(DeriveCloseEntries(body,header.profile,graph,input,plan,keys,scan),"entries");
+      const auto pc=[&](ExceptionNodeId n){return flow.instructions[flow.nodes[n.value].instruction.value].pc.value;};
+      std::vector<bool> live(flow.nodes.size());std::vector<ExceptionNodeId> pending;
+      live[0]=true;pending.push_back({0});
+      for(std::size_t i=0;i<pending.size();++i)for(std::uint8_t e=0;e<flow.nodes[pending[i].value].successor_count;++e) {
+        const auto n=flow.nodes[pending[i].value].successors[e].target;if(!live[n.value]){live[n.value]=true;pending.push_back(n);}
+      }
+      for(std::uint32_t n=0;n<flow.nodes.size();++n) {
+        const auto& node=flow.nodes[n];if(node.phase!=ExceptionPhase::kCommit || !std::holds_alternative<ObjectCheck>(flow.instructions[node.instruction.value].operation))continue;
+        std::cout<<" resultcheck="<<pc({n})<<" reachable="<<live[n];
+        for(std::uint8_t e=0;e<node.successor_count;++e)std::cout<<" ->"<<pc(node.successors[e].target);
+        std::cout<<'\n';
+      }
+
+      for(const auto& c:entries.closes) {
+        std::cout<<"BOUNDARY read="<<flow.instructions[flow.nodes[graph.phases[graph.ops[c.read.value].block.value].input.value].instruction.value].pc.value<<" exhausted="<<pc(c.iteration.exhausted.source)<<"->"<<pc(flow.nodes[c.iteration.exhausted.source.value].successors[c.iteration.exhausted.successor].target)<<'\n';
+        for(const auto& e:c.exits)std::visit([&](const auto& x){
+          std::cout<<" exit="<<pc(x.source)<<" phase="<<unsigned(flow.nodes[x.source.value].phase);
+          if constexpr(requires{x.successor;})std::cout<<"->"<<pc(flow.nodes[x.source.value].successors[x.successor].target);
+          std::cout<<'\n';
+        },e);
+      }
     }
     auto result=AnalyzeCloseCompletion(body,header.profile,graph,input,plan,keys,scan,{},SourceContract::kLanguageSourceV4);
     if(auto* f=std::get_if<CloseCompletionFailure>(&result)) {
@@ -99,8 +123,18 @@ int main(int argc,char**argv) {
       std::cout<<"protocol="<<e.protocol.value<<" read="<<flow.instructions[flow.nodes[graph.phases[graph.ops[e.read.value].block.value].input.value].instruction.value].pc.value<<" entry="<<flow.instructions[flow.nodes[e.source.source.value].instruction.value].pc.value<<" completion="<<unsigned(e.pending.kind);
       for(std::size_t o=0;o<e.obligations.size();++o) {
         const auto& x=e.obligations[o];std::cout<<" obligation"<<o<<'='<<unsigned(x.state);
-        if(x.missing) {std::cout<<':'<<unsigned(x.missing->kind);if(x.missing->ownership_gap)std::cout<<"[ownership-gap="<<unsigned(*x.missing->ownership_gap)<<']';if(x.missing->node)std::cout<<'@'<<flow.instructions[flow.nodes[x.missing->node->value].instruction.value].pc.value;}
+        if(x.missing) {std::cout<<':'<<unsigned(x.missing->kind);if(x.missing->region)std::cout<<"[try="<<x.missing->region->value<<"]";if(x.missing->ownership_gap)std::cout<<"[ownership-gap="<<unsigned(*x.missing->ownership_gap)<<']';if(x.missing->node)std::cout<<'@'<<flow.instructions[flow.nodes[x.missing->node->value].instruction.value].pc.value;if(x.missing->edge){const auto edge=*x.missing->edge;const auto& a=flow.nodes[edge.source.value];const auto& b=flow.nodes[a.successors[edge.successor].target.value];std::cout<<" edge="<<flow.instructions[a.instruction.value].pc.value<<":"<<unsigned(a.phase)<<":"<<unsigned(edge.successor)<<"->"<<flow.instructions[b.instruction.value].pc.value<<":"<<unsigned(b.phase);}}
       }std::cout<<'\n';
+    }
+    if(argc>3 && std::string_view(argv[3])=="--boundary")for(const auto& r:summary.regions)if(r.boundary) {
+      std::cout<<" boundary-read="<<flow.instructions[flow.nodes[graph.phases[graph.ops[r.read.value].block.value].input.value].instruction.value].pc.value
+        <<" entry-proof="<<unsigned(r.boundary->entry_coverage)<<" port-proof="<<unsigned(r.boundary->port_coverage)
+        <<" private-proof="<<unsigned(r.boundary->private_state)<<" region-proof="<<unsigned(r.boundary->region_coverage)
+        <<" ports="<<r.boundary->ports.size()<<" private="<<r.boundary->private_slots.size()<<" dead-entry-edges="<<r.boundary->unreachable_entries.size()<<'\n';
+      for(const auto edge:r.boundary->unreachable_entries) {
+        const auto& a=flow.nodes[edge.source.value];const auto& b=flow.nodes[a.successors[edge.successor].target.value];
+        std::cout<<" dead-edge="<<flow.instructions[a.instruction.value].pc.value<<":"<<unsigned(a.phase)<<"->"<<flow.instructions[b.instruction.value].pc.value<<":"<<unsigned(b.phase)<<'\n';
+      }
     }
     if(argc>3 && std::string_view(argv[3])=="--members")for(const auto& r:summary.regions) {
       std::cout<<"REGION read="<<flow.instructions[flow.nodes[graph.phases[graph.ops[r.read.value].block.value].input.value].instruction.value].pc.value<<'\n';

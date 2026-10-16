@@ -243,3 +243,82 @@ Tests added here cover event-ledger deletion/node/proof mutations, existing
 200/201/400/800 and exact-budget runs, a production-independent diagnostic probe,
 and an explicit nested-derivation-gap regression. They are prerequisite tests,
 not the requested complete ownership/nested mutation matrix.
+
+
+## A3h: original boundary, ports and private-slot liveness
+
+The six `kExternalEntry` witnesses from A3g are not live entrances. Each is the
+normal Commit edge of a result-object check with no path from the method entry
+in the original Before/Commit/Catch graph (including the pinned exception
+dispatch). Its destination reloads/rethrows the original pending exception:
+
+| Method | Dead Commit edge | Loop-exhaustion target (distinct) |
+|---|---|---|
+| m28799 | 1179 -> 1182 | 1189 |
+| m7171 | 212 -> 215 | 221 |
+| m39073 | 297 -> 300 | 307 |
+| m47128 first / second | 431 -> 434 / 931 -> 934 | 441 / 941 |
+| m40502 | 442 -> 445 | 452 |
+
+These are syntactic continuations of unreachable result-check paths, not
+exhaustion edges, reachable user edges, or new legal entry ports. The boundary
+proof independently rebuilds `RawEventGraph`, matches every original flow arc
+and caller exit, and records the unreachable predecessor edges. Every live
+entrance must still be a derived close entry. Every outgoing member edge must
+be an original completion-relation cut. Entry-qualified ports retain the exact
+exit, correlated pending completion and close outcome; they are never inferred
+from source layout or a join PC.
+
+Private-slot liveness includes **acc as well as registers**, conservatively
+collecting every slot written by close members. Every normal/exception port
+starts a sparse raw-event query: read-before-write refuses; only a normal
+Commit (or an actual Catch acc definition) kills; exception edges bypass the
+normal write. Normal jumps into handler code never get the Catch kill. Cycles
+without reads are valid deadness evidence only, not proof of progress or
+permission to remove control. Cell-backed private state is not certified by
+this register analysis; a lexical store keeps `kPrivateState` missing.
+
+Candidate try association remains only a necessary condition. Return-protection
+roles must match the real return-read dispatch; enclosing-handler roles must
+match the derived Throw entry's actual Catch. An intersecting unassociated or
+role-mismatched try refuses `kUserTry`, including a forged candidate association.
+A region is listed as covered only when **every originally reachable Before in
+both its protected range and its handler belongs to the close member set**.
+Otherwise `kRegionCoverage` records the real TryId and first uncovered node.
+The producer's covered-region list never substitutes for this check.
+
+This exposes a remaining ownership gap instead of granting ownership from the
+candidate scan: the outer body-protection ranges include ordinary loop-body
+operations outside the current close member set. A3h does not relabel these
+operations as close code or absorb their effects. Closing this gap requires
+separate coverage of the ordinary body and the close subregion, with their real
+scope/dispatch correspondence. This increment is standalone and grants no
+ProtocolOwned topology, source publication or nested transfer proof.
+
+| Method | Entries / ports | Boundary entrances, cuts, private slots | Remaining ownership |
+|---|---|---|---|
+| o5 m28799 | 43 / 172 | verified | `kRegionCoverage`, TryId2, PC720 |
+| o20 m7171 | 2 / 8 | verified | `kRegionCoverage`, TryId2, PC135 |
+| o32 m39073 | 6 / 24 | verified | `kRegionCoverage`, TryId2, PC146 |
+| o32 m47128 first | 11 / 44 | verified | `kRegionCoverage`, TryId4, PC218 |
+| o32 m47128 second | 2 / 8 | verified | `kRegionCoverage`, TryId6, PC699 |
+| o32 m40502 | 7 / 28 | verified | `kRegionCoverage`, TryId2, PC276 |
+
+All have seven conservatively private slots including acc. Priority remains
+verified under V4; m47128's separate multi-acquisition/nested obligation remains
+missing. The m42717 continuation and m23306 async entry gaps are unchanged.
+The m423 Break/Return copies additionally retain a real private-state live-out
+at PC253 when a close failure enters another close copy; this is not waived.
+
+The independently rebuilt summary compares entry/port/private/region proof
+states, exact ports, dead edges, slots and covered TryIds. It reverses raw
+successor traversal and chooses missing witnesses canonically. All PMR buffers
+use a prepaid arena; returned vector capacities are prepaid and retained in the
+owning proof's ledger. Sparse states and overlapping range walks consume the
+shared input-sized O(N log N) work allowance; dense work exhausts with a typed
+resource/work refusal, never a successful partial certificate.
+
+Tests cover a real external entrance, a legal port, omitted cuts, live-out guard
+and acc reads, overwrite-before-read, a real unrelated try, forged candidate/role
+association, certificate mutations, opposite traversal, and 200/201/400/800 with
+exact work/byte boundaries. The real ABC probe retains original IDs and PCs.

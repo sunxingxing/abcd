@@ -210,7 +210,7 @@ target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/for_in_emission.cc src/source/for_in_recovery.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/iterator_keys.cc src/source/iterator_protocol_scan.cc)
-target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc)
+target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
@@ -541,13 +541,17 @@ if(BUILD_TESTING)
   target_include_directories(close_outcome_test PRIVATE tests/support)
   add_test(NAME close_outcome_test COMMAND close_outcome_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
+  add_executable(close_boundary_test tests/unit/source/close_boundary_test.cc)
+  target_link_libraries(close_boundary_test PRIVATE abcd_source)
+  target_include_directories(close_boundary_test PRIVATE tests/support)
+  add_test(NAME close_boundary_test COMMAND close_boundary_test)
   add_executable(close_completion_probe tests/unit/source/close_completion_probe.cc)
   target_link_libraries(close_completion_probe PRIVATE abcd_source abcd_json)
   target_include_directories(close_completion_probe PRIVATE tests/support)
   add_test(NAME close_completion_probe_test COMMAND close_completion_probe
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 423)
   set_tests_properties(close_completion_probe_test PROPERTIES
-    PASS_REGULAR_EXPRESSION "obligation2=1 obligation3=0:6\\[ownership-gap=1\\]")
+    PASS_REGULAR_EXPRESSION "obligation2=1 obligation3=0:6.*ownership-gap=2")
   # Existing derived-entry gap: retain refusal, never assume an outer close
   # guard is a transparent continuation merely to construct a nested proof.
   add_test(NAME close_completion_nested_gap_test COMMAND close_completion_probe
