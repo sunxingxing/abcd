@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 增量 C（部分）：ForOfIdentityIndex（cc 审查通过）
+
+- 类型化的 for-of 身份/成员/用法索引：复核 B 的控制对应，使用共享 SCC 身份与异常 CFG 支配关系，检查 iterator、cached next、advance result 的封闭使用及 ObjectCheck/done/value 顺序；明确不是 evaluation 准入证书。4 个目标的索引与重算一致，生产叶子不变（kProtocolEvaluationPending）。每轮 advance 次数、success-only 绑定、事件/端口对应与公共 evaluation 接线待续。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变。
+
 ## Round 79 增量 B：ProtocolOwned 控制拓扑投影（cc 审查通过）
 
 - 只有整方法所有 close 义务独立通过才取得 `VerifiedProtocolRegionOwnership`（V4，确定性入口）；区域角色 OrdinaryTry/Inactive/ProtocolOwned；循环主体保留原始 phase 身份，close 子图以入口限定的 ProtocolCloseUnit 与 completion 端口表示；合成节点用 ProtocolClose 来源类型，不伪造 PC；VerifyExceptionControl 复验原始 close 证明、覆盖、端口、角色与边对应。4 个目标（m28799、m7171、m39073、m40502）越过 kMultipleExits，停在专用门禁 `kEvaluation > kProtocolOperand > kProtocolEvaluationPending`；m47128 整体走原路径。

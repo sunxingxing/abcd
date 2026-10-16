@@ -67,3 +67,36 @@ The current real-es2abc fixture tests candidate facts, budget boundaries and
 candidate mutations. Its README explicitly distinguishes that coverage from
 close-priority proof or native for-of source validation. It must not be used as
 evidence that the approved ownership verifier or production integration exists.
+
+
+## Increment C: identity/use index (partial, not production admission)
+
+`IndexForOfIdentities` builds a standalone `ForOfIdentityIndex` from the original
+phased import and sealed close ownership. It rechecks exception-control
+correspondence, uses SCC copy/phi identities, and indexes acquisition, cached
+next, advance, result object check, done, decision and value occurrences. It
+checks closed iterator/next/result uses and exceptional dominance of the
+successful commits. Ordinary uses of the extracted key remain ordinary; the
+key is not identified with the internal next-result object. Close members stay
+separate from ordinary protected body operations.
+
+The index is **not** `ForOfPlan`, `ForOfEvents`, or permission to skip any
+operation in evaluation. Single-advance execution per logical iteration,
+activation/binding commit correspondence (including exhaustion), and a common
+protocol/ordinary evaluation disposition are still required. No production
+caller consumes the index; `kProtocolEvaluationPending` therefore remains.
+Moving that gate to tree correspondence before those obligations are complete
+would mislabel an incomplete evaluation proof.
+
+Scratch uses prepaid PMR storage. Surviving capacities from delegated entry
+analysis stay charged while the index is built; released delegated scratch is
+not retained a second time. Dense indexes avoid per-protocol scans of all
+phases or close entries. The verifier reconstructs the index from immutable
+inputs and compares every member and use (it is a consistency verifier, not the
+future independent event/advance/binding verifier).
+
+The focused test uses the real synchronous close fixture, copy/phi identity
+from its import, padding sizes 200/201/400/800, altered index identities and
+membership, disabled acquisition contracts, and exact work/byte boundaries.
+This does not replace the required Increment C dynamic protocol mutations or
+end-to-end production gate acceptance.
