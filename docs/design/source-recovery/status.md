@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 增量 C（部分 2）：ForOfIterationProof（cc 审查通过）
+
+- 在 B 的投影控制图上证明每轮恰好一次 advance、done/value 顺序、回边与 continue；key 提交保留真实 SSA 定义、存储身份与受影响 phi 的输入，值身份从本次 value-read 落地。4 个目标的 prover/verifier 均通过，生产首因不变。待续：callee/receiver 跨激活的动态身份、源码绑定/TDZ/live-out、完整事件表与公共 planner 接线。新 live-out fixture 在 B 处被严格拒绝（kLiveOut、kBodyDispatch）。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变。
+
 ## Round 79 增量 C（部分）：ForOfIdentityIndex（cc 审查通过）
 
 - 类型化的 for-of 身份/成员/用法索引：复核 B 的控制对应，使用共享 SCC 身份与异常 CFG 支配关系，检查 iterator、cached next、advance result 的封闭使用及 ObjectCheck/done/value 顺序；明确不是 evaluation 准入证书。4 个目标的索引与重算一致，生产叶子不变（kProtocolEvaluationPending）。每轮 advance 次数、success-only 绑定、事件/端口对应与公共 evaluation 接线待续。

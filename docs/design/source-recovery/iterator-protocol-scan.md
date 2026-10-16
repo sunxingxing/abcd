@@ -100,3 +100,7 @@ from its import, padding sizes 200/201/400/800, altered index identities and
 membership, disabled acquisition contracts, and exact work/byte boundaries.
 This does not replace the required Increment C dynamic protocol mutations or
 end-to-end production gate acceptance.
+
+The subsequent standalone advance/key-definition slice is documented in
+[for-of-iteration-proof.md](for-of-iteration-proof.md). It still grants no
+production evaluation or source admission.
