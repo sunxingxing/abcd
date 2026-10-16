@@ -62,7 +62,7 @@ inline nlohmann::json TreeFailureJson(const TreeFailureEvidence& v) {
 }
 inline std::optional<TreeFailureEvidence> ParseTreeFailure(const nlohmann::json& j) {
   std::uint32_t kind;
-  if (!j.is_object() || !FailureNumber(j, "obligation", kind) || kind > static_cast<unsigned>(TreeObligation::kForOfCorrespondence) || !j.contains("location")) return {};
+  if (!j.is_object() || !FailureNumber(j, "obligation", kind) || kind > static_cast<unsigned>(TreeObligation::kForOfRecovery) || !j.contains("location")) return {};
   auto location = ParseTreeLocation(j["location"]); if (!location) return {};
   TreeFailureEvidence v{static_cast<TreeObligation>(kind), *location};
   if (j.contains("expected_owner")) { v.expected_owner = ParseTreeLocation(j["expected_owner"]); if (!v.expected_owner) return {}; }

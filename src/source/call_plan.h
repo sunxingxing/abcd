@@ -54,19 +54,19 @@ struct CallArgumentUses {
 // Value calls must print indirect-call syntax even if their identifier is eval.
 [[nodiscard]] std::variant<CallPlan, CallPlanFailure> BuildCallPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, const ForOfEvaluationInput* iteration = nullptr);
 // Checks supplied binding records, not a regenerated plan. Does not replace
 // final AST operand/receiver and generated-order correspondence checks.
 [[nodiscard]] std::variant<std::uint64_t, CallPlanFailure> VerifyCallPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    const CallPlan& plan, analysis::SemanticBudget budget = {});
+    const CallPlan& plan, analysis::SemanticBudget budget = {}, const ForOfEvaluationInput* iteration = nullptr);
 // Same call/reference checks with verified phased evaluation. In particular,
 // an explicit receiver does not permit a .call lookup or getter re-evaluation.
 [[nodiscard]] std::variant<CallPlan, CallPlanFailure> BuildPhasedCallPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, const ForOfEvaluationInput* iteration = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, CallPlanFailure> VerifyPhasedCallPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    const CallPlan& plan, analysis::SemanticBudget budget = {});
+    const CallPlan& plan, analysis::SemanticBudget budget = {}, const ForOfEvaluationInput* iteration = nullptr);
 }  // namespace abcd::source
 #endif

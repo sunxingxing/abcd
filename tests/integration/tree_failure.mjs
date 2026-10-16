@@ -90,9 +90,9 @@ try {
     if(entity===6952) {
       assert.deepEqual(report.source_failure.causes,[
         {domain:'abcd::source::FunctionTreeError',value:0},
-        {domain:'abcd::source::TreeObligation',value:16}]);
+        {domain:'abcd::source::TreeObligation',value:17}]);
       assert.deepEqual(report.source_failure.tree,{
-        obligation:16,location:{method:7171,operation:38,block:76,pc:93,working_pc:93}});
+        obligation:17,location:{method:7171,operation:38,block:76,pc:93,working_pc:93}});
       const old=run(semantic,[abc,String(method),'--record-source','--value-source','--language-numeric','--language-constructors']);
       assert.equal(old.status,1);
       assert.deepEqual(JSON.parse(old.stdout).source_failure.causes,[

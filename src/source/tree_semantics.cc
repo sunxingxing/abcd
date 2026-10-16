@@ -18,6 +18,9 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     TreeControlCheck control_check, TreeSemanticFailure* failure) {
   if (failure) *failure = {};
   using Error = TreeSemanticError;
+  // A II-b draft has checked TreeFlow only. Never manufacture OriginalFlow
+  // for protocol results before the joint recovery event ports exist.
+  if(evaluation.for_of)return Error::kUnsupportedOperation;
   try {
     auto checked_flow = exceptions
         ? VerifyExceptionTreeFlow(graph, *exceptions, evaluation, tree, budget, control_check, failure ? &failure->location : nullptr)

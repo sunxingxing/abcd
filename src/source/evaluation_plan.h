@@ -232,7 +232,15 @@ inline bool IsAbsentHeritageTransport(const analysis::ValueProgram& graph,
        std::holds_alternative<analysis::ValueCopy>(op.operation));
 }
 inline bool NeedsHoleToken(const EvaluationPlan& plan) {
-  return plan.holes && plan.flow == EvaluationFlow::kPhased;
+  if(!plan.holes || plan.flow!=EvaluationFlow::kPhased)return false;
+  if(!plan.for_of)return true;
+  // The implicit native close owns these sentinel tests/rethrows. A VM Hole
+  // token is needed only by surviving source operations, never for that state.
+  for(const auto& comparison:plan.holes->comparisons)
+    if(plan.operations[comparison.operation.value].kind!=EvaluationKind::kForOfEvent)return true;
+  for(const auto& rethrow:plan.holes->rethrows)
+    if(plan.operations[rethrow.operation.value].kind!=EvaluationKind::kForOfEvent)return true;
+  return false;
 }
 inline analysis::ValueOperand ResolveEvaluationOperand(
     const EvaluationPlan& plan, const analysis::ValueOperand& operand) {

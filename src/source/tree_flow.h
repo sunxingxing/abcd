@@ -5,6 +5,7 @@
 #include "evaluation_plan.h"
 #include "original_flow.h"
 #include "for_in_emission.h"
+#include "for_of_emission.h"
 
 namespace abcd::source {
 struct ExceptionTreeInput;
@@ -36,6 +37,12 @@ struct TreeSelectionTruth {
 };
 using TreeForInEvents = OriginalEnumeration;
 enum class EnumerationControl : std::uint8_t { kLoop, kExhausted };
+struct ForOfTreeFlow {
+  ForOfEmissionView view;
+  std::vector<StmtId> statements;
+  std::vector<std::optional<StmtId>> closes;
+  std::vector<std::optional<EnumerationControl>> controls;
+};
 struct TreeFlow {
   std::vector<OriginalConcurrentNotification> notifications;
   // Independent typed protocol correspondence. Advance Commit and success-only
@@ -102,6 +109,7 @@ struct TreeFlow {
   // Private boolean routing expressions checked by the completion projection.
   std::vector<ExprId> completion_expressions;
   std::optional<ExprId> hole_initializer;
+  std::optional<ForOfTreeFlow> for_of;
   std::shared_ptr<const OriginalFlow> original;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;

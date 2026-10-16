@@ -46,9 +46,9 @@ class CallBudget {
   void Admit(std::size_t count, std::size_t width) {
     Require(count <= remaining_.bytes / width, Error::kResourceLimit); remaining_.bytes -= count * width;
   }
-  void Evaluation(const ValueProgram& graph, const EvaluationPlan& evaluation, EvaluationFlow flow) {
+  void Evaluation(const ValueProgram& graph, const EvaluationPlan& evaluation, EvaluationFlow flow, const ForOfEvaluationInput* iteration) {
     const auto checked = flow == EvaluationFlow::kNormal ? VerifyEvaluationPlan(graph, evaluation, remaining_)
-        : VerifyPhasedEvaluationPlan(graph, evaluation, remaining_);
+        : VerifyPhasedEvaluationPlan(graph, evaluation, remaining_, iteration);
     if (const auto* work = std::get_if<std::uint64_t>(&checked)) { Step(*work); return; }
     const auto error = std::get<EvaluationFailure>(checked);
     if (error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
@@ -166,12 +166,12 @@ OpId ApplyConstructor(const ValueProgram& graph, const EvaluationPlan& evaluatio
   return result->op;
 }
 std::variant<std::uint64_t, CallPlanFailure> VerifyCalls(const ValueProgram& graph,
-    const EvaluationPlan& evaluation, const CallPlan& plan, SemanticBudget budget, EvaluationFlow flow);
+    const EvaluationPlan& evaluation, const CallPlan& plan, SemanticBudget budget, EvaluationFlow flow, const ForOfEvaluationInput* iteration);
 std::variant<CallPlan, CallPlanFailure> BuildCalls(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, analysis::SemanticBudget budget, EvaluationFlow flow) {
+    const EvaluationPlan& evaluation, analysis::SemanticBudget budget, EvaluationFlow flow, const ForOfEvaluationInput* iteration) {
   try {
     CallBudget checked(budget);
-    checked.Evaluation(graph, evaluation, flow);
+    checked.Evaluation(graph, evaluation, flow, iteration);
     checked.Admit(1, sizeof(CallPlan));
     checked.Admit(graph.ops.size(), sizeof(CallBinding)); checked.Step(graph.ops.size());
     CallPlan plan{graph.revision, graph.cfg_revision, {}};
@@ -180,7 +180,7 @@ std::variant<CallPlan, CallPlanFailure> BuildCalls(const analysis::ValueProgram&
     const auto array_uses = ArrayUses(graph, evaluation, checked);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       checked.Step(); const auto& op = graph.ops[i];
-      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassProjection) continue;
+      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassProjection || evaluation.operations[i].kind == EvaluationKind::kForOfEvent) continue;
       if (std::holds_alternative<ValueConstruct>(op.operation)) {
         plan.operations[i] = ConstructCall{};
         continue;
@@ -209,7 +209,7 @@ std::variant<CallPlan, CallPlanFailure> BuildCalls(const analysis::ValueProgram&
     }
     // Independent checking below validates the proposed property/receiver
     // association, including the suppressed raw receiver occurrence.
-    const auto verified = VerifyCalls(graph, evaluation, plan, checked.Remaining(), flow);
+    const auto verified = VerifyCalls(graph, evaluation, plan, checked.Remaining(), flow, iteration);
     if (const auto* error = std::get_if<CallPlanFailure>(&verified)) return *error;
     checked.Step(std::get<std::uint64_t>(verified));
     plan.allocated_bytes = sizeof(CallPlan) + plan.operations.capacity() * sizeof(CallBinding);
@@ -222,18 +222,18 @@ std::variant<CallPlan, CallPlanFailure> BuildCalls(const analysis::ValueProgram&
 }
 
 std::variant<std::uint64_t, CallPlanFailure> VerifyCalls(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget, EvaluationFlow flow) {
+    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget, EvaluationFlow flow, const ForOfEvaluationInput* iteration) {
   try {
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Require(plan.operations.size() == graph.ops.size(), Error::kBinding);
     CallBudget checked(budget);
-    checked.Evaluation(graph, evaluation, flow);
+    checked.Evaluation(graph, evaluation, flow, iteration);
     const auto array_uses = ArrayUses(graph, evaluation, checked);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       checked.Step(); const auto& op = graph.ops[i];
       const auto& binding = plan.operations[i];
       const auto* invoke = std::get_if<ValueInvoke>(&op.operation);
-      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassProjection ||
+      if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kClassProjection || evaluation.operations[i].kind == EvaluationKind::kForOfEvent ||
           (!invoke && !std::holds_alternative<ValueConstruct>(op.operation) &&
            !std::holds_alternative<ValueConstructApply>(op.operation))) {
         Require(std::holds_alternative<NoCall>(binding), Error::kBinding); continue;
@@ -290,19 +290,19 @@ std::variant<CallArgumentUses, CallPlanError> IndexCallArgumentUses(
   } catch (const std::length_error&) { return CallPlanError::kResourceLimit; }
 }
 std::variant<CallPlan, CallPlanFailure> BuildCallPlan(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
-  return BuildCalls(graph, evaluation, budget, EvaluationFlow::kNormal);
+    const EvaluationPlan& evaluation, analysis::SemanticBudget budget, const ForOfEvaluationInput* iteration) {
+  return BuildCalls(graph, evaluation, budget, EvaluationFlow::kNormal, iteration);
 }
 std::variant<std::uint64_t, CallPlanFailure> VerifyCallPlan(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget) {
-  return VerifyCalls(graph, evaluation, plan, budget, EvaluationFlow::kNormal);
+    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget, const ForOfEvaluationInput* iteration) {
+  return VerifyCalls(graph, evaluation, plan, budget, EvaluationFlow::kNormal, iteration);
 }
 std::variant<CallPlan, CallPlanFailure> BuildPhasedCallPlan(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
-  return BuildCalls(graph, evaluation, budget, EvaluationFlow::kPhased);
+    const EvaluationPlan& evaluation, analysis::SemanticBudget budget, const ForOfEvaluationInput* iteration) {
+  return BuildCalls(graph, evaluation, budget, EvaluationFlow::kPhased, iteration);
 }
 std::variant<std::uint64_t, CallPlanFailure> VerifyPhasedCallPlan(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget) {
-  return VerifyCalls(graph, evaluation, plan, budget, EvaluationFlow::kPhased);
+    const EvaluationPlan& evaluation, const CallPlan& plan, analysis::SemanticBudget budget, const ForOfEvaluationInput* iteration) {
+  return VerifyCalls(graph, evaluation, plan, budget, EvaluationFlow::kPhased, iteration);
 }
 }  // namespace abcd::source

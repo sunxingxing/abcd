@@ -7,6 +7,7 @@
 #include "expression_constants.h"
 
 namespace abcd::source {
+struct ForOfEmissionView;
 struct EdgeExpressions {
   analysis::IncomingKey incoming;
   std::uint32_t first;
@@ -39,6 +40,7 @@ struct ExpressionForest {
   // A module or deferred-cell store emitted as its binding's declaration:
   // operations holds the stored value and this the declared symbol.
   std::vector<std::optional<SymbolId>> initializations;
+  std::vector<std::optional<ExprId>> for_of_exits;
   // Flat, exclusively owned assignment roots, in each verified copy schedule's
   // order. These are not operation expressions: statement assembly places them
   // on the exact edge (including empty arms), or once at MethodEntry before the
@@ -98,7 +100,7 @@ BuildExpressionForest(const analysis::ValueProgram& graph,
     std::span<const BranchPolarity> polarity = {}, CallableKind callable = CallableKind::kFunction,
     analysis::ArithmeticSemantics arithmetic = analysis::ArithmeticSemantics::kPinnedRuntime,
     ConstructorSemantics constructors = ConstructorSemantics::kPinnedRuntime,
-    ParameterForm parameters = ParameterForm::kFrameFormals, const ForInEmissionView* enumeration = nullptr);
+    ParameterForm parameters = ParameterForm::kFrameFormals, const ForInEmissionView* enumeration = nullptr, const ForOfEvaluationInput* iteration = nullptr, const ForOfEmissionView* iteration_view = nullptr);
 [[nodiscard]] std::variant<ExpressionForest, ExpressionFailure>
 BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, std::uint32_t parameter_count,
@@ -109,6 +111,6 @@ BuildPhasedExpressionForest(const analysis::ValueProgram& graph,
     std::span<const BranchPolarity> polarity = {}, CallableKind callable = CallableKind::kFunction,
     analysis::ArithmeticSemantics arithmetic = analysis::ArithmeticSemantics::kPinnedRuntime,
     ConstructorSemantics constructors = ConstructorSemantics::kPinnedRuntime,
-    ParameterForm parameters = ParameterForm::kFrameFormals, const ForInEmissionView* enumeration = nullptr);
+    ParameterForm parameters = ParameterForm::kFrameFormals, const ForInEmissionView* enumeration = nullptr, const ForOfEvaluationInput* iteration = nullptr, const ForOfEmissionView* iteration_view = nullptr);
 }  // namespace abcd::source
 #endif

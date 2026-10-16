@@ -121,3 +121,41 @@ requires whole-CFG acyclicity; the record containing m39073 encounters m39263's 
 discovery; the record containing m40502 encounters m40670's ordinary control
 refusal before m40502 reaches the tree stage. No child binding is invented and no ordinary proof is skipped
 to change those leaves. Source publication remains impossible for this path.
+
+## Slice II-b: unpublished production draft and TreeFlow
+
+`ForOfEmissionView` interprets the immutable ProtocolOwned control. It retains
+LoopIds, the original header, success/exhaustion edges and entry-qualified
+close outcome ports. It never uses for-in's transparent exception forwarding.
+The block number in B's compact control projection is a unit identity; source
+emission/TreeFlow resolve the `PhaseControlUnit` to its real working block
+instead of indexing ValueProgram with that unit number. Synthetic-node storage
+is bounded against the actual unit prefix, not the unprojected block count.
+
+The common forest/binding/call planners receive the original for-of input for
+fresh verification. Protocol-owned iterator/next/result/close values have no
+source binding or expression. A native assignment header binds the success-only
+value to its checked scalar target; the existing declaration stays outside the
+header. Ordinary body operations and phi/copy schedules keep their original
+control identity. Exhaustion copies may be placed after the loop only if there
+is no competing break exit, or if that schedule is empty; unsupported staging
+is refused rather than executed on the wrong edge.
+
+TreeFlow independently rebuilds the view and protocol proofs, checks the actual
+RHS leaf against the original parameter/snapshot, checks unique protocol-member
+ownership, native loop/exit targets and copy positions, and retains the typed
+close port table. Exhaustion transfers are explicitly marked as implicit native
+control, not attributed to an invented source break. Source syntax can contain
+neither a second iterator acquisition nor a binding write on the exhausted
+edge. These checks still do not replace the joint OriginalFlow/recovery proof.
+
+`BuildForOfTreeDraft` returns a distinct unpublished type with TreeFlow but no
+OriginalFlow. The production path runs the same builder/checker, then returns
+`TreeObligation::kForOfRecovery` at the acquisition. `VerifyTreeSemantics` also
+refuses a for-of plan until recovery support exists. Direct AST printing in the
+unit/Node harness is not a publication receipt.
+
+The m7171 draft and the new ordinary-loop fixture exercise this path. The
+separate explicit break/return fixture still fails the pre-existing close seal
+at `kRegionCoverage`, TryId 4, PC133; it is a strict boundary test, not positive
+coverage for those source exits. This slice does not expand close ownership.

@@ -50,6 +50,16 @@ struct ForInTreeDraft {
 [[nodiscard]] std::variant<ForInTreeDraft, FunctionTreeFailure> BuildForInTreeDraft(
     const analysis::ValueProgram&, const ExceptionTreeInput&, const EvaluationPlan&,
     FunctionSyntax, ExpressionConstants, analysis::SemanticBudget = {});
+// Unpublished: TreeFlow only. No OriginalFlow/recovery or publication factory.
+struct ForOfTreeDraft {
+  FunctionTree tree;
+  std::size_t allocated_bytes=0;
+  std::uint64_t work=0;
+  TreeFlow flow;
+};
+std::variant<ForOfTreeDraft,FunctionTreeFailure> BuildForOfTreeDraft(
+    const analysis::ValueProgram&,const ExceptionTreeInput&,const EvaluationPlan&,
+    FunctionSyntax,ExpressionConstants,analysis::SemanticBudget = {});
 // Deliberately distinct from a publication receipt: original phase/control,
 // evaluation and independent tree correspondence are checked. Callable ABI,
 // same-file constant resolution and family enclosure still need admission.

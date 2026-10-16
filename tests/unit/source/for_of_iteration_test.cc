@@ -1,6 +1,13 @@
 // Read-only standalone certificate diagnostic. No production admission hook.
 #include "../../../src/source/for_of_iteration.h"
 #include "../../../src/source/for_of_events.h"
+#ifdef ABCD_TEST_FOR_OF_DRAFT
+#include "../../../src/source/for_of_emission.h"
+#include "../../../src/source/exception_tree.h"
+#include "../../../src/source/tree_constants.h"
+#include "abcd/source/tree_printer.h"
+#include <fstream>
+#endif
 #include "../../../src/source/for_of_evaluation.h"
 #include "../../../src/analysis/value_edits.h"
 #include "../../../src/source/exception_control.h"
@@ -19,6 +26,9 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 struct Refused {};
+#ifdef ABCD_TEST_FOR_OF_DRAFT
+std::string draft_output;
+#endif
 template<class T,class...U>T Take(std::variant<U...> value,const char* stage) {
   if(auto* p=std::get_if<T>(&value))return std::move(*p);
   std::cout<<"stage="<<stage<<" alternative="<<value.index();
@@ -167,6 +177,79 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     auto leak=evaluation;leak.operations[protocol.loops[0].advance.value]={EvaluationKind::kRoot,{},TemporaryReason::kCrossRegionValue};
     test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,leak,{},&source)));
     test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,evaluation)));
+#ifdef ABCD_TEST_FOR_OF_DRAFT
+    auto view=Take<ForOfEmissionView>(BuildForOfEmissionView(graph,source,*evaluation.for_of),"emission-view");
+    Take<std::uint64_t>(VerifyForOfEmissionView(graph,source,*evaluation.for_of,view),"verify-emission-view");
+    auto forged_view=view;forged_view.loops[0].success=forged_view.loops[0].exhausted;
+    test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEmissionView(graph,source,*evaluation.for_of,forged_view)));
+    forged_view=view;test::Check(!forged_view.ports.empty());forged_view.ports[0].outcome.pending.target=ExceptionNodeId{UINT32_MAX};
+    test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEmissionView(graph,source,*evaluation.for_of,forged_view)));
+    forged_view=view;test::Check(!forged_view.ports.empty());forged_view.ports.pop_back();
+    test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEmissionView(graph,source,*evaluation.for_of,forged_view)));
+    auto missing_exception=evaluation;
+    test::Check(!missing_exception.for_of->events.events.empty() && missing_exception.for_of->events.events[0].exception_exit);
+    missing_exception.for_of->events.events[0].exception_exit.reset();
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,missing_exception,{},&source)));
+    auto constants=Take<TreeConstants>(ResolveTreeConstants(*file,header,index,method->offset,graph),"constants");
+    FunctionSyntax syntax{};syntax.owner={0};syntax.method=method->offset;syntax.identity.contract=SourceContract::kLanguageSourceV4;
+    syntax.callable=CallableKind::kFunction;syntax.strictness=Strictness::kStrict;
+    syntax.parameters.resize(frame.parameters);syntax.names=constants.names;syntax.texts=constants.texts;
+    const auto resolved=constants.View();const ExceptionTreeInput exceptions{body,input,plan,control,source};
+    const auto build_draft=[&](SemanticBudget b=SemanticBudget{}){return BuildForOfTreeDraft(graph,exceptions,evaluation,syntax,resolved,b);};
+    auto drafted=build_draft();
+    if(const auto* f=std::get_if<FunctionTreeFailure>(&drafted)){std::cerr<<"draft kind="<<unsigned(f->kind);if(const auto* e=std::get_if<ExpressionFailure>(&f->cause))std::cerr<<" expression="<<unsigned(e->kind);if(f->tree){std::cerr<<" obligation="<<unsigned(f->tree->obligation);if(f->tree->location.operation)std::cerr<<" op="<<f->tree->location.operation->value;if(f->tree->location.pc)std::cerr<<" pc="<<f->tree->location.pc->value;}std::visit([](const auto& c){if constexpr(std::is_enum_v<std::decay_t<decltype(c)>>)std::cerr<<" cause="<<unsigned(c);},f->cause);std::cerr<<'\n';}
+    auto draft=Take<ForOfTreeDraft>(std::move(drafted),"draft");
+    test::Check(draft.flow.for_of && !draft.flow.original);
+    const auto work=draft.work;
+    Take<ForOfTreeDraft>(build_draft({SemanticBudget{}.bytes,work}),"draft-exact-work");
+    test::Check(std::get<FunctionTreeFailure>(build_draft({SemanticBudget{}.bytes,work-1})).kind==FunctionTreeError::kWorkLimit);
+    std::size_t byte_low=0,byte_high=SemanticBudget{}.bytes;
+    while(byte_low<byte_high){const auto mid=byte_low+(byte_high-byte_low)/2;auto candidate=build_draft({mid,SemanticBudget{}.work});
+      if(std::holds_alternative<ForOfTreeDraft>(candidate))byte_high=mid;
+      else {test::Check(std::get<FunctionTreeFailure>(candidate).kind==FunctionTreeError::kResourceLimit);byte_low=mid+1;}}
+    Take<ForOfTreeDraft>(build_draft({byte_low,SemanticBudget{}.work}),"draft-exact-bytes");
+    test::Check(byte_low>0 && std::get<FunctionTreeFailure>(build_draft({byte_low-1,SemanticBudget{}.work})).kind==FunctionTreeError::kResourceLimit);
+    std::cout<<"draft-boundary bytes="<<byte_low<<" work="<<work<<'\n';
+
+    if(!draft_output.empty()){std::ofstream output(draft_output);output<<"export default ";auto printed=PrintFunctionTree(draft.tree,output);test::Check(std::holds_alternative<PrintedFunction>(printed));output<<";\n";}
+    std::cout<<"verified production for-of draft statements="<<draft.tree.statements.size()<<'\n';
+    TreeLocation location;
+    Take<TreeFlow>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,draft.tree,{},TreeControlCheck::kFresh,&location),"independent-tree-flow");
+    auto rhs_tree=draft.tree;
+    for(const auto& st:rhs_tree.statements)if(const auto* loop=std::get_if<ForOfStmt>(&st.statement)){rhs_tree.expressions[loop->iterable.value].expression=SymbolExpr{loop->target};break;}
+    test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,rhs_tree)));
+    auto bad_tree=draft.tree;bool changed=false;
+    for(auto& st:bad_tree.statements)if(auto* loop=std::get_if<ForOfStmt>(&st.statement)){loop->target={static_cast<std::uint32_t>(bad_tree.symbols.size())};changed=true;break;}
+    test::Check(changed && std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,bad_tree)));
+    bad_tree=draft.tree;
+    const auto native=*std::find_if(bad_tree.statements.begin(),bad_tree.statements.end(),[](const auto& s){return std::holds_alternative<ForOfStmt>(s.statement);});
+    const auto target=std::get<ForOfStmt>(native.statement).target;
+    const ExprId undefined{static_cast<std::uint32_t>(bad_tree.expressions.size())};bad_tree.expressions.push_back({TreeLiteral{UndefinedLiteral{}},native.origin});
+    const ExprId put{static_cast<std::uint32_t>(bad_tree.expressions.size())};bad_tree.expressions.push_back({AssignmentExpr{SymbolTarget{target},undefined},native.origin});
+    const StmtId write{static_cast<std::uint32_t>(bad_tree.statements.size())};bad_tree.statements.push_back({ExpressionStmt{put},native.origin});
+    auto& root=std::get<BlockStmt>(bad_tree.statements[bad_tree.body.value].statement);
+    std::vector<StmtId> original_children(bad_tree.children.begin()+root.first_child,bad_tree.children.begin()+root.first_child+root.child_count);
+    root.first_child=static_cast<std::uint32_t>(bad_tree.children.size());root.child_count++;
+    for(const auto child:original_children){bad_tree.children.push_back(child);if(std::holds_alternative<ForOfStmt>(bad_tree.statements[child.value].statement))bad_tree.children.push_back(write);}
+    // Repack all block slices, so this mutation cannot fail merely because an
+    // abandoned child slice exists. It fails the execution correspondence.
+    std::vector<StmtId> packed;
+    for(auto& st:bad_tree.statements)if(auto* block=std::get_if<BlockStmt>(&st.statement)){const auto first=static_cast<std::uint32_t>(packed.size());packed.insert(packed.end(),bad_tree.children.begin()+block->first_child,bad_tree.children.begin()+block->first_child+block->child_count);block->first_child=first;}
+    bad_tree.children=std::move(packed);
+    test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,bad_tree)));
+    bad_tree=draft.tree;bool missing_continue=false;
+    const auto native_body=std::get<ForOfStmt>(native.statement).body;
+    const auto parent_scope=std::get<BlockStmt>(bad_tree.statements[native_body.value].statement).scope;
+    for(auto& st:bad_tree.statements)if(std::holds_alternative<ContinueStmt>(st.statement)) {
+      const ScopeId scope{static_cast<std::uint32_t>(bad_tree.scopes.size())};bad_tree.scopes.push_back({ScopeKind::kBlock,parent_scope});
+      st.statement=BlockStmt{scope,0,0,{}};missing_continue=true;break;
+    }
+    test::Check(missing_continue && std::holds_alternative<TreeStructure>(VerifyTreeStructure(bad_tree)));
+    test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,bad_tree)));
+    const auto gated=BuildExceptionFunctionDraft(graph,exceptions,evaluation,syntax,resolved);
+    test::Check(std::holds_alternative<FunctionTreeFailure>(gated));
+    const auto& gate=std::get<FunctionTreeFailure>(gated);test::Check(gate.tree && gate.tree->obligation==TreeObligation::kForOfRecovery);
+#endif
     std::cout<<"verified common evaluation plan\n";
     }
     std::cout<<"verified for-of disposition\n";
@@ -267,6 +350,11 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
 }
 int main(int argc,char**argv) {
   test::Check(argc>=2 && argc<=4);
+#ifdef ABCD_TEST_FOR_OF_DRAFT
+  if(argc==4 && std::string_view(argv[3]).starts_with("--output="))draft_output=std::string_view(argv[3]).substr(std::string_view("--output=").size());
+  if(argc==4 && std::string_view(argv[3])=="--variants") {Case(argv[1],0,std::stoul(argv[2]),1);Case(argv[1],0,std::stoul(argv[2]),0,true);return 0;}
+  if(argc==4 && std::string_view(argv[3])=="--scale") {for(unsigned padding:{200U,201U,400U,800U})Case(argv[1],padding,std::stoul(argv[2]));return 0;}
+#endif
   if(argc>=3)Case(argv[1],0,std::stoul(argv[2]),0,false,argc==4 && std::string_view(argv[3])=="--expect-ownership-gap",argc==4 && std::string_view(argv[3])=="--protocol-only");
   else {for(unsigned padding:{0,200,201,400,800})Case(argv[1],padding);Case(argv[1],0,451,1);Case(argv[1],0,451,0,true);}
 }

@@ -17,10 +17,10 @@ std::uint32_t CycleCount(const EvaluationPlan& evaluation, std::size_t bundle) {
 }
 std::variant<BindingPlan, BindingError> BuildBindings(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget, EvaluationFlow flow, ParameterForm parameter_form, const ForInEmissionView* enumeration) {
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, EvaluationFlow flow, ParameterForm parameter_form, const ForInEmissionView* enumeration, const ForOfEvaluationInput* iteration) {
   using namespace analysis;
   using Error = BindingError;
-  const auto verified = VerifyEvaluationForFlow(graph, evaluation, budget, flow);
+  const auto verified = VerifyEvaluationForFlow(graph, evaluation, budget, flow, iteration);
   if (const auto* error = std::get_if<EvaluationFailure>(&verified)) {
     if (*error == EvaluationError::kResourceLimit) return Error::kResourceLimit;
     if (*error == EvaluationError::kWorkLimit) return Error::kWorkLimit;
@@ -147,6 +147,16 @@ std::variant<BindingPlan, BindingError> BuildBindings(
       --work;
       const auto& value = graph.values[i];
       if (value.life == ValueLife::kRemoved) continue;
+      if (iteration && evaluation.for_of) {
+        if (evaluation.for_of->values[i]) continue;
+        if (const auto* produced = std::get_if<OpResult>(&value.origin)) {
+          const auto member = evaluation.for_of->identity.operations[produced->op.value];
+          if (member && member->role == ForOfRole::kValue) {
+            const SymbolId symbol{static_cast<std::uint32_t>(plan.symbols.size())};
+            plan.symbols.emplace_back(ForOfKeyBinding{member->protocol});plan.values[i]=symbol;continue;
+          }
+        }
+      }
       if (enumeration && evaluation.for_in->values[i]) {
         const auto member = *evaluation.for_in->values[i];
         if (member.role == ForInRole::kNextResult && evaluation.for_in->loops[member.loop].key == ValueId{static_cast<std::uint32_t>(i)}) {
@@ -314,12 +324,12 @@ std::variant<BindingPlan, BindingError> BuildBindings(
 }  // namespace
 std::variant<BindingPlan, BindingError> BuildBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters, const ForInEmissionView* enumeration) {
-  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kNormal, parameters, enumeration);
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters, const ForInEmissionView* enumeration, const ForOfEvaluationInput* iteration) {
+  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kNormal, parameters, enumeration, iteration);
 }
 std::variant<BindingPlan, BindingError> BuildPhasedBindingPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters, const ForInEmissionView* enumeration) {
-  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kPhased, parameters, enumeration);
+    std::uint32_t parameter_count, analysis::SemanticBudget budget, ParameterForm parameters, const ForInEmissionView* enumeration, const ForOfEvaluationInput* iteration) {
+  return BuildBindings(graph, evaluation, parameter_count, budget, EvaluationFlow::kPhased, parameters, enumeration, iteration);
 }
 }  // namespace abcd::source

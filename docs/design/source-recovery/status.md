@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 II-b：for-of 生产草稿与 TreeFlow（cc 审查通过）
+
+- 投影 `ForOfEmissionView` 保留原 LoopId、header、成功/耗尽边与 completion 端口（不用透明转发）；生产 builder 在 acquisition 处生成未发布的 ForOfStmt 草稿，复用原声明与退出映射；TreeFlow 独立重建视图并检查 RHS、事件归属、success-only 绑定、耗尽边与 close 端口。m7171 的门禁由 kForOfCorrespondence 移到 `kForOfRecovery`（Op38、PC93）。显式 break/return 的新 fixture 在 close 证书处被 kRegionCoverage（TryId4、PC133）拒绝，保留为严格负例。
+- cc 独立审查（会话重启后 scratchpad 被清空，审查工具迁到不纳入版本控制的 `build/review/`，以 a0b11c6a 构建基线二进制）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 两组输出逐字节相同，`--language-source` 只有 o20 记录 6952 的门禁变化（TreeObligation 16 → 17）；526/620、572/620 不变；扫描只有既有的 family_source_cli_test 失败。
+
 ## Round 79 II-a：ForOfStmt 语法、结构与打印（cc 审查通过）
 
 - `ForOfStmt` 持有 iterable、原声明的赋值目标、body 与 label（per-iteration let 仍拒绝）；遍历、作用域/目标检查、嵌套 break/continue 标签；打印 `for (target of rhs) body`（逗号 RHS 加括号，`async` 目标加括号）；RecoveryFlow 仍明确拒绝该节点，生产 builder 不变，m7171 仍为 kForOfCorrespondence。

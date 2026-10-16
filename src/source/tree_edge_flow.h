@@ -7,6 +7,7 @@
 namespace abcd::source {
 class CompletionTreeView;
 struct ForInEmissionView;
+struct ForOfEmissionView;
 // Internal to fresh TreeFlow verification. Consume is called only at the
 // control check's exact edge boundary, never at a guessed target-block entry.
 class TreeEdgeFlow {
@@ -22,6 +23,7 @@ class TreeEdgeFlow {
   void Catch(analysis::WorkBlockId handler, const BlockStmt& block, std::uint32_t& child);
   [[nodiscard]] bool HasCopies(analysis::EdgeId edge) const;
   void Forwarded(const ForInEmissionView&);
+  void ProtocolOwned(const ForOfEmissionView&);
   void Finish();
  private:
   void ConsumeImpl(analysis::IncomingKey incoming, const BlockStmt& block, std::uint32_t& child, std::optional<ExprId>* sequence);

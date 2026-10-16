@@ -210,7 +210,7 @@ target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/for_in_emission.cc src/source/for_in_recovery.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/iterator_keys.cc src/source/iterator_protocol_scan.cc)
-target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc src/source/for_of_events.cc src/source/for_of_evaluation.cc)
+target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc src/source/for_of_events.cc src/source/for_of_evaluation.cc src/source/for_of_emission.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
@@ -573,6 +573,30 @@ if(BUILD_TESTING)
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME for_of_tree_node_test COMMAND ${ABCD_NODE_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_tree.mjs" $<TARGET_FILE:for_of_tree_test>)
+  endif()
+  add_executable(for_of_draft_test tests/unit/source/for_of_iteration_test.cc)
+  target_compile_definitions(for_of_draft_test PRIVATE ABCD_TEST_FOR_OF_EVALUATION=1 ABCD_TEST_FOR_OF_DRAFT=1)
+  target_link_libraries(for_of_draft_test PRIVATE abcd_source abcd_json)
+  target_include_directories(for_of_draft_test PRIVATE tests/support)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/UI/CustomAnimationTab/artifacts/entry/default/default/modules/modules.abc")
+    add_test(NAME for_of_draft_test COMMAND for_of_draft_test
+      "${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/UI/CustomAnimationTab/artifacts/entry/default/default/modules/modules.abc" 7171)
+  endif()
+  add_test(NAME for_of_draft_fixture_test COMMAND for_of_draft_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/main.abc" 387)
+  add_test(NAME for_of_draft_scale_test COMMAND for_of_draft_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/main.abc" 387 --scale)
+  add_test(NAME for_of_draft_variants_test COMMAND for_of_draft_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/main.abc" 387 --variants)
+  add_test(NAME for_of_draft_exits_gap_test COMMAND close_completion_probe
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/exits.abc" 408 --boundary)
+  set_tests_properties(for_of_draft_exits_gap_test PROPERTIES
+    PASS_REGULAR_EXPRESSION "obligation2=1 obligation3=0:6.*ownership-gap=9.*@133")
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME for_of_draft_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_draft.mjs" $<TARGET_FILE:for_of_draft_test>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/main.abc"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/main.js")
   endif()
   add_executable(for_of_evaluation_test tests/unit/source/for_of_iteration_test.cc)
   target_compile_definitions(for_of_evaluation_test PRIVATE ABCD_TEST_FOR_OF_EVALUATION=1)
