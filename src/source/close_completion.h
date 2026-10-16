@@ -23,6 +23,7 @@ enum class ClosePriorityReason : std::uint8_t {
 // this function can contribute to a certificate; it grants no provenance.
 [[nodiscard]] std::optional<ClosePriorityReason> ClosePriorityMismatch(
     const analysis::PendingCompletion&, const analysis::CloseOutcomeLeaving&);
+enum class CloseOwnershipGap : std::uint8_t { kEventCoverage, kPrivateState, kRegionCoverage };
 struct CloseCompletionFailure {
   CloseCompletionError kind;
   std::optional<IteratorProtocolId> protocol;
@@ -33,11 +34,12 @@ struct CloseCompletionFailure {
   std::optional<CloseEntryFailure> derivation;
   std::optional<ClosePriorityReason> priority;
   std::optional<analysis::CloseOutcomeGap> outcome_gap;
+  std::optional<CloseOwnershipGap> ownership_gap;
   bool operator==(const CloseCompletionFailure& b) const {
     // Derivation failures are returned as whole-query failures, never embedded
     // in a successful summary. Do not invent equality for opaque subproofs.
     return kind==b.kind && protocol==b.protocol && read==b.read && entry==b.entry &&
-        node==b.node && edge==b.edge && priority==b.priority && outcome_gap==b.outcome_gap && !derivation && !b.derivation;
+        node==b.node && edge==b.edge && priority==b.priority && outcome_gap==b.outcome_gap && ownership_gap==b.ownership_gap && !derivation && !b.derivation;
   }
 };
 enum class CloseProofState : std::uint8_t { kMissing, kVerified };
@@ -49,7 +51,8 @@ struct CloseObligationResult {
 // Raw member roles account for state and control even when an obligation is
 // missing. No mask from this diagnostic result authorizes elimination.
 enum class CloseMemberRole : std::uint8_t {
-  kScalar, kCatch, kReturnRead, kReturnCall, kResultCheck, kCompletion, kUnproved
+  kScalar, kCatch, kReturnRead, kReturnCall, kResultCheck, kCompletion, kUnproved,
+  kComparison, kInfeasible
 };
 struct CloseMember {
   analysis::ExceptionNodeId node;

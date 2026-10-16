@@ -97,6 +97,13 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
     auto analyzed=AnalyzeCloseOutcomeRelation(body,file.header.profile,frame.registers,flow,ssa,{read,*call},incoming,c.exits);
     Check(std::holds_alternative<CloseOutcomeRelation>(analyzed));
     const auto& relation=std::get<CloseOutcomeRelation>(analyzed);
+    if(!padding && mutation==Mutation::kNone) {
+      // Entry order cannot turn a path-local fact into an all-state proof.
+      auto reversed=incoming;std::reverse(reversed.begin(),reversed.end());
+      const auto replay=AnalyzeCloseOutcomeRelation(body,file.header.profile,frame.registers,flow,ssa,{read,*call},reversed,c.exits);
+      Check(std::holds_alternative<CloseOutcomeRelation>(replay));
+      Check(std::get<CloseOutcomeRelation>(replay).events==relation.events);
+    }
     if(incoming.front().pending.kind!=PendingCompletionKind::kThrow)Check(!relation.comparisons.empty());
     const auto verified=VerifyCloseOutcomeRelation(body,file.header.profile,frame.registers,flow,ssa,{read,*call},incoming,c.exits,relation);
     Check(std::holds_alternative<CompletionRelationCost>(verified));

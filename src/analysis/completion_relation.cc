@@ -122,7 +122,8 @@ template<bool Outcomes> class Relation {
         seen_(detail::CompletionLess<State>{&arena_},arena_.Resource()),
         queue_(arena_.Resource()),leaving_(detail::CompletionLess<Leaving>{&arena_},arena_.Resource()),
         comparisons_(detail::CompletionLess<NonThrowingComparison>{&arena_},arena_.Resource()),
-        catch_payloads_(arena_.Resource()),query_(query) {
+        catch_payloads_(arena_.Resource()),
+        events_(detail::CompletionLess<ExceptionNodeId>{&arena_},arena_.Resource()),query_(query) {
     for(const auto size:{body.instructions.size(),flow.nodes.size(),ssa.Values().size(),
         ssa.AllInputs().size(),entries.size(),exits.size()})
       if(size>UINT32_MAX) Fail(CompletionRelationError::kResourceLimit);
@@ -201,6 +202,10 @@ template<bool Outcomes> class Relation {
     if(expected.arrivals.size()!=supplied.arrivals.size() || expected.leaving.size()!=supplied.leaving.size())
       Fail(CompletionRelationError::kCorrespondence);
     if constexpr(Outcomes) {
+      if(expected.events.size()!=supplied.events.size())Fail(CompletionRelationError::kCorrespondence);
+      for(std::size_t i=0;i<expected.events.size();++i) {
+        arena_.Step();if(expected.events[i]!=supplied.events[i])Fail(CompletionRelationError::kCorrespondence);
+      }
       if(expected.catch_payloads.size()!=supplied.catch_payloads.size())Fail(CompletionRelationError::kCorrespondence);
       for(std::size_t i=0;i<expected.catch_payloads.size();++i) {
         arena_.Step();if(expected.catch_payloads[i]!=supplied.catch_payloads[i])Fail(CompletionRelationError::kCorrespondence);
@@ -276,6 +281,7 @@ template<bool Outcomes> class Relation {
           if(const auto* binary=std::get_if<BinaryExpression>(&assignment->expression))
             comparison=Comparison(*binary,original.instruction,state.environment,state.entry,node);
         if(comparison)comparisons_.insert(*comparison);
+        Classify(state,node,comparison);
       }
       const auto& raw_node=raw_.Nodes()[state.node];
       for(std::uint8_t i=0;i<raw_node.count;++i) {
@@ -332,6 +338,8 @@ template<bool Outcomes> class Relation {
       result.comparisons.assign(comparisons_.begin(),comparisons_.end());
       Reserve(result.catch_payloads,catch_payloads_.size());
       result.catch_payloads.assign(catch_payloads_.begin(),catch_payloads_.end());
+      Reserve(result.events,events_.size());
+      for(const auto& [node,fact]:events_){arena_.Step();result.events.push_back(fact);}
     }
     result.peak_bytes=arena_.Peak();result.states=seen_.size();result.work=arena_.Work();
     return result;
@@ -743,6 +751,26 @@ template<bool Outcomes> class Relation {
       } else Unproved(state,CloseOutcomeGap::kOtherException,source);
     }
   }
+  void Classify(const State& state,ExceptionNodeId node,
+      const std::optional<NonThrowingComparison>& comparison) requires(Outcomes) {
+    const auto& instruction=flow_.instructions[flow_.nodes[node.value].instruction.value];
+    const auto& op=instruction.operation;
+    CloseEventFact fact{node,CloseEventKind::kOther,false};
+    if(comparison)fact={node,CloseEventKind::kComparison,true};
+    else if(const auto* check=std::get_if<ObjectCheck>(&op)) {
+      const auto value=Get(Read(flow_.nodes[node.value].instruction,check->value),state.environment);
+      fact={node,CloseEventKind::kResultCheck,state.trace.stage==OutcomeStage::kCalled &&
+          value.observed==ObservedValue::kReturnResult};
+    } else if(instruction.effects.exceptional==ExceptionalCompletion::kImpossible &&
+        instruction.effects.normal==LanguageEffect::kNone && instruction.effects.before_throw==LanguageEffect::kNone)
+      fact={node,CloseEventKind::kScalar,true};
+    const auto [at,added]=events_.try_emplace(node,fact);
+    if(!added) {
+      if(at->second.kind!=fact.kind) {
+        at->second.kind=CloseEventKind::kOther;at->second.proved=false;
+      } else at->second.proved &= fact.proved;
+    }
+  }
   bool IsException(const CompletionExit& exit) const {
     if(const auto* e=std::get_if<CompletionEdge>(&exit))
       return flow_.nodes[e->source.value].successors[e->successor].kind==ExceptionArcKind::kException;
@@ -802,6 +830,7 @@ template<bool Outcomes> class Relation {
   std::pmr::set<Leaving,detail::CompletionLess<Leaving>> leaving_;
   std::pmr::set<NonThrowingComparison,detail::CompletionLess<NonThrowingComparison>> comparisons_;
   std::pmr::vector<CatchPayloadFact> catch_payloads_;
+  std::pmr::map<ExceptionNodeId,CloseEventFact,detail::CompletionLess<ExceptionNodeId>> events_;
   CloseOutcomeQuery query_;
   std::size_t limit_=0;
   std::uint64_t work_limit_=0;

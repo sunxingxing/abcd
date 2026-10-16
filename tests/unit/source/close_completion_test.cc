@@ -98,6 +98,10 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
     std::cerr<<"failure="<<unsigned(f->kind)<<" method="<<method.offset.value<<'\n';Check(false);
   }
   const auto& summary=std::get<CloseCompletionSummary>(result);
+  if(ExternalExceptionNoHole(contract)==ExternalExceptionPolicy::kNoHoleV1)for(const auto& r:summary.regions) {
+    Check(r.outcomes && !r.outcomes->events.empty());
+    for(const auto& m:r.members)Check(m.role!=CloseMemberRole::kUnproved);
+  }
   Check(summary.regions.size()==(method.offset.value==423?3:1));
   const auto verified=verify(summary);
   if(const auto* f=std::get_if<CloseCompletionFailure>(&verified)) {
@@ -149,6 +153,9 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   bad=summary;bad.regions[0].outcomes->leaving[0].outcome.kind=CloseOutcomeKind::kSuccessObject;reject(bad);
   Check(!summary.regions[0].outcomes->comparisons.empty());
   bad=summary;bad.regions[0].outcomes->comparisons.clear();reject(bad);
+  bad=summary;bad.regions[0].outcomes->events.clear();reject(bad);
+  bad=summary;bad.regions[0].outcomes->events.front().proved=!bad.regions[0].outcomes->events.front().proved;reject(bad);
+  bad=summary;bad.regions[0].outcomes->events.front().node=ExceptionNodeId{0};reject(bad);
   bad=summary;bad.regions[0].members.push_back(bad.regions[0].members.front());reject(bad);
   bad=summary;bad.regions[0].edges[0].successor=2;reject(bad);
   bad=summary;bad.entries[0].obligations[static_cast<unsigned>(CloseObligation::kPriority)]={CloseProofState::kVerified,{}};

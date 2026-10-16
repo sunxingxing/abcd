@@ -43,11 +43,21 @@ struct NonThrowingComparison {
   std::optional<bool> equal; // Underlying equality, before the NotEqual inversion.
   auto operator<=>(const NonThrowingComparison&) const = default;
 };
+// Conjunction over every visited relational state at an original Before node.
+// Absence is infeasibility only relative to the complete, verified entry set.
+enum class CloseEventKind : std::uint8_t { kScalar, kComparison, kResultCheck, kOther };
+struct CloseEventFact {
+  ExceptionNodeId node;
+  CloseEventKind kind;
+  bool proved;
+  auto operator<=>(const CloseEventFact&) const = default;
+};
 struct CloseOutcomeRelation {
   std::vector<CompletionArrival> arrivals;
   std::vector<CloseOutcomeLeaving> leaving;
   std::vector<NonThrowingComparison> comparisons;
   std::vector<CatchPayloadFact> catch_payloads;
+  std::vector<CloseEventFact> events;
   std::size_t peak_bytes = 0, states = 0;
   std::uint64_t work = 0;
 };

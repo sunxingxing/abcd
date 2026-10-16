@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 A3g（部分）：事件覆盖与真实方法 probe（cc 审查通过）
+
+- 事件覆盖事实（对所有到达状态取合取）与独立复核；用其细化成员分类。7 个真实方法在 V4 下：5 个优先级 verified，ownership 首个缺口都是成员边界上的 `kExternalEntry` 见证（还需完整的区域边界证明来判定是否为合法端口）；m42717 嵌套入口推导停在 `kContinuation`（PC692）；async m23306 停在 `kExternalEntry`（原始 PC99/工作 PC96）。私有状态 live-out、用户 try 排除与嵌套传播待续。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变；相关测试全部通过。
+
 ## Round 79 A3f：外部异常不携带 Hole 的前提（V4，cc 审查通过）
 
 - 用户 2026-10-16 批准独立的运行时前提“外部异常不携带内部 Hole”（Round 79 A3e 已从 pinned runtime 证明 callee 的 `ldhole; throw` 可以跨帧送达 catch）。新增 `kLanguageSourceV4` 与 `ExternalExceptionNoHole()`，`--language-source` 选择 V4；只适用于调用/getter/builtin/native/rejection/resume 来源，本方法自身的显式 throw 仍逐项证明。`catch_payload_domain` 计算逐 catch 的 payload 域事实，只凭该事实细化 close 哨兵的 Hole 分支。m423 Break/Return 的优先级在 V4 下 verified，在默认与 V1–V3 下仍为 missing；ownership 仍为 missing。

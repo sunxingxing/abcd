@@ -541,6 +541,19 @@ if(BUILD_TESTING)
   target_include_directories(close_outcome_test PRIVATE tests/support)
   add_test(NAME close_outcome_test COMMAND close_outcome_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
+  add_executable(close_completion_probe tests/unit/source/close_completion_probe.cc)
+  target_link_libraries(close_completion_probe PRIVATE abcd_source abcd_json)
+  target_include_directories(close_completion_probe PRIVATE tests/support)
+  add_test(NAME close_completion_probe_test COMMAND close_completion_probe
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 423)
+  set_tests_properties(close_completion_probe_test PROPERTIES
+    PASS_REGULAR_EXPRESSION "obligation2=1 obligation3=0:6\\[ownership-gap=1\\]")
+  # Existing derived-entry gap: retain refusal, never assume an outer close
+  # guard is a transparent continuation merely to construct a nested proof.
+  add_test(NAME close_completion_nested_gap_test COMMAND close_completion_probe
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 395)
+  set_tests_properties(close_completion_nested_gap_test PROPERTIES
+    PASS_REGULAR_EXPRESSION "failure=4 derivation=4 node=199 pc=226")
   add_executable(close_completion_test tests/unit/source/close_completion_test.cc)
   target_link_libraries(close_completion_test PRIVATE abcd_source abcd_json)
   target_include_directories(close_completion_test PRIVATE tests/support)

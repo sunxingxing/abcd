@@ -190,3 +190,56 @@ Ownership and nested-close proofs are unchanged; this is not publication or a
 grant of ProtocolOwned topology. Tests cover local Hole, mixed sources, copies,
 real SSA phis, conservative cyclic equations, nested catch/rethrow, mutations,
 and prepaid 200/201/400/800/exact-budget boundaries.
+
+
+## A3g partial: all-state event coverage, ownership remains missing
+
+This standalone increment does **not** complete A3g or grant protocol ownership.
+The outcome relation now records a conjunction over every visited state at each
+original Before node: scalar, operand-domain-proved comparison, and this call's
+result-object check. A single unproved state keeps the event unproved, regardless
+of worklist order. The sparse map uses the existing prepaid arena; the sorted
+retained vector is charged before allocation. Verification rebuilds it with the
+opposite worklist order. Member refinement consumes only this checked ledger;
+an absent event is infeasible relative to the complete derived-entry set, not a
+claim that an arbitrary instruction is dead.
+
+The fixture m423 has no unclassified member after refinement, but ownership
+still reports `kOwnership / kPrivateState`: private SSA live-outs and the full
+region/user-try boundary proof are not implemented. This label identifies a
+missing analysis, not an observed escaping value. No production path consumes
+these facts. The standalone probe uses an unknown frame receiver, conditional
+capture/local/module premises, and V4 arithmetic; it does not invent source
+admission for the method.
+
+Standalone V4 results on the requested original methods:
+
+| Method | Priority | First missing obligation |
+|---|---|---|
+| o5 m28799 | verified for derived entries | ownership: external entry at PC1182 |
+| o20 m7171 | verified | ownership: external entry at PC215 |
+| o32 m39073 | verified | ownership: external entry at PC300 |
+| o32 m47128 | verified for both acquisitions | ownership: external entry at PC434 / PC934; multi-acquisition propagation unproved |
+| o32 m42717 | not reached | entry derivation `kContinuation`, PC692 |
+| o32 m40502 | verified | ownership: external entry at PC445 |
+| o32 m23306 | not reached | entry derivation `kExternalEntry`, original PC99 / normalized PC96 |
+
+The external-entry witnesses are real predecessor edges into the current member
+cut; they cannot be waived merely because the destination is completion code.
+The missing full boundary/entry proof must decide which edges are legal ports.
+Multiple acquisitions alone do not establish nesting: the existing conservative
+multi-acquisition gate is not a nesting proof.
+
+The nested fixture m395 stops at `kContinuation` PC226, just as m42717 stops at
+its outer guard PC692. A3a's continuation derivation cannot yet relate that guard
+to the current inner-close completion. A2's exported completion tuple also does
+not carry a boundary SSA-state certificate. Completing A3g therefore requires a
+parent-linked continuation/activation proof and a correlated inner-exit to
+outer-entry state bridge, followed by private-state live-out and scope ownership
+verification. Skipping the guard, comparing payload IDs alone, or granting
+ownership from an event-membership table would be unsound.
+
+Tests added here cover event-ledger deletion/node/proof mutations, existing
+200/201/400/800 and exact-budget runs, a production-independent diagnostic probe,
+and an explicit nested-derivation-gap regression. They are prerequisite tests,
+not the requested complete ownership/nested mutation matrix.

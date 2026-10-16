@@ -69,7 +69,7 @@ class Proof {
     for(const auto& c:entries_.closes) {
       auto region=Members(c);
       const auto reference=Reference(c,region);
-      if(reference.state==CloseProofState::kVerified)Outcomes(c,region);
+      if(reference.state==CloseProofState::kVerified){Outcomes(c,region);RefineMembers(region);}
       const auto ownership=Ownership(c,region);
       for(std::uint32_t i=0;i<c.entries.size();++i) {
         q_.Step();CloseCompletionEntry e{c.protocol,c.read,c.entries[i].entry.edge,c.entries[i].entry.pending};
@@ -197,6 +197,25 @@ class Proof {
     // conservative is not permission to absorb their effect into IteratorClose.
     return CloseMemberRole::kUnproved;
   }
+  void RefineMembers(CloseCompletionRegion& r) {
+    q_.Require(r.outcomes.has_value());
+    // Complete entry coverage and the independent relational replay establish
+    // the conjunction. One favourable exit is NOT proof for an entire node.
+    for(auto& m:r.members)if(m.role==CloseMemberRole::kUnproved) {
+      q_.Step();const auto before=before_[Node(m.node).instruction.value];
+      if(!before)continue;
+      const auto& facts=r.outcomes->events;
+      const auto fact=std::lower_bound(facts.begin(),facts.end(),*before,
+          [&](const CloseEventFact& a,ExceptionNodeId b){q_.Step();return a.node<b;});
+      if(fact==facts.end() || fact->node!=*before)m.role=CloseMemberRole::kInfeasible;
+      else if(fact->proved)switch(fact->kind) {
+        case CloseEventKind::kComparison:m.role=CloseMemberRole::kComparison;break;
+        case CloseEventKind::kResultCheck:m.role=CloseMemberRole::kResultCheck;break;
+        case CloseEventKind::kScalar:m.role=CloseMemberRole::kScalar;break;
+        case CloseEventKind::kOther:break;
+      }
+    }
+  }
   CloseObligationResult Reference(const DerivedClose& c,CloseCompletionRegion& r) {
     const auto& read=g_.ops[c.read.value];
     if(!read.result || c.protocol.value>=scan_.candidates.size())return Missing(c,CloseCompletionError::kReference);
@@ -230,7 +249,7 @@ class Proof {
     r.outcomes=std::get<CloseOutcomeRelation>(std::move(result));
     q_.memory.Observe(r.outcomes->peak_bytes);q_.Step(r.outcomes->work);
     q_.memory.Retain(r.outcomes->arrivals.capacity()*sizeof(CompletionArrival)+r.outcomes->leaving.capacity()*sizeof(CloseOutcomeLeaving)+
-        r.outcomes->comparisons.capacity()*sizeof(NonThrowingComparison)+r.outcomes->catch_payloads.capacity()*sizeof(CatchPayloadFact));
+        r.outcomes->comparisons.capacity()*sizeof(NonThrowingComparison)+r.outcomes->catch_payloads.capacity()*sizeof(CatchPayloadFact)+r.outcomes->events.capacity()*sizeof(CloseEventFact));
     if(verify_) {
       const auto verified=VerifyCloseOutcomeRelation(body_,profile_,in_.frame.registers,in_.flow,in_.ssa,
           query,incoming,c.exits,*r.outcomes,{q_.Remaining()});
@@ -289,12 +308,17 @@ class Proof {
         if(marks_[edge.source.value]!=stamp && !Cut(entries,edge))
           return Missing(c,CloseCompletionError::kExternalEntry,m.node,{},edge);
       }
-      if(m.role==CloseMemberRole::kUnproved)return Missing(c,CloseCompletionError::kOwnership,m.node);
+      if(m.role==CloseMemberRole::kUnproved) {
+        auto missing=Missing(c,CloseCompletionError::kOwnership,m.node);
+        missing.missing->ownership_gap=CloseOwnershipGap::kEventCoverage;return missing;
+      }
     }
     // This slice records complete raw members/edges, but does not yet prove
     // private scalar live-outs or classify an overlapping user try. Such a
     // membership table MUST NOT mint topology ownership.
-    return Missing(c,CloseCompletionError::kOwnership);
+    auto missing=Missing(c,CloseCompletionError::kOwnership);
+    missing.missing->ownership_gap=CloseOwnershipGap::kPrivateState;
+    return missing;
   }
   const abc::MethodBody& body_;abc::ProfileId profile_;const ValueProgram& g_;const PhasedValueInput& in_;
   const ExceptionPlan& plan_;const IteratorKeys& keys_;const IteratorProtocolScan& scan_;
@@ -375,6 +399,11 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
       for(std::size_t e=0;e<a.outcomes->catch_payloads.size();++e) {
         if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
         if(a.outcomes->catch_payloads[e]!=b.outcomes->catch_payloads[e])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+      }
+      if(a.outcomes->events.size()!=b.outcomes->events.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+      for(std::size_t e=0;e<a.outcomes->events.size();++e) {
+        if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
+        if(a.outcomes->events[e]!=b.outcomes->events[e])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
       }
       if(a.outcomes->comparisons.size()!=b.outcomes->comparisons.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
       for(std::size_t e=0;e<a.outcomes->comparisons.size();++e) {
