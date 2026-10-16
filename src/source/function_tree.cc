@@ -342,6 +342,9 @@ class TreeBuilder {
             if (const auto operation = graph_.phases[unit.block.value].operation) {
               const auto control = result.control; result = At(*operation); result.control = control;
             }
+        } else if constexpr(std::is_same_v<T, ProtocolCloseUnit>) {
+          result.block.reset();result.pc.reset();result.working_pc.reset();
+          result.synthetic=TreeSyntheticLocation{ControlOriginKind::kProtocolClose,unit.protocol.value};
         } else {
           result.block.reset();
           result.synthetic = TreeSyntheticLocation{std::is_same_v<T, TryControlUnit>

@@ -76,6 +76,25 @@ class PhaseBudget {
  private:
   analysis::SemanticBudget initial_, remaining_;
 };
+// Delegated analysis scratch is destroyed on return. Transfer only its live
+// result buffers into the owner ledger; peak_bytes includes exclusive scratch
+// grants and must never be mistaken for retained storage.
+void RetainCloseSummary(PhaseBudget& quota,const CloseCompletionSummary& summary) {
+  const auto retain=[&](const auto& v){quota.Admit(v.capacity(),sizeof(typename std::decay_t<decltype(v)>::value_type));};
+  retain(summary.entries);retain(summary.regions);
+  for(const auto& region:summary.regions) {
+    quota.Step();retain(region.members);retain(region.edges);
+    if(region.outcomes) {
+      const auto& o=*region.outcomes;retain(o.arrivals);retain(o.leaving);retain(o.comparisons);retain(o.catch_payloads);retain(o.events);
+    }
+    if(region.boundary) {
+      const auto& b=*region.boundary;retain(b.ports);retain(b.unreachable_entries);retain(b.private_slots);retain(b.regions);retain(b.protected_ranges);
+      for(const auto& range:b.protected_ranges) {
+        quota.Step();retain(range.ordinary);retain(range.transport);retain(range.dispatch);retain(range.exits);
+      }
+    }
+  }
+}
 }  // namespace
 
 PhasedMethod::PhasedMethod(std::unique_ptr<const Storage> storage) : storage_(std::move(storage)) {}
@@ -369,7 +388,40 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     if(const auto* error=std::get_if<ExceptionPlanError>(&planned_regions))return PhaseError(*error,Error::kRegion);
     auto regions=std::get<ExceptionPlan>(std::move(planned_regions));
     quota.Admit(regions.allocated_bytes); quota.Step(regions.work);
-    auto controlled = BuildExceptionControl(body, imported.graph, input, regions, quota.Remaining());
+    std::optional<VerifiedProtocolRegionOwnership> protocols;
+    bool acquisition=false;
+    if(binding && ExternalExceptionNoHole(context.Identity().contract)==ExternalExceptionPolicy::kNoHoleV1) {
+      for(const auto& op:imported.graph.ops) {
+        quota.Step();acquisition|=op.life==ValueLife::kLive && std::holds_alternative<ValueIteratorAcquire>(op.operation);
+      }
+    }
+    if(acquisition) {
+      auto resolved=ResolveIteratorKeys({binding->file,binding->header,binding->index},context.Target(),imported.graph,quota.Remaining());
+      auto* keys=std::get_if<IteratorKeys>(&resolved);
+      if(!keys)return std::visit([](const auto& failure) {
+        if constexpr(std::is_same_v<std::decay_t<decltype(failure)>,IteratorKeys>)return Error::kImport;
+        else return PhaseError(failure,Error::kImport);
+      },resolved);
+      quota.Admit(keys->retained_bytes);quota.Step(keys->work);
+      auto scanned=ScanIteratorProtocols(imported.graph,input,regions,*keys,quota.Remaining());
+      if(auto* scan=std::get_if<IteratorProtocolScan>(&scanned)) {
+        quota.Admit(scan->retained_bytes);quota.Step(scan->work);
+        auto analyzed=AnalyzeCloseCompletion(body,binding->header.profile,imported.graph,input,regions,*keys,*scan,
+            quota.Remaining(),context.Identity().contract);
+        if(auto* summary=std::get_if<CloseCompletionSummary>(&analyzed)) {
+          RetainCloseSummary(quota,*summary);quota.Step(summary->work);
+          auto sealed=VerifyProtocolRegionOwnership(body,binding->header.profile,imported.graph,input,regions,
+              std::move(*keys),std::move(*scan),std::move(*summary),quota.Remaining(),context.Identity().contract);
+          if(auto* owner=std::get_if<VerifiedProtocolRegionOwnership>(&sealed)) {quota.Step(owner->VerificationWork());protocols.emplace(std::move(*owner));}
+          else if(const auto& failure=std::get<CloseCompletionFailure>(sealed);
+              failure.kind==CloseCompletionError::kResourceLimit || failure.kind==CloseCompletionError::kWorkLimit)
+            return PhaseError(failure,Error::kControl);
+        } else if(const auto& failure=std::get<CloseCompletionFailure>(analyzed);
+            failure.kind==CloseCompletionError::kResourceLimit || failure.kind==CloseCompletionError::kWorkLimit)
+          return PhaseError(failure,Error::kControl);
+      } else return PhaseError(std::get<IteratorScanFailure>(scanned),Error::kControl);
+    }
+    auto controlled = BuildExceptionControl(body, imported.graph, input, regions, quota.Remaining(),protocols?&*protocols:nullptr);
     if (const auto* failure=std::get_if<ExceptionControlRegionFailure>(&controlled))
       return PhasedControlFailure{Error::kControl,*failure,context.Target(),
           failure->exception_region ? failure->exception_region->body_pc : std::nullopt,
@@ -386,6 +438,20 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     }
     auto control = std::get<ExceptionControl>(std::move(controlled));
     quota.Admit(control.allocated_bytes); quota.Step(control.work);
+    if(protocols) {
+      const auto verified=VerifyExceptionControl(body,imported.graph,input,regions,control,quota.Remaining(),&*protocols);
+      if(const auto* failure=std::get_if<ExceptionControlError>(&verified))return PhaseError(*failure,Error::kControl);
+      quota.Step(std::get<std::uint64_t>(verified));
+      // Evaluation is the next stage. Do not discover descendant families or
+      // construct a partial evaluation plan before its protocol proof exists.
+      const auto& acquisition=protocols->Scan().candidates.front().acquisition;
+      EvaluationEvidence evidence;evidence.obligation=EvaluationObligation::kProtocolEvaluationPending;
+      evidence.location.method=context.Target();evidence.location.operation=acquisition.operation;
+      evidence.location.pc=acquisition.pc.value_or(acquisition.working_pc);
+      evidence.location.working_pc=acquisition.working_pc;
+      return PhasedControlFailure{Error::kEvaluation,EvaluationFailure{EvaluationError::kProtocolOperand,evidence},
+          context.Target(),evidence.location.pc,evidence.location.working_pc};
+    }
     return PhasedBody(std::make_unique<Storage>(Storage{context.Identity(), context.Target(), frame, std::move(flow), std::move(ssa),
         std::move(environments), std::move(values), std::move(proof), std::move(initialized), std::move(imported.graph),
         std::move(cell_environments), std::move(cells),
@@ -404,7 +470,10 @@ std::variant<PhasedMethod, PhasedMethodError, EvaluationFailure> PhasedMethod::B
   if (std::holds_alternative<PhasedInputFailure>(built)) return PhasedMethodError::kValues;
   if (const auto* failure = std::get_if<PhasedModuleFailure>(&built)) return failure->kind;
   if (const auto* failure = std::get_if<PhasedImportFailure>(&built)) return failure->kind;
-  if (const auto* failure = std::get_if<PhasedControlFailure>(&built)) return failure->kind;
+  if (const auto* failure = std::get_if<PhasedControlFailure>(&built)) {
+    if(const auto* evaluation=std::get_if<EvaluationFailure>(&failure->cause))return *evaluation;
+    return failure->kind;
+  }
   return Evaluate(std::get<PhasedBody>(std::move(built)), budget);
 }
 std::variant<PhasedMethod, PhasedMethodError, EvaluationFailure> PhasedMethod::Evaluate(

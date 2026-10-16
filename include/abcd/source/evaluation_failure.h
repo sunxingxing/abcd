@@ -15,7 +15,7 @@ enum class EvaluationError : std::uint8_t {
 enum class EvaluationObligation : std::uint8_t {
   kPlan, kProducerOwnership, kInlineConsumer, kPhiInput, kLogicalInput,
   kRootTemporary, kDuplicateVisit, kOperandOwnership, kLiveCoverage,
-  kPhaseRoot, kPhaseConsumption, kProjection, kTemporaryPresence, kTemporaryReason, kLogicalJoin, kLogicalInterval, kSnapshotCandidate, kLogicalCoverage, kUse
+  kPhaseRoot, kPhaseConsumption, kProjection, kTemporaryPresence, kTemporaryReason, kLogicalJoin, kLogicalInterval, kSnapshotCandidate, kLogicalCoverage, kUse, kProtocolEvaluationPending
 };
 enum class SelectionExitReason : std::uint8_t {
   kNone, kNoUse, kMultipleUses, kPhiUse, kCrossBlock, kProtocolRole, kSnapshot, kKeepEdge

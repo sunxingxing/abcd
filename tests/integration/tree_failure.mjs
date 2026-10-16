@@ -10,7 +10,7 @@ const cases = [
   ['DocsSample/DistributedAppDev/DistributedAuthentication', 4660, 5040, 12],
   ['UI/CustomAnimationTab', 8166, 8556, 13],
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
-  ['UI/CalendarViewSwitch', 28303, 28799, 1146],
+  ['UI/CalendarViewSwitch', 28303, 28799, 677],
   ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket', 28264, 29676, 114],
   ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo', 29268, 29450, 90],
 ];
@@ -69,18 +69,19 @@ try {
         domains:[0,1,2,3,4],observer_instruction:6,producer_instruction:5,
         producer_kind:1,read_ordinal:0,reason:6,value:entity===4660?14:22});
     }
-    // Round 43 fulfilled the former ExternalRoot requirement for 28303.
-    // Round 53 lifted its getiterator and Round 54 projected the inactive
-    // region; the first refusal is now the for-of close-protection region
-    // (TryId 0, body 1146 / handler 1171) with two distinct continuations.
+    // Increment B independently verifies every close and the projected control
+    // before entering evaluation. This replaces the old TryId0 multi-exit leaf;
+    // it is still a strict refusal, not publication or an empty evaluation plan.
     if(entity===28303) {
-      assert.equal(report.source_failure.working_pc,1146);
+      assert.equal(report.source_failure.working_pc,677);
       assert.equal(report.source_failure.deferred,undefined);
+      assert.equal(report.source_failure.exception_region,undefined);
       assert.deepEqual(report.source_failure.causes,[
-        {domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
-      const region=report.source_failure.exception_region;
-      assert.equal(region.region,0);assert.equal(region.body_pc,1146);assert.equal(region.handler_pc,1171);
-      assert.deepEqual(region.exits.map(exit=>[exit.pc,exit.target_pc]),[[1169,1173],[1160,1182]]);
+        {domain:'abcd::source::PhasedMethodError',value:7},
+        {domain:'abcd::source::EvaluationError',value:3},
+        {domain:'abcd::source::EvaluationObligation',value:19}]);
+      assert.deepEqual(report.source_failure.evaluation,{
+        obligation:19,location:{method:28799,operation:257,pc:677,working_pc:677}});
     }
 
   }

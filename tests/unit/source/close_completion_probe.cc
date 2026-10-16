@@ -1,5 +1,6 @@
 // Read-only standalone certificate diagnostic. No production admission hook.
 #include "../../../src/source/close_completion.h"
+#include "../../../src/source/exception_control.h"
 #include "abcd/source/async_completion.h"
 #include "abcd/analysis/exception_locals.h"
 #include "abcd/analysis/exception_captures.h"
@@ -116,6 +117,13 @@ int main(int argc,char**argv) {
         if(instruction.origin)std::cout<<" original-pc="<<instruction.origin->value;
       }
       std::cout<<'\n';return 0;
+    }
+    if(argc>3 && std::string_view(argv[3])=="--control") {
+      auto owner=Take<VerifiedProtocolRegionOwnership>(VerifyProtocolRegionOwnership(body,header.profile,graph,input,plan,
+          keys,scan,std::get<CloseCompletionSummary>(std::move(result)),{},SourceContract::kLanguageSourceV4),"ownership");
+      auto control=Take<ExceptionControl>(BuildExceptionControl(body,graph,input,plan,{},&owner),"control");
+      Take<std::uint64_t>(VerifyExceptionControl(body,graph,input,plan,control,{},&owner),"control-verify");
+      std::cout<<"protocol-control units="<<control.units.size()<<" loops="<<control.skeleton.loops.size()<<'\n';return 0;
     }
     const auto& summary=std::get<CloseCompletionSummary>(result);
     Take<std::uint64_t>(VerifyCloseCompletion(body,header.profile,graph,input,plan,keys,scan,summary,{},SourceContract::kLanguageSourceV4),"verify");

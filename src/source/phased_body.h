@@ -41,7 +41,7 @@ struct PhasedImportFailure {
 };
 struct PhasedControlFailure {
   PhasedMethodError kind;
-  std::variant<ExceptionControlError, ExceptionControlFailure, ExceptionPlanFailure, ExceptionControlRegionFailure> cause;
+  std::variant<ExceptionControlError, ExceptionControlFailure, ExceptionPlanFailure, ExceptionControlRegionFailure, EvaluationFailure> cause;
   abc::EntityOffset method;
   std::optional<abc::CodeOffset> pc, working_pc;
 };

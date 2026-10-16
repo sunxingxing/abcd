@@ -210,7 +210,7 @@ target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/for_in_emission.cc src/source/for_in_recovery.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/iterator_keys.cc src/source/iterator_protocol_scan.cc)
-target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc)
+target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
@@ -566,6 +566,11 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 395)
   set_tests_properties(close_completion_nested_gap_test PROPERTIES
     PASS_REGULAR_EXPRESSION "failure=4 derivation=4 node=199 pc=226")
+  add_executable(protocol_topology_test tests/unit/source/protocol_topology_test.cc)
+  target_link_libraries(protocol_topology_test PRIVATE abcd_source abcd_json)
+  target_include_directories(protocol_topology_test PRIVATE tests/support)
+  add_test(NAME protocol_topology_test COMMAND protocol_topology_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
   add_executable(close_completion_test tests/unit/source/close_completion_test.cc)
   target_link_libraries(close_completion_test PRIVATE abcd_source abcd_json)
   target_include_directories(close_completion_test PRIVATE tests/support)

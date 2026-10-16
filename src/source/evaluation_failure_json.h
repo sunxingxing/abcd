@@ -61,7 +61,7 @@ inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
 }
 inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::json& j) {
   std::uint32_t n;
-  if (!j.is_object() || !FailureNumber(j,"obligation",n) || n > static_cast<unsigned>(EvaluationObligation::kUse) || !j.contains("location")) return {};
+  if (!j.is_object() || !FailureNumber(j,"obligation",n) || n > static_cast<unsigned>(EvaluationObligation::kProtocolEvaluationPending) || !j.contains("location")) return {};
   EvaluationEvidence v; v.obligation = static_cast<EvaluationObligation>(n);
   auto location = ParseTreeLocation(j["location"]); if (!location) return {}; v.location = *location;
   if (j.contains("plan_cause")) {

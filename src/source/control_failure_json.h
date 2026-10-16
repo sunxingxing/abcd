@@ -35,7 +35,7 @@ inline std::optional<ControlOwnershipEvidence> ParseControlJson(const nlohmann::
   const auto location = [&](const nlohmann::json& value, ControlLocation& node) {
     std::uint32_t kind;
     if (!value.is_object() || !number(value, "node", node.node) || !number(value, "source", node.source) ||
-        !number(value, "origin", kind) || kind > static_cast<unsigned>(ControlOriginKind::kLoopTransfer)) return false;
+        !number(value, "origin", kind) || kind > static_cast<unsigned>(ControlOriginKind::kProtocolClose)) return false;
     node.origin = static_cast<ControlOriginKind>(kind);
     const auto pc = [&](const char* key, std::optional<abc::CodeOffset>& target) {
       if (!value.contains(key)) return true;

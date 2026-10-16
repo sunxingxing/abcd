@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 增量 B：ProtocolOwned 控制拓扑投影（cc 审查通过）
+
+- 只有整方法所有 close 义务独立通过才取得 `VerifiedProtocolRegionOwnership`（V4，确定性入口）；区域角色 OrdinaryTry/Inactive/ProtocolOwned；循环主体保留原始 phase 身份，close 子图以入口限定的 ProtocolCloseUnit 与 completion 端口表示；合成节点用 ProtocolClose 来源类型，不伪造 PC；VerifyExceptionControl 复验原始 close 证明、覆盖、端口、角色与边对应。4 个目标（m28799、m7171、m39073、m40502）越过 kMultipleExits，停在专用门禁 `kEvaluation > kProtocolOperand > kProtocolEvaluationPending`；m47128 整体走原路径。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变；扫描 83/84，只有既有的 family_source_cli_test 失败。
+
 ## Round 79 A3i：body-protection 的角色拆分；close 证书在 4 个方法上完整成立（cc 审查通过）
 
 - 按 Round 57 设计（循环骨架保留原控制身份）拆分 typed 证书：`kCloseCode`（内层 return-protection，检查成员覆盖）与 `kLoopBody`（外层 wrapper 只拥有 dispatch 边与 handler/close 子图，正文节点、binding transport、回边保留原始身份）；正文从同一 advance-result 的 value 读取与原始 CFG 推导，独立复核。V4 下 close ownership 全部 verified：o5 m28799、o20 m7171、o32 m39073、o32 m40502，以及 m47128 第一处 close；m47128 第二处为 `kBodyDispatch @717`（环境恢复 handler 转发），m42717 嵌套与 m23306 async 入口保持门禁。

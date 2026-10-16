@@ -3,6 +3,7 @@
 
 #include "control_plan.h"
 #include "exception_plan.h"
+#include "protocol_region_ownership.h"
 
 namespace abcd::source {
 struct PhaseControlUnit {
@@ -20,7 +21,16 @@ struct TryExitUnit {
   analysis::WorkBlockId target;
   bool operator==(const TryExitUnit&) const = default;
 };
-using ExceptionControlUnit = std::variant<PhaseControlUnit, TryControlUnit, TryExitUnit>;
+// A close unit is entry-qualified. Its outcome ports keep the original edge,
+// exception identity and correlated completion, not fabricated source values.
+struct ProtocolCloseUnit {
+  IteratorProtocolId protocol;
+  analysis::CompletionEdge entry;
+  analysis::PendingCompletion pending;
+  std::uint32_t first_port = 0, port_count = 0;
+  bool operator==(const ProtocolCloseUnit&) const = default;
+};
+using ExceptionControlUnit = std::variant<PhaseControlUnit, TryControlUnit, TryExitUnit, ProtocolCloseUnit>;
 struct ControlArc {
   // Absence means a wrapper continuation, not an original operation/PC.
   std::optional<analysis::EdgeId> edge;
@@ -45,6 +55,8 @@ struct ExceptionControl {
   // Disconnected phases certified unreachable by original ExceptionFlow.
   // Removed Before operations retain sites but no effects/reads/definitions.
   std::vector<analysis::WorkBlockId> inactive_phases;
+  std::vector<ExceptionRegionRole> region_roles;
+  std::vector<analysis::CloseOutcomeLeaving> protocol_ports;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
@@ -72,10 +84,12 @@ struct ExceptionControlRegionFailure {
 [[nodiscard]] std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, ExceptionControlRegionFailure> BuildExceptionControl(
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
     const analysis::PhasedValueInput& input, const ExceptionPlan& regions,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {},
+    const VerifiedProtocolRegionOwnership* protocols = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, ExceptionControlError> VerifyExceptionControl(
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
     const analysis::PhasedValueInput& input, const ExceptionPlan& regions,
-    const ExceptionControl& control, analysis::SemanticBudget budget = {});
+    const ExceptionControl& control, analysis::SemanticBudget budget = {},
+    const VerifiedProtocolRegionOwnership* protocols = nullptr);
 }  // namespace abcd::source
 #endif

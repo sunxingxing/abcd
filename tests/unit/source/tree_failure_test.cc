@@ -131,7 +131,7 @@ int main() {
     d.allocation.operation=analysis::OpId{0};d.store.operation=analysis::OpId{3};d.creation.operation=analysis::OpId{1};
     RoundTrip(f);
   }
-  for(unsigned tag=0;tag<=static_cast<unsigned>(EvaluationObligation::kUse);++tag) {
+  for(unsigned tag=0;tag<=static_cast<unsigned>(EvaluationObligation::kProtocolEvaluationPending);++tag) {
     EvaluationFailure f{EvaluationError::kOwnership}; auto& e=f.evaluation;
     e.obligation=static_cast<EvaluationObligation>(tag);e.location.method=abc::EntityOffset{77};
     e.location.operation=analysis::OpId{0};e.location.pc=abc::CodeOffset{0};e.location.working_pc=abc::CodeOffset{17};
@@ -147,6 +147,17 @@ int main() {
       Check(route.failure_class==(kind==EvaluationError::kResourceLimit?RouteFailureClass::kMemoryLimit:RouteFailureClass::kWorkLimit));
       Check(route.causes.count==2);RoundTrip(route);
     }
+  }
+  {
+    EvaluationEvidence evidence;evidence.obligation=EvaluationObligation::kProtocolEvaluationPending;
+    evidence.location.method=abc::EntityOffset{77};evidence.location.operation=analysis::OpId{0};
+    evidence.location.pc=abc::CodeOffset{0};evidence.location.working_pc=abc::CodeOffset{17};
+    const PhasedControlFailure gated{PhasedMethodError::kEvaluation,
+        EvaluationFailure{EvaluationError::kProtocolOperand,evidence},abc::EntityOffset{77},abc::CodeOffset{0},abc::CodeOffset{17}};
+    const auto route=FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{gated}}});Check(route.evaluation==evidence);
+    Check(route.method==abc::EntityOffset{77} && route.pc==abc::CodeOffset{0});RoundTrip(route);
+    evidence.location={};evidence.location.synthetic=TreeSyntheticLocation{ControlOriginKind::kProtocolClose,0};
+    RoundTrip(FamilyRouteFailure(EvaluationFailure{EvaluationError::kProtocolOperand,evidence}));
   }
   for(unsigned tag=0;tag<=static_cast<unsigned>(SnapshotCandidateReason::kConsumerPlacement);++tag) {
     EvaluationFailure f{EvaluationError::kOwnership};auto& e=f.evaluation;

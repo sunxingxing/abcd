@@ -5,7 +5,7 @@
 namespace abcd::source {
 // IDs are in the failing control projection; origin tags prevent synthetic
 // units from being mistaken for instructions. Missing PCs are intentional.
-enum class ControlOriginKind : std::uint8_t { kBlock, kPhase, kTry, kTryExit, kLoop, kLoopTransfer };
+enum class ControlOriginKind : std::uint8_t { kBlock, kPhase, kTry, kTryExit, kLoop, kLoopTransfer, kProtocolClose };
 struct ControlLocation {
   std::uint32_t node = 0;
   ControlOriginKind origin = ControlOriginKind::kBlock;

@@ -23,6 +23,8 @@ struct ExceptionTopology {
 };
 ExceptionTopology ProjectExceptionControl(const analysis::ValueProgram& graph,
     const ExceptionPlan& regions, ControlQuota& quota);
+ExceptionTopology ProjectProtocolControl(const analysis::ValueProgram&, const ExceptionPlan&,
+    const analysis::PhasedValueInput&, const VerifiedProtocolRegionOwnership&, ControlQuota&);
 void ComposeExceptionLoops(ExceptionTopology& topology, const ExceptionPlan& regions,
     const analysis::ValueProgram& graph, ControlQuota& quota);
 }  // namespace abcd::source

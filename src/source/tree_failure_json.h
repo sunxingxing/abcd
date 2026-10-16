@@ -43,7 +43,7 @@ inline std::optional<TreeLocation> ParseTreeLocation(const nlohmann::json& j) {
   if (j.contains("synthetic")) {
     std::uint32_t kind, source;
     if (!FailureNumber(j["synthetic"], "kind", kind) || !FailureNumber(j["synthetic"], "source", source) ||
-        kind < static_cast<unsigned>(ControlOriginKind::kTry) || kind > static_cast<unsigned>(ControlOriginKind::kLoopTransfer) ||
+        kind < static_cast<unsigned>(ControlOriginKind::kTry) || kind > static_cast<unsigned>(ControlOriginKind::kProtocolClose) ||
         v.pc || v.working_pc || v.operation || v.block) return {};
     v.synthetic = TreeSyntheticLocation{static_cast<ControlOriginKind>(kind), source};
   }

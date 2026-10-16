@@ -76,18 +76,48 @@ void CheckProjection(const ValueProgram& graph, ExceptionTopology& topology,
   Compare(mapping.arcs, actual.arcs, quota);
   Compare(mapping.regions, actual.regions, quota);
   Compare(mapping.inactive_phases, actual.inactive_phases, quota);
+  Compare(mapping.region_roles, actual.region_roles, quota);
+  Compare(mapping.protocol_ports, actual.protocol_ports, quota);
 }
 }
 std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, ExceptionControlRegionFailure> BuildExceptionControl(
     const abc::MethodBody& body, const ValueProgram& graph,
-    const PhasedValueInput& input, const ExceptionPlan& regions, SemanticBudget budget) {
+    const PhasedValueInput& input, const ExceptionPlan& regions, SemanticBudget budget,
+    const VerifiedProtocolRegionOwnership* protocols) {
   try {
     ControlQuota quota(budget);
     CheckInput(body, graph, input, regions, quota);
-    auto topology = ProjectExceptionControl(graph, regions, quota);
+    if(protocols) {
+      auto checked=VerifyCloseCompletion(body,protocols->Profile(),graph,input,regions,
+          protocols->Keys(),protocols->Scan(),protocols->Summary(),quota.Remaining(),protocols->Contract());
+      if(const auto* failure=std::get_if<CloseCompletionFailure>(&checked))
+        throw failure->kind==CloseCompletionError::kResourceLimit?Error::kResourceLimit:
+            failure->kind==CloseCompletionError::kWorkLimit?Error::kWorkLimit:Error::kStructure;
+      quota.Work(std::get<std::uint64_t>(checked));
+    }
+    auto topology = protocols?ProjectProtocolControl(graph,regions,input,*protocols,quota):
+        ProjectExceptionControl(graph, regions, quota);
     const ControlGraphView view{ControlProjection{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}};
     auto skeleton = [&] {
-      try { return topology.loops.loops.empty() ? BuildControlSkeleton(view, topology.entries, quota) :
+      try { if(protocols) {
+          std::vector<ControlNodeId> roots;quota.Size(roots,topology.entries.size());
+          for(std::size_t i=0;i<roots.size();++i)roots[i]={topology.entries[i].value};
+          auto discovered=BuildLoopForest(view,roots,quota.Remaining());
+          if(const auto* failure=std::get_if<LoopError>(&discovered)) {
+            if(*failure==LoopError::kResourceLimit)throw Error::kResourceLimit;
+            if(*failure==LoopError::kWorkLimit)throw Error::kWorkLimit;
+            throw Error::kStructure;
+          }
+          auto forest=std::get<LoopForest>(std::move(discovered));
+          quota.Work(forest.work);quota.Admit(forest.allocated_bytes,1);
+          if(forest.loops.empty())return BuildControlSkeleton(view,topology.entries,quota);
+          ControlLoopLayout layout{std::move(forest.loops),std::move(forest.owners)};
+          ExtendLoopExitCorridors(view,roots,layout,quota);
+          std::vector<ScopedControlEntry> scoped;quota.Size(scoped,roots.size());
+          for(std::size_t i=0;i<roots.size();++i)scoped[i]={roots[i],{}};
+          return BuildLoopControl(view,scoped,std::move(layout),quota);
+        }
+        return topology.loops.loops.empty() ? BuildControlSkeleton(view, topology.entries, quota) :
           BuildLoopControl(view, topology.scoped_entries, std::move(topology.loops), quota); }
       catch (ControlFailure failure) {
         const auto locate = [&](ControlLocation& location) {
@@ -101,6 +131,8 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
               const auto& instruction = input.flow.instructions[phase.instruction.value];
               location.working_pc = instruction.pc;
               location.pc = instruction.origin.value_or(instruction.pc);
+            } else if constexpr(std::is_same_v<T, ProtocolCloseUnit>) {
+              location.origin=ControlOriginKind::kProtocolClose;location.source=unit.protocol.value;
             } else {
               location.origin = std::is_same_v<T, TryControlUnit> ? ControlOriginKind::kTry : ControlOriginKind::kTryExit;
               location.source = unit.region.value;
@@ -111,7 +143,12 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
         throw ExceptionControlFailure{Translate(failure.kind), failure};
       }
     }();
-    if (skeleton.loops.empty()) VerifyControlSkeleton(view, topology.entries, skeleton, quota);
+    if(protocols) {
+      std::vector<ControlNodeId> roots;quota.Size(roots,topology.entries.size());
+      for(std::size_t i=0;i<roots.size();++i)roots[i]={topology.entries[i].value};
+      VerifyControlRegions(view,roots,skeleton,quota);
+    }
+    else if (skeleton.loops.empty()) VerifyControlSkeleton(view, topology.entries, skeleton, quota);
     else {
       VerifyControlRegions(view, topology.scoped_entries, skeleton, quota);
       LoopEntries(topology.mapping, skeleton, quota);
@@ -120,7 +157,8 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
     result.skeleton = std::move(skeleton);
     result.allocated_bytes = result.skeleton.allocated_bytes + result.units.capacity() * sizeof(ExceptionControlUnit) +
         result.arcs.capacity() * sizeof(ControlArc) + result.regions.capacity() * sizeof(std::optional<TryControlRegion>) +
-        result.inactive_phases.capacity() * sizeof(WorkBlockId);
+        result.inactive_phases.capacity() * sizeof(WorkBlockId) +
+        result.region_roles.capacity()*sizeof(ExceptionRegionRole) + result.protocol_ports.capacity()*sizeof(CloseOutcomeLeaving);
     result.work = budget.work - quota.RemainingWork();
     return result;
   } catch (ExceptionControlRegionFailure failure) {
@@ -157,12 +195,31 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
 std::variant<std::uint64_t, ExceptionControlError> VerifyExceptionControl(
     const abc::MethodBody& body, const ValueProgram& graph,
     const PhasedValueInput& input, const ExceptionPlan& regions,
-    const ExceptionControl& control, SemanticBudget budget) {
+    const ExceptionControl& control, SemanticBudget budget,
+    const VerifiedProtocolRegionOwnership* protocols) {
   try {
     ControlQuota quota(budget);
     CheckInput(body, graph, input, regions, quota);
-    auto topology = ProjectExceptionControl(graph, regions, quota);
-    CheckProjection(graph, topology, control, quota);
+    if(protocols) {
+      auto checked=VerifyCloseCompletion(body,protocols->Profile(),graph,input,regions,
+          protocols->Keys(),protocols->Scan(),protocols->Summary(),quota.Remaining(),protocols->Contract());
+      if(const auto* failure=std::get_if<CloseCompletionFailure>(&checked))
+        throw failure->kind==CloseCompletionError::kResourceLimit?Error::kResourceLimit:
+            failure->kind==CloseCompletionError::kWorkLimit?Error::kWorkLimit:Error::kStructure;
+      quota.Work(std::get<std::uint64_t>(checked));
+    }
+    auto topology = protocols?ProjectProtocolControl(graph,regions,input,*protocols,quota):
+        ProjectExceptionControl(graph, regions, quota);
+    if(protocols) {
+      const ControlGraphView view{ControlProjection{graph.revision,graph.cfg_revision,topology.blocks,topology.edges}};
+      std::vector<ControlNodeId> roots;quota.Size(roots,topology.entries.size());
+      for(std::size_t i=0;i<roots.size();++i)roots[i]={topology.entries[i].value};
+      VerifyControlRegions(view,roots,control.skeleton,quota);
+      Compare(topology.mapping.units,control.units,quota);Compare(topology.mapping.arcs,control.arcs,quota);
+      Compare(topology.mapping.regions,control.regions,quota);Compare(topology.mapping.region_roles,control.region_roles,quota);
+      Compare(topology.mapping.protocol_ports,control.protocol_ports,quota);
+      Compare(topology.mapping.inactive_phases,control.inactive_phases,quota);
+    } else CheckProjection(graph, topology, control, quota);
     return budget.work - quota.RemainingWork();
   } catch (const ExceptionControlRegionFailure& failure) { return failure.kind;
   } catch (Error error) { return error;

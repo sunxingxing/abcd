@@ -13,6 +13,7 @@ struct CatchBinding {
   analysis::ValueId value;
   bool operator==(const CatchBinding&) const = default;
 };
+enum class ExceptionRegionRole : std::uint8_t { kOrdinaryTry, kInactive, kProtocolOwned };
 struct ExceptionRegion {
   analysis::WorkBlockId body;
   analysis::WorkBlockId handler;

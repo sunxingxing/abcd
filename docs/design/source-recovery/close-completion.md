@@ -395,3 +395,54 @@ split-done ABC variants also run the new proof. The real m451 fixture now verifi
 its wrapper and ownership. The m423 probe expectation changes from the old
 uncovered-body location to its actual inline-close dispatch gap; refusal remains.
 No source publication or production hook is part of A3i.
+
+## Increment B: pre-control ownership and gated topology
+
+`VerifyProtocolRegionOwnership` is the sealing boundary between diagnostic
+`CloseCompletionSummary` data and control projection. It re-runs the independent
+original-flow close verifier and requires every obligation of every close entry,
+all acquisition occurrences, and every boundary to be covered. A partial result
+cannot grant ownership to the rest of a method. The V4 external-exception domain
+is required; earlier contracts retain ordinary control planning. This stage does
+not infer progress from a read-free cycle.
+
+The original `ExceptionPlan` remains immutable dispatch evidence. Its projected
+region-role table distinguishes `OrdinaryTry`, `Inactive`, and `ProtocolOwned`.
+An inactive region is not a protocol region. Owned loop-body wrappers contribute
+routing evidence, not ownership of body instructions: those instructions retain
+`PhaseControlUnit` identities. Close members are replaced with entry-qualified
+`ProtocolCloseUnit`s. Their correlated outcome ports retain original edges,
+payload identities, and completion targets. Break/outer-continue ports continue
+to their original control boundaries; Return/Throw ports are abrupt terminals;
+close errors remain distinct exception ports. No `ExprId` or source variable is
+invented for protocol state.
+
+The control projection uses original phase/edge indexes, then the existing
+natural-loop discovery and control verifier. A zero-loop result selects the
+acyclic builder directly; it is not a failed-plan retry. The independent control
+verifier revalidates the close certificate from original flow/SSA/dispatch,
+reconstructs the boundary projection, and checks all units, roles, original arcs,
+ports and control ownership. A changed target/payload or missing exception port
+is therefore not accepted merely because a builder marked it consumed.
+
+Mixed ordinary/protocol enclosures do not receive a whole-method ownership grant
+in this increment: any remaining active ordinary region retains the established
+control route and its refusal. This is a conservative integration boundary, not
+a source-language restriction. In particular no user wrapper is classified as a
+protocol wrapper to avoid its exit checks.
+
+After control verification, evaluation refuses with
+`EvaluationObligation::kProtocolEvaluationPending`. This boundary precedes child
+family discovery: otherwise a descendant refusal could hide the intended gate.
+It never constructs an empty evaluation plan or publishes a source function.
+ForOfPlan/events, tree correspondence and recovery/publication remain later
+increments.
+
+The ownership and topology indexes use prepaid vectors and sorted occurrence
+indexes. Port tables are sorted once per close occurrence and consumed by
+entry, avoiding a full port scan per entry. Construction and verification are
+bounded by the delegated O((V+E) log V) close proofs plus linear/logarithmic
+indexes. Analysis scratch dies on return; only live certificate buffers transfer
+to the parent ledger (the conservative scratch peak is not retained storage).
+`protocol_topology_test` exercises the real fixture, ownership and port mutations,
+V3 refusal, 200/201/400/800 padding and exact topology byte/work boundaries.
