@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 80：for-of 全量诊断（cc 审查通过）
+
+- 扫描 40 个输入、15,673 个方法，33 个含同步 acquisition 的方法、49 个 acquisition、12 个 record（for-of-round80.md）。分组：9 个 evaluation 已通过（record 被其他方法或后续分析阻断）、9 个 async 原始/规范化图对应、6 个“透明转发的普通 try 与协议控制共存”（含 DeepTypeUtils m39263 与 ComponentFactory 重编译输出：seal 与 topology 都拒绝任何未拥有的活跃普通 try，需把转发异常对应贯通 topology/TreeFlow/recovery）、3 个 close ownership、3 个输入值域、2 个嵌套 completion、1 个 driver 布局。没有可独立闭合的局部修复。
+- cc 独立审查（基线 ce65e686）：构建通过；固定集串行 65/65；两组输出与基线逐字节相同（526/620、573/620）。
+
 ## Round 79 III：原生 for-of 首次发布（cc 审查通过）
 
 - OriginalFlow/RecoveryFlow 加入 for-of 事件端口（acquire、cached-next read、next call、object check、done/value、成功边绑定提交、effectful close 端口，close outcome 保持 kind/payload/target 相关）；内部 iterator/next/result/close 值不获得源码变量或伪造 ExprId；初始联合验证通过才解除 kForOfRecovery，每次 recovery 投影重新验证。ComponentFactory（o20/6952）在 `--language-source` 下完成：`for ($key4 of this.tabsInfo.keys()) { $value1.push($key4); continue; }`；cc 对照原源码 `for (let keysElement of keys) { array.push(keysElement); }`：无闭包捕获循环变量，函数级 let 的赋值形式等价，尾部 continue 属可读性问题。新增 `for_of_source_cli_test`（引擎输出的 Node 差分）。重编译：小型 fixture 往返通过完整证明；ComponentFactory 实际输出重编译后 close 摘要义务通过，但完整 ProtocolOwnership seal 报 kOwnership（未扩展 B 的准入）。

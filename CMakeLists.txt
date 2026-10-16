@@ -552,6 +552,14 @@ if(BUILD_TESTING)
   add_executable(close_completion_probe tests/unit/source/close_completion_probe.cc)
   target_link_libraries(close_completion_probe PRIVATE abcd_source abcd_json)
   target_include_directories(close_completion_probe PRIVATE tests/support)
+  add_test(NAME iterator_acquisition_inventory_test COMMAND close_completion_probe
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/main.abc" --acquisitions)
+  set_tests_properties(iterator_acquisition_inventory_test PROPERTIES
+    PASS_REGULAR_EXPRESSION "acquisition method=387 record=.*pc=32")
+  add_test(NAME for_of_pipeline_probe_test COMMAND close_completion_probe
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/main.abc" 387 --evaluation)
+  set_tests_properties(for_of_pipeline_probe_test PROPERTIES
+    PASS_REGULAR_EXPRESSION "evaluation-verified")
   add_test(NAME close_completion_probe_test COMMAND close_completion_probe
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 423)
   set_tests_properties(close_completion_probe_test PROPERTIES
