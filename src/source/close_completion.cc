@@ -1,5 +1,6 @@
 #include "close_completion.h"
 #include "close_boundary.h"
+#include "close_loop_body.h"
 
 #include "../analysis/idf_scratch.h"
 #include "../analysis/value_phi.h"
@@ -61,7 +62,7 @@ class Proof {
       q_.Require(false,*f==ValueSimplifyError::kResourceLimit?CloseCompletionError::kResourceLimit:
           *f==ValueSimplifyError::kWorkLimit?CloseCompletionError::kWorkLimit:CloseCompletionError::kInput);
     ids_=std::get<ValueIdentities>(std::move(ids));q_.memory.Retain(ids_.allocated_bytes);q_.Step(ids_.work);
-    Index();
+    Index();BodyDominance();
   }
   CloseCompletionSummary Run() {
     CloseCompletionSummary out{keys_.method,g_.revision,g_.cfg_revision};
@@ -111,6 +112,23 @@ class Proof {
       if(!value || result)return {};result=Identity(*value);
     }
     return result;
+  }
+  void BodyDominance() {
+    // One original entry-dominance index per method, shared by all body wrappers.
+    // Verification rebuilds it from immutable arcs, never from certificate flags.
+    bool needed=false;for(const auto& r:scan_.regions){q_.Step();needed|=r.role==IteratorRegionRole::kEnclosingHandler;}
+    if(!needed)return;
+    std::pmr::vector<std::uint32_t> offsets(&q_.memory);std::pmr::vector<BlockId> edges(&q_.memory);
+    offsets.push_back(0);
+    for(const auto& node:in_.flow.nodes) {
+      q_.Step();for(std::uint8_t e=0;e<node.successor_count;++e){q_.Step();edges.push_back({node.successors[e].target.value});}
+      offsets.push_back(static_cast<std::uint32_t>(edges.size()));
+    }
+    auto built=BuildDominators({offsets,edges},{0},{q_.Remaining().bytes,q_.left});
+    if(const auto* f=std::get_if<DominatorError>(&built))throw CloseCompletionFailure{*f==DominatorError::kResourceLimit?CloseCompletionError::kResourceLimit:
+        *f==DominatorError::kWorkLimit?CloseCompletionError::kWorkLimit:CloseCompletionError::kCorrespondence};
+    body_dom_=std::get<DominatorTree>(std::move(built));q_.memory.Observe(body_dom_.work.allocated_bytes);q_.memory.Retain(body_dom_.work.allocated_bytes);
+    q_.Step(body_dom_.work.steps+body_dom_.work.eval_steps+body_dom_.work.edge_visits);
   }
   void Index() {
     before_.resize(in_.flow.instructions.size());commit_.resize(in_.flow.instructions.size());
@@ -300,14 +318,19 @@ class Proof {
   }
   CloseObligationResult Ownership(const DerivedClose& c,CloseCompletionRegion& r) {
     if(!r.outcomes)return Missing(c,CloseCompletionError::kOwnership);
-    auto proof=ProveCloseBoundary(body_,profile_,in_.flow,in_.frame.registers,plan_,scan_,c,r,q_.Remaining(),verify_);
+    const CloseBodyIndex body_index{&in_.flow,before_,commit_,&body_dom_};
+    auto proof=ProveCloseBoundary(body_,profile_,in_.flow,in_.frame.registers,plan_,scan_,c,r,q_.Remaining(),verify_,&body_index);
     if(const auto* f=std::get_if<CloseCompletionFailure>(&proof))throw *f;
     r.boundary=std::get<CloseBoundaryProof>(std::move(proof));
     q_.memory.Observe(r.boundary->peak_bytes);q_.Step(r.boundary->work);
     q_.memory.Retain(r.boundary->ports.capacity()*sizeof(CloseOutcomeLeaving)+
         r.boundary->unreachable_entries.capacity()*sizeof(CompletionEdge)+
         r.boundary->private_slots.capacity()*sizeof(ClosePrivateSlot)+
-        r.boundary->regions.capacity()*sizeof(TryId));
+        r.boundary->regions.capacity()*sizeof(TryId)+r.boundary->protected_ranges.capacity()*sizeof(CloseProtectedRange));
+    for(const auto& p:r.boundary->protected_ranges) {
+      q_.Step();q_.memory.Retain(p.ordinary.capacity()*sizeof(ExceptionNodeId)+p.transport.capacity()*sizeof(ExceptionNodeId)+
+          p.dispatch.capacity()*sizeof(CompletionEdge)+p.exits.capacity()*sizeof(CompletionEdge));
+    }
     if(r.boundary->missing)return {CloseProofState::kMissing,r.boundary->missing};
     for(const auto& m:r.members) {
       q_.Step();if(m.role==CloseMemberRole::kUnproved) {
@@ -320,7 +343,7 @@ class Proof {
 
   const abc::MethodBody& body_;abc::ProfileId profile_;const ValueProgram& g_;const PhasedValueInput& in_;
   const ExceptionPlan& plan_;const IteratorKeys& keys_;const IteratorProtocolScan& scan_;
-  Quota q_;CloseEntries entries_;ValueIdentities ids_;
+  Quota q_;CloseEntries entries_;ValueIdentities ids_;DominatorTree body_dom_;
   std::pmr::vector<std::optional<ExceptionNodeId>> before_,commit_;
   std::pmr::vector<std::optional<OpId>> op_;
   struct Calls {std::uint32_t count=0;std::optional<OpId> op;};
@@ -395,7 +418,7 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
           a.boundary->private_state!=b.boundary->private_state || a.boundary->region_coverage!=b.boundary->region_coverage ||
           a.boundary->missing!=b.boundary->missing || a.boundary->ports.size()!=b.boundary->ports.size() ||
           a.boundary->unreachable_entries.size()!=b.boundary->unreachable_entries.size() ||
-          a.boundary->private_slots.size()!=b.boundary->private_slots.size() || a.boundary->regions.size()!=b.boundary->regions.size())
+          a.boundary->private_slots.size()!=b.boundary->private_slots.size() || a.boundary->regions.size()!=b.boundary->regions.size() || a.boundary->protected_ranges.size()!=b.boundary->protected_ranges.size())
         return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
       const auto equal=[&](const auto& x,const auto& y)->std::optional<CloseCompletionFailure> {
         for(std::size_t k=0;k<x.size();++k) {
@@ -408,6 +431,16 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
       if(const auto f=equal(a.boundary->unreachable_entries,b.boundary->unreachable_entries))return *f;
       if(const auto f=equal(a.boundary->private_slots,b.boundary->private_slots))return *f;
       if(const auto f=equal(a.boundary->regions,b.boundary->regions))return *f;
+      for(std::size_t r=0;r<a.boundary->protected_ranges.size();++r) {
+        if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
+        const auto& x=a.boundary->protected_ranges[r];const auto& y=b.boundary->protected_ranges[r];
+        if(x.region!=y.region || x.role!=y.role || x.missing!=y.missing || x.ordinary.size()!=y.ordinary.size() ||
+            x.transport.size()!=y.transport.size() || x.dispatch.size()!=y.dispatch.size() || x.exits.size()!=y.exits.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+        if(const auto f=equal(x.ordinary,y.ordinary))return *f;
+        if(const auto f=equal(x.transport,y.transport))return *f;
+        if(const auto f=equal(x.dispatch,y.dispatch))return *f;
+        if(const auto f=equal(x.exits,y.exits))return *f;
+      }
     }
     if(a.outcomes.has_value()!=b.outcomes.has_value())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
     if(a.outcomes) {

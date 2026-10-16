@@ -1,4 +1,5 @@
 #include "close_boundary.h"
+#include "close_loop_body.h"
 #include "abcd/analysis/raw_event_graph.h"
 #include <algorithm>
 #include <bit>
@@ -16,13 +17,13 @@ class Boundary {
  public:
   Boundary(const abc::MethodBody& body,abc::ProfileId profile,const ExceptionFlow& flow,std::uint64_t frame,
       const ExceptionPlan& plan,const IteratorProtocolScan& scan,const DerivedClose& close,
-      const CloseCompletionRegion& region,SemanticBudget budget,bool reverse)
+      const CloseCompletionRegion& region,SemanticBudget budget,bool reverse,const CloseBodyIndex* entry_dominators)
       :flow_(flow),plan_(plan),scan_(scan),c_(close),r_(region),arena_(budget),raw_(body,arena_),
        member_(arena_.Resource()),reachable_(arena_.Resource()),flow_raw_(arena_.Resource()),raw_flow_(arena_.Resource()),
-       private_(WorkLess{&arena_},arena_.Resource()),reverse_(reverse) {
+       private_(WorkLess{&arena_},arena_.Resource()),reverse_(reverse),entry_dominators_(entry_dominators) {
     const auto n=std::uint64_t(flow.nodes.size())+plan.regions.size()+1;
     Require(n<=UINT32_MAX && plan.layout.regions.size()==plan.regions.size() && body.instructions.size()==flow.instructions.size());
-    arena_.LimitWork(std::min(budget.work,4096*n*(1+std::bit_width(n))));
+    limit_=std::min(budget.work,4096*n*(1+std::bit_width(n)));arena_.LimitWork(limit_);
     auto dispatch=raw_.Select(profile);raw_.Allocate();raw_.Connect(dispatch,profile,frame);
     member_.resize(flow.nodes.size());flow_raw_.resize(flow.nodes.size());
     reachable_.resize(raw_.Nodes().size());raw_flow_.resize(raw_.Nodes().size());
@@ -134,6 +135,7 @@ class Boundary {
       }
     }
     Reserve(out_.regions,plan_.regions.size());
+    Reserve(out_.protected_ranges,plan_.regions.size());
     const auto overlaps=[&](InstructionRange range) {
       Require(range.begin.value<=range.end.value && range.end.value<prefix.size());
       return prefix[range.end.value]!=prefix[range.begin.value];
@@ -142,7 +144,7 @@ class Boundary {
     for(std::uint32_t t=0;t<plan_.layout.regions.size();++t) {
       arena_.Step();const auto& region=plan_.layout.regions[t];
       if(!overlaps(region.body) && !overlaps(region.handler))continue;
-      bool role=false;
+      bool role=false;std::optional<IteratorRegionRole> selected;
       if(associated[t])for(const auto& candidate:scan_.regions) {
         arena_.Step();if(candidate.protocol!=c_.protocol || candidate.read.operation!=c_.read || candidate.region.value!=t)continue;
         switch(candidate.role) {
@@ -151,13 +153,13 @@ class Boundary {
               arena_.Step();const auto& n=flow_.nodes[member.node.value];
               if(n.phase==ExceptionPhase::kBefore && member.role==CloseMemberRole::kReturnRead && n.exception &&
                   n.exception->target && n.exception->target->region.value==t &&
-                  region.body.begin.value<=n.instruction.value && n.instruction.value<region.body.end.value)role=true;
+                  region.body.begin.value<=n.instruction.value && n.instruction.value<region.body.end.value){role=true;selected=candidate.role;}
             }
             break;
           case IteratorRegionRole::kEnclosingHandler:
             for(const auto& e:c_.entries) {
               arena_.Step();if(e.catcher && flow_.nodes[e.catcher->value].instruction==region.handler.begin &&
-                  e.entry.pending.kind==PendingCompletionKind::kThrow)role=true;
+                  e.entry.pending.kind==PendingCompletionKind::kThrow){role=true;selected=candidate.role;}
             }
             break;
         }
@@ -169,13 +171,45 @@ class Boundary {
         continue;
       }
       bool covered=true;
-      for(const auto range:{region.body,region.handler})for(auto i=range.begin.value;i<range.end.value;++i) {
-        arena_.Step();const auto before=i*RawEventGraph::kPhases;
-        if(reachable_[before] && (!raw_flow_[before] || !member_[raw_flow_[before]->value])) {
-          covered=false;
-          Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kRegionCoverage,raw_flow_[before]);
-          if(out_.missing && out_.missing->kind==CloseCompletionError::kOwnership && out_.missing->ownership_gap==CloseOwnershipGap::kRegionCoverage && !out_.missing->region)out_.missing->region=TryId{t};
-          break;
+      if(*selected==IteratorRegionRole::kEnclosingHandler) {
+        auto body=ProveCloseLoopBody(flow_,plan_,c_,{t},{arena_.Available(),limit_-arena_.Work()},reverse_,entry_dominators_);
+        if(const auto* f=std::get_if<CloseCompletionFailure>(&body))throw *f;
+        auto proof=std::get<CloseProtectedRange>(std::move(body));
+        arena_.Observe(proof.peak_bytes);arena_.Step(proof.work);
+        arena_.Retain(proof.ordinary.capacity()*sizeof(ExceptionNodeId)+proof.transport.capacity()*sizeof(ExceptionNodeId)+
+            proof.dispatch.capacity()*sizeof(CompletionEdge)+proof.exits.capacity()*sizeof(CompletionEdge));
+        if(proof.missing) {
+          covered=false;Missing(proof.missing->kind,*proof.missing->ownership_gap,proof.missing->node,proof.missing->edge);
+          if(out_.missing && !out_.missing->region)out_.missing->region=TryId{t};
+        }
+        for(const auto n:proof.ordinary) {
+          arena_.Step();if(member_[n.value]){covered=false;Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kBodyRange,n);}
+        }
+        // An expanded close copy is not ordinary user body. Composing such
+        // completion ports requires its own proof; do not silently relabel it.
+        for(const auto& other:scan_.regions) {
+          arena_.Step();if(other.protocol!=c_.protocol || other.role!=IteratorRegionRole::kReturnProtection || other.read.operation==c_.read)continue;
+          const bool inside=std::binary_search(proof.ordinary.begin(),proof.ordinary.end(),other.read.before,
+              [&](ExceptionNodeId a,ExceptionNodeId b){arena_.Step();return a<b;});
+          if(inside) {
+            covered=false;Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kBodyExit,other.read.before);
+            if(!proof.missing)proof.missing=CloseCompletionFailure{CloseCompletionError::kOwnership,c_.protocol,c_.read,{},other.read.before,{}, {}, {}, {},CloseOwnershipGap::kBodyExit,TryId{t}};
+          }
+        }
+        out_.protected_ranges.push_back(std::move(proof));
+      } else out_.protected_ranges.push_back(CloseProtectedRange{TryId{t},ProtectedRangeRole::kCloseCode});
+      // A body wrapper owns dispatch + handler, never ordinary protected ops.
+      // An inner return-protection region still owns both its code and handler.
+      for(const auto range:{region.body,region.handler}) {
+        if(*selected==IteratorRegionRole::kEnclosingHandler && range==region.body)continue;
+        for(auto i=range.begin.value;i<range.end.value;++i) {
+          arena_.Step();const auto before=i*RawEventGraph::kPhases;
+          if(reachable_[before] && (!raw_flow_[before] || !member_[raw_flow_[before]->value])) {
+            covered=false;
+            Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kRegionCoverage,raw_flow_[before]);
+            if(out_.missing && out_.missing->kind==CloseCompletionError::kOwnership && out_.missing->ownership_gap==CloseOwnershipGap::kRegionCoverage && !out_.missing->region)out_.missing->region=TryId{t};
+            break;
+          }
         }
       }
       if(covered)out_.regions.push_back({t});else region_ok=false;
@@ -238,13 +272,13 @@ class Boundary {
   std::pmr::vector<std::uint32_t> flow_raw_;
   std::pmr::vector<std::optional<ExceptionNodeId>> raw_flow_;
   std::pmr::set<ClosePrivateSlot,WorkLess> private_;
-  bool reverse_;CloseBoundaryProof out_;
+  bool reverse_;const CloseBodyIndex* entry_dominators_;std::uint64_t limit_=0;CloseBoundaryProof out_;
 };
 }
 std::variant<CloseBoundaryProof,CloseCompletionFailure> ProveCloseBoundary(const abc::MethodBody& body,
     abc::ProfileId profile,const ExceptionFlow& flow,std::uint64_t frame,const ExceptionPlan& plan,const IteratorProtocolScan& scan,
-    const DerivedClose& close,const CloseCompletionRegion& region,SemanticBudget budget,bool reverse) {
-  try {return Boundary(body,profile,flow,frame,plan,scan,close,region,budget,reverse).Run();}
+    const DerivedClose& close,const CloseCompletionRegion& region,SemanticBudget budget,bool reverse,const CloseBodyIndex* entry_dominators) {
+  try {return Boundary(body,profile,flow,frame,plan,scan,close,region,budget,reverse,entry_dominators).Run();}
   catch(const CloseCompletionFailure& f){return f;}
   catch(const RawEventFailure& f){return CloseCompletionFailure{f.kind==RawEventError::kResourceLimit?CloseCompletionError::kResourceLimit:
       f.kind==RawEventError::kWorkLimit?CloseCompletionError::kWorkLimit:CloseCompletionError::kCorrespondence,close.protocol,close.read};}

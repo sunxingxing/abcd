@@ -322,3 +322,76 @@ Tests cover a real external entrance, a legal port, omitted cuts, live-out guard
 and acc reads, overwrite-before-read, a real unrelated try, forged candidate/role
 association, certificate mutations, opposite traversal, and 200/201/400/800 with
 exact work/byte boundaries. The real ABC probe retains original IDs and PCs.
+
+
+## A3i: split loop-body wrapper and close-code ownership
+
+`ProtectedRangeRole` distinguishes `kCloseCode` (inner return protection) from
+`kLoopBody` (the outer body wrapper). The latter owns only the original dispatch
+edges and handler/close subgraph. Its `ordinary` nodes retain their original
+Before/Commit identities and normal links; they are disjoint from close members.
+The covered-TryId list is NOT an instruction-ownership mask.
+
+CloseEntries discovers the Value-property read by its resolved IteratorKey and
+canonical SSA base: the result of this acquisition's unique advance. Missing or
+ambiguous value reads do not invent a body start. The independent entry verifier
+recomputes this identity. From the successful value Commit, the body proof walks
+original normal edges until the already-derived backedge/header or an abrupt
+exit. Entry dominance is computed once per method (including original exception
+edges), borrowed without another storage charge by each sparse body query, and
+rebuilt during verification. No protected PC range is used to discover the body.
+
+The protected range is then checked against this control region. Key/binding
+register transports at entry and inert connectors to the backedge can straddle
+encoded try boundaries: these are recorded separately as ordinary `transport`
+nodes. A transport must have one normal successor, no language effects and no
+possible throw, and belong to the proved entry prefix or exit suffix. No copy,
+register write, control node or source operation is moved or eliminated. All
+other ordinary body operations must be protected; every reachable protected
+operation must be in the derived body. A range reaching an exhaustion target,
+handler, next header or unrelated operation refuses `kBodyRange`.
+
+Every protected throwing operation must dispatch to this wrapper's actual Catch
+and match a previously derived Throw entry with its real source edge. Its
+exception payload is not guessed. `kBodyDispatch` identifies a different handler
+or missing source entry. A normal return or exit bypassing the close refuses
+`kBodyExit`; same-loop continue keeps its original backedge. Handler coverage and
+private-state/priority/reference proofs remain mandatory. This is not a generic
+relaxation of try control, and the production topology is unchanged.
+
+Real V4 standalone results (counts are original event nodes, including phases):
+
+| Method / close | Wrapper | Ordinary / dispatch / backedges | Close ownership |
+|---|---|---|---|
+| o5 m28799 / read1148 | TryId2 | 320 / 43 / 1 | verified |
+| o20 m7171 / read181 | TryId2 | 28 / 2 / 1 | verified |
+| o32 m39073 / read266 | TryId2 | 84 / 6 / 1 | verified |
+| o32 m47128 / read400 | TryId4 | 140 / 11 / 1 | verified; separate multi-acquisition/nested obligation stays missing |
+| o32 m47128 / read900 | TryId6 | partial: 148 / 1 / 1 | `kBodyDispatch` PC717 -> TryId1/H874, not TryId6/H880 |
+| o32 m40502 / read411 | TryId2 | 108 / 7 / 2 | verified |
+
+The second configService loop has a per-iteration environment. Its inner
+TryId1 handler at PC874 restores that environment and rethrows at PC875 into
+the outer close handler. This effectful forwarding is not erased or treated as
+a direct wrapper edge. The m42717 nested and m23306 async entry derivation gaps
+are unchanged. The m423 fixture's Throw-copy body also retains `kBodyDispatch`
+PC105, where an inline Break close dispatches to its own return protection;
+its Break/Return copies still retain their PC253 private-state live-out. None
+of these gaps is a new source-language premise.
+
+The independent summary verifier re-derives the split and compares the role,
+ordinary/transport nodes, source dispatches and exits, in addition to the
+existing entry, priority, member, private-state and exception evidence. The body
+walk uses sparse prepaid sets and sorted predecessor pairs; it never builds a
+dense per-loop matrix. The original node/commit and dominance indexes are shared
+at method scope. All delegated temporary peaks are observed before retaining
+only result capacities; exhaustion remains a typed whole-query failure.
+
+Tests add a protected body positive; extending the range past the body; routing
+through another handler; a bypass exit; a wrong value identity; a missing Throw
+entry; borrowed/fresh index and reversed traversal equivalence; split-certificate
+mutations; and 200/201/400/800/exact-budget cases. Existing register/copy and
+split-done ABC variants also run the new proof. The real m451 fixture now verifies
+its wrapper and ownership. The m423 probe expectation changes from the old
+uncovered-body location to its actual inline-close dispatch gap; refusal remains.
+No source publication or production hook is part of A3i.

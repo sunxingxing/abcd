@@ -167,6 +167,7 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   bad=derived;bad.closes[0].entries[0].entry.pending.payload=CompletionEntryPayload{99};reject(bad);
   bad=derived;bad.closes[0].entries.clear();reject(bad);
   bad=derived;bad.closes[0].iteration.advance={0};reject(bad);
+  bad=derived;bad.closes[0].iteration.value=ExceptionNodeId{0};reject(bad);
   bad=derived;bad.closes[0].relation.leaving.clear();reject(bad);
   Check(std::get<CloseEntryFailure>(DeriveCloseEntries(body,file.header.profile,graph,input,regions,keys,scan,{0})).kind==CloseEntryError::kResourceLimit);
   Check(std::get<CloseEntryFailure>(DeriveCloseEntries(body,file.header.profile,graph,input,regions,keys,scan,{64*1024*1024,0})).kind==CloseEntryError::kWorkLimit);

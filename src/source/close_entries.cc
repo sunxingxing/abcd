@@ -72,7 +72,7 @@ class Derivation {
         ready_(&q_.memory),normal_(&q_.memory),original_(&q_.memory),guards_(&q_.memory),
         protocol_loop_(&q_.memory),protocol_advance_(&q_.memory),pred_offsets_(&q_.memory),preds_(&q_.memory),
         stamps_(&q_.memory),loop_begin_(&q_.memory),loop_end_(&q_.memory),header_loop_(&q_.memory),
-        exhausted_(&q_.memory),success_(&q_.memory),calls_(&q_.memory),state_checked_(&q_.memory),
+        exhausted_(&q_.memory),success_(&q_.memory),value_read_(&q_.memory),value_ambiguous_(&q_.memory),calls_(&q_.memory),state_checked_(&q_.memory),
         value_stamps_(&q_.memory),guard_owner_(&q_.memory),region_offsets_(&q_.memory),region_index_(&q_.memory),
         branch_aliases_(&q_.memory),alias_slots_(&q_.memory),boundaries_(&q_.memory),
         writes_(&q_.memory),read_offsets_(&q_.memory),phi_offsets_(&q_.memory),phi_values_(&q_.memory),verify_(verify) {
@@ -388,7 +388,7 @@ class Derivation {
   }
   void ProtocolLoops() {
     protocol_loop_.resize(scan_.candidates.size());protocol_advance_.resize(scan_.candidates.size());
-    exhausted_.resize(scan_.candidates.size());success_.resize(scan_.candidates.size());
+    exhausted_.resize(scan_.candidates.size());success_.resize(scan_.candidates.size());value_read_.resize(scan_.candidates.size());value_ambiguous_.resize(scan_.candidates.size());
     calls_.resize(g_.values.size());q_.Step(g_.values.size());
     std::pmr::vector<std::optional<IteratorProtocolId>> callee(g_.values.size(),{},&q_.memory);
     for(const auto& c:scan_.candidates)if(c.next) {
@@ -423,14 +423,22 @@ class Derivation {
       results[Canonical({op.result->value}).value]=IteratorProtocolId{static_cast<std::uint32_t>(p)};
     }
     for(const auto& key:keys_.uses) {
-      q_.Step();if(keys_.origins[key.origin].key!=IteratorKey::kDone)continue;
+      q_.Step();const auto kind=keys_.origins[key.origin].key;
+      if(kind!=IteratorKey::kDone && kind!=IteratorKey::kValue)continue;
       const auto& op=g_.ops[key.operation.value];
       for(std::uint32_t u=0;u<op.use_count;++u) {
         q_.Step();const auto& use=g_.uses[op.first_use.value+u];
         if(use.role!=OperandRole::kBase)continue;
         if(const auto* base=std::get_if<ValueId>(&use.operand))
           if(const auto p=results[Canonical({base->value}).value]) {
-            q_.Require(op.result.has_value());done[Canonical({op.result->value}).value]=p;
+            q_.Require(op.result.has_value());
+            if(kind==IteratorKey::kDone)done[Canonical({op.result->value}).value]=p;
+            else {
+              const auto before=g_.phases[op.block.value].input;
+              // Duplicated value observations cannot define a unique body entry.
+              if(value_read_[p->value] && *value_read_[p->value]!=before)value_ambiguous_[p->value]=true;
+              else value_read_[p->value]=before;
+            }
           }
       }
     }
@@ -713,6 +721,7 @@ class Derivation {
     const auto pending=Continue(guard.bypass,loop,exit,{guard.predicate,bypass_edge});
     DerivedClose close{region.protocol,region.read.operation,
         {advance,exhausted,exit,success,loop?std::optional{original_[loops_.loops[loop->value].header.value]}:std::nullopt},guard.predicate,guard.write};
+    if(!value_ambiguous_[region.protocol.value])close.iteration.value=value_read_[region.protocol.value];
     if(pending.pending.kind==PendingCompletionKind::kThrow) {
       const auto payload=std::get<SsaValueId>(pending.pending.payload);
       const auto* origin=std::get_if<InstructionValue>(&in_.ssa.Values()[payload.value].origin);
@@ -782,6 +791,8 @@ class Derivation {
   std::pmr::vector<std::optional<LoopId>> header_loop_;
   std::pmr::vector<std::optional<CompletionEdge>> exhausted_;
   std::pmr::vector<std::optional<ExceptionNodeId>> success_;
+  std::pmr::vector<std::optional<ExceptionNodeId>> value_read_;
+  std::pmr::vector<bool> value_ambiguous_;
   std::pmr::vector<CallFact> calls_;
   std::pmr::vector<bool> state_checked_;
   std::pmr::vector<std::uint32_t> value_stamps_;

@@ -23,7 +23,7 @@ enum class ClosePriorityReason : std::uint8_t {
 // this function can contribute to a certificate; it grants no provenance.
 [[nodiscard]] std::optional<ClosePriorityReason> ClosePriorityMismatch(
     const analysis::PendingCompletion&, const analysis::CloseOutcomeLeaving&);
-enum class CloseOwnershipGap : std::uint8_t { kEventCoverage, kPrivateState, kRegionCoverage, kLiveOut, kUserTry, kPort, kRawFlow };
+enum class CloseOwnershipGap : std::uint8_t { kEventCoverage, kPrivateState, kRegionCoverage, kLiveOut, kUserTry, kPort, kRawFlow, kBodyIdentity, kBodyRange, kBodyDispatch, kBodyExit };
 struct CloseCompletionFailure {
   CloseCompletionError kind;
   std::optional<IteratorProtocolId> protocol;
@@ -74,6 +74,19 @@ struct ClosePrivateSlot {
   std::optional<abc::RegisterId> reg; // absent = acc, not an absent slot
   auto operator<=>(const ClosePrivateSlot&) const = default;
 };
+enum class ProtectedRangeRole : std::uint8_t { kCloseCode, kLoopBody };
+struct CloseProtectedRange {
+  analysis::TryId region;
+  ProtectedRangeRole role;
+  // Loop-body nodes and links are ORDINARY original control, never close members.
+  std::vector<analysis::ExceptionNodeId> ordinary;
+  std::vector<analysis::ExceptionNodeId> transport;
+  std::vector<analysis::CompletionEdge> dispatch;
+  std::vector<analysis::CompletionEdge> exits;
+  std::optional<CloseCompletionFailure> missing;
+  std::size_t peak_bytes = 0;
+  std::uint64_t work = 0;
+};
 struct CloseBoundaryProof {
   CloseProofState entry_coverage = CloseProofState::kMissing;
   CloseProofState port_coverage = CloseProofState::kMissing;
@@ -82,7 +95,10 @@ struct CloseBoundaryProof {
   std::vector<analysis::CloseOutcomeLeaving> ports;
   std::vector<analysis::CompletionEdge> unreachable_entries;
   std::vector<ClosePrivateSlot> private_slots;
+  // Verified wrappers/handlers. Never use this as a full-op ownership mask:
+  // the matching protected_ranges role determines close code vs ordinary body.
   std::vector<analysis::TryId> regions;
+  std::vector<CloseProtectedRange> protected_ranges;
   std::optional<CloseCompletionFailure> missing;
   std::size_t peak_bytes = 0;
   std::uint64_t work = 0;

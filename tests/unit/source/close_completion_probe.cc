@@ -131,6 +131,15 @@ int main(int argc,char**argv) {
         <<" entry-proof="<<unsigned(r.boundary->entry_coverage)<<" port-proof="<<unsigned(r.boundary->port_coverage)
         <<" private-proof="<<unsigned(r.boundary->private_state)<<" region-proof="<<unsigned(r.boundary->region_coverage)
         <<" ports="<<r.boundary->ports.size()<<" private="<<r.boundary->private_slots.size()<<" dead-entry-edges="<<r.boundary->unreachable_entries.size()<<'\n';
+      for(const auto& split:r.boundary->protected_ranges) {
+        std::cout<<" split-try="<<split.region.value<<" role="<<unsigned(split.role)<<" ordinary="<<split.ordinary.size()
+          <<" transport="<<split.transport.size()<<" dispatch="<<split.dispatch.size()<<" exits="<<split.exits.size();
+        if(split.missing) {
+          std::cout<<" gap="<<unsigned(*split.missing->ownership_gap);
+          if(split.missing->node)std::cout<<" pc="<<flow.instructions[flow.nodes[split.missing->node->value].instruction.value].pc.value;
+        }
+        std::cout<<'\n';
+      }
       for(const auto edge:r.boundary->unreachable_entries) {
         const auto& a=flow.nodes[edge.source.value];const auto& b=flow.nodes[a.successors[edge.successor].target.value];
         std::cout<<" dead-edge="<<flow.instructions[a.instruction.value].pc.value<<":"<<unsigned(a.phase)<<"->"<<flow.instructions[b.instruction.value].pc.value<<":"<<unsigned(b.phase)<<'\n';

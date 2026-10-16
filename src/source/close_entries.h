@@ -33,6 +33,9 @@ struct CloseIterationBoundary {
   // An always-abrupt first iteration has no executable backedge. Keep that
   // absence typed; an advance site must never be labelled a loop header.
   std::optional<analysis::ExceptionNodeId> loop_header;
+  // Resolved Value key on THIS advance result, discovered by SSA identity.
+  // Absence is a body-boundary proof gap, not acquisition admission.
+  std::optional<analysis::ExceptionNodeId> value;
   bool operator==(const CloseIterationBoundary&) const = default;
 };
 struct DerivedClose {

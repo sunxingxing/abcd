@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 A3i：body-protection 的角色拆分；close 证书在 4 个方法上完整成立（cc 审查通过）
+
+- 按 Round 57 设计（循环骨架保留原控制身份）拆分 typed 证书：`kCloseCode`（内层 return-protection，检查成员覆盖）与 `kLoopBody`（外层 wrapper 只拥有 dispatch 边与 handler/close 子图，正文节点、binding transport、回边保留原始身份）；正文从同一 advance-result 的 value 读取与原始 CFG 推导，独立复核。V4 下 close ownership 全部 verified：o5 m28799、o20 m7171、o32 m39073、o32 m40502，以及 m47128 第一处 close；m47128 第二处为 `kBodyDispatch @717`（环境恢复 handler 转发），m42717 嵌套与 m23306 async 入口保持门禁。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变；相关测试全部通过。
+
 ## Round 79 A3h（部分）：close 区域边界与私有状态（cc 审查通过）
 
 - 6 个 `kExternalEntry` 见证均为原始 CFG 中不可达的 ObjectCheck 正常 Commit 边，经可达性证明排除（不是放宽）。`close_boundary`：从 completion relation 导出携带 completion/outcome 的端口，检查全部入边/出边与私有状态 live-out（acc 与寄存器，cell-backed 状态仍拒绝），用户 try 必须核对真实 dispatch/Catch 角色。5 个方法的剩余缺口均为 `kRegionCoverage`：外层 body-protection 范围包含 close 成员集之外的普通循环正文。fixture 中发现一处真实的私有状态 live-out（PC253），该路径保持拒绝。

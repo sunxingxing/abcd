@@ -33,6 +33,9 @@ class RawEventArena {
   std::size_t Available() const { return memory_.Available(); }
   std::size_t Peak() const { return memory_.Peak(); }
   void Retain(std::size_t bytes) { memory_.Retain(bytes); }
+  // A delegated proof owns and prepays its scratch; observe that temporary
+  // peak before retaining only its surviving result in this arena.
+  void Observe(std::size_t bytes) { memory_.Observe(bytes); }
   // Before the first charged operation only; preserves a caller's admission bound.
   void LimitWork(std::uint64_t limit);
   void Step(std::uint64_t units = 1);

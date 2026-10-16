@@ -126,10 +126,12 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
         <<" outcome-gap="<<unsigned(*missing->outcome_gap)<<" pc="
         <<flow.instructions[flow.nodes[missing->node->value].instruction.value].pc.value<<'\n';
     }
-    Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state==CloseProofState::kMissing);
-    Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].missing->kind!=CloseCompletionError::kExternalEntry);
+    if(method.offset.value==451)
+      Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state==CloseProofState::kVerified);
+    else Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state==CloseProofState::kMissing);
+    if(const auto& missing=e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].missing)Check(missing->kind!=CloseCompletionError::kExternalEntry);
     if(!padding && mutation==Mutation::kNone)std::cout<<"entry-pc="<<flow.instructions[flow.nodes[e.source.source.value].instruction.value].pc.value
-      <<" contract="<<SourceContractName(contract)<<" kind="<<unsigned(e.pending.kind)<<" priority="<<unsigned(priority)<<" ownership=missing\n";
+      <<" contract="<<SourceContractName(contract)<<" kind="<<unsigned(e.pending.kind)<<" priority="<<unsigned(priority)<<" ownership="<<unsigned(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state)<<'\n';
   }
   const auto reject=[&](const CloseCompletionSummary& bad) {
     Check(std::holds_alternative<CloseCompletionFailure>(verify(bad)));
@@ -157,6 +159,17 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   bad=summary;bad.regions[0].boundary->private_slots.push_back({abc::RegisterId{999}});reject(bad);
   bad=summary;bad.regions[0].boundary->unreachable_entries.push_back({{0},0});reject(bad);
   bad=summary;bad.regions[0].boundary->regions.push_back({999});reject(bad);
+  bad=summary;bad.regions.back().boundary->protected_ranges.clear();reject(bad);
+  for(std::size_t r=0;r<summary.regions.size();++r)if(summary.regions[r].boundary) {
+    const auto& ranges=summary.regions[r].boundary->protected_ranges;
+    for(std::size_t t=0;t<ranges.size();++t)if(ranges[t].role==ProtectedRangeRole::kLoopBody) {
+      bad=summary;bad.regions[r].boundary->protected_ranges[t].role=ProtectedRangeRole::kCloseCode;reject(bad);
+      bad=summary;bad.regions[r].boundary->protected_ranges[t].ordinary.push_back({0});reject(bad);
+      bad=summary;bad.regions[r].boundary->protected_ranges[t].transport.push_back({0});reject(bad);
+      bad=summary;bad.regions[r].boundary->protected_ranges[t].dispatch.push_back({{0},0});reject(bad);
+      bad=summary;bad.regions[r].boundary->protected_ranges[t].exits.push_back({{0},0});reject(bad);
+    }
+  }
   bad=summary;bad.regions[0].members.pop_back();reject(bad);
   bad=summary;bad.regions[0].edges.pop_back();reject(bad);
   bad=summary;bad.regions[0].call=OpId{0};reject(bad);
@@ -205,6 +218,7 @@ int main(int argc,char** argv) {
   for(const auto& method:index.methods) if(method.offset.value==423 || method.offset.value==451) {
     ++tested;
     Method({*file,header,index},method);
+    if(method.offset.value==451)Method({*file,header,index},method,0,Mutation::kNone,SourceContract::kLanguageSourceV4);
     if(method.offset.value==423)for(auto contract:{SourceContract::kLanguageSourceV1,SourceContract::kLanguageSourceV2,SourceContract::kLanguageSourceV3,SourceContract::kLanguageSourceV4})
       Method({*file,header,index},method,0,Mutation::kNone,contract);
     Method({*file,header,index},method,0,Mutation::kRegisters);
