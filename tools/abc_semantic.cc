@@ -437,7 +437,7 @@ int main(int argc, char** argv) {
   const auto numeric_contract = language_numeric ? source::SourceContract::kLanguageNumericV1 : language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
   return RunWithProcessReport(limit, [&] {
   return Inspect(argv[1], entity, form, InspectDetail::kSummary, print_budget?ValueSourceScope::kRecordPrintBudget:ValueSourceScope::kMember,
-      language_source ? source::SourceContract::kLanguageSourceV3
+      language_source ? source::SourceContract::kLanguageSourceV4
       : language_constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract);
   });
 }

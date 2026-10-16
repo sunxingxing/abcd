@@ -15,7 +15,7 @@ ExceptionNodeId Node(const ExceptionFlow& flow, unsigned pc, ExceptionPhase phas
   Check(false);return {};
 }
 enum class Mutation { kNone,kInitiallyClosed,kReset,kReceiver,kInvertedDone,kRegisters,kSplitDone,kCycleExit };
-void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned padding=0,Mutation mutation=Mutation::kNone) {
+void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned padding=0,Mutation mutation=Mutation::kNone,SourceContract contract=kSourceContract) {
   auto body=std::get<abc::MethodBody>(abc::DecodeMethodBody(file.file,file.header.profile,*method.code));
   if(mutation==Mutation::kSplitDone || mutation==Mutation::kCycleExit) {
     const auto end=body.instructions.back().offset.value+body.instructions.back().decoded.size;
@@ -84,7 +84,13 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   const auto regions=std::get<ExceptionPlan>(BuildExceptionPlan(body,graph,input));
   const auto keys=std::get<IteratorKeys>(ResolveIteratorKeys(file,method.offset,graph));
   const auto scan=std::get<IteratorProtocolScan>(ScanIteratorProtocols(graph,input,regions,keys));
-  auto result=AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan);
+  const auto analyze=[&](SemanticBudget budget=SemanticBudget{}) {
+    return AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,budget,contract);
+  };
+  const auto verify=[&](const CloseCompletionSummary& summary,SemanticBudget budget=SemanticBudget{}) {
+    return VerifyCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,summary,budget,contract);
+  };
+  auto result=analyze();
   if(mutation!=Mutation::kNone && mutation!=Mutation::kRegisters && mutation!=Mutation::kSplitDone) {
     Check(std::holds_alternative<CloseCompletionFailure>(result));return;
   }
@@ -93,7 +99,7 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   }
   const auto& summary=std::get<CloseCompletionSummary>(result);
   Check(summary.regions.size()==(method.offset.value==423?3:1));
-  const auto verified=VerifyCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,summary);
+  const auto verified=verify(summary);
   if(const auto* f=std::get_if<CloseCompletionFailure>(&verified)) {
     std::cerr<<"verify failure="<<unsigned(f->kind)<<" method="<<method.offset.value<<'\n';Check(false);
   }
@@ -102,7 +108,13 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
     Check(e.obligations[static_cast<unsigned>(CloseObligation::kReference)].state==CloseProofState::kVerified);
     const auto priority=e.obligations[static_cast<unsigned>(CloseObligation::kPriority)].state;
     if(e.pending.kind==PendingCompletionKind::kThrow)Check(priority==CloseProofState::kVerified);
-    else {
+    else if(ExternalExceptionNoHole(contract)==ExternalExceptionPolicy::kNoHoleV1) {
+      if(priority!=CloseProofState::kVerified) {
+        const auto& f=*e.obligations[static_cast<unsigned>(CloseObligation::kPriority)].missing;
+        std::cerr<<"V4 missing pc="<<(f.node?flow.instructions[flow.nodes[f.node->value].instruction.value].pc.value:UINT32_MAX)<<'\n';
+      }
+      Check(priority==CloseProofState::kVerified);
+    } else {
       Check(priority==CloseProofState::kMissing); // Conservative paths are NOT a pass.
       const auto& missing=e.obligations[static_cast<unsigned>(CloseObligation::kPriority)].missing;
       Check(missing && missing->priority && missing->node && missing->outcome_gap);
@@ -112,11 +124,19 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
     }
     Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state==CloseProofState::kMissing);
     if(!padding && mutation==Mutation::kNone)std::cout<<"entry-pc="<<flow.instructions[flow.nodes[e.source.source.value].instruction.value].pc.value
-      <<" kind="<<unsigned(e.pending.kind)<<" priority="<<unsigned(priority)<<" ownership=missing\n";
+      <<" contract="<<SourceContractName(contract)<<" kind="<<unsigned(e.pending.kind)<<" priority="<<unsigned(priority)<<" ownership=missing\n";
   }
   const auto reject=[&](const CloseCompletionSummary& bad) {
-    Check(std::holds_alternative<CloseCompletionFailure>(VerifyCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,bad)));
+    Check(std::holds_alternative<CloseCompletionFailure>(verify(bad)));
   };
+  if(ExternalExceptionNoHole(contract)==ExternalExceptionPolicy::kNoHoleV1) {
+    Check(std::holds_alternative<CloseCompletionFailure>(VerifyCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,summary,{},SourceContract::kLanguageSourceV3)));
+    auto forged=summary;
+    Check(!forged.regions[0].outcomes->catch_payloads.empty());
+    auto& fact=forged.regions[0].outcomes->catch_payloads.front();
+    fact.domain=fact.domain==CatchPayloadDomain::kNonHole?CatchPayloadDomain::kHolePossible:CatchPayloadDomain::kNonHole;
+    reject(forged);
+  }
   auto bad=summary;bad.method.value+=1;reject(bad);
   bad=summary;bad.entries[0].pending.payload=CompletionEntryPayload{99};reject(bad);
   bad=summary;bad.entries[0].pending.target=ExceptionNodeId{0};reject(bad);
@@ -132,24 +152,24 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
   bad=summary;bad.regions[0].members.push_back(bad.regions[0].members.front());reject(bad);
   bad=summary;bad.regions[0].edges[0].successor=2;reject(bad);
   bad=summary;bad.entries[0].obligations[static_cast<unsigned>(CloseObligation::kPriority)]={CloseProofState::kVerified,{}};
-  if(summary.entries[0].pending.kind!=PendingCompletionKind::kThrow)reject(bad);
+  if(summary.entries[0].pending.kind!=PendingCompletionKind::kThrow && ExternalExceptionNoHole(contract)==ExternalExceptionPolicy::kPinnedRuntime)reject(bad);
   bad=summary;bad.entries[0].obligations[static_cast<unsigned>(CloseObligation::kGuard)]={CloseProofState::kMissing,{}};reject(bad);
-  Check(std::get<CloseCompletionFailure>(AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,{0})).kind==CloseCompletionError::kResourceLimit);
-  Check(std::get<CloseCompletionFailure>(AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,{64*1024*1024,0})).kind==CloseCompletionError::kWorkLimit);
+  Check(std::get<CloseCompletionFailure>(analyze({0})).kind==CloseCompletionError::kResourceLimit);
+  Check(std::get<CloseCompletionFailure>(analyze({64*1024*1024,0})).kind==CloseCompletionError::kWorkLimit);
   if(padding || mutation==Mutation::kNone) {
     const auto used=std::get<std::uint64_t>(verified);
-    Check(std::holds_alternative<std::uint64_t>(VerifyCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,summary,{64*1024*1024,used})));
-    Check(std::get<CloseCompletionFailure>(VerifyCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,summary,{64*1024*1024,used-1})).kind==CloseCompletionError::kWorkLimit);
+    Check(std::holds_alternative<std::uint64_t>(verify(summary,{64*1024*1024,used})));
+    Check(std::get<CloseCompletionFailure>(verify(summary,{64*1024*1024,used-1})).kind==CloseCompletionError::kWorkLimit);
     std::size_t low=0,high=summary.peak_bytes;
     while(low<high) {
       const auto mid=low+(high-low)/2;
-      if(std::holds_alternative<CloseCompletionSummary>(AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,{mid})))high=mid;
+      if(std::holds_alternative<CloseCompletionSummary>(analyze({mid})))high=mid;
       else low=mid+1;
     }
-    Check(std::holds_alternative<CloseCompletionSummary>(AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,{low})));
-    Check(low && std::get<CloseCompletionFailure>(AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,{low-1})).kind==CloseCompletionError::kResourceLimit);
-    Check(std::holds_alternative<CloseCompletionSummary>(AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,{64*1024*1024,summary.work})));
-    Check(std::get<CloseCompletionFailure>(AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,{64*1024*1024,summary.work-1})).kind==CloseCompletionError::kWorkLimit);
+    Check(std::holds_alternative<CloseCompletionSummary>(analyze({low})));
+    Check(low && std::get<CloseCompletionFailure>(analyze({low-1})).kind==CloseCompletionError::kResourceLimit);
+    Check(std::holds_alternative<CloseCompletionSummary>(analyze({64*1024*1024,summary.work})));
+    Check(std::get<CloseCompletionFailure>(analyze({64*1024*1024,summary.work-1})).kind==CloseCompletionError::kWorkLimit);
     std::cout<<"method="<<method.offset.value<<" padding="<<padding<<" bytes="<<low<<" work="<<summary.work<<'\n';
   }
 
@@ -165,6 +185,8 @@ int main(int argc,char** argv) {
   for(const auto& method:index.methods) if(method.offset.value==423 || method.offset.value==451) {
     ++tested;
     Method({*file,header,index},method);
+    if(method.offset.value==423)for(auto contract:{SourceContract::kLanguageSourceV1,SourceContract::kLanguageSourceV2,SourceContract::kLanguageSourceV3,SourceContract::kLanguageSourceV4})
+      Method({*file,header,index},method,0,Mutation::kNone,contract);
     Method({*file,header,index},method,0,Mutation::kRegisters);
     Method({*file,header,index},method,0,Mutation::kSplitDone);
     for(auto mutation:{Mutation::kInitiallyClosed,Mutation::kReset,Mutation::kReceiver,Mutation::kInvertedDone,Mutation::kCycleExit})Method({*file,header,index},method,0,mutation);

@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_CLOSE_OUTCOME_RELATION_H_
 
 #include "abcd/analysis/completion_relation.h"
+#include "abcd/analysis/catch_payload_domain.h"
 
 namespace abcd::analysis {
 enum class CloseOutcomeKind : std::uint8_t {
@@ -20,6 +21,7 @@ struct CloseOutcome {
 };
 struct CloseOutcomeQuery {
   ExceptionNodeId read, call; // Original Before identities, not source expressions.
+  ExternalExceptionPolicy exceptions = ExternalExceptionPolicy::kPinnedRuntime;
   bool operator==(const CloseOutcomeQuery&) const = default;
 };
 struct CloseOutcomeLeaving {
@@ -29,8 +31,8 @@ struct CloseOutcomeLeaving {
   CloseOutcome outcome;
   auto operator<=>(const CloseOutcomeLeaving&) const = default;
 };
-enum class ComparisonDomain : std::uint8_t { kUnknown, kUndefined, kNull, kHole, kFalse, kTrue, kInteger };
-enum class ComparisonProofKind : std::uint8_t { kNullishOperand, kKnownOperands };
+enum class ComparisonDomain : std::uint8_t { kUnknown, kUndefined, kNull, kHole, kFalse, kTrue, kInteger, kNonHole };
+enum class ComparisonProofKind : std::uint8_t { kNullishOperand, kKnownOperands, kCatchNonHole };
 struct NonThrowingComparison {
   std::uint32_t entry;
   ExceptionNodeId node; // Original Before identity; facts are path-qualified.
@@ -45,6 +47,7 @@ struct CloseOutcomeRelation {
   std::vector<CompletionArrival> arrivals;
   std::vector<CloseOutcomeLeaving> leaving;
   std::vector<NonThrowingComparison> comparisons;
+  std::vector<CatchPayloadFact> catch_payloads;
   std::size_t peak_bytes = 0, states = 0;
   std::uint64_t work = 0;
 };
@@ -56,7 +59,8 @@ struct CloseOutcomeRelation {
 // Outcome, entry, payload, target and SSA environment are ONE correlated state.
 // A3d: per-path operand-domain comparison witnesses can discharge an exception
 // edge and resolve concrete Hole equality. Unknown Catch payloads never acquire
-// a non-Hole premise. The original graph and the A2 API are not changed.
+// a non-Hole premise unless the separately supplied exception policy and ALL
+// original dispatch sources establish a CatchPayloadFact. The A2 API is unchanged.
 // Unknown exceptions/sentinel paths stay unproved; exhaustion refuses the query.
 [[nodiscard]] std::variant<CloseOutcomeRelation, CompletionRelationFailure> AnalyzeCloseOutcomeRelation(
     const abc::MethodBody&, abc::ProfileId, std::uint64_t frame_size,

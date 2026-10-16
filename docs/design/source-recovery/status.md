@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 A3f：外部异常不携带 Hole 的前提（V4，cc 审查通过）
+
+- 用户 2026-10-16 批准独立的运行时前提“外部异常不携带内部 Hole”（Round 79 A3e 已从 pinned runtime 证明 callee 的 `ldhole; throw` 可以跨帧送达 catch）。新增 `kLanguageSourceV4` 与 `ExternalExceptionNoHole()`，`--language-source` 选择 V4；只适用于调用/getter/builtin/native/rejection/resume 来源，本方法自身的显式 throw 仍逐项证明。`catch_payload_domain` 计算逐 catch 的 payload 域事实，只凭该事实细化 close 哨兵的 Hole 分支。m423 Break/Return 的优先级在 V4 下 verified，在默认与 V1–V3 下仍为 missing；ownership 仍为 missing。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变（`--language-source` 的契约标签变为 V4）；扫描 79/80，只有既有的 family_source_cli_test 失败。
+
 ## Round 79 A3d：不抛出的比较与哨兵路径（cc 审查通过）
 
 - 路径限定的 `NonThrowingComparison`：由 SSA 值流证明操作数为 undefined/null 时，EQ/STRICTEQ/NOTEQ/STRICTNOTEQ 不抛出（依据 pinned 解释器 FastEqual），裁剪其异常边；Hole 判断是保存 close error 的哨兵，正常路径两侧均为 Hole 时裁剪虚假分支。m423 Break/Return 的剩余见证后移到 PC139/230：Catch payload 是否可能为 Hole 尚无证明（SetException 不排除 Hole），未引入假定。

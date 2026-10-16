@@ -156,7 +156,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
           identity.contract == SourceContract::kLanguageNumericConstructorsV1 ||
           identity.contract == SourceContract::kLanguageSourceV1 ||
           identity.contract == SourceContract::kLanguageSourceV2 ||
-          identity.contract == SourceContract::kLanguageSourceV3, Error::kIdentity);
+          (identity.contract == SourceContract::kLanguageSourceV3 || identity.contract == SourceContract::kLanguageSourceV4), Error::kIdentity);
       AsyncCompletion completion = FunctionEmitError::kKind;
       if (context.Concurrent()) {
         auto projected = NormalizeConcurrentAsync(body, frame, header.profile, left);

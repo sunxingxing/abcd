@@ -160,3 +160,33 @@ equality operators, null vs a non-null Boolean mutation, and a sentinel read
 aliased to an unknown register. Forged/removed comparison facts are rejected by
 both verification APIs. 200/201/400/800 traversed-path and exact resource tests
 remain. The refined projection must be a subset of A2's unchanged may exits.
+
+
+## A3f: contract-qualified Catch payload domains
+
+The 2026-10-16 approved `ExternalExceptionNoHole()` premise is independent of
+all prior premises and is enabled only in LanguageSourceV4. The standalone
+close API receives the contract explicitly; its default remains the pinned
+contract. V1–V3 do not acquire the premise.
+
+`DeriveCatchPayloadDomains` builds one conjunction per original Catch entry
+from **every** dispatch source. Local explicit throws depend on the thrown SSA
+value (constants, copies and phi inputs); they never use the external premise.
+The common user-code effect model identifies external exception boundaries.
+Known error-producing checks have a separate runtime-error fact. The least
+fixed point cannot justify an unsupported/cyclic definition, and one possible
+Hole source prevents the Catch conclusion. A normal jump into a handler's
+instruction stream never supplies its Catch payload.
+
+The outcome relation records these facts and independently recomputes them in
+verification. Only a qualified non-Hole value compared with Hole obtains the
+`kCatchNonHole` comparison witness, excludes the comparison's impossible error
+edge and resolves the sentinel branch. No producer/source expression is forged;
+original exception identities still determine the close error payload.
+
+On the real m423 fixture, both Break and Return priority entries verify under
+V4. V1–V3 still report `kOutcomeUnproved > kOtherException` at PC139/230.
+Ownership and nested-close proofs are unchanged; this is not publication or a
+grant of ProtocolOwned topology. Tests cover local Hole, mixed sources, copies,
+real SSA phis, conservative cyclic equations, nested catch/rethrow, mutations,
+and prepaid 200/201/400/800/exact-budget boundaries.

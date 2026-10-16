@@ -1,9 +1,9 @@
-# 源语言契约：LanguageSourceV1、V2 与 V3
+# 源语言契约：LanguageSourceV1–V4
 
 `SourceContract::kLanguageSourceV1`（序列化名 `language_source_v1`）保留原有四项前提。
 2026-10-14 新增 `kLanguageSourceV2`（`language_source_v2`）；V2 继承 V1，并加入 §5 的独立标准迭代获取前提。
-2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），CLI 的 `--language-source` 现选择 V3；
-V3 继承 V2，并增加文末列出的独立 Ark 输出政策。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
+2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），CLI 的 `--language-source` 现选择 V4；
+V4 继承 V3（含 V2 与独立 Ark 输出政策），并增加文末 2026-10-16 批准的外部异常值域前提。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
 `--language-constructors` 组合。它包含 `LanguageNumericConstructorsV1` 的全部前提（numeric 算术、
 原生 super 语义），并另外加入下面四项源语言前提。默认契约 V3 以及其他已有 opt-in 都不变。
 
@@ -542,3 +542,34 @@ shared record 由 `SharedModuleProof` 独立验证所属文件/record/模块表�
 真实 es2abc 往返和普通调用 Node oracle 见
 [fixture](../../../tests/integration/fixtures/sendable_modules/README.md)。Node 对 shared
 heap、锁、跨线程和运行时字段类型检查没有验证能力；这些保留为 runtime-verification gap。
+
+
+## 2026-10-16：LanguageSourceV4 的外部异常非 Hole 前提（Slice A3f）
+
+`--language-source` 现在选择 `kLanguageSourceV4`，名称为 `language_source_v4`。
+V1–V3 的含义不变；V4 继承 V3，并仅由独立且穷尽枚举的谓词
+`ExternalExceptionNoHole() == kNoHoleV1` 开启以下新前提：从调用、getter、
+builtin/native 边界、rejection/resume 注入到 catch 的**外部异常 payload 不为内部 Hole**。
+本方法自己的显式 throw 不受该前提覆盖，必须从原始 SSA 逐值证明；
+`ldhole; throw` 始终保留 Hole-possible。
+
+这是用户于 2026-10-16 批准的运行时前提，不是 runtime 保证。固定 runtime
+`f04900cf951c66c2ea18b2bab5b591d5336c34b9` 的
+[LDHOLE/THROW](../../../references/openharmony/arkcompiler/ets_runtime/ecmascript/interpreter/interpreter-inl.cpp#L2622)、
+[RuntimeThrow](../../../references/openharmony/arkcompiler/ets_runtime/ecmascript/stubs/runtime_stubs-inl.h#L1701)
+和 [SetException](../../../references/openharmony/arkcompiler/ets_runtime/ecmascript/js_thread.cpp#L335)
+原样传递 tagged payload；[异常分派](../../../references/openharmony/arkcompiler/ets_runtime/ecmascript/interpreter/interpreter-inl.cpp#L3999)
+可跨帧把 Hole 交给调用者的 catch。`HasPendingException()` 的 Hole 检查不是该无条件分派的过滤器。
+
+**明确接受的差异：** 若手写 ABC 或 native 实现在 iterator 的 `return()` 中抛出原始 Hole，
+原字节码把保存的 Hole 当作“没有 close error”；原生 `for...of` 无法表达这个行为。
+该输入被上述新前提排除。此批准不改变 next 缓存、done/value 顺序、close 优先级、
+绑定激活或本地显式 throw 的证明义务，也不批准 APPLY 的 spread-call 投影。
+
+当前实现仍是独立分析，没有生产 close/topology hook。`CatchPayloadFact` 从原始
+exception dispatch 的全部入口来源和 SSA 派生：已证明非 Hole 的本地 throw、明确构造
+运行时错误的来源，以及仅在 V4 下受前提覆盖的外部来源。拷贝与 phi 通过最小不动点
+传播；循环或未知来源不凭空获得证明；任何 Hole-possible 来源阻止该 catch 的非 Hole 结论。
+close 的比较证据只在该结论成立时排除 sentinel 的 Hole 分支。独立 verifier 从不可变输入
+重建事实，既不相信 supplied domain，也不把测试中的 Language 异常域当作原始证明。
+所有索引与工作队列由预付 PMR arena 承担；时间 O((V+E) log(V+E))，空间 O(V+E)。

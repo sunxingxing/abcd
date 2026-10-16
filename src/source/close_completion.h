@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_CLOSE_COMPLETION_H_
 #define ABCD_SOURCE_CLOSE_COMPLETION_H_
+#include "abcd/source/source_contract.h"
 
 #include "close_entries.h"
 #include "abcd/analysis/close_outcome_relation.h"
@@ -88,13 +89,13 @@ struct CloseCompletionSummary {
 [[nodiscard]] std::variant<CloseCompletionSummary, CloseCompletionFailure> AnalyzeCloseCompletion(
     const abc::MethodBody&, abc::ProfileId, const analysis::ValueProgram&,
     const analysis::PhasedValueInput&, const ExceptionPlan&, const IteratorKeys&,
-    const IteratorProtocolScan&, analysis::SemanticBudget = {});
+    const IteratorProtocolScan&, analysis::SemanticBudget = {}, SourceContract = kSourceContract);
 // Revalidates entries using A3a's backwards proof, recomputes raw membership,
 // references and the exit relation from immutable inputs. Supplied flags,
 // members, omissions and telemetry are never inputs to discovery.
 [[nodiscard]] std::variant<std::uint64_t, CloseCompletionFailure> VerifyCloseCompletion(
     const abc::MethodBody&, abc::ProfileId, const analysis::ValueProgram&,
     const analysis::PhasedValueInput&, const ExceptionPlan&, const IteratorKeys&,
-    const IteratorProtocolScan&, const CloseCompletionSummary&, analysis::SemanticBudget = {});
+    const IteratorProtocolScan&, const CloseCompletionSummary&, analysis::SemanticBudget = {}, SourceContract = kSourceContract);
 }  // namespace abcd::source
 #endif

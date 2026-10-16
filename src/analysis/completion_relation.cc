@@ -55,6 +55,7 @@ struct OutcomeValue : Value {
   ObservedValue observed = ObservedValue::kNone;
   std::optional<NullishPredicate> test;
   bool sentinel_test=false;
+  bool non_hole=false;
   OutcomeValue() = default;
   OutcomeValue(detail::CompletionValue v):detail::CompletionValue(std::move(v)) {}
   OutcomeValue(CompletionPayload p):detail::CompletionValue{std::move(p)} {}
@@ -120,7 +121,8 @@ template<bool Outcomes> class Relation {
         exits_(detail::CompletionLess<CompletionExit>{&arena_},arena_.Resource()),
         seen_(detail::CompletionLess<State>{&arena_},arena_.Resource()),
         queue_(arena_.Resource()),leaving_(detail::CompletionLess<Leaving>{&arena_},arena_.Resource()),
-        comparisons_(detail::CompletionLess<NonThrowingComparison>{&arena_},arena_.Resource()),query_(query) {
+        comparisons_(detail::CompletionLess<NonThrowingComparison>{&arena_},arena_.Resource()),
+        catch_payloads_(arena_.Resource()),query_(query) {
     for(const auto size:{body.instructions.size(),flow.nodes.size(),ssa.Values().size(),
         ssa.AllInputs().size(),entries.size(),exits.size()})
       if(size>UINT32_MAX) Fail(CompletionRelationError::kResourceLimit);
@@ -185,6 +187,7 @@ template<bool Outcomes> class Relation {
     }
     AvailableEntries();
     if constexpr(Outcomes) {
+      catch_payloads_=DeriveCatchPayloadDomains(flow_,ssa_,query_.exceptions,arena_);
       if(query_.read.value>=flow_.nodes.size() || query_.call.value>=flow_.nodes.size())Fail(CompletionRelationError::kInput);
       const auto& read=flow_.nodes[query_.read.value];const auto& call=flow_.nodes[query_.call.value];
       if(read.phase!=ExceptionPhase::kBefore || call.phase!=ExceptionPhase::kBefore ||
@@ -198,6 +201,10 @@ template<bool Outcomes> class Relation {
     if(expected.arrivals.size()!=supplied.arrivals.size() || expected.leaving.size()!=supplied.leaving.size())
       Fail(CompletionRelationError::kCorrespondence);
     if constexpr(Outcomes) {
+      if(expected.catch_payloads.size()!=supplied.catch_payloads.size())Fail(CompletionRelationError::kCorrespondence);
+      for(std::size_t i=0;i<expected.catch_payloads.size();++i) {
+        arena_.Step();if(expected.catch_payloads[i]!=supplied.catch_payloads[i])Fail(CompletionRelationError::kCorrespondence);
+      }
       if(expected.comparisons.size()!=supplied.comparisons.size())Fail(CompletionRelationError::kCorrespondence);
       for(std::size_t i=0;i<expected.comparisons.size();++i) {
         arena_.Step();if(expected.comparisons[i]!=supplied.comparisons[i])Fail(CompletionRelationError::kCorrespondence);
@@ -323,6 +330,8 @@ template<bool Outcomes> class Relation {
     if constexpr(Outcomes) {
       Reserve(result.comparisons,comparisons_.size());
       result.comparisons.assign(comparisons_.begin(),comparisons_.end());
+      Reserve(result.catch_payloads,catch_payloads_.size());
+      result.catch_payloads.assign(catch_payloads_.begin(),catch_payloads_.end());
     }
     result.peak_bytes=arena_.Peak();result.states=seen_.size();result.work=arena_.Work();
     return result;
@@ -486,7 +495,9 @@ template<bool Outcomes> class Relation {
   }
   static ComparisonDomain Domain(const Value& value) {
     switch(value.constant) {
-      case Constant::kUnknown:return ComparisonDomain::kUnknown;
+      case Constant::kUnknown:
+        if constexpr(Outcomes)if(value.non_hole)return ComparisonDomain::kNonHole;
+        return ComparisonDomain::kUnknown;
       case Constant::kUndefined:return ComparisonDomain::kUndefined;
       case Constant::kNull:return ComparisonDomain::kNull;
       case Constant::kHole:return ComparisonDomain::kHole;
@@ -506,8 +517,11 @@ template<bool Outcomes> class Relation {
     const auto left=Scalar(b.left,instruction,root),right=Scalar(b.right,instruction,root);
     const auto a=Domain(left),z=Domain(right);
     const auto nullish=[](ComparisonDomain d){return d==ComparisonDomain::kUndefined || d==ComparisonDomain::kNull;};
-    const bool known=a!=ComparisonDomain::kUnknown && z!=ComparisonDomain::kUnknown;
-    if(!nullish(a) && !nullish(z) && !known)return {};
+    const auto concrete=[](ComparisonDomain d){return d!=ComparisonDomain::kUnknown && d!=ComparisonDomain::kNonHole;};
+    const bool known=concrete(a) && concrete(z);
+    const bool catch_hole=(a==ComparisonDomain::kHole && z==ComparisonDomain::kNonHole) ||
+        (z==ComparisonDomain::kHole && a==ComparisonDomain::kNonHole);
+    if(!nullish(a) && !nullish(z) && !known && !catch_hole)return {};
     // OH7 f04900cf: interpreter-inl.cpp:1934/1954/2375/2394;
     // fast_runtime_stub-inl.h:90-153. A nullish operand returns a Boolean
     // without slow coercion. Concrete primitive constants cannot invoke user
@@ -517,7 +531,12 @@ template<bool Outcomes> class Relation {
     auto equal=Equal(left,right,b.op==BinaryOperator::kStrictEqual || b.op==BinaryOperator::kStrictNotEqual);
     if(known && (a==ComparisonDomain::kHole || z==ComparisonDomain::kHole))
       equal=a==ComparisonDomain::kHole && z==ComparisonDomain::kHole;
+    // Pinned EqualNumber/String/Symbol/BigInt/HeapObject/NullOrUndefined
+    // (js_tagged_value.cpp:493-640) never coerce against Hole; tagged identity
+    // is false for a proven non-Hole payload. This is not a JS equality rule.
+    if(catch_hole)equal=false;
     return NonThrowingComparison{entry,node,b.op,a,z,left.payload,right.payload,
+        catch_hole?ComparisonProofKind::kCatchNonHole:
         nullish(a)||nullish(z)?ComparisonProofKind::kNullishOperand:ComparisonProofKind::kKnownOperands,equal};
   }
   Value Expression(const ScalarExpression& expression,InstructionId instruction,std::uint32_t root,SsaValueId destination) {
@@ -751,7 +770,17 @@ template<bool Outcomes> class Relation {
     if(flow_.nodes[target.value].phase==ExceptionPhase::kCatch) {
       if(!IsException(exit)) Fail(CompletionRelationError::kInput,target);
       const auto write=ssa_.Write(target);if(!write) Fail(CompletionRelationError::kInput,target);
-      root=values_.Set(root,*write,Exception(state));
+      auto payload=Exception(state);
+      if constexpr(Outcomes) {
+        const auto fact=std::lower_bound(catch_payloads_.begin(),catch_payloads_.end(),target,
+            [](const CatchPayloadFact& f,ExceptionNodeId n){return f.entry<n;});
+        arena_.Step();
+        // Opaque payload refinement belongs to this Catch's ALL-source fact,
+        // not a flag inherited from one incoming rethrow path.
+        payload.non_hole=fact!=catch_payloads_.end() && fact->entry==target &&
+            fact->domain==CatchPayloadDomain::kNonHole;
+      }
+      root=values_.Set(root,*write,payload);
     }
     State next{flow_to_raw_[target.value],state.entry,root,state.trace};
     if(seen_.contains(next)) return;
@@ -772,6 +801,7 @@ template<bool Outcomes> class Relation {
   std::pmr::vector<State> queue_;
   std::pmr::set<Leaving,detail::CompletionLess<Leaving>> leaving_;
   std::pmr::set<NonThrowingComparison,detail::CompletionLess<NonThrowingComparison>> comparisons_;
+  std::pmr::vector<CatchPayloadFact> catch_payloads_;
   CloseOutcomeQuery query_;
   std::size_t limit_=0;
   std::uint64_t work_limit_=0;
