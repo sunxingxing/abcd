@@ -40,3 +40,17 @@ SHA256:
 - main.abc: `b3b476e7310ce947d701350857f9265bb6e66e9d0979f4e910d62ba59532a94c`
 - exits.js: `751471a4429b3155959239d8e084bb247683d055b47e0844a37957aec4b9e562`
 - exits.abc: `6990ce14b633d11d3ebddc1936ab736dfd6cc43da147d7b3efbb45434586a673`
+
+Increment III adds `for_of_source_cli_test`: it exports this ABC through
+`abc_structure --value-source --language-source`, requires a complete record,
+and runs Node on that engine output. Zero iterations, last-value live-out,
+body-throw closing, next/done/value getters and return getter/call/primitive/
+nullish cases are compared by values, exception constructors and traces.
+The draft-only test remains separate and is not a publication oracle.
+
+The exported function text is also recompiled using the compiler/options above.
+For this pinned parser only identifier-valued string export aliases are unquoted
+(`as "scan"` -> `as scan`), following the existing captured-default round-trip
+adapter; function text is exact. The resulting ABC is independently imported and
+re-proved through the original-flow identity/iteration/events/close analyses.
+The explicit-exits predecessor gap remains unchanged.

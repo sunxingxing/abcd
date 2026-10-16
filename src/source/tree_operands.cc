@@ -196,6 +196,12 @@ class OperandCheck {
       budget_.Admit(derived_states->allocated_bytes, 1);
       break; // One shared identity index for every original super occurrence.
     }
+    if(original_.iterations)for(std::uint32_t l=0;l<original_.iterations->loops.size();++l) {
+      budget_.Step();const auto& native=*original_.iterations;
+      current_=native.loops[l].acquisition;origin_={graph_.ops[current_.value].origin.value};
+      const auto& syntax=std::get<ForOfStmt>(tree_.statements[native.statements[l].value].statement);
+      InputAt(0,syntax.iterable);
+    }
     for (const auto& native : original_.enumerations) {
       budget_.Step(); current_ = native.original.acquisition.operation;
       origin_ = {graph_.ops[current_.value].origin.value};
@@ -209,6 +215,7 @@ class OperandCheck {
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
+      if (original_.iterations && original_.iterations->operations[i]) continue;
       if ((!original_.enumeration_operations.empty() && original_.enumeration_operations[i]) ||
           (!original_.forwarded_operations.empty() && original_.forwarded_operations[i])) continue;
       if (evaluation_.operations[i].kind == EvaluationKind::kArrayCursor || evaluation_.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
@@ -1026,6 +1033,20 @@ class OperandCheck {
           budget_.Admit(original_.enumeration_inputs.capacity()-next, sizeof(OriginalEnumerationInput));
         }
         original_.enumeration_inputs.push_back({member.loop,*occurrence,expression});
+      }
+      return;
+    }
+    if(const auto* value=std::get_if<analysis::ValueId>(&resolved);value && original_.iterations && original_.iterations->values[value->value]) {
+      auto& native=*original_.iterations;const auto member=*native.values[value->value];
+      RequireMeaning(member.role==ForOfRole::kValue && member.protocol.value<native.statements.size(),Error::kOperand);
+      const auto& syntax=std::get<ForOfStmt>(tree_.statements[native.statements[member.protocol.value].value].statement);
+      RequireMeaning(Node<SymbolExpr>(expression).symbol==syntax.target,Error::kOperand);LeafOrigin(expression);
+      if(occurrence) {
+        if(native.inputs.size()==native.inputs.capacity()) {
+          const auto old=native.inputs.capacity(),next=old?old*2:1;RequireMeaning(next>old,Error::kResourceLimit);
+          budget_.Admit(next,sizeof(OriginalIterationInput));native.inputs.reserve(next);budget_.Admit(native.inputs.capacity()-next,sizeof(OriginalIterationInput));
+        }
+        native.inputs.push_back({member.protocol,*occurrence,expression});
       }
       return;
     }

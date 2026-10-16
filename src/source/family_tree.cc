@@ -391,7 +391,7 @@ class FamilyTrees {
       if (aliases) Step(Take<std::uint64_t, ModuleAliasTreeError>(
           VerifyModuleAliasTree(*aliases, evaluation, constructed.tree, left_)));
       auto abi_result = phase ? BuildPhasedFunctionAbi(graph, evaluation, constructed.tree,
-          context.Frame(), context.Length(), left_) : BuildFunctionAbi(graph, constructed.tree, context.Frame(), context.Length(), left_);
+          context.Frame(), context.Length(), left_,for_of?&*for_of:nullptr) : BuildFunctionAbi(graph, constructed.tree, context.Frame(), context.Length(), left_);
       // Evidence only, after the original refusal. Never spend analysis budget
       // or change the plan of a successful function; never replace its first cause.
       if (const auto* error=std::get_if<FunctionAbiError>(&abi_result);

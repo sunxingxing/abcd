@@ -6,6 +6,7 @@
 #include "cell_plan.h"
 #include "cell_parameter_default.h"
 #include "for_in_emission.h"
+#include "for_of_emission.h"
 #include "abcd/analysis/exception_regions.h"
 #include <memory>
 namespace abcd::source {
@@ -169,7 +170,27 @@ struct OriginalParameterDefaults {
   std::uint32_t formal_count = 0, length = 0;
   std::vector<OriginalParameterDefault> entries;
 };
+struct OriginalIterationInput { IteratorProtocolId protocol; analysis::UseId use; ExprId expression; };
+// Immutable facts transferred only after fresh TreeFlow and operand checks.
+// Protocol results retain VM identity, never an expression standing for an iterator.
+struct OriginalCloseMember { IteratorProtocolId protocol; CloseMemberRole role; };
+struct OriginalIterationBinding { SymbolId target; ExprId iterable; StmtId body; TreeOriginId origin; };
+struct OriginalIterations {
+  ForOfEmissionView view;
+  ForOfEvents events;
+  std::vector<std::optional<OriginalCloseMember>> close_members;
+  std::vector<ForOfLoop> loops;
+  std::vector<analysis::ValueId> input_values;
+  std::vector<ForOfKeyPhi> phis;
+  std::vector<OriginalIterationBinding> bindings;
+  std::vector<std::optional<ForOfMember>> operations, values;
+  std::vector<StmtId> statements;
+  std::vector<std::optional<StmtId>> closes;
+  std::vector<OriginalIterationInput> inputs;
+  std::vector<OriginalEnumerationExit> exits;
+};
 struct OriginalFlow {
+  std::optional<OriginalIterations> iterations;
   std::optional<OriginalParameterDefaults> parameter_defaults;
   std::vector<OriginalConcurrentNotification> notifications;
   // Retain exact immutable operations only for concurrent completion recovery.

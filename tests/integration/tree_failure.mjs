@@ -26,7 +26,7 @@ try {
     const exported=run(structure,[abc,dest,'--value-source','--language-source']);
     assert.equal(exported.status,0,exported.stderr);
     const row=JSON.parse(readFileSync(join(dest,'manifest.json'),'utf8')).records.find(r=>r.entity===entity);
-    if(entity===29268 || entity===28264 || entity===24892) {
+    if(entity===29268 || entity===28264 || entity===24892 || entity===6952) {
       // For-in increment III completes 29268; Round 63 independently verifies
       // the retained phased selection prefix in 28264. Round 74 III/IV completes
       // shared LruCache 24892. All must publish exactly the CLI source.
@@ -36,6 +36,16 @@ try {
       assert.equal(report.record,entity);assert.equal(report.source_complete,true);
       assert.equal(report.source,readFileSync(join(dest,row.source),'utf8'));
       assert.equal(report.source_failure,undefined);
+      if(entity===6952) {
+        // Native for-of III publishes only after initial and recovery proofs;
+        // the old contract still has the original control refusal.
+        assert.match(report.source,/for \([^)]* of /);
+        const old=run(semantic,[abc,String(method),'--record-source','--value-source','--language-numeric','--language-constructors']);
+        assert.equal(old.status,1);
+        assert.deepEqual(JSON.parse(old.stdout).source_failure.causes,[
+          {domain:'abcd::source::PhasedMethodError',value:6},
+          {domain:'abcd::source::ExceptionControlError',value:4}]);
+      }
       if(entity===24892) {
         assert.equal(row.source_language,'arkts');assert.match(row.source,/\.ets$/);
         assert.match(report.source,/^"use shared";/);
@@ -87,19 +97,8 @@ try {
         obligation:0,location:{method:28799},input_check:9,
         plan_cause:{domain:'LiteralError',value:1}});
     }
-    if(entity===6952) {
-      assert.deepEqual(report.source_failure.causes,[
-        {domain:'abcd::source::FunctionTreeError',value:0},
-        {domain:'abcd::source::TreeObligation',value:17}]);
-      assert.deepEqual(report.source_failure.tree,{
-        obligation:17,location:{method:7171,operation:38,block:76,pc:93,working_pc:93}});
-      const old=run(semantic,[abc,String(method),'--record-source','--value-source','--language-numeric','--language-constructors']);
-      assert.equal(old.status,1);
-      assert.deepEqual(JSON.parse(old.stdout).source_failure.causes,[
-        {domain:'abcd::source::PhasedMethodError',value:6},
-        {domain:'abcd::source::ExceptionControlError',value:4}]);
-    }
+
 
   }
-  console.log('tree_failure_cli_test: four real refusals and three verified complete records agree across CLI and manifest');
+  console.log('tree_failure_cli_test: three real refusals and four verified complete records agree across CLI and manifest');
 } finally {rmSync(temp,{recursive:true,force:true});}

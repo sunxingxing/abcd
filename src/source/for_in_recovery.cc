@@ -224,7 +224,7 @@ void VerifyForInRecovery(const FunctionTree& tree, RecoveryFlow& flow, TreeCheck
       Need(proof.order.Dominates(ports.key_commit,before));
   }
 }
-std::variant<TreeStorage,TreeStructureError> VerifyInitialForInRecovery(
+static std::variant<TreeStorage,TreeStructureError> VerifyInitialProtocolRecovery(
     const FunctionTree& tree,const OriginalFlow& original,analysis::SemanticBudget allowance) {
   try {
     TreeCheckBudget budget(allowance);
@@ -248,4 +248,6 @@ std::variant<TreeStorage,TreeStructureError> VerifyInitialForInRecovery(
   catch(const std::bad_alloc&){return TreeStructureError::kResourceLimit;}
   catch(const std::length_error&){return TreeStructureError::kResourceLimit;}
 }
+std::variant<TreeStorage,TreeStructureError> VerifyInitialForInRecovery(const FunctionTree& tree,const OriginalFlow& original,analysis::SemanticBudget budget){return VerifyInitialProtocolRecovery(tree,original,budget);}
+std::variant<TreeStorage,TreeStructureError> VerifyInitialForOfRecovery(const FunctionTree& tree,const OriginalFlow& original,analysis::SemanticBudget budget){return VerifyInitialProtocolRecovery(tree,original,budget);}
 } // namespace abcd::source

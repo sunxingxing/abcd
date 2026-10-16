@@ -469,8 +469,9 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
       throw Error::kContext;
     }
     budget.Step(checked_globals->work);
+    const auto for_of=phased?phased->TreeInput(*body).for_of:std::optional<ForOfEvaluationInput>{};
     auto census = phased ? BuildPhasedFunctionAbi(graph, *evaluation, function->tree,
-        context->Frame(), context->Length(), budget.Remaining()) :
+        context->Frame(), context->Length(), budget.Remaining(),for_of?&*for_of:nullptr) :
         BuildFunctionAbi(graph, function->tree, context->Frame(), context->Length(), budget.Remaining());
     auto* abi = std::get_if<ConstructedAbi>(&census);
     if (!abi) {

@@ -5,6 +5,7 @@
 
 namespace abcd::source {
 struct EvaluationPlan;
+struct ForOfEvaluationInput;
 enum class FunctionAbiError : std::uint8_t {
   kRevision, kParameter, kEntry, kReceiver, kSyntax, kResourceLimit, kWorkLimit,
   kLength, kEvaluation
@@ -36,6 +37,6 @@ struct ConstructedAbi {
 [[nodiscard]] std::variant<ConstructedAbi, FunctionAbiError> BuildPhasedFunctionAbi(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, const FunctionTree& tree,
     const abc::FrameLayout& frame, std::uint32_t length,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, const ForOfEvaluationInput* = nullptr);
 }  // namespace abcd::source
 #endif

@@ -36,6 +36,7 @@ struct Context {
   FlowStatementRetention retention=FlowStatementRetention::kOptional;
   FlowLoopContext loop_scope=UnmodeledScope{};
   ExpressionRole expression_role=ExpressionRole::kValue;
+  std::optional<StmtId> iteration;
   Context Operand(Point continuation,FlowValueUse use=FlowValueUse::kObserved) const {
     auto result=*this;result.next=continuation;result.value_use=use;result.expression_role=ExpressionRole::kValue;return result;
   }
@@ -91,6 +92,8 @@ class FlowBuilder {
     if(!projection_.original)budget_.Step(tree_.statements.size());
     Resize(result_.enumerations,has_enumerations?tree_.statements.size():0);
     for(auto& e:result_.enumerations)e.reset();
+    Resize(result_.iterations,projection_.original&&projection_.original->iterations?tree_.statements.size():0);
+    for(auto& e:result_.iterations)e.reset();result_.iteration_closes.clear();
     const bool phased=projection_.original&&!projection_.original->phases.empty();
     if(!projection_.original) {
       decltype(result_.actions){}.swap(result_.actions);
@@ -346,6 +349,7 @@ class FlowBuilder {
     result.source_names=std::move(names.index);
     ProjectOriginal();
     VerifyForInRecovery(tree_, result, budget_);
+    VerifyForOfRecovery(tree_,result,budget_);
     VerifyParameterDefaultFlow(tree_,result,budget_);
     result.allocated_bytes=budget_.Bytes();
     // Published buffers own their actual capacities. Construction admission
@@ -364,7 +368,7 @@ class FlowBuilder {
     };
     // Ownership census, not semantic dispatch. Add any new owned flow buffer
     // here; original evidence is borrowed and scopes are charged separately.
-    add(flow.enumerations);add(flow.parameter_defaults);
+    add(flow.enumerations);add(flow.iterations);add(flow.iteration_closes);add(flow.parameter_defaults);
     add(flow.normal_kinds);add(flow.normal_truths);add(flow.normal_exits);
     add(flow.actions);add(flow.aggregates);add(flow.argument_carriers);
     add(flow.snapshot_slots);add(flow.property_initializers);add(flow.original_actions);
@@ -930,7 +934,37 @@ class FlowBuilder {
     for(auto i=end;i>first;--i){budget_.Step();next=Stmt(tree_.children[block.first_child+i-1],context.Child(next,parent));}
     return next;
   }
-  void Abrupt(Point point,Point target,const Context& context,FlowCompletion completion) {
+  std::uint32_t Close(StmtId loop,analysis::PendingCompletionKind pending,Point target,Point thrown,FlowCompletion completion) {
+    const auto entry=New(),read=New({FlowEventKind::kEvaluation}),missing=New(),call=New({FlowEventKind::kEvaluation}),check=New(),success=New(),getter_error=New(),call_error=New(),primitive=New();
+    for(const auto action:{read,call}){events_[action.value].effects=CallbackEffects();events_[action.value].effect=ExpressionEvaluation::kRequired;}
+    Link(entry,read);Link(read,missing);Link(read,getter_error,FlowCompletion::kThrow);
+    Link(missing,success,FlowCompletion::kTaken);Link(missing,call,FlowCompletion::kNotTaken);
+    Link(call,check);Link(call,call_error,FlowCompletion::kThrow);
+    Link(check,success,FlowCompletion::kTaken);Link(check,primitive,FlowCompletion::kNotTaken);
+    Link(success,target,completion);
+    const bool original_throw=pending==analysis::PendingCompletionKind::kThrow;
+    for(const auto failure:{getter_error,call_error,primitive})Link(failure,original_throw?target:thrown,FlowCompletion::kThrow);
+    const auto id=static_cast<std::uint32_t>(result_.iteration_closes.size());
+    FlowIterationClose close{loop,pending,entry,read,missing,call,check,success,getter_error,call_error,primitive,target,thrown,completion};
+    for(std::size_t i=0;i<close.outcomes.size();++i){
+      const auto outcome=static_cast<analysis::CloseOutcomeKind>(i+1);
+      const bool preserved=original_throw||outcome==analysis::CloseOutcomeKind::kSuccessObject||outcome==analysis::CloseOutcomeKind::kMissingOrNullish;
+      const auto error=outcome==analysis::CloseOutcomeKind::kGetterThrow?read:outcome==analysis::CloseOutcomeKind::kCallThrow?call:check;
+      close.outcomes[i]={outcome,preserved?pending:analysis::PendingCompletionKind::kThrow,
+          preserved?FlowClosePayload{FlowPendingPayload{entry}}:FlowClosePayload{FlowCloseErrorPayload{error}},preserved?target:thrown};
+    }
+    Append(result_.iteration_closes,std::move(close));return id;
+  }
+  void Abrupt(Point point,Point target,const Context& context,FlowCompletion completion,std::optional<analysis::PendingCompletionKind> transfer={}) {
+    if(context.iteration && completion!=FlowCompletion::kResumeReturn) {
+      const auto loop=*context.iteration;
+      if(completion!=FlowCompletion::kJump || target!=repeats_[loop.value]) {
+        RequireTree(!context.finalizer,Error::kUnsupportedSyntax);
+        RequireTree(loop.value<result_.iterations.size()&&result_.iterations[loop.value].has_value(),Error::kOwnership);
+        const auto pending=transfer.value_or(analysis::PendingCompletionKind::kReturn);
+        const auto close=Close(loop,pending,target,result_.iterations[loop.value]->thrown,completion);Link(point,result_.iteration_closes[close].entry,completion);return;
+      }
+    }
     Link(point,target,completion); // Bypass is a may-path, never evidence that cleanup is absent.
     if(context.finalizer){Link(point,*context.finalizer,FlowCompletion::kConservativeCleanup);Link(dispatch_,target,FlowCompletion::kConservativeCleanup);}
   }
@@ -1303,6 +1337,42 @@ class FlowBuilder {
           return Stmt(child,context.Child(context.next,at.id,context.header?FlowStatementRetention::kOptional:FlowStatementRetention::kRequired));
         };
         Link(branch,arm(node.consequent),FlowCompletion::kTaken);Link(branch,node.alternate?arm(*node.alternate):context.next,FlowCompletion::kNotTaken);
+      } else if constexpr(std::is_same_v<T,ForOfStmt>) {
+        RequireTree(node.binding==ForOfBinding::kAssignment && result_.original && result_.original->iterations && at.id.value<result_.iterations.size(),Error::kUnsupportedSyntax);
+        // Each throwing native action has its own Before/Commit/exception port.
+        // NextRead is once per acquisition; repetition goes to NextCall.
+        std::array<FlowIterationEvent,kForOfEventCount> ports;
+        for(std::uint32_t i=0;i<ports.size();++i) {
+          const auto kind=static_cast<ForOfEventKind>(i);const auto before=New(),commit=New();
+          ports[i]={kind,before,commit,context.thrown};Link(before,commit);
+          if(kind!=ForOfEventKind::kDoneDecision) {
+            events_[before.value].kind=FlowEventKind::kEvaluation;
+            events_[before.value].effect=ExpressionEvaluation::kRequired;
+            events_[before.value].effects=CallbackEffects();Link(before,context.thrown,FlowCompletion::kThrow);
+          }
+        }
+        const auto done=ports[static_cast<unsigned>(ForOfEventKind::kDoneDecision)].commit;
+        const auto value=ports[static_cast<unsigned>(ForOfEventKind::kValueRead)].before;
+        const auto next=ports[static_cast<unsigned>(ForOfEventKind::kNextCall)].before;
+        const auto acquire=ports[static_cast<unsigned>(ForOfEventKind::kAcquire)].before;
+        const auto write=New({FlowEventKind::kEnumerationBind});
+        const auto commit=Define(node.target,FlowDefinitionKind::kAssignment,{},{},at.id,{},FlowWriteEffect::kObservable,{},FlowExceptionContext{context.thrown,context.finalizer},at.id);
+        definitions_.back().iteration=at.id;
+        const auto close=Close(at.id,analysis::PendingCompletionKind::kThrow,context.thrown,context.thrown,FlowCompletion::kThrow);
+        const auto thrown=result_.iteration_closes[close].entry;
+        Reference(write,Resolve(node.target),FlowReferenceKind::kWrite,at.id,FlowExceptionContext{thrown,context.finalizer},at.id);
+        WriteAction(definitions_.back(),FlowAction{write,commit,{thrown,context.finalizer}});
+        events_[write.value].effects=SourceEffects{analysis::LanguageEffect::kLexicalWrite,analysis::LanguageEffect::kNone,analysis::ExceptionalCompletion::kMayThrow};events_[write.value].effect=ExpressionEvaluation::kRequired;
+        Link(write,commit);Link(write,thrown,FlowCompletion::kThrow);
+        for(std::uint32_t i=0;i<static_cast<std::uint32_t>(ForOfEventKind::kDoneDecision);++i)Link(ports[i].commit,ports[i+1].before);
+        Link(ports[static_cast<std::size_t>(ForOfEventKind::kValueRead)].commit,write);Link(done,context.next,FlowCompletion::kTaken);Link(done,value,FlowCompletion::kNotTaken);
+        repeats_[at.id.value]=next;exits_[at.id.value]=context.next;
+        auto body_context=context.Child(next,at.id,FlowStatementRetention::kRequired);body_context.thrown=thrown;body_context.iteration=at.id;
+        RequireTree(!context.iteration && !context.finalizer,Error::kUnsupportedSyntax); // Nested completion transport remains separately gated.
+        const auto body=Stmt(node.body,body_context);Link(commit,body);
+        const auto rhs=Expr(node.iterable,context.Operand(acquire));Link(start,rhs);
+        semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=next;semantics.entry_value=node.iterable;
+        result_.iterations[at.id.value]=FlowIteration{at.id,rhs,done,write,commit,body,context.next,context.thrown,context.finalizer,ports,close};
       } else if constexpr(std::is_same_v<T,ForInStmt>) {
         RequireTree(node.binding == ForInBinding::kAssignment, Error::kUnsupportedSyntax);
         // RHS once; exhaustion bypasses PutValue entirely. Continue returns to
@@ -1386,15 +1456,15 @@ class FlowBuilder {
         semantics.completion=FlowStatementCompletion::kJump;
         if(context.header) {
           RequireTree(context.header->loop==node.target && context.header->transfer==LoopCompletionTransfer::kBreak,Error::kOwnership);
-          Abrupt(start,context.header->exit,context,FlowCompletion::kJump);
-        } else Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump);
+          Abrupt(start,context.header->exit,context,FlowCompletion::kJump,analysis::PendingCompletionKind::kBreak);
+        } else Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump,analysis::PendingCompletionKind::kBreak);
       }
       else if constexpr(std::is_same_v<T,ContinueStmt>) {
         semantics.completion=FlowStatementCompletion::kJump;
         if(context.header) {
           RequireTree(context.header->loop==node.target && context.header->transfer==LoopCompletionTransfer::kContinue,Error::kOwnership);
-          Abrupt(start,context.header->exit,context,FlowCompletion::kJump);
-        } else Abrupt(start,repeats_[node.target.value],context,FlowCompletion::kJump);
+          Abrupt(start,context.header->exit,context,FlowCompletion::kJump,analysis::PendingCompletionKind::kContinue);
+        } else Abrupt(start,repeats_[node.target.value],context,FlowCompletion::kJump,analysis::PendingCompletionKind::kContinue);
       }
       else if constexpr(std::is_same_v<T,ReturnStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
@@ -1452,7 +1522,7 @@ class FlowBuilder {
         if(!statement_actions_.empty())statement_actions_[at.id.value]=FlowStatementAction{
             OriginalStatementKind::kNormal,{start,context.next,{context.thrown,context.finalizer}}};
       }
-      else {static_assert(std::is_same_v<T,UnrecoveredStmt> || std::is_same_v<T,ForOfStmt>);throw Error::kUnsupportedSyntax;}
+      else {static_assert(std::is_same_v<T,UnrecoveredStmt>);throw Error::kUnsupportedSyntax;}
     },tree_.statements[at.id.value].statement);
   }
   FlowScopeContext current_scope_=IncomingScope{};

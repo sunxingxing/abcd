@@ -327,6 +327,18 @@ class TreeBuilder {
       Fail(Error::kStructure, *error, TreeObligation::kStructure);
     }
     Admit(std::get<TreeStorage>(labels).bytes, 1); Step(std::get<TreeStorage>(labels).work);
+    if(iteration_ && purpose_==TreeBuildPurpose::kFunction) {
+      CheckSemantics();
+      WitnessScope witness(*this,TreeObligation::kForOfRecovery,At(evaluation_.for_of->identity.loops.front().acquisition));
+      auto verified=VerifyInitialForOfRecovery(tree_,*flow_->original,{bytes_,work_});
+      if(const auto* error=std::get_if<TreeStructureError>(&verified)) {
+        if(*error==TreeStructureError::kResourceLimit)throw Error::kResourceLimit;
+        if(*error==TreeStructureError::kWorkLimit)throw Error::kWorkLimit;
+        Fail(Error::kSemantics,*error,TreeObligation::kForOfRecovery);
+      }
+      const auto& proof=std::get<TreeStorage>(verified);Admit(proof.bytes,1);Step(proof.work);
+      return {std::move(tree_),budget_.bytes-bytes_,budget_.work-work_,std::move(flow_)};
+    }
     if(iteration_) {
       const auto measured=MeasureTreeStorage(tree_,{budget_.bytes,work_});
       Require(std::holds_alternative<TreeStorage>(measured),Error::kResourceLimit);
@@ -341,7 +353,6 @@ class TreeBuilder {
       }
       flow_=std::get<TreeFlow>(std::move(checked));Require(flow_->allocated_bytes>=storage.bytes,Error::kSemantics);
       Admit(flow_->allocated_bytes-storage.bytes,1);Step(flow_->work);
-      if(purpose_==TreeBuildPurpose::kFunction){WitnessScope witness(*this,TreeObligation::kForOfRecovery,At(evaluation_.for_of->identity.loops.front().acquisition));Require(false,Error::kControl);}
       return {std::move(tree_),budget_.bytes-bytes_,budget_.work-work_,std::move(flow_)};
     }
     if (enumeration_) {

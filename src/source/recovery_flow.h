@@ -35,7 +35,38 @@ struct FlowInvocationPhase {ParameterId parameter;};
 // not the load's physical action or a later expression's completion.
 struct FlowGuardPhase {analysis::OpId operation;};
 struct FlowForwardedPhase {StmtId statement; analysis::WorkBlockId block;};
-using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase,FlowGuardPhase,FlowForwardedPhase>;
+enum class FlowIterationPhaseKind : std::uint8_t { kPrivate, kBindingCommit };
+struct FlowIterationPhase { IteratorProtocolId protocol; analysis::WorkBlockId original; FlowIterationPhaseKind kind=FlowIterationPhaseKind::kPrivate; };
+using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase,FlowGuardPhase,FlowForwardedPhase,FlowIterationPhase>;
+struct FlowIterationEvent {ForOfEventKind kind;FlowPoint before,commit,thrown;};
+// A native close is effectful and has completion-dependent exception priority.
+// It is never a transparent handler forwarding record.
+enum class FlowCompletion : std::uint8_t;
+struct FlowPendingPayload { FlowPoint entry; bool operator==(const FlowPendingPayload&)const=default; };
+struct FlowCloseErrorPayload { FlowPoint operation; bool operator==(const FlowCloseErrorPayload&)const=default; };
+using FlowClosePayload=std::variant<FlowPendingPayload,FlowCloseErrorPayload>;
+struct FlowCloseOutcome {
+  analysis::CloseOutcomeKind outcome;
+  analysis::PendingCompletionKind completion;
+  FlowClosePayload payload;
+  FlowPoint target;
+};
+inline constexpr std::size_t kCloseOutcomeCount=static_cast<std::size_t>(analysis::CloseOutcomeKind::kPrimitiveResult);
+struct FlowIterationClose {
+  StmtId loop;
+  analysis::PendingCompletionKind pending;
+  FlowPoint entry,read,missing,call,check,success,getter_error,call_error,primitive;
+  FlowPoint target,thrown;
+  FlowCompletion completion;
+  std::array<FlowCloseOutcome,kCloseOutcomeCount> outcomes;
+};
+struct FlowIteration {
+  StmtId statement;
+  FlowPoint rhs,done,write,commit,body,exit,thrown;
+  std::optional<FlowPoint> finalizer;
+  std::array<FlowIterationEvent,kForOfEventCount> events;
+  std::uint32_t throw_close;
+};
 // Native ports are separate even when a VM result has no source expression.
 struct FlowEnumeration {
   StmtId statement;
@@ -218,7 +249,9 @@ struct FlowExcludedResourceFailure {};
 // solver carries both its value and completion dependencies into the handler;
 // changing initialization, occurrence or cell identity withdraws raw catch caps.
 struct FlowExcludedGuardFailure {ExprId value;FlowPoint input,target;};
-using FlowOriginalFailure=std::variant<FlowOriginalException,FlowForwardedException,FlowExcludedResourceFailure,FlowExcludedGuardFailure>;
+enum class FlowIterationFailureKind : std::uint8_t { kStep, kCloseRead, kCloseCall, kCloseCheck, kPrivate };
+struct FlowIterationException {IteratorProtocolId protocol;std::uint32_t original_exit;std::optional<FlowPoint> before;FlowPoint thrown;FlowIterationFailureKind kind=FlowIterationFailureKind::kStep;};
+using FlowOriginalFailure=std::variant<FlowOriginalException,FlowForwardedException,FlowExcludedResourceFailure,FlowExcludedGuardFailure,FlowIterationException>;
 enum class FlowOriginalRouteCoverage : std::uint8_t {kUnmodeled,kComplete};
 struct FlowReference {
   FlowPoint point;
@@ -302,6 +335,7 @@ struct FlowDefinition {
   std::optional<FlowPoint> catch_entry;
   // Success-edge key commit, not the raw next result on exhaustion.
   std::optional<FlowEnumerationDefinition> enumeration;
+  std::optional<StmtId> iteration;
   // The semantic adapter owns both expression and statement write positions.
   // Kind still distinguishes lexical completion from assignment/slot writes;
   // a site alone never authorizes deleting initialization or binding lifetime.
@@ -453,6 +487,8 @@ struct FlowLoop {
   std::optional<FlowPoint> entry_allocation,repeat_allocation;
 };
 struct RecoveryFlow {
+  std::vector<std::optional<FlowIteration>> iterations; // StmtId indexed.
+  std::vector<FlowIterationClose> iteration_closes;
   std::vector<FlowParameterDefault> parameter_defaults;
   // The common lifetime/activation owner decides current-unit capability.
   // Consumers must not repeat a scope/loop shape test. Partial point contexts
@@ -620,7 +656,9 @@ struct RecoveryFlow {
   }
 };
 // Recomputed for every recovery proposal, including retained forwarded routes.
+void VerifyForOfRecovery(const FunctionTree&,RecoveryFlow&,TreeCheckBudget&);
 void VerifyForInRecovery(const FunctionTree&, RecoveryFlow&, TreeCheckBudget&);
+[[nodiscard]] std::variant<TreeStorage,TreeStructureError> VerifyInitialForOfRecovery(const FunctionTree&,const OriginalFlow&,analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<TreeStorage,TreeStructureError> VerifyInitialForInRecovery(
     const FunctionTree&,const OriginalFlow&,analysis::SemanticBudget = {});
 [[nodiscard]] std::optional<FlowPoint> FindOriginalPhase(const RecoveryFlow&,

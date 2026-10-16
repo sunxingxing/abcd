@@ -110,8 +110,9 @@ class Initializers {
     // Syntax-only native iteration has no original-flow correspondence yet.
     // Direct printing retains every declaration/expression verbatim; never
     // run recovery transformations over a fabricated enumeration protocol.
-    if (loops_.syntax_only_iteration) RequireTree(!original_, TreeStructureError::kUnsupportedSyntax);
-    if (!tree_.recovery_issues.empty() || loops_.syntax_only_iteration) {
+    const bool syntax_only=loops_.syntax_only_iteration && (!original_ || !original_->iterations);
+    if (syntax_only) RequireTree(!original_, TreeStructureError::kUnsupportedSyntax);
+    if (!tree_.recovery_issues.empty() || syntax_only) {
       // Unknown control prevents semantic simplification, but printer clients
       // still require occurrence-indexed summaries. Publish conservative facts
       // on this terminal path too; an absent array is not an unknown effect.

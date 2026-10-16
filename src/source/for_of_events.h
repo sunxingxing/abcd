@@ -5,6 +5,7 @@ namespace abcd::source {
 enum class ForOfEventKind : std::uint8_t {
   kAcquire, kNextRead, kNextCall, kObjectCheck, kDoneRead, kDoneDecision, kValueRead
 };
+inline constexpr std::size_t kForOfEventCount=static_cast<std::size_t>(ForOfEventKind::kValueRead)+1;
 struct ForOfEvent {
   IteratorProtocolId protocol;
   ForOfEventKind kind;

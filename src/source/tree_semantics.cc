@@ -18,9 +18,6 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     TreeControlCheck control_check, TreeSemanticFailure* failure) {
   if (failure) *failure = {};
   using Error = TreeSemanticError;
-  // A II-b draft has checked TreeFlow only. Never manufacture OriginalFlow
-  // for protocol results before the joint recovery event ports exist.
-  if(evaluation.for_of)return Error::kUnsupportedOperation;
   try {
     auto checked_flow = exceptions
         ? VerifyExceptionTreeFlow(graph, *exceptions, evaluation, tree, budget, control_check, failure ? &failure->location : nullptr)
@@ -37,11 +34,41 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     checked.Admit(flow->allocated_bytes, 1);
     checked.Step(flow->work);
     auto original=RetainOriginalFlow(graph,tree,*flow,checked);
+    if (evaluation.for_of) {
+      RequireTree(flow->for_of.has_value(),TreeStructureError::kOwnership);
+      original->iterations.emplace(); auto& retained=*original->iterations;
+      retained.view=std::move(flow->for_of->view);
+      retained.statements=std::move(flow->for_of->statements);
+      retained.closes=std::move(flow->for_of->closes);
+      const auto copy=[&](auto& to,const auto& from){checked.Array(to,from.size());std::copy(from.begin(),from.end(),to.begin());};
+      RequireTree(exceptions&&exceptions->for_of,TreeStructureError::kOwnership);
+      std::vector<std::optional<OriginalCloseMember>> members;checked.Array(members,exceptions->input.flow.nodes.size());
+      for(const auto& region:exceptions->for_of->ownership.Summary().regions)for(const auto& member:region.members){checked.Step();RequireTree(member.node.value<members.size(),TreeStructureError::kOwnership);const auto old=members[member.node.value];RequireTree(!old||old->protocol==region.protocol,TreeStructureError::kOwnership);members[member.node.value]=OriginalCloseMember{region.protocol,member.role};}
+      checked.Array(retained.close_members,graph.phases.size());
+      for(std::uint32_t b=0;b<graph.phases.size();++b){checked.Step();RequireTree(graph.phases[b].input.value<members.size(),TreeStructureError::kOwnership);retained.close_members[b]=members[graph.phases[b].input.value];}
+      const auto& plan=*evaluation.for_of;
+      copy(retained.input_values,graph.input.values);copy(retained.phis,plan.iteration.phis);
+      copy(retained.loops,plan.identity.loops);copy(retained.operations,plan.operations);copy(retained.values,plan.values);
+      copy(retained.events.events,plan.events.events);copy(retained.events.commits,plan.events.commits);copy(retained.events.ports,plan.events.ports);
+      retained.events.revision=plan.events.revision;retained.events.cfg_revision=plan.events.cfg_revision;
+      checked.Array(retained.bindings,retained.statements.size());
+      for(std::uint32_t l=0;l<retained.statements.size();++l){checked.Step();const auto& node=tree.statements[retained.statements[l].value];const auto& loop=std::get<ForOfStmt>(node.statement);retained.bindings[l]={loop.target,loop.iterable,loop.body,node.origin};}
+      std::vector<std::optional<std::uint32_t>> owners;checked.Array(owners,tree.statements.size());
+      for(std::uint32_t l=0;l<retained.statements.size();++l){checked.Step();owners[retained.statements[l].value]=l;}
+      checked.Array(retained.exits,tree.statements.size());std::size_t exit_count=0;
+      for(std::uint32_t s=0;s<tree.statements.size();++s){checked.Step();const auto& node=tree.statements[s];
+        if(const auto* jump=std::get_if<ContinueStmt>(&node.statement);jump&&owners[jump->target.value])retained.exits[exit_count++]={{s},*owners[jump->target.value],LoopTransferKind::kContinue,node.origin};
+        if(const auto* jump=std::get_if<BreakStmt>(&node.statement);jump&&owners[jump->target.value])retained.exits[exit_count++]={{s},*owners[jump->target.value],LoopTransferKind::kBreak,node.origin};
+      }
+      retained.exits.resize(exit_count);
+    }
     if (evaluation.for_in) {
       checked.Array(original->enumeration_operations, evaluation.for_in->operations.size());
       std::copy(evaluation.for_in->operations.begin(), evaluation.for_in->operations.end(), original->enumeration_operations.begin());
       checked.Array(original->enumeration_values, evaluation.for_in->values.size());
       std::copy(evaluation.for_in->values.begin(), evaluation.for_in->values.end(), original->enumeration_values.begin());
+    }
+    if(evaluation.for_in || evaluation.for_of) {
       auto identities = analysis::AnalyzeValueIdentities(graph, checked.Remaining());
       if (const auto* error = std::get_if<analysis::ValueSimplifyError>(&identities)) {
         switch (*error) {

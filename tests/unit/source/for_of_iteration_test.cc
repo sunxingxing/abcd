@@ -2,6 +2,8 @@
 #include "../../../src/source/for_of_iteration.h"
 #include "../../../src/source/for_of_events.h"
 #ifdef ABCD_TEST_FOR_OF_DRAFT
+#include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/recovery_flow.h"
 #include "../../../src/source/for_of_emission.h"
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/source/tree_constants.h"
@@ -246,9 +248,54 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     }
     test::Check(missing_continue && std::holds_alternative<TreeStructure>(VerifyTreeStructure(bad_tree)));
     test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,bad_tree)));
+    auto semantic=VerifyExceptionTreeSemantics(graph,exceptions,evaluation,draft.tree,resolved);
+    if(const auto* error=std::get_if<TreeSemanticError>(&semantic))std::cerr<<"for-of semantics error="<<unsigned(*error)<<'\n';
+    auto sem=Take<TreeSemantics>(std::move(semantic),"for-of-original-flow");
+    auto recovery=VerifyInitialForOfRecovery(draft.tree,*sem.flow.original);
+    if(const auto* error=std::get_if<TreeStructureError>(&recovery))std::cerr<<"for-of recovery error="<<unsigned(*error)<<'\n';
+    const auto recovery_storage=Take<TreeStorage>(std::move(recovery),"for-of-recovery");
+    std::vector<std::optional<SymbolId>> aliases(draft.tree.symbols.size());
+    std::vector<std::optional<PrimitiveId>> literals(draft.tree.symbols.size());
+    std::vector<std::optional<ExprId>> replacements(draft.tree.expressions.size());
+    std::vector<std::uint8_t> omitted(draft.tree.statements.size()),normal(draft.tree.expressions.size());
+    std::vector<ExpressionEvaluation> effects(draft.tree.expressions.size(),ExpressionEvaluation::kRequired);
+    for(std::uint32_t i=0;i<aliases.size();++i)aliases[i]=SymbolId{i};
+    const auto recover=[&](const OriginalFlow& raw,SemanticBudget budget=SemanticBudget{}) {
+      LegacyFlowProjection projection{aliases,literals,replacements,omitted,effects,normal};projection.original=&raw;
+      return BuildRecoveryFlow(draft.tree,projection,budget);
+    };
+    auto recovered=Take<RecoveryFlow>(recover(*sem.flow.original),"joint-recovery");
+    const auto statement=sem.flow.original->iterations->statements[0];
+    auto bad_flow=recovered;
+    for(auto& edge:bad_flow.edges)if(edge.from==bad_flow.iterations[statement.value]->done && edge.completion==FlowCompletion::kTaken){edge.to=bad_flow.iterations[statement.value]->write;break;}
+    const auto reject_flow=[&](RecoveryFlow& proposal){try{TreeCheckBudget budget({});VerifyForOfRecovery(draft.tree,proposal,budget);test::Check(false);}catch(TreeStructureError error){test::Check(error==TreeStructureError::kOwnership);}};
+    reject_flow(bad_flow);
+    bad_flow=recovered;const auto close_index=bad_flow.iterations[statement.value]->throw_close;
+    bad_flow.iteration_closes[close_index].outcomes[static_cast<std::size_t>(CloseOutcomeKind::kGetterThrow)-1].payload=FlowCloseErrorPayload{bad_flow.iteration_closes[close_index].read};
+    reject_flow(bad_flow);
+    bad_flow=recovered;bool wrong_continue=false;
+    for(const auto& exit:sem.flow.original->iterations->exits)if(exit.kind==LoopTransferKind::kContinue){for(auto& edge:bad_flow.edges)if(edge.from==bad_flow.statements[exit.statement.value]&&edge.completion==FlowCompletion::kJump){edge.to=bad_flow.iterations[statement.value]->exit;wrong_continue=true;break;}break;}
+    test::Check(wrong_continue);reject_flow(bad_flow);
+    auto wrong_raw=*sem.flow.original;wrong_raw.iterations->events.ports[0].outcome.pending.target=ExceptionNodeId{UINT32_MAX};
+    test::Check(std::holds_alternative<TreeStructureError>(recover(wrong_raw)));
+    wrong_raw=*sem.flow.original;wrong_raw.iterations->loops[0].advance=wrong_raw.iterations->loops[0].done;
+    test::Check(std::holds_alternative<TreeStructureError>(recover(wrong_raw)));
+    wrong_raw=*sem.flow.original;
+    const auto& call=wrong_raw.operations[wrong_raw.iterations->loops[0].advance.value];
+    for(std::uint32_t u=call.first_use.value;u<call.first_use.value+call.use_count;++u)if(wrong_raw.uses[u].role==OperandRole::kReceiver)wrong_raw.uses[u].operand=wrong_raw.iterations->loops[0].cached_next;
+    test::Check(std::holds_alternative<TreeStructureError>(recover(wrong_raw)));
+    wrong_raw=*sem.flow.original;wrong_raw.iterations->events.events[0].exception_exit.reset();
+    test::Check(std::holds_alternative<TreeStructureError>(recover(wrong_raw)));
+    const auto exact=Take<TreeStorage>(VerifyInitialForOfRecovery(draft.tree,*sem.flow.original,{SemanticBudget{}.bytes,recovery_storage.work}),"recovery-exact-work");
+    test::Check(std::get<TreeStructureError>(VerifyInitialForOfRecovery(draft.tree,*sem.flow.original,{SemanticBudget{}.bytes,recovery_storage.work-1}))==TreeStructureError::kWorkLimit);
+    std::size_t low=0,high=SemanticBudget{}.bytes;
+    while(low<high){const auto mid=low+(high-low)/2;const auto probe=VerifyInitialForOfRecovery(draft.tree,*sem.flow.original,{mid,SemanticBudget{}.work});if(std::holds_alternative<TreeStorage>(probe))high=mid;else {test::Check(std::get<TreeStructureError>(probe)==TreeStructureError::kResourceLimit);low=mid+1;}}
+    Take<TreeStorage>(VerifyInitialForOfRecovery(draft.tree,*sem.flow.original,{low,SemanticBudget{}.work}),"recovery-exact-bytes");
+    test::Check(low>0 && std::get<TreeStructureError>(VerifyInitialForOfRecovery(draft.tree,*sem.flow.original,{low-1,SemanticBudget{}.work}))==TreeStructureError::kResourceLimit);
+    std::cout<<"recovery-boundary bytes="<<low<<" work="<<exact.work<<'\n';
     const auto gated=BuildExceptionFunctionDraft(graph,exceptions,evaluation,syntax,resolved);
-    test::Check(std::holds_alternative<FunctionTreeFailure>(gated));
-    const auto& gate=std::get<FunctionTreeFailure>(gated);test::Check(gate.tree && gate.tree->obligation==TreeObligation::kForOfRecovery);
+    if(const auto* error=std::get_if<FunctionTreeFailure>(&gated))std::cerr<<"published builder error="<<unsigned(error->kind)<<'\n';
+    test::Check(!std::holds_alternative<FunctionTreeFailure>(gated));
 #endif
     std::cout<<"verified common evaluation plan\n";
     }

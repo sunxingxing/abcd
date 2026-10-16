@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 III：原生 for-of 首次发布（cc 审查通过）
+
+- OriginalFlow/RecoveryFlow 加入 for-of 事件端口（acquire、cached-next read、next call、object check、done/value、成功边绑定提交、effectful close 端口，close outcome 保持 kind/payload/target 相关）；内部 iterator/next/result/close 值不获得源码变量或伪造 ExprId；初始联合验证通过才解除 kForOfRecovery，每次 recovery 投影重新验证。ComponentFactory（o20/6952）在 `--language-source` 下完成：`for ($key4 of this.tabsInfo.keys()) { $value1.push($key4); continue; }`；cc 对照原源码 `for (let keysElement of keys) { array.push(keysElement); }`：无闭包捕获循环变量，函数级 let 的赋值形式等价，尾部 continue 属可读性问题。新增 `for_of_source_cli_test`（引擎输出的 Node 差分）。重编译：小型 fixture 往返通过完整证明；ComponentFactory 实际输出重编译后 close 摘要义务通过，但完整 ProtocolOwnership seal 报 kOwnership（未扩展 B 的准入）。
+- cc 独立审查（基线为 9269e30c 构建）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 输出逐字节相同（526/620）；`--language-source` 572 → **573/620**，唯一差异是 ComponentFactory 的新源码与 manifest；扫描只有既有的 family_source_cli_test 失败。
+
 ## Round 79 II-b：for-of 生产草稿与 TreeFlow（cc 审查通过）
 
 - 投影 `ForOfEmissionView` 保留原 LoopId、header、成功/耗尽边与 completion 端口（不用透明转发）；生产 builder 在 acquisition 处生成未发布的 ForOfStmt 草稿，复用原声明与退出映射；TreeFlow 独立重建视图并检查 RHS、事件归属、success-only 绑定、耗尽边与 close 端口。m7171 的门禁由 kForOfCorrespondence 移到 `kForOfRecovery`（Op38、PC93）。显式 break/return 的新 fixture 在 close 证书处被 kRegionCoverage（TryId4、PC133）拒绝，保留为严格负例。

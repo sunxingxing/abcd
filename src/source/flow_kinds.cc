@@ -312,6 +312,10 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
                   }
                   break;
                 case FlowDefinitionKind::kAssignment:case FlowDefinitionKind::kInitializer:
+                  if(generated.iteration) {
+                    RequireTree(generated.iteration->value<flow.iterations.size() && flow.iterations[generated.iteration->value] && flow.iterations[generated.iteration->value]->commit==generated.point,Error::kOwnership);
+                    constant(target,K::Language());dependency(event_node(generated.point),target,DependencyKind::kProvenance,nullptr);continue;
+                  }
                   if(generated.enumeration) {
                     RequireTree(generated.enumeration->statement.value<flow.enumerations.size() && flow.enumerations[generated.enumeration->statement.value] &&
                         flow.enumerations[generated.enumeration->statement.value]->key_commit==generated.point,Error::kOwnership);

@@ -47,6 +47,11 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   for (std::size_t c=0;c<flow.controls.size();++c) {
     const auto origin=flow.controls[c];
     budget.Step();
+    if(flow.for_of && flow.for_of->controls[c]) {
+      if(*flow.for_of->controls[c]==EnumerationControl::kLoop)
+        RequireMeaning(std::holds_alternative<ForOfStmt>(tree.statements[flow.control_statements[c].value].statement),Error::kOrigin);
+      continue;
+    }
     if(!flow.enumeration_controls.empty() && flow.enumeration_controls[c]) {
       if(*flow.enumeration_controls[c]==EnumerationControl::kLoop) {
         RequireMeaning(flow.control_statements[c].value<tree.statements.size() && origin.value<graph.origins.size() &&
@@ -105,7 +110,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step();
     const auto& op = graph.ops[i];
-    if ((evaluation.for_in && evaluation.for_in->operations[i]) ||
+    if ((evaluation.for_of && evaluation.for_of->operations[i]) || (evaluation.for_in && evaluation.for_in->operations[i]) ||
         (!flow.forwarded_operations.empty() && flow.forwarded_operations[i])) continue;
     if (IsReceiverGuard(tree, analysis::OpId{static_cast<std::uint32_t>(i)}) || evaluation.operations[i].kind == EvaluationKind::kCellGuard || evaluation.operations[i].kind == EvaluationKind::kArrayCursor || evaluation.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph, evaluation, op) || op.life != analysis::ValueLife::kLive ||
         evaluation.operations[i].kind == EvaluationKind::kElidedPure ||

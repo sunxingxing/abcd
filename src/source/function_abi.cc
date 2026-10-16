@@ -14,12 +14,12 @@ class AbiBuilder {
  public:
   AbiBuilder(const analysis::ValueProgram& graph, const FunctionTree& tree,
              const abc::FrameLayout& frame, analysis::SemanticBudget budget,
-             const EvaluationPlan* evaluation = nullptr)
-      : graph_(graph), tree_(tree), frame_(frame), initial_(budget), remaining_(budget), evaluation_(evaluation) {}
+             const EvaluationPlan* evaluation = nullptr,const ForOfEvaluationInput* for_of=nullptr)
+      : graph_(graph), tree_(tree), frame_(frame), initial_(budget), remaining_(budget), evaluation_(evaluation),for_of_(for_of) {}
   ConstructedAbi Build(std::uint32_t length) {
     Require(graph_.revision == tree_.value_revision && graph_.cfg_revision == tree_.cfg_revision, Error::kRevision);
     if (evaluation_) {
-      const auto verified = VerifyPhasedEvaluationPlan(graph_, *evaluation_, remaining_);
+      const auto verified = VerifyPhasedEvaluationPlan(graph_, *evaluation_, remaining_,for_of_);
       if (const auto* error = std::get_if<EvaluationFailure>(&verified)) {
         if (*error == EvaluationError::kWorkLimit) throw Error::kWorkLimit;
         if (*error == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
@@ -285,6 +285,7 @@ class AbiBuilder {
   analysis::SemanticBudget initial_;
   analysis::SemanticBudget remaining_;
   const EvaluationPlan* evaluation_;
+  const ForOfEvaluationInput* for_of_;
   FunctionAbi result_;
   bool snapshot_ = false;
   std::vector<std::optional<std::uint32_t>> formals_;
@@ -302,8 +303,8 @@ std::variant<ConstructedAbi, FunctionAbiError> BuildFunctionAbi(
 }
 std::variant<ConstructedAbi, FunctionAbiError> BuildPhasedFunctionAbi(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, const FunctionTree& tree,
-    const abc::FrameLayout& frame, std::uint32_t length, analysis::SemanticBudget budget) {
-  try { return AbiBuilder(graph, tree, frame, budget, &evaluation).Build(length);
+    const abc::FrameLayout& frame, std::uint32_t length, analysis::SemanticBudget budget,const ForOfEvaluationInput* for_of) {
+  try { return AbiBuilder(graph, tree, frame, budget, &evaluation,for_of).Build(length);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

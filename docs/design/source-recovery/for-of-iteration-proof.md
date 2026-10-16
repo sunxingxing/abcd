@@ -159,3 +159,55 @@ The m7171 draft and the new ordinary-loop fixture exercise this path. The
 separate explicit break/return fixture still fails the pre-existing close seal
 at `kRegionCoverage`, TryId 4, PC133; it is a strict boundary test, not positive
 coverage for those source exits. This slice does not expand close ownership.
+
+## Increment III: conditional value commits and effectful close recovery
+
+A freshly checked `OriginalFlow` retains the ForOfEvents/iteration identities,
+entry-qualified close ports and the actual native statement/binding/body. It
+retains raw Before/Commit/exception identities and the original success and
+exhaustion edges. It does not attach an ExprId to an iterator, cached next,
+iterator-result object, close state or caught close payload. Ordinary body and
+phi inputs still use the existing operand proof; successful value-read inputs
+have a separate occurrence-to-binding correspondence.
+
+Recovery constructs acquire, cached-next read, next call, object check, done
+read/decision, value read and binding write/commit ports. Continue returns to the
+next call, not acquisition or next-property read. Exhaustion bypasses value and
+binding. A key definition is conditional on successful PutValue; the common
+initialization analysis independently proves that the original declaration is
+available before that write. Iteration inputs must read this binding after the
+successful commit. Initial phi/copy verification and every trial flow retain
+zero-iteration, last-iteration and live-out contributions.
+
+The implicit close graph is effectful: return-property read, nullish decision,
+return call and result check retain separate outcome ports. Throw entries keep
+the pending payload even when close fails; successful/missing-return closes
+keep non-Throw completions, while close errors replace them. These are checked
+against B's outcome-indexed ports, not a transparent forwarding route. A close
+failure exits the loop's exception context; it must not re-enter close and
+close twice. Original private phases remain typed protocol correspondence.
+No interior Catch is presented as a source catch binding or invented expression.
+The immutable original proof is shared by initial and every recovery proposal;
+protocol coverage, references, effects, exception edges, binding availability
+and native continue/break edges are checked anew.
+
+Only after initial OriginalFlow/recovery verification does the normal builder
+return a publishable function. The syntax-only draft API remains distinct.
+The binding planner's syntax-only refusal remains for trees without original
+iteration evidence. Nested native completion transport and an enclosing source
+finally remain explicit recovery limitations in this increment; the existing
+close seal still refuses the explicit multi-exit fixture documented in II-b.
+This increment does not widen close ownership or per-iteration binding admission.
+
+Tests exercise m7171 and the real `for_of_draft/main.abc`: zero iterations,
+last value, a throwing body, getter/call order and return() close priority. The
+engine record output, rather than draft printing, is Node-checked and compared
+with the independent source oracle. Recompiling this output with the pinned
+DevEco es2abc re-runs acquisition/cached-next/receiver/iteration/close proofs.
+As in captured-default round trips, only identifier-valued string export aliases
+are unquoted at the compiler boundary (the pinned parser predates that ES2022
+syntax); the emitted function text is unchanged. Raw Hole exceptions cannot be
+represented in Node: the V2 acquisition and V4 external-exception premises remain
+explicit. Recovery mutations cover exhausted-edge writes, wrong close ports,
+missing exception evidence, forged next/receiver and a wrong continue, with
+200/201/400/800 variants and exact work/byte boundaries.
