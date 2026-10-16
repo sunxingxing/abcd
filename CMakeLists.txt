@@ -210,7 +210,7 @@ target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/for_in_emission.cc src/source/for_in_recovery.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/iterator_keys.cc src/source/iterator_protocol_scan.cc)
-target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc src/source/for_of_events.cc)
+target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc src/source/for_of_events.cc src/source/for_of_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
@@ -566,6 +566,12 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 395)
   set_tests_properties(close_completion_nested_gap_test PROPERTIES
     PASS_REGULAR_EXPRESSION "failure=4 derivation=4 node=199 pc=226")
+  add_executable(for_of_evaluation_test tests/unit/source/for_of_iteration_test.cc)
+  target_compile_definitions(for_of_evaluation_test PRIVATE ABCD_TEST_FOR_OF_EVALUATION=1)
+  target_link_libraries(for_of_evaluation_test PRIVATE abcd_source abcd_json)
+  target_include_directories(for_of_evaluation_test PRIVATE tests/support)
+  add_test(NAME for_of_evaluation_test COMMAND for_of_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
   add_executable(for_of_iteration_test tests/unit/source/for_of_iteration_test.cc)
   target_link_libraries(for_of_iteration_test PRIVATE abcd_source abcd_json)
   target_include_directories(for_of_iteration_test PRIVATE tests/support)

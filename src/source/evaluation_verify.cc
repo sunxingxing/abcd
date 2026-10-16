@@ -1,6 +1,7 @@
 #include "integer_nan.h"
 #include "evaluation_plan.h"
 #include "for_in_evaluation.h"
+#include "for_of_evaluation.h"
 #include "evaluation_failure.h"
 #include "assignment_values.h"
 #include "evaluation_flow.h"
@@ -27,7 +28,7 @@ enum class EvaluationVisit : std::uint8_t { kUnseen, kActive, kDone };
 
 std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
-    analysis::SemanticBudget budget, EvaluationFlow flow) {
+    analysis::SemanticBudget budget, EvaluationFlow flow, const ForOfEvaluationInput* for_of) {
   EvaluationEvidence witness;
   const auto Require = [&](bool condition, Error error) { if (!condition) throw EvaluationFailure{error, witness}; };
   try {
@@ -52,6 +53,9 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const auto protocol = VerifyForInEvaluation(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<EvaluationFailure>(&protocol)) return *error;
     step(std::get<std::uint64_t>(protocol));
+    const auto of=VerifyForOfEvaluation(graph,for_of,plan,{bytes,work});
+    if(const auto* error=std::get_if<EvaluationFailure>(&of))return *error;
+    step(std::get<std::uint64_t>(of));
     bool has_notification=false;
     for(const auto& op:graph.ops){step();has_notification|=std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);}
     Require(has_notification==plan.concurrent.has_value(),Error::kOwnership);
@@ -284,7 +288,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     Require(plan.exceptions.has_value() == (flow == EvaluationFlow::kPhased && has_phi), Error::kLivePhi);
     if (plan.phis) {
       const auto checked = flow == EvaluationFlow::kNormal ? VerifyPhiCopies(graph, *plan.phis, {bytes, work})
-          : VerifyPhasedPhiCopies(graph, *plan.phis, {bytes, work});
+          : VerifyPhasedPhiCopies(graph, *plan.phis, {bytes, work}, plan.for_of ? std::span<const ForOfUseDisposition>(plan.for_of->uses) : std::span<const ForOfUseDisposition>{});
       if (const auto* error = std::get_if<PhiCopyError>(&checked)) {
         if (*error == PhiCopyError::kResourceLimit) return Error::kResourceLimit;
         if (*error == PhiCopyError::kWorkLimit) return Error::kWorkLimit;
@@ -293,7 +297,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       step(std::get<std::uint64_t>(checked));
     }
     if (plan.exceptions) {
-      const auto checked = VerifyExceptionCopies(graph, *plan.phis, *plan.exceptions, {bytes, work});
+      const auto checked = VerifyExceptionCopies(graph, *plan.phis, *plan.exceptions, {bytes, work},plan.for_of ? std::span<const ForOfUseDisposition>(plan.for_of->uses) : std::span<const ForOfUseDisposition>{});
       if (const auto* error = std::get_if<ExceptionCopyError>(&checked)) {
         if (*error == ExceptionCopyError::kResourceLimit) return Error::kResourceLimit;
         if (*error == ExceptionCopyError::kWorkLimit) return Error::kWorkLimit;
@@ -349,6 +353,11 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
         visits[i]=EvaluationVisit::kDone;continue;
       }
       Require(placement.kind!=EvaluationKind::kConcurrentNotification,Error::kOwnership);
+      if (ForOfOperation(plan,{static_cast<std::uint32_t>(i)})) {
+        Require(placement.kind==EvaluationKind::kForOfEvent && !placement.consumer && !placement.temporary,Error::kOwnership);
+        visits[i]=EvaluationVisit::kDone;continue;
+      }
+      Require(placement.kind!=EvaluationKind::kForOfEvent,Error::kOwnership);
       if (ForInOperation(plan, {static_cast<std::uint32_t>(i)})) {
         Require(placement.kind == EvaluationKind::kForInEvent && !placement.consumer && !placement.temporary, Error::kOwnership);
         visits[i] = EvaluationVisit::kDone; continue;
@@ -512,7 +521,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
         }
         while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kArrayCursor ||
-                                  ForInOperation(plan, {static_cast<std::uint32_t>(expected)}) ||
+                                  ForInOperation(plan, {static_cast<std::uint32_t>(expected)}) || ForOfOperation(plan,{static_cast<std::uint32_t>(expected)}) ||
                                   BeforeLogicalFusion(graph,plan,expected).kind == EvaluationKind::kConcurrentNotification ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kClassProjection ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kReceiverGuard ||
@@ -564,6 +573,12 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
               visits[result->value] = EvaluationVisit::kActive;
               stack[depth++] = {*result, 0};
             } else {
+              if (ForOfOperation(plan,*result)) {
+                // Only the success value is an ordinary source result. Internal
+                // iterator/state dependencies cannot enter a body expression.
+                const auto member=plan.for_of->identity.operations[result->value];
+                Require(member && member->role==ForOfRole::kValue,Error::kOwnership);continue;
+              }
               if (ForInOperation(plan, *result)) {
                 // The closed protocol proof checked all external key uses on
                 // the not-done edge. No ordinary expression/temporary is claimed.
@@ -637,7 +652,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationPlan(
   return VerifyEvaluationForFlow(graph, plan, budget, EvaluationFlow::kNormal);
 }
 std::variant<std::uint64_t, EvaluationFailure> VerifyPhasedEvaluationPlan(
-    const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {
-  return VerifyEvaluationForFlow(graph, plan, budget, EvaluationFlow::kPhased);
+    const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget, const ForOfEvaluationInput* for_of) {
+  return VerifyEvaluationForFlow(graph, plan, budget, EvaluationFlow::kPhased, for_of);
 }
 }  // namespace abcd::source

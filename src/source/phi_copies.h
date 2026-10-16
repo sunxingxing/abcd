@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_PHI_COPIES_H_
 
 #include "edge_copies.h"
+#include "for_of_evaluation_plan.h"
 
 namespace abcd::source {
 struct LiteralPlan;
@@ -16,7 +17,7 @@ struct PhiBundle {
   EdgeCopies schedule;
   std::optional<analysis::UseId> expression_input;
 };
-enum class PhiCopyUse : std::uint8_t { kRetained, kIdentity, kForInProtocol };
+enum class PhiCopyUse : std::uint8_t { kRetained, kIdentity, kForInProtocol, kForOfProtocol };
 struct PhiCopies {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -33,6 +34,7 @@ struct PhiCopies {
   // Original phi occurrences consumed by the independently verified for-in
   // identity graph. They have no source parallel-copy destination or symbol.
   std::vector<analysis::UseId> for_in_inputs;
+  std::vector<analysis::UseId> for_of_inputs;
 
 };
 enum class PhiCopyError : std::uint8_t {
@@ -71,9 +73,9 @@ enum class PhiCopyError : std::uint8_t {
 // Exceptional edges require separate staging and catch-entry commit placement.
 [[nodiscard]] std::variant<PhiCopies, PhiCopyError> BuildPhasedPhiCopies(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
-    PhiDomain domain = PhiDomain::kLanguage, const ForInPlan* for_in = nullptr);
+    PhiDomain domain = PhiDomain::kLanguage, const ForInPlan* for_in = nullptr, std::span<const ForOfUseDisposition> for_of = {});
 [[nodiscard]] std::variant<std::uint64_t, PhiCopyError> VerifyPhasedPhiCopies(
     const analysis::ValueProgram& graph, const PhiCopies& plan,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, std::span<const ForOfUseDisposition> for_of = {});
 }  // namespace abcd::source
 #endif

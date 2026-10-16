@@ -1,4 +1,5 @@
 #include "evaluation_aliases.h"
+#include "for_of_evaluation.h"
 
 #include <new>
 #include <stdexcept>
@@ -96,7 +97,7 @@ std::variant<EvaluationAliasCost, EvaluationFailure> BuildEvaluationAliases(
     }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       quota.Step();
-      if (plan.operations[i].kind == EvaluationKind::kElidedPure) continue;
+      if (plan.operations[i].kind == EvaluationKind::kElidedPure || ForOfOperation(plan,{static_cast<std::uint32_t>(i)})) continue;
       const auto& op = graph.ops[i];
       if (const auto source = AliasInput(graph, op)) {
         Require(*source != *op.result, Error::kOwnership);
@@ -110,7 +111,7 @@ std::variant<EvaluationAliasCost, EvaluationFailure> BuildEvaluationAliases(
     Require(identities.canonical.size()==graph.values.size(),Error::kOwnership);
     for (std::size_t i=0;i<graph.values.size();++i) {
       quota.Step(); const ValueId value{static_cast<std::uint32_t>(i)};
-      if (plan.for_in && plan.for_in->values[i]) {
+      if ((plan.for_in && plan.for_in->values[i]) || ForOfValue(plan,{static_cast<std::uint32_t>(i)})) {
         // Closed protocol SCCs have an immutable raw definition, not a source
         // phi location. This identity does not create a key or enumerator symbol.
         plan.aliases[i] = identities.canonical[i]; continue;
@@ -121,7 +122,7 @@ std::variant<EvaluationAliasCost, EvaluationFailure> BuildEvaluationAliases(
       const auto* result = std::get_if<OpResult>(&graph.values[i].origin);
       const auto root = identities.canonical[i];
       if (!result || root == value || !SourceIdentityRoot(graph, root) ||
-          plan.operations[result->op.value].kind == EvaluationKind::kElidedPure) continue;
+          (plan.operations[result->op.value].kind == EvaluationKind::kElidedPure || ForOfOperation(plan,result->op))) continue;
       // The equation index certifies actual pure copies, including first
       // materializations of a collapsed phi. Real mutable phi/catch roots keep
       // their original first snapshot; later ordinary aliases still compress.
@@ -161,7 +162,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationAliases(
     for (std::size_t i = 0; i < graph.values.size(); ++i) {
       quota.Step();
       const auto root = plan.aliases[i];
-      if (plan.for_in && plan.for_in->values[i]) {
+      if ((plan.for_in && plan.for_in->values[i]) || ForOfValue(plan,{static_cast<std::uint32_t>(i)})) {
         Require(root == identities.canonical[i], Error::kOwnership);
         continue;
       }

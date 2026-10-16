@@ -62,7 +62,7 @@ inline std::vector<analysis::ValueId> PhiIdentities(const analysis::ValueProgram
 // is checked against both the graph proof and retained plan, not caller text.
 std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
     const analysis::ValueProgram& graph, const PhiCopies& plan,
-    analysis::SemanticBudget allowance, PhiFlow flow);
+    analysis::SemanticBudget allowance, PhiFlow flow, std::span<const ForOfUseDisposition> for_of = {});
 inline bool PhiInput(const analysis::OperandUse& use) {
   return use.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueId>(use.owner);
 }

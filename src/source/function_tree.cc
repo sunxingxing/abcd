@@ -2,6 +2,7 @@
 #include "for_in_emission.h"
 #include "recovery_flow.h"
 #include "for_in_evaluation.h"
+#include "for_of_evaluation.h"
 #include "evaluation_disposition.h"
 #include "completion_tree.h"
 #include "exception_tree.h"
@@ -56,6 +57,19 @@ class TreeBuilder {
         bytes_(budget.bytes), work_(budget.work), incoming_(incoming), exceptions_(exceptions), recovery_(recovery) {}
 
   ExceptionFunctionDraft Build() {
+    if(evaluation_.for_of) {
+      const auto acquisition=evaluation_.for_of->identity.loops.front().acquisition;
+      WitnessScope witness(*this,TreeObligation::kForOfCorrespondence,At(acquisition));
+      Require(exceptions_ && exceptions_->for_of,Error::kControl);
+      const auto checked=VerifyPhasedEvaluationPlan(graph_,evaluation_,{bytes_,work_},&*exceptions_->for_of);
+      if(const auto* error=std::get_if<EvaluationFailure>(&checked)) {
+        if(error->kind==EvaluationError::kResourceLimit)throw Error::kResourceLimit;
+        if(error->kind==EvaluationError::kWorkLimit)throw Error::kWorkLimit;
+        Fail(Error::kSemantics,*error,TreeObligation::kForOfCorrespondence);
+      }
+      Step(std::get<std::uint64_t>(checked));
+      Require(false,Error::kControl,TreeObligation::kForOfCorrespondence);
+    }
     if (evaluation_.for_in) {
       const auto checked = exceptions_ ? VerifyPhasedEvaluationPlan(graph_, evaluation_, {bytes_, work_}) :
           VerifyEvaluationPlan(graph_, evaluation_, {bytes_, work_});

@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 增量 C（部分 4）：for-of 生产 evaluation 接线（cc 审查通过）
+
+- PhasedBody 持有 sealed ownership 与匹配的 MethodBody，经借用 view 传入两条 phased 调用链的公共 evaluation 构造；在 temporary/phi 规划前接入 protocol disposition（内部值不成为符号或临时变量，成功边原始值提交作为绑定来源，body use 走普通规划）；独立 verifier 重算全部证据。tree 新增 `kForOfCorrespondence` 门禁。结果：m7171（ComponentFactory）到达树门禁；其余 3 个暴露原先被遮蔽的真实下一层：TimeUtils 为 literal staged acyclic，DeepTypeUtils 的另一方法 m39263 也有 for-of close（kMultipleExits），assertDeepEquals 的另一方法 m40670 为 control duplicate。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变；扫描通过（只有既有的 family_source_cli_test 失败）。
+
 ## Round 79 增量 C（部分 3）：动态引用证明与 ForOfEvents（cc 审查通过）
 
 - UseId 级动态引用证据：沿 SSA copy/phi 的原始入边回溯到 acquisition 或 cached-next 的正常 Commit，跨越新 acquisition 的旧定义拒绝；独立 verifier 反向重算。`ForOfEvents`：acquire、next-read/call、object-check、done-read/decision、value-read 的类型化事件表，保留 Before/Commit、原始节点、异常出口、成功边限定的原始值提交与 B 的 completion 端口。4 个目标 standalone 均通过；公共 EvaluationPlan 接线、内部值 disposition 与树门禁待续，生产叶子不变。

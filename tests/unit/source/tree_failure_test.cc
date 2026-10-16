@@ -76,14 +76,14 @@ int main() {
   }
   // Every obligation travels through both publication paths. Zero is a real
   // PC/ID; absence and synthetic origins must survive independently.
-  for(unsigned tag=0;tag<=static_cast<unsigned>(TreeObligation::kForInRecovery);++tag) {
+  for(unsigned tag=0;tag<=static_cast<unsigned>(TreeObligation::kForOfCorrespondence);++tag) {
     FunctionTreeFailure f{FunctionTreeError::kControl};
     f.tree=TreeFailureEvidence{static_cast<TreeObligation>(tag),{}};
     auto& loc=f.tree->location;loc.method=abc::EntityOffset{77};loc.operation=analysis::OpId{0};
     loc.block=analysis::WorkBlockId{0};loc.edge=analysis::EdgeId{0};loc.expression=ExprId{0};loc.statement=StmtId{0};
     loc.control=ControlId{0};loc.pc=abc::CodeOffset{0};loc.working_pc=abc::CodeOffset{17};
     f.tree->ownership=ExpressionOwnershipError::kMissingExpression;
-    f.tree->placement=EvaluationKind::kCellGuard;f.tree->decision_entry=TreeLocation{};
+    f.tree->placement=tag==static_cast<unsigned>(TreeObligation::kForOfCorrespondence)?EvaluationKind::kForOfEvent:EvaluationKind::kCellGuard;f.tree->decision_entry=TreeLocation{};
     f.tree->expected_owner=loc;f.tree->actual_owner=TreeLocation{};
     f.cause=ControlError::kUncoveredBlock;
     auto projected=FamilyRouteFailure(f);

@@ -1,5 +1,6 @@
 #include "evaluation_plan.h"
 #include "for_in_evaluation.h"
+#include "for_of_evaluation.h"
 #include "evaluation_failure.h"
 #include "assignment_values.h"
 #include "evaluation_flow.h"
@@ -27,7 +28,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput array_source = {}, bool assignments = true, bool* proposed = nullptr, std::span<const analysis::GuardedRead> guarded = {}) {
+    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput array_source = {}, bool assignments = true, bool* proposed = nullptr, std::span<const analysis::GuardedRead> guarded = {}, const ForOfEvaluationInput* for_of = nullptr) {
   EvaluationEvidence witness;
   const auto Require = [&](bool condition, Error error) { if (!condition) throw EvaluationFailure{error, witness}; };
   auto work = budget.work; auto bytes = budget.bytes;
@@ -83,6 +84,11 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       analysis::SemanticBudget left{bytes, work};
       if (const auto error = BuildForInEvaluation(graph, plan, left)) return *error;
       bytes = left.bytes; work = left.work;
+    }
+    if (for_of) {
+      analysis::SemanticBudget left{bytes,work};
+      if(const auto error=BuildForOfEvaluation(graph,for_of,plan,left))return *error;
+      bytes=left.bytes;work=left.work;
     }
     if (!guarded.empty()) {
       Require(flow == EvaluationFlow::kPhased, Error::kOwnership);
@@ -230,7 +236,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     }
     if (has_phi) {
       auto copies = flow == EvaluationFlow::kNormal ? BuildPhiCopies(graph, {bytes, work})
-          : BuildPhasedPhiCopies(graph, {bytes, work}, plan.holes ? PhiDomain::kHoleTransport : PhiDomain::kLanguage, plan.for_in ? &*plan.for_in : nullptr);
+          : BuildPhasedPhiCopies(graph, {bytes, work}, plan.holes ? PhiDomain::kHoleTransport : PhiDomain::kLanguage, plan.for_in ? &*plan.for_in : nullptr, plan.for_of ? std::span<const ForOfUseDisposition>(plan.for_of->uses) : std::span<const ForOfUseDisposition>{});
       auto* phis = std::get_if<PhiCopies>(&copies);
       if (!phis) {
         const auto error = std::get<PhiCopyError>(copies);
@@ -241,7 +247,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       admit(phis->allocated_bytes, 1); step(phis->work);
       plan.phis = std::move(*phis);
       if (flow == EvaluationFlow::kPhased) {
-        auto staged = BuildExceptionCopies(graph, *plan.phis, {bytes, work});
+        auto staged = BuildExceptionCopies(graph, *plan.phis, {bytes, work}, plan.for_of ? std::span<const ForOfUseDisposition>(plan.for_of->uses) : std::span<const ForOfUseDisposition>{});
         if (const auto* error = std::get_if<ExceptionCopyError>(&staged)) {
           if (*error == ExceptionCopyError::kResourceLimit) return Error::kResourceLimit;
           if (*error == ExceptionCopyError::kWorkLimit) return Error::kWorkLimit;
@@ -379,6 +385,9 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         if(op.life==analysis::ValueLife::kLive&&std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation)) {
           Require(plan.concurrent&&plan.concurrent->members[index],Error::kOwnership);
           plan.operations[index]={EvaluationKind::kConcurrentNotification,{},{}};++serial;continue;
+        }
+        if (ForOfOperation(plan,{static_cast<std::uint32_t>(index)})) {
+          plan.operations[index]={EvaluationKind::kForOfEvent,{},{}};++serial;continue;
         }
         if (ForInOperation(plan, {static_cast<std::uint32_t>(index)})) {
           plan.operations[index] = {EvaluationKind::kForInEvent, {}, {}};
@@ -576,7 +585,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     if (const auto* error = std::get_if<EvaluationFailure>(&normalized)) return *error;
     const auto normalization_cost = std::get<IntegerNaNCost>(normalized);
     admit(normalization_cost.bytes, 1); step(normalization_cost.work);
-    const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow);
+    const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow,for_of);
     if (const auto* error = std::get_if<EvaluationFailure>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = plan.checked_failures.capacity() * sizeof(GuardedCallFailure) + plan.assignment_values.capacity() * sizeof(std::optional<analysis::OpId>) + plan.assignment_consumers.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_children.capacity() * sizeof(std::optional<analysis::OpId>) + plan.closed_expressions.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + (plan.phase_compositions.capacity() + plan.checked_compositions.capacity()) * sizeof(analysis::OpId) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_selections.capacity() * sizeof(PhaseSelectionOperand) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
@@ -593,6 +602,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         (plan.literals ? plan.literals->allocated_bytes : 0) +
         (ArrayInitializations(plan) ? ArrayInitializations(plan)->allocated_bytes : 0);
     for (const auto& call : plan.phase_selections) plan.allocated_bytes += call.prefix.capacity() * sizeof(analysis::OpId) + call.ancestors.capacity() * sizeof(PhaseCallReference);
+    if (plan.for_of) plan.allocated_bytes += plan.for_of->allocated_bytes;
     if (plan.for_in) plan.allocated_bytes += plan.for_in->allocated_bytes + plan.for_in_events->allocated_bytes;
     if (plan.self_order) plan.allocated_bytes += plan.self_order->AllocatedBytes();
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
@@ -615,7 +625,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(const analysis::
     EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
     analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions,
     std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands,
-    const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads, ArraySourceInput array_source, std::span<const analysis::GuardedRead> guarded = {}) {
+    const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads, ArraySourceInput array_source, std::span<const analysis::GuardedRead> guarded = {}, const ForOfEvaluationInput* for_of = nullptr) {
   // Reserve two disjoint work allowances before trying an optional projection.
   // A failed subpass need not report partial work: its entire allowance remains
   // charged. The byte allowance is reused only after the failed plan is gone.
@@ -632,7 +642,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(const analysis::
   const bool attempt = has_write && has_call;
   const auto allowance = attempt ? (budget.work - scan) / 2 : budget.work - scan;
   bool proposed = false;
-  auto result = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, attempt, &proposed, guarded);
+  auto result = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, attempt, &proposed, guarded, for_of);
   if (auto* plan = std::get_if<EvaluationPlan>(&result)) {
     // Twice actual work also admits this same successful attempt at plan.work.
     plan->work = scan + plan->work * (attempt ? 2 : 1);
@@ -640,7 +650,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(const analysis::
   }
   const auto error = std::get<EvaluationFailure>(result);
   if (!proposed || error == Error::kResourceLimit || error == Error::kWorkLimit) return result;
-  auto fallback = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, false, nullptr, guarded);
+  auto fallback = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, false, nullptr, guarded, for_of);
   if (auto* plan = std::get_if<EvaluationPlan>(&fallback)) plan->work += scan + allowance;
   return fallback;
 }
@@ -654,7 +664,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationPlan(
 std::variant<EvaluationPlan, EvaluationFailure> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, ArraySourceInput arrays, std::span<const analysis::GuardedRead> guarded) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {}, nullptr, {}, arrays, guarded);
+    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, ArraySourceInput arrays, std::span<const analysis::GuardedRead> guarded, const ForOfEvaluationInput* for_of) {
+  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {}, nullptr, {}, arrays, guarded, for_of);
 }
 }  // namespace abcd::source

@@ -1,6 +1,7 @@
 // Read-only standalone certificate diagnostic. No production admission hook.
 #include "../../../src/source/for_of_iteration.h"
 #include "../../../src/source/for_of_events.h"
+#include "../../../src/source/for_of_evaluation.h"
 #include "../../../src/analysis/value_edits.h"
 #include "../../../src/source/exception_control.h"
 #include "../../../src/source/exception_topology.h"
@@ -27,7 +28,7 @@ template<class T,class...U>T Take(std::variant<U...> value,const char* stage) {
     if constexpr(requires{f.pc;}) {if constexpr(requires{f.pc.value;})std::cout<<" pc="<<f.pc.value;else if(f.pc)std::cout<<" pc="<<f.pc->value;}
   },value);std::cout<<'\n';throw Refused{};
 }
-void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0,bool split=false,bool expected_gap=false) {
+void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0,bool split=false,bool expected_gap=false,bool protocol_only=false) {
   try {
     auto file=Take<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path),"file");
     auto hash=Take<corpus::FileFingerprint>(file->Fingerprint(),"fingerprint");
@@ -129,6 +130,47 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     auto advancing=ProveForOfIterations(body,graph,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol);
     if(const auto* f=std::get_if<ForOfIterationFailure>(&advancing)){std::cerr<<"iteration kind="<<unsigned(f->kind);if(f->node)std::cerr<<" node="<<f->node->value;if(f->operation)std::cerr<<" op="<<f->operation->value;if(f->edge)std::cerr<<" edge="<<f->edge->value;std::cerr<<'\n';}
     auto iteration=Take<ForOfIterationProof>(std::move(advancing),"iteration");
+#ifdef ABCD_TEST_FOR_OF_EVALUATION
+    const ForOfEvaluationInput source{body,input,plan,control,owner,SourceContract::kLanguageSourceV4};
+    auto evaluation_protocol=Take<ForOfEvaluationPlan>(BuildForOfEvaluationPlan(graph,source),"evaluation-protocol");
+    Take<std::uint64_t>(VerifyForOfEvaluationPlan(graph,source,evaluation_protocol),"verify-evaluation-protocol");
+    auto forged_disposition=evaluation_protocol;forged_disposition.operations[protocol.loops[0].acquisition.value].reset();
+    test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEvaluationPlan(graph,source,forged_disposition)));
+    forged_disposition=evaluation_protocol;forged_disposition.values[protocol.loops[0].iterator.value].reset();
+    test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEvaluationPlan(graph,source,forged_disposition)));
+    const auto protocol_build=[&](SemanticBudget b){return BuildForOfEvaluationPlan(graph,source,b);};
+    Take<ForOfEvaluationPlan>(protocol_build({SemanticBudget{}.bytes,evaluation_protocol.work}),"protocol-exact-work");
+    test::Check(std::get<ForOfIterationFailure>(protocol_build({SemanticBudget{}.bytes,evaluation_protocol.work-1})).kind==ForOfIterationError::kWorkLimit);
+    std::size_t low=0,high=SemanticBudget{}.bytes;
+    while(low<high){const auto mid=low+(high-low)/2;auto e=protocol_build({mid,SemanticBudget{}.work});if(std::holds_alternative<ForOfEvaluationPlan>(e))high=mid;else{test::Check(std::get<ForOfIterationFailure>(e).kind==ForOfIterationError::kResourceLimit);low=mid+1;}}
+    Take<ForOfEvaluationPlan>(protocol_build({low,SemanticBudget{}.work}),"protocol-exact-bytes");
+    test::Check(low>0 && std::get<ForOfIterationFailure>(protocol_build({low-1,SemanticBudget{}.work})).kind==ForOfIterationError::kResourceLimit);
+    bool body_use=false;
+    for(const auto& region:owner.Summary().regions)for(const auto& range:region.boundary->protected_ranges)if(range.role==ProtectedRangeRole::kLoopBody)
+      for(std::uint32_t u=0;u<graph.uses.size() && !body_use;++u){const auto& use=graph.uses[u];const auto* o=std::get_if<OpId>(&use.owner);if(use.life!=ValueLife::kLive || !o || evaluation_protocol.uses[u].protocol)continue;
+        if(std::find(range.ordinary.begin(),range.ordinary.end(),graph.phases[graph.ops[o->value].block.value].input)==range.ordinary.end())continue;
+        forged_disposition=evaluation_protocol;forged_disposition.uses[u].protocol=protocol.loops[0].protocol;
+        test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEvaluationPlan(graph,source,forged_disposition)));body_use=true;
+      }
+    test::Check(body_use);
+    if(!protocol_only) {
+    auto full=BuildPhasedEvaluationPlan(graph,{},IncomingCells::kConditional,{},{},{},{},ClosureWrites::kLanguage,{},{},&source);
+    if(const auto* f=std::get_if<EvaluationFailure>(&full)){std::cerr<<"evaluation kind="<<unsigned(f->kind)<<" obligation="<<unsigned(f->evaluation.obligation);if(f->evaluation.location.operation)std::cerr<<" op="<<f->evaluation.location.operation->value;if(f->evaluation.location.pc)std::cerr<<" pc="<<f->evaluation.location.pc->value;std::cerr<<'\n';}
+    auto evaluation=Take<EvaluationPlan>(std::move(full),"evaluation");
+    Take<std::uint64_t>(VerifyPhasedEvaluationPlan(graph,evaluation,{},&source),"verify-evaluation");
+    for(std::uint32_t v=0;v<graph.values.size();++v)if(evaluation.for_of->values[v])if(const auto* op=std::get_if<OpResult>(&graph.values[v].origin))test::Check(evaluation.operations[op->op.value].kind==EvaluationKind::kForOfEvent && !evaluation.operations[op->op.value].temporary);
+    if(evaluation.phis)for(std::size_t n=0;n<evaluation.phis->inputs.size();++n){const auto& use=graph.uses[evaluation.phis->inputs[n].value];const auto target=std::get<ValueId>(use.owner);if(evaluation.for_of->values[target.value])test::Check(evaluation.phis->projection[n]==PhiCopyUse::kForOfProtocol);}
+    const auto full_build=[&](SemanticBudget b){return BuildPhasedEvaluationPlan(graph,b,IncomingCells::kConditional,{},{},{},{},ClosureWrites::kLanguage,{},{},&source);};
+    Take<EvaluationPlan>(full_build({SemanticBudget{}.bytes,evaluation.work}),"evaluation-exact-work");
+    test::Check(std::get<EvaluationFailure>(full_build({SemanticBudget{}.bytes,evaluation.work-1})).kind==EvaluationError::kWorkLimit);
+
+    auto leak=evaluation;leak.operations[protocol.loops[0].advance.value]={EvaluationKind::kRoot,{},TemporaryReason::kCrossRegionValue};
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,leak,{},&source)));
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,evaluation)));
+    std::cout<<"verified common evaluation plan\n";
+    }
+    std::cout<<"verified for-of disposition\n";
+#endif
     const auto verify_iteration=[&](const ForOfIterationProof& value){return VerifyForOfIterations(body,graph,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol,value);};
     Take<std::uint64_t>(verify_iteration(iteration),"verify-iteration");
     test::Check(iteration.references.size()==protocol.loops.size()*3);
@@ -225,6 +267,6 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
 }
 int main(int argc,char**argv) {
   test::Check(argc>=2 && argc<=4);
-  if(argc>=3)Case(argv[1],0,std::stoul(argv[2]),0,false,argc==4 && std::string_view(argv[3])=="--expect-ownership-gap");
+  if(argc>=3)Case(argv[1],0,std::stoul(argv[2]),0,false,argc==4 && std::string_view(argv[3])=="--expect-ownership-gap",argc==4 && std::string_view(argv[3])=="--protocol-only");
   else {for(unsigned padding:{0,200,201,400,800})Case(argv[1],padding);Case(argv[1],0,451,1);Case(argv[1],0,451,0,true);}
 }

@@ -278,9 +278,10 @@ class FamilyTrees {
               uses[occurrence].domain == analysis::CaptureDomain::kGuarded && cell && tdz[i][cell->value]) guarded.push_back(pair);
         }
       }
+      const auto for_of=phase?phase->Phases().ForOfInput():std::optional<ForOfEvaluationInput>{};
       auto evaluated = phase ?
           BuildPhasedEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations, demands, {}, phase->Locals().writes, array_source, guarded) :
+              member.children, module_evaluations, demands, {}, phase->Locals().writes, array_source, guarded,for_of?&*for_of:nullptr) :
           BuildEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, function.Normal().values.initializers.calls, analysis::ClosureWrites::kLanguage,
               function.Normal().values.definitions.sites, guards, entries,

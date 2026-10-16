@@ -78,6 +78,7 @@ class PhasedBody {
   // Both are absent when no environment or creation operations need them.
   const analysis::ValueEnvironments* CellEnvironments() const;
   const CellPlan* Cells() const;
+  std::optional<ForOfEvaluationInput> ForOfInput() const;
   ExceptionTreeInput TreeInput(const abc::MethodBody& body) const;
   std::size_t AllocatedBytes() const;
   std::uint64_t Work() const;

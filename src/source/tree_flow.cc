@@ -1904,8 +1904,7 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
       }
       checked.Step(std::get<std::uint64_t>(regions));
     }
-    const auto verify = exceptions ? VerifyPhasedEvaluationPlan : VerifyEvaluationPlan;
-    const auto effects = verify(graph, evaluation, checked.Remaining());
+    const auto effects = exceptions ? VerifyPhasedEvaluationPlan(graph,evaluation,checked.Remaining(),exceptions->for_of?&*exceptions->for_of:nullptr) : VerifyEvaluationPlan(graph,evaluation,checked.Remaining());
     if (const auto* error = std::get_if<EvaluationFailure>(&effects)) {
       if (*error == EvaluationError::kResourceLimit) return Error::kResourceLimit;
       if (*error == EvaluationError::kWorkLimit) return Error::kWorkLimit;

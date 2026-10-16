@@ -11,6 +11,7 @@ struct ExceptionTreeInput {
   analysis::PhasedValueInput input;
   const ExceptionPlan& regions;
   const ExceptionControl& control;
+  std::optional<ForOfEvaluationInput> for_of;
 };
 // Resolve projection provenance at the AST boundary. A projected arc number is
 // never an original EdgeId; a try-wrapper continuation has no bytecode edge.

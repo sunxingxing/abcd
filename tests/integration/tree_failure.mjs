@@ -10,7 +10,8 @@ const cases = [
   ['DocsSample/DistributedAppDev/DistributedAuthentication', 4660, 5040, 12],
   ['UI/CustomAnimationTab', 8166, 8556, 13],
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
-  ['UI/CalendarViewSwitch', 28303, 28799, 677],
+  ['UI/CalendarViewSwitch', 28303, 28799],
+  ['UI/CustomAnimationTab', 6952, 7171, 93],
   ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket', 28264, 29676, 114],
   ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo', 29268, 29450, 90],
 ];
@@ -69,21 +70,36 @@ try {
         domains:[0,1,2,3,4],observer_instruction:6,producer_instruction:5,
         producer_kind:1,read_ordinal:0,reason:6,value:entity===4660?14:22});
     }
-    // Increment B independently verifies every close and the projected control
-    // before entering evaluation. This replaces the old TryId0 multi-exit leaf;
-    // it is still a strict refusal, not publication or an empty evaluation plan.
     if(entity===28303) {
-      assert.equal(report.source_failure.working_pc,677);
+      // C4 continues into the real evaluator. Its ordinary staged literal now
+      // exposes the whole-CFG acyclicity gap; this is NOT the requested tree
+      // gate yet. A whole-graph refusal must not borrow the acquisition's PC.
+      assert.equal(report.source_failure.pc,undefined);
+      assert.equal(report.source_failure.working_pc,undefined);
       assert.equal(report.source_failure.deferred,undefined);
       assert.equal(report.source_failure.exception_region,undefined);
       assert.deepEqual(report.source_failure.causes,[
-        {domain:'abcd::source::PhasedMethodError',value:7},
-        {domain:'abcd::source::EvaluationError',value:3},
-        {domain:'abcd::source::EvaluationObligation',value:19}]);
+        {domain:'abcd::source::EvaluationError',value:2},
+        {domain:'abcd::source::EvaluationObligation',value:0},
+        {domain:'abcd::source::LiteralError',value:1},
+        {domain:'abcd::source::EvaluationInputCheck',value:9}]);
       assert.deepEqual(report.source_failure.evaluation,{
-        obligation:19,location:{method:28799,operation:257,pc:677,working_pc:677}});
+        obligation:0,location:{method:28799},input_check:9,
+        plan_cause:{domain:'LiteralError',value:1}});
+    }
+    if(entity===6952) {
+      assert.deepEqual(report.source_failure.causes,[
+        {domain:'abcd::source::FunctionTreeError',value:0},
+        {domain:'abcd::source::TreeObligation',value:16}]);
+      assert.deepEqual(report.source_failure.tree,{
+        obligation:16,location:{method:7171,operation:38,block:76,pc:93,working_pc:93}});
+      const old=run(semantic,[abc,String(method),'--record-source','--value-source','--language-numeric','--language-constructors']);
+      assert.equal(old.status,1);
+      assert.deepEqual(JSON.parse(old.stdout).source_failure.causes,[
+        {domain:'abcd::source::PhasedMethodError',value:6},
+        {domain:'abcd::source::ExceptionControlError',value:4}]);
     }
 
   }
-  console.log('tree_failure_cli_test: three real refusals and three verified complete records agree across CLI and manifest');
+  console.log('tree_failure_cli_test: four real refusals and three verified complete records agree across CLI and manifest');
 } finally {rmSync(temp,{recursive:true,force:true});}

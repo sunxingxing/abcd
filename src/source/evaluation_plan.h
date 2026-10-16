@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_EVALUATION_PLAN_H_
 #define ABCD_SOURCE_EVALUATION_PLAN_H_
+#include "for_of_evaluation_plan.h"
 
 #include <span>
 #include <algorithm>
@@ -109,6 +110,7 @@ struct EvaluationPlan {
   std::optional<PhiCopies> phis;
   std::optional<ConcurrentCompletion> concurrent;
   std::optional<ForInPlan> for_in;
+  std::optional<ForOfEvaluationPlan> for_of;
   std::optional<ForInEvents> for_in_events;
   std::optional<LiteralPlan> literals;
   std::optional<CellEvaluation> cells;
@@ -360,9 +362,9 @@ struct EvaluationShape {
     std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
     std::span<const ClassInitializerCall> initializers = {},
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown, ArraySourceInput arrays = {},
-    std::span<const analysis::GuardedRead> guarded = {});
+    std::span<const analysis::GuardedRead> guarded = {}, const ForOfEvaluationInput* for_of = nullptr);
 [[nodiscard]] std::variant<std::uint64_t, EvaluationFailure> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, const ForOfEvaluationInput* for_of = nullptr);
 }  // namespace abcd::source
 #endif

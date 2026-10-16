@@ -51,9 +51,9 @@ enum class ExceptionCopyError : std::uint8_t {
 // Input graph/copy storage is caller-admitted; results and scratch share budget.
 [[nodiscard]] std::variant<ExceptionCopies, ExceptionCopyError> BuildExceptionCopies(
     const analysis::ValueProgram& graph, const PhiCopies& copies,
-    analysis::SemanticBudget budget = {});
+    analysis::SemanticBudget budget = {}, std::span<const ForOfUseDisposition> for_of = {});
 [[nodiscard]] std::variant<std::uint64_t, ExceptionCopyError> VerifyExceptionCopies(
     const analysis::ValueProgram& graph, const PhiCopies& copies,
-    const ExceptionCopies& plan, analysis::SemanticBudget budget = {});
+    const ExceptionCopies& plan, analysis::SemanticBudget budget = {}, std::span<const ForOfUseDisposition> for_of = {});
 }  // namespace abcd::source
 #endif

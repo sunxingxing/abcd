@@ -26,6 +26,8 @@ struct PhasedBody::Storage {
   std::optional<ModuleAliases> aliases;
   ExceptionPlan regions;
   ExceptionControl control;
+  std::optional<VerifiedProtocolRegionOwnership> protocols;
+  std::optional<abc::MethodBody> protocol_body;
   std::size_t bytes;
   std::uint64_t work;
   analysis::PhasedValueInput Input() const {
@@ -125,7 +127,11 @@ const analysis::ValueEnvironments* PhasedBody::CellEnvironments() const {
 }
 const CellPlan* PhasedBody::Cells() const { return storage_->cells ? &*storage_->cells : nullptr; }
 ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
-  return {body, storage_->Input(), storage_->regions, storage_->control};
+  return {body, storage_->Input(), storage_->regions, storage_->control,ForOfInput()};
+}
+std::optional<ForOfEvaluationInput> PhasedBody::ForOfInput() const {
+  if(!storage_->protocols)return {};
+  return ForOfEvaluationInput{*storage_->protocol_body,storage_->Input(),storage_->regions,storage_->control,*storage_->protocols,storage_->identity.contract};
 }
 std::size_t PhasedBody::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t PhasedBody::Work() const { return storage_->work; }
@@ -442,20 +448,16 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       const auto verified=VerifyExceptionControl(body,imported.graph,input,regions,control,quota.Remaining(),&*protocols);
       if(const auto* failure=std::get_if<ExceptionControlError>(&verified))return PhaseError(*failure,Error::kControl);
       quota.Step(std::get<std::uint64_t>(verified));
-      // Evaluation is the next stage. Do not discover descendant families or
-      // construct a partial evaluation plan before its protocol proof exists.
-      const auto& acquisition=protocols->Scan().candidates.front().acquisition;
-      EvaluationEvidence evidence;evidence.obligation=EvaluationObligation::kProtocolEvaluationPending;
-      evidence.location.method=context.Target();evidence.location.operation=acquisition.operation;
-      evidence.location.pc=acquisition.pc.value_or(acquisition.working_pc);
-      evidence.location.working_pc=acquisition.working_pc;
-      return PhasedControlFailure{Error::kEvaluation,EvaluationFailure{EvaluationError::kProtocolOperand,evidence},
-          context.Target(),evidence.location.pc,evidence.location.working_pc};
+    }
+    std::optional<abc::MethodBody> protocol_body;
+    if(protocols) {
+      const auto copy=[&](const auto& from,auto& to){using T=typename std::decay_t<decltype(to)>::value_type;quota.Admit(from.size(),sizeof(T));quota.Step(from.size());to.reserve(from.size());quota.Admit(to.capacity()-from.size(),sizeof(T));to.assign(from.begin(),from.end());};
+      protocol_body.emplace();copy(body.instructions,protocol_body->instructions);copy(body.tries,protocol_body->tries);copy(body.handlers,protocol_body->handlers);
     }
     return PhasedBody(std::make_unique<Storage>(Storage{context.Identity(), context.Target(), frame, std::move(flow), std::move(ssa),
         std::move(environments), std::move(values), std::move(proof), std::move(initialized), std::move(imported.graph),
         std::move(cell_environments), std::move(cells),
-        std::move(guards), std::move(aliases), std::move(regions), std::move(control),
+        std::move(guards), std::move(aliases), std::move(regions), std::move(control),std::move(protocols),std::move(protocol_body),
         quota.Bytes(), quota.Work()}));
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
@@ -482,8 +484,9 @@ std::variant<PhasedMethod, PhasedMethodError, EvaluationFailure> PhasedMethod::E
     PhaseBudget quota(budget);
     quota.Admit(sizeof(Storage)); quota.Admit(body.AllocatedBytes()); quota.Step(body.Work());
     const auto* aliases = body.Modules();
+    const auto for_of=body.ForOfInput();
     auto evaluated = BuildPhasedEvaluationPlan(body.Graph(), quota.Remaining(), IncomingCells::kReject, {},
-        aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{});
+        aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{},{},{},analysis::ClosureWrites::kUnknown,{},{},for_of?&*for_of:nullptr);
     if (auto* failure = std::get_if<EvaluationFailure>(&evaluated)) {
       failure->evaluation.location.method = body.Target();
       if (failure->kind == EvaluationError::kResourceLimit) return Error::kResourceLimit;

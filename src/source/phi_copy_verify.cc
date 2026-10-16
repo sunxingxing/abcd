@@ -7,7 +7,7 @@
 namespace abcd::source {
 std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
     const analysis::ValueProgram& graph, const PhiCopies& plan, analysis::SemanticBudget allowance,
-    PhiFlow flow) {
+    PhiFlow flow, std::span<const ForOfUseDisposition> for_of) {
   try {
     RequirePhiCopy(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, PhiCopyError::kRevision);
     CopyBudget budget(allowance);
@@ -33,6 +33,10 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
       }
       RequirePhiCopy(at == plan.for_in_inputs.size(),PhiCopyError::kInput);
     }
+    RequirePhiCopy(for_of.empty() || for_of.size()==graph.uses.size(),PhiCopyError::kInput);
+    std::size_t at_of=0;
+    if(!for_of.empty())for(std::uint32_t u=0;u<graph.uses.size();++u){budget.Step();if(!PhiInput(graph.uses[u]) || !for_of[u].protocol)continue;RequirePhiCopy(at_of<plan.for_of_inputs.size() && plan.for_of_inputs[at_of++].value==u,PhiCopyError::kInput);}
+    RequirePhiCopy(at_of==plan.for_of_inputs.size(),PhiCopyError::kInput);
     std::vector<ParallelCopy> effective; budget.Reserve(effective,plan.copies.size());
     std::vector<std::uint8_t> seen;
     budget.Array(seen, graph.uses.size());
@@ -51,12 +55,13 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopiesForFlow(
         seen[input.value] = 1;
         const auto& use = graph.uses[input.value];
         RequirePhiCopy(PhiInput(use) && use.incoming && SameIncoming(*use.incoming, bundle.incoming), PhiCopyError::kInput);
-        const bool consumed = protocol && protocol->uses[input.value].has_value();
+        const bool of=!for_of.empty() && for_of[input.value].protocol.has_value();
+        const bool consumed = of || (protocol && protocol->uses[input.value].has_value());
         if (!consumed) CheckPhiDomain(graph, use, plan.domain);
         RequirePhiCopy(std::get<analysis::ValueId>(use.owner) == plan.copies[i].destination &&
             SameCopyValue(use.operand, plan.copies[i].source), PhiCopyError::kInput);
         const bool identity = SourcePhiAlias(graph,identities,plan.copies[i].destination).has_value();
-        RequirePhiCopy(plan.projection[i] == (consumed ? PhiCopyUse::kForInProtocol :
+        RequirePhiCopy(plan.projection[i] == (of ? PhiCopyUse::kForOfProtocol : consumed ? PhiCopyUse::kForInProtocol :
             identity ? PhiCopyUse::kIdentity : PhiCopyUse::kRetained),PhiCopyError::kInput);
         if (!consumed && !identity) { effective.push_back(plan.copies[i]); expression_input = input; }
       }
@@ -83,7 +88,7 @@ std::variant<std::uint64_t, PhiCopyError> VerifyPhiCopies(
   return VerifyPhiCopiesForFlow(graph, plan, allowance, PhiFlow::kNormal);
 }
 std::variant<std::uint64_t, PhiCopyError> VerifyPhasedPhiCopies(
-    const analysis::ValueProgram& graph, const PhiCopies& plan, analysis::SemanticBudget allowance) {
-  return VerifyPhiCopiesForFlow(graph, plan, allowance, PhiFlow::kPhased);
+    const analysis::ValueProgram& graph, const PhiCopies& plan, analysis::SemanticBudget allowance, std::span<const ForOfUseDisposition> for_of) {
+  return VerifyPhiCopiesForFlow(graph, plan, allowance, PhiFlow::kPhased,for_of);
 }
 }  // namespace abcd::source

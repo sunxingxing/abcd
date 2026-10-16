@@ -14,9 +14,9 @@ Error CopyFailure(CopyError error) {
   if (error == CopyError::kResourceLimit) return Error::kResourceLimit;
   return Error::kPhi;
 }
-void CheckCopies(const ValueProgram& graph, const PhiCopies& copies, CopyBudget& budget) {
+void CheckCopies(const ValueProgram& graph, const PhiCopies& copies, CopyBudget& budget, std::span<const ForOfUseDisposition> for_of) {
   Require(graph.values.size() <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
-  const auto checked = VerifyPhasedPhiCopies(graph, copies, budget.Remaining());
+  const auto checked = VerifyPhasedPhiCopies(graph, copies, budget.Remaining(),for_of);
   if (const auto* error = std::get_if<PhiCopyError>(&checked)) {
     if (*error == PhiCopyError::kWorkLimit) throw Error::kWorkLimit;
     if (*error == PhiCopyError::kResourceLimit) throw Error::kResourceLimit;
@@ -48,10 +48,10 @@ CopyPlacement Placement(const ValueProgram& graph, const PhiBundle& bundle) {
 }  // namespace
 
 std::variant<ExceptionCopies, ExceptionCopyError> BuildExceptionCopies(
-    const ValueProgram& graph, const PhiCopies& copies, SemanticBudget allowance) {
+    const ValueProgram& graph, const PhiCopies& copies, SemanticBudget allowance, std::span<const ForOfUseDisposition> for_of) {
   try {
     CopyBudget budget(allowance);
-    CheckCopies(graph, copies, budget);
+    CheckCopies(graph, copies, budget,for_of);
     ExceptionCopies plan{graph.revision, graph.cfg_revision};
     budget.Admit(1, sizeof(plan));
     budget.Array(plan.placements, copies.bundles.size());
@@ -91,7 +91,7 @@ std::variant<ExceptionCopies, ExceptionCopyError> BuildExceptionCopies(
         plan.staging[i] = slot;
       }
     }
-    const auto checked = VerifyExceptionCopies(graph, copies, plan, budget.Remaining());
+    const auto checked = VerifyExceptionCopies(graph, copies, plan, budget.Remaining(),for_of);
     if (const auto* error = std::get_if<Error>(&checked)) return *error;
     budget.Step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = sizeof(plan) + plan.placements.capacity() * sizeof(CopyPlacement) +
@@ -106,11 +106,11 @@ std::variant<ExceptionCopies, ExceptionCopyError> BuildExceptionCopies(
 }
 std::variant<std::uint64_t, ExceptionCopyError> VerifyExceptionCopies(
     const ValueProgram& graph, const PhiCopies& copies, const ExceptionCopies& plan,
-    SemanticBudget allowance) {
+    SemanticBudget allowance, std::span<const ForOfUseDisposition> for_of) {
   try {
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     CopyBudget budget(allowance);
-    CheckCopies(graph, copies, budget);
+    CheckCopies(graph, copies, budget,for_of);
     Require(plan.placements.size() == copies.bundles.size(), Error::kPlacement);
     Require(plan.staging.size() == copies.copies.size(), Error::kSlot);
     std::vector<std::optional<CatchSlotId>> slots;

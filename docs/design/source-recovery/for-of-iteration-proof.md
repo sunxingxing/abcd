@@ -101,3 +101,23 @@ or native-source end-to-end acceptance. Reference/event mutations additionally
 cover swapped callee/receiver, a missing exception exit, wrong Commit, a success
 commit moved to exhaustion, a forged completion port and altered UseId roots.
 Event construction has exact byte/work boundary tests on all scale variants.
+
+## Increment C part 4 wiring (acceptance incomplete)
+
+PhasedBody now retains the sealed ownership and a prepaid copy of the matching
+MethodBody. Its original SSA/flow and ownership are passed by an explicit
+ForOfEvaluationInput to the common phased evaluator, including the family-tree
+call site. EvaluationPlan retains only owned evidence, not borrowed pointers.
+The independent evaluation verifier requires the original view and rebuilds
+identity, iterations/references, events and dispositions before using any mask.
+For-of phi/catch-copy consumers require the checked use view explicitly; an
+input list without that view is never evidence. Existing non-protocol calls
+retain their empty-view behavior.
+
+The standalone real fixture reaches a full common evaluation plan. Production
+m7171 reaches the located tree kForOfCorrespondence gate. The requested four
+production gates are not yet achieved: m28799's ordinary staged literal plan
+requires whole-CFG acyclicity; the record containing m39073 encounters m39263's control refusal during family
+discovery; the record containing m40502 encounters m40670's ordinary control
+refusal before m40502 reaches the tree stage. No child binding is invented and no ordinary proof is skipped
+to change those leaves. Source publication remains impossible for this path.

@@ -27,6 +27,6 @@ inline std::variant<std::uint64_t, EvaluationFailure> CheckEvaluationFlow(
 // graph into a normal graph by dropping its phase or exception information.
 std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
-    analysis::SemanticBudget budget, EvaluationFlow flow);
+    analysis::SemanticBudget budget, EvaluationFlow flow, const ForOfEvaluationInput* for_of = nullptr);
 }  // namespace abcd::source
 #endif
