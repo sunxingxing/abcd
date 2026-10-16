@@ -109,6 +109,8 @@ std::variant<LoopSyntax, TreeStructureError> PlanLoopSyntax(
             }
             break;
           }
+        } else if constexpr (std::is_same_v<T, ForOfStmt>) {
+          result.syntax_only_iteration = true;
         } else {
           static_assert(std::is_same_v<T, ForInStmt> || std::is_same_v<T, DeclarationStmt> || std::is_same_v<T, ReturnStmt> ||
               std::is_same_v<T, ThrowStmt> ||

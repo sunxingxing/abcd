@@ -107,7 +107,11 @@ class Initializers {
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
   }
   BindingInitializers Run() {
-    if (!tree_.recovery_issues.empty()) {
+    // Syntax-only native iteration has no original-flow correspondence yet.
+    // Direct printing retains every declaration/expression verbatim; never
+    // run recovery transformations over a fabricated enumeration protocol.
+    if (loops_.syntax_only_iteration) RequireTree(!original_, TreeStructureError::kUnsupportedSyntax);
+    if (!tree_.recovery_issues.empty() || loops_.syntax_only_iteration) {
       // Unknown control prevents semantic simplification, but printer clients
       // still require occurrence-indexed summaries. Publish conservative facts
       // on this terminal path too; an absent array is not an unknown effect.
@@ -2023,6 +2027,9 @@ class Initializers {
             if(use.declaration && declaration_containers_[visit.statement.value] && !use.legacy_initializer)
               use.legacy_initializer=visit.statement;
           }
+      } else if constexpr (std::is_same_v<T, ForOfStmt>) {
+        Scan(syntax.iterable, visit.lexical, visit.projector);
+        uses_[syntax.target.value].outside_body = true;
       } else if constexpr (std::is_same_v<T, ForInStmt>) {
         Scan(syntax.object, visit.lexical, visit.projector);
         // The header owns a write even when the body never reads the key.

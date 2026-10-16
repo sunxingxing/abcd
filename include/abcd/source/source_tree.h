@@ -252,6 +252,16 @@ struct ForInStmt {
   ForInBinding binding = ForInBinding::kAssignment;
   std::optional<LabelId> label;
 };
+// Assignment form retains the original declaration and its zero-iteration
+// value. Per-iteration lexical activation needs a separate certificate.
+enum class ForOfBinding : std::uint8_t { kAssignment, kPerIterationLet };
+struct ForOfStmt {
+  ExprId iterable;
+  SymbolId target;
+  StmtId body;
+  ForOfBinding binding = ForOfBinding::kAssignment;
+  std::optional<LabelId> label;
+};
 // Targets are enclosing syntax owners, never CFG/region IDs. Outer transfers
 // carry a preassigned label; the printer must not infer or retarget a jump.
 struct BreakStmt { StmtId target; std::optional<LabelId> label; };
@@ -273,7 +283,7 @@ struct RecoveryIssue {
 struct UnrecoveredStmt { RecoveryIssueId issue; };
 using TreeStatement = std::variant<BlockStmt, DeclarationStmt, ExpressionStmt, IfStmt, ReturnStmt,
                                    LoopStmt, BreakStmt, ContinueStmt, DebuggerStmt, ThrowStmt, TryStmt,
-                                   UnrecoveredStmt, ForInStmt>;
+                                   UnrecoveredStmt, ForInStmt, ForOfStmt>;
 struct StmtNode { TreeStatement statement; TreeOriginId origin; };
 
 // Origins/validation side tables may refer to working IDs. Executable node

@@ -9,6 +9,7 @@ void VisitStatementExpressions(const TreeStatement& statement, Visit visit) {
     using T = std::decay_t<decltype(node)>;
     if constexpr (std::is_same_v<T, ExpressionStmt>) visit(node.expression);
     else if constexpr (std::is_same_v<T, ForInStmt>) visit(node.object);
+    else if constexpr (std::is_same_v<T, ForOfStmt>) visit(node.iterable);
     else if constexpr (std::is_same_v<T, IfStmt>) visit(node.condition);
     else if constexpr (std::is_same_v<T, DeclarationStmt>) { if (node.initializer) visit(*node.initializer); }
     else if constexpr (std::is_same_v<T, ReturnStmt>) { if (node.value) visit(*node.value); }

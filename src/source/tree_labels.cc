@@ -31,7 +31,7 @@ std::variant<TreeStorage, TreeStructureError> AssignTreeLabels(FunctionTree& tre
       quota.Step();
       std::visit([&](auto& statement) {
         using T = std::decay_t<decltype(statement)>;
-        if constexpr (std::is_same_v<T, LoopStmt> || std::is_same_v<T, ForInStmt> || std::is_same_v<T, BlockStmt>) { ++targets; statement.label.reset(); }
+        if constexpr (std::is_same_v<T, LoopStmt> || std::is_same_v<T, ForInStmt> || std::is_same_v<T, ForOfStmt> || std::is_same_v<T, BlockStmt>) { ++targets; statement.label.reset(); }
         else if constexpr (std::is_same_v<T, BreakStmt> || std::is_same_v<T, ContinueStmt>) statement.label.reset();
       }, node.statement);
     }
@@ -45,17 +45,18 @@ std::variant<TreeStorage, TreeStructureError> AssignTreeLabels(FunctionTree& tre
       if (!frame.entered) {
         RequireTree(visited[frame.statement.value] == Visit::kUnseen, Error::kOwnership);
         visited[frame.statement.value] = Visit::kActive; frame.entered = true;
-        if (std::holds_alternative<LoopStmt>(node) || std::holds_alternative<ForInStmt>(node)) frame.loop = frame.statement;
+        if (std::holds_alternative<LoopStmt>(node) || std::holds_alternative<ForInStmt>(node) || std::holds_alternative<ForOfStmt>(node)) frame.loop = frame.statement;
         const auto transfer = [&](auto& jump) {
           RequireTree(jump.target.value < visited.size() && visited[jump.target.value] == Visit::kActive, Error::kTarget);
           auto& target = tree.statements[jump.target.value].statement;
           auto* loop = std::get_if<LoopStmt>(&target);
           auto* enumeration = std::get_if<ForInStmt>(&target);
+          auto* iteration = std::get_if<ForOfStmt>(&target);
           auto* block = std::get_if<BlockStmt>(&target);
           constexpr bool continues = std::is_same_v<std::decay_t<decltype(jump)>, ContinueStmt>;
-          RequireTree(loop || enumeration || (!continues && block), Error::kTarget);
-          if ((loop || enumeration) && frame.loop == jump.target) return;
-          auto& label = loop ? loop->label : enumeration ? enumeration->label : block->label;
+          RequireTree(loop || enumeration || iteration || (!continues && block), Error::kTarget);
+          if ((loop || enumeration || iteration) && frame.loop == jump.target) return;
+          auto& label = loop ? loop->label : enumeration ? enumeration->label : iteration ? iteration->label : block->label;
           if (!label) {
             label = LabelId{static_cast<std::uint32_t>(tree.labels.size())};
             tree.labels.push_back(jump.target);

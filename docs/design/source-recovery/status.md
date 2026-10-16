@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 79 II-a：ForOfStmt 语法、结构与打印（cc 审查通过）
+
+- `ForOfStmt` 持有 iterable、原声明的赋值目标、body 与 label（per-iteration let 仍拒绝）；遍历、作用域/目标检查、嵌套 break/continue 标签；打印 `for (target of rhs) body`（逗号 RHS 加括号，`async` 目标加括号）；RecoveryFlow 仍明确拒绝该节点，生产 builder 不变，m7171 仍为 kForOfCorrespondence。
+- cc 独立审查：构建通过；固定集串行 65/65；配对样本逐字节相同；526/620、572/620 不变。
+
 ## Round 79 增量 C（部分 4）：for-of 生产 evaluation 接线（cc 审查通过）
 
 - PhasedBody 持有 sealed ownership 与匹配的 MethodBody，经借用 view 传入两条 phased 调用链的公共 evaluation 构造；在 temporary/phi 规划前接入 protocol disposition（内部值不成为符号或临时变量，成功边原始值提交作为绑定来源，body use 走普通规划）；独立 verifier 重算全部证据。tree 新增 `kForOfCorrespondence` 门禁。结果：m7171（ComponentFactory）到达树门禁；其余 3 个暴露原先被遮蔽的真实下一层：TimeUtils 为 literal staged acyclic，DeepTypeUtils 的另一方法 m39263 也有 for-of close（kMultipleExits），assertDeepEquals 的另一方法 m40670 为 control duplicate。

@@ -25,6 +25,7 @@ struct LoopTransitionSyntax { StmtId block; std::uint32_t first; std::uint32_t e
 struct LoopInitializerRoot { StmtId statement; BlockBoundary boundary; };
 struct LoopInitializerSyntax { std::uint32_t first; std::uint32_t end; };
 struct LoopSyntax {
+  bool syntax_only_iteration = false;
   std::vector<LoopCompletionMeaning> meanings;
   std::vector<std::optional<LoopConditionSyntax>> conditions;
   std::vector<std::optional<LoopTransitionSyntax>> transitions;

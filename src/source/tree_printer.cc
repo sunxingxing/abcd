@@ -1634,6 +1634,21 @@ class TreePrinter {
     Push(Statement{node.body, at.depth}); Push(std::string_view(") "));
     Push(ExpressionOperand{node.object, {}});
   }
+  void StatementNode(ForOfStmt node, Statement at) {
+    if (node.binding != ForOfBinding::kAssignment) throw Error::kUnsupportedContext;
+    if (node.label) { Label(*node.label); Append(": "); }
+    Append("for (");
+    // ECMA-262 ForInOfStatement forbids the unparenthesized identifier async
+    // as the LHS of synchronous for-of. This is a spelling/grammar boundary.
+    const auto target = Initializers().Storage(node.target);
+    const bool grouped = Tree().names[Tree().symbols[target.value].name.value] == u"async";
+    if (grouped) Append("(");
+    Name(node.target);
+    if (grouped) Append(")");
+    Append(" of ");
+    Push(Statement{node.body, at.depth}); Push(std::string_view(") "));
+    Push(ExpressionOperand{node.iterable, {ExpressionGrammar::kAssignmentValue}});
+  }
   void StatementNode(LoopStmt node, Statement at) {
     if (const auto& syntax = Loops().conditions[at.id.value]) {
       const auto& transition = Loops().transitions[at.id.value];

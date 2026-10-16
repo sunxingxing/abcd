@@ -1452,7 +1452,7 @@ class FlowBuilder {
         if(!statement_actions_.empty())statement_actions_[at.id.value]=FlowStatementAction{
             OriginalStatementKind::kNormal,{start,context.next,{context.thrown,context.finalizer}}};
       }
-      else {static_assert(std::is_same_v<T,UnrecoveredStmt>);throw Error::kUnsupportedSyntax;}
+      else {static_assert(std::is_same_v<T,UnrecoveredStmt> || std::is_same_v<T,ForOfStmt>);throw Error::kUnsupportedSyntax;}
     },tree_.statements[at.id.value].statement);
   }
   FlowScopeContext current_scope_=IncomingScope{};
