@@ -32,6 +32,15 @@ struct ForOfKeyDefinition {
   std::optional<abc::RegisterId> reg; // absent denotes acc
   bool operator==(const ForOfKeyDefinition&) const = default;
 };
+// Actual operand occurrence, grounded in this activation rather than only in
+// the SCC canonical identity. Roots are normal Commit definitions.
+struct ForOfReference {
+  IteratorProtocolId protocol;
+  analysis::UseId use;
+  analysis::OpId root;
+  analysis::ValueId value;
+  bool operator==(const ForOfReference&) const = default;
+};
 struct ForOfKeyPhi {
   IteratorProtocolId protocol;
   analysis::ValueId phi;
@@ -49,6 +58,7 @@ struct ForOfIterationProof {
   std::vector<ForOfIteration> iterations;
   std::vector<ForOfKeyDefinition> definitions;
   std::vector<ForOfKeyPhi> phis;
+  std::vector<ForOfReference> references;
   std::size_t allocated_bytes=0, peak_bytes=0;
   std::uint64_t work=0;
 };

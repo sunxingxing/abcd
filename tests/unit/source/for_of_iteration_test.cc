@@ -1,5 +1,7 @@
 // Read-only standalone certificate diagnostic. No production admission hook.
 #include "../../../src/source/for_of_iteration.h"
+#include "../../../src/source/for_of_events.h"
+#include "../../../src/analysis/value_edits.h"
 #include "../../../src/source/exception_control.h"
 #include "../../../src/source/exception_topology.h"
 #include "abcd/source/async_completion.h"
@@ -129,6 +131,30 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     auto iteration=Take<ForOfIterationProof>(std::move(advancing),"iteration");
     const auto verify_iteration=[&](const ForOfIterationProof& value){return VerifyForOfIterations(body,graph,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol,value);};
     Take<std::uint64_t>(verify_iteration(iteration),"verify-iteration");
+    test::Check(iteration.references.size()==protocol.loops.size()*3);
+    auto bad_reference=iteration;bad_reference.references[0].root=protocol.loops[0].advance;
+    test::Check(std::holds_alternative<ForOfIterationFailure>(verify_iteration(bad_reference)));
+    bad_reference=iteration;std::swap(bad_reference.references[1].use,bad_reference.references[2].use);
+    test::Check(std::holds_alternative<ForOfIterationFailure>(verify_iteration(bad_reference)));
+    auto events=Take<ForOfEvents>(BuildForOfEvents(body,graph,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol,iteration),"events");
+    const auto verify_events=[&](const ForOfEvents& e){return VerifyForOfEvents(body,graph,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol,iteration,e);};
+    Take<std::uint64_t>(verify_events(events),"verify-events");
+    auto wrong_event=events;wrong_event.events[0].commit=wrong_event.events[0].before;
+    test::Check(std::holds_alternative<ForOfIterationFailure>(verify_events(wrong_event)));
+    wrong_event=events;wrong_event.events[2].exception_exit.reset();
+    test::Check(std::holds_alternative<ForOfIterationFailure>(verify_events(wrong_event)));
+    wrong_event=events;wrong_event.commits[0].success=wrong_event.commits[0].exhausted;
+    test::Check(std::holds_alternative<ForOfIterationFailure>(verify_events(wrong_event)));
+    wrong_event=events;wrong_event.ports[0].pending.target=ExceptionNodeId{0};
+    test::Check(std::holds_alternative<ForOfIterationFailure>(verify_events(wrong_event)));
+    const auto event_build=[&](SemanticBudget b){return BuildForOfEvents(body,graph,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol,iteration,b);};
+    Take<ForOfEvents>(event_build({SemanticBudget{}.bytes,events.work}),"events-exact-work");
+    test::Check(std::get<ForOfIterationFailure>(event_build({SemanticBudget{}.bytes,events.work-1})).kind==ForOfIterationError::kWorkLimit);
+    std::size_t elow=0,ehigh=SemanticBudget{}.bytes;
+    while(elow<ehigh){const auto mid=elow+(ehigh-elow)/2;auto e=event_build({mid,SemanticBudget{}.work});if(std::holds_alternative<ForOfEvents>(e))ehigh=mid;else{test::Check(std::get<ForOfIterationFailure>(e).kind==ForOfIterationError::kResourceLimit);elow=mid+1;}}
+    Take<ForOfEvents>(event_build({elow,SemanticBudget{}.work}),"events-exact-bytes");
+    test::Check(elow>0 && std::get<ForOfIterationFailure>(event_build({elow-1,SemanticBudget{}.work})).kind==ForOfIterationError::kResourceLimit);
+    std::cout<<"references="<<iteration.references.size()<<" events="<<events.events.size()<<" commits="<<events.commits.size()<<" ports="<<events.ports.size()<<'\n';
     for(const auto contract:{kSourceContract,SourceContract::kLanguageSourceV1})test::Check(std::get<ForOfIterationFailure>(ProveForOfIterations(body,graph,input,plan,control,owner,contract,protocol)).kind==ForOfIterationError::kAcquisitionSemantics);
     auto altered=iteration;altered.iterations[0].advance=altered.iterations[0].decision;
     test::Check(std::holds_alternative<ForOfIterationFailure>(verify_iteration(altered)));
@@ -147,6 +173,24 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     test::Check(std::holds_alternative<ForOfIterationFailure>(ProveForOfIterations(body,graph,input,plan,forged_control,owner,SourceContract::kLanguageSourceV4,protocol)));
     auto deleted_use=graph;test::Check(!deleted_use.uses.empty());deleted_use.uses.front().life=ValueLife::kRemoved;
     test::Check(std::holds_alternative<ForOfIterationFailure>(ProveForOfIterations(body,deleted_use,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol)));
+    auto swapped_reference=graph;
+    const auto& next_call=graph.ops[protocol.loops[0].advance.value];
+    std::optional<UseId> callee_use,receiver_use;
+    for(std::uint32_t u=next_call.first_use.value;u<next_call.first_use.value+next_call.use_count;++u){if(graph.uses[u].role==OperandRole::kCallee)callee_use=UseId{u};if(graph.uses[u].role==OperandRole::kReceiver)receiver_use=UseId{u};}
+    test::Check(callee_use && receiver_use);
+    const auto callee_value=std::get<ValueId>(graph.uses[callee_use->value].operand),receiver_value=std::get<ValueId>(graph.uses[receiver_use->value].operand);
+    test::Check(!ReplaceUse(swapped_reference,*callee_use,receiver_value));
+    test::Check(!ReplaceUse(swapped_reference,*receiver_use,callee_value));
+    test::Check(!VerifyValueUses(swapped_reference,swapped_reference.uses.size()));
+    test::Check(std::holds_alternative<ForOfIterationFailure>(ProveForOfIterations(body,swapped_reference,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol)));
+    auto escape=graph;std::optional<UseId> external_use;
+    for(std::uint32_t u=0;u<graph.uses.size();++u)if(graph.uses[u].life==ValueLife::kLive && !protocol.uses[u] && std::holds_alternative<ValueId>(graph.uses[u].operand) && std::holds_alternative<OpId>(graph.uses[u].owner)){external_use=UseId{u};break;}
+    test::Check(external_use && graph.ops[protocol.loops[0].acquisition.value].result);
+    test::Check(!ReplaceUse(escape,*external_use,*graph.ops[protocol.loops[0].acquisition.value].result));
+    test::Check(!VerifyValueUses(escape,escape.uses.size()));
+    test::Check(std::holds_alternative<ForOfIterationFailure>(ProveForOfIterations(body,escape,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol)));
+    auto missing_exit=graph;const auto call_exit=std::find_if(missing_exit.exceptional_exits.begin(),missing_exit.exceptional_exits.end(),[&](const auto& e){return e.op==protocol.loops[0].advance;});test::Check(call_exit!=missing_exit.exceptional_exits.end());missing_exit.exceptional_exits.erase(call_exit);
+    test::Check(std::holds_alternative<ForOfIterationFailure>(BuildForOfEvents(body,missing_exit,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol,iteration)));
     auto wrong_identity=protocol;wrong_identity.loops[0].next=wrong_identity.loops[0].advance;
     test::Check(std::holds_alternative<ForOfIterationFailure>(ProveForOfIterations(body,graph,input,plan,control,owner,SourceContract::kLanguageSourceV4,wrong_identity)));
     if(!iteration.phis.empty()){altered=iteration;altered.phis[0].edge.value^=1;test::Check(std::holds_alternative<ForOfIterationFailure>(verify_iteration(altered)));}

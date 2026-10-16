@@ -6,6 +6,8 @@
 #include <deque>
 #include <algorithm>
 #include <stdexcept>
+#include <set>
+#include <tuple>
 namespace abcd::source {
 namespace {
 using namespace analysis;
@@ -145,6 +147,69 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
         const auto& b=topology.blocks[node.value];for(std::uint32_t e=b.first_arc.value;e<b.first_arc.value+b.arc_count;++e){q.Step();offer({key.first,topology.edges[e].target.value},bits);}
       }
     }
+    // Dynamic reference proof. Walk the actual SSA operand backwards to its
+    // normal defining Commit, switching to copy inputs or physical phi edges.
+    // Crossing a fresh acquisition while carrying an older definition refuses;
+    // a matching canonical SCC alone cannot establish the activation epoch.
+    {
+      std::pmr::vector<std::uint32_t> offsets(g.blocks.size()+1,0,&q.memory);
+      std::pmr::vector<EdgeId> predecessors(g.edges.size(),{},&q.memory);
+      std::pmr::vector<std::optional<UseId>> phi_first(g.values.size(),{},&q.memory), phi_next(g.uses.size(),{},&q.memory);
+      for(const auto& e:g.edges){q.Step();++offsets[e.target.value+1];}
+      for(std::size_t n=1;n<offsets.size();++n){q.Step();offsets[n]+=offsets[n-1];}
+      auto cursor=std::pmr::vector<std::uint32_t>(offsets,&q.memory);
+      for(std::uint32_t e=0;e<g.edges.size();++e){q.Step();predecessors[cursor[g.edges[e].target.value]++]={e};}
+      for(std::uint32_t u=0;u<g.uses.size();++u){q.Step();const auto& use=g.uses[u];if(use.life!=ValueLife::kLive)continue;if(const auto* phi=std::get_if<ValueId>(&use.owner)){phi_next[u]=phi_first[phi->value];phi_first[phi->value]=UseId{u};}}
+      using State=std::tuple<std::uint32_t,std::uint32_t,std::uint32_t,std::uint32_t>;
+      std::pmr::set<State> seen(&q.memory);std::pmr::deque<State> worklist(&q.memory);
+      // Both states and scanned predecessor/use edges are bounded. High-fanout
+      // repeated queries cannot turn the admitted algorithm quadratic.
+      const auto dimension=g.blocks.size()+g.edges.size()+g.values.size()+g.uses.size();
+      q.Require(dimension<=SIZE_MAX/kSparseQueriesPerNode,ForOfIterationError::kResourceLimit);
+      const auto limit=dimension*kSparseQueriesPerNode;std::size_t visits=0;
+      const auto charge=[&](){q.Step();q.Require(visits<limit,ForOfIterationError::kResourceLimit);++visits;};
+      const auto offer=[&](State state){charge();if(seen.find(state)!=seen.end())return;q.Require(seen.size()<limit,ForOfIterationError::kResourceLimit);seen.insert(state);worklist.push_back(state);};
+      q.Reserve(out.references,identity.loops.size()*3);
+      for(const auto& l:identity.loops) {
+        for(const auto [operation,role,root]:{std::tuple{l.next,OperandRole::kBase,l.acquisition},std::tuple{l.advance,OperandRole::kCallee,l.next},std::tuple{l.advance,OperandRole::kReceiver,l.acquisition}}) {
+          q.witness={ForOfIterationError::kIdentity,l.protocol,operation};
+          std::optional<UseId> seed;const auto& op=g.ops[operation.value];
+          for(std::uint32_t u=op.first_use.value;u<op.first_use.value+op.use_count;++u){q.Step();if(g.uses[u].role==role){q.Require(!seed,ForOfIterationError::kIdentity);seed=UseId{u};}}
+          q.Require(seed.has_value(),ForOfIterationError::kIdentity);
+          const auto* value=std::get_if<ValueId>(&g.uses[seed->value].operand);q.Require(value,ForOfIterationError::kIdentity);
+          const auto root_value=g.ops[root.value].result;q.Require(root_value && commit[root.value],ForOfIterationError::kIdentity);
+          offer({seed->value,root.value,value->value,op.block.value});bool grounded=false;
+          while(!worklist.empty()) {
+            charge();const auto state=reverse?worklist.back():worklist.front();if(reverse)worklist.pop_back();else worklist.pop_front();
+            const ValueId current{std::get<2>(state)};const WorkBlockId node{std::get<3>(state)};
+            q.Require(current.value<g.values.size() && node.value<g.blocks.size(),ForOfIterationError::kIdentity);
+            q.witness.node=phase[node.value];q.witness.value=current;
+            const auto& definition=g.values[current.value].origin;
+            if(node==*commit[root.value] && current==*root_value){grounded=true;continue;}
+            q.Require(node!=*commit[l.acquisition.value] && node!=*commit[root.value],ForOfIterationError::kIdentity);
+            if(const auto* result=std::get_if<OpResult>(&definition);result && result->commit==node) {
+              const auto& producer=g.ops[result->op.value];q.Require(std::holds_alternative<ValueCopy>(producer.operation) && producer.use_count==1,ForOfIterationError::kIdentity);
+              const auto* source=std::get_if<ValueId>(&g.uses[producer.first_use.value].operand);q.Require(source,ForOfIterationError::kIdentity);
+              offer({seed->value,root.value,source->value,producer.block.value});continue;
+            }
+            if(const auto* phi=std::get_if<PhiDefinition>(&definition);phi && phi->block==node) {
+              bool incoming=false;
+              for(auto u=phi_first[current.value];u;u=phi_next[u->value]) {
+                charge();const auto& use=g.uses[u->value];q.Require(use.incoming && std::holds_alternative<EdgeId>(*use.incoming),ForOfIterationError::kIdentity);
+                const auto edge=std::get<EdgeId>(*use.incoming);q.Require(edge.value<g.edges.size() && g.edges[edge.value].target==node,ForOfIterationError::kIdentity);
+                const auto from=g.edges[edge.value].source;if(g.phases[from.value].reachability==PhaseReachability::kUnreachable)continue;
+                const auto* source=std::get_if<ValueId>(&use.operand);q.Require(source,ForOfIterationError::kIdentity);incoming=true;offer({seed->value,root.value,source->value,from.value});
+              }
+              q.Require(incoming,ForOfIterationError::kIdentity);continue;
+            }
+            bool incoming=false;
+            for(auto n=offsets[node.value];n<offsets[node.value+1];++n){charge();const auto from=g.edges[predecessors[n].value].source;if(g.phases[from.value].reachability==PhaseReachability::kUnreachable)continue;incoming=true;offer({seed->value,root.value,current.value,from.value});}
+            q.Require(incoming,ForOfIterationError::kIdentity);
+          }
+          q.Require(grounded,ForOfIterationError::kIdentity);out.references.push_back({l.protocol,*seed,root,*value});
+        }
+      }
+    }
     // Every ordinary protected body node must be reached AFTER this iteration's
     // value read. The body itself is never made a protocol-owned member.
     for(const auto& region:owner.Summary().regions)for(const auto& range:region.boundary->protected_ranges) {
@@ -227,7 +292,7 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
     for(std::uint32_t u=0;u<g.uses.size();++u){q.Step();const auto& use=g.uses[u];if(use.life!=ValueLife::kLive)continue;const auto* phi=std::get_if<ValueId>(&use.owner);if(!phi)continue;
       auto p=affected.lower_bound({phi->value,0});for(;p!=affected.end() && p->first.first==phi->value;++p){q.Step();const auto* value=std::get_if<ValueId>(&use.operand);q.Require(value && use.incoming && std::holds_alternative<EdgeId>(*use.incoming),ForOfIterationError::kBinding);q.Require(out.phis.size()<out.phis.capacity(),ForOfIterationError::kResourceLimit);out.phis.push_back({{p->first.second},*phi,{u},std::get<EdgeId>(*use.incoming),*value});}
     }
-    out.allocated_bytes=out.iterations.capacity()*sizeof(ForOfIteration)+out.definitions.capacity()*sizeof(ForOfKeyDefinition)+out.phis.capacity()*sizeof(ForOfKeyPhi);
+    out.allocated_bytes=out.iterations.capacity()*sizeof(ForOfIteration)+out.definitions.capacity()*sizeof(ForOfKeyDefinition)+out.phis.capacity()*sizeof(ForOfKeyPhi)+out.references.capacity()*sizeof(ForOfReference);
     out.peak_bytes=q.memory.Peak();out.work=q.initial-q.left;return out;
   }catch(const ForOfIterationFailure& e){return e;}catch(ControlError e){return ForOfIterationFailure{e==ControlError::kWorkLimit?ForOfIterationError::kWorkLimit:e==ControlError::kResourceLimit?ForOfIterationError::kResourceLimit:ForOfIterationError::kCorrespondence};}
   catch(ExceptionControlError){return ForOfIterationFailure{ForOfIterationError::kCorrespondence};}
@@ -244,9 +309,9 @@ std::variant<std::uint64_t,ForOfIterationFailure> VerifyForOfIterations(
     const ExceptionPlan& r,const ExceptionControl& c,const VerifiedProtocolRegionOwnership& o,
     SourceContract s,const ForOfIdentityIndex& x,const ForOfIterationProof& p,analysis::SemanticBudget q){
   auto rebuilt=Analyze(b,g,i,r,c,o,s,x,q,true);if(const auto* f=std::get_if<ForOfIterationFailure>(&rebuilt))return *f;
-  const auto& expected=std::get<ForOfIterationProof>(rebuilt);const auto cost=expected.iterations.size()+expected.definitions.size()+expected.phis.size()+1;
+  const auto& expected=std::get<ForOfIterationProof>(rebuilt);const auto cost=expected.iterations.size()+expected.definitions.size()+expected.phis.size()+expected.references.size()+1;
   if(cost>q.work-expected.work)return ForOfIterationFailure{ForOfIterationError::kWorkLimit};
-  if(p.revision!=g.revision || p.cfg_revision!=g.cfg_revision || p.iterations!=expected.iterations || p.definitions!=expected.definitions || p.phis!=expected.phis)return ForOfIterationFailure{ForOfIterationError::kCorrespondence};
+  if(p.revision!=g.revision || p.cfg_revision!=g.cfg_revision || p.iterations!=expected.iterations || p.definitions!=expected.definitions || p.phis!=expected.phis || p.references!=expected.references)return ForOfIterationFailure{ForOfIterationError::kCorrespondence};
   return expected.work+cost;
 }
 }

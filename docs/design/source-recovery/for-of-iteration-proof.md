@@ -1,8 +1,8 @@
 # Standalone for-of advance and key-definition evidence
 
-This is Increment C part 2's standalone slice. It does not change production
+This covers Increment C part 2 and the standalone reference/event slice of part 3. It does not change production
 planning, exception control, or the `kProtocolEvaluationPending` gate. It is not
-ForOfPlan/ForOfEvents and cannot authorize source publication.
+a complete ForOfPlan and cannot authorize source publication.
 
 ## Input and algorithm
 
@@ -28,9 +28,19 @@ A separate activation query propagates absent/fresh/cached states from the
 real projection entries. Only acquisition Commit resets fresh. The next read
 requires fresh, its normal Commit establishes cached, and advance requires
 cached. A second read without a new acquisition is rejected. This certifies read/call
-occurrence order; the full ForOfPlan must additionally certify the dynamic
-callee/receiver identity of aliases across acquisition epochs. The count
-query alone must not be used as that value-identity proof.
+occurrence order; the separate reference closure below supplies the operand
+identity proof. The count query alone must not be used as that proof.
+
+Each actual next-base, next-call callee and receiver UseId is traced backwards
+to its normal defining Commit. Copy definitions switch to their physical input;
+phi definitions switch to every reachable original incoming edge/value. Crossing
+a new acquisition while carrying an older definition refuses; cached-next
+queries also stop at the next definition. Root definitions are the exact SSA
+results of acquisition/next, not canonical SCC aliases. All finite paths must
+be accounted for and the actual root must be reached. Original SSA availability
+and B ownership are independently rechecked first. This closure has a shared
+prepaid sparse state and edge-visit allowance, so dense propagation refuses
+rather than producing a partial identity proof.
 
 The result records the real SSA Commit definitions of the extracted value and
 its copies reached in value-read state. Exact SSA operands are grounded at the
@@ -67,8 +77,16 @@ live-out against these original phi relations. The new live-out fixture
 currently fails B ownership and stays refused. This slice does not claim that
 live-out native binding recovery has passed.
 
-ForOfEvents, the common evaluation/temporary/phi disposition, its independent
-verification, and the tree correspondence gate remain to be implemented.
+`ForOfEvents` now retains acquire, cached-next read, next-call, object-check,
+done-read/decision and value-read Before/Commit/original/exception identities.
+Physical value commits remain distinct from edge-qualified success and exhaustion
+and from B's correlated completion ports. Its verifier recomputes the original
+iteration/reference/ownership proof and every event; a mask is never a premise.
+This is standalone correspondence, not selection of a source binding.
+
+The common evaluation/temporary/phi disposition, retained original-input ownership
+for its independent verifier, and the real tree correspondence gate remain to
+be implemented. The production evaluation gate has deliberately not moved.
 No iterator/next/result source symbol is authorized by this standalone API.
 
 ## Tests
@@ -79,4 +97,7 @@ NOP/block splitting, 200/201/400/800 instruction padding, exact byte/work
 boundaries, wrong advance/done/value identities, changed/deleted/duplicated
 Commit evidence, and wrong original phi-edge evidence when present. These
 integrity tests do not replace the remaining original-protocol mutation suite
-or native-source end-to-end acceptance.
+or native-source end-to-end acceptance. Reference/event mutations additionally
+cover swapped callee/receiver, a missing exception exit, wrong Commit, a success
+commit moved to exhaustion, a forged completion port and altered UseId roots.
+Event construction has exact byte/work boundary tests on all scale variants.

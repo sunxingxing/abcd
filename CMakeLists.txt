@@ -210,7 +210,7 @@ target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/for_in_emission.cc src/source/for_in_recovery.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/iterator_keys.cc src/source/iterator_protocol_scan.cc)
-target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc)
+target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc src/source/for_of_events.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
