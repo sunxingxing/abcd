@@ -2482,6 +2482,3108 @@
       "classification": "Unmeasured",
       "oracles": {},
       "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldlexenv_pref_none-dynamic9.abc",
+      "sha256": "b152a94becb8960bf1fdfd95e7e2edef7683e6bf79d3b2370357cb7a0bd9f3fe",
+      "profile": 1,
+      "opcodes": [
+        252
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldlexenv_pref_none-dynamic1102.abc",
+      "sha256": "a858244807c53657b87ec7eee3632ce75afc2e2ce2469d53653f5a5e9d9f608a",
+      "profile": 2,
+      "opcodes": [
+        252
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldlexenv_pref_none-dynamic1202.abc",
+      "sha256": "2fe571206b36e2e1df3971403056aae44ebde2728074b72de27f23d72070bb6a",
+      "profile": 3,
+      "opcodes": [
+        252
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldlexenv_pref_none-dynamic1206.abc",
+      "sha256": "9c419dc59174e4c7d0f3d8a778f3c9696d0eb30d4c5be047a03b34efbd0da8ca",
+      "profile": 4,
+      "opcodes": [
+        252
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldlexenv_pref_none-dynamic1301.abc",
+      "sha256": "d6e035bb5aba6cd174f463e182cf2e851fab3bf24ac4772c0b8f08a0b20845c2",
+      "profile": 5,
+      "opcodes": [
+        252
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldlexenv_pref_none-dynamic2400.abc",
+      "sha256": "d1e3e89e5244c63684fee4efb54454a1c78ce16eb998032e729a1a3ac4f30361",
+      "profile": 6,
+      "opcodes": [
+        252
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_poplexenv_pref_none-dynamic9.abc",
+      "sha256": "c8dd02978e3cc877beaefca2ce3112fc05ffc5c533b5549fdadcdc1127311778",
+      "profile": 1,
+      "opcodes": [
+        508
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_poplexenv_pref_none-dynamic1102.abc",
+      "sha256": "4eb18c3e6e30d00d9269e141d246d7cce5b24a15848a40a66265c344d8fafd28",
+      "profile": 2,
+      "opcodes": [
+        508
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_poplexenv_pref_none-dynamic1202.abc",
+      "sha256": "4b5596d3671d376248080ebdea5996e9a82c247a3e0cf31caef28170536811bb",
+      "profile": 3,
+      "opcodes": [
+        508
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_poplexenv_pref_none-dynamic1206.abc",
+      "sha256": "3792ca1e51a0f3020ba6ac4345de66e83f83757812c20491c59835e078354179",
+      "profile": 4,
+      "opcodes": [
+        508
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_poplexenv_pref_none-dynamic1301.abc",
+      "sha256": "3d62be6f4c325838e14e4820d8d8200f823bd363dc7880da212c402d5f6f308b",
+      "profile": 5,
+      "opcodes": [
+        508
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_poplexenv_pref_none-dynamic2400.abc",
+      "sha256": "ab9422c574341c79fac861025426cc7a321aa2332b30d12750ff6596b6ad0d82",
+      "profile": 6,
+      "opcodes": [
+        508
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getiteratornext_pref_v8_v8-dynamic9.abc",
+      "sha256": "cb2b3451a2fd4c206d6be17dace812113606a6d2d57da2853be89daf2af88884",
+      "profile": 1,
+      "opcodes": [
+        764
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getiteratornext_pref_v8_v8-dynamic1102.abc",
+      "sha256": "37d1606dd0f076b4e88a8413ac89ebd7454071c61a0785017bc26b8e0c661331",
+      "profile": 2,
+      "opcodes": [
+        764
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getiteratornext_pref_v8_v8-dynamic1202.abc",
+      "sha256": "3086fedda3785527dc79ffc8c0363ded4ac337fa0c54435fa63bd6db8fc2fed1",
+      "profile": 3,
+      "opcodes": [
+        764
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getiteratornext_pref_v8_v8-dynamic1206.abc",
+      "sha256": "3b35572046f28748d5b46b804f305a0a7fb4bbc0b2c73071f2ae02127f7a1128",
+      "profile": 4,
+      "opcodes": [
+        764
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getiteratornext_pref_v8_v8-dynamic1301.abc",
+      "sha256": "45f43e077f08437f6f5a11cdbe438f3383020729d1f0de0d8266258ec3f01728",
+      "profile": 5,
+      "opcodes": [
+        764
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getiteratornext_pref_v8_v8-dynamic2400.abc",
+      "sha256": "d8580d1f835c3a1d8d74283eddc524f7a34d114d8638641a517c6c36698fd0df",
+      "profile": 6,
+      "opcodes": [
+        764
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createarraywithbuffer_pref_imm16-dynamic9.abc",
+      "sha256": "d057e55d6494d7e0d64edc930c3ed4736062c1b05d8b8606e3fddfb7b02b2608",
+      "profile": 1,
+      "opcodes": [
+        1020
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createarraywithbuffer_pref_imm16-dynamic1102.abc",
+      "sha256": "c1ba36db0bbf27ada0d801cd981b492287f2c61b49320e152ba9f90704979d6e",
+      "profile": 2,
+      "opcodes": [
+        1020
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createarraywithbuffer_pref_imm16-dynamic1202.abc",
+      "sha256": "87c3ddf516e5b044564dec94bbc79edf4198f24b8d29e78b000dd112c71b0691",
+      "profile": 3,
+      "opcodes": [
+        1020
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createarraywithbuffer_pref_imm16-dynamic1206.abc",
+      "sha256": "0130c8f3333c2b89c5c18fd1660a28fd9e0a6b367b1ff3764dc2b1a7fc6e5849",
+      "profile": 4,
+      "opcodes": [
+        1020
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createarraywithbuffer_pref_imm16-dynamic1301.abc",
+      "sha256": "6e67b37dabac28b6aeaef0e46682371c4bd69c71a62057350756f8d57c5d5529",
+      "profile": 5,
+      "opcodes": [
+        1020
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createarraywithbuffer_pref_imm16-dynamic2400.abc",
+      "sha256": "4551e3b3ca18ce3cbf92e20498a077deeca088d8177315eb51e61dba338ca9a7",
+      "profile": 6,
+      "opcodes": [
+        1020
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjectwithbuffer_pref_imm16-dynamic9.abc",
+      "sha256": "ee55cf611023d95788d10771555704742eb902069d345eda246fa9d69a30b3cf",
+      "profile": 1,
+      "opcodes": [
+        1276
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjectwithbuffer_pref_imm16-dynamic1102.abc",
+      "sha256": "777cc341a02c9e6028d876417293c2128e4246a3ebe4172efc0564673794a0ae",
+      "profile": 2,
+      "opcodes": [
+        1276
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjectwithbuffer_pref_imm16-dynamic1202.abc",
+      "sha256": "ffbc5bc0fb01fe6436ded5a0f0d2a50d8d4da3a4dd23debcb4e03bedfccfc604",
+      "profile": 3,
+      "opcodes": [
+        1276
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjectwithbuffer_pref_imm16-dynamic1206.abc",
+      "sha256": "10136130523cf6eebc9d7223a6c2eace911bf5e0659983201b5497300fe08748",
+      "profile": 4,
+      "opcodes": [
+        1276
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjectwithbuffer_pref_imm16-dynamic1301.abc",
+      "sha256": "2648bf6f0ea6787d00592377838adc3907e97a72e4cef33e36d73635969b8d01",
+      "profile": 5,
+      "opcodes": [
+        1276
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjectwithbuffer_pref_imm16-dynamic2400.abc",
+      "sha256": "e412e649bacef0874f027def0b6d2a21d07972a8352ba7e1dc0c3160b0c46da2",
+      "profile": 6,
+      "opcodes": [
+        1276
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumber_pref_v8-dynamic9.abc",
+      "sha256": "341a39cd9c137cc0f51546d8c51331a0d512d83169bdea294d86c247e20e086e",
+      "profile": 1,
+      "opcodes": [
+        1532
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumber_pref_v8-dynamic1102.abc",
+      "sha256": "02da338418ebba880af0ab7ec40fe16a440790589d2f19e67d52db72fabb2ada",
+      "profile": 2,
+      "opcodes": [
+        1532
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumber_pref_v8-dynamic1202.abc",
+      "sha256": "a1dd23ad6d445d8c3e4d9a003e875f4afde142bea34be7d6d6699f2cec19e31f",
+      "profile": 3,
+      "opcodes": [
+        1532
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumber_pref_v8-dynamic1206.abc",
+      "sha256": "78ec81406e960cc91fe6525e6698e6d063984647baf329310a26de1b29ef4fda",
+      "profile": 4,
+      "opcodes": [
+        1532
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumber_pref_v8-dynamic1301.abc",
+      "sha256": "2f9be31482f11dab1a33ceccab0d7da08e5c0eaa57a0316b808f924b6d2d2f56",
+      "profile": 5,
+      "opcodes": [
+        1532
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumber_pref_v8-dynamic2400.abc",
+      "sha256": "b535163aed306e360d4fb140c27196c27465e09bce403aed4bf226512c05861a",
+      "profile": 6,
+      "opcodes": [
+        1532
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumeric_pref_v8-dynamic9.abc",
+      "sha256": "a45b91a32c0a3afa3337544a54263e73321119ab0a3d3949edbc18f8477f948d",
+      "profile": 1,
+      "opcodes": [
+        1788
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumeric_pref_v8-dynamic1102.abc",
+      "sha256": "e2b1f816ad0252d9fcfcc10c3829f21f67e4d46c7421dc4b92e6f324a2bc72b3",
+      "profile": 2,
+      "opcodes": [
+        1788
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumeric_pref_v8-dynamic1202.abc",
+      "sha256": "4e635e7217df2a690d5730e1e0837240caadc54a929c029d5c32228520dbc866",
+      "profile": 3,
+      "opcodes": [
+        1788
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumeric_pref_v8-dynamic1206.abc",
+      "sha256": "1e22df668a7186a57bc1a1774e4141cbe4552741a9b4a61a0817103b0220a96d",
+      "profile": 4,
+      "opcodes": [
+        1788
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumeric_pref_v8-dynamic1301.abc",
+      "sha256": "ae87c1afb5ba1828774a448a8b314770919c0e912c3c743085dcb9b4966c6b3e",
+      "profile": 5,
+      "opcodes": [
+        1788
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_tonumeric_pref_v8-dynamic2400.abc",
+      "sha256": "57d152994a652aa19f5921c78d6fd3a8a738e847a33186c5edf53bbf9ddcfb7a",
+      "profile": 6,
+      "opcodes": [
+        1788
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_neg_pref_v8-dynamic9.abc",
+      "sha256": "9c910e949dd553d696f0ddf74a8140a63ea68edc9dd9caa471153d2bcb1a4f8c",
+      "profile": 1,
+      "opcodes": [
+        2044
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_neg_pref_v8-dynamic1102.abc",
+      "sha256": "546b916965f0e057250d850dbf28cae8cba7858e07fc21a8baec85768d825e95",
+      "profile": 2,
+      "opcodes": [
+        2044
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_neg_pref_v8-dynamic1202.abc",
+      "sha256": "724a155d003758db998b94254b19260f8c559953627852208dfc7392e3b27cbf",
+      "profile": 3,
+      "opcodes": [
+        2044
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_neg_pref_v8-dynamic1206.abc",
+      "sha256": "0c035b03472837b21e22653af34f3e80598394b96b96c34f7e912943cc0dc849",
+      "profile": 4,
+      "opcodes": [
+        2044
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_neg_pref_v8-dynamic1301.abc",
+      "sha256": "0cf035ae70ca61a7b8d123a70ca7cc56add2f8c9456b13ec6b79cea5be56457a",
+      "profile": 5,
+      "opcodes": [
+        2044
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_neg_pref_v8-dynamic2400.abc",
+      "sha256": "689f879816fd0b8839ce075a556fca9c87ff7703c4a778dd5027c84184623c1c",
+      "profile": 6,
+      "opcodes": [
+        2044
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_not_pref_v8-dynamic9.abc",
+      "sha256": "dcee699b6c7c373fa92aa40da47ff67d71eeef201e6ae55b24170474494b8074",
+      "profile": 1,
+      "opcodes": [
+        2300
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_not_pref_v8-dynamic1102.abc",
+      "sha256": "0de3cc9e5905fe81cd9bff9c2ec1b4d5e39e366edfe1340a40a3c2f557f67973",
+      "profile": 2,
+      "opcodes": [
+        2300
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_not_pref_v8-dynamic1202.abc",
+      "sha256": "6c7b3e2ddd1b65aeb7ad525da25a1add658e32a27f7d934b51cfee82dcfaf55f",
+      "profile": 3,
+      "opcodes": [
+        2300
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_not_pref_v8-dynamic1206.abc",
+      "sha256": "adf8b29a4c1ad0e304e6f62ba8878e5f9afb56ee431040e10c77064b673a5f1d",
+      "profile": 4,
+      "opcodes": [
+        2300
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_not_pref_v8-dynamic1301.abc",
+      "sha256": "90f459e01d8da63a5d2e655b780ae795d3418d486418fd4b979e41ab3f2381f2",
+      "profile": 5,
+      "opcodes": [
+        2300
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_not_pref_v8-dynamic2400.abc",
+      "sha256": "d7c9de17cea400b8981759c5eb74096e28d935f0c55d7a088da40a6a552ea8cc",
+      "profile": 6,
+      "opcodes": [
+        2300
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_inc_pref_v8-dynamic9.abc",
+      "sha256": "d6dff9b322c20c01c44df9c0e58d8a85f7b93891a98423fd70f6010360f7cb71",
+      "profile": 1,
+      "opcodes": [
+        2556
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_inc_pref_v8-dynamic1102.abc",
+      "sha256": "54c80cc3e4ecd1f8ec9e99bac1a2b1431dacde981461fa10f5addca31749ddff",
+      "profile": 2,
+      "opcodes": [
+        2556
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_inc_pref_v8-dynamic1202.abc",
+      "sha256": "6c67f9251bf317c8953403b1a4b340bf1f14c597c7f077a2d8fb06bdf70c023e",
+      "profile": 3,
+      "opcodes": [
+        2556
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_inc_pref_v8-dynamic1206.abc",
+      "sha256": "e30dfb625df426857effbdc79ee4d69020d974dbca82aa428026b2ba878bdacf",
+      "profile": 4,
+      "opcodes": [
+        2556
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_inc_pref_v8-dynamic1301.abc",
+      "sha256": "aa77027efce83584ecaf086f7e59c9ab8b083c57a3c388ee2d1e4c83ee69f57e",
+      "profile": 5,
+      "opcodes": [
+        2556
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_inc_pref_v8-dynamic2400.abc",
+      "sha256": "1f91be36ae19822d2898f19d222122f01881be27dbf2ce694e14f5ffd6f31168",
+      "profile": 6,
+      "opcodes": [
+        2556
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dec_pref_v8-dynamic9.abc",
+      "sha256": "b6e2f15781b9028fa6dc1e94bcb906ea132f8b93fd46d4f76ebe2cba4b4178c4",
+      "profile": 1,
+      "opcodes": [
+        2812
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dec_pref_v8-dynamic1102.abc",
+      "sha256": "c1358af32323f334de40a5aa6342f92bc69468671d17df8e0b6ae709d051c4aa",
+      "profile": 2,
+      "opcodes": [
+        2812
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dec_pref_v8-dynamic1202.abc",
+      "sha256": "619bf6baf047be6500f6250a2f712958691969e8b386b939311ee82310e59d06",
+      "profile": 3,
+      "opcodes": [
+        2812
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dec_pref_v8-dynamic1206.abc",
+      "sha256": "1f29bdca3fdad92dfa6b2ab0b0cf774f912d001e177130374f25b9d331d70e16",
+      "profile": 4,
+      "opcodes": [
+        2812
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dec_pref_v8-dynamic1301.abc",
+      "sha256": "7ab24fb783c81fbf860979480220bad54faddded5a62601fbff7a1541e20713f",
+      "profile": 5,
+      "opcodes": [
+        2812
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dec_pref_v8-dynamic2400.abc",
+      "sha256": "f3e3cfac76cb4c161adca68fb1aa6aa3ca3f5270f313399c378b4bdba355e4a0",
+      "profile": 6,
+      "opcodes": [
+        2812
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg0_pref_v8-dynamic9.abc",
+      "sha256": "236913b283a50ae0a3c20d387ea1b9f1172fd17c3b2fe73f5ba61cb37a2f5ceb",
+      "profile": 1,
+      "opcodes": [
+        3068
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg0_pref_v8-dynamic1102.abc",
+      "sha256": "a1765a09a5964a269c789d0c686a8a2725c79ddc93ff1590d639edac216cb886",
+      "profile": 2,
+      "opcodes": [
+        3068
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg0_pref_v8-dynamic1202.abc",
+      "sha256": "ec7f2f0ab916b6df36b69d7a12e0d537fb859046476e1ccf9685942a9a00eecd",
+      "profile": 3,
+      "opcodes": [
+        3068
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg0_pref_v8-dynamic1206.abc",
+      "sha256": "85b14fb757b4c4c15b585b8033de0bcf4677064f938fbc84ad07fac125b83eed",
+      "profile": 4,
+      "opcodes": [
+        3068
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg0_pref_v8-dynamic1301.abc",
+      "sha256": "f062079cf33fdddafb2c6da5ee932489f938ed908b8d92af221401cf5dfb9cfd",
+      "profile": 5,
+      "opcodes": [
+        3068
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg0_pref_v8-dynamic2400.abc",
+      "sha256": "075bb82ceb7c0da95d8b2309602685d1bc33ba2cc3efc72de67eb44a972c5f98",
+      "profile": 6,
+      "opcodes": [
+        3068
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg1_pref_v8_v8-dynamic9.abc",
+      "sha256": "e90bed4a73941da6ef2c0fdebf5bdab62c11ab92033ea32d78ef9d8bd547e389",
+      "profile": 1,
+      "opcodes": [
+        3324
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg1_pref_v8_v8-dynamic1102.abc",
+      "sha256": "360ff34a3b72f3b56090b53992cf54efdce21c9fbb785f9e53cd41e935b8fcf6",
+      "profile": 2,
+      "opcodes": [
+        3324
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg1_pref_v8_v8-dynamic1202.abc",
+      "sha256": "190cb767c2d72bf3c17e9dbd7eae8e05ea7eb2107dbb53480cdd8fd30e140d26",
+      "profile": 3,
+      "opcodes": [
+        3324
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg1_pref_v8_v8-dynamic1206.abc",
+      "sha256": "8ff7a6340a5e1f9f8d950945b5b02991bad74f5acf04511688eb04bf89ef975b",
+      "profile": 4,
+      "opcodes": [
+        3324
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg1_pref_v8_v8-dynamic1301.abc",
+      "sha256": "356f796d82e8b4b0bb5813e9cee8415d5208689df29cd6df034789e45249d422",
+      "profile": 5,
+      "opcodes": [
+        3324
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callarg1_pref_v8_v8-dynamic2400.abc",
+      "sha256": "b216e3e866fef23ae2739e9b6aa16531c0391a3a2db793a706df6e83ba2a136b",
+      "profile": 6,
+      "opcodes": [
+        3324
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs2_pref_v8_v8_v8-dynamic9.abc",
+      "sha256": "99590126216883b32ff377fcfafedf9df5237d5707928df556064dbe7be00602",
+      "profile": 1,
+      "opcodes": [
+        3580
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs2_pref_v8_v8_v8-dynamic1102.abc",
+      "sha256": "704b38962875c76b9cda08b1ec49ce34b677550b8ee6e957d4ad26fee978d577",
+      "profile": 2,
+      "opcodes": [
+        3580
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs2_pref_v8_v8_v8-dynamic1202.abc",
+      "sha256": "53beb89ce89c692b8c7fc3661790a776392dbe5134ed0520e11574bf4eb1bcff",
+      "profile": 3,
+      "opcodes": [
+        3580
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs2_pref_v8_v8_v8-dynamic1206.abc",
+      "sha256": "fbfae149711658708c5243a8f1dd8ed87d35789824bfe2d7257505f38bc01af0",
+      "profile": 4,
+      "opcodes": [
+        3580
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs2_pref_v8_v8_v8-dynamic1301.abc",
+      "sha256": "d9a7956be727f1835af3a281f7eb4631f723a332deda01d8091575121466d2e6",
+      "profile": 5,
+      "opcodes": [
+        3580
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs2_pref_v8_v8_v8-dynamic2400.abc",
+      "sha256": "298c68fbb236c05eea5edb782e9802b5f4ef2ea3acc98827b40422be3b85e778",
+      "profile": 6,
+      "opcodes": [
+        3580
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs3_pref_v8_v8_v8_v8-dynamic9.abc",
+      "sha256": "4d8b269bc39321a5edde0332205fa2f3ee5099e98fc14f34edb0066525f3c8ae",
+      "profile": 1,
+      "opcodes": [
+        3836
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs3_pref_v8_v8_v8_v8-dynamic1102.abc",
+      "sha256": "6dd51ce4846de3b7180dab9a005642e982f043c18238cd8d1a8005fa441e9dd1",
+      "profile": 2,
+      "opcodes": [
+        3836
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs3_pref_v8_v8_v8_v8-dynamic1202.abc",
+      "sha256": "aa1590b675086a8978abcf22fbaef67343528ce8ff1376c9794642410b992b81",
+      "profile": 3,
+      "opcodes": [
+        3836
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs3_pref_v8_v8_v8_v8-dynamic1206.abc",
+      "sha256": "e79ce64a0a9855dd70fde753aa0c21147a3b459343af323065f00c15b8cc81c1",
+      "profile": 4,
+      "opcodes": [
+        3836
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs3_pref_v8_v8_v8_v8-dynamic1301.abc",
+      "sha256": "a3717399bcb10ff849ab3f9ba8f8fd432400345c57a9fe5ad2fe97083eda9b6b",
+      "profile": 5,
+      "opcodes": [
+        3836
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callargs3_pref_v8_v8_v8_v8-dynamic2400.abc",
+      "sha256": "d56d2f0520a688f05a474942289ec29752dd6b89bd7b8519cbcec59090f33412",
+      "profile": 6,
+      "opcodes": [
+        3836
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callrange_pref_imm16_v8-dynamic9.abc",
+      "sha256": "55a5fad880b1e8df3b35fe0a5def65f692927ffce3f119834d97ab21f279401a",
+      "profile": 1,
+      "opcodes": [
+        4092
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callrange_pref_imm16_v8-dynamic1102.abc",
+      "sha256": "f86c5b40b9b50abd5748619270d6b56b862256a6348d34550a1945258dacc855",
+      "profile": 2,
+      "opcodes": [
+        4092
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callrange_pref_imm16_v8-dynamic1202.abc",
+      "sha256": "16cffbbd7e27a577605fff6e78f76b5e3d4eac4fdf91ef6a41f21db9b745bf92",
+      "profile": 3,
+      "opcodes": [
+        4092
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callrange_pref_imm16_v8-dynamic1206.abc",
+      "sha256": "a04f8348af55fb146020046a87dbc4f5ddc5b4273caba147a460b2850e599c14",
+      "profile": 4,
+      "opcodes": [
+        4092
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callrange_pref_imm16_v8-dynamic1301.abc",
+      "sha256": "f026044285af9bd84fb28adf11b5833dc9e710e8222cf5a41abbcc4193a9371f",
+      "profile": 5,
+      "opcodes": [
+        4092
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callrange_pref_imm16_v8-dynamic2400.abc",
+      "sha256": "28e39607d122b6a1e9f64210c352b88f215c300900ecced0ab23658370ec7949",
+      "profile": 6,
+      "opcodes": [
+        4092
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callspread_pref_v8_v8_v8-dynamic9.abc",
+      "sha256": "aedcf31da572b821c41d30c94b47611b78ac4f9c59e5fc57c5a24f513843ce6d",
+      "profile": 1,
+      "opcodes": [
+        4348
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callspread_pref_v8_v8_v8-dynamic1102.abc",
+      "sha256": "de24e699c69c4a77a49dd0b43d8562a3b7e3e44c3a3db29b8e35076ff209c694",
+      "profile": 2,
+      "opcodes": [
+        4348
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callspread_pref_v8_v8_v8-dynamic1202.abc",
+      "sha256": "72d29c608cc205b915ddb86abf031feed12a850cade17ccb25f908ded2fbb30b",
+      "profile": 3,
+      "opcodes": [
+        4348
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callspread_pref_v8_v8_v8-dynamic1206.abc",
+      "sha256": "5836207e28bfd3d23766dfba252e10bffbfbcfd5d0dc65ed55300ceaa4cd3c55",
+      "profile": 4,
+      "opcodes": [
+        4348
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callspread_pref_v8_v8_v8-dynamic1301.abc",
+      "sha256": "9a5258be061d6a0a85e298f39382da62a47c9aa0cc1f695ce0839d8aacfacc67",
+      "profile": 5,
+      "opcodes": [
+        4348
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callspread_pref_v8_v8_v8-dynamic2400.abc",
+      "sha256": "4ad92ec579f42d0e8f1a302d19c3df1cb34ea64557d74e000255ed3cf7864271",
+      "profile": 6,
+      "opcodes": [
+        4348
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callthisrange_pref_imm16_v8-dynamic9.abc",
+      "sha256": "2bcd3a200e5fb7954317adcf7ef33c2cc8fae6b665b68b51e734d3307f43e95f",
+      "profile": 1,
+      "opcodes": [
+        4604
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callthisrange_pref_imm16_v8-dynamic1102.abc",
+      "sha256": "a3eb10449cd21a557c0ad0cbe816fd558c608a448354b1c92530adeae6a6a4b9",
+      "profile": 2,
+      "opcodes": [
+        4604
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callthisrange_pref_imm16_v8-dynamic1202.abc",
+      "sha256": "b37397c0bcfb43af6de1ef452c8724b551a6d2ea73a6b0da150f164d9be3c993",
+      "profile": 3,
+      "opcodes": [
+        4604
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callthisrange_pref_imm16_v8-dynamic1206.abc",
+      "sha256": "c3eaf3e130404c60dc3ca3e0a4c7a1c68f9462e501bbff39fee688cd1b5fc056",
+      "profile": 4,
+      "opcodes": [
+        4604
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callthisrange_pref_imm16_v8-dynamic1301.abc",
+      "sha256": "8ad7469cad2d6a717115c47fb02c4152bff2652989b0e835cda80326cac4ec39",
+      "profile": 5,
+      "opcodes": [
+        4604
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_callthisrange_pref_imm16_v8-dynamic2400.abc",
+      "sha256": "08150aa9210c72051925c560b15163b65f65074d9fcc3122a70ef0d53a05e848",
+      "profile": 6,
+      "opcodes": [
+        4604
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_defineclasswithbuffer_pref_id16_imm16_imm16_v8_v8-dynamic9.abc",
+      "sha256": "242dc7f7a6c16878eacaba403a8be6652d47eb55a7a30fdac8f9778b7fc77262",
+      "profile": 1,
+      "opcodes": [
+        4860
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_defineclasswithbuffer_pref_id16_imm16_imm16_v8_v8-dynamic1102.abc",
+      "sha256": "bdca147fb36ea0e5934603aabbf821204419fb1646cdb8f30fd8bfd7a18d287c",
+      "profile": 2,
+      "opcodes": [
+        4860
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_defineclasswithbuffer_pref_id16_imm16_imm16_v8_v8-dynamic1202.abc",
+      "sha256": "820ef1d839ccabc40cfdaf4699c5d1ca30be3e101b1cfbd027ea9952c77f3976",
+      "profile": 3,
+      "opcodes": [
+        4860
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_defineclasswithbuffer_pref_id16_imm16_imm16_v8_v8-dynamic1206.abc",
+      "sha256": "3bd87d13356e42bc47f394cd61a8977613acabece5446e6771a668e8e83d5a97",
+      "profile": 4,
+      "opcodes": [
+        4860
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_defineclasswithbuffer_pref_id16_imm16_imm16_v8_v8-dynamic1301.abc",
+      "sha256": "ea5686658135c3d6206be606d67c91cf89b4f287dca245b93fa1f6f74c771096",
+      "profile": 5,
+      "opcodes": [
+        4860
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_defineclasswithbuffer_pref_id16_imm16_imm16_v8_v8-dynamic2400.abc",
+      "sha256": "0c6a71001bc18904a9792d5af59d8beeaccc6634c2f76869bf8525f217a46716",
+      "profile": 6,
+      "opcodes": [
+        4860
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_resumegenerator_pref_v8-dynamic9.abc",
+      "sha256": "ad4dfb4b06d31a268b8fdeb1f227e25dcf6d159730d709f8d95831e621cb26a7",
+      "profile": 1,
+      "opcodes": [
+        5116
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_resumegenerator_pref_v8-dynamic1102.abc",
+      "sha256": "a3bcc2e13794c2aab716854f1cfadb9357a00fcb066c55e62f86e4200d3834d8",
+      "profile": 2,
+      "opcodes": [
+        5116
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_resumegenerator_pref_v8-dynamic1202.abc",
+      "sha256": "26835c8dac280aa09b1a2e4d3080b6b1c474ce33cdf6103bbe9fa454abd33959",
+      "profile": 3,
+      "opcodes": [
+        5116
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_resumegenerator_pref_v8-dynamic1206.abc",
+      "sha256": "f8006f47be1c1461c3195447f5f9ccfacbf9f59d28db40e699d48ca74ff2cf2a",
+      "profile": 4,
+      "opcodes": [
+        5116
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_resumegenerator_pref_v8-dynamic1301.abc",
+      "sha256": "7625a0a73ac80164e93fb7333e66a5210c46c22bc1f8befc0deb018878001843",
+      "profile": 5,
+      "opcodes": [
+        5116
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_resumegenerator_pref_v8-dynamic2400.abc",
+      "sha256": "7b0ed6ed527f2ab664eb835c2246151209fdf4e6b2b8862b787b9a46dd12047c",
+      "profile": 6,
+      "opcodes": [
+        5116
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getresumemode_pref_v8-dynamic9.abc",
+      "sha256": "aef1555c2da4d22fe92388971ef708442f6d400a8bfaaaf5ad290764c7897c64",
+      "profile": 1,
+      "opcodes": [
+        5372
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getresumemode_pref_v8-dynamic1102.abc",
+      "sha256": "a287b62a24444c7529d5ea6307e0239a55d0dcb522b66bd6448917abc32cc413",
+      "profile": 2,
+      "opcodes": [
+        5372
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getresumemode_pref_v8-dynamic1202.abc",
+      "sha256": "a2a0acbd4c09065236e2438ce8a840ace63c305a14f094ff28b7460a7bffeba8",
+      "profile": 3,
+      "opcodes": [
+        5372
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getresumemode_pref_v8-dynamic1206.abc",
+      "sha256": "e48f637d4888b45db658c45ccf97508c8047b8ac12c83f06365e629df384a02a",
+      "profile": 4,
+      "opcodes": [
+        5372
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getresumemode_pref_v8-dynamic1301.abc",
+      "sha256": "af4ee1dd264073170df25f4bbbcb5cdef10bae3c9e58782fe749ea29c348e65f",
+      "profile": 5,
+      "opcodes": [
+        5372
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getresumemode_pref_v8-dynamic2400.abc",
+      "sha256": "58e0a17ab6a30cd49a029fdf99a213a40079f36bb4d860824891d9821d3fb7d2",
+      "profile": 6,
+      "opcodes": [
+        5372
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_gettemplateobject_pref_v8-dynamic9.abc",
+      "sha256": "e2c898c2a938e0fb11d7d30ceb1ddf63aada1e51d23f6da773e68c7be0c3b73f",
+      "profile": 1,
+      "opcodes": [
+        5628
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_gettemplateobject_pref_v8-dynamic1102.abc",
+      "sha256": "b384a2ba1a9e0cd9862f777a37c22202a4e2b3ee1af7c5f3e78c949169538a2e",
+      "profile": 2,
+      "opcodes": [
+        5628
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_gettemplateobject_pref_v8-dynamic1202.abc",
+      "sha256": "02f84474a98719bb0dfb0020dd6835f9fd7d9564ee09b07752ae1df14bda51bd",
+      "profile": 3,
+      "opcodes": [
+        5628
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_gettemplateobject_pref_v8-dynamic1206.abc",
+      "sha256": "deb16010028af2098aa93f99bf168be5157131caf44b90f5e7031b86a25495b9",
+      "profile": 4,
+      "opcodes": [
+        5628
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_gettemplateobject_pref_v8-dynamic1301.abc",
+      "sha256": "4335deced017330bfe249a8c6a48fdf971e019aaf21da9878ae35fb460d5bb17",
+      "profile": 5,
+      "opcodes": [
+        5628
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_gettemplateobject_pref_v8-dynamic2400.abc",
+      "sha256": "04ef344fdbe16789e95d59d798122bbf0befd6675d541a0e9b3b030206634b5f",
+      "profile": 6,
+      "opcodes": [
+        5628
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_delobjprop_pref_v8_v8-dynamic9.abc",
+      "sha256": "1583b01161b7f0ae191974b64601528e087742c32d4a0f166443bbce0b528d5e",
+      "profile": 1,
+      "opcodes": [
+        5884
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_delobjprop_pref_v8_v8-dynamic1102.abc",
+      "sha256": "10380c4179af8815b6b7a56decaf024f8f8de8094488bea077fde46eb59742ee",
+      "profile": 2,
+      "opcodes": [
+        5884
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_delobjprop_pref_v8_v8-dynamic1202.abc",
+      "sha256": "a04867fe2b7846e9bc8c1b25fc5bdb39f9893058f2253977b2bf2fb43083f5e7",
+      "profile": 3,
+      "opcodes": [
+        5884
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_delobjprop_pref_v8_v8-dynamic1206.abc",
+      "sha256": "58f7258d03b281ad7a327ee9e5300b115da01fc80b589c5432c59df66e039429",
+      "profile": 4,
+      "opcodes": [
+        5884
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_delobjprop_pref_v8_v8-dynamic1301.abc",
+      "sha256": "d4fea0e1bb86a9a568e2c4f8969ad2e83c838efdb1d27e314bdb021297cfd044",
+      "profile": 5,
+      "opcodes": [
+        5884
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_delobjprop_pref_v8_v8-dynamic2400.abc",
+      "sha256": "8c872c8f6c4191509cd6287d285d2609bafddf0e3228b50c8d560a68de6b3655",
+      "profile": 6,
+      "opcodes": [
+        5884
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_suspendgenerator_pref_v8_v8-dynamic9.abc",
+      "sha256": "127b1ff6a35fd8c97b5e2b74f0f541b0bc5c8360c96d474da9bacbe4395fb55c",
+      "profile": 1,
+      "opcodes": [
+        6140
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_suspendgenerator_pref_v8_v8-dynamic1102.abc",
+      "sha256": "c47475b920b55d4b7b1497799eab6b01f7d923564b735cb187941301d2e9a3b1",
+      "profile": 2,
+      "opcodes": [
+        6140
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_suspendgenerator_pref_v8_v8-dynamic1202.abc",
+      "sha256": "869860d2772011e2e2df2eeb063a57b02deb7d17493ccf85f698623d7b3b8e8f",
+      "profile": 3,
+      "opcodes": [
+        6140
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_suspendgenerator_pref_v8_v8-dynamic1206.abc",
+      "sha256": "1179db996f30701962c19c95db1d9113b2ceffd0f0788944a3aeeac9f5265b7a",
+      "profile": 4,
+      "opcodes": [
+        6140
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_suspendgenerator_pref_v8_v8-dynamic1301.abc",
+      "sha256": "c14a85fc0204e3b17b93c8263e14a4538b326065f9cfe3de98a1099e6782bb0e",
+      "profile": 5,
+      "opcodes": [
+        6140
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_suspendgenerator_pref_v8_v8-dynamic2400.abc",
+      "sha256": "18b1058111478a57ddcbedfc234fb0cceba00c2b6630cc0007743318c57230d7",
+      "profile": 6,
+      "opcodes": [
+        6140
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionawaituncaught_pref_v8_v8-dynamic9.abc",
+      "sha256": "852aac714b73c290c5fe11d4145dbad4e3f17752ba417901104b514b8f587e82",
+      "profile": 1,
+      "opcodes": [
+        6396
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionawaituncaught_pref_v8_v8-dynamic1102.abc",
+      "sha256": "1eb8d8768657df9c9ee2fb5022e02b5f464ecf84a05b6861d60559e14b41cf0b",
+      "profile": 2,
+      "opcodes": [
+        6396
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionawaituncaught_pref_v8_v8-dynamic1202.abc",
+      "sha256": "c34cc88ab65b166c73de0ee217a8cec5e5dd94a1eb3b505870b38d412d9b495a",
+      "profile": 3,
+      "opcodes": [
+        6396
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionawaituncaught_pref_v8_v8-dynamic1206.abc",
+      "sha256": "212722faedf2d5aa24cf247c8f6fd711e8b17f45ae3a43bb84ea7ffb1ccf486a",
+      "profile": 4,
+      "opcodes": [
+        6396
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionawaituncaught_pref_v8_v8-dynamic1301.abc",
+      "sha256": "46392ffa2640c29d74df5d402c22571adaf4832424ba15766c883adf557c18a7",
+      "profile": 5,
+      "opcodes": [
+        6396
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionawaituncaught_pref_v8_v8-dynamic2400.abc",
+      "sha256": "4e3b80601f1d169c2abe18a679684ff1f223e7cf69dbad981df652d052adc9cd",
+      "profile": 6,
+      "opcodes": [
+        6396
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_copydataproperties_pref_v8_v8-dynamic9.abc",
+      "sha256": "0de223a85f87e4d1a9bff82e2c3579196c6725f92184eb94c14dbe652fe7aa4f",
+      "profile": 1,
+      "opcodes": [
+        6652
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_copydataproperties_pref_v8_v8-dynamic1102.abc",
+      "sha256": "1de19db70222e511bef1593ae6b1e3adb5b5532e20551154ded09878eb3be24c",
+      "profile": 2,
+      "opcodes": [
+        6652
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_copydataproperties_pref_v8_v8-dynamic1202.abc",
+      "sha256": "04894cfcbe837b86221a1ede487306f7d7680b0561722136d5e93d2a13cd5b10",
+      "profile": 3,
+      "opcodes": [
+        6652
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_copydataproperties_pref_v8_v8-dynamic1206.abc",
+      "sha256": "03a3f115a0f4f4cdc2643bf0538296ec4ed114430d8282a4ffa1c2b87d15e16a",
+      "profile": 4,
+      "opcodes": [
+        6652
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_copydataproperties_pref_v8_v8-dynamic1301.abc",
+      "sha256": "e8f7aa5efedbf7154a93f252c0ccca0cdf933beccd53bb1dff3dafde606dfe8d",
+      "profile": 5,
+      "opcodes": [
+        6652
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_copydataproperties_pref_v8_v8-dynamic2400.abc",
+      "sha256": "c83bc40ecc1795ab1ba56bdc9c147ad8e33637ecab07848f8071c948c1d8d0cd",
+      "profile": 6,
+      "opcodes": [
+        6652
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_setobjectwithproto_pref_v8_v8-dynamic9.abc",
+      "sha256": "262b7e8e00e896798e91e9f1f5503272af8875600704846f37980b0af8de0e6f",
+      "profile": 1,
+      "opcodes": [
+        6908
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_setobjectwithproto_pref_v8_v8-dynamic1102.abc",
+      "sha256": "46175cde72a9160184e4c95d3f74360abc6ac2b50d87dd9b1265ca9d74f0d066",
+      "profile": 2,
+      "opcodes": [
+        6908
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_setobjectwithproto_pref_v8_v8-dynamic1202.abc",
+      "sha256": "be719702ad264b678b67a260eae78dcfa039452cdcd39398bce938d8fbc4d326",
+      "profile": 3,
+      "opcodes": [
+        6908
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_setobjectwithproto_pref_v8_v8-dynamic1206.abc",
+      "sha256": "0a427a151b911933289eb0a1cb1a93b22deaab14ea6a35a8bb3f5154013dc3a8",
+      "profile": 4,
+      "opcodes": [
+        6908
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_setobjectwithproto_pref_v8_v8-dynamic1301.abc",
+      "sha256": "f04c6a97c166b910364a6eec9281f7cbf06600492974a07974f2e309711c8b0f",
+      "profile": 5,
+      "opcodes": [
+        6908
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_setobjectwithproto_pref_v8_v8-dynamic2400.abc",
+      "sha256": "25bf1c6022190ed4bde7fca7446827d8759c079837a98da5a04f20abfcc30c6e",
+      "profile": 6,
+      "opcodes": [
+        6908
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyvalue_pref_v8_v8-dynamic9.abc",
+      "sha256": "327d051a3adb1caf36cf3b3f540f0a70d1f34ff559207d1b2af135588a9754d6",
+      "profile": 1,
+      "opcodes": [
+        7164
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyvalue_pref_v8_v8-dynamic1102.abc",
+      "sha256": "11289e655ec7835572c4ffa52210c37f155dd6938a4f0dc7b08bf15b7b81f7f3",
+      "profile": 2,
+      "opcodes": [
+        7164
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyvalue_pref_v8_v8-dynamic1202.abc",
+      "sha256": "88fe5ef251fe0be368ebac34f5dafb7b6444c5542573b6d70a872cc659f3ac04",
+      "profile": 3,
+      "opcodes": [
+        7164
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyvalue_pref_v8_v8-dynamic1206.abc",
+      "sha256": "645e814383ef539fa75c47ae6bed407a0943515035be86b9788a6d4fbeae59b3",
+      "profile": 4,
+      "opcodes": [
+        7164
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyvalue_pref_v8_v8-dynamic1301.abc",
+      "sha256": "d7db9752374908a969b5218c3f22edd06ba835151476e860c996edd84099f895",
+      "profile": 5,
+      "opcodes": [
+        7164
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyvalue_pref_v8_v8-dynamic2400.abc",
+      "sha256": "17cd7aa44f5f4c24ffa97b906b68e8037ff469771e20f3c95ab14c2fb3af0922",
+      "profile": 6,
+      "opcodes": [
+        7164
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyvalue_pref_v8_v8-dynamic9.abc",
+      "sha256": "379b20d0c590c8663e8ab9eb70d9bdb221cbd26863cb8df5f78c4a5a851f2627",
+      "profile": 1,
+      "opcodes": [
+        7420
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyvalue_pref_v8_v8-dynamic1102.abc",
+      "sha256": "e94602fe631055b9c2b471a0ffbeea40459603ae84e86bafb555462b226b5644",
+      "profile": 2,
+      "opcodes": [
+        7420
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyvalue_pref_v8_v8-dynamic1202.abc",
+      "sha256": "7627f36ed86b98634a87103fb922144080ef384f3a1399b3897838b40c9fdc26",
+      "profile": 3,
+      "opcodes": [
+        7420
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyvalue_pref_v8_v8-dynamic1206.abc",
+      "sha256": "8414d667474567d1b22af8c9f87e833737956e8d623fb7bda7eb6fd9eff8e22e",
+      "profile": 4,
+      "opcodes": [
+        7420
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyvalue_pref_v8_v8-dynamic1301.abc",
+      "sha256": "7f0e8be7496300db9583780eaea44f016f610b78e4c80a3594df776ec076a261",
+      "profile": 5,
+      "opcodes": [
+        7420
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyvalue_pref_v8_v8-dynamic2400.abc",
+      "sha256": "a85286dc79063b3aea1b9c1a79992c40d1b2627edcd52aeed96fa2d13e0dc628",
+      "profile": 6,
+      "opcodes": [
+        7420
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyindex_pref_v8_imm32-dynamic9.abc",
+      "sha256": "3204d98b670cae247a29ec333af42b6c0486aba990f20ec78df0a2016e2ec440",
+      "profile": 1,
+      "opcodes": [
+        7676
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyindex_pref_v8_imm32-dynamic1102.abc",
+      "sha256": "55085e53ca8ff922300ed84975c8dedd194e0dda7f0e5e5999c1e5ff22af8a79",
+      "profile": 2,
+      "opcodes": [
+        7676
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyindex_pref_v8_imm32-dynamic1202.abc",
+      "sha256": "8ffc15c6c26e7548e6959d35a4a2cd413714147f13fd8b2d822054c0de942047",
+      "profile": 3,
+      "opcodes": [
+        7676
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyindex_pref_v8_imm32-dynamic1206.abc",
+      "sha256": "8505eb7367461c811733de9bfccaab0abe055efb87b8e947b573d3943caf2575",
+      "profile": 4,
+      "opcodes": [
+        7676
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyindex_pref_v8_imm32-dynamic1301.abc",
+      "sha256": "c357283d672fc0f2d0165a8530cb2cd9959c3dc46f5c5065cf0ed48c59c689bf",
+      "profile": 5,
+      "opcodes": [
+        7676
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyindex_pref_v8_imm32-dynamic2400.abc",
+      "sha256": "1f40e5e2546ebd727d887b84f972c6268fc64ab3674167f38ff779efe9b31afd",
+      "profile": 6,
+      "opcodes": [
+        7676
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionresolve_pref_v8_v8_v8-dynamic9.abc",
+      "sha256": "47f809758854fc3d61dc8e0b0087c047eea7a3a0ceba0dba592eb1d81d19e5c3",
+      "profile": 1,
+      "opcodes": [
+        7932
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionresolve_pref_v8_v8_v8-dynamic1102.abc",
+      "sha256": "085b290a09281b414ee64623438df3fec074f4cd255839ff4354e6b4875babc0",
+      "profile": 2,
+      "opcodes": [
+        7932
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionresolve_pref_v8_v8_v8-dynamic1202.abc",
+      "sha256": "88ae1a63eef98add902ee421f0418c8a63953584ed2a561087501a88c73057ab",
+      "profile": 3,
+      "opcodes": [
+        7932
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionresolve_pref_v8_v8_v8-dynamic1206.abc",
+      "sha256": "ebc7e628f422cd0775e580d407ce146ea53d4248d0d9bc3635fbc547567d71b8",
+      "profile": 4,
+      "opcodes": [
+        7932
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionresolve_pref_v8_v8_v8-dynamic1301.abc",
+      "sha256": "c6077a9523666e2e06a230dcb6c0b411faee49490792428f0241aaf7fe70103e",
+      "profile": 5,
+      "opcodes": [
+        7932
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionresolve_pref_v8_v8_v8-dynamic2400.abc",
+      "sha256": "03c8f2e1f2701c58c2b53baa1ad5141bd5790410741425a5712fe9386249f851",
+      "profile": 6,
+      "opcodes": [
+        7932
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionreject_pref_v8_v8_v8-dynamic9.abc",
+      "sha256": "f95081041584db4ba3f240c869af6e4ec312e7bd100a260c4ab6947660738920",
+      "profile": 1,
+      "opcodes": [
+        8188
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionreject_pref_v8_v8_v8-dynamic1102.abc",
+      "sha256": "5f1aaef77213abfab0e2500f9b4b3f9ae4fbc16d2f1edb5c885e0ad03a4aba60",
+      "profile": 2,
+      "opcodes": [
+        8188
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionreject_pref_v8_v8_v8-dynamic1202.abc",
+      "sha256": "7e81c3ec315b73fdf3849f3eb2d61471cbbbf52719345b73b03646b6bce74fff",
+      "profile": 3,
+      "opcodes": [
+        8188
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionreject_pref_v8_v8_v8-dynamic1206.abc",
+      "sha256": "123a30d78a76436a113c384ad5261df960788584c5e6e77a73424503c69cde88",
+      "profile": 4,
+      "opcodes": [
+        8188
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionreject_pref_v8_v8_v8-dynamic1301.abc",
+      "sha256": "4da58ed5043879a10b50724fe0f8742382cfbaabb2b77c469ad088aea71eddc0",
+      "profile": 5,
+      "opcodes": [
+        8188
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncfunctionreject_pref_v8_v8_v8-dynamic2400.abc",
+      "sha256": "e48ce5f0102cc2bcd348fcbf4340e0087c50c35957fde4e235f549b7cc45780d",
+      "profile": 6,
+      "opcodes": [
+        8188
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm4_imm4_v8-dynamic9.abc",
+      "sha256": "1130c913f258b0e7d69daf7fa5a2c25a2913b6a30d51499fbfedbf30daac5aa8",
+      "profile": 1,
+      "opcodes": [
+        8444
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm4_imm4_v8-dynamic1102.abc",
+      "sha256": "315d05e3366d820627a7e6f69cbeb9856ab9c759ce25fa5d898fb1bdf7fa5d72",
+      "profile": 2,
+      "opcodes": [
+        8444
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm4_imm4_v8-dynamic1202.abc",
+      "sha256": "4f5ab88eff4d1e12b4be3c4f940ee1410a1506fa315ee191ba45a2b1f963b13e",
+      "profile": 3,
+      "opcodes": [
+        8444
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm4_imm4_v8-dynamic1206.abc",
+      "sha256": "f27edda172a4fbc51eabf62ff5fe8751535db5dd58434006a8f92fa71e077df0",
+      "profile": 4,
+      "opcodes": [
+        8444
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm4_imm4_v8-dynamic1301.abc",
+      "sha256": "a559a73abb5afabc279adddaa9fb8e1f7c442f6528f9006e1e372f6af03c1361",
+      "profile": 5,
+      "opcodes": [
+        8444
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm4_imm4_v8-dynamic2400.abc",
+      "sha256": "82ddbea72efd27d359c965d8d678b736dd17b42648be01d4384aedf6f04d3fff",
+      "profile": 6,
+      "opcodes": [
+        8444
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm8_imm8_v8-dynamic9.abc",
+      "sha256": "ca7adb8af1e9c34a42bd6a5de9f7a9e721bdc133658b8c8932354cb338d25628",
+      "profile": 1,
+      "opcodes": [
+        8700
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm8_imm8_v8-dynamic1102.abc",
+      "sha256": "377e52b9b47041fd63c64e9a6536700974e019d3ddb79d5d79a702b3879b432c",
+      "profile": 2,
+      "opcodes": [
+        8700
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm8_imm8_v8-dynamic1202.abc",
+      "sha256": "a471c7e99100b63949d0610aea1c4d2ce2e01dfe3c76a68dcbdcf2372d50d820",
+      "profile": 3,
+      "opcodes": [
+        8700
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm8_imm8_v8-dynamic1206.abc",
+      "sha256": "4540f820acbb052ef62395f13b7cfe6c567d17b071a344f254a2d7bf1e693fb2",
+      "profile": 4,
+      "opcodes": [
+        8700
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm8_imm8_v8-dynamic1301.abc",
+      "sha256": "81463ae775e04d17fe957422fb5466d345e60579f80fcd6c3861cea05e1537c4",
+      "profile": 5,
+      "opcodes": [
+        8700
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm8_imm8_v8-dynamic2400.abc",
+      "sha256": "411be6487ebbe25feeaef3c78d1a92d89b6ba63ec6413afee67f8b296dae82e3",
+      "profile": 6,
+      "opcodes": [
+        8700
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm16_imm16_v8-dynamic9.abc",
+      "sha256": "55bd4b63e47f3760f401769124388badd43a115005fb5d4e0ab7d97df0399546",
+      "profile": 1,
+      "opcodes": [
+        8956
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm16_imm16_v8-dynamic1102.abc",
+      "sha256": "331ff33ac3fe4f919fd6b1dfc41726f785933aac1ddb8566ae628fbd12f37006",
+      "profile": 2,
+      "opcodes": [
+        8956
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm16_imm16_v8-dynamic1202.abc",
+      "sha256": "47f5797698d3020c4f6d3edd4de85db072f0ce05001769682be93744a8e3ee0e",
+      "profile": 3,
+      "opcodes": [
+        8956
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm16_imm16_v8-dynamic1206.abc",
+      "sha256": "3bfd0053544da657819f9f83e00b353941b8774ef2767ae4283426520b2d8885",
+      "profile": 4,
+      "opcodes": [
+        8956
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm16_imm16_v8-dynamic1301.abc",
+      "sha256": "f9860ed1254906a12edb3ea1e4f9d37b723dfbfbeb06504239e6c0890bc12cec",
+      "profile": 5,
+      "opcodes": [
+        8956
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlexvar_pref_imm16_imm16_v8-dynamic2400.abc",
+      "sha256": "ed6c55afd006f48a5e5bef8f673f81f6dff8e60e81f1b72b95b34de87ff66369",
+      "profile": 6,
+      "opcodes": [
+        8956
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getmodulenamespace_pref_id32-dynamic9.abc",
+      "sha256": "1d8add9028305ef4b24b6d5b1fd431ddd724dea670454fb3db72c1e8ab074e6d",
+      "profile": 1,
+      "opcodes": [
+        9212
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getmodulenamespace_pref_id32-dynamic1102.abc",
+      "sha256": "fa3966e8179946511c92f1f405d61916fde99cbb39c262465df176fd75d6f229",
+      "profile": 2,
+      "opcodes": [
+        9212
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getmodulenamespace_pref_id32-dynamic1202.abc",
+      "sha256": "86f99791167c02a052f6dba20d06f8fb43bac623c3e0e17fc404202ff31d5027",
+      "profile": 3,
+      "opcodes": [
+        9212
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getmodulenamespace_pref_id32-dynamic1206.abc",
+      "sha256": "f89887ab950a4a7d49f2d487604bd6a0455fe4ef5c3d940d6c00520dcccbc594",
+      "profile": 4,
+      "opcodes": [
+        9212
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getmodulenamespace_pref_id32-dynamic1301.abc",
+      "sha256": "b5cfabbc3e45882df0ba4165a5ac7389b3eb0c2d3e1668668511b59d0690d34d",
+      "profile": 5,
+      "opcodes": [
+        9212
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_getmodulenamespace_pref_id32-dynamic2400.abc",
+      "sha256": "d7ce60ab53272e8b99895f8aae225c5a1e43488a6246085e3f15f5c044bd8d5c",
+      "profile": 6,
+      "opcodes": [
+        9212
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stmodulevar_pref_id32-dynamic9.abc",
+      "sha256": "4206f3b9dc8e2a046c4ecd4ad922bfe01e7f5015be41c9160749d9bf082e5090",
+      "profile": 1,
+      "opcodes": [
+        9468
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stmodulevar_pref_id32-dynamic1102.abc",
+      "sha256": "764f6413a2af13686de961d64177ae59213bfe0e76382f3a0a716b56ef26d375",
+      "profile": 2,
+      "opcodes": [
+        9468
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stmodulevar_pref_id32-dynamic1202.abc",
+      "sha256": "596137425e8c92927759eea239c61c1b507c0862b3e4568dc3c21e3b4f3cce57",
+      "profile": 3,
+      "opcodes": [
+        9468
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stmodulevar_pref_id32-dynamic1206.abc",
+      "sha256": "c8be11ffd1c9355e85b4eb93875afbbc6744c080bd4159af3262ebb71431e35d",
+      "profile": 4,
+      "opcodes": [
+        9468
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stmodulevar_pref_id32-dynamic1301.abc",
+      "sha256": "c599661771655be53260e89e63c4f1c594f0dd5f475ba122891b9a386fcb6d00",
+      "profile": 5,
+      "opcodes": [
+        9468
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stmodulevar_pref_id32-dynamic2400.abc",
+      "sha256": "4b7bed52fd74c9c39fb020199f72ef592e95ada6c002e987e5f51e44e680d2f0",
+      "profile": 6,
+      "opcodes": [
+        9468
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyname_pref_id32_v8-dynamic9.abc",
+      "sha256": "e4b5a8b016e9a24480fc772679f193dd222493e6e5ccd721c78fc9f4a3797b85",
+      "profile": 1,
+      "opcodes": [
+        9724
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyname_pref_id32_v8-dynamic1102.abc",
+      "sha256": "b2703ce78ccbd69cd9a95ad9e5f4cabd3fbba165576dac86eda95d2e8c4b2a6a",
+      "profile": 2,
+      "opcodes": [
+        9724
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyname_pref_id32_v8-dynamic1202.abc",
+      "sha256": "3e7d76d4da82aa86fae6abda3146ec0d0aa8a75c3c57938154138f4f84586c93",
+      "profile": 3,
+      "opcodes": [
+        9724
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyname_pref_id32_v8-dynamic1206.abc",
+      "sha256": "2b7b36e6fe1f3a768916dd8c64b808923060d7fedb23e6b1c18cc4f5318bfe40",
+      "profile": 4,
+      "opcodes": [
+        9724
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyname_pref_id32_v8-dynamic1301.abc",
+      "sha256": "3ad9fa67549294e0d9410dd3955556e567524c37377765837bf260d0bbb392b9",
+      "profile": 5,
+      "opcodes": [
+        9724
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldobjbyname_pref_id32_v8-dynamic2400.abc",
+      "sha256": "e3e6783dd9043bcaf664b7ab4b184c21a9b5a7d957f55cbcce50076f1974970d",
+      "profile": 6,
+      "opcodes": [
+        9724
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyname_pref_id32_v8-dynamic9.abc",
+      "sha256": "3cd3bf285dba6ede24c50a5d98dcfc986034fff5be6a121fabc7963675f94f5a",
+      "profile": 1,
+      "opcodes": [
+        9980
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyname_pref_id32_v8-dynamic1102.abc",
+      "sha256": "486928d10af0d216a2d7043b3e7250239d63082da146d8a00b4bf91f66a8d79b",
+      "profile": 2,
+      "opcodes": [
+        9980
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyname_pref_id32_v8-dynamic1202.abc",
+      "sha256": "a6019e1b7c4bc1d3f3d7dc1df55b1aae7e4a1124cbbdc8d07ae7ca37419dec8f",
+      "profile": 3,
+      "opcodes": [
+        9980
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyname_pref_id32_v8-dynamic1206.abc",
+      "sha256": "42090ce9c93e976513bc74467f18f9013fde6f4254b105d7655d3add872e2b68",
+      "profile": 4,
+      "opcodes": [
+        9980
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyname_pref_id32_v8-dynamic1301.abc",
+      "sha256": "5c5f182fff5009b49d4a3875190e2595b0389d6e5fa2d602fe2a9ca079788fc4",
+      "profile": 5,
+      "opcodes": [
+        9980
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldsuperbyname_pref_id32_v8-dynamic2400.abc",
+      "sha256": "c01c88befca535e6a35a6e7d8a120f57392b198fda8d9c3277c4bd1e748dddcb",
+      "profile": 6,
+      "opcodes": [
+        9980
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldmodulevar_pref_id32_imm8-dynamic9.abc",
+      "sha256": "6cd8bc58ff0cea30138a9301cb13022d7621f4b6292355e689705f8ec8f46ee2",
+      "profile": 1,
+      "opcodes": [
+        10236
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldmodulevar_pref_id32_imm8-dynamic1102.abc",
+      "sha256": "7c8cfd76a6310497d96171fa3d087751a33ba99649d0bb48044fec8f18a660ca",
+      "profile": 2,
+      "opcodes": [
+        10236
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldmodulevar_pref_id32_imm8-dynamic1202.abc",
+      "sha256": "d42ac63159c76809c71cd9a778255d7f5391e666b59ae86d82a6e5ee9bc446ad",
+      "profile": 3,
+      "opcodes": [
+        10236
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldmodulevar_pref_id32_imm8-dynamic1206.abc",
+      "sha256": "6100a22f6a49c9708ce01056980640bbdd1d795263a485fe28d32ac507289c0f",
+      "profile": 4,
+      "opcodes": [
+        10236
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldmodulevar_pref_id32_imm8-dynamic1301.abc",
+      "sha256": "535fc7c2221a7cc77e1e4b45cae0ea773ca0d432442b7cc6d5cb7b2b5d342444",
+      "profile": 5,
+      "opcodes": [
+        10236
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldmodulevar_pref_id32_imm8-dynamic2400.abc",
+      "sha256": "dcaa450ea44d3459efb876c6933a8be998635c1757f772dd7f11463ffceb0805",
+      "profile": 6,
+      "opcodes": [
+        10236
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stconsttoglobalrecord_pref_id32-dynamic9.abc",
+      "sha256": "689dd59623673b9bca6f2e0f8cdaa5d345a3ed3e1acf2cdda760b6203c780bf3",
+      "profile": 1,
+      "opcodes": [
+        10492
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stconsttoglobalrecord_pref_id32-dynamic1102.abc",
+      "sha256": "78f03461cd14a4c4b49467b846a19598444b8e2b86ad1583b5cb12c30caa9dbf",
+      "profile": 2,
+      "opcodes": [
+        10492
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stconsttoglobalrecord_pref_id32-dynamic1202.abc",
+      "sha256": "9d756cc00911ceedfc796525c94a123340d144c484e4d9ca13ae91e32efd8c6f",
+      "profile": 3,
+      "opcodes": [
+        10492
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stconsttoglobalrecord_pref_id32-dynamic1206.abc",
+      "sha256": "837aa040f256cc75c6c54aaecb852e277a6a0c106bc058d7860f5a86d1c6022a",
+      "profile": 4,
+      "opcodes": [
+        10492
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stconsttoglobalrecord_pref_id32-dynamic1301.abc",
+      "sha256": "377184dfba3a974cf6e772799a096916abc09df1aeab0e912bf272747a1b6bfa",
+      "profile": 5,
+      "opcodes": [
+        10492
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stconsttoglobalrecord_pref_id32-dynamic2400.abc",
+      "sha256": "2adaa46fd92891207f211241e800ab26da4aa6a38330d471c5ddce6215775543",
+      "profile": 6,
+      "opcodes": [
+        10492
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlettoglobalrecord_pref_id32-dynamic9.abc",
+      "sha256": "da23a736412b93d0d5fc12ef37ae840ff66e7bcb418852bca513f6dda5a4bc31",
+      "profile": 1,
+      "opcodes": [
+        10748
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlettoglobalrecord_pref_id32-dynamic1102.abc",
+      "sha256": "82dca3e36b7495c3923d4c19dc064131a685fe1cd62e67c1d2ec8646a026dbbe",
+      "profile": 2,
+      "opcodes": [
+        10748
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlettoglobalrecord_pref_id32-dynamic1202.abc",
+      "sha256": "1bf89797c361527e0c96f907be7b578bb43170382eef4acf0dd8d0875017b68a",
+      "profile": 3,
+      "opcodes": [
+        10748
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlettoglobalrecord_pref_id32-dynamic1206.abc",
+      "sha256": "986248e892d357186560550104ea58643972a586f23ddcd552a80a197e698d70",
+      "profile": 4,
+      "opcodes": [
+        10748
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlettoglobalrecord_pref_id32-dynamic1301.abc",
+      "sha256": "448ded9112159cea56a261d9534dcb7d465bcfc0180dcce6335b86fa5005bafb",
+      "profile": 5,
+      "opcodes": [
+        10748
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stlettoglobalrecord_pref_id32-dynamic2400.abc",
+      "sha256": "22ca82f9756af75fb202016ebf21d977ae1d9d45a9b79e1155dd6b6b674b5b9b",
+      "profile": 6,
+      "opcodes": [
+        10748
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stclasstoglobalrecord_pref_id32-dynamic9.abc",
+      "sha256": "4d2af2c856fe3b139a9d9aa4c40498259364115dcf41a095c5a7514ece5143d9",
+      "profile": 1,
+      "opcodes": [
+        11004
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stclasstoglobalrecord_pref_id32-dynamic1102.abc",
+      "sha256": "3cf3c60d3484cf5aafb8691e2dc430fbdc577e5610fb06f7803361ad3a6c57a9",
+      "profile": 2,
+      "opcodes": [
+        11004
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stclasstoglobalrecord_pref_id32-dynamic1202.abc",
+      "sha256": "8468f63138b7cfd0b4df921d336c60599471c273f6e2cefc090f190787de08be",
+      "profile": 3,
+      "opcodes": [
+        11004
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stclasstoglobalrecord_pref_id32-dynamic1206.abc",
+      "sha256": "e0882bda9a4396eb809e1eee7066b5c8b2393d7c039e17b0943565b325c9beda",
+      "profile": 4,
+      "opcodes": [
+        11004
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stclasstoglobalrecord_pref_id32-dynamic1301.abc",
+      "sha256": "2c82472ba38d963f904dc8077b5ac1d1a6b69c56cbcf50a6e8abbf112647613b",
+      "profile": 5,
+      "opcodes": [
+        11004
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_stclasstoglobalrecord_pref_id32-dynamic2400.abc",
+      "sha256": "de9a4bd42345be623ebda6822b7e585dde88ded4eb34039aba5d25062ede095a",
+      "profile": 6,
+      "opcodes": [
+        11004
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldhomeobject_pref_none-dynamic9.abc",
+      "sha256": "4c8471bfe96f337157c122c0f886f18ec7bdff529ebe9f402d2be19fe1ebb581",
+      "profile": 1,
+      "opcodes": [
+        11260
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldhomeobject_pref_none-dynamic1102.abc",
+      "sha256": "088c21dc315349bc0fbeb4979d74e2cb6054225ce25ded44f8058e36778c9733",
+      "profile": 2,
+      "opcodes": [
+        11260
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldhomeobject_pref_none-dynamic1202.abc",
+      "sha256": "a18c9441bc42410c6cabd8070703b6abbceeafb319cc116e44746801e2e55f38",
+      "profile": 3,
+      "opcodes": [
+        11260
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldhomeobject_pref_none-dynamic1206.abc",
+      "sha256": "1e645e8f404b5df985f1c0f96f998b2dc78083c80c5c63cdd630958fd1078e4a",
+      "profile": 4,
+      "opcodes": [
+        11260
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldhomeobject_pref_none-dynamic1301.abc",
+      "sha256": "c276e622d1d419801e4c29b7dcb5087f057b6f44b39807ffbe3a595cd986c50a",
+      "profile": 5,
+      "opcodes": [
+        11260
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_ldhomeobject_pref_none-dynamic2400.abc",
+      "sha256": "aadf850520835efb5f52ed892e97e7e20918acdadbc06420dbcd70857ef90bfc",
+      "profile": 6,
+      "opcodes": [
+        11260
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjecthavingmethod_pref_imm16-dynamic9.abc",
+      "sha256": "5a58ca0b63cf276475c6a7527adda4d9b348480badda33d0bada8fa57e90ac25",
+      "profile": 1,
+      "opcodes": [
+        11516
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjecthavingmethod_pref_imm16-dynamic1102.abc",
+      "sha256": "433299dd0e28a50ffe1ec6785f8c967162d164b0c0176bcaa3e3b077788cec78",
+      "profile": 2,
+      "opcodes": [
+        11516
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjecthavingmethod_pref_imm16-dynamic1202.abc",
+      "sha256": "32c5edb47399f86716feaa3f578f4af7abaf08cffdaecd089e197532660e172e",
+      "profile": 3,
+      "opcodes": [
+        11516
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjecthavingmethod_pref_imm16-dynamic1206.abc",
+      "sha256": "cc808ab062405f6b852699fd8fb0f17f44dd6b0f4221237809ae5dcedadf0b2b",
+      "profile": 4,
+      "opcodes": [
+        11516
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjecthavingmethod_pref_imm16-dynamic1301.abc",
+      "sha256": "d385712cd0f5f077a835a3d3cd4782735b8c7b3b0d376d57efac10e56b02efc5",
+      "profile": 5,
+      "opcodes": [
+        11516
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_createobjecthavingmethod_pref_imm16-dynamic2400.abc",
+      "sha256": "cd09a4b5a0505f04089762d99870dd06c960666a28b8aeece92c8346c8a8ae41",
+      "profile": 6,
+      "opcodes": [
+        11516
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dynamicimport_pref_v8-dynamic9.abc",
+      "sha256": "0b65b5597eb45d375abe2c9f6a40c45251664c6d27b66b7e56e9e3665ec4400f",
+      "profile": 1,
+      "opcodes": [
+        11772
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dynamicimport_pref_v8-dynamic1102.abc",
+      "sha256": "c2a661d3ba2a40db406bbea51c88af6270fb1d8f5501df3c2476b29bff901121",
+      "profile": 2,
+      "opcodes": [
+        11772
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dynamicimport_pref_v8-dynamic1202.abc",
+      "sha256": "1b8cd9b7aadc52cd2685c145d801967f4b5d67fcfafb3e0a2ca0bee9e177fec0",
+      "profile": 3,
+      "opcodes": [
+        11772
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dynamicimport_pref_v8-dynamic1206.abc",
+      "sha256": "2f537a6e71a43558ffff9bdb3f7a1f818f77e4fc1cd6ec314cb1e7ed5241f359",
+      "profile": 4,
+      "opcodes": [
+        11772
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dynamicimport_pref_v8-dynamic1301.abc",
+      "sha256": "9153eab14ad1e8bebfa60efa75951548f90b072e6f64ddfc6b2c11f65136bccd",
+      "profile": 5,
+      "opcodes": [
+        11772
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_dynamicimport_pref_v8-dynamic2400.abc",
+      "sha256": "4040f8857891e7bb1bb5b6f1ca17584f5d1cfc19c16c268ab37d7167da9ea2d6",
+      "profile": 6,
+      "opcodes": [
+        11772
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncgeneratorreject_pref_v8_v8-dynamic9.abc",
+      "sha256": "e4553d8c0a21a16c63edf8286660c1c6bd3bb09432d34c0fa22876bd1e641026",
+      "profile": 1,
+      "opcodes": [
+        12028
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncgeneratorreject_pref_v8_v8-dynamic1102.abc",
+      "sha256": "be989f4c3cd7320116673979837f5cf1c029a895ad0135e1d431f156074a4804",
+      "profile": 2,
+      "opcodes": [
+        12028
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncgeneratorreject_pref_v8_v8-dynamic1202.abc",
+      "sha256": "f16d7bfcd292e9dbded178cae458e85fb1a29de6a4f23b29cbd7cdd689737df6",
+      "profile": 3,
+      "opcodes": [
+        12028
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncgeneratorreject_pref_v8_v8-dynamic1206.abc",
+      "sha256": "ab45ef85a67bb32ef6282c72605b32177183e247b1d8f88f90ecc39e407a2de9",
+      "profile": 4,
+      "opcodes": [
+        12028
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncgeneratorreject_pref_v8_v8-dynamic1301.abc",
+      "sha256": "9cfe2d0106ec0e9fce0c1b5d92de929d658fdd88ef71c01837629947cd9bf160",
+      "profile": 5,
+      "opcodes": [
+        12028
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated/deprecated_asyncgeneratorreject_pref_v8_v8-dynamic2400.abc",
+      "sha256": "e30dab188bb4e4810a2c88fab6e5f9f0743a4bfeac0c22c5897c0e1260f6d42c",
+      "profile": 6,
+      "opcodes": [
+        12028
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass."

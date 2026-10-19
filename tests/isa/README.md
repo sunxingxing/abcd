@@ -1,4 +1,4 @@
-# Measured ISA ledger (increments 0–1b)
+# Measured ISA ledger
 
 This is test tooling, not an admission table. No production source is selected by
 an opcode name, fixture path, classification, or diagnostic string.
@@ -92,3 +92,16 @@ measured 12.0.6 profile; it does not transfer a fixture's observation to other
 profiles. `validate_non_executable` also rejects a successful lift, a mismatched
 runtime-evidence ID, missing record refusal, or a stale citation hash. The raw
 probe includes the fixed-size `non_executable` witness on its refusal row.
+
+## Deprecated-profile evidence
+
+`deprecated_variants.json` records all 47 deprecated variants across the six
+explicit `builder.Profile` layouts. Run `ctest --test-dir build/regression -R
+isa_deprecated_evidence_test --output-on-failure`; regenerate the 282 ABCs and
+measurements with `python3 tests/isa/deprecated_variants_test.py --generate`.
+The test cross-checks SDK `ark_disasm`, `abc_decode`, and production per-op raw
+lifting/recovery. The registry's Unmeasured assertion does not grant support;
+the matrix classifies each real `(profile, variant)` observation separately.
+No runtime pass is claimed. Handler, baseline and AOT metadata citations and
+known path differences are in
+[the evidence note](../../docs/design/source-recovery/isa-deprecated-evidence.md).

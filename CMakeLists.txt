@@ -392,6 +392,8 @@ if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME grouping_bytecode_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/grouping_bytecode_test.py)
+    add_test(NAME isa_deprecated_evidence_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/deprecated_variants_test.py)
     add_test(NAME isa_current_evidence_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/current_variants_test.py)
     add_test(NAME isa_property_evidence_test COMMAND ${Python3_EXECUTABLE}

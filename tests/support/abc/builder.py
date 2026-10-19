@@ -1,4 +1,4 @@
-"""Test-only dynamic 12.0.6 ABC writer; no production dependency.
+"""Test-only pinned dynamic-profile ABC writer; no production dependency.
 
 Layout follows runtime_core/docs/file_format.md and libpandafile/file_items.cpp.
 A counting pass resolves typed entities before the writing pass. Both passes use
@@ -27,6 +27,7 @@ class BuildErrorKind(Enum):
     BRANCH = auto()
     CATCH = auto()
     ALLOCATION = auto()
+    PROFILE = auto()
 
 class BuildError(Exception):
     def __init__(self, kind):
@@ -68,6 +69,21 @@ class Catch:
     handler: Label
     handler_end: Label
 
+class Profile(Enum):
+    # Pinned isa.yaml API-version map; 12.0.2 is an evidenced paired profile.
+    # libpandafile/file.h ContainsLiteralArrayInHeader and header.cc reserve
+    # the two literal-header words above 12.0.6. No incompatible 11.0.0/1.
+    DYNAMIC9 = (9, 0, 0, 0)
+    DYNAMIC1102 = (11, 0, 2, 0)
+    DYNAMIC1202 = (12, 0, 2, 0)
+    DYNAMIC1206 = (12, 0, 6, 0)
+    DYNAMIC1301 = (13, 0, 1, 0)
+    DYNAMIC2400 = (24, 0, 0, 0)
+
+    @property
+    def literal_arrays_in_header(self):
+        return self.value <= Profile.DYNAMIC1206.value
+
 @dataclass(frozen=True, slots=True)
 class Module:
     instructions: tuple[Instruction | Label, ...]
@@ -78,6 +94,7 @@ class Module:
     pool_strings: tuple[str, ...] = ()
     # Empty tagged literal arrays for decode/lift probes (not executable class layouts).
     empty_literals: int = 0
+    profile: Profile = Profile.DYNAMIC1206
 
 class Writer:
     def __init__(self, limit, offsets, output=None):
@@ -181,12 +198,15 @@ def layout(w, module, labels, code_size):
     w.mark(Entity.HEADER)
     w.put(b'PANDA\0\0\0')
     w.uint(0, 4)  # checksum calculated after all bytes exist
-    w.put(bytes((12, 0, 6, 0)))
+    w.put(bytes(module.profile.value))
     w.ref(Entity.END)
     w.uint(0, 4); w.uint(0, 4)  # no foreign region
     w.uint(1, 4); w.ref(Entity.CLASS_INDEX)
     w.uint(0, 4); w.uint(0, 4)  # no debug programs
-    w.uint(1 + module.empty_literals, 4); w.ref(Entity.LITERAL_INDEX)  # module + tagged literals
+    if module.profile.literal_arrays_in_header:
+        w.uint(1 + module.empty_literals, 4); w.ref(Entity.LITERAL_INDEX)
+    else:
+        w.uint(U32_MAX, 4); w.uint(U32_MAX, 4)
     w.uint(1, 4); w.ref(Entity.REGION)
     if w.pos != HEADER_BYTES:
         raise BuildError(BuildErrorKind.LAYOUT)
@@ -243,6 +263,8 @@ def layout(w, module, labels, code_size):
 
 
 def _build(module, budget):
+    if not isinstance(module.profile, Profile):
+        raise BuildError(BuildErrorKind.PROFILE)
     if not 0 <= budget <= MAX_BUILDER_BYTES:
         raise BuildError(BuildErrorKind.BYTES)
     labels, size, scratch = code_layout(module, budget)

@@ -1,9 +1,50 @@
 # 当前状态
 
-更新时间：2026-10-19。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-20。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
+
+## Deprecated ISA evidence: all 47 variants (2026-10-20, uncommitted)
+
+- Evidence-only slice based on **41f6b2a1** (HEAD and rebuilt wtbase).
+  No production code, semantic policy, opcode admission or RuntimeEvidence
+  changes. All 47 have real C++/deprecated dispatch and assembly implementations;
+  46 have baseline handlers. AOT metadata/lowering gaps are recorded separately;
+  none has an all-path NonExecutable proof. Full per-variant file:line/hash
+  citations and known ID32/class-literal path differences are in
+  [isa-deprecated-evidence.md](isa-deprecated-evidence.md).
+- The test-only two-pass ABC writer gains an explicit, closed profile choice;
+  its default 12.0.6 output is preserved. **282 ABCs** (47 x six profiles) are
+  checked against SDK `ark_disasm`, production `abc_decode` and the per-op
+  coverage probe. Profiles 9/11.0.2 decode and retain UnsupportedProfile;
+  each modern profile has **11 raw successes / 36 UnsupportedInstruction**
+  refusals. Raw roles/effects/commit/exception, record status and available causes are retained.
+- New CTest `isa_deprecated_evidence_test` has four Python cases: full catalog/
+  profile fixtures, real corpus decoder, stale/missing/width/prefix/support
+  mutations, exact 200/201/400/800 byte boundaries, raw-lift scaling and profile
+  layout. Together with `isa_coverage_test`: **2/2**. Independent review reran
+  the four cases successfully, with no important findings. No VM execution,
+  historical frontend emission, high-ID path equivalence or full class/
+  generator/module protocol execution is claimed; oracle columns stay empty.
+- Regenerated matrix: **712 ABCs / 1,312,780 instructions**, zero probe failures.
+  Fresh before -> after: **145 -> 155 SupportedUnverified**, **159 -> 149
+  Unmeasured**, **28 NonExecutable unchanged**; other classes including
+  SupportedVerified remain zero. Ten deprecated scalar/environment variants
+  satisfy the existing limited raw-lift + complete-record rule; the other
+  37 remain Unmeasured. All 47 still have zero exploration-cohort occurrences
+  and zero current first-refusal impact. JSON/JSONL stays untracked in build/.
+- Full build and serial source-regression **65/65** pass. Both 40-input cohorts
+  remain **530/620** previous flags and **582/620** source. **All 3,647 / 3,803
+  files are byte-identical** to rebuilt wtbase, including manifests, partial
+  output and position maps. Evidence is in `build/review/isa-deprecated/`.
+- Required `isa|cli|corpus|failure|_receipt|manifest|decode` sweep: **89/90**
+  (all **8 ISA tests pass**). Its only failure is the documented
+  `family_source_cli_test` owner/origin-arena assertion, reproduced directly
+  with rebuilt **41f6b2a1** `abc_semantic`. No stale expectations or behavioral
+  assertions were changed. Builder byte boundaries for 200/201/400/800 repeated
+  instructions are **57536/57798/109936/214736**; one byte below each refuses.
+  `git diff --check` passes. No commit, push or stash.
 
 ## Cell lifetimes over verified for-of (2026-10-20, uncommitted)
 
