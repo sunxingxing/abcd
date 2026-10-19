@@ -64,7 +64,9 @@ VerifyClassSelfClassDraft(const ClassSelfInitializationInput& input,
                           const ClassSelfScope& scope, const ClassTree& layout,
                           const EvaluationPlan& evaluation,
                           const ClassInitializerTreeDraft& draft,
-                          SemanticBudget budget) {
+                          SemanticBudget budget,
+                          std::span<const ClassSelfOuterBinding> outer_bindings,
+                          std::optional<FunctionOwnerId> syntax_owner) {
   Quota q(input, budget);
   try {
     const auto verified = q.Take<ClassSelfInitializationCost>(
@@ -81,7 +83,8 @@ VerifyClassSelfClassDraft(const ClassSelfInitializationInput& input,
     q.failure.initializer = function.Method();
     q.Require(tree.identity == input.creator.input.Identity() &&
                   tree.method == function.Method() &&
-                  tree.owner == input.families[0].family.Owner({0}) &&
+                  tree.owner == syntax_owner.value_or(
+                                    input.families[0].family.Owner({0})) &&
                   tree.value_revision == graph.revision &&
                   tree.cfg_revision == graph.cfg_revision && tree.class_inner &&
                   tree.class_inner->binding == scope.binding &&
@@ -147,17 +150,36 @@ VerifyClassSelfClassDraft(const ClassSelfInitializationInput& input,
                       binding.declaration == DeclarationKind::kConst,
                   Error::kScope);
       } else {
-        q.Require(outer < tree.capture_requirements.size(), Error::kScope);
-        const auto& actual = tree.capture_requirements[outer++];
-        q.Require(actual.symbol == symbol &&
-                      actual.storage.depth == incoming->depth &&
-                      actual.storage.slot.value == incoming->slot.value &&
-                      actual.domain == found->domain &&
-                      binding.kind == BindingKind::kCaptureRequirement,
-                  Error::kStorage);
+        if (outer_bindings.empty()) {
+          q.Require(outer < tree.capture_requirements.size(), Error::kScope);
+          const auto& actual = tree.capture_requirements[outer++];
+          q.Require(actual.symbol == symbol &&
+                        actual.storage.depth == incoming->depth &&
+                        actual.storage.slot.value == incoming->slot.value &&
+                        actual.domain == found->domain &&
+                        binding.kind == BindingKind::kCaptureRequirement,
+                    Error::kStorage);
+        } else {
+          q.Require(tree.capture_requirements.empty() &&
+                        outer < outer_bindings.size() &&
+                        outer < tree.captures.size(),
+                    Error::kScope);
+          const auto& expected = outer_bindings[outer];
+          const auto& actual = tree.captures[outer++];
+          q.Require(expected.storage.depth == incoming->depth &&
+                        expected.storage.slot.value == incoming->slot.value &&
+                        expected.domain == found->domain &&
+                        actual.symbol == symbol &&
+                        actual.target == expected.target &&
+                        binding.kind == BindingKind::kCapture,
+                    Error::kStorage);
+        }
       }
     }
-    q.Require(outer == tree.capture_requirements.size(), Error::kScope);
+    q.Require(outer_bindings.empty() ? outer == tree.capture_requirements.size()
+                                     : outer == outer_bindings.size() &&
+                                           outer == tree.captures.size(),
+              Error::kScope);
     const auto syntax = q.Take<TreeStructure>(
         VerifyClassInitializerStructure(tree, q.left), Error::kName);
     q.Admit(syntax.allocated_bytes);

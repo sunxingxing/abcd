@@ -1,20 +1,21 @@
 #include "family_file.h"
-#include "class_self_initialization_file.h"
-#include "family_cells.h"
-#include "creator_classes.h"
-#include "abcd/analysis/transparent_rethrow.h"
 
-#include <bit>
 #include <algorithm>
+#include <bit>
 #include <limits>
 #include <new>
+#include <set>
 #include <stdexcept>
 #include <type_traits>
-#include <set>
 
+#include "abcd/analysis/transparent_rethrow.h"
 #include "abcd/corpus/abc_file.h"
-#include "phased_capture_evaluation.h"
+#include "class_self_deferred.h"
+#include "class_self_initialization_file.h"
+#include "creator_classes.h"
+#include "family_cells.h"
 #include "module_aliases.h"
+#include "phased_capture_evaluation.h"
 
 namespace abcd::source {
 namespace {
@@ -472,6 +473,17 @@ class FamilyReader {
         if (failure.class_self_initialization &&
             failure.class_self_initialization->recovery) {
           const auto& recovery = *failure.class_self_initialization->recovery;
+          if (parent.class_self &&
+              recovery.kind == ClassSelfInitializationError::kRecoveryGate &&
+              recovery.projection == ClassSelfInitializationFailure::
+                                         Projection::kCaptureEnclosure) {
+            // The initializer is not published here. Its native inner reads
+            // have a seal, and the actual creator tree will discharge the
+            // ordinary outer requirements before any class can finish.
+            Admit(parent.class_self->allocated_bytes, 1);
+            Step(parent.class_self->work);
+            return;
+          }
           if (recovery.kind == ClassSelfInitializationError::kRecoveryGate)
             failure.cause = ClassSelfError::kRecoveryGate;
           else if (recovery.kind ==

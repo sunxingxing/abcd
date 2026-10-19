@@ -34,6 +34,11 @@ class ClassSelfOrder {
       const ClassSelfInitializationInput&, const ClassSelfInitialization&,
       const ClassSelfScope&, analysis::SemanticBudget = {});
   std::span<const ClassSelfStore> Stores(const analysis::ValueProgram& graph) const;
+  std::span<const analysis::OpId> Installations(
+      const analysis::ValueProgram& graph) const {
+    return Stores(graph).empty() ? std::span<const analysis::OpId>{}
+                                 : installations_;
+  }
   std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> Prefixes(
       const FunctionInput&, const analysis::ValueProgram&) const;
   std::size_t AllocatedBytes() const { return bytes_; }
@@ -41,6 +46,7 @@ class ClassSelfOrder {
  private:
   ClassSelfOrder() = default;
   std::vector<ClassSelfStore> stores_;
+  std::vector<analysis::OpId> installations_;
   std::vector<std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> prefixes_;
   const analysis::SemanticInstruction* instructions_ = nullptr;
   const analysis::LocalCell* cells_ = nullptr;

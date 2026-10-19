@@ -3,10 +3,31 @@
 #include <new>
 #include <stdexcept>
 
+#include "class_self_deferred.h"
 #include "class_self_resource.h"
 #include "class_self_scope.h"
 #include "class_tree.h"
 namespace abcd::source {
+namespace {
+template <class T>
+struct DeferredAllocator {
+  using value_type = T;
+  analysis::SemanticBudget* budget;
+  template <class U>
+  DeferredAllocator(const DeferredAllocator<U>& other) : budget(other.budget) {}
+  explicit DeferredAllocator(analysis::SemanticBudget& left) : budget(&left) {}
+  T* allocate(std::size_t n) {
+    if (n > budget->bytes / sizeof(T)) throw std::bad_alloc{};
+    budget->bytes -= n * sizeof(T);
+    return std::allocator<T>{}.allocate(n);
+  }
+  void deallocate(T* p, std::size_t n) { std::allocator<T>{}.deallocate(p, n); }
+  template <class U>
+  bool operator==(const DeferredAllocator<U>& other) const {
+    return budget == other.budget;
+  }
+};
+}  // namespace
 static ClassSelfInitializationDiagnostic PrepareClassSelfInitialization(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
@@ -16,6 +37,7 @@ static ClassSelfInitializationDiagnostic PrepareClassSelfInitialization(
     const ClassInitializerCall& call, CreatorClassOccurrence occurrence,
     analysis::SemanticBudget budget, const RecordModuleContext* modules,
     FileFunction* consumer) {
+  const auto initial = budget;
   using Error = ClassSelfInitializationError;
   ClassSelfInitializationDiagnostic result;
   result.creator = parent.input.Method();
@@ -230,6 +252,23 @@ static ClassSelfInitializationDiagnostic PrepareClassSelfInitialization(
                       : ClassSelfInitializationFailure::Projection::
                             kCaptureEnclosure;
               result.recovery = recovery;
+              // A public-commit port is already known for these occurrences.
+              // The no-public-port case needs completed-class availability,
+              // so retain its current gate rather than invent that port.
+              result.scope_view = scope;
+              if (scope.public_commits && !consumer->class_self) {
+                consumer->class_self = std::allocate_shared<ClassSelfDeferred>(
+                    DeferredAllocator<ClassSelfDeferred>{budget},
+                    std::move(std::get<FunctionContext>(loaded)),
+                    std::move(std::get<FileFamily>(read)), std::move(*members),
+                    std::move(std::get<ClassSelfInitializationProof>(derived)),
+                    std::move(std::get<ClassSelfScopeProof>(scoped)),
+                    std::move(draft.initializer), std::move(draft.evaluation),
+                    result);
+                consumer->class_self->allocated_bytes =
+                    initial.bytes - budget.bytes;
+                consumer->class_self->work = initial.work - budget.work;
+              }
             }
           }
         }

@@ -1,15 +1,18 @@
 #include "class_tree.h"
-#include "sendable_class.h"
-#include "sendable_types.h"
-#include <bit>
+
 #include <algorithm>
-#include <new>
+#include <bit>
 #include <limits>
+#include <new>
 #include <stdexcept>
 #include <type_traits>
-#include "runtime_name.h"
-#include "abcd/source/module_enclosure.h"
+
 #include "abcd/source/global_reference.h"
+#include "abcd/source/module_enclosure.h"
+#include "class_self_deferred.h"
+#include "runtime_name.h"
+#include "sendable_class.h"
+#include "sendable_types.h"
 namespace abcd::source {
 std::variant<ClassParentScope, ClassTreeError> CheckClassParentScope(
     const ClassTree& tree, std::uint64_t work) {
@@ -170,7 +173,10 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     admit(tree.definitions.capacity() - definitions.size(), sizeof(ClassDefinitionTree));
     for (const auto& definition : definitions) {
       step(1);
-      if (definition.creation != operation || initializer)
+      if (definition.creation != operation ||
+          (initializer && (!creator.class_self ||
+                           creator.class_self->initialization.Evidence().call !=
+                               *initializer)))
         return ClassTreeFailure{Error::kCreation};
       tree.definitions.push_back({definition});
     }
@@ -183,6 +189,23 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     }
     if (initializer) {
       if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};
+      if (creator.class_self &&
+          creator.class_self->initialization.Evidence().call == *initializer) {
+        auto checked =
+            VerifyDeferredClassSelf(file, header, index, lookup, roles, classes,
+                                    creator, *creator.class_self, budget);
+        if (const auto* error =
+                std::get_if<ClassSelfInitializationFailure>(&checked)) {
+          if (error->kind == ClassSelfInitializationError::kResourceLimit)
+            throw ClassTreeFailure{Error::kResourceLimit};
+          if (error->kind == ClassSelfInitializationError::kWorkLimit)
+            throw ClassTreeFailure{Error::kWorkLimit};
+          throw ClassTreeFailure{Error::kCreation};
+        }
+        const auto cost = std::get<ClassSelfInitializationCost>(checked);
+        admit(cost.bytes, 1);
+        step(cost.work);
+      }
       tree.initializer_site = *initializer;
     }
     std::uint64_t layout_work=0;

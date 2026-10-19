@@ -28,6 +28,11 @@ struct ClassSelfClassDraft {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
+struct ClassSelfOuterBinding {
+  IncomingCell storage;
+  analysis::CaptureDomain domain;
+  CapturedSymbol target;
+};
 std::variant<ClassSelfClassDraft, ClassSelfInitializationFailure>
 BuildClassSelfClassDraft(const ClassSelfInitializationInput&,
                          const ClassSelfInitialization&, const ClassSelfScope&,
@@ -39,7 +44,9 @@ VerifyClassSelfClassDraft(const ClassSelfInitializationInput&,
                           const ClassSelfInitialization&, const ClassSelfScope&,
                           const ClassTree&, const EvaluationPlan&,
                           const ClassInitializerTreeDraft&,
-                          analysis::SemanticBudget = {});
+                          analysis::SemanticBudget = {},
+                          std::span<const ClassSelfOuterBinding> = {},
+                          std::optional<FunctionOwnerId> = {});
 // Original input failure at a real root or descendant creation occurrence.
 // The entire containing class member is omitted; a nested callback never gets
 // a fabricated FunctionTree/body/signature or source receipt.
@@ -84,6 +91,9 @@ struct ClassTreeInitialization {
   std::optional<analysis::DispatchTarget> exception;
   FunctionOwnerId first_owner;
   std::uint64_t owner_end;
+  // Lexical destinations of ordinary initializer captures. These are checked
+  // at THIS ClassExpr's source scope, never copied or marked initialized.
+  std::vector<CapturedSymbol> outer;
 };
 struct ClassTree {
   std::optional<ClassTreeInitialization> class_self;

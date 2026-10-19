@@ -59,6 +59,7 @@ struct ClassSelfInitializationDiagnostic {
   std::optional<ClassSelfScopeDiagnostic> scope_view;
   std::optional<ClassSelfInitializationFailure> recovery;
   std::uint32_t tree_references = 0, syntax_owners = 0;
+  std::uint32_t bound_outer = 0;
 };
 }  // namespace abcd::source
 #endif

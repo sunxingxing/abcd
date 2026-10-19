@@ -51,6 +51,7 @@ inline nlohmann::json ClassSelfInitializationJson(
     j["recovery"] = ClassSelfFailureJson(*v.recovery);
     j["tree_references"] = v.tree_references;
     j["syntax_owners"] = v.syntax_owners;
+    if (v.bound_outer) j["bound_outer"] = v.bound_outer;
   }
   return j;
 }
@@ -156,6 +157,12 @@ ParseClassSelfInitialization(const nlohmann::json& j) {
         !v.recovery->projection)
       return {};
   }
+  if (j.contains("bound_outer") &&
+      (!v.recovery || !FailureNumber(j, "bound_outer", v.bound_outer) ||
+       !v.scope_view ||
+       v.scope_view->status != ClassSelfInitializationStatus::kVerified ||
+       v.bound_outer > v.scope_view->outer))
+    return {};
   return v;
 }
 }  // namespace abcd::source

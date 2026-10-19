@@ -176,6 +176,11 @@ ClassSelfOrder::BindInitialization(
                               initialization.store, initialization.call.call,
                               *cell, initialization.allocation});
     result.class_inner_ = scope.binding;
+    admit(scope.installations.size(), sizeof(OpId));
+    result.installations_ = scope.installations;
+    admit(result.installations_.capacity() - result.installations_.size(),
+          sizeof(OpId));
+    step(scope.installations.size());
     const auto& input = parent.input;
     const auto& locals = input.Proof().locals;
     admit(locals.cells.size(), sizeof(decltype(result.prefixes_)::value_type));

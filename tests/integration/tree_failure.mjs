@@ -8,7 +8,7 @@ const artifact = 'artifacts/entry/default/default/modules/modules.abc';
 // Read bytecode only. Paired source never participates in diagnostic identity.
 const cases = [
   ['DocsSample/DistributedAppDev/DistributedAuthentication', 4660, 5040, 12],
-  ['UI/CustomAnimationTab', 8166, 8556, 13],
+  ['UI/CustomAnimationTab', 8166, 8392, 261],
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
   ['UI/CalendarViewSwitch', 28303, 28799, 620],
   ['UI/CustomAnimationTab', 6952, 7171, 93],
@@ -74,12 +74,14 @@ try {
     }
     if(entity===4660 || entity===8166) {
       // Class-self reads are consumed as class-inner bindings; publication
-      // stops at the typed recovery gate (ports for 4660, enclosure for 8166).
+      // stops at the initialization-port gate. 8166 now binds both ordinary
+      // outer requirements through the actual creator CaptureTree first.
       assert.deepEqual(report.source_failure.causes,[
         {domain:'abcd::source::ClassSelfError',value:5}]);
       const recovery=report.source_failure.class_self_initialization.recovery;
       assert.equal(recovery.kind,13);
-      assert.equal(recovery.projection,entity===4660?1:0);
+      assert.equal(recovery.projection,1);
+      if(entity===8166)assert.equal(report.source_failure.class_self_initialization.bound_outer,2);
       assert.equal(recovery.read,5);
       assert.equal(recovery.guard,6);
     }

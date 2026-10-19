@@ -4,13 +4,16 @@ These are real dynamic es2abc outputs. Adjacent JS is an independent test
 oracle and is never an engine input. The Closed initializer reader still
 refuses them. Certified consumption now builds an unpublished initializer tree
 with a real class-inner scope and immutable self references. Every fixture
-asserts `kRecoveryGate`: `outer` requires the real creator capture enclosure;
-the others first require class-initialization event ports in joint recovery.
+asserts `kRecoveryGate`: `outer` now binds through the real creator CaptureTree
+and first requires class-initialization event ports in joint recovery. The new
+`outer_tdz` fixture retains the capture-enclosure refusal because the creator
+does not yet prove native declaration-at-store placement for its late binding.
+The other fixtures also first require class-initialization event ports.
 No published engine-output differential is claimed.
 
 Compiler: DevEco Studio es2abc, SHA-256
 `4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`.
-From the repository root (NAME = outer / throwing / reentry / branches / copies / accessors):
+From the repository root (NAME = outer / outer_tdz / throwing / reentry / branches / copies / accessors):
 
 ```sh
 /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc \
@@ -40,6 +43,15 @@ wrong incoming storage, a writable inner binding, a wrong scope and a lost
 read/guard origin all reject; recovery-gate receipts and both JSON paths round
 trip. The gate is not a claim that the unresolved outer cells are initialized.
 
+The enclosure test constructs the creator with the ordinary evaluation/tree
+builders, then binds ordinary initializer requirements using the same production
+CaptureTree path. It checks storage/environment, aliases, domains and names,
+including wrong-target/slot/domain, inner-name shadowing, cleanup and port
+mutations. `outer_tdz` must fail before alias installation: no initialized value
+or copied default is invented. The eight production exporter cases assert the
+actual gate and `bound_outer` evidence. Scale tests also generate an outer capture
+at each width and check its independent verifier's exact admission boundaries.
+
 `class_self_initialization_scale_test` generates 200/201/400/800 fields under the
 build directory. Each size checks exact work and the minimum admitted byte
 boundary plus one-byte-below refusal. Nested passes' peak scratch can exceed
@@ -64,4 +76,5 @@ f4569c1ae90785a99def173d50bc45e46a5b1ae787e2290435ed4cdadeb6da34  reentry.abc
 860b2d1d0c6131d015b815fbba7fae061c785475b54d6fadb0388f9794753bda  self.abc
 b8e5b7a6cf1454882bbc4e03a774d5e2b0a3d913d53505359e7364c3800f1f68  throwing.abc
 f5deb7625c27493f4b4b83539487f1adf071dce5517b06b19c12a5f3156e2777  accessors.abc
+4f5454a5ee9ab76c0d1f49ac3b66f0caa4d675f8b50b0f4e8f00e1bdede55138  outer_tdz.abc
 ```

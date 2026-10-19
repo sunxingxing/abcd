@@ -1,14 +1,17 @@
 #ifndef ABCD_SOURCE_FUNCTION_FILE_H_
 #define ABCD_SOURCE_FUNCTION_FILE_H_
 
-#include "function_values.h"
-#include "cleanup_body.h"
+#include <memory>
+
+#include "abcd/source/record_module_context.h"
 #include "class_self_order.h"
+#include "cleanup_body.h"
+#include "function_values.h"
 #include "module_capture_prefix.h"
 #include "module_reads.h"
-#include "abcd/source/record_module_context.h"
 
 namespace abcd::source {
+struct ClassSelfDeferred;
 struct FileFunction {
   abc::MethodBody body;
   abc::FrameLayout frame;
@@ -19,6 +22,9 @@ struct FileFunction {
   std::optional<ModuleCapturePrefix> module_capture_prefix;
   std::optional<CleanupBody> cleanup;
   std::optional<ClassSelfOrder> self_order;
+  // Owned occurrence preparation, consumed only with the real creator tree.
+  // It grants no source publication or initialized outer capture.
+  std::shared_ptr<ClassSelfDeferred> class_self;
 };
 enum class FunctionFileError : std::uint8_t { kIdentity, kMethod, kChanged, kResourceLimit };
 using FunctionFileFailure = std::variant<FunctionFileError, abc::BodyFailure,

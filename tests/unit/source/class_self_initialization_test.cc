@@ -9,6 +9,7 @@
 #include "../../../src/source/class_tree.h"
 #include "../../../tools/record_failure_json.h"
 #include "analysis/ssa_fixture.h"
+#include "class_self_enclosure_checks.h"
 using namespace abcd;
 using namespace abcd::source;
 namespace {
@@ -420,7 +421,8 @@ void DraftMutations(const ClassSelfInitializationInput& input,
                   .kind == E::kResourceLimit);
   std::cout << "draft exact bytes " << low << " work " << full.work << '\n';
 }
-void Run(const char* path, std::optional<abc::EntityOffset> requested) {
+void Run(const char* path, std::optional<abc::EntityOffset> requested,
+         bool expect_tdz_gate = false) {
   auto file =
       Take<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
   const auto fingerprint = Take<corpus::FileFingerprint>(file->Fingerprint());
@@ -697,6 +699,8 @@ void Run(const char* path, std::optional<abc::EntityOffset> requested) {
                 << static_cast<unsigned>(*gate.recovery->projection)
                 << " tree references " << gate.tree_references << " owners "
                 << gate.syntax_owners << '\n';
+      test::CheckClassSelfEnclosure(*file, header, index, lookup, roles,
+                                    classes, *parent, expect_tdz_gate);
       seen = true;
     }
   }
@@ -706,7 +710,10 @@ void Run(const char* path, std::optional<abc::EntityOffset> requested) {
 int main(int argc, char** argv) {
   static_assert(!std::is_default_constructible_v<ClassSelfInitializationProof>);
   test::Check(argc == 2 || argc == 3);
-  Run(argv[1], argc == 3 ? std::optional{abc::EntityOffset{
-                               static_cast<std::uint32_t>(std::stoul(argv[2]))}}
-                         : std::nullopt);
+  const bool tdz = argc == 3 && std::string_view{argv[2]} == "--tdz-gate";
+  Run(argv[1],
+      argc == 3 && !tdz ? std::optional{abc::EntityOffset{
+                              static_cast<std::uint32_t>(std::stoul(argv[2]))}}
+                        : std::nullopt,
+      tdz);
 }

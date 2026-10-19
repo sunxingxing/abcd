@@ -21,7 +21,8 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       require(n <= budget.bytes / width, Error::kResourceLimit); budget.bytes -= n * width;
     };
     ClassProjection result;
-    auto member_result = ProjectClassDefinitions(graph, definitions, budget);
+    auto member_result =
+        ProjectClassDefinitions(graph, definitions, budget, self_order);
     if (const auto* error = std::get_if<ClassDefinitionError>(&member_result)) {
       switch (*error) {
         case ClassDefinitionError::kInput: return Error::kInput;
@@ -115,6 +116,31 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       admit(graph.ops.size(),sizeof(std::optional<ClassSelfStore>)); step(graph.ops.size()); self_stores.resize(graph.ops.size());
       admit(self_stores.capacity()-self_stores.size(),sizeof(std::optional<ClassSelfStore>));
       for (const auto& store : stores) { step(); require(store.store.value < self_stores.size() && !self_stores[store.store.value]); self_stores[store.store.value] = store; }
+      // The certified installation corridor is effectful. Reuse the existing
+      // definition projection, retaining its original operation identities.
+      // No ordinary mixed class gains this path without the scoped seal.
+      const auto installations = self_order->Installations(graph);
+      if (!installations.empty()) {
+        admit(graph.ops.size(), sizeof(std::uint8_t));
+        std::vector<std::uint8_t> certified(graph.ops.size());
+        admit(certified.capacity() - certified.size(), sizeof(std::uint8_t));
+        for (const auto& store : stores) {
+          step();
+          certified[store.creation.value] = 1;
+        }
+        for (const auto id : installations) {
+          step();
+          require(id.value < result.owners.size() && result.owners[id.value] &&
+                      certified[result.owners[id.value]->value],
+                  Error::kFlow);
+        }
+        for (std::size_t i = 0; i < result.owners.size(); ++i) {
+          step();
+          if (result.owners[i] && certified[result.owners[i]->value] &&
+              HasOrderedEffect(graph.ops[i]))
+            effects[i] = result.owners[i];
+        }
+      }
     }
     std::optional<OpId> previous;
     for (const auto& call : requested) {
@@ -144,6 +170,10 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
           continue;
         }
         if (*owner == call.method || *owner == call.call) continue;
+        if (result.owners[owner->value] == call.creation &&
+            effects[owner->value] == call.creation)
+          continue;  // Independently certified member installation, not an
+                     // escape.
         const auto& op = graph.ops[owner->value];
         if (!self_stores.empty() && self_stores[owner->value]) {
           const auto& self = *self_stores[owner->value];

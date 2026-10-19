@@ -1,9 +1,12 @@
 #include "creator_classes.h"
+
 #include <algorithm>
 #include <bit>
 #include <limits>
 #include <new>
 #include <stdexcept>
+
+#include "class_self_deferred.h"
 
 namespace abcd::source {
 namespace {
@@ -314,6 +317,30 @@ std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
     for (auto& task:plan.tasks) {
       q.Step();q.operation=task.operation;
       q.Require(task.owners && ValidClassOwnerRange(*task.owners,next) && task.preparation,Error::kCreation);
+      if (parent && input.creator.class_self &&
+          input.creator.class_self->initialization.Evidence().call.creation ==
+              task.operation) {
+        auto diagnostic = BindDeferredClassSelf(
+            input.file, input.header, input.index, input.lookup, input.roles,
+            input.classes, input.creator, *input.creator.class_self, *task.tree,
+            {static_cast<std::uint32_t>(task.owners->end - 1)}, *parent,
+            input.storage, q.Left());
+        FamilyFileFailure refused{ClassSelfError::kRecoveryGate};
+        refused.method = diagnostic.initializer;
+        refused.root = input.occurrence.family_root;
+        if (diagnostic.recovery &&
+            diagnostic.recovery->kind ==
+                ClassSelfInitializationError::kResourceLimit)
+          refused.cause = ClassSelfError::kResourceLimit;
+        else if (diagnostic.recovery &&
+                 diagnostic.recovery->kind ==
+                     ClassSelfInitializationError::kWorkLimit)
+          refused.cause = ClassSelfError::kWorkLimit;
+        refused.class_self_initialization = std::move(diagnostic);
+        throw CreatorClassFailure{
+            ClassTreeFailure{FamilyPrepareFailure{std::move(refused)}},
+            task.operation};
+      }
       auto definition=q.Take<ClassTree>(BuildClassTree(input.file,input.header,input.index,input.lookup,input.roles,
           input.functions,input.classes,input.creator,task.operation,input.identity,globals,q.Left(),task.initializer,
           task.definitions,recovery,{static_cast<std::uint32_t>(next)},parent,&*task.preparation,input.storage));

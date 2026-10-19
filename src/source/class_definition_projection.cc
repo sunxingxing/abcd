@@ -1,13 +1,17 @@
-#include "class_definitions.h"
-#include "cell_evaluation.h"
-#include "../analysis/value_edits.h"
-#include "effect_order.h"
 #include <new>
 #include <stdexcept>
+
+#include "../analysis/value_edits.h"
+#include "cell_evaluation.h"
+#include "class_definitions.h"
+#include "class_self_order.h"
+#include "effect_order.h"
 namespace abcd::source {
-std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefinitions(
-    const analysis::ValueProgram& graph, std::span<const ClassDefinitionSite> requested,
-    analysis::SemanticBudget budget) {
+std::variant<ClassDefinitionProjection, ClassDefinitionError>
+ProjectClassDefinitions(const analysis::ValueProgram& graph,
+                        std::span<const ClassDefinitionSite> requested,
+                        analysis::SemanticBudget budget,
+                        const ClassSelfOrder* self_order) {
   using namespace analysis;
   using Error = ClassDefinitionError;
   const auto initial = budget;
@@ -75,24 +79,53 @@ std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefini
       const auto value = graph.ops[site.definition.value].result;
       require(!value || !graph.values[value->value].first_use, Error::kFlow);
     }
+    std::vector<std::optional<OpId>> private_stores;
+    if (self_order && !self_order->Installations(graph).empty()) {
+      admit(graph.ops.size(), sizeof(std::optional<OpId>));
+      private_stores.resize(graph.ops.size());
+      admit(private_stores.capacity() - private_stores.size(),
+            sizeof(std::optional<OpId>));
+      for (const auto& store : self_order->Stores(graph)) {
+        step();
+        require(store.creation.value < corridors.size() &&
+                store.store.value < graph.ops.size());
+        const auto end = corridors[store.creation.value].last;
+        if (end && order.Before(graph, store.store, graph.ops[end->value].block,
+                                graph.ops[end->value].order))
+          private_stores[store.store.value] = store.creation;
+      }
+    }
+    const auto owner = [&](std::size_t i) {
+      return result.owners[i]         ? result.owners[i]
+             : private_stores.empty() ? std::optional<OpId>{}
+                                      : private_stores[i];
+    };
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      step(); if (!result.owners[i] || !HasOrderedEffect(graph.ops[i])) continue;
-      const auto creation = *result.owners[i];
+      step();
+      if (!owner(i) || !HasOrderedEffect(graph.ops[i])) continue;
+      const auto creation = *owner(i);
       const auto* predecessor = std::get_if<OpId>(&order.before[i]);
-      require(predecessor && (*predecessor == creation || result.owners[predecessor->value] == creation), Error::kFlow);
+      require(predecessor && (*predecessor == creation ||
+                              owner(predecessor->value) == creation),
+              Error::kFlow);
       require(order.Before(graph, *predecessor, graph.ops[i].block, graph.ops[i].order), Error::kFlow);
       require(!successors[predecessor->value], Error::kFlow); successors[predecessor->value] = 1;
     }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      step(); if (!result.owners[i] || !HasOrderedEffect(graph.ops[i]) || successors[i]) continue;
-      auto& corridor = corridors[result.owners[i]->value];
+      step();
+      if (!owner(i) || !HasOrderedEffect(graph.ops[i]) || successors[i])
+        continue;
+      auto& corridor = corridors[owner(i)->value];
       require(!corridor.tail, Error::kFlow); corridor.tail = OpId{static_cast<std::uint32_t>(i)};
     }
     const auto completed = [&](const OperandUse& use, OpId creation, OpId end) {
       WorkBlockId block; std::uint32_t position;
       if (const auto* owner = std::get_if<OpId>(&use.owner)) {
         require(owner->value < graph.ops.size(), Error::kFlow);
-        if (result.owners[owner->value] == creation) return;
+        if (result.owners[owner->value] == creation ||
+            (!private_stores.empty() &&
+             private_stores[owner->value] == creation))
+          return;
         const auto& observer = graph.ops[owner->value];
         block = observer.block; position = observer.order;
       } else {

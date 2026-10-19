@@ -5,6 +5,7 @@
 #include <array>
 #include <span>
 namespace abcd::source {
+class ClassSelfOrder;
 struct ClassAccessorDefinition {
   std::optional<analysis::OpId> getter;
   std::optional<analysis::OpId> setter;
@@ -71,7 +72,10 @@ struct ClassDefinitionProjection {
 // Bounded shared SSA/effect constructions, then O(ops + uses + sites) projection.
 // Total O((blocks + edges) log blocks + uses log uses + ops + values + sites),
 // including repeated definitions on the same class; no per-class CFG walks.
-[[nodiscard]] std::variant<ClassDefinitionProjection, ClassDefinitionError> ProjectClassDefinitions(
-    const analysis::ValueProgram&, std::span<const ClassDefinitionSite>, analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<ClassDefinitionProjection, ClassDefinitionError>
+ProjectClassDefinitions(const analysis::ValueProgram&,
+                        std::span<const ClassDefinitionSite>,
+                        analysis::SemanticBudget = {},
+                        const ClassSelfOrder* = nullptr);
 }
 #endif

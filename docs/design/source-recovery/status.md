@@ -5,6 +5,49 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Class-self increment 4: actual creator captures bound; publication still gated (2026-10-20)
+
+- **Partial delivery: o20/8166 does not publish.** Its two ordinary initializer
+  requirements now bind through m8392's actual CaptureTree, with real environment/
+  storage identity, final creator names and unchanged TDZ domains. Aliases are
+  lexical references, never copied values or fabricated initialized captures.
+  Independent re-verification repeats the original capture binding and checks
+  occurrence, storage, names, scopes, separate ports and cleanup correspondence.
+- The sealed raw preparation survives until the existing two-phase creator
+  scheduling supplies the actual source enclosure. Certified private class
+  installation effects coexist with the original self store; no unrelated
+  mixed-class shape is admitted. The real class task allocates the initializer
+  syntax owner. Other successful preparations and Closed refusals are unchanged.
+- o20 advances from `kRecoveryGate / kCaptureEnclosure` at **m8556 PC13** to
+  `kRecoveryGate / kClassInitializationPorts` at **m8392 op100 PC261**, with
+  `bound_outer: 2`. The common initializer verifier still rejects class-inner
+  scope; joint OriginalFlow/RecoveryFlow for the private self Commit, initializer
+  Before/Commit/exception and public Commit/TDZ is not implemented. It is not
+  sound to identify these with the whole ClassExpr Commit. No gate is lifted.
+  o0/4660 and its completed-class availability/getInstance obligation are unchanged.
+- Eight real es2abc fixtures assert their exact publication refusal. `outer`
+  now binds and reaches the ports gate; new `outer_tdz` keeps capture enclosure
+  because native declaration-at-store fulfilment is unproved. Mutations cover
+  wrong target/slot/domain/name, shadowing, cleanup and ports. Bound evidence
+  round-trips through receipts and both JSON paths. Self-only and outer-capture
+  widths **200/201/400/800** check exact work/minimum-byte admission and one-below
+  refusal. Independent enclosure byte boundaries are **2,450,621 / 2,462,314 /
+  4,830,181 / 9,589,301**, work **1,093,601 / 1,100,998 / 2,174,665 / 4,339,193**.
+- Fresh OLD/NEW cohorts against **55aab71f** retain **532/620 / 584/620**, identical
+  complete sets and every non-manifest byte (3,613 / 3,769 files). Only o20/8166's
+  manifest changes; abc_semantic reports the same gate. No newly published class
+  exists, so no engine-output Node or es2abc/ark_disasm equivalence is claimed.
+  Design checkpoint: [class-self-initialization-scope.md](class-self-initialization-scope.md).
+  Scratch evidence: `build/review/class-self4/`. No commit/push/stash.
+- Full build passes. Final isolated serial source-regression is **65/65**,
+  focused tests **10/10**, requested sweep **207/221**. All 14 sweep failures
+  reproduce with rebuilt **55aab71f** baseline executables: family_source_cli,
+  tree_structure, try_tree (+source), derived_cells (+source/unguarded),
+  class_tree_source and the six captured-receiver variants. No failing semantic
+  expectation was relaxed. The added bound-capture receipt test supplies its real
+  working revision, and scale invocations use separate scratch directories;
+  final acceptance runs execute sequentially to avoid shared-fixture races.
+
 ## Class-self increment 3: consumed initializer scope, explicit recovery gates (2026-10-20)
 
 - Consumes `ClassSelfScopeProof` through the common FunctionTree builder on the

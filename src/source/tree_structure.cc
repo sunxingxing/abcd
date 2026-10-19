@@ -749,6 +749,12 @@ class StructureCheck {
   }
 
   void ClassCaptures(const ClassTree& definition) {
+    if (definition.class_self)
+      for (const auto& target : definition.class_self->outer) {
+        budget_.Step();
+        RequireTree(target.owner == tree_.owner, Error::kBinding);
+        scopes_.Reference(target.symbol);
+      }
     std::uint64_t sendable_work=0;
     if(const auto failure=VerifySendableClass(definition,definition.DraftPrepared(),budget_.Remaining(),&sendable_work)) {
       if(failure->kind==SendableError::kWorkLimit)throw Error::kWorkLimit;

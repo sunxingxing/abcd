@@ -412,3 +412,82 @@ identical. Only o0/4660 and o20/8166 diagnostics move to the stated typed gates;
 abc_semantic agrees with the manifests. Exact 200/201/400/800 draft bytes are
 2,347,215 / 2,358,103 / 4,606,735 / 9,125,775; work is 1,445,501 / 1,452,838 /
 2,864,716 / 5,708,978. Scratch logs: `build/review/class-self3/`.
+
+## Increment 4 checkpoint: real creator enclosure consumed (2026-10-20)
+
+**Partial delivery, with publication still closed.** The two ordinary outer
+requirements of m8556 now bind through m8392's actual creator CaptureTree.
+`ClassSelfDeferred` retains the sealed raw occurrence/scope evidence until the
+existing two-phase class preparation has constructed that tree. The reader's
+original Closed refusal remains the deterministic entry condition. Existing
+successful preparations take their unchanged path.
+
+`ClassSelfOrder` carries the verified private-installation corridor. Definition
+and initializer projection use that evidence to retain the original private self
+store as an ordinary cell operation, while projecting only the already-certified
+class installation events. It does not move the public store or initializer.
+The actual creator class task reserves the initializer's syntax owner from its
+full owner range. Binding is performed there, before finishing the class.
+
+`BindDeferredClassSelf` uses BindCreation, BindCaptureCells and the independent
+capture verifier with the real creator storage. The initializer's incoming
+(depth, slot) is joined to the actual parent cell, then to the original-flow
+storage/environment and source symbol. No plan-local CellId crosses the join.
+Aliases use the creator's final spelling, preserve the original capture domain,
+and remain plain lexical references; no outer value is read or copied early.
+VerifyDeferredCaptureTree must still prove declaration-at-store fulfilment.
+Consequently a late outer declaration without that proof remains
+`kCaptureEnclosure`; the new `outer_tdz` fixture checks this negative case.
+
+`VerifyClassSelfEnclosure` independently reconstructs those targets, re-verifies
+the raw/scope certificate, checks aliases/domains/names and original occurrence,
+and runs the existing class draft and enclosing structure verifiers. ClassTree
+retains the original, distinct internal/public ports and cleanup entries; its
+outer targets are checked at the real ClassExpr. Name/storage/cleanup/port
+mutations must reject. The retained family snapshots are for raw analysis only:
+their early borrowed module-parent inputs are not used after creator movement
+and must never be sent to PreparedFamily::Finish. Any future finishing must use
+the freshly prepared family under the actual creator, as the ordinary path does.
+
+**Remaining projection:** common VerifyTreeSemantics still rejects the new
+class-inner scope. OriginalFlow/RecoveryFlow also lack a joint, cross-method
+class-initialization port relation: private self Commit, initializer Before and
+Commit/exception, then public Commit with the outer binding's original TDZ
+lifetime. Treating a ClassExpr Commit as all these events would be unsound. The
+new path attempts the common verifier and preserves a located
+`kRecoveryGate / kClassInitializationPorts` at m8392 op100 PC261, with
+`bound_outer: 2`. Neither ordinary recovery nor the printer admits this draft.
+This gate does not claim that joint recovery or native output equivalence has
+passed. o0/4660 remains unchanged at its previous gate; its separate completed-
+class availability and additional member-family correspondence are not attempted.
+
+All eight real fixtures explicitly assert publication refusal: self, outer,
+throwing, reentry, branches, copies and accessors need initialization ports;
+outer_tdz needs capture enclosure. The common production exporter is exercised,
+as well as the independently checked creator/enclosure path. Width 200/201/400/
+800 is tested both with self-only fields and with a real outer requirement;
+exact work/minimum-byte admission and one-below resource refusal are checked.
+No newly published class text exists this round, so no engine-output Node check
+or es2abc/ark_disasm equivalence result is claimed. The new fixture's compiler,
+command and hash are in its README; tests do not execute the original source as
+if it were decompiler output.
+
+### Increment 4 acceptance
+
+Full build passes. Final sequential acceptance is **65/65 source-regression**,
+**10/10 focused tests**, and **207/221** in the requested tree/scope/capture/class/
+static/initializer/family/receipt/manifest/CLI/binding/cell sweep. All 14 failures
+reproduce with rebuilt 55aab71f executables (family_source_cli, tree_structure,
+try_tree and source, derived_cells and source/unguarded, class_tree_source, six
+captured-receiver variants). Their logs and the exact test-name comparison are
+under `build/review/class-self4/`; none is relabelled as a new passing test.
+
+Fresh cohorts and both cmp_cohort/exact directory comparisons retain **532/620**
+and **584/620**. All 3,613 / 3,769 non-manifest files are byte-identical; only
+m8392's o20/8166 diagnostic changes. o0 and every other manifest are unchanged.
+Independent enclosure minimum bytes at 200/201/400/800 are 2,450,621 / 2,462,314 /
+4,830,181 / 9,589,301; exact work is 1,093,601 / 1,100,998 / 2,174,665 / 4,339,193.
+The new bound evidence is checked through receipts and both JSON paths, including
+invalid counts and missing-recovery rejection. The test-only receipt includes its
+actual working revision; the scale harness isolates each invocation's generated
+ABC files. Final runs are sequential, avoiding overlapping fixture producers.
