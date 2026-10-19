@@ -134,6 +134,17 @@ int main() {
     if(const auto* error=std::get_if<EvaluationFailure>(&planned)) std::cerr<<"eval "<<unsigned(error->kind)<<"\n";
     Check(std::holds_alternative<EvaluationPlan>(planned));
     const auto& evaluation=std::get<EvaluationPlan>(planned);
+    // Cursor elision is licensed only by the independently verified private
+    // construction. Neither a missing cursor classification nor a forged one
+    // on an observable invocation may pass the evaluation verifier.
+    auto forged=evaluation;
+    for (auto& placement : forged.operations) if (placement.kind==EvaluationKind::kArrayCursor) {
+      placement.kind=EvaluationKind::kRoot;break;
+    }
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(sample.graph,forged)));
+    forged=evaluation;
+    forged.operations[sample.graph.ops.size()-2]={EvaluationKind::kArrayCursor,{},{}};
+    Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(sample.graph,forged)));
     auto calls=BuildCallPlan(sample.graph,evaluation);
     if(split) {
       // The existing normal-flow scheduler retains effectful cross-block

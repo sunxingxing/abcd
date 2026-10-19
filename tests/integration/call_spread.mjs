@@ -28,9 +28,14 @@ try {
  const samples=[[],[1,,3],'a😀'];const ordinary=samples.map(v=>m.direct(function(...xs){return [this===undefined,xs];},v));
  const repeated=m.twice({method(...xs){return xs;}},[1],[2,3]);
  const caught=m.handled({method(){throw new RangeError();}},[]);
- console.log(JSON.stringify({result,error,log,ordinary,repeated,caught}));
+ const nestedLog=[];const array=[1,2,3];
+ Object.defineProperty(array,'indexOf',{get(){nestedLog.push('indexOf.get');return function(x){nestedLog.push(['indexOf.call',this===array,x]);return Array.prototype.indexOf.call(this,x);};}});
+ const xs={[Symbol.iterator](){nestedLog.push('iterator');return [1,2][Symbol.iterator]();}};
+ const inner=function(...args){nestedLog.push(['inner',this===undefined,args]);if(mode==='childThrow')throw new TypeError();return 2;};
+ let indexed,argument,nestedError;try{indexed=m.indexNested(array,inner,xs);argument=m.argumentNested(function(x,y){nestedLog.push(['outer',this===undefined,x,y]);return x+y;},inner,xs,4);}catch(e){nestedError=e.constructor.name;}
+ console.log(JSON.stringify({result,error,log,ordinary,repeated,caught,indexed,argument,nestedError,nestedLog}));
  `);
- for(const mode of ['normal','callee','first','iterator','next','done','value','last','rewrite','notCallable'])
+ for(const mode of ['normal','callee','first','iterator','next','done','value','last','rewrite','notCallable','childThrow'])
    assert.equal(run(process.execPath,[runner,emitted,mode]),run(process.execPath,[runner,oracle,mode]),mode);
  // The second acquisition is an accepted difference, not an Ark oracle pass.
  const difference=run(process.execPath,['--input-type=module','-e',`
@@ -51,6 +56,10 @@ try {
  const structures=rs=>{const methods=new Map();for(const r of rs){const id=r.method;const a=methods.get(id)||[];if(metadata.opcodes.includes(r.encoding.opcode))a.push(r.encoding.opcode);methods.set(id,a);}return [...methods.values()].filter(a=>a.includes(186)).map(a=>JSON.stringify(a)).sort();};
  assert.deepEqual(structures(reRows),structures(rows),'per-method createarray/spread/APPLY round-trip');
  for(const r of reRows.filter(x=>x.encoding.opcode===186))assert.equal(r.lift.roles.form,1);
+ // Nested argument-array constructions retain their separate shared-operand gate.
+ const nestedOut=join(dir,'nested-refused');run(structure,[join(fixture,'nested_refused.abc'),nestedOut,'--value-source','--language-source']);
+ const nestedRecords=JSON.parse(readFileSync(join(nestedOut,'manifest.json'))).records;
+ assert.ok(nestedRecords.some(r=>r.source_failure?.causes?.some(c=>c.domain==='abcd::source::ArrayInitializationError'&&c.value===11)));
  const old=join(dir,'old');run(structure,[join(fixture,'calls.abc'),old,'--value-source','--language-numeric','--language-constructors']);
  const refused=JSON.parse(readFileSync(join(old,'manifest.json'))).records.find(r=>r.entity===metadata.record);
  assert.notEqual(refused.source_status,0);assert.ok(refused.source_failure.causes.some(c=>c.domain==='abcd::source::CallSpreadError'&&c.value===9));

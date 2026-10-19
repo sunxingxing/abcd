@@ -5,6 +5,37 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Nested APPLY snapshot accounting — uncommitted follow-up to 8922134a
+
+- Evidence: o7/17736 m18306 op138 PC379 has the correct result consumer Use160
+  in op141 PC387 (`indexOf`). Its own inputs are Use153 -> op125 PC345 (saved
+  `Math.min`), Use154 -> op122 PC337 (`Math` receiver), and Use155 -> op127 PC351
+  (private argument array). The refusal is actually VerifyPredicateSnapshots'
+  interval-end check, not a consumer mismatch: child interval ends at 7 while
+  serial is 8. The extra event is op134 PC369, the private array length read,
+  already proved/classified kArrayCursor. The witness reports the current APPLY
+  op and its valid consumer; it does not identify a different expected owner.
+- Local fix: the shared snapshot Events function treats independently proved
+  kArrayCursor bookkeeping like other projected initializer events. No ownership,
+  interval, order or exception condition was removed. ArrayInitialization and
+  evaluation verification still independently reject forged cursor classification.
+  No new allocation/index or asymptotic work is added.
+- Real es2abc fixtures add `a.indexOf(f(...xs))` with a reused predicate result
+  and `g(h(...xs), y)`. Engine-output Node comparisons check calls, getters,
+  iterator order, receiver identity and child throws; adapted es2abc round-trip
+  checks continue to pass (the documented export-syntax adaptation is unchanged).
+  `g(...h(...xs))` is a separate negative fixture retaining the existing
+  ArrayInitializationError::kSharedOperand boundary, not a newly admitted protocol.
+- Baseline comparison against retained 8922134a outputs: previous flags
+  **526/620**, source **576/620** (575 before). The sole status/diagnostic change
+  is o7/17736 becoming complete under V5; no complete-record text or extension
+  drift. Its new output passes node --check. All 40 inputs completed in each run;
+  measured V5 CLI peak RSS maximum **39,534,592 bytes**.
+- Acceptance: full build passed; fixed preset serial **65/65**; call-spread
+  **3/3**; combined targeted run **5/5**; CLI/corpus/failure/receipt/manifest/ISA
+  sweep **86/87**, only the previously registered family_source_cli_test
+  owner/origin-arena failure. All diagnostic instrumentation was removed.
+
 ## Narrow APPLY call spread — V5 (2026-10-19)
 
 - V5 adds the separately approved `CallSpread()==kPrivateArgumentsV1`; V1–V4

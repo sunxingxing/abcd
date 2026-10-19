@@ -6,14 +6,16 @@
     "--merge-abc",
     "--opt-level=0"
   ],
-  "record": 319,
+  "record": 331,
   "opcodes": [
     5,
     198,
     186
   ],
   "hashes": {
-    "calls.js": "fac6a4dd94752ea15ecf7ceaff2e3e0f986e56b62aa98b21b0783c417f96e12a",
-    "calls.abc": "db160b5d62c618165655d8e3f8671c4962e2de67f0eec5b1bccde682b93a1999"
+    "calls.js": "c7a358d11cb974832cbd682f4a896c8394688437d8d084a3ed90d37ebdf44156",
+    "calls.abc": "4b76272de47fde9166641365349f20d9f21fd5cd1b080979895dba7730678968",
+    "nested_refused.js": "9e53a90233d1dcfe2d1b8d9dc466afd808965499fdd3ccc811a83122098dff66",
+    "nested_refused.abc": "cab6d208645b95729d868595d5c805dc19cd16a5245425268a21bda7fb35d965"
   }
 }

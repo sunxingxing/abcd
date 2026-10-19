@@ -170,7 +170,10 @@ std::size_t Events(const ValueOp& op, OpEvaluation placement) {
   // independently verified native definitions are not standalone writes here.
   if (placement.kind == EvaluationKind::kCellGuard || placement.kind == EvaluationKind::kModuleGuard ||
       placement.kind == EvaluationKind::kReceiverGuard || placement.kind == EvaluationKind::kInitializer ||
-      placement.kind == EvaluationKind::kNestedLiteral || placement.kind == EvaluationKind::kClassProjection) return 0;
+      placement.kind == EvaluationKind::kNestedLiteral || placement.kind == EvaluationKind::kClassProjection ||
+      // ArrayInitialization independently proves private length/cursor bookkeeping.
+      // It is not an additional observable event between the array and its call.
+      placement.kind == EvaluationKind::kArrayCursor) return 0;
   if (std::holds_alternative<ValueModuleRead>(op.operation)) return 2;
   return OrderedEvaluation(op) || IsEnvironmentState(op.operation);
 }

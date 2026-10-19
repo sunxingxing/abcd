@@ -15,3 +15,10 @@ export function handled(receiver, values) {
     try { return receiver.method(...values); }
     catch (error) { return error.constructor.name; }
 }
+export function indexNested(a, f, xs) {
+    const index = a.indexOf(f(...xs));
+    return index >= 0 ? a[index] : undefined;
+}
+export function argumentNested(g, h, xs, y) {
+    return g(h(...xs), y);
+}

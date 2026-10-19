@@ -35,3 +35,24 @@ Unit tests cover raw roles/effects/commit, proof and tree mutations, copies,
 cross-block scheduler still retains the array root: block-split cases verify
 construction but retain typed kOrder. This is an implementation limitation, not
 a language requirement.
+
+## Nested call operand regression (8922134a follow-up)
+
+`indexNested` covers `a.indexOf(f(...xs))` with the index reused by a conditional;
+`argumentNested` covers `g(h(...xs), y)`. The Node oracle checks the saved outer
+member reference, iterator/inner/outer call order, receiver identity, and an inner
+throw. Both are included in the engine-output recompile checks above.
+
+The diagnostic for the original corpus failure was a snapshot interval mismatch,
+not an incorrect APPLY consumer: the private length read was already classified
+kArrayCursor but the snapshot event counter still counted its raw heap read.
+The main evaluation verifier independently checks that cursor classification
+against the original array-initialization proof before snapshot verification.
+Unit mutations reject both removing that classification and applying it to an
+observable invocation, at the existing 200/201/400/800 sizes.
+
+`nested_refused.js` deliberately tests the separate boundary `g(...h(...xs))`:
+its nested private constructions currently refuse with
+ArrayInitializationError::kSharedOperand. This is not claimed as recovered.
+It is compiled with the same command/options, replacing both `calls` basenames
+with `nested_refused`; both hashes are recorded in the fixture manifest.
