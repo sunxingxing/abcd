@@ -34,9 +34,10 @@ void Run(abc::ProfileId profile, bool captured, std::size_t count) {
   }
   std::vector<ExpressionConstant> constants(values.graph.ops.size());
   const ExpressionConstants view{constants, syntax.names.size(), 0};
-  auto tree = std::get<ConstructedFunction>(BuildFunctionTree(values.graph, control, evaluation,
-      std::move(syntax), view)).tree;
-  auto flow = std::get<TreeFlow>(VerifyTreeFlow(values.graph, control, evaluation, tree));
+  auto built = std::get<ConstructedFunction>(BuildFunctionTree(
+      values.graph, control, evaluation, std::move(syntax), view));
+  auto tree = std::move(built.tree);
+  auto flow = std::move(*built.flow);
   const auto verify = [&](analysis::SemanticBudget budget = {}) {
     return VerifyLexicalStores(NormalStoreInput{input}, values.graph, &*values.cells, {tree, flow}, {}, budget);
   };
@@ -95,12 +96,142 @@ void Run(abc::ProfileId profile, bool captured, std::size_t count) {
         !checked_family.facts.creations && !checked_family.facts.signature_stores);
   }
 }
+// Entry demands are a narrow synthetic stand-in for the descendant summary.
+// They change the final cell numbering without changing any store's storage.
+void DemandJoin(std::size_t count, bool reverse) {
+  const auto op = [](abc::Opcode code) {
+    return static_cast<std::uint8_t>(code);
+  };
+  const std::vector<std::uint8_t> bytes{op(abc::Opcode::kLDA_V8),
+                                        0,
+                                        op(abc::Opcode::kSTLEXVAR_IMM8_IMM8),
+                                        1,
+                                        0,
+                                        op(abc::Opcode::kRETURNUNDEFINED)};
+  const auto body = test::Body(bytes);
+  const auto frame = std::get<abc::FrameLayout>(
+      abc::BuildFrameLayout(0, 2, {false, false, false, false}));
+  RouteInputIdentity identity;
+  identity.profile = abc::ProfileId::kDynamic1301;
+  const auto input = std::get<FunctionInput>(FunctionInput::Build(
+      identity, {300}, {100}, body, frame, InputCaptureMode::kConditional));
+  auto values =
+      std::get<FunctionValues>(BuildFunctionValues(input, body, frame));
+  std::vector<IncomingCell> demands;
+  for (std::size_t n = 0; n < count; ++n)
+    demands.push_back({{0}, {static_cast<std::uint16_t>(n)}});
+  if (reverse) std::reverse(demands.begin(), demands.end());
+  const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(
+      values.graph, {}, IncomingCells::kConditional, {}, {}, {}, {},
+      analysis::ClosureWrites::kLanguage, {}, {}, demands));
+  const auto control = std::get<ControlPlan>(BuildControlPlan(values.graph));
+  FunctionSyntax syntax;
+  syntax.identity = identity;
+  syntax.method = {300};
+  syntax.owner = {1};
+  syntax.callable = CallableKind::kFunction;
+  syntax.strictness = Strictness::kStrict;
+  syntax.parameters.resize(frame.parameters);
+  for (std::size_t n = 0; n < evaluation.cells->cells.cells.size(); ++n) {
+    syntax.names.push_back(u"capture" + std::u16string(n + 1, u'x'));
+    syntax.captures.push_back(
+        {CellId{static_cast<std::uint32_t>(n)},
+         {FunctionOwnerId{0}, SymbolId{static_cast<std::uint32_t>(n)}},
+         NameId{static_cast<std::uint32_t>(n)}});
+  }
+  std::vector<ExpressionConstant> constants(values.graph.ops.size());
+  auto built = std::get<ConstructedFunction>(
+      BuildFunctionTree(values.graph, control, evaluation, std::move(syntax),
+                        {constants, count + 1, 0}));
+  const auto verify = [&](analysis::SemanticBudget budget = {}) {
+    return VerifyLexicalStores(NormalStoreInput{input}, values.graph,
+                               &*values.cells, {built.tree, *built.flow}, {},
+                               budget);
+  };
+  const auto checked = std::get<LexicalStores>(verify());
+  test::Check(checked.stores == 1 && checked.captured == 1);
+  if (!reverse) std::cout << "demands=" << count << " bytes=" << checked.allocated_bytes << " work=" << checked.work << '\n';
+  for (const bool bytes : {false, true}) {
+    analysis::SemanticBudget budget;
+    if (bytes)
+      budget.bytes = checked.allocated_bytes;
+    else
+      budget.work = checked.work;
+    test::Check(std::holds_alternative<LexicalStores>(verify(budget)));
+    if (bytes)
+      --budget.bytes;
+    else
+      --budget.work;
+    test::Check(std::get<LexicalStoreFailure>(verify(budget)).kind ==
+                (bytes ? LexicalStoreError::kResourceLimit
+                       : LexicalStoreError::kWorkLimit));
+  }
+  auto original = std::make_shared<OriginalFlow>(*built.flow->original);
+  built.flow->original = original;
+  const auto store = std::find_if(
+      values.graph.ops.begin(), values.graph.ops.end(), [](const auto& o) {
+        return std::holds_alternative<analysis::ValueLexicalStore>(o.operation);
+      });
+  const auto index = static_cast<std::size_t>(store - values.graph.ops.begin());
+  auto& ref = *original->cells->references[index];
+  test::Check(ref.cell.value == count &&
+              values.cells->operations[index] == CellId{0});
+  const auto reject = [&] {
+    test::Check(std::get<LexicalStoreFailure>(verify()).kind ==
+                LexicalStoreError::kStore);
+  };
+  const auto saved = ref;
+  ref.cell = {0};
+  reject();
+  ref = saved;
+  ref.kind = CellAccessKind::kLoad;
+  reject();
+  ref = saved;
+  ref.expression = {static_cast<std::uint32_t>(built.tree.expressions.size())};
+  reject();
+  ref = saved;
+  auto& source_storage = std::get<IncomingCell>(values.cells->cells[0].storage);
+  ++source_storage.slot.value;
+  reject();
+  --source_storage.slot.value;
+  ++source_storage.depth.value;
+  reject();
+  --source_storage.depth.value;
+  auto& binding = original->cells->bindings[ref.cell.value];
+  ++std::get<analysis::CapturedDepth>(binding.storage.environment).value;
+  reject();
+  --std::get<analysis::CapturedDepth>(binding.storage.environment).value;
+  ++binding.storage.slot.value;
+  reject();
+  --binding.storage.slot.value;
+  auto& assignment = std::get<AssignmentExpr>(
+      built.tree.expressions[ref.expression.value].expression);
+  const auto rhs = assignment.value;
+  assignment.value = ref.expression;
+  reject();
+  assignment.value = rhs;
+  auto& use = values.graph.uses[store->first_use.value];
+  const auto operand = use.operand;
+  use.operand = analysis::SpecialValue::kNull;
+  reject();
+  use.operand = operand;
+  auto& address =
+      std::get<analysis::ValueLexicalStore>(values.graph.ops[index].operation)
+          .address;
+  ++address.slot.value;
+  reject();
+  --address.slot.value;
+  original->operations[index].write.reset();
+  reject();
+}
 }  // namespace
 int main() {
   using namespace abcd;
   for (const auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206,
                             abc::ProfileId::kDynamic1301})
     for (const bool captured : {false, true}) Run(profile, captured, 1);
-  for (const std::size_t count : {200, 201, 402})
+  for (const std::size_t count : {200, 201, 400, 800})
     for (const bool captured : {false, true}) Run(abc::ProfileId::kDynamic1301, captured, count);
+  for (const std::size_t count : {1, 200, 201, 400, 800})
+    for (const bool reverse : {false, true}) DemandJoin(count, reverse);
 }

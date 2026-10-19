@@ -5,6 +5,49 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Cross-plan lexical-cell stores (2026-10-20, uncommitted)
+
+- Fixed o18/56008 m56581 PC108: the discovery plan's Cell2 and the final
+  demanded plan's Cell3 both denote incoming depth0/slot8. The old store check
+  reused Cell2 against the final flow and incorrectly expected Symbol5 rather
+  than the verified Symbol6. The join now uses original operation and resolved
+  environment/allocation storage identity, with independent stored-input,
+  target, source-write, Commit and exception correspondence checks. Owner,
+  Language-domain, store and TDZ obligations remain. No source naming or
+  printer change. See [capture-binding.md](capture-binding.md).
+- The target completes under --language-source. Both 40-input cohorts against
+  **d233bd54**: **530 -> 530/620** previous flags, **581 -> 582/620** source.
+  No status regressions or text/entry-position/method-position drift in any
+  previously complete record; only source o18/56008's manifest changes.
+  Previous flags keep the original capture-initialization refusal
+  (m56553 PC99), which this slice does not change. New output passes Node syntax.
+- The pinned es2abc fixture reproduces the old FamilyWriteError::kStore and
+  passes **42** original-source / engine-output Node scenarios: hoisted
+  writers, inserted/permuted descendant demands, live updates, throwing RHS,
+  early TDZ (constructor and trace), and per-call cell isolation. A wrong-store
+  behavioral mutation is observed. Unit mutations reject wrong depth/slot,
+  forged references, RHS/operand/address substitutions, missing writes,
+  forged Commit and missing exception exits. Exact byte/work limits pass at
+  **200/201/400/800** stores and demands. For one retained store with those
+  demand counts the checker uses **395 bytes** and **290/291/490/890** work;
+  it borrows the charged final binding table and scans it once.
+- Full build passed; serial `ctest --preset source-regression -j 1`
+  **65/65**; focused lexical-store/class-context/Node tests **3/3**. Requested
+  CLI/corpus/failure/receipt/manifest/ISA/capture/lexical/family/cell/scope
+  sweep **136/146**. All ten failures reproduce with **d233bd54**:
+  `family_source_cli_test` (owner/origin arena assertion), `derived_cells_test`,
+  `derived_cells_source_test`, `unguarded_derived_cells_source_test`,
+  `captured_receiver_source_test`, `unguarded_captured_receiver_source_test`,
+  `reversed_captured_receiver_source_test`,
+  `unguarded_reversed_captured_receiver_source_test`,
+  `reversed_initialization_captured_receiver_source_test`, and
+  `unguarded_reversed_initialization_captured_receiver_source_test`.
+  The baseline has no paired-root CTest registration for the family CLI, so
+  its unchanged CMake test was also run directly with the baseline executable
+  and paired sample. No expectations were relaxed. `git diff --check` passes.
+- Fresh OLD/NEW cohort exports, comparisons, baseline reproductions, build and
+  test logs are under `build/review/lexical-cell/`. No commit or push.
+
 ## Staged indexed-array commits across selections (2026-10-19, uncommitted)
 
 - Diagnosed o8/42040 m42490: allocation op17 PC47 creates the private empty

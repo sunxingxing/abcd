@@ -358,6 +358,9 @@ class WriteCheck {
         Consume(owner, {static_cast<std::uint32_t>(i)});
     }
   }
+  // Discovery's cell plan may precede descendant demands. The store verifier
+  // joins it to the final tree by original operation and lexical storage;
+  // never substitute a plan-local CellId for the final binding identity.
   void Stores(std::size_t owner) {
     const auto source = Member(owner);
     const auto& target = trees_.members[owner];

@@ -2077,6 +2077,9 @@ if(BUILD_TESTING)
     add_test(NAME literal_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_arm.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/literal_arm)
+    add_test(NAME lexical_cell_correspondence_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lexical_cell_correspondence.mjs
+      $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/lexical_cell_correspondence)
     add_test(NAME staged_indexed_array_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/staged_indexed_array.mjs
       $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/staged_indexed_array $<TARGET_FILE:abc_semantic>)

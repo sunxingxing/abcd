@@ -933,9 +933,10 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
     Check(std::get<InstructionSourceError>(BuildInstructionSources(phase, decoded, wrong_sources)) ==
         InstructionSourceError::kPlacement);
     if (exception == ExceptionShape::kLexical) {
-      const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(phase.Graph()));
       auto tree = emission.Function().Tree();
-      const auto flow = std::get<TreeFlow>(VerifyExceptionTreeFlow(phase.Graph(), phase.TreeInput(decoded), evaluation, tree));
+      auto flow = emission.Function()
+                      .Flow();  // Includes independently checked original
+                                // operand/Commit correspondence.
       const auto verify = [&](analysis::SemanticBudget budget = {}) {
         return VerifyLexicalStores(PhasedStoreInput{phase, decoded}, phase.Graph(), phase.Cells(), {tree, flow}, {}, budget);
       };
@@ -954,6 +955,27 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
             failure.pc == phase.Graph().origins[phase.Graph().ops[i].origin.value].pc);
         assignment.target = saved;
       }
+      Check(std::holds_alternative<LexicalStores>(verify()));
+      auto original = std::make_shared<OriginalFlow>(*flow.original);
+      flow.original = original;
+      const auto reject = [&] {
+        Check(std::get<LexicalStoreFailure>(verify()).kind ==
+              LexicalStoreError::kStore);
+      };
+      const auto exits = original->exceptional_exits;
+      Check(!exits.empty());
+      original->exceptional_exits.pop_back();
+      reject();
+      original->exceptional_exits = exits;
+      const auto phase_it = std::find_if(
+          original->phases.begin(), original->phases.end(), [](const auto& p) {
+            return p.phase == analysis::ExceptionPhase::kCommit;
+          });
+      Check(phase_it != original->phases.end());
+      const auto saved_phase = *phase_it;
+      phase_it->phase = analysis::ExceptionPhase::kBefore;
+      reject();
+      *phase_it = saved_phase;
       Check(std::holds_alternative<LexicalStores>(verify()));
     }
     if (evidence) {

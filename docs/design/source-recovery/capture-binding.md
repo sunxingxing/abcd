@@ -607,3 +607,39 @@ A constructor writing Hole into the captured cell and a missing parent
 initialization both refuse. The real Backup ability advances to partial source:
 its async methods can be checked independently, while its spread constructor
 retains an explicit gap and the record remains non-executable-equivalent.
+
+## Cross-plan store correspondence (2026-10-20)
+
+The original access-only `CellPlan` and the final demanded evaluation plan have
+separate CellId spaces. In o18/56008 m56581, the retained PC108 store is incoming
+depth0/slot8. Discovery calls it Cell2; forwarding an extra descendant demand
+makes it Cell3 in the final tree. The assignment correctly targets Symbol6,
+while the old family store check indexed `flow.cells[2]` and expected Symbol5.
+No RHS snapshot or capture-domain change is needed.
+
+`VerifyLexicalStores` now joins the original instruction and working OpId,
+resolves each address against its own environment ancestry, and compares
+incoming depth/slot or the original allocation occurrence/slot. Original
+EnvironmentIds are mapped through original instruction correspondence to
+working allocation OpIds; they are never compared numerically with the final
+environment index. Only then may the final operation reference supply a final
+CellId and source symbol. Deferred declarations use an independently indexed
+final declaration occurrence. Names and source-plan cell numbering play no role.
+
+The same check revalidates the stored operand occurrence and source definition,
+actual target/RHS, successful write, retained phase/Commit sites and every
+exception exit against the immutable working graph. Original SSA input domains
+and owner checks remain mandatory. The existing family binding/lifetime proof
+still owns TDZ, dynamic activation, guarded reads and capture permissions; this
+join grants none of them. Callers now supply the already semantically verified
+flow, rather than construction-only TreeFlow lacking original correspondence.
+
+Allocation, declaration and stored-input indexes are charged before allocation
+and built once per member. Work is linear in original instructions, phases,
+allocations, checked inputs, cell bindings and statements, plus the existing
+per-store SSA bound searches and fixed-width ancestry queries. No graph walk or
+cell-table scan occurs per store. Exact byte/work boundary tests cover
+200/201/400/800 stores and inserted demands, both demand orders. Wrong storage,
+reference, RHS, original address, Commit and exception evidence are refused.
+The real es2abc fixture and Node differential are in
+`tests/integration/fixtures/lexical_cell_correspondence`.
