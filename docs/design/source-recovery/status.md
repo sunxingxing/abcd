@@ -5,6 +5,38 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Readable grouping slice 3: braces (2026-10-19, uncommitted)
+
+- Baseline `edc9821e`. A prepaid `BracePlan` in `SourceVariables` uses original
+  scope/symbol/target facts plus final binding/nullish/loop print projections.
+  Sole-if alternate wrappers become `else if`; empty-scope, unlabelled bare
+  statement-list blocks can flatten. Required bodies, lexical/function/class
+  declarations, captured/catch scopes, labels, directive-sensitive strings and
+  projected content stay braced. Child spans/textless anchors use the same
+  counting/real token actions. No expression or value-call policy change.
+- A constructed binding differential caught projected lexical declarations
+  (`BindingInitializers::statements`) absent from the original scope census.
+  The eligibility check now keeps those blocks; the unchanged behavioral
+  oracle and a focused plan regression validate this boundary.
+- Complete sets/statuses unchanged: **526/620**, **576/620**, paired **80/80**.
+  Previous flags remove **96** else wrappers; language-source removes **106**;
+  paired removes none. No real cohort bare block qualifies; the standalone
+  tree/Node tests exercise flattening and completion preservation.
+- Strict es2abc/ark_disasm, both default and O0 (no allowance): previous flags
+  **526 pass / 0 differ / 0 unverified**; source **567 / 0 / 9**; paired
+  **80 / 0 / 0**. Nine unchanged compiler failures remain unverified. Token
+  checks: **526/0/0**, **563/0/13**, **80/0/0** (pass/fail/unverified); the 13
+  ArkTS files are unchanged. All-JS Node syntax: **527/564/80**, zero failures.
+- Full build passed; fixed `source-regression -j 1` **65/65**, brace/grouping
+  **9/9**, required sweep **98/99**. Only the documented pre-existing
+  `family_source_cli_test` owner/origin-arena failure remains in the sweep.
+  Exact byte/work and width/depth cases cover
+  **200/201/400/800**. See [readable-grouping.md](readable-grouping.md) for rules,
+  ten examples and compiler hashes. Reports/logs:
+  `build/review/braces/{finalcheck,finalchecks,checkpair,final-output-check.json}`.
+  The corrected executable's sources are byte-identical to the compiler-checked
+  outputs. No commit, push or stash.
+
 ## Activation-local staged literals (2026-10-19, uncommitted)
 
 - Baseline: `66ed407c`. `VerifyStaged` retains the existing DAG path unchanged.

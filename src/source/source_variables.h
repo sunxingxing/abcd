@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_SOURCE_VARIABLES_H_
 #define ABCD_SOURCE_SOURCE_VARIABLES_H_
 #include "binding_initializer.h"
+#include "brace_plan.h"
 #include "loop_syntax.h"
 #include "nullish_syntax.h"
 namespace abcd::source {
@@ -14,6 +15,7 @@ struct SourceVariables {
   NullishSyntax nullish;
   LoopSyntax loops;
   BindingInitializers bindings;
+  BracePlan braces;
   // Peak preparation admission and conservative returned storage are distinct.
   // Callers admit the peak before releasing destroyed preparation scratch.
   std::size_t allocated_bytes = 0, retained_bytes = 0;

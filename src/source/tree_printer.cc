@@ -69,7 +69,8 @@ struct ExpressionOperand {
 // Keep the original parent grammar until a remaining conversion is emitted.
 struct BooleanOperand { ExpressionOperand expression; bool inverted; };
 struct PostfixSpine { ExprId expression; ExprId access; ExprId base; };
-struct Statement { StmtId id; std::size_t depth; };
+enum class BlockForm : std::uint8_t { kBraced, kList, kElseIf };
+struct Statement { StmtId id; std::size_t depth; BlockForm block = BlockForm::kBraced; };
 struct EndStatement { StmtId id; };
 struct LoopHeader { StmtId id; std::optional<StmtId> retained; bool discarded = false; };
 struct LoopHeaderCursor { StmtId block; std::uint32_t index; std::uint32_t count; std::optional<StmtId> retained; bool discarded = false; };
@@ -79,7 +80,7 @@ struct LoopDeclarationCursor { std::uint32_t index; std::uint32_t end; bool emit
 struct LoopKeyword { std::optional<LabelId> label; };
 struct ElideStatement { StmtId id; };
 struct LoopBody { StmtId block; LoopConditionSyntax syntax; std::size_t depth; };
-struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; };
+struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; BlockForm form = BlockForm::kBraced; };
 struct Indent { std::size_t depth; };
 struct PropertyKey { NameId id; bool optional = false; };
 struct SymbolName { SymbolId id; };
@@ -1574,6 +1575,7 @@ class TreePrinter {
     }else Push(value.value);
   }
   void StatementNode(const BlockStmt& node, Statement at) {
+    if(at.block!=BlockForm::kBraced){Push(BlockCursor{at.id,0,at.depth,at.block});return;}
     if (node.label) { Label(*node.label); Append(": "); }
     if (!ModuleBody() || at.id != Tree().body) Append("{\n");
     if(at.id==Tree().body && Tree().concurrent) {
@@ -1659,7 +1661,7 @@ class TreePrinter {
     }
     Append("if (");
     if (node.alternate) {
-      Push(Statement{*node.alternate, at.depth}); Push(std::string_view(" else "));
+      Push(Statement{*node.alternate, at.depth, Variables().braces.statements[node.alternate->value]==BraceReason::kElseIf ? BlockForm::kElseIf : BlockForm::kBraced}); Push(std::string_view(" else "));
     }
     Push(Statement{node.consequent, at.depth}); Push(std::string_view(") "));
     Push(ExpressionOperand{node.condition, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kTruthiness});
@@ -1964,9 +1966,9 @@ class TreePrinter {
     };
     const bool relocated = at.index < end && moved(at.index);
     if ((!tail || at.index < end) && !relocated && !(at.index && moved(at.index - 1))) Boundary({at.id, at.index});
-    const bool root = ModuleBody() && at.id == Tree().body;
+    const bool root = (ModuleBody() && at.id == Tree().body) || at.form!=BlockForm::kBraced;
     if (at.index == end) { if (!root) { Run(Indent{at.depth}); Append("}"); } return; }
-    Push(BlockCursor{at.id, at.index + 1, at.depth});
+    Push(BlockCursor{at.id, at.index + 1, at.depth, at.form});
     if (relocated) return;
     if (at.id == Tree().body && at.index + 1 == block.child_count) {
       if (const auto completion = ImplicitTailCompletion(Tree())) {
@@ -1993,8 +1995,12 @@ class TreePrinter {
     if (Initializers().omitted[child.value]) {
       Push(ElideStatement{child}); return;
     }
-    Push(std::string_view("\n"));
+    if(at.form==BlockForm::kElseIf){Push(Statement{child,at.depth});return;}
     const auto depth = root ? at.depth : at.depth + 1;
+    if(Variables().braces.statements[child.value]==BraceReason::kStatementList){
+      Push(Statement{child,depth,BlockForm::kList});return;
+    }
+    Push(std::string_view("\n"));
     Push(Statement{Tree().children[block.first_child + at.index], depth});
     Push(Indent{depth});
   }

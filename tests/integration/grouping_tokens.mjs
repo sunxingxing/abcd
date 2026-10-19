@@ -29,3 +29,18 @@ for(const [a,b] of [
 const moduleAlias='import {f as eval} from "x";(0, eval)();';
 assert.throws(()=>calls(moduleAlias,moduleAlias.replace('(0, eval)','eval')));
 console.log('value-call token checker: remove and forbidden-context mutations passed');
+const {checkBraceRemovals: braces}=await import('../tools/grouping_tokens.mjs');
+assert.equal(braces('function f(){ { x(); } }','function f(){ x(); }'),1);
+assert.equal(braces('if(a){}else{if(b){}else{c();}}','if(a){}else if(b){}else{c();}'),1);
+assert.equal(braces('function f(){ { { x(); } } }','function f(){ x(); }'),2);
+for(const [a,b] of [
+ ['function f(){{let x=1;x;}}','function f(){let x=1;x;}'],
+ ['function f(){{const x=1;x;}}','function f(){const x=1;x;}'],
+ ['function f(){{class X{}}}','function f(){class X{}}'],
+ ['function f(){{function g(){}}}','function f(){function g(){}}'],
+ ['function f(){{"use strict";x();}}','function f(){"use strict";x();}'],
+ ['label:{x();}','label:x();'], ['while(a){x();}','while(a)x();'],
+ ['if(a){if(b){} }else {}','if(a)if(b){}else {}'],
+ ['try{x();}catch(e){y();}','try{x();}catch(e)y();'],
+ ['function f(){{/*keep*/x();}}','function f(){/*keep*/x();}']])assert.throws(()=>braces(a,b));
+console.log('brace token checker: pair, scope, directive, dangling-else and required-body checks passed');

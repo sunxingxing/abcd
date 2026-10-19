@@ -1,12 +1,12 @@
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
-import {inferGroupingRemovals,checkValueCallRemovals} from './grouping_tokens.mjs';
+import {inferGroupingRemovals,checkValueCallRemovals,checkBraceRemovals} from './grouping_tokens.mjs';
 const require=createRequire(import.meta.url),acorn=require('internal/deps/acorn/acorn/dist/acorn');
 const pairs=JSON.parse(readFileSync(process.argv[2],'utf8')),results=[];
 for(const pair of pairs){
   const old=readFileSync(pair.old,'utf8'),next=readFileSync(pair.new,'utf8');
   const result={id:pair.id,removed:0,oldDouble:(old.match(/\(\(/g)||[]).length,newDouble:(next.match(/\(\(/g)||[]).length,oldObject:(old.match(/\(\{/g)||[]).length,newObject:(next.match(/\(\{/g)||[]).length};
-  try{result.removed=process.argv.includes('--value-calls')?checkValueCallRemovals(old,next):inferGroupingRemovals(old,next).length;result.status='pass';}
+  try{result.removed=process.argv.includes('--braces')?checkBraceRemovals(old,next,result):process.argv.includes('--value-calls')?checkValueCallRemovals(old,next):inferGroupingRemovals(old,next).length;result.status='pass';}
   catch(e){result.status=pair.old.endsWith('.ets')?'unverified':'fail';result.reason=String(e);}
   // Apply only identifier-valued string export aliases. No text matching of
   // strings/comments; both sides receive the same syntax adaptation.

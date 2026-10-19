@@ -147,3 +147,39 @@ export function checkValueCallRemovals(oldSource, newSource) {
   assert.deepEqual(old.comments.map(c=>oldSource.slice(c.start,c.end)),next.comments.map(c=>newSource.slice(c.start,c.end)));
   return count;
 }
+
+// Brace-only mode: removable tokens must delimit an eligible original BlockStatement.
+// The AST comparison also proves that no dangling else was reassociated.
+export function checkBraceRemovals(oldSource,newSource,counts) {
+  const options={ecmaVersion:'latest',sourceType:'module'};
+  const commentsA=[],commentsB=[];
+  const a=acorn.parse(oldSource,{...options,onComment:commentsA});
+  const b=acorn.parse(newSource,{...options,onComment:commentsB});
+  assert.deepEqual(commentsA.map(x=>[x.type,x.value]),commentsB.map(x=>[x.type,x.value]));
+  const eligible=new Map(),alternates=new Set();
+  function walk(node,parent,key) {
+    if(!node||typeof node!=='object')return;
+    if(node.type==='BlockStatement' && ((parent?.type==='BlockStatement'&&key==='body')||
+       (parent?.type==='IfStatement'&&key==='alternate'&&node.body.length===1&&node.body[0].type==='IfStatement')) &&
+       node.body.length && !node.body.some(x=>['VariableDeclaration','FunctionDeclaration','ClassDeclaration'].includes(x.type)) &&
+       !(node.body[0].type==='ExpressionStatement'&&typeof node.body[0].expression.value==='string') &&
+       !commentsA.some(x=>x.start>node.start&&x.end<node.end)){eligible.set(node.start,node.end-1);if(parent?.type==='IfStatement')alternates.add(node.start);}
+    for(const [k,v]of Object.entries(node))if(Array.isArray(v))v.forEach(x=>walk(x,node,k));else if(v&&typeof v==='object')walk(v,node,k);
+  }
+  walk(a,null,'');
+  const old=[...acorn.tokenizer(oldSource,options)],next=[...acorn.tokenizer(newSource,options)],removed=new Set();let j=0;
+  const closes=new Set(eligible.values());
+  for(const t of old){if(removed.has(t.start))continue;const n=next[j];if(n&&oldSource.slice(t.start,t.end)===newSource.slice(n.start,n.end)){++j;continue;}
+    assert((t.type.label==='{'&&eligible.has(t.start))||(t.type.label==='}'&&closes.has(t.start)),'unplanned token change');removed.add(t.start);if(eligible.has(t.start))removed.add(eligible.get(t.start));}
+  assert.equal(j,next.length);
+  for(const [open,close]of eligible)assert.equal(removed.has(open),removed.has(close),'partial brace pair');
+  function canonical(node,oldSide){
+    if(Array.isArray(node))return node.flatMap(x=>oldSide&&eligible.has(x?.start)&&removed.has(x.start)?canonical(x.body,oldSide):[canonical(x,oldSide)]);
+    if(!node||typeof node!=='object')return node;
+    if(oldSide&&eligible.has(node.start)&&removed.has(node.start)&&node.body.length===1&&node.body[0].type==='IfStatement')return canonical(node.body[0],oldSide);
+    return Object.fromEntries(Object.entries(node).filter(([k])=>!['start','end','raw'].includes(k)).map(([k,v])=>[k,canonical(v,oldSide)]));
+  }
+  assert.deepEqual(canonical(a,true),canonical(b,false));
+  if(counts){counts.elseIf=[...alternates].filter(x=>removed.has(x)).length;counts.flattened=removed.size/2-counts.elseIf;}
+  return removed.size/2;
+}

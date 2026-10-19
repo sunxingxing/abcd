@@ -61,7 +61,7 @@ def wrapper_load_difference(old, new, wrapper_count):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--old',type=pathlib.Path,required=True);p.add_argument('--new',type=pathlib.Path,required=True);p.add_argument('--out',type=pathlib.Path,required=True)
-    p.add_argument('--value-calls',action='store_true');p.add_argument('--es2abc',default=ES2ABC);p.add_argument('--disasm',default=DISASM);a=p.parse_args()
+    p.add_argument('--braces',action='store_true');p.add_argument('--value-calls',action='store_true');p.add_argument('--es2abc',default=ES2ABC);p.add_argument('--disasm',default=DISASM);a=p.parse_args()
     a.out.mkdir(parents=True,exist_ok=False)
     old,new=records(a.old),records(a.new)
     result={'old_complete':len(old),'new_complete':len(new),'lost':sorted(old.keys()-new.keys()),'added':sorted(new.keys()-old.keys()),
@@ -78,9 +78,11 @@ def main():
     tokens=a.out/'tokens.json'
     command=['node','--expose-internals',str(pathlib.Path(__file__).with_name('grouping_pairs.mjs')),str(pairfile),str(tokens)]
     if a.value_calls:command+=['--value-calls']
+    if a.braces:command+=['--braces']
     if run(command,a.out/'tokens.log'):raise RuntimeError('token/adaptation tooling failed')
     token_results=json.loads(tokens.read_text());result['tokens']={s:sum(x['status']==s for x in token_results) for s in ('pass','fail','unverified')}
     result['removed_pairs']=sum(x['removed'] for x in token_results)
+    if a.braces:result['brace_counts']={k:sum(x.get(k,0) for x in token_results) for k in ('elseIf','flattened')}
     result['text_counts']={k:sum(x[k] for x in token_results) for k in ('oldDouble','newDouble','oldObject','newObject')}
     result['bytecode']={mode:{'pass':0,'allowed':0,'differ':0,'unverified':0} for mode in ('default','O0')}
     result['node']={'pass':0,'fail':0,'unverified':0}

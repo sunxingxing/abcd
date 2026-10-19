@@ -27,6 +27,7 @@ std::variant<SourceVariables,TreeStructureError> PrepareSourceVariables(
     const auto binding_storage=BindingStorage(result.bindings);
     RequireTree(binding_storage<=result.bindings.allocated_bytes,TreeStructureError::kOwnership);
     budget.Release(result.bindings.allocated_bytes-binding_storage);
+    result.braces=BuildBracePlan(tree,result.bindings,result.nullish,result.loops,budget);
     result.retained_bytes=budget.ActiveBytes();
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   }catch(TreeStructureError error){trace.failure.cause=error;trace.Propagate();return error;}

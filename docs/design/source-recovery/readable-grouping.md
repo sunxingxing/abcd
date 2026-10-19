@@ -540,3 +540,229 @@ copies (`final-output-check.json`). Node syntax checks including partial outputs
 pass **527 / 564 / 80**, zero failures (`node-all.json`). `git diff --check`
 passes. Final logs: `build/review/paren2/{build-final,fixed-final,sweep-final,grouping-final,targeted-final}.log`.
 No commit, push or stash.
+
+
+## Slice 3: scope-safe braces (2026-10-19)
+
+Baseline: `edc9821e`, using `build/review/wtbase/b/abc_structure`.
+`BracePlan` is computed once per tree in `PrepareSourceVariables`, after binding,
+nullish and loop projections. It records a typed reason for every statement.
+The printer's statement/block cursor carries the resulting braced/list/else-if
+form; the counting sink and real sink execute the same actions. No source tree,
+control edge, binding, name, expression grouping or value-call rule is changed.
+
+The prepaid scope census rejects any binding-bearing scope, the capture scope,
+non-block scope kinds and explicit binding/loop/try origins. Labels and targeted
+blocks are retained. Declarations (including relocated lexical initializers and function/class initializers),
+unrecovered text, relocated/projected content and empty blocks are retained.
+Only raw single-if alternates qualify for `else if`; extra omitted statements
+are conservatively not treated as sole printed content. The tree verifier
+requires the inner if's arms to be blocks, and this plan keeps those arms.
+Thus removing the alternate's wrapper cannot reassign a dangling else.
+
+Bare blocks qualify only as children of a statement list. Their empty lexical
+scope has no binding/environment duty. An unlabelled BlockEvaluation returns
+its StatementList completion unchanged: normal/abrupt kind, value and target,
+including UpdateEmpty, remain in order. Blocks beginning with a string literal
+are retained everywhere, a conservative superset of the directive-position
+restriction. Nested retained blocks cannot expose a directive. Function,
+try/catch/finally, if and loop bodies remain grammar-required. Switch and static
+bodies are not candidates in this tree representation. All original child spans
+and textless block anchors are recorded by the emitted token stream; no offsets
+are patched afterwards.
+
+Planning uses O(statements + children + scopes + symbols) work and storage, with
+no subtree rescans or recursion. All vectors are admitted before allocation;
+temporary census storage is released from the ledger only after destruction.
+`VerifyBracePlan` independently recomputes decisions from the immutable tree
+and projections. Unit tests mutate the decision, retain binding/capture/catch/
+label/directive bodies, check dangling else and child/anchor spans, and exercise
+200/201/400/800 width and depth with exact byte/work boundaries. The Node test
+checks engine-printed syntax and seven independent completion/else-pairing cases.
+
+### Acceptance
+
+`grouping_bytecode.py --braces` uses strict assembly comparison: no dead-load
+allowance, register renaming or branch/handler normalization. The real Acorn
+lexer allows only matching eligible block braces to disappear; AST comparison
+checks statement order and if/else pairing. Literal spelling, comments and all
+other tokens remain intact. Export-name adaptation is identical on both sides.
+
+| Input | Complete OLD/NEW | Else-if | Bare flatten | Strict default pass/differ/unverified | Strict O0 pass/differ/unverified | Token pass/fail/unverified | Node pass/fail/unverified |
+|---|---:|---:|---:|---|---|---|---|
+| previous flags, 40 inputs | 526/526 | 96 | 0 | 526/0/0 | 526/0/0 | 526/0/0 | 526/0/0 |
+| language-source, 40 inputs | 576/576 | 106 | 0 | 567/0/9 | 567/0/9 | 563/0/13 | 563/0/13 |
+| two paired samples | 80/80 | 0 | 0 | 80/0/0 | 80/0/0 | 80/0/0 | 80/0/0 |
+
+Complete record sets are identical. The 13 ArkTS files are outside Acorn/Node;
+all are text-identical in this slice. Nine have the same pre-existing es2abc
+compilation failure on both sides, not a pass. Four compile identically.
+No cohort bare block met the conservative scope criteria; constructed trees
+exercise flattening. This is an explicit coverage boundary, not a claim that
+all visual nested braces are redundant.
+
+Compiler SHA-256: `4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`.
+Disassembler SHA-256: `a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676`.
+Commands, bytecode, token decisions and reports are under
+`build/review/braces/{finalcheck,finalchecks,checkpair}`; per-site counts are in
+`{check,checks,checkpair}/brace-counts.json`.
+
+Ten representative rewrites (arm contents abbreviated):
+
+`o1/12874`
+```js
+// OLD
+} else {
+  if ($value4.length) {
+    // ...
+  }
+}
+// NEW
+} else if ($value4.length) {
+  // ...
+}
+```
+
+`o14/24464`
+```js
+// OLD
+} else {
+  if (res != 0) {
+    // ...
+  }
+}
+// NEW
+} else if (res != 0) {
+  // ...
+}
+```
+
+`o14/26141`
+```js
+// OLD
+} else {
+  if ($value0 === "fun1") {
+    // ...
+  }
+}
+// NEW
+} else if ($value0 === "fun1") {
+  // ...
+}
+```
+
+`o15/7013`
+```js
+// OLD
+} else {
+  if (!islandSpace) {
+    // ...
+  }
+}
+// NEW
+} else if (!islandSpace) {
+  // ...
+}
+```
+
+`o16/19142`
+```js
+// OLD
+} else {
+  if ($value2 === audio.AudioStreamDeviceChangeReason.REASON_NEW_DEVICE_AVAILABLE) {
+    // ...
+  }
+}
+// NEW
+} else if ($value2 === audio.AudioStreamDeviceChangeReason.REASON_NEW_DEVICE_AVAILABLE) {
+  // ...
+}
+```
+
+`o17/4729`
+```js
+// OLD
+} else {
+  if (state === "initialized") {
+    // ...
+  }
+}
+// NEW
+} else if (state === "initialized") {
+  // ...
+}
+```
+
+`o18/19448`
+```js
+// OLD
+} else {
+  if (!$value1.caContent) {
+    // ...
+  }
+}
+// NEW
+} else if (!$value1.caContent) {
+  // ...
+}
+```
+
+`o18/54057`
+```js
+// OLD
+} else {
+  if ($value1 === "connectServer") {
+    // ...
+  }
+}
+// NEW
+} else if ($value1 === "connectServer") {
+  // ...
+}
+```
+
+`o18/59564`
+```js
+// OLD
+} else {
+  if ($value1 === "disConnect") {
+    // ...
+  }
+}
+// NEW
+} else if ($value1 === "disConnect") {
+  // ...
+}
+```
+
+`o18/60829`
+```js
+// OLD
+} else {
+  if ($value1 === "sendMessage") {
+    // ...
+  }
+}
+// NEW
+} else if ($value1 === "sendMessage") {
+  // ...
+}
+```
+
+A fixed-suite regression caught an important eligibility boundary during this
+slice: `BindingInitializers::statements` may introduce a lexical declaration in
+an originally empty scope. The plan now rejects those projected declarations,
+not just original `DeclarationStmt`/scope symbols. Constructed form 30 of
+`binding_interference_source_test` exposed this; its semantic oracle was kept
+unchanged, and `brace_plan_test` has a focused regression for the projection.
+The corrected executable regenerates byte-identical source to the complete
+compiler-checked cohort/paired outputs (`final-output-check.json`); no compiler
+comparison was waived or normalized. Node checks of all new JS outputs,
+including partial files, pass **527 / 564 / 80**, zero failures.
+
+Final verification: full build passed; `ctest --preset source-regression -j 1`
+**65/65**; brace/grouping **9/9**; required sweep **98/99**, only the documented
+pre-existing `family_source_cli_test` owner/origin-arena failure. The corrected
+binding differential passes unchanged (including its source-fixture prerequisite).
+Logs: `build/review/braces/{build-corrected,regression-final,focused-final,sweep-final,binding-corrected}.log`.
+`git diff --check` passes. No commit, push or stash.
