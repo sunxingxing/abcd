@@ -1,3 +1,4 @@
+#include "call_spread_inputs.h"
 #include "evaluation_plan.h"
 #include "for_in_evaluation.h"
 #include "for_of_evaluation.h"
@@ -60,10 +61,12 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
     plan.flow = flow;
+    plan.call_spread_contract = array_source.contract;
     bool has_notification=false;
     for(std::size_t i = 0; i < graph.ops.size(); ++i) {
       step(); const auto& op = graph.ops[i];
       if (const auto failure = NameSettingRefusal(graph, {static_cast<std::uint32_t>(i)})) return *failure;
+      if (const auto failure = CallSpreadRefusal(graph, {static_cast<std::uint32_t>(i)}, array_source.contract)) return *failure;
       has_notification |= std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);
     }
     if(has_notification) {
@@ -347,12 +350,16 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
             pinned[result->op.value] = 1;
       }
     }
+    TreeCheckBudget spread_budget({bytes,work});
+    const auto spread_inputs = IndexCallSpreadInputs(graph, plan, spread_budget);
+    admit(spread_budget.Bytes(),1); step(spread_budget.Work());
     if (const auto* arrays = ArrayInitializations(plan)) {
       for (std::size_t i = 0; i < arrays->nested.size(); ++i) {
         step(); if (arrays->nested[i]) plan.operations[i] = {EvaluationKind::kNestedLiteral, arrays->nested[i], {}};
       }
       for (const auto& array : arrays->arrays) {
-        step(); literal_allocations[array.allocation.value] = 1; pinned[array.allocation.value] = 1;
+        step(); literal_allocations[array.allocation.value] = 1; pinned[array.allocation.value] =
+            spread_inputs.empty() || !spread_inputs[array.allocation.value];
       }
       for (const auto& item : arrays->steps) {
         step(); plan.operations[item.operation.value] = {item.value ? EvaluationKind::kInitializer : EvaluationKind::kArrayCursor, {}, {}};

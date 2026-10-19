@@ -417,6 +417,24 @@ class StructureCheck {
               expression.source == analysis::SuperArgumentSource::kExplicit, Error::kUnsupportedSyntax);
         }
       } else if constexpr (std::is_same_v<T, CallExpr>) {
+        if (expression.array_arguments) {
+          RequireTree(CallSpread(tree_.identity.contract) == CallSpreadSemantics::kPrivateArgumentsV1 &&
+              expression.arguments.count == 0 && expression.array_arguments->value < tree_.expressions.size(), Error::kUnsupportedSyntax);
+          const auto& child = tree_.expressions[expression.array_arguments->value].expression;
+          const auto* array = std::get_if<ObjectExpr>(&child);
+          RequireTree(std::holds_alternative<ArrayExpr>(child) || std::holds_alternative<EmptyArrayExpr>(child) ||
+              (array && array->kind == AggregateKind::kArray), Error::kUnsupportedSyntax);
+          if (const auto* elements = std::get_if<ArrayExpr>(&child)) {
+            RequireTree(elements->elements.first <= tree_.arguments.size() &&
+                elements->elements.count <= tree_.arguments.size() - elements->elements.first, Error::kRange);
+            for (std::uint32_t i=0; i<elements->elements.count; ++i) {
+              budget_.Step(); const auto id=tree_.arguments[elements->elements.first+i];
+              RequireTree(id.value<tree_.expressions.size(),Error::kRange);
+              const auto* element=std::get_if<ArrayElement>(&tree_.expressions[id.value].expression);
+              RequireTree(element && !std::holds_alternative<ArrayElision>(element->element),Error::kUnsupportedSyntax);
+            }
+          }
+        }
         RequireTree(expression.arguments.first <= tree_.arguments.size() &&
             expression.arguments.count <= tree_.arguments.size() - expression.arguments.first, Error::kRange);
         RequireTree(expression.reference == CallReference::kValue ||
@@ -590,8 +608,12 @@ class StructureCheck {
         }
         return property.value;
       }
-      if (const auto* call = std::get_if<CallExpr>(&syntax))
-        return NextCall(frame, call->callee, call->arguments);
+      if (const auto* call = std::get_if<CallExpr>(&syntax)) {
+        if (!call->array_arguments) return NextCall(frame, call->callee, call->arguments);
+        if (frame.next_child == 0) { ++frame.next_child; return call->callee; }
+        if (frame.next_child == 1) { ++frame.next_child; return *call->array_arguments; }
+        return {};
+      }
       if (const auto* construct = std::get_if<ConstructExpr>(&syntax)) {
         if (const auto* arguments = std::get_if<ArgumentRange>(&construct->arguments))
           return NextCall(frame, construct->constructor, *arguments);

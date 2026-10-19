@@ -110,7 +110,8 @@ std::vector<std::size_t> ArrayUses(const ValueProgram& graph, const EvaluationPl
   bool needed = false;
   for (const auto& op : graph.ops) {
     budget.Step(); needed |= op.life == ValueLife::kLive &&
-        std::holds_alternative<ValueConstructApply>(op.operation);
+        (std::holds_alternative<ValueConstructApply>(op.operation) ||
+         (std::holds_alternative<ValueInvoke>(op.operation) && std::get<ValueInvoke>(op.operation).form == CallArgumentForm::kApplyArray));
   }
   if (!needed) return {};
   budget.Admit(graph.values.size(), sizeof(std::size_t)); budget.Step(graph.values.size());
@@ -125,6 +126,10 @@ std::vector<std::size_t> ArrayUses(const ValueProgram& graph, const EvaluationPl
       // Fresh LiteralPlan checks these receiver occurrences as own definitions,
       // not observations. A stored self-reference is still counted separately.
       if (kind == EvaluationKind::kInitializer && use.role == OperandRole::kBase) continue;
+      if (kind == EvaluationKind::kArrayCursor) continue;
+      if (kind == EvaluationKind::kInitializer &&
+          std::holds_alternative<ValueArraySpread>(graph.ops[owner->value].operation) &&
+          use.role == OperandRole::kDestination) continue;
     }
     const auto canonical = ResolveEvaluationOperand(evaluation, use.operand);
     if (const auto* value = std::get_if<ValueId>(&canonical)) ++counts[value->value];
@@ -151,6 +156,45 @@ OpId ApplyArray(const ValueProgram& graph, const EvaluationPlan& evaluation, con
         placement.consumer == use) || (placement.kind == EvaluationKind::kRoot && placement.temporary)),
       Error::kArrayArguments);
   return result->op;
+}
+[[noreturn]] void SpreadFailure(const ValueProgram& graph, const ValueOp& op, CallSpreadError cause) {
+  CallPlanFailure failure{Error::kArrayArguments}; failure.cause = cause;
+  if (op.origin.value < graph.origins.size()) {
+    const auto& site = graph.origins[op.origin.value];
+    failure.pc = site.original.value_or(site.pc); failure.working_pc = site.pc;
+  }
+  throw failure;
+}
+std::optional<OpId> SpreadArray(const ValueProgram& graph, const EvaluationPlan& evaluation,
+    const ValueOp& call, std::span<const std::size_t> uses) {
+  const auto& invoke = std::get<ValueInvoke>(call.operation);
+  if (invoke.form == CallArgumentForm::kRegisters) return {};
+  if (CallSpread(evaluation.call_spread_contract) != CallSpreadSemantics::kPrivateArgumentsV1)
+    SpreadFailure(graph, call, CallSpreadError::kPremise);
+  if (invoke.receiver != InvokeReceiver::kExplicit || invoke.arguments != 1 || call.use_count != 3)
+    SpreadFailure(graph, call, CallSpreadError::kCorrespondence);
+  const UseId use{call.first_use.value + 2};
+  const auto operand = ResolveEvaluationOperand(evaluation, graph.uses[use.value].operand);
+  const auto* value = std::get_if<ValueId>(&operand);
+  if (!value || value->value >= graph.values.size() || value->value >= uses.size())
+    SpreadFailure(graph, call, CallSpreadError::kConstruction);
+  if (uses[value->value] != 1) SpreadFailure(graph, call, CallSpreadError::kEscape);
+  const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
+  if (!result || result->op.value >= graph.ops.size() ||
+      !std::holds_alternative<ValueArrayAllocation>(graph.ops[result->op.value].operation))
+    SpreadFailure(graph, call, CallSpreadError::kConstruction);
+  const auto& placement = evaluation.operations[result->op.value];
+  if ((placement.kind != EvaluationKind::kInline && placement.kind != EvaluationKind::kNestedLiteral) ||
+      placement.consumer != use) SpreadFailure(graph, call, CallSpreadError::kOrder);
+  // Fresh evaluation verification owns the original LiteralPlan/array-step
+  // census, cursor equations, RHS order and catch correspondence. No new
+  // opcode/block admission or repeated per-argument scans here.
+  return result->op;
+}
+bool UndefinedReceiver(const ValueProgram& graph, const EvaluationPlan& plan, const ValueOp& op) {
+  const auto input = ResolveEvaluationOperand(plan, graph.uses[op.first_use.value + 1].operand);
+  const auto* constant = std::get_if<SpecialValue>(&input);
+  return constant && *constant == SpecialValue::kUndefined;
 }
 OpId ApplyConstructor(const ValueProgram& graph, const EvaluationPlan& evaluation, const ValueOp& call) {
   const auto input = ResolveEvaluationOperand(evaluation, graph.uses[call.first_use.value].operand);
@@ -192,8 +236,9 @@ std::variant<CallPlan, CallPlanFailure> BuildCalls(const analysis::ValueProgram&
       }
       const auto* invoke = std::get_if<ValueInvoke>(&op.operation);
       if (!invoke) continue;
-      if (invoke->receiver == InvokeReceiver::kUndefined) {
-        plan.operations[i] = ValueCall{};
+      const auto spread = SpreadArray(graph, evaluation, op, array_uses);
+      if (invoke->receiver == InvokeReceiver::kUndefined || (spread && UndefinedReceiver(graph, evaluation, op))) {
+        plan.operations[i] = ValueCall{EvalMode::kIndirect, spread};
         continue;
       }
       const auto& callee = graph.uses[op.first_use.value];
@@ -205,7 +250,7 @@ std::variant<CallPlan, CallPlanFailure> BuildCalls(const analysis::ValueProgram&
         ReferenceFailure(graph, evaluation, {static_cast<std::uint32_t>(i)}, {},
             CallReferenceError::kNotPropertyResult);
       const UseId receiver{op.first_use.value + 1};
-      plan.operations[i] = MemberCall{result->op, receiver};
+      plan.operations[i] = MemberCall{result->op, receiver, spread};
     }
     // Independent checking below validates the proposed property/receiver
     // association, including the suppressed raw receiver occurrence.
@@ -247,12 +292,13 @@ std::variant<std::uint64_t, CallPlanFailure> VerifyCalls(const analysis::ValuePr
         } else Require(!construct->array && !construct->constructor, Error::kBinding);
         continue;
       }
-      if (invoke->receiver == InvokeReceiver::kUndefined) {
+      const auto spread = SpreadArray(graph, evaluation, op, array_uses);
+      if (invoke->receiver == InvokeReceiver::kUndefined || (spread && UndefinedReceiver(graph, evaluation, op))) {
         const auto* value = std::get_if<ValueCall>(&binding);
-        Require(value && value->eval == EvalMode::kIndirect, Error::kBinding); continue;
+        Require(value && value->eval == EvalMode::kIndirect && value->array == spread, Error::kBinding); continue;
       }
       const auto* member = std::get_if<MemberCall>(&binding);
-      Require(member && member->property.value < graph.ops.size() &&
+      Require(member && member->array == spread && member->property.value < graph.ops.size() &&
           member->receiver.value == op.first_use.value + 1, Error::kBinding);
       const auto& property = graph.ops[member->property.value];
       // Fresh evaluation verification owns availability and total effect order,

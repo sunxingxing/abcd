@@ -8,6 +8,7 @@
 
 namespace abcd::analysis {
 inline constexpr std::size_t kFixedCallArguments = 3;
+enum class CallArgumentForm : std::uint8_t { kRegisters, kApplyArray };
 struct CallRegisters {
   std::array<abc::RegisterId, kFixedCallArguments> values{};
   std::uint8_t count = 0;

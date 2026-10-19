@@ -903,14 +903,16 @@ class TreePrinter {
     if (node.reference == CallReference::kValue) {
       Append("(0, ");
       Push(std::string_view(")"));
-      Push(ArgumentCursor{node.arguments, 0});
+      if (node.array_arguments) Push(ArrayArgumentCursor{*node.array_arguments});
+      else Push(ArgumentCursor{node.arguments, 0});
       Push(std::string_view(")("));
       // Value projection also preserves indirect eval for an identifier named
       // eval. Never omit it merely because a lexical callee looks callable.
       Push(node.callee);
     } else {
       Push(std::string_view(")"));
-      Push(ArgumentCursor{node.arguments, 0});
+      if (node.array_arguments) Push(ArrayArgumentCursor{*node.array_arguments});
+      else Push(ArgumentCursor{node.arguments, 0});
       Push(std::string_view("("));
       Push(ExpressionOperand{node.callee, {PostfixContext::kCallCallee}});
     }
@@ -1239,6 +1241,9 @@ class TreePrinter {
     Push(EndExpression{cursor.array});
     const auto& syntax = Tree().expressions[cursor.array.value].expression;
     if (std::holds_alternative<EmptyArrayExpr>(syntax)) return;
+    if (const auto* elements = std::get_if<ArrayExpr>(&syntax)) {
+      Push(ArgumentCursor{elements->elements, 0}); return;
+    }
     const auto* array = std::get_if<ObjectExpr>(&syntax);
     if (!array || array->kind != AggregateKind::kArray) throw Error::kUnsupportedContext;
     Push(ObjectCursor{array->properties, 0, AggregateKind::kArray});

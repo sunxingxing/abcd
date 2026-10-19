@@ -25,7 +25,7 @@ void VisitExpressionChildren(const FunctionTree& tree, const TreeExpression& exp
       if (const auto* member = std::get_if<MemberTarget>(&node.target)) { visit(member->base); key(member->key); }
       visit(node.value);
     } else if constexpr (std::is_same_v<T, FieldDefinitionExpr>) { visit(node.receiver); visit(node.value); }
-    else if constexpr (std::is_same_v<T, CallExpr>) { visit(node.callee); arguments(node.arguments); }
+    else if constexpr (std::is_same_v<T, CallExpr>) { visit(node.callee); if (node.array_arguments) visit(*node.array_arguments); else arguments(node.arguments); }
     else if constexpr (std::is_same_v<T, ConstructExpr>) {
       visit(node.constructor);
       if (const auto* range = std::get_if<ArgumentRange>(&node.arguments)) arguments(*range);

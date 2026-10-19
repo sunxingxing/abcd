@@ -385,6 +385,12 @@ SemanticEffects Effects(const SemanticOperation& operation,
                              std::is_same_v<T, ConstructorCall>) {
           effects.normal = LanguageEffect::kHeapRead |
                            LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+          if constexpr (std::is_same_v<T, ReceiverCall>) {
+            // RuntimeCallSpread / RuntimeGetCallSpreadArgs acquire the array's
+            // iterator before extraction. Raw APPLY never means a pure copy.
+            if (value.form == CallArgumentForm::kApplyArray)
+              effects.normal = effects.normal | LanguageEffect::kAllocation;
+          }
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, SuperForward> || std::is_same_v<T, SuperRange> || std::is_same_v<T, SuperSpread>) {

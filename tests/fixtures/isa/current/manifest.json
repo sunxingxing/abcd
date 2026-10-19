@@ -2502,12 +2502,57 @@
       "opcode": 186,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          },
+          {
+            "register": 0
+          },
+          {
+            "register": 0
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 71,
+        "roles": {
+          "arguments": {
+            "count": 1,
+            "type": "abcd::analysis::CallRegisters",
+            "values": [
+              {
+                "type": "abcd::abc::RegisterId",
+                "value": 0
+              },
+              {
+                "type": "abcd::abc::RegisterId",
+                "value": 0
+              },
+              {
+                "type": "abcd::abc::RegisterId",
+                "value": 0
+              }
+            ]
+          },
+          "form": 1,
+          "receiver": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::ReceiverCall"
+        },
+        "semantic_family": "abcd::analysis::ReceiverCall",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,

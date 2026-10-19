@@ -993,7 +993,7 @@ class FlowBuilder {
     if(!result_.normal_exits.empty())result_.normal_exits[at.id.value]=context.next;
     result_.value_uses[at.id.value]=context.value_use;
     result_.expression_owners[at.id.value]=context.owner;
-    if(context.expression_role==ExpressionRole::kArgumentCarrier) {
+    if(context.expression_role==ExpressionRole::kArgumentCarrier && !std::holds_alternative<ArrayExpr>(source)) {
       // ArrayArguments already owns the private-array/no-iteration proof.
       // Match the printer's positional-argument semantics; no expression-level
       // replacement can turn this syntax-only carrier into an evaluated value.
@@ -1151,6 +1151,12 @@ class FlowBuilder {
     }
     // Children keep language evaluation order, including callee, receiver and
     // assignment RHS. Their commits are distinct from throwing evaluation.
+    if(const auto* call=std::get_if<CallExpr>(&node); call && call->array_arguments) {
+      RequireTree(CallSpread(tree_.identity.contract)==CallSpreadSemantics::kPrivateArgumentsV1,Error::kOwnership);
+      auto carrier=context.Operand(effect,FlowValueUse::kUnmodeled);carrier.expression_role=ExpressionRole::kArgumentCarrier;
+      const auto next=Expr(*call->array_arguments,carrier);
+      Link(start,Expr(call->callee,context.Operand(next)));return;
+    }
     if(const auto* construct=std::get_if<ConstructExpr>(&node))
       if(const auto* arguments=std::get_if<ArrayArguments>(&construct->arguments)) {
         auto carrier=context.Operand(effect,FlowValueUse::kUnmodeled);carrier.expression_role=ExpressionRole::kArgumentCarrier;

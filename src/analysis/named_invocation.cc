@@ -34,7 +34,10 @@ std::variant<ReceiverCall, CallError> LiftReceiverCall(
   // operand is validated and then ignored.
   std::uint8_t count = 0;
   bool named = false;
+  CallArgumentForm form = CallArgumentForm::kRegisters;
   switch (instruction.opcode) {
+    case abc::Opcode::kAPPLY_IMM8_V8_V8:
+      form = CallArgumentForm::kApplyArray; count = 1; break;
     case abc::Opcode::kCALLTHIS0WITHNAME_IMM8_ID16_V8:
       named = true;
       [[fallthrough]];
@@ -114,6 +117,7 @@ std::variant<ReceiverCall, CallError> LiftReceiverCall(
       arguments.values[i - first_argument] = reg;
   }
   result.arguments = arguments;
+  result.form = form;
   return result;
 }
 
@@ -142,7 +146,7 @@ std::optional<NamedInvocation> MatchNamedInvocation(
   }
   const auto direct = LiftReceiverCall(block[property + 1].decoded, frame_size);
   if (const auto* call = std::get_if<ReceiverCall>(&direct)) {
-    if (call->receiver != *receiver) return {};
+    if (call->form != CallArgumentForm::kRegisters || call->receiver != *receiver) return {};
     return NamedInvocation{*named, *call, 2};
   }
 
@@ -173,7 +177,7 @@ std::optional<NamedInvocation> MatchNamedInvocation(
   const auto spilled_call =
       LiftReceiverCall(block[property + 3].decoded, frame_size);
   const auto* call = std::get_if<ReceiverCall>(&spilled_call);
-  if (!call || call->receiver != *receiver) return {};
+  if (!call || call->form != CallArgumentForm::kRegisters || call->receiver != *receiver) return {};
   const auto temporary = std::get<abc::RegisterId>(store->destination);
   if (temporary == call->receiver) return {};
   for (std::uint32_t i = 0; i < call->Count(); ++i)
@@ -273,7 +277,7 @@ std::optional<CopiedArgumentInvocation> MatchCopiedArgumentInvocation(
     return {};
   const auto invoked = LiftReceiverCall(block[call].decoded, frame_size);
   const auto* call_value = std::get_if<ReceiverCall>(&invoked);
-  if (!call_value || call_value->Count() != 1 ||
+  if (!call_value || call_value->form != CallArgumentForm::kRegisters || call_value->Count() != 1 ||
       call_value->receiver != *receiver || *call_value->At(0) != *argument)
     return {};
   const auto captured =
@@ -299,7 +303,8 @@ std::optional<StagedNamedInvocation> MatchStagedShape(
     const ReceiverCall& invoke) {
   const auto& instructions = body.instructions;
   using abc::Opcode;
-  if (call_index < 4 || call_index >= instructions.size() || spill < 2)
+  if (invoke.form != CallArgumentForm::kRegisters ||
+      call_index < 4 || call_index >= instructions.size() || spill < 2)
     return {};
   const auto reload = call_index - 1;
   const auto loaded =
@@ -369,7 +374,7 @@ std::optional<StagedNamedInvocation> MatchStagedAt(
   const auto lifted =
       LiftReceiverCall(instructions[call_index].decoded, frame_size);
   const auto* invoke = std::get_if<ReceiverCall>(&lifted);
-  if (!invoke || invoke->Count() == 0) return {};
+  if (!invoke || invoke->form != CallArgumentForm::kRegisters || invoke->Count() == 0) return {};
   const auto reload = call_index - 1;
   const auto loaded =
       LiftScalarInstruction(instructions[reload].decoded, frame_size);

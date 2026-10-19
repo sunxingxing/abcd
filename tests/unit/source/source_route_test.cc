@@ -92,16 +92,16 @@ bool SameReceipt(const MethodRouteReceipt& left,
 // lifted.
 int main() {
   Check(kSourceContract == SourceContract::kLanguageAndHostV3);
-  for (unsigned i = 0; i <= static_cast<unsigned>(SourceContract::kLanguageSourceV4); ++i) {
+  for (unsigned i = 0; i <= static_cast<unsigned>(SourceContract::kLanguageSourceV5); ++i) {
     const auto contract = static_cast<SourceContract>(i);
-    Check(ExternalExceptionNoHole(contract) == (contract == SourceContract::kLanguageSourceV4
+    Check(ExternalExceptionNoHole(contract) == ((contract == SourceContract::kLanguageSourceV4 || contract == SourceContract::kLanguageSourceV5)
         ? analysis::ExternalExceptionPolicy::kNoHoleV1 : analysis::ExternalExceptionPolicy::kPinnedRuntime));
-    Check(ConcurrentOutput(contract) == ((contract == SourceContract::kLanguageSourceV3 || contract == SourceContract::kLanguageSourceV4) ? ConcurrentOutputPolicy::kArkDirectiveV1 : ConcurrentOutputPolicy::kNotEnabled));
-    Check(SendableOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || contract==SourceContract::kLanguageSourceV4) ? SendableOutputPolicy::kArkDirectiveV1 : SendableOutputPolicy::kNotEnabled));
-    Check(SharedModuleOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || contract==SourceContract::kLanguageSourceV4) ? SharedModuleOutputPolicy::kArkDirectiveV1 : SharedModuleOutputPolicy::kNotEnabled));
-    Check(IterationAcquisition(contract) == ((contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || contract == SourceContract::kLanguageSourceV4))
+    Check(ConcurrentOutput(contract) == ((contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || contract == SourceContract::kLanguageSourceV5)) ? ConcurrentOutputPolicy::kArkDirectiveV1 : ConcurrentOutputPolicy::kNotEnabled));
+    Check(SendableOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || (contract==SourceContract::kLanguageSourceV4 || contract==SourceContract::kLanguageSourceV5)) ? SendableOutputPolicy::kArkDirectiveV1 : SendableOutputPolicy::kNotEnabled));
+    Check(SharedModuleOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || (contract==SourceContract::kLanguageSourceV4 || contract==SourceContract::kLanguageSourceV5)) ? SharedModuleOutputPolicy::kArkDirectiveV1 : SharedModuleOutputPolicy::kNotEnabled));
+    Check(IterationAcquisition(contract) == ((contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || contract == SourceContract::kLanguageSourceV5)))
         ? IterationAcquisitionSemantics::kStandardV1 : IterationAcquisitionSemantics::kPinnedRuntime));
-    const bool source = (contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || contract == SourceContract::kLanguageSourceV4));
+    const bool source = (contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || contract == SourceContract::kLanguageSourceV5)));
     Check(LazyImports(contract) == (source ? LazyImportSemantics::kArkTsLazyImport : LazyImportSemantics::kPinnedRuntime));
     Check(ArraySpreads(contract) == (source ? ArraySpreadSemantics::kSourceIterator : ArraySpreadSemantics::kPinnedRuntime));
   }
@@ -282,9 +282,9 @@ int main() {
     Check(SameReceipt(receipt, *recovered));
   }
   // Every contract that can be written can be read back (dense enum range).
-  for (std::size_t raw = 0; raw <= static_cast<std::size_t>(SourceContract::kLanguageSourceV4); ++raw) {
+  for (std::size_t raw = 0; raw <= static_cast<std::size_t>(SourceContract::kLanguageSourceV5); ++raw) {
     const auto contract = static_cast<SourceContract>(raw);
-    Check(ConstructorForwarding(contract) == ((contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || contract == SourceContract::kLanguageSourceV4))
+    Check(ConstructorForwarding(contract) == ((contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || contract == SourceContract::kLanguageSourceV5)))
         ? ConstructorForwardingSemantics::kSourceRestSpread
         : ConstructorForwardingSemantics::kInvocationFrame));
     auto receipt = RefusedReceipt();

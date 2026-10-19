@@ -256,6 +256,7 @@ enum class InvokeReceiver : std::uint8_t { kUndefined, kExplicit };
 struct ValueInvoke {
   InvokeReceiver receiver;
   std::uint32_t arguments;
+  CallArgumentForm form = CallArgumentForm::kRegisters;
   bool operator==(const ValueInvoke&) const = default;
 };
 // Constructor is also newTarget for these admitted NEWOBJRANGE operations.

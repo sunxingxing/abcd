@@ -127,6 +127,7 @@ struct EvaluationPlan {
   std::vector<std::optional<analysis::OpId>> assignment_values;
   std::vector<std::optional<analysis::UseId>> assignment_consumers;
   EvaluationFlow flow = EvaluationFlow::kNormal;
+  SourceContract call_spread_contract = kSourceContract;
   std::optional<ExceptionCopies> exceptions;
   // Flat, independently checked copy/phi identities in either flow. Exact
   // imports retain original transport anchors; optimization is optional.

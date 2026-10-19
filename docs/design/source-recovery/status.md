@@ -5,6 +5,44 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Narrow APPLY call spread — V5 (2026-10-19)
+
+- V5 adds the separately approved `CallSpread()==kPrivateArgumentsV1`; V1–V4
+  retain their meanings. Raw APPLY carries an argument-array form, including
+  receiver, ordered effects, exceptional completion and normal result commit.
+  Existing private array construction, cursor, callee/reference and tree/recovery
+  proofs gate publication; the legacy fixed-argument matchers exclude APPLY.
+- Both cohort runs compared against the retained ISA-3 recovery baseline:
+  previous flags **526/620**, V5 **575/620** (was 573). No complete-record status
+  regression or source/extension drift. Only the three target diagnostic chains
+  changed (old flags now give typed kPremise); V5 newly completes o31/10300 and
+  o31/28731. m29198 PC100 and PC154 both print native spread calls.
+- o7/17736 remains incomplete: m18306 op138 original/working PC379,
+  EvaluationError::kOwnership > kOperandOwnership, actual consumer Use160,
+  actual owner op141 PC387 (the surrounding indexOf call). No ownership check
+  was weakened. Normal block-split private constructions also retain typed
+  CallSpreadError::kOrder at the existing scheduler boundary.
+- Full build passed. Stable `ctest --preset source-regression -j 1`: **65/65**;
+  new tests **3/3**; targeted tests **8/8**; CLI/corpus/failure/receipt/manifest/ISA
+  sweep **86/87**, only the recorded family_source_cli_test owner/origin failure.
+  The constructed APPLY lift expectation was refreshed from the production
+  probe; it now lifts instead of claiming unsupported. Earlier fixed-suite
+  failures caused by relinking producer binaries during execution were discarded;
+  the stable rerun passed without changing those tests.
+- Serial V5 cohort CLI reports: all 40 ABCs measured; maximum process peak RSS
+  **39,419,904 bytes** (o4), below the 1 GB cap.
+- Node differential passes the real engine-exported fixture (five functions,
+  six APPLY sites), including order, throws, receiver/callee rewrite, sparse,
+  empty and string inputs. New corpus outputs pass node --check. The pinned
+  es2abc recompile preserves per-method createarray/STARRAYSPREAD/APPLY sequences
+  after an identifier-export syntax adaptation. Unmodified full-file recompile
+  fails on the existing string-named export aliases; this is not a fully passing
+  unmodified round-trip. See the fixture README for commands and SHA-256.
+- The modified Array.prototype iterator difference is explicitly demonstrated
+  as the approved V5 difference, not counted as an Ark execution pass. No Ark VM
+  run is claimed. The requested matrix is not exhaustive: cross-block publication
+  and full exception-edge mutation coverage remain review/follow-up boundaries.
+
 ## 更新规则
 
 - 每次提交连贯改动后更新本页：交付内容、构建与验证证据、剩余门槛。历史记录写入 `history/`。

@@ -43,7 +43,7 @@ template<class T> Json Describe(const T& value) {
     FIELD(receiver); FIELD(key); FIELD(value); FIELD(object); FIELD(source);
     FIELD(callee); FIELD(iterator); FIELD(method); FIELD(state); FIELD(owner);
     FIELD(kind); FIELD(name); FIELD(index); FIELD(slot); FIELD(level);
-    FIELD(arguments); FIELD(first); FIELD(count); FIELD(values); FIELD(constructor);
+    FIELD(arguments); FIELD(form); FIELD(first); FIELD(count); FIELD(values); FIELD(constructor);
     FIELD(literal); FIELD(length); FIELD(parent); FIELD(cache_slot); FIELD(mode);
     FIELD(target); FIELD(predicate); FIELD(op); FIELD(completion); FIELD(lookup);
     FIELD(loading); FIELD(name_setting); FIELD(domain); FIELD(operation); FIELD(scope); FIELD(id);

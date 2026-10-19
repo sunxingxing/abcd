@@ -22,6 +22,18 @@ inline std::optional<EvaluationFailure> NameSettingRefusal(
   witness.plan_cause = LiteralError::kNameSettingProof;
   return EvaluationFailure{EvaluationError::kUnsupportedOperation, witness};
 }
+inline std::optional<EvaluationFailure> CallSpreadRefusal(
+    const analysis::ValueProgram& graph, analysis::OpId id, SourceContract contract) {
+  const auto& op = graph.ops[id.value];
+  const auto* call = std::get_if<analysis::ValueInvoke>(&op.operation);
+  if (op.life != analysis::ValueLife::kLive || !call ||
+      call->form != analysis::CallArgumentForm::kApplyArray) return {};
+  if (CallSpread(contract) == CallSpreadSemantics::kPrivateArgumentsV1) return {};
+  EvaluationEvidence witness;
+  witness.location = OperationLocation(graph, id);
+  witness.plan_cause = CallSpreadError::kPremise;
+  return EvaluationFailure{EvaluationError::kUnsupportedOperation, witness};
+}
 inline EvaluationEvidence EvaluationAt(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, analysis::OpId id, EvaluationObligation obligation) {
   EvaluationEvidence result; result.obligation = obligation;

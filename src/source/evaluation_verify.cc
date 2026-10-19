@@ -1,3 +1,4 @@
+#include "call_spread_inputs.h"
 #include "integer_nan.h"
 #include "evaluation_plan.h"
 #include "for_in_evaluation.h"
@@ -180,6 +181,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
       if (const auto failure = NameSettingRefusal(graph, {static_cast<std::uint32_t>(i)})) return *failure;
+      if (const auto failure = CallSpreadRefusal(graph, {static_cast<std::uint32_t>(i)}, plan.call_spread_contract)) return *failure;
       const auto shape = op.life == analysis::ValueLife::kLive ? DescribeEvaluation(op.operation) : std::nullopt;
       has_arguments |= shape && shape->NeedsArgumentFrame();
       if (op.life == analysis::ValueLife::kLive && IsEnvironmentState(op.operation)) ++environment_epoch;
@@ -223,6 +225,9 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     Require(has_spread == (ArrayInitializations(plan) != nullptr), Error::kOwnership);
     std::vector<std::optional<analysis::OpId>> literal_projection;
     auto projected_literals = std::span<const std::optional<analysis::OpId>>(plan.class_projection.owners);
+    TreeCheckBudget spread_budget({bytes,work});
+    const auto spread_inputs = IndexCallSpreadInputs(graph, plan, spread_budget);
+    admit(spread_budget.Bytes(),1); step(spread_budget.Work());
     if (const auto* arrays = ArrayInitializations(plan)) {
       const auto proof = VerifyArrayInitializationStructure(graph, *arrays, {bytes, work}, &plan);
       if (const auto* error = std::get_if<ArrayInitializationError>(&proof)) return
@@ -236,7 +241,8 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       }
       projected_literals = literal_projection;
       for (const auto& array : arrays->arrays) {
-        step(); literal_allocations[array.allocation.value] = 1; pinned[array.allocation.value] = 1;
+        step(); literal_allocations[array.allocation.value] = 1; pinned[array.allocation.value] =
+            spread_inputs.empty() || !spread_inputs[array.allocation.value];
       }
       for (const auto& item : arrays->steps) if (item.value) {
         step(); const auto operand = ResolveEvaluationOperand(plan, graph.uses[item.value->value].operand);

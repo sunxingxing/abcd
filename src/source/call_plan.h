@@ -11,8 +11,8 @@ namespace abcd::source {
     analysis::OpId call, analysis::OpId property);
 struct NoCall {};
 enum class EvalMode : std::uint8_t { kIndirect };
-struct ValueCall { EvalMode eval = EvalMode::kIndirect; };
-struct MemberCall { analysis::OpId property; analysis::UseId receiver; };
+struct ValueCall { EvalMode eval = EvalMode::kIndirect; std::optional<analysis::OpId> array; };
+struct MemberCall { analysis::OpId property; analysis::UseId receiver; std::optional<analysis::OpId> array; };
 // Absent is the ordinary explicit argument range. Present identifies the exact
 // private array consumed by NEWOBJAPPLY; shared arrays are never expanded.
 struct ConstructCall {
@@ -33,7 +33,7 @@ enum class CallPlanError : std::uint8_t {
 };
 struct CallPlanFailure {
   CallPlanError kind;
-  std::variant<std::monostate, CallReferenceError> cause;
+  std::variant<std::monostate, CallReferenceError, CallSpreadError> cause;
   std::optional<abc::CodeOffset> pc, working_pc;
   std::optional<CallReferenceEvidence> reference;
   CallPlanFailure(CallPlanError value) : kind(value) {}  // NOLINT: implicit error kind.

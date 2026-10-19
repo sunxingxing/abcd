@@ -573,3 +573,45 @@ exception dispatch 的全部入口来源和 SSA 派生：已证明非 Hole 的�
 close 的比较证据只在该结论成立时排除 sentinel 的 Hole 分支。独立 verifier 从不可变输入
 重建事实，既不相信 supplied domain，也不把测试中的 Language 异常域当作原始证明。
 所有索引与工作队列由预付 PMR arena 承担；时间 O((V+E) log(V+E))，空间 O(V+E)。
+
+
+## Call spread on private argument constructions (LanguageSourceV5)
+
+User approval, 2026-10-19: `--language-source` selects V5. V1–V4 retain their
+meaning. `CallSpread() == kPrivateArgumentsV1` is separate from `ArraySpreads()`:
+it permits `obj.f(a, ...b, c)` / a value call only for a verified fresh argument
+array consumed by exactly one APPLY. Arbitrary APPLY arrays remain refused.
+The saved callee and exact receiver, allocation/use/cursor identities, element
+order, non-escape, and exception correspondence remain proof obligations.
+Inner STARRAYSPREAD uses the existing array-spread premise.
+
+Pinned `ets_frontend/es2panda/ir/expressions/callExpression.cpp:54,188–203`
+and `compiler/core/pandagen.cpp:1716` lower this source to a fresh argument
+array, own element definitions / STARRAYSPREAD, and APPLY. Recompilation is the
+Ark acceptance oracle; Node compares ordinary inputs only.
+
+The accepted standard-JS difference is the absence of the **second** iterator
+acquisition on the hidden argument array. Pinned
+`ets_runtime/ecmascript/stubs/runtime_stubs-inl.h:2675,2857` checks callability,
+then calls `JSIterator::GetIterator` before selecting stable-array copying.
+`ecmascript/js_iterator.cpp:38` performs the Symbol.iterator lookup and call.
+Consequently a modified Array.prototype[Symbol.iterator] can introduce effects,
+exceptions, expose the hidden array or replace the extracted arguments in Ark;
+standard argument spread omits that hidden-array acquisition. Such Node
+mismatches are documented accepted differences, never passing runtime checks.
+Freshness does not establish runtime stability (`js_tagged_value.cpp:390`).
+This approval does not authorize changing the callee/receiver, evaluating either
+again, arbitrary APPLY conversion, or an unconditional array-iteration premise.
+
+Implementation uses an APPLY argument-form attribute on ValueInvoke, a prepaid
+allocation/use candidate index, the existing array-initialization proof and the
+saved member-reference proof. Tree calls retain a typed array argument carrier;
+operand/recovery checks consume its ordered elements without inventing result
+expressions. Arbitrary arrays and pre-V5 contracts remain refused. The existing
+normal cross-block scheduler still retains effectful array roots (typed kOrder);
+that publication limitation is not a semantic same-block prerequisite.
+
+The real fixture's Node differential and adapted es2abc call-body round-trip are
+in `tests/integration/fixtures/call_spread/README.md`. Unmodified full-file
+recompilation is blocked by this SDK's rejection of string-named export aliases;
+the test documents its identifier-alias-only compatibility adaptation.

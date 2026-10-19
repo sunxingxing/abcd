@@ -583,6 +583,30 @@ class OperandCheck {
           InputAt(0, call.callee);
           constexpr std::uint32_t kValuePrefix = 1;
           constexpr std::uint32_t kMemberPrefix = 2;
+          if (operation.form == analysis::CallArgumentForm::kApplyArray) {
+            RequireMeaning(CallSpread(tree_.identity.contract) == CallSpreadSemantics::kPrivateArgumentsV1 &&
+                op.use_count == 3 && operation.arguments == 1 && call.array_arguments && call.arguments.count == 0,
+                Error::kOperand);
+            if (call.reference == CallReference::kMember) Receiver(op, call, input(0), input(1));
+            else {
+              const auto receiver = ResolveEvaluationOperand(evaluation_, input(1));
+              const auto* constant = std::get_if<analysis::SpecialValue>(&receiver);
+              RequireMeaning(constant && *constant == analysis::SpecialValue::kUndefined, Error::kOperand);
+            }
+            const auto source = ResolveEvaluationOperand(evaluation_, input(2));
+            const auto* value = std::get_if<analysis::ValueId>(&source);
+            RequireMeaning(value && value->value < graph_.values.size() && value->value < uses.values.size() &&
+                uses.values[value->value] == 1, Error::kOperand);
+            const auto* result = std::get_if<analysis::OpResult>(&graph_.values[value->value].origin);
+            RequireMeaning(result && result->op.value < graph_.ops.size() &&
+                std::holds_alternative<analysis::ValueArrayAllocation>(graph_.ops[result->op.value].operation), Error::kOperand);
+            const auto& placement = evaluation_.operations[result->op.value];
+            RequireMeaning((placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral) &&
+                placement.consumer == analysis::UseId{op.first_use.value + 2}, Error::kOperand);
+            InputAt(2, *call.array_arguments);
+            return;
+          }
+          RequireMeaning(!call.array_arguments, Error::kOperand);
           if (operation.receiver == analysis::InvokeReceiver::kExplicit) {
             RequireMeaning(call.reference == CallReference::kMember, Error::kOperand);
             Receiver(op, call, input(0), input(1));

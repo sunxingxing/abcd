@@ -180,7 +180,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, OrdinaryCall>) {
       return ValueInvoke{InvokeReceiver::kUndefined, op.Count()};
     } else if constexpr (std::is_same_v<T, ReceiverCall>) {
-      return ValueInvoke{InvokeReceiver::kExplicit, op.Count()};
+      return ValueInvoke{InvokeReceiver::kExplicit, op.Count(), op.form};
     } else if constexpr (std::is_same_v<T, SuperForward>) {
       return ValueSuperCall{0, {}, SuperArgumentSource::kInvocationFrame};
     } else if constexpr (std::is_same_v<T, SuperRange>) {

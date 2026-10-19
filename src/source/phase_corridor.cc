@@ -266,7 +266,14 @@ std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, 
   if (GuardedPeer(plan_, producer) &&
       (checked_ != CheckedReadFusion::kCompose || !GuardedInput(plan_, producer))) return {};
   if (IsArrayInitialization(plan_, producer) || IsArrayInitialization(plan_, consumer) ||
-      IsArrayOperand(plan_, producer) || IsArrayOperand(plan_, consumer) || ArrayLiteralFor(plan_, producer)) return {};
+      IsArrayOperand(plan_, producer) || IsArrayOperand(plan_, consumer)) return {};
+  if (ArrayLiteralFor(plan_, producer)) {
+    const auto& call = graph_.ops[consumer.value];
+    const auto* invoke = std::get_if<ValueInvoke>(&call.operation);
+    if (CallSpread(plan_.call_spread_contract) != CallSpreadSemantics::kPrivateArgumentsV1 ||
+        !invoke || invoke->form != CallArgumentForm::kApplyArray || call.use_count != 3 ||
+        use.value != call.first_use.value + 2) return {};
+  }
   const auto& child = graph_.ops[producer.value];
   const auto& parent = graph_.ops[consumer.value];
   // A language expression is pure here when its shared evaluation shape is

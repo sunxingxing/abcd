@@ -840,6 +840,12 @@ class ForestBuilder {
   ExprId Call(const analysis::ValueOp& op, const CallBinding& binding, TreeOriginId origin) {
     const bool member = std::holds_alternative<MemberCall>(binding);
     const auto callee = Use(op.first_use, origin);
+    const auto spread = member ? std::get<MemberCall>(binding).array :
+        (std::holds_alternative<ValueCall>(binding) ? std::get<ValueCall>(binding).array : std::nullopt);
+    if (spread) {
+      const auto array = Use(analysis::UseId{op.first_use.value + 2}, origin);
+      return Add(CallExpr{callee, {}, member ? CallReference::kMember : CallReference::kValue, array}, origin);
+    }
     if (const auto* construct = std::get_if<ConstructCall>(&binding); construct && construct->array) {
       if (evaluation_.operations[construct->array->value].kind == EvaluationKind::kRoot) {
         Require(forest_.operations[construct->array->value].has_value(), Error::kOwnership);

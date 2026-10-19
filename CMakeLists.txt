@@ -368,6 +368,12 @@ if(BUILD_TESTING)
   target_include_directories(isa_coverage_test PRIVATE tests/support)
   target_link_libraries(isa_coverage_test PRIVATE abcd_analysis)
   add_test(NAME isa_coverage_test COMMAND isa_coverage_test)
+  add_executable(call_spread_semantics_test tests/unit/analysis/call_spread_semantics_test.cc)
+  target_link_libraries(call_spread_semantics_test PRIVATE abcd_analysis)
+  add_test(NAME call_spread_semantics_test COMMAND call_spread_semantics_test)
+  add_executable(call_spread_test tests/unit/source/call_spread_test.cc)
+  target_link_libraries(call_spread_test PRIVATE abcd_source)
+  add_test(NAME call_spread_test COMMAND call_spread_test)
   add_executable(name_setting_literal_test tests/unit/source/name_setting_literal_test.cc)
   target_link_libraries(name_setting_literal_test PRIVATE abcd_source)
   add_test(NAME name_setting_literal_test COMMAND name_setting_literal_test)
@@ -2014,6 +2020,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/anonymous_module.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_family_print_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_family_print.mjs $<TARGET_FILE:module_family_print_test>)
+    add_test(NAME call_spread_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/call_spread.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:isa_coverage_probe>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/call_spread)
     add_test(NAME name_setting_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/name_setting_literal.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:isa_coverage_probe> $<TARGET_FILE:module_family_print_test>

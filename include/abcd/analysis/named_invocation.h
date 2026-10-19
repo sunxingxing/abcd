@@ -11,6 +11,7 @@ namespace abcd::analysis {
 struct ReceiverCall {
   abc::RegisterId receiver;
   std::variant<CallRegisters, CallRange> arguments;
+  CallArgumentForm form = CallArgumentForm::kRegisters;
   [[nodiscard]] std::uint32_t Count() const;
   [[nodiscard]] std::optional<abc::RegisterId> At(
       std::uint32_t position) const;

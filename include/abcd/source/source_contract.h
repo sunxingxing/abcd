@@ -12,7 +12,7 @@ namespace abcd::source {
 enum class SourceContract : std::uint8_t {
   kLanguageAndHostV1, kLanguageAndHostV2, kLanguageAndHostV3, kLanguageArithmeticV1, kLanguageNumericV1,
   kLanguageConstructorsV1, kLanguageArithmeticConstructorsV1, kLanguageNumericConstructorsV1,
-  kLanguageSourceV1, kLanguageSourceV2, kLanguageSourceV3, kLanguageSourceV4
+  kLanguageSourceV1, kLanguageSourceV2, kLanguageSourceV3, kLanguageSourceV4, kLanguageSourceV5
 };
 enum class ConstructorSemantics : std::uint8_t { kPinnedRuntime, kSourceLanguage };
 enum class ConstructorForwardingSemantics : std::uint8_t { kInvocationFrame, kSourceRestSpread };
@@ -49,6 +49,7 @@ constexpr ConstructorForwardingSemantics ConstructorForwarding(SourceContract co
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5:
       return ConstructorForwardingSemantics::kSourceRestSpread;
   }
   std::terminate();
@@ -72,6 +73,7 @@ constexpr analysis::ArithmeticSemantics Arithmetic(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5:
       return analysis::ArithmeticSemantics::kSourceNumeric;
     case SourceContract::kLanguageArithmeticV1:
     case SourceContract::kLanguageArithmeticConstructorsV1:
@@ -94,7 +96,8 @@ constexpr ConstructorSemantics Constructors(SourceContract contract) {
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return ConstructorSemantics::kSourceLanguage;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return ConstructorSemantics::kSourceLanguage;
   }
   std::terminate();
 }
@@ -109,7 +112,8 @@ constexpr SourceContract WithLanguageConstructors(SourceContract contract) {
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return contract;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return contract;
     case SourceContract::kLanguageAndHostV1:
     case SourceContract::kLanguageAndHostV2: std::terminate(); // Historical host profiles cannot opt in.
   }
@@ -129,6 +133,7 @@ constexpr analysis::PendingExceptionValues PendingExceptions(SourceContract cont
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5:
       return analysis::PendingExceptionValues::kLanguage;
   }
   std::terminate();
@@ -146,7 +151,8 @@ constexpr analysis::CallResultValues NormalCallResults(SourceContract contract) 
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return analysis::CallResultValues::kLanguage;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return analysis::CallResultValues::kLanguage;
   }
   std::terminate();
 }
@@ -163,7 +169,8 @@ constexpr RealmBindingPolicy RealmBinding(SourceContract contract) {
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return RealmBindingPolicy::kStableGlobalThis;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return RealmBindingPolicy::kStableGlobalThis;
   }
   std::terminate();
 }
@@ -180,7 +187,8 @@ constexpr ResourceFailureScope ResourceFailures(SourceContract contract) {
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return ResourceFailureScope::kExcluded;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return ResourceFailureScope::kExcluded;
   }
   std::terminate();
 }
@@ -199,6 +207,7 @@ constexpr CallableTextPolicy CallableText(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5:
       return CallableTextPolicy::kRecovered;
   }
   std::terminate();
@@ -224,7 +233,8 @@ constexpr CaptureReadSemantics CaptureReads(SourceContract contract) {
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return CaptureReadSemantics::kSourceTdz;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return CaptureReadSemantics::kSourceTdz;
   }
   std::terminate();
 }
@@ -246,7 +256,8 @@ constexpr LazyImportSemantics LazyImports(SourceContract contract) {
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return LazyImportSemantics::kArkTsLazyImport;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return LazyImportSemantics::kArkTsLazyImport;
   }
   std::terminate();
 }
@@ -264,7 +275,8 @@ constexpr ArraySpreadSemantics ArraySpreads(SourceContract contract) {
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return ArraySpreadSemantics::kSourceIterator;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return ArraySpreadSemantics::kSourceIterator;
   }
   std::terminate();
 }
@@ -285,7 +297,8 @@ constexpr IterationAcquisitionSemantics IterationAcquisition(SourceContract cont
     case SourceContract::kLanguageSourceV1: return IterationAcquisitionSemantics::kPinnedRuntime;
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return IterationAcquisitionSemantics::kStandardV1;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return IterationAcquisitionSemantics::kStandardV1;
   }
   std::terminate();
 }
@@ -307,7 +320,8 @@ constexpr ConcurrentOutputPolicy ConcurrentOutput(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
       return ConcurrentOutputPolicy::kNotEnabled;
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return ConcurrentOutputPolicy::kArkDirectiveV1;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return ConcurrentOutputPolicy::kArkDirectiveV1;
   }
   std::terminate();
 }
@@ -326,7 +340,8 @@ constexpr SendableOutputPolicy SendableOutput(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
       return SendableOutputPolicy::kNotEnabled;
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return SendableOutputPolicy::kArkDirectiveV1;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return SendableOutputPolicy::kArkDirectiveV1;
   }
   std::terminate();
 }
@@ -345,7 +360,8 @@ constexpr SharedModuleOutputPolicy SharedModuleOutput(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
       return SharedModuleOutputPolicy::kNotEnabled;
     case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4: return SharedModuleOutputPolicy::kArkDirectiveV1;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return SharedModuleOutputPolicy::kArkDirectiveV1;
   }
   std::terminate();
 }
@@ -366,7 +382,31 @@ constexpr analysis::ExternalExceptionPolicy ExternalExceptionNoHole(SourceContra
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
       return analysis::ExternalExceptionPolicy::kPinnedRuntime;
-    case SourceContract::kLanguageSourceV4: return analysis::ExternalExceptionPolicy::kNoHoleV1;
+    case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV5: return analysis::ExternalExceptionPolicy::kNoHoleV1;
+  }
+  std::terminate();
+}
+
+// Approved 2026-10-19. Only a proved private argument construction consumed
+// by one APPLY may omit the hidden array's iterator acquisition in standard JS.
+// Callee/receiver, inner spread and all construction events still need proof.
+enum class CallSpreadSemantics : std::uint8_t { kPinnedRuntime, kPrivateArgumentsV1 };
+constexpr CallSpreadSemantics CallSpread(SourceContract contract) {
+  switch (contract) {
+    case SourceContract::kLanguageAndHostV1:
+    case SourceContract::kLanguageAndHostV2:
+    case SourceContract::kLanguageAndHostV3:
+    case SourceContract::kLanguageArithmeticV1:
+    case SourceContract::kLanguageNumericV1:
+    case SourceContract::kLanguageConstructorsV1:
+    case SourceContract::kLanguageArithmeticConstructorsV1:
+    case SourceContract::kLanguageNumericConstructorsV1:
+    case SourceContract::kLanguageSourceV1:
+    case SourceContract::kLanguageSourceV2:
+    case SourceContract::kLanguageSourceV3:
+    case SourceContract::kLanguageSourceV4: return CallSpreadSemantics::kPinnedRuntime;
+    case SourceContract::kLanguageSourceV5: return CallSpreadSemantics::kPrivateArgumentsV1;
   }
   std::terminate();
 }
@@ -386,6 +426,7 @@ constexpr std::string_view SourceContractName(SourceContract contract) {
     case SourceContract::kLanguageSourceV2: return "language_source_v2";
     case SourceContract::kLanguageSourceV3: return "language_source_v3";
     case SourceContract::kLanguageSourceV4: return "language_source_v4";
+    case SourceContract::kLanguageSourceV5: return "language_source_v5";
   }
   std::terminate();
 }

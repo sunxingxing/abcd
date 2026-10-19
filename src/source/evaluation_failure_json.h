@@ -13,6 +13,7 @@ inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
       if constexpr (std::is_same_v<T, HoleProtocolError>) domain = "HoleProtocolError";
       else if constexpr (std::is_same_v<T, CellEvaluationError>) domain = "CellEvaluationError";
       else if constexpr (std::is_same_v<T, LiteralError>) domain = "LiteralError";
+      else if constexpr (std::is_same_v<T, CallSpreadError>) domain = "CallSpreadError";
       else if constexpr (std::is_same_v<T, EvaluationShapeError>) domain = "EvaluationShapeError";
       j["plan_cause"] = {{"domain", domain}, {"value", static_cast<unsigned>(cause)}};
     }
@@ -72,6 +73,7 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
     if (domain == "HoleProtocolError" && n <= static_cast<unsigned>(HoleProtocolError::kWorkLimit)) v.plan_cause = static_cast<HoleProtocolError>(n);
     else if (domain == "CellEvaluationError" && n <= static_cast<unsigned>(CellEvaluationError::kWorkLimit)) v.plan_cause = static_cast<CellEvaluationError>(n);
     else if (domain == "LiteralError" && n <= static_cast<unsigned>(LiteralError::kNameSettingProof)) v.plan_cause = static_cast<LiteralError>(n);
+    else if (domain == "CallSpreadError" && n <= static_cast<unsigned>(CallSpreadError::kPremise)) v.plan_cause = static_cast<CallSpreadError>(n);
     else if (domain == "EvaluationShapeError" && n <= static_cast<unsigned>(EvaluationShapeError::kMissingShape)) v.plan_cause = static_cast<EvaluationShapeError>(n);
     else return {};
   }

@@ -149,7 +149,12 @@ struct SequenceExpr { ExprId left; ExprId right; };
 // direct-eval semantics merely because their callee prints as an identifier.
 struct ArgumentRange { std::uint32_t first; std::uint32_t count; };
 enum class CallReference : std::uint8_t { kValue, kMember };
-struct CallExpr { ExprId callee; ArgumentRange arguments; CallReference reference; };
+struct CallExpr {
+  ExprId callee; ArgumentRange arguments; CallReference reference;
+  // Syntax-only argument carrier. Its independent construction/call proof is
+  // required; printing omits brackets, never adds a second spread iteration.
+  std::optional<ExprId> array_arguments;
+};
 // A private complete array can supply native arguments without invoking its
 // iterator. Keep its original creation/initializer origins as one owned child.
 struct ArrayArguments { ExprId array; };

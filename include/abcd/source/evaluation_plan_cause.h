@@ -20,6 +20,10 @@ enum class LiteralError : std::uint8_t {
   kRevision, kFlow, kDefinition, kReceiver, kObserved, kLateValue, kDomain,
   kCoverage, kResourceLimit, kWorkLimit, kNameSettingProof
 };
+enum class CallSpreadError : std::uint8_t {
+  kConstruction, kEscape, kCursor, kElementDomain, kCallee, kReceiver,
+  kOrder, kCatchState, kCorrespondence, kPremise
+};
 enum class EvaluationShapeError : std::uint8_t { kMissingShape };
 enum class EvaluationInputCheck : std::uint8_t {
   kHoleTransport, kHoleUse, kCellIdentity, kLiteralAllocation,
@@ -33,6 +37,6 @@ struct EvaluationInputSite {
   bool operator==(const EvaluationInputSite&) const = default;
 };
 using EvaluationPlanCause = std::variant<std::monostate, HoleProtocolError,
-    CellEvaluationError, LiteralError, EvaluationShapeError>;
+    CellEvaluationError, LiteralError, EvaluationShapeError, CallSpreadError>;
 } // namespace abcd::source
 #endif
