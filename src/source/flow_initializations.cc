@@ -23,7 +23,10 @@ std::variant<FlowInitializations,TreeStructureError> PrepareInitializations(
       budget.Step();bool selected=false;
       switch(definition.kind) {
         case FlowDefinitionKind::kRestParameter:case FlowDefinitionKind::kParameter: case FlowDefinitionKind::kCatch:
-        case FlowDefinitionKind::kFunctionSelf:selected=true;break;
+        case FlowDefinitionKind::kClassInner:
+        case FlowDefinitionKind::kFunctionSelf:
+          selected = true;
+          break;
         case FlowDefinitionKind::kUndefined: case FlowDefinitionKind::kInitializer:
           selected=definition.declaration && definition.declaration==flow.bindings[definition.binding.value].declaration;break;
         case FlowDefinitionKind::kAssignment: case FlowDefinitionKind::kUpdate:

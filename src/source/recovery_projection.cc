@@ -95,6 +95,8 @@ bool WritableRecoveryBinding(const FunctionTree& tree,SymbolId symbol) {
     case BindingKind::kParameter:case BindingKind::kCatchParameter:return true;
     case BindingKind::kCapture:case BindingKind::kModule:case BindingKind::kFunctionSelf:return false;
     case BindingKind::kClassInner:
+      RequireTree(bool(tree.class_scope), TreeStructureError::kBinding);
+      return false;
     case BindingKind::kCaptureRequirement:
       throw TreeStructureError::kBinding;
   }

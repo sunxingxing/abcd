@@ -491,3 +491,156 @@ The new bound evidence is checked through receipts and both JSON paths, includin
 invalid counts and missing-recovery rejection. The test-only receipt includes its
 actual working revision; the scale harness isolates each invocation's generated
 ABC files. Final runs are sequential, avoiding overlapping fixture producers.
+
+## Increment 5 checkpoint: real scope and class-initialization ports (2026-10-20)
+
+The three-port design is used, with StaticInitialize split into Before/Commit.
+`ClassInnerScopeProof` freshly re-derives and independently verifies the original
+scope certificate before sealing it. The common structure, cell, TreeFlow and
+RecoveryFlow paths accept `kClassInner` only with that seal. A native inner read
+retains the certified read/guard provenance; TreeFlow and operand verification
+still reconstruct the physical guarded read and its exception correspondence.
+The immutable binding receives a distinct `kClassInner` entry definition, never
+an ordinary capture or an invented initialized public cell.
+
+`class_initialization_ports.{h,cc}` retains the original self-store, initializer
+Before/Commit, public writes and cleanup route. Recovery produces allocation,
+inner initialization, static Before and static Commit as distinct points; its
+original-action table maps those typed ports without fabricated ExprIds. Each
+throw bypasses static Commit and public publication. Original physical public
+write definitions remain separate. Every recovery projection independently
+checks the source/raw role census, original write identity, normal/throw edges,
+Commit dominance and exact retained cleanup/dispatch certificate. The current
+adapter admits only the proven caller exception destination; an enclosing catch
+or finally needs its own verified correspondence.
+
+The original public-read census uses one shared effect/dominance index and a
+sorted binding index. Every original read of a publication binding must precede
+creation or follow its original public Commit. Native declaration/TDZ and source
+write lifetime remain under the existing binding/initialization verifier; the
+port table cannot authorize hoisting a declaration or fabricating initialization.
+All buffers and origin/port indexes are prepaid. There is no per-class CFG walk:
+work is linear plus shared sorting/dominance, O((V+E) log V).
+
+### Safe publication boundary
+
+Root-only certified initializers can finish through the common creator/family
+path. Named class expressions are required so a native static field/block sees
+the inner name, not a later creator alias. The existing printed ClassNames proof
+must independently permit the name; it cannot be forced across a shadowed
+capture/global. Native field definitions retain DefineOwnProperty; an ordinary
+static statement uses `static { ... }`, retaining its Set semantics. Mixed
+field/block representations without a proof remain refused. Accessor installation
+ordering is still the private corridor proof described above, not a new blanket
+admission.
+
+A member/descendant reading the private self cell is explicitly **not** covered
+by an initializer-only projection. In particular, printing a re-entrant method
+against a creator cache initialized after the class would be wrong. `reentry`,
+`accessors`, `copies` and the closure-bearing `throwing` fixture now retain
+`kRecoveryGate / kFamilyEnclosure`; `outer_tdz` retains capture enclosure. The
+simple self, outer and branch fixtures publish. `constructor_throw` publishes
+and exercises cleanup: the constructor trace occurs once, its RangeError escapes,
+and no public store completes. Node tests compare actual engine output with
+independent original source, including inherited Function.prototype setters:
+fields do not invoke them, while the ordinary static assignment does.
+
+### Target evidence and remaining work
+
+**o20/8166 is not published.** m8556 now passes common initializer scope/semantic
+verification with two real outer requirements bound. Finishing the actual class
+next reaches constructor **m8638**, `FunctionAbiError::kLength`: native length
+**1**, recovered signature length **7**. This is wrapped as the precise
+`kRecoveryGate / kMemberAbi`, with `abi_lengths` round-tripped through receipts
+and both JSON paths. Its default-parameter proof is a separate next task; no
+length check or signature semantics is relaxed. The full creator publication
+projection for this target cannot be claimed while its constructor remains
+unverified. o0/4660 stays at m5040 PC12, class-initialization/completed-class
+availability gate; no getInstance admission was added.
+
+### Recompilation evidence
+
+`class_self_ports_roundtrip.py` reuses grouping_bytecode.py's compiler identity,
+invocation and exact disassembly reader (no register/branch/handler normalization).
+Four published fixture exports are recompiled at default and O0. SDK identifier
+export aliases are unquoted on both sides; source binding/export identities are
+unchanged. Compiler SHA-256 is
+`4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`;
+options are `--module --merge-abc --extension=js --source-file=input.js`, matching
+record names, plus `--opt-level=0` in O0. Commands and full diffs are retained.
+
+Exact full-disassembly result: **1 identical / 7 different / 0 compile failures**.
+These are semantic recovery differences, not grouping acceptance passes:
+
+- Default self/branches have identical method instructions/handlers; physical
+  string/literal/module-table offsets move with the changed source container.
+  Default constructor_throw is entirely identical.
+- Default outer additionally changes only the HoleGuard's diagnostic name from
+  `outer` to the real recovered spelling `$local1`. Storage depth/slot, guard,
+  exception constructor and order stay identical. The fixture initializes that
+  binding to 7 before class creation, so the diagnostic is unreachable. Original binding names were
+  already synthesized by the existing recovery policy.
+- At O0, constructors and initializer instruction bodies remain identical except
+  that outer guard spelling. Creator register assignments and private class-result
+  aliases differ: named-expression evaluation retains the class in temporary
+  registers, initializes its internal cell, calls the same initializer/receiver,
+  performs the same pop/rethrow cleanup, then writes private source aliases and
+  the same export. These extra private aliases have no earlier observer; the
+  original result/port/capture proof checks their value and timing. No handler,
+  call, public commit or field operation is normalized away.
+
+Both sides of all four O0 comparisons pass fresh raw certificate, scope, guard,
+cleanup and joint-port mutation/exact-budget tests (**8/8**). Default optimized
+bytecode on both sides (**8**) remains **unverified by that raw proof** with
+`CleanupError::kHandler` (serialized value 1): its handler saves/reloads the pending
+exception around pop. Equality of compared default methods is not misreported
+as proof that this unimplemented cleanup adapter passes. No target o20 bytecode
+comparison is claimed because it has no published output.
+
+### Private materialization and final projection check
+
+Ordinary recovery's source-cache action can begin at evaluation of its RHS.
+That action is not the raw self-store Commit. The typed port replaces that
+correspondence only for the independently certified internal initialization.
+A shared original-operation index then rechecks every retained cache definition:
+its original write site, stored SSA value, source binding and private unit must
+match, and static Commit must dominate the materialization. An externally visible
+cache or a materialization before initialization refuses. Source value/provenance
+verification still owns every copied result; no fabricated expression is inserted.
+
+The unit path now finishes the actual constructor/member families before deriving
+closed-cell facts. A bare metadata layout correctly marks its capture effects
+unknown and cannot certify this projection. Mutations include an exposed cache,
+a moved cache definition, early public publication, forged ports and missing
+exception edges. Inner-scope and port verification each check exact budgets and
+one-below refusals, in addition to the existing raw certificate/enclosure tests.
+
+At default optimization, **11/12 methods** compare exactly; at O0, **7/12**.
+The six changed method/mode pairs are the four O0 creator methods and the outer
+initializer in both modes, with the differences enumerated above. The O0 original
+side is separately checked against the actual fixture ABC's disassembled methods.
+The independent original JS is only a test/compiler oracle, never an engine input.
+
+### Increment 5 acceptance
+
+Full build passes. Final serial source-regression is **65/65**, focused tests
+**12/12**, and the requested sweep **209/223**. The 14 failures exactly match the
+user's pre-existing list and the recorded baseline replay; the comparison is in
+`build/review/class-self5/preexisting-failure-comparison.json`. Test expectations
+now assert o20's constructor ABI gate through manifest and abc_semantic. There is
+no claim that o20's full class publication projection passed.
+
+Both current flag sets were freshly compared with **1a7da988**: **532/620** and
+**584/620**, no regression or new completion, every complete source byte and all
+3,613 / 3,769 non-manifest files identical. Only o20/8166's diagnostic changes.
+Final measured per-engine peak RSS (all 80 invocations, threads included) is
+42,598,400 / 42,106,880 bytes using Darwin RUSAGE_CHILDREN from fresh wrappers;
+all engine exits are zero. The sandbox's `/usr/bin/time -l` attempt could not read
+kern.clockrate, so its 40 nonzero wrapper statuses are not engine failures or RSS
+evidence; the later direct rusage runs supply the measurements and exact outputs.
+
+Standalone class printing must still supply an ordinary initializer's creator
+captures; a certified inner binding cannot silently fall back to an anonymous
+class form. The normal ClassExpr path uses its real creator and the existing
+name plan, source/recovery ports and actual capture targets. The new negative
+unit check exercises detached outer-capture refusal.

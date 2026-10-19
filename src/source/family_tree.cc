@@ -425,16 +425,35 @@ class FamilyTrees {
           context.Frame(), context.Length(), left_,for_of?&*for_of:nullptr) : BuildFunctionAbi(graph, constructed.tree, context.Frame(), context.Length(), left_);
       // Evidence only, after the original refusal. Never spend analysis budget
       // or change the plan of a successful function; never replace its first cause.
-      if (const auto* error=std::get_if<FunctionAbiError>(&abi_result);
-          error && *error==FunctionAbiError::kLength && !phase && !function.Defaults() &&
-          function.Normal().values.cells && function.Normal().values.environments) {
+      if (const auto* error = std::get_if<FunctionAbiError>(&abi_result);
+          error && *error == FunctionAbiError::kLength) {
         FamilyTreeFailure failure{member_,*error,default_candidates_,defaults_proved_};
-        auto parameters=BuildParameterPlan(graph,context.Frame().parameters,left_);
-        if(const auto* plan=std::get_if<ParameterPlan>(&parameters)) {
-          auto diagnostic_budget=left_;
-          diagnostic_budget.bytes-=plan->allocated_bytes;diagnostic_budget.work-=plan->work;
-          failure.cell_parameter_default=DiagnoseCellParameterDefaults(graph,*function.Normal().values.environments,
-              *function.Normal().values.cells,*plan,context.Length(),function.Method(),diagnostic_budget);
+        std::uint32_t signature =
+            static_cast<std::uint32_t>(constructed.tree.parameters.size());
+        for (std::uint32_t n = 0; n < constructed.tree.parameters.size(); ++n) {
+          Step(1);
+          const auto& parameter = constructed.tree.parameters[n];
+          if (parameter.initializer || parameter.rest) {
+            signature = n;
+            break;
+          }
+        }
+        failure.abi_lengths =
+            FamilyTreeFailure::AbiLengths{context.Length(), signature};
+        failure.method = function.Method();
+        if (!phase && !function.Defaults() && function.Normal().values.cells &&
+            function.Normal().values.environments) {
+          auto parameters =
+              BuildParameterPlan(graph, context.Frame().parameters, left_);
+          if (const auto* plan = std::get_if<ParameterPlan>(&parameters)) {
+            auto diagnostic_budget = left_;
+            diagnostic_budget.bytes -= plan->allocated_bytes;
+            diagnostic_budget.work -= plan->work;
+            failure.cell_parameter_default = DiagnoseCellParameterDefaults(
+                graph, *function.Normal().values.environments,
+                *function.Normal().values.cells, *plan, context.Length(),
+                function.Method(), diagnostic_budget);
+          }
         }
         throw failure;
       }

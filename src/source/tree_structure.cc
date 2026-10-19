@@ -1,6 +1,4 @@
 #include "tree_structure.h"
-#include "borrowed_print_trees.h"
-#include "../analysis/register_value_rule.h"
 
 #include <algorithm>
 #include <array>
@@ -11,11 +9,14 @@
 #include <stdexcept>
 #include <type_traits>
 
-#include "tree_checks.h"
-#include "class_tree.h"
-#include "sendable_class.h"
+#include "../analysis/register_value_rule.h"
 #include "abcd/source/global_reference.h"
 #include "abcd/source/scalar_expression.h"
+#include "borrowed_print_trees.h"
+#include "class_inner_scope.h"
+#include "class_tree.h"
+#include "sendable_class.h"
+#include "tree_checks.h"
 
 namespace abcd::source {
 namespace {
@@ -117,10 +118,12 @@ class StructureCheck {
     budget.Array(stack_, tree.expressions.size() + tree.statements.size());
   }
   std::size_t Run() {
-    RequireTree(class_draft_ ? tree_.class_inner.has_value()
-                             : (!tree_.class_inner &&
-                                tree_.capture_requirements.empty()),
-                Error::kUnsupportedSyntax);
+    if (tree_.class_scope) VerifyClassInnerScope(tree_, budget_);
+    RequireTree(
+        class_draft_ || tree_.class_scope
+            ? tree_.class_inner.has_value()
+            : (!tree_.class_inner && tree_.capture_requirements.empty()),
+        Error::kUnsupportedSyntax);
     CheckCallable(tree_);
     for (const auto& issue : tree_.recovery_issues) {
       budget_.Step();
@@ -166,7 +169,8 @@ class StructureCheck {
     if (tree_.class_inner) {
       const auto& inner = *tree_.class_inner;
       RequireTree(
-          class_draft_ && inner.scope.value < tree_.scopes.size() &&
+          (class_draft_ || tree_.class_scope) &&
+              inner.scope.value < tree_.scopes.size() &&
               inner.name.value < tree_.names.size() &&
               tree_.scopes[inner.scope.value].kind == ScopeKind::kClassInner &&
               tree_.scopes[inner.scope.value].parent == ordinary_outer,

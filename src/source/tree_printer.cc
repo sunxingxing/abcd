@@ -195,6 +195,7 @@ class TreePrinter {
     default_export_ = default_export;
     module_body_ = module || fields;
     static_fields_ = fields;
+    if (Tree().class_scope && !fields) throw Error::kUnsupportedContext;
     TreePrintCensusScope::Visit(Tree());
     Site(TreePrintSite::kStructureVerification);
     CheckStructure();
@@ -205,11 +206,18 @@ class TreePrinter {
     if (fields) {
       const auto* body = std::get_if<BlockStmt>(&Tree().statements[Tree().body.value].statement);
       if (!body || !body->child_count || !Tree().parameters.empty() ||
-          !Tree().captures.empty() || Tree().inferred_name || Tree().self ||
-          !Tree().recovery_issues.empty() || Tree().callable != CallableKind::kMethod ||
-          Tree().strictness != Strictness::kStrict) throw Error::kUnsupportedContext;
+          (!Tree().captures.empty() && !Tree().class_scope) ||
+          Tree().inferred_name || Tree().self ||
+          !Tree().recovery_issues.empty() ||
+          Tree().callable != CallableKind::kMethod ||
+          Tree().strictness != Strictness::kStrict)
+        throw Error::kUnsupportedContext;
       for (const auto& symbol : Tree().symbols) {
-        Step(); if (symbol.kind != BindingKind::kModule) throw Error::kUnsupportedContext;
+        Step();
+        if (symbol.kind != BindingKind::kModule &&
+            !(Tree().class_scope && (symbol.kind == BindingKind::kClassInner ||
+                                     symbol.kind == BindingKind::kCapture)))
+          throw Error::kUnsupportedContext;
       }
       for (std::uint32_t i = 0; i < body->child_count; ++i) {
         Step(); const auto id = Tree().children[body->first_child + i];
@@ -224,7 +232,27 @@ class TreePrinter {
           }
         } else {
           const auto* statement = std::get_if<ExpressionStmt>(&node);
-          if (!statement || !std::holds_alternative<FieldDefinitionExpr>(Tree().expressions[statement->expression.value].expression))
+          if (!statement ||
+              !std::holds_alternative<FieldDefinitionExpr>(
+                  Tree().expressions[statement->expression.value].expression)) {
+            if (!Tree().class_scope) throw Error::kUnsupportedContext;
+            static_block_ = true;
+          }
+        }
+      }
+      if (static_block_) {
+        const auto tail = ImplicitTailCompletion(Tree());
+        for (std::size_t s = 0; s < Tree().statements.size(); ++s) {
+          Step();
+          if (std::holds_alternative<ReturnStmt>(
+                  Tree().statements[s].statement) &&
+              (!tail || s != tail->statement.value))
+            throw Error::kUnsupportedContext;
+        }
+        for (const auto& expression : Tree().expressions) {
+          Step();
+          if (std::holds_alternative<FieldDefinitionExpr>(
+                  expression.expression))
             throw Error::kUnsupportedContext;
         }
       }
@@ -235,7 +263,10 @@ class TreePrinter {
       if (std::holds_alternative<FunctionExpr>(node.expression)) throw Error::kUnsupportedContext;
       if (std::holds_alternative<RealmObjectExpr>(node.expression)) RecordRealm();
       if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) RecordSymbol();
-      if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) RecordArgumentSnapshot();
+      if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) {
+        if (fields) throw Error::kUnsupportedContext;
+        RecordArgumentSnapshot();
+      }
     }
     Result().identity = Tree().identity; Result().method = Tree().method;
     Result().value_revision = Tree().value_revision; Result().cfg_revision = Tree().cfg_revision;
@@ -250,8 +281,21 @@ class TreePrinter {
     Array(Result().statement_extents, Tree().statements.size());
     Array(Result().anchors, Tree().anchors.size()); PrepareAnchors();
     PrepareClassNames();
-    if (module || fields) Push(Statement{Tree().body, indent}); else Push(BeginFunction{});
-    Drain(); FinalizeNullishRanges(); Append("\n");
+    if (static_block_) {
+      Run(Indent{indent});
+      Append("static {\n");
+    }
+    if (module || fields)
+      Push(Statement{Tree().body, indent + (static_block_ ? 1 : 0)});
+    else
+      Push(BeginFunction{});
+    Drain();
+    FinalizeNullishRanges();
+    if (static_block_) {
+      Run(Indent{indent});
+      Append("}");
+    }
+    Append("\n");
     Result().bytes = written_;
     Result().allocated_bytes = peak_bytes_;
     Result().work = initial_.work - remaining_.work;
@@ -1003,6 +1047,18 @@ class TreePrinter {
         name.named ? (known && !grouped ? ClassPrintForm::kBareNamedExpression : ClassPrintForm::kNamedExpression) : ClassPrintForm::kExpression);
   }
   void ClassCreation(const ClassExpr& node, ExprId expression, ClassPrintForm form) {
+    if (node.definition && node.definition->class_self &&
+        node.definition->class_self->certificate) {
+      const auto name = Names().Lookup(*node.definition);
+      Step(name.work);
+      // A certified inner reference requires an actual native name. The
+      // existing name plan must still prove that adding it shadows no other
+      // capture/global reference in any constructor/member/initializer family.
+      if (!name.named) throw Error::kUnsupportedContext;
+      if (form != ClassPrintForm::kDeclaration &&
+          form != ClassPrintForm::kDerivedBody)
+        form = ClassPrintForm::kNamedExpression;
+    }
     // Final preparation and the family's original-barrier verification own
     // admission. Printing checks the actual creator and lexical destination;
     // a descendant is not a different class-emission language.
@@ -2122,6 +2178,7 @@ class TreePrinter {
   bool module_body_ = false;
   std::optional<ModuleDefaultExport> default_export_;
   bool static_fields_ = false;
+  bool static_block_ = false;
   std::vector<LocatedAnchor> located_;
   std::vector<std::vector<LocatedAnchor>> locations_;
   std::vector<OwnerTree> owners_;
@@ -2282,7 +2339,13 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
         tree.callable !=
         (form == ClassPrintForm::kDerivedBody ? CallableKind::kDerivedConstructor : CallableKind::kBaseConstructor))
       return Failure::kUnsupportedContext;
+    if (tree.class_self && tree.class_self->certificate &&
+        (form == ClassPrintForm::kExpression ||
+         form == ClassPrintForm::kInferredExpression))
+      return Failure::kUnsupportedContext;
     if (!parent) {
+      if (tree.initializer && !tree.initializer->tree.captures.empty())
+        return Failure::kUnsupportedContext;
       if (tree.constructor->Family().root_capture) return Failure::kUnsupportedContext;
       for (const auto& member : tree.members) if (member && member->Family().root_capture) return Failure::kUnsupportedContext;
       for (const auto& site : tree.definitions)
@@ -2450,7 +2513,9 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
     }
     std::optional<DefinitionOrder> previous_definition;
     for (const auto& accessor : tree.definitions) {
-      if (tree.initializer || (previous_definition && *previous_definition >= accessor.site.order))
+      if ((tree.initializer &&
+           (!tree.class_self || !tree.class_self->certificate)) ||
+          (previous_definition && *previous_definition >= accessor.site.order))
         throw Failure::kUnsupportedContext;
       previous_definition = accessor.site.order;
       const auto emit_member = [&](const PreparedFamily& family, abc::ClassMethodKind kind) {

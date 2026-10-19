@@ -1,18 +1,19 @@
-#include "concurrent_tree.h"
 #include "tree_flow.h"
-#include "for_in_emission.h"
-#include "for_of_evaluation.h"
 
 #include <algorithm>
 #include <new>
 #include <stdexcept>
 
+#include "class_inner_scope.h"
 #include "completion_tree.h"
+#include "concurrent_tree.h"
 #include "exception_tree.h"
+#include "for_in_emission.h"
+#include "for_of_evaluation.h"
+#include "logical_evaluation.h"
+#include "logical_regions.h"
 #include "tree_checks.h"
 #include "tree_edge_flow.h"
-#include "logical_regions.h"
-#include "logical_evaluation.h"
 
 namespace abcd::source {
 namespace {
@@ -455,10 +456,14 @@ class FlowCheck {
       const auto& symbol = tree_.symbols[i];
       if (symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kFunctionSelf) {
         Require(!declared_[i] && !assigned_[i], Error::kSnapshot);
-      } else if (symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture ||
-                 symbol.kind == BindingKind::kModule || symbol.kind == BindingKind::kCatchParameter) {
+      } else if (symbol.kind == BindingKind::kLocal ||
+                 symbol.kind == BindingKind::kCapture ||
+                 symbol.kind == BindingKind::kClassInner ||
+                 symbol.kind == BindingKind::kModule ||
+                 symbol.kind == BindingKind::kCatchParameter) {
         Require(declared_[i] && !assigned_[i], Error::kSnapshot);
-      } else Require(declared_[i] && assigned_[i], Error::kSnapshot);
+      } else
+        Require(declared_[i] && assigned_[i], Error::kSnapshot);
     }
     for (const auto cell : flow_.cells) { budget_.Step(); Require(cell.has_value(), Error::kPlacement); }
     if (exceptions_) {
@@ -1152,11 +1157,52 @@ class FlowCheck {
   }
   void CapturedCells() {
     std::size_t next = 0;
+    std::optional<SymbolId> inner;
+    if (tree_.class_scope) {
+      VerifyClassInnerScope(tree_, budget_);
+      for (std::uint32_t s = 0; s < tree_.symbols.size(); ++s) {
+        budget_.Step();
+        if (tree_.symbols[s].kind == BindingKind::kClassInner) {
+          Require(!inner, Error::kPlacement);
+          inner = SymbolId{s};
+        }
+      }
+    }
     if (evaluation_.cells) {
       const auto& cells = evaluation_.cells->cells.cells;
       for (std::size_t i = 0; i < cells.size(); ++i) {
         budget_.Step();
         if (!std::holds_alternative<IncomingCell>(cells[i].storage)) continue;
+        const auto incoming = std::get<IncomingCell>(cells[i].storage);
+        if (inner) {
+          const auto& requirements = tree_.class_scope->Scope().requirements;
+          const auto key =
+              std::tuple{0U, 0U, incoming.depth.value, incoming.slot.value};
+          const auto found = std::lower_bound(
+              requirements.begin(), requirements.end(), key,
+              [&](const auto& r, auto k) {
+                budget_.Step();
+                return std::tuple{r.owner.family, r.owner.member,
+                                  r.incoming.depth.value,
+                                  r.incoming.slot.value} < k;
+              });
+          Require(found != requirements.end() &&
+                      std::tuple{found->owner.family, found->owner.member,
+                                 found->incoming.depth.value,
+                                 found->incoming.slot.value} == key,
+                  Error::kPlacement);
+          if (found->kind == ClassSelfRequirementKind::kClassInner) {
+            const auto symbol = *inner;
+            Require(!declared_[symbol.value], Error::kPlacement);
+            declared_[symbol.value] = 1;
+            flow_.cells[i] = symbol;
+            flow_.cell_bindings[i] = {CellStorageIdentity(cells[i].storage),
+                                      symbol,
+                                      tree_.symbols[symbol.value].scope,
+                                      {}};
+            continue;
+          }
+        }
         Require(evaluation_.cells->incoming == IncomingCells::kConditional && next < tree_.captures.size(), Error::kPlacement);
         const auto symbol = tree_.captures[next++].symbol;
         Require(symbol.value < tree_.symbols.size(), Error::kPlacement);
@@ -1777,11 +1823,16 @@ class FlowCheck {
     // Locals are consumed only at their checked environment allocations.
     for (const auto& symbol : tree_.symbols) {
       budget_.Step();
-      Require(symbol.kind == BindingKind::kParameter || symbol.kind == BindingKind::kCompilerTemporary ||
-              symbol.kind == BindingKind::kLocal || symbol.kind == BindingKind::kCapture ||
-              symbol.kind == BindingKind::kModule || symbol.kind == BindingKind::kFunctionSelf ||
+      Require(
+          symbol.kind == BindingKind::kParameter ||
+              symbol.kind == BindingKind::kCompilerTemporary ||
+              symbol.kind == BindingKind::kLocal ||
+              symbol.kind == BindingKind::kCapture ||
+              symbol.kind == BindingKind::kModule ||
+              symbol.kind == BindingKind::kFunctionSelf ||
+              (tree_.class_scope && symbol.kind == BindingKind::kClassInner) ||
               (exceptions_ && symbol.kind == BindingKind::kCatchParameter),
-              Error::kSnapshot);
+          Error::kSnapshot);
     }
     return count;
   }

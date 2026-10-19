@@ -5,6 +5,64 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Class-self increment 5: initialization ports consumed; constructor ABI gate (2026-10-20)
+
+- **o20/8166 is still incomplete.** Its m8556 initializer now passes the common
+  scope/semantic path with the real outer captures. Finishing the class next
+  refuses constructor **m8638**: original `.length = 1`, recovered signature
+  `.length = 7`. This is a located `ClassSelfError::kRecoveryGate /
+  Projection::kMemberAbi` with both lengths, not a relaxed ABI check. Its native
+  default-parameter recovery is the next obligation. o0/4660 remains at m5040
+  PC12's initialization/completed-class-availability gate. No target source is
+  published and no target recompilation equivalence is claimed.
+- A sealed, independently re-derived `ClassInnerScopeProof` now admits the real
+  immutable inner scope through structure, TreeFlow, cell and recovery checks.
+  OriginalFlow/RecoveryFlow retain distinct internal initialization, static
+  Before/Commit/exception and public publication ports. The allocation's intrinsic
+  success stays before static initialization; it cannot use the whole ClassExpr
+  completion. Every recovery proposal rechecks the original roles, cleanup,
+  exception destination, physical public writes and Commit dominance.
+- Private source caches remain separate materializations: actual original stored
+  values and private units are checked, and any retained cache definition must
+  follow static Commit. A shared operation/definition index avoids per-class CFG
+  scans. Public read timing uses shared dominance/effect and binding indexes.
+  Buffers are admitted before allocation, with exact byte/work and one-below
+  tests at **200/201/400/800**. No new source premise is introduced.
+- Four real fixtures publish: self, outer, branches and constructor_throw. Their
+  actual engine output passes Node syntax and **16** ordinary-call/descriptor/
+  exception-trace differentials, including inherited prototype setters. Native
+  own fields and ordinary static Set remain distinct. Reentry/accessors/copies/
+  closure-bearing throwing cases keep `kFamilyEnclosure`; outer_tdz keeps
+  `kCaptureEnclosure`. Member/descendant inner-name projection is still missing,
+  so no post-class creator cache is used to fake static re-entry semantics.
+- SDK es2abc SHA-256 `4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`;
+  matching records, `--module --merge-abc --extension=js`, default and O0.
+  Four-fixture exact full-disassembly comparison is **1 identical / 7 different**;
+  per-method **18 identical / 6 different**. No normalization is applied.
+  Differences are private result aliases/register allocation, physical pool
+  offsets and the outer binding's recovered HoleGuard diagnostic name. All
+  constructor/initializer bodies otherwise retain their operations and cleanup;
+  the design checkpoint explains each difference. O0 is also checked against
+  the actual fixture ABC methods and independently re-verifies all **8/8** raw
+  scope/cleanup/port proofs. Default optimized cleanup proofs remain **8
+  unverified**, with existing `CleanupError::kHandler` (1); they are not passes.
+- Full build passes; serial source-regression **65/65**, focused suite **12/12**.
+  Requested broad sweep is **209/223**; its 14 failures exactly match the
+  documented pre-existing set (family_source_cli, tree_structure, try_tree and
+  source, derived_cells and source/unguarded, class_tree_source, six captured
+  receiver variants). No new test failure or failing expectation was hidden.
+  Fresh OLD/NEW cohorts against **1a7da988** retain **532/620 / 584/620**, no
+  regressions, identical complete sets and all **3,613 / 3,769** non-manifest
+  files byte-identical. Only o20/8166's diagnostic changes in either flag set.
+  Evidence: `build/review/class-self5/`; checkpoint:
+  [class-self-initialization-scope.md](class-self-initialization-scope.md).
+  Measured process peak RSS across all 80 final cohort invocations is
+  **42,598,400 bytes** (previous flags) / **42,106,880 bytes** (source), sampled
+  with Darwin RUSAGE_CHILDREN in a fresh wrapper per engine process; every
+  engine exits zero. Detached printing now rejects ordinary initializer captures
+  without their creator enclosure and cannot choose an anonymous class for
+  certified inner references. No commit, push or stash.
+
 ## Class-self increment 4: actual creator captures bound; publication still gated (2026-10-20)
 
 - **Partial delivery: o20/8166 does not publish.** Its two ordinary initializer

@@ -19,6 +19,8 @@ struct ClassSelfDeferred {
   EvaluationPlan evaluation;
   ClassSelfInitializationDiagnostic diagnostic;
   std::vector<ClassSelfOuterBinding> bindings;
+  std::optional<TreeFlow> flow;
+  ClassSelfInitializationCost enclosure_cost;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

@@ -2,6 +2,7 @@
 #include <new>
 #include <stdexcept>
 
+#include "class_inner_scope.h"
 #include "class_self_deferred.h"
 #include "class_self_resource.h"
 #include "tree_constants.h"
@@ -376,6 +377,7 @@ ClassSelfInitializationDiagnostic BindDeferredClassSelf(
     // The existing structure traversal checks visibility and shadowing at the
     // real ClassExpr, in one pass, including declarations that are still TDZ.
     ClassTreeInitialization initialization{
+        {},
         p.scope.Evidence().binding,
         {},
         {},
@@ -401,11 +403,40 @@ ClassSelfInitializationDiagnostic BindDeferredClassSelf(
         Error::kCorrespondence);
     q.Account(verified);
     result.bound_outer = static_cast<std::uint32_t>(p.bindings.size());
+    // All raw self reads must resolve to the inner binding, including methods
+    // invoked re-entrantly during static initialization. An ordinary creator
+    // cache is initialized only after native ClassDefinitionEvaluation ends.
+    // This initializer-only projection cannot certify those member references.
+    for (const auto& reference : p.scope.Evidence().references) {
+      q.Step();
+      if (reference.owner.family || reference.owner.member) {
+        q.failure.projection =
+            ClassSelfInitializationFailure::Projection::kFamilyEnclosure;
+        const auto& family = input.families[reference.owner.family]
+                                 .family.members[reference.owner.member]
+                                 .function;
+        q.failure.location =
+            OperationLocation(family.Graph(), reference.guard, family.Method());
+        q.Require(false, Error::kScope);
+      }
+    }
+    for (const auto& expression : tree.expressions) {
+      q.Step();
+      if (std::holds_alternative<FunctionExpr>(expression.expression)) {
+        q.failure.projection =
+            ClassSelfInitializationFailure::Projection::kFamilyEnclosure;
+        q.Require(false, Error::kScope);
+      }
+    }
+    tree.class_scope = q.Take<std::shared_ptr<const ClassInnerScopeProof>>(
+        ClassInnerScopeProof::Build(input, p.initialization.Evidence(), q.left),
+        Error::kCorrespondence);
+    q.Account(tree.class_scope->Cost());
+    layout.class_self->certificate = tree.class_scope;
     // Do not equate a native class's whole-expression Commit with the raw
     // self-store / initializer Before / initializer Commit / public-store
-    // ports. Run the common initializer semantics/recovery path as well. It
-    // currently rejects the class-inner lifetime, so that is a located gate,
-    // never permission to erase the guard or publish the conditional draft.
+    // ports. The common initializer semantics now verifies the sealed inner
+    // scope; creator recovery must still match the distinct publication ports.
     q.failure.projection =
         ClassSelfInitializationFailure::Projection::kClassInitializationPorts;
     q.failure.location = OperationLocation(
@@ -429,11 +460,13 @@ ClassSelfInitializationDiagnostic BindDeferredClassSelf(
         Error::kCorrespondence);
     q.Admit(semantics.allocated_bytes);
     q.Step(semantics.work);
+    p.flow.emplace(std::move(semantics.flow));
     result.recovery->projection =
         ClassSelfInitializationFailure::Projection::kClassInitializationPorts;
     result.recovery->location = OperationLocation(
         creator.values.graph, p.initialization.Evidence().call.call,
         creator.input.Method());
+    p.enclosure_cost = q.Cost();
     return result;
   } catch (const ClassSelfInitializationFailure& e) {
     result.recovery = e;
@@ -451,6 +484,7 @@ ClassSelfInitializationDiagnostic BindDeferredClassSelf(
     result.recovery = q.failure;
     result.recovery->kind = Error::kResourceLimit;
   }
+  p.enclosure_cost = q.Cost();
   return result;
 }
 }  // namespace abcd::source

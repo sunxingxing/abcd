@@ -10,6 +10,26 @@
 #include "abcd/analysis/exception_regions.h"
 #include <memory>
 namespace abcd::source {
+class ClassInnerScopeProof;
+enum class ClassInitializationPortKind : std::uint8_t {
+  kClassInnerInitialize,
+  kStaticInitializeBefore,
+  kStaticInitializeCommit,
+  kPublicPublish
+};
+struct OriginalClassInitializationPort {
+  ClassInitializationPortKind kind;
+  analysis::OpId operation;
+  analysis::OriginId origin;
+  std::optional<analysis::UseId> use;
+  std::optional<analysis::ValueId> value;
+  bool operator==(const OriginalClassInitializationPort&) const = default;
+};
+struct OriginalClassInitialization {
+  ExprId expression;
+  std::shared_ptr<const ClassInnerScopeProof> certificate;
+  std::vector<OriginalClassInitializationPort> ports;
+};
 struct TreeFlow;
 struct OriginalConcurrentNotification {
   analysis::OpId notification,returned;
@@ -190,6 +210,7 @@ struct OriginalIterations {
   std::vector<OriginalEnumerationExit> exits;
 };
 struct OriginalFlow {
+  std::vector<OriginalClassInitialization> class_initializations;
   std::optional<OriginalIterations> iterations;
   std::optional<OriginalParameterDefaults> parameter_defaults;
   std::vector<OriginalConcurrentNotification> notifications;

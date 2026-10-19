@@ -695,12 +695,26 @@ void Run(const char* path, std::optional<abc::EntityOffset> requested,
       malformed = gate_json;
       malformed["recovery"]["projection"] = 255U;
       test::Check(!ParseClassSelfInitialization(malformed));
+      auto abi_gate = gate;
+      abi_gate.recovery->projection =
+          ClassSelfInitializationFailure::Projection::kMemberAbi;
+      abi_gate.recovery->abi_lengths =
+          ClassSelfInitializationFailure::AbiLengths{parent->input.Method(), 1,
+                                                     7};
+      const auto abi_json = ClassSelfInitializationJson(abi_gate);
+      test::Check(ParseClassSelfInitialization(abi_json).has_value());
+      auto broken_abi = abi_json;
+      broken_abi["recovery"].erase("abi_lengths");
+      test::Check(!ParseClassSelfInitialization(broken_abi));
+      broken_abi = abi_json;
+      broken_abi["recovery"]["abi_lengths"]["signature"] = 1;
+      test::Check(!ParseClassSelfInitialization(broken_abi));
       std::cout << "recovery projection "
                 << static_cast<unsigned>(*gate.recovery->projection)
                 << " tree references " << gate.tree_references << " owners "
                 << gate.syntax_owners << '\n';
       test::CheckClassSelfEnclosure(*file, header, index, lookup, roles,
-                                    classes, *parent, expect_tdz_gate);
+                                    sites, classes, *parent, expect_tdz_gate);
       seen = true;
     }
   }

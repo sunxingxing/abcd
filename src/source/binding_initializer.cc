@@ -1006,11 +1006,22 @@ class Initializers {
       const auto scope=tree_.symbols[i].scope;const auto region=source_scope_regions_[scope.value];
       if(region)source_bindings[i]=OriginalBindingScope{region};
       else switch(tree_.scopes[scope.value].kind) {
-        case ScopeKind::kParameters:case ScopeKind::kFunctionSelf:
-        case ScopeKind::kCaptures:case ScopeKind::kModule:source_bindings[i]=EnclosingBindingScope{};break;
-        case ScopeKind::kFunctionBody:case ScopeKind::kBlock:case ScopeKind::kCatch:
-          source_bindings[i]=UnmodeledBindingScope{};break;
-        default:throw TreeStructureError::kScope;
+          case ScopeKind::kClassInner:
+            RequireTree(bool(tree_.class_scope), TreeStructureError::kScope);
+            [[fallthrough]];
+          case ScopeKind::kParameters:
+          case ScopeKind::kFunctionSelf:
+          case ScopeKind::kCaptures:
+          case ScopeKind::kModule:
+            source_bindings[i] = EnclosingBindingScope{};
+            break;
+          case ScopeKind::kFunctionBody:
+          case ScopeKind::kBlock:
+          case ScopeKind::kCatch:
+            source_bindings[i] = UnmodeledBindingScope{};
+            break;
+          default:
+            throw TreeStructureError::kScope;
       }
       original_bindings[i]=source_bindings[i];
       const auto& site=sites[i];
@@ -1696,7 +1707,10 @@ class Initializers {
           // is not a transparent self-copy equation. Entry/external values
           // remain unknown until their independent semantics are modeled.
           case FlowDefinitionKind::kUpdate:case FlowDefinitionKind::kRestParameter:case FlowDefinitionKind::kParameter:
-          case FlowDefinitionKind::kCatch:case FlowDefinitionKind::kFunctionSelf:break;
+          case FlowDefinitionKind::kCatch:
+          case FlowDefinitionKind::kClassInner:
+          case FlowDefinitionKind::kFunctionSelf:
+            break;
         }
       }
       auto analyzed=AnalyzeFlowConstants(flow,CurrentLiveness(),values,expressions,plan_.primitives,tree_.texts,budget_.Remaining());
@@ -1843,6 +1857,8 @@ class Initializers {
         case BindingKind::kLocal:case BindingKind::kCompilerTemporary:
         case BindingKind::kCapture:case BindingKind::kModule:return false;
         case BindingKind::kClassInner:
+          RequireTree(bool(tree_.class_scope), TreeStructureError::kBinding);
+          return true;
         case BindingKind::kCaptureRequirement:
           throw TreeStructureError::kBinding;
       }

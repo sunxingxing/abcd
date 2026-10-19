@@ -358,6 +358,7 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
                   continue;
                 case FlowDefinitionKind::kUndefined:case FlowDefinitionKind::kUndefinedStore:
                   constant(target,NormalValueDomain{K::Language(),TruthDomains::One(TruthDomain::kUndefined)});invalidate(target);continue;
+                case FlowDefinitionKind::kClassInner:
                 case FlowDefinitionKind::kFunctionSelf:
                   constant(target,NormalValueDomain{K::Defined(),TruthDomains::Truthy()});continue;
               }

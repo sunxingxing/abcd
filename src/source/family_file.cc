@@ -475,8 +475,11 @@ class FamilyReader {
           const auto& recovery = *failure.class_self_initialization->recovery;
           if (parent.class_self &&
               recovery.kind == ClassSelfInitializationError::kRecoveryGate &&
-              recovery.projection == ClassSelfInitializationFailure::
-                                         Projection::kCaptureEnclosure) {
+              (recovery.projection == ClassSelfInitializationFailure::
+                                          Projection::kCaptureEnclosure ||
+               recovery.projection ==
+                   ClassSelfInitializationFailure::Projection::
+                       kClassInitializationPorts)) {
             // The initializer is not published here. Its native inner reads
             // have a seal, and the actual creator tree will discharge the
             // ordinary outer requirements before any class can finish.

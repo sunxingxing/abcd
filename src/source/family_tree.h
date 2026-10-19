@@ -25,6 +25,9 @@ enum class FamilyTreeError : std::uint8_t {
   kContext, kParent, kModules, kResourceLimit, kWorkLimit, kDeferredCell
 };
 struct FamilyTreeFailure {
+  struct AbiLengths {
+    std::uint32_t declared, signature;
+  };
   FamilyId member;
   std::variant<FamilyTreeError, FamilyFileFailure, DerivedProjectionError, SyntaxResolutionFailure, ControlError, ControlFailure,
       ConcurrentFailure, EvaluationFailure, FunctionTreeFailure, TreeFlowError, FunctionAbiError,
@@ -40,6 +43,7 @@ struct FamilyTreeFailure {
   std::optional<abc::EntityOffset> method;
   std::optional<DeferredCellEvidence> deferred;
   std::optional<CellParameterDefaultDiagnostic> cell_parameter_default;
+  std::optional<AbiLengths> abi_lengths;
 };
 // Owns the final residual graphs and rebound occurrence demands, before any AST
 // exists. Only Prepare can construct it; Build consumes it without reprojection.

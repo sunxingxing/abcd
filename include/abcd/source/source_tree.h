@@ -16,6 +16,7 @@
 #include "abcd/source/source_route.h"
 
 namespace abcd::source {
+class ClassInnerScopeProof;
 struct PropertyId { std::uint32_t value = 0; auto operator<=>(const PropertyId&) const = default; };
 struct SymbolId { std::uint32_t value = 0; auto operator<=>(const SymbolId&) const = default; };
 struct ParameterId { std::uint32_t value = 0; auto operator<=>(const ParameterId&) const = default; };
@@ -398,6 +399,7 @@ struct FunctionTree {
   // Unpublished class-initializer syntax. A requirement is NOT an alias or an
   // initialized external binding. Ordinary structure/publication rejects it.
   std::optional<ClassScope> class_inner;
+  std::shared_ptr<const ClassInnerScopeProof> class_scope;
   std::vector<CaptureRequirement> capture_requirements;
   // Native class absence of an explicit constructor; whole-function CFG/SSA
   // proof supplies its executable default behavior, including raw forwarding.

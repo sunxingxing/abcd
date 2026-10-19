@@ -1,12 +1,13 @@
 #include "tree_semantics.h"
-#include "original_flow.h"
-#include "../analysis/value_phi.h"
 
 #include <new>
 #include <stdexcept>
 
-#include "tree_correspondence.h"
+#include "../analysis/value_phi.h"
+#include "class_initialization_ports.h"
 #include "exception_tree.h"
+#include "original_flow.h"
+#include "tree_correspondence.h"
 
 namespace abcd::source {
 namespace {
@@ -94,13 +95,16 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     }
     CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked,*original);
     CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked);
+    RetainClassInitializationPorts(graph, tree, *original, checked);
     IndexOriginalInputs(*original,checked);
     flow->original=std::move(original);
     flow->allocated_bytes=checked.Bytes();
     return TreeSemantics{graph.revision, graph.cfg_revision, checked.Bytes(), checked.Work(), std::move(*flow)};
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {
-    return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
+    return error == TreeStructureError::kWorkLimit       ? Error::kWorkLimit
+           : error == TreeStructureError::kResourceLimit ? Error::kResourceLimit
+                                                         : Error::kOperand;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }

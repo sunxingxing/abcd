@@ -317,6 +317,8 @@ std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
     for (auto& task:plan.tasks) {
       q.Step();q.operation=task.operation;
       q.Require(task.owners && ValidClassOwnerRange(*task.owners,next) && task.preparation,Error::kCreation);
+      std::optional<ClassStaticFields> certified_initializer;
+      std::optional<ClassSelfInitializationDiagnostic> class_diagnostic;
       if (parent && input.creator.class_self &&
           input.creator.class_self->initialization.Evidence().call.creation ==
               task.operation) {
@@ -325,25 +327,75 @@ std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
             input.classes, input.creator, *input.creator.class_self, *task.tree,
             {static_cast<std::uint32_t>(task.owners->end - 1)}, *parent,
             input.storage, q.Left());
-        FamilyFileFailure refused{ClassSelfError::kRecoveryGate};
-        refused.method = diagnostic.initializer;
-        refused.root = input.occurrence.family_root;
-        if (diagnostic.recovery &&
+        auto& retained = *input.creator.class_self;
+        if (retained.flow && retained.initializer.tree.class_scope &&
+            diagnostic.recovery &&
             diagnostic.recovery->kind ==
-                ClassSelfInitializationError::kResourceLimit)
-          refused.cause = ClassSelfError::kResourceLimit;
-        else if (diagnostic.recovery &&
-                 diagnostic.recovery->kind ==
-                     ClassSelfInitializationError::kWorkLimit)
-          refused.cause = ClassSelfError::kWorkLimit;
-        refused.class_self_initialization = std::move(diagnostic);
-        throw CreatorClassFailure{
-            ClassTreeFailure{FamilyPrepareFailure{std::move(refused)}},
-            task.operation};
+                ClassSelfInitializationError::kRecoveryGate &&
+            diagnostic.recovery->projection ==
+                ClassSelfInitializationFailure::Projection::
+                    kClassInitializationPorts) {
+          q.Admit(retained.enclosure_cost.bytes);
+          q.Step(retained.enclosure_cost.work);
+          certified_initializer.emplace(ClassStaticFields{
+              retained.initialization.Evidence().call,
+              std::move(retained.context), std::move(retained.initializer.tree),
+              retained.initializer_family.members.front().function.Record(),
+              std::move(*retained.flow)});
+          task.preparation->layout.class_self =
+              std::move(task.tree->class_self);
+          class_diagnostic = diagnostic;
+        } else {
+          FamilyFileFailure refused{ClassSelfError::kRecoveryGate};
+          refused.method = diagnostic.initializer;
+          refused.root = input.occurrence.family_root;
+          if (diagnostic.recovery &&
+              diagnostic.recovery->kind ==
+                  ClassSelfInitializationError::kResourceLimit)
+            refused.cause = ClassSelfError::kResourceLimit;
+          else if (diagnostic.recovery &&
+                   diagnostic.recovery->kind ==
+                       ClassSelfInitializationError::kWorkLimit)
+            refused.cause = ClassSelfError::kWorkLimit;
+          refused.class_self_initialization = std::move(diagnostic);
+          throw CreatorClassFailure{
+              ClassTreeFailure{FamilyPrepareFailure{std::move(refused)}},
+              task.operation};
+        }
       }
-      auto definition=q.Take<ClassTree>(BuildClassTree(input.file,input.header,input.index,input.lookup,input.roles,
-          input.functions,input.classes,input.creator,task.operation,input.identity,globals,q.Left(),task.initializer,
-          task.definitions,recovery,{static_cast<std::uint32_t>(next)},parent,&*task.preparation,input.storage));
+      auto completed = BuildClassTree(
+          input.file, input.header, input.index, input.lookup, input.roles,
+          input.functions, input.classes, input.creator, task.operation,
+          input.identity, globals, q.Left(), task.initializer, task.definitions,
+          recovery, {static_cast<std::uint32_t>(next)}, parent,
+          &*task.preparation, input.storage,
+          certified_initializer ? &*certified_initializer : nullptr);
+      if (class_diagnostic)
+        if (const auto* error = std::get_if<ClassTreeFailure>(&completed))
+          if (const auto* prepare = std::get_if<FamilyPrepareFailure>(error))
+            if (const auto* family =
+                    std::get_if<FamilyTreeFailure>(&prepare->cause);
+                family && family->abi_lengths && family->method) {
+              auto diagnostic = std::move(*class_diagnostic);
+              diagnostic.recovery->kind =
+                  ClassSelfInitializationError::kRecoveryGate;
+              diagnostic.recovery->projection =
+                  ClassSelfInitializationFailure::Projection::kMemberAbi;
+              diagnostic.recovery->location = {};
+              diagnostic.recovery->location.method = *family->method;
+              diagnostic.recovery->abi_lengths =
+                  ClassSelfInitializationFailure::AbiLengths{
+                      *family->method, family->abi_lengths->declared,
+                      family->abi_lengths->signature};
+              FamilyFileFailure refused{ClassSelfError::kRecoveryGate};
+              refused.method = *family->method;
+              refused.root = input.occurrence.family_root;
+              refused.class_self_initialization = std::move(diagnostic);
+              throw CreatorClassFailure{
+                  ClassTreeFailure{FamilyPrepareFailure{std::move(refused)}},
+                  task.operation};
+            }
+      auto definition = q.Take<ClassTree>(std::move(completed));
       q.Require(definition.name==task.tree->name && definition.callable==task.tree->callable &&
           definition.member_sites==task.tree->member_sites && definition.DraftPrepared(),Error::kCreation);
       q.Admit(definition.allocated_bytes);q.Step(definition.work);

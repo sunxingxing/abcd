@@ -20,6 +20,10 @@ inline nlohmann::json ClassSelfFailureJson(
   id("slot", f.slot);
   id("use", f.use);
   if (f.projection) e["projection"] = static_cast<unsigned>(*f.projection);
+  if (f.abi_lengths)
+    e["abi_lengths"] = {{"method", f.abi_lengths->method.value},
+                        {"declared", f.abi_lengths->declared},
+                        {"signature", f.abi_lengths->signature}};
   return e;
 }
 inline nlohmann::json ClassSelfInitializationJson(
@@ -74,7 +78,7 @@ inline std::optional<ClassSelfInitializationFailure> ParseClassSelfFailure(
     std::uint32_t p;
     if (!FailureNumber(e, "projection", p) ||
         p > static_cast<unsigned>(
-                ClassSelfInitializationFailure::Projection::kCleanup))
+                ClassSelfInitializationFailure::Projection::kMemberAbi))
       return {};
     f.projection = static_cast<ClassSelfInitializationFailure::Projection>(p);
   }
@@ -90,6 +94,22 @@ inline std::optional<ClassSelfInitializationFailure> ParseClassSelfFailure(
     if (!FailureNumber(e, "slot", n) || n > UINT16_MAX) return {};
     f.slot = analysis::LexicalSlot{static_cast<std::uint16_t>(n)};
   }
+  if (e.contains("abi_lengths")) {
+    ClassSelfInitializationFailure::AbiLengths lengths;
+    const auto& value = e["abi_lengths"];
+    if (f.projection !=
+            ClassSelfInitializationFailure::Projection::kMemberAbi ||
+        !value.is_object() ||
+        !FailureNumber(value, "method", lengths.method.value) ||
+        !FailureNumber(value, "declared", lengths.declared) ||
+        !FailureNumber(value, "signature", lengths.signature) ||
+        lengths.declared == lengths.signature)
+      return {};
+    f.abi_lengths = lengths;
+  }
+  if (f.projection == ClassSelfInitializationFailure::Projection::kMemberAbi &&
+      !f.abi_lengths)
+    return {};
   return f;
 }
 inline std::optional<ClassSelfInitializationDiagnostic>
@@ -157,6 +177,9 @@ ParseClassSelfInitialization(const nlohmann::json& j) {
         !v.recovery->projection)
       return {};
   }
+  if (!v.recovery &&
+      (j.contains("tree_references") || j.contains("syntax_owners")))
+    return {};
   if (j.contains("bound_outer") &&
       (!v.recovery || !FailureNumber(j, "bound_outer", v.bound_outer) ||
        !v.scope_view ||

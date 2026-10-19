@@ -78,3 +78,17 @@ b8e5b7a6cf1454882bbc4e03a774d5e2b0a3d913d53505359e7364c3800f1f68  throwing.abc
 f5deb7625c27493f4b4b83539487f1adf071dce5517b06b19c12a5f3156e2777  accessors.abc
 4f5454a5ee9ab76c0d1f49ac3b66f0caa4d675f8b50b0f4e8f00e1bdede55138  outer_tdz.abc
 ```
+
+Increment 5: self/outer/branches and constructor_throw publish through sealed
+inner-scope and joint creator ports. The other fixtures retain explicit family
+or capture gates (notably re-entry through a method still requires its own
+inner binding projection). constructor_throw was compiled with the command
+above and record-name=class_self_constructor_throw. Its constructor logs once
+and throws RangeError during static initialization; public publication cannot
+complete. The production test compares engine output with original source in
+Node, tests inherited Function.prototype setters, and checks recompilation at
+default and O0. Exact bytecode differences and unverified optimized-cleanup
+proofs are retained rather than normalized or counted as equality.
+
+New fixture SHA-256 (`constructor_throw.abc`):
+`309a479096b06988f6ff06d511e9612b8095cdc56307a86269a4de13308cb377`.

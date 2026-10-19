@@ -1,16 +1,21 @@
-#include "concurrent_tree.h"
-#include "parameter_recovery.h"
-#include "binding_normalization.h"
 #include "recovery_flow.h"
-#include "flow_units.h"
-#include "expression_observation.h"
-#include "binding_initializer.h"
-#include "recovery_scratch.h"
-#include "expression_children.h"
-#include "loop_syntax.h"
+
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+
+#include "binding_initializer.h"
+#include "binding_normalization.h"
+#include "class_initialization_ports.h"
+#include "class_inner_scope.h"
+#include "class_tree.h"
+#include "concurrent_tree.h"
+#include "expression_children.h"
+#include "expression_observation.h"
+#include "flow_units.h"
+#include "loop_syntax.h"
+#include "parameter_recovery.h"
+#include "recovery_scratch.h"
 namespace abcd::source {
 namespace {
 using Error=TreeStructureError;
@@ -58,6 +63,7 @@ class FlowBuilder {
     names_=std::move(result_.names);names_.clear();
     discarded_=std::move(result_.discarded);discarded_.clear();
     result_.properties.clear();
+    result_.class_initializations.clear();
     result_.aggregates.clear();
     result_.argument_carriers.clear();
     result_.snapshot_slots.clear();
@@ -67,6 +73,7 @@ class FlowBuilder {
     result_.unit_captures.clear();
   }
   RecoveryFlow Run() {
+    if (tree_.class_inner) VerifyClassInnerScope(tree_, budget_);
     const auto normalized=NormalizeBindingProjection(tree_.symbols.size(),projection_.aliases,projection_.storage,budget_);
     if(normalized){projection_.aliases=normalized->aliases;projection_.storage=normalized->storage;}
     result_.scopes.reset();
@@ -188,8 +195,15 @@ class FlowBuilder {
     Link(dispatch_,terminal_,FlowCompletion::kConservativeCleanup);
     entry_=New();auto previous=entry_;
     for(std::size_t i=0;i<tree_.symbols.size();++i) {
-      budget_.Step();if(tree_.symbols[i].kind!=BindingKind::kFunctionSelf)continue;
-      const auto initialized=Define(SymbolId{static_cast<std::uint32_t>(i)},FlowDefinitionKind::kFunctionSelf);
+      budget_.Step();
+      const auto kind = tree_.symbols[i].kind;
+      if (kind != BindingKind::kFunctionSelf &&
+          kind != BindingKind::kClassInner)
+        continue;
+      const auto initialized = Define(SymbolId{static_cast<std::uint32_t>(i)},
+                                      kind == BindingKind::kClassInner
+                                          ? FlowDefinitionKind::kClassInner
+                                          : FlowDefinitionKind::kFunctionSelf);
       Link(previous,initialized);previous=initialized;
     }
     std::size_t default_index=0;
@@ -265,9 +279,12 @@ class FlowBuilder {
         result.bindings[i].allocation=scope_lifetimes_[scope.value]->enter;
       }
       else switch(tree_.symbols[i].kind) {
-          case BindingKind::kClassInner:
           case BindingKind::kCaptureRequirement:
             throw Error::kBinding;
+          case BindingKind::kClassInner:
+            RequireTree(bool(tree_.class_scope), Error::kBinding);
+            result.bindings[i].lifetime = EnclosingBindingLifetime{};
+            break;
           case BindingKind::kParameter:
           case BindingKind::kFunctionSelf:
           case BindingKind::kCapture:
@@ -360,6 +377,7 @@ class FlowBuilder {
     VerifyForOfRecovery(tree_,result,budget_);
     VerifyProtocolForwardingRecovery(tree_,result,budget_);
     VerifyParameterDefaultFlow(tree_,result,budget_);
+    VerifyClassInitializationRecovery(tree_, result, budget_);
     result.allocated_bytes=budget_.Bytes();
     // Published buffers own their actual capacities. Construction admission
     // includes old/new growth overlap, PMR traversal scratch and subordinate
@@ -378,6 +396,7 @@ class FlowBuilder {
     // Ownership census, not semantic dispatch. Add any new owned flow buffer
     // here; original evidence is borrowed and scopes are charged separately.
     add(flow.enumerations);add(flow.iterations);add(flow.iteration_closes);add(flow.parameter_defaults);
+    add(flow.class_initializations);
     add(flow.normal_kinds);add(flow.normal_truths);add(flow.normal_exits);
     add(flow.actions);add(flow.aggregates);add(flow.argument_carriers);
     add(flow.snapshot_slots);add(flow.property_initializers);add(flow.original_actions);
@@ -613,6 +632,51 @@ class FlowBuilder {
       result.original_actions[original.original.acquisition.operation.value]=FlowOriginalAction{port.acquire_before,port.acquire_commit,{port.thrown,port.finalizer}};
       result.original_actions[original.original.advance.operation.value]=FlowOriginalAction{port.next_before,port.next_commit,{port.thrown,port.finalizer}};
       result.original_actions[original.original.key.decision.value]=FlowOriginalAction{port.done,port.done,{port.thrown,port.finalizer}};
+    }
+    if (result.original && !result.original->class_initializations.empty()) {
+      std::pmr::vector<const FlowClassInitialization*> classes(&memory_);
+      budget_.Step(tree_.expressions.size());
+      classes.resize(tree_.expressions.size());
+      for (const auto& port : result.class_initializations) {
+        budget_.Step();
+        RequireTree(port.expression.value < classes.size() &&
+                        !classes[port.expression.value],
+                    Error::kOwnership);
+        classes[port.expression.value] = &port;
+      }
+      for (const auto& original : result.original->class_initializations) {
+        budget_.Step();
+        RequireTree(original.expression.value < classes.size() &&
+                        classes[original.expression.value],
+                    Error::kOwnership);
+        const auto& native = *classes[original.expression.value];
+        for (const auto& port : original.ports) {
+          budget_.Step();
+          RequireTree(port.operation.value < result.original_actions.size(),
+                      Error::kOwnership);
+          switch (port.kind) {
+            case ClassInitializationPortKind::kClassInnerInitialize:
+              // This raw store is the certified inner port. A source cache
+              // may materialize the class later; the independent verifier
+              // checks its actual definition, value identity and private unit.
+              // Its operand-evaluation entry is not the internal Commit.
+              result.original_actions[port.operation.value] =
+                  FlowOriginalAction{native.inner, native.before,
+                                     native.exceptions};
+              break;
+            case ClassInitializationPortKind::kStaticInitializeBefore:
+              RequireTree(!result.original_actions[port.operation.value],
+                          Error::kOwnership);
+              result.original_actions[port.operation.value] =
+                  FlowOriginalAction{native.before, native.commit,
+                                     native.exceptions};
+              break;
+            case ClassInitializationPortKind::kStaticInitializeCommit:
+            case ClassInitializationPortKind::kPublicPublish:
+              break;
+          }
+        }
+      }
     }
     Resize(result.original_phases,result.original?result.original->phases.size():0);
     for(std::size_t i=0;i<result.original_phases.size();++i) {
@@ -1084,6 +1148,58 @@ class FlowBuilder {
       Append(result_.aggregates,FlowAggregate{at.id,allocation,next,context.next,aggregate->properties,{context.thrown,context.finalizer}});
       if(!result_.actions.empty())result_.actions[at.id.value]=FlowAction{allocation,next,{context.thrown,context.finalizer}};
       Link(start,allocation);return;
+    }
+    if (const auto* klass = std::get_if<ClassExpr>(&node);
+        klass && klass->definition && klass->definition->class_self) {
+      const auto& initialization = *klass->definition->class_self;
+      RequireTree(initialization.certificate && result_.original,
+                  Error::kOwnership);
+      const auto creation = klass->definition->operation;
+      RequireTree(creation.value < result_.original->operations.size(),
+                  Error::kOwnership);
+      std::optional<analysis::OpId> call;
+      for (const auto& port : initialization.ports) {
+        budget_.Step();
+        if (port.kind == ClassSelfPortKind::kInitializerBefore)
+          call = port.operation;
+      }
+      RequireTree(call && call->value < result_.original->operations.size(),
+                  Error::kOwnership);
+      const auto allocation = New({FlowEventKind::kEvaluation, {}, {}, at.id});
+      const auto inner = New(), before = New({FlowEventKind::kEvaluation}),
+                 commit = New();
+      const auto apply = [&](Point point, const OriginalOperation& op) {
+        const SourceEffects effects{op.normal, op.before_throw, op.exceptional};
+        events_[point.value].effects = effects;
+        events_[point.value].effect = effects.Evaluation();
+        if (op.exceptional == analysis::ExceptionalCompletion::kMayThrow)
+          Link(point, context.thrown, FlowCompletion::kThrow);
+      };
+      apply(allocation, result_.original->operations[creation.value]);
+      apply(before, result_.original->operations[call->value]);
+      Link(allocation, inner);
+      Link(inner, before);
+      Link(before, commit);
+      Link(commit, context.next);
+      for (const auto capture : projection_.cells->Captured(at.id, budget_)) {
+        budget_.Step();
+        Append(result_.unit_captures,
+               FlowUnitCapture{allocation, Resolve(capture.binding)});
+      }
+      if (!result_.actions.empty())
+        result_.actions[at.id.value] =
+            FlowAction{allocation, inner, {context.thrown, context.finalizer}};
+      Append(result_.class_initializations,
+             FlowClassInitialization{at.id,
+                                     allocation,
+                                     inner,
+                                     before,
+                                     commit,
+                                     {context.thrown, context.finalizer}});
+      Link(start, klass->heritage
+                      ? Expr(*klass->heritage, context.Operand(allocation))
+                      : allocation);
+      return;
     }
     const auto effect=New({FlowEventKind::kEvaluation,{},{},at.id});auto normal=context.next;
     if(!projection_.cells->captures.empty())for(const auto capture:projection_.cells->Captured(at.id,budget_)) {

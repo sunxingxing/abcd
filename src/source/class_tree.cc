@@ -308,13 +308,18 @@ std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
     catch (const std::length_error&) { return ClassTreeFailure{Error::kResourceLimit}; }
 }
 std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
-    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
-    const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
-    const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
-    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
-    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery, FunctionOwnerId first_owner,
-    const CaptureTree* parent, ClassPreparation* preparation, const CaptureStorage* creator_storage) {
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions,
+    const analysis::ClassMethodSites& classes, const FileFunction& creator,
+    analysis::OpId operation, RouteInputIdentity identity,
+    const GlobalScope* globals, analysis::SemanticBudget budget,
+    const ClassInitializerCall* initializer,
+    std::span<const ClassDefinitionSite> definitions, RecoveryMode recovery,
+    FunctionOwnerId first_owner, const CaptureTree* parent,
+    ClassPreparation* preparation, const CaptureStorage* creator_storage,
+    ClassStaticFields* certified_initializer) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -444,51 +449,89 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     std::optional<ClassStaticFields> fields;
     if (initializer) {
       if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};
-      auto body = Take<ClassInitializerFunction>(ReadClassInitializerFunction(file, header, index, lookup,
-          roles, functions, creator, *initializer, budget,
-          globals && globals->module_enclosure ? &globals->module_enclosure->Context() : nullptr));
-      admit(body.function.allocated_bytes, 1); admit(body.context.AllocatedBytes(), 1); step(body.context.Work());
-      auto syntax = Take<ResolvedSyntax>(ResolveFunctionSyntax(file, header, index, body.context,
-          body.function.body, body.function.values.graph, destination().first_owner, budget));
-      ++next_owner;
-      admit(syntax.allocated_bytes, 1); step(syntax.work);
-      std::optional<ModuleAliases> aliases;
-      if (globals && globals->module_enclosure) {
-        const auto& enclosure = *globals->module_enclosure;
-        aliases = Take<ModuleAliases>(BindModuleAliases(file, header, index, body.function.input,
-            body.function.values, enclosure.Context(), enclosure.Owner(),
-            {static_cast<std::uint32_t>(syntax.syntax.names.size())}, budget));
-        admit(aliases->allocated_bytes, 1); step(aliases->work);
-        admit(aliases->aliases.size(), sizeof(ModuleSyntax));
-        syntax.syntax.modules = aliases->aliases;
-        admit(syntax.syntax.modules.capacity() - aliases->aliases.size(), sizeof(ModuleSyntax));
-        const auto name_count = syntax.syntax.names.size() + aliases->names.size();
-        admit(name_count, sizeof(std::u16string));
-        syntax.syntax.names.reserve(name_count);
-        admit(syntax.syntax.names.capacity() - name_count, sizeof(std::u16string));
-        for (const auto& name : aliases->names) {
-          admit(name.size() + 1, sizeof(char16_t));
-          syntax.syntax.names.push_back(name);
-          admit(syntax.syntax.names.back().capacity() - name.size(), sizeof(char16_t));
+      if (certified_initializer) {
+        if (!tree.class_self || !tree.class_self->certificate ||
+            certified_initializer->tree.class_scope !=
+                tree.class_self->certificate ||
+            certified_initializer->call != *initializer ||
+            certified_initializer->tree.owner != destination().first_owner ||
+            !certified_initializer->flow.original)
+          throw ClassTreeFailure{Error::kCreation};
+        fields.emplace(std::move(*certified_initializer));
+        ++next_owner;
+      } else {
+        auto body = Take<ClassInitializerFunction>(ReadClassInitializerFunction(
+            file, header, index, lookup, roles, functions, creator,
+            *initializer, budget,
+            globals && globals->module_enclosure
+                ? &globals->module_enclosure->Context()
+                : nullptr));
+        admit(body.function.allocated_bytes, 1);
+        admit(body.context.AllocatedBytes(), 1);
+        step(body.context.Work());
+        auto syntax = Take<ResolvedSyntax>(ResolveFunctionSyntax(
+            file, header, index, body.context, body.function.body,
+            body.function.values.graph, destination().first_owner, budget));
+        ++next_owner;
+        admit(syntax.allocated_bytes, 1);
+        step(syntax.work);
+        std::optional<ModuleAliases> aliases;
+        if (globals && globals->module_enclosure) {
+          const auto& enclosure = *globals->module_enclosure;
+          aliases = Take<ModuleAliases>(BindModuleAliases(
+              file, header, index, body.function.input, body.function.values,
+              enclosure.Context(), enclosure.Owner(),
+              {static_cast<std::uint32_t>(syntax.syntax.names.size())},
+              budget));
+          admit(aliases->allocated_bytes, 1);
+          step(aliases->work);
+          admit(aliases->aliases.size(), sizeof(ModuleSyntax));
+          syntax.syntax.modules = aliases->aliases;
+          admit(syntax.syntax.modules.capacity() - aliases->aliases.size(),
+                sizeof(ModuleSyntax));
+          const auto name_count =
+              syntax.syntax.names.size() + aliases->names.size();
+          admit(name_count, sizeof(std::u16string));
+          syntax.syntax.names.reserve(name_count);
+          admit(syntax.syntax.names.capacity() - name_count,
+                sizeof(std::u16string));
+          for (const auto& name : aliases->names) {
+            admit(name.size() + 1, sizeof(char16_t));
+            syntax.syntax.names.push_back(name);
+            admit(syntax.syntax.names.back().capacity() - name.size(),
+                  sizeof(char16_t));
+          }
         }
+        const auto constants = syntax.View();
+        auto control = Take<ControlPlan>(
+            BuildControlPlan(body.function.values.graph, budget));
+        admit(control.allocated_bytes, 1);
+        step(control.work);
+        std::optional<ArrayInitializationError> array_error;
+        auto evaluated = BuildEvaluationPlan(
+            body.function.values.graph, budget, IncomingCells::kReject, {},
+            aliases ? std::span<const ModuleEvaluation>(aliases->evaluations)
+                    : std::span<const ModuleEvaluation>{},
+            {}, {}, analysis::ClosureWrites::kUnknown, {}, {}, {}, nullptr, {},
+            {body.context.Identity().contract, constants, syntax.syntax.names,
+             &array_error});
+        if (array_error) throw ClassTreeFailure{*array_error};
+        auto evaluation = Take<EvaluationPlan>(std::move(evaluated));
+        admit(evaluation.allocated_bytes, 1);
+        step(evaluation.work);
+        auto built = Take<ConstructedFunction>(
+            BuildFunctionTree(body.function.values.graph, control, evaluation,
+                              std::move(syntax.syntax), constants, budget));
+        admit(built.allocated_bytes, 1);
+        step(built.work);
+        if (aliases)
+          step(Take<std::uint64_t>(
+              VerifyModuleAliasTree(*aliases, evaluation, built.tree, budget)));
+        if (!built.flow) throw ClassTreeFailure{Error::kCreation};
+        fields = ClassStaticFields{
+            *initializer, std::move(body.context), std::move(built.tree),
+            body.function.input.Record(), std::move(*built.flow)};
       }
-      const auto constants = syntax.View();
-      auto control = Take<ControlPlan>(BuildControlPlan(body.function.values.graph, budget));
-      admit(control.allocated_bytes, 1); step(control.work);
-      std::optional<ArrayInitializationError> array_error;
-      auto evaluated = BuildEvaluationPlan(body.function.values.graph, budget, IncomingCells::kReject, {},
-          aliases ? std::span<const ModuleEvaluation>(aliases->evaluations) : std::span<const ModuleEvaluation>{},
-          {}, {}, analysis::ClosureWrites::kUnknown, {}, {}, {}, nullptr, {},
-          {body.context.Identity().contract, constants, syntax.syntax.names, &array_error});
-      if (array_error) throw ClassTreeFailure{*array_error};
-      auto evaluation = Take<EvaluationPlan>(std::move(evaluated));
-      admit(evaluation.allocated_bytes, 1); step(evaluation.work);
-      auto built = Take<ConstructedFunction>(BuildFunctionTree(body.function.values.graph, control,
-          evaluation, std::move(syntax.syntax), constants, budget));
-      admit(built.allocated_bytes, 1); step(built.work);
-      if (aliases) step(Take<std::uint64_t>(VerifyModuleAliasTree(*aliases, evaluation, built.tree, budget)));
-      if(!built.flow)throw ClassTreeFailure{Error::kCreation};
-      fields = ClassStaticFields{*initializer, std::move(body.context), std::move(built.tree), body.function.input.Record(),std::move(*built.flow)};
     }
     if (file.CheckUnchanged()) return ClassTreeFailure{abc::MetadataError::kFileChanged};
     tree.initializer = std::move(fields);

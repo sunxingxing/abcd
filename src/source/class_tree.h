@@ -85,6 +85,7 @@ struct SendableTypeSpelling {
   bool operator==(const SendableTypeSpelling&) const = default;
 };
 struct ClassTreeInitialization {
+  std::shared_ptr<const ClassInnerScopeProof> certificate;
   ClassInnerBinding binding;
   std::vector<ClassSelfPort> ports;
   std::vector<ClassSelfCleanup> cleanup;
@@ -170,9 +171,11 @@ struct ClassPreparation {
     const GlobalScope* globals = nullptr, analysis::SemanticBudget budget = {},
     const ClassInitializerCall* initializer = nullptr,
     std::span<const ClassDefinitionSite> definitions = {},
-    RecoveryMode recovery = RecoveryMode::kCompleteOnly, FunctionOwnerId first_owner = {},
-    const CaptureTree* parent = nullptr, ClassPreparation* preparation = nullptr,
-    const CaptureStorage* creator_storage = nullptr);
+    RecoveryMode recovery = RecoveryMode::kCompleteOnly,
+    FunctionOwnerId first_owner = {}, const CaptureTree* parent = nullptr,
+    ClassPreparation* preparation = nullptr,
+    const CaptureStorage* creator_storage = nullptr,
+    ClassStaticFields* certified_initializer = nullptr);
 struct PrintedClassTree {
   // Each member's positions remain relative to its own byte offset, preserving
   // the existing family source maps without expanding their origin graphs.

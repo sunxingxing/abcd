@@ -23,7 +23,11 @@ std::variant<FlowBindingNames,TreeStructureError> AnalyzeFlowBindingNames(
           }
           break;
         case BindingKind::kParameter:case BindingKind::kLocal:case BindingKind::kCatchParameter:
-        case BindingKind::kFunctionSelf:case BindingKind::kCapture:case BindingKind::kModule:break;
+        case BindingKind::kClassInner:
+        case BindingKind::kFunctionSelf:
+        case BindingKind::kCapture:
+        case BindingKind::kModule:
+          break;
         default:throw TreeStructureError::kBinding;
       }
     }

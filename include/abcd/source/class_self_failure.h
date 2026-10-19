@@ -35,9 +35,15 @@ struct ClassSelfInitializationFailure {
     kNameResolution,
     kGuard,
     kWrite,
-    kCleanup
+    kCleanup,
+    kMemberAbi
   };
   std::optional<Projection> projection;
+  struct AbiLengths {
+    abc::EntityOffset method;
+    std::uint32_t declared, signature;
+  };
+  std::optional<AbiLengths> abi_lengths;
 };
 enum class ClassSelfInitializationStatus : std::uint8_t { kMissing, kVerified };
 // This is a storage-bound scope VIEW, not a ClassTree/recovery receipt. A

@@ -1,6 +1,9 @@
 #include "cell_access.h"
-#include "class_tree.h"
+
 #include <limits>
+
+#include "class_inner_scope.h"
+#include "class_tree.h"
 namespace abcd::source {
 std::optional<ModuleSymbol> SourceCells::ModuleUnit(SymbolId binding) const {
   if(module_units.empty())return {};
@@ -31,6 +34,7 @@ std::span<const CellCapture> SourceCells::Captured(ExprId creation,TreeCheckBudg
   return std::span<const CellCapture>(captures).subspan(first-captures.begin(),last-first);
 }
 SourceCells AnalyzeSourceCells(const FunctionTree& tree,TreeCheckBudget& budget) {
+  if (tree.class_inner) VerifyClassInnerScope(tree, budget);
   SourceCells result;result.owner=&tree;bool complete=tree.recovery_issues.empty();
   bool simple=true;
   for(const auto& parameter:tree.parameters){budget.Step();simple&=!parameter.initializer&&!parameter.rest;}
@@ -41,6 +45,9 @@ SourceCells AnalyzeSourceCells(const FunctionTree& tree,TreeCheckBudget& budget)
     RequireTree(symbol.scope.value<tree.scopes.size(),TreeStructureError::kScope);
     switch(symbol.kind){
       case BindingKind::kClassInner:
+        RequireTree(bool(tree.class_scope), TreeStructureError::kBinding);
+        result.access[i] = CellVisibility::kClosed;
+        break;
       case BindingKind::kCaptureRequirement:
         throw TreeStructureError::kBinding;
       case BindingKind::kParameter:result.access[i]=result.mapped_arguments?CellVisibility::kExternal:CellVisibility::kClosed;break;

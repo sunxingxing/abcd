@@ -98,7 +98,19 @@ struct DiscardedEvaluation {
   std::optional<ExprId> evaluation;
 };
 enum class FlowCompletion : std::uint8_t { kNormal, kThrow, kReturn, kJump, kTaken, kNotTaken, kResumeNext, kResumeThrow, kResumeReturn, kConservativeCleanup };
-enum class FlowDefinitionKind : std::uint8_t { kParameter, kRestParameter, kUndefined, kInitializer, kAssignment, kUpdate, kCatch, kUndefinedStore, kFunctionSelf, kIterationCopy };
+enum class FlowDefinitionKind : std::uint8_t {
+  kParameter,
+  kRestParameter,
+  kUndefined,
+  kInitializer,
+  kAssignment,
+  kUpdate,
+  kCatch,
+  kUndefinedStore,
+  kFunctionSelf,
+  kIterationCopy,
+  kClassInner
+};
 enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kAggregateDefinition, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment, kCopyInput, kEnterIterationEnvironment, kLeaveLoopEnvironment, kEnumerationAcquire, kEnumerationNext, kEnumerationBind, kConcurrentNotification };
 enum class FlowValueUse : std::uint8_t { kUnmodeled, kDiscarded, kObserved };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
@@ -212,6 +224,11 @@ struct FlowExceptionContext {
 // precedes access; an update's conversion follows its captured read. Normal
 // completion includes successful source writeback, never the throwing route.
 struct FlowAction {FlowPoint before,normal;FlowExceptionContext exceptions;};
+struct FlowClassInitialization {
+  ExprId expression;
+  FlowPoint allocation, inner, before, commit;
+  FlowExceptionContext exceptions;
+};
 // Native signature evaluation belongs to the invocation, outside body handlers.
 // Parameter ordinal identifies the source value; storage and later reads are
 // separate. Creation succeeds before the initialization definition commits.
@@ -489,6 +506,7 @@ struct FlowLoop {
   std::optional<FlowPoint> entry_allocation,repeat_allocation;
 };
 struct RecoveryFlow {
+  std::vector<FlowClassInitialization> class_initializations;
   std::vector<std::optional<FlowIteration>> iterations; // StmtId indexed.
   std::vector<FlowIterationClose> iteration_closes;
   std::vector<FlowParameterDefault> parameter_defaults;

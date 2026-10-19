@@ -319,9 +319,13 @@ BuildClassSelfClassDraft(const ClassSelfInitializationInput& input,
     q.Require(!function.Phase(), Error::kScope);
     const auto& body = function.Normal();
     q.failure.initializer = body.input.Method();
-    ClassTreeInitialization initialization{
-        scope.binding,      {}, {}, scope.initializer_exception,
-        family.first_owner, 0};
+    ClassTreeInitialization initialization{{},
+                                           scope.binding,
+                                           {},
+                                           {},
+                                           scope.initializer_exception,
+                                           family.first_owner,
+                                           0};
     q.Reserve(initialization.ports, scope.ports.size());
     for (const auto& port : scope.ports) {
       q.Step();
