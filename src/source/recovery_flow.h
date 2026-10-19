@@ -34,10 +34,11 @@ struct FlowInvocationPhase {ParameterId parameter;};
 // An erased initialized guard qualifies a captured value. Its VM location is
 // not the load's physical action or a later expression's completion.
 struct FlowGuardPhase {analysis::OpId operation;};
+struct FlowForwardedTryPhase {analysis::TryId region; analysis::WorkBlockId block;};
 struct FlowForwardedPhase {StmtId statement; analysis::WorkBlockId block;};
 enum class FlowIterationPhaseKind : std::uint8_t { kPrivate, kBindingCommit };
 struct FlowIterationPhase { IteratorProtocolId protocol; analysis::WorkBlockId original; FlowIterationPhaseKind kind=FlowIterationPhaseKind::kPrivate; };
-using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase,FlowGuardPhase,FlowForwardedPhase,FlowIterationPhase>;
+using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase,FlowGuardPhase,FlowForwardedPhase,FlowForwardedTryPhase,FlowIterationPhase>;
 struct FlowIterationEvent {ForOfEventKind kind;FlowPoint before,commit,thrown;};
 // A native close is effectful and has completion-dependent exception priority.
 // It is never a transparent handler forwarding record.
@@ -251,7 +252,8 @@ struct FlowExcludedResourceFailure {};
 struct FlowExcludedGuardFailure {ExprId value;FlowPoint input,target;};
 enum class FlowIterationFailureKind : std::uint8_t { kStep, kCloseRead, kCloseCall, kCloseCheck, kPrivate };
 struct FlowIterationException {IteratorProtocolId protocol;std::uint32_t original_exit;std::optional<FlowPoint> before;FlowPoint thrown;FlowIterationFailureKind kind=FlowIterationFailureKind::kStep;};
-using FlowOriginalFailure=std::variant<FlowOriginalException,FlowForwardedException,FlowExcludedResourceFailure,FlowExcludedGuardFailure,FlowIterationException>;
+struct FlowForwardedTryDispatch {std::uint32_t exit;analysis::TryId region;};
+using FlowOriginalFailure=std::variant<FlowOriginalException,FlowForwardedException,FlowForwardedTryDispatch,FlowExcludedResourceFailure,FlowExcludedGuardFailure,FlowIterationException>;
 enum class FlowOriginalRouteCoverage : std::uint8_t {kUnmodeled,kComplete};
 struct FlowReference {
   FlowPoint point;
@@ -742,5 +744,6 @@ struct FlowRefinement { std::size_t allocated_bytes=0; std::uint64_t work=0; };
     RecoveryFlow&,const FunctionTree&,std::span<const ExpressionEvaluation>,
     std::span<const std::uint8_t> normal_stores,analysis::SemanticBudget = {},
     std::span<const std::uint8_t> executable = {});
+void VerifyProtocolForwardingRecovery(const FunctionTree&,RecoveryFlow&,TreeCheckBudget&);
 }
 #endif

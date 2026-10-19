@@ -125,6 +125,28 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     auto sealed=seal(std::move(summary));
     if(expected_gap){test::Check(std::holds_alternative<CloseCompletionFailure>(sealed));const auto& f=std::get<CloseCompletionFailure>(sealed);test::Check(f.kind==CloseCompletionError::kOwnership);std::cout<<"live-out fixture retains CloseCompletionError::kOwnership\n";return;}
     auto owner=Take<VerifiedProtocolRegionOwnership>(std::move(sealed),"seal");
+    if(!owner.Forwarding().regions.empty()) {
+      const auto& f=owner.Forwarding();
+      std::vector<std::uint8_t> owned(plan.regions.size()),close(graph.blocks.size());
+      std::vector<std::uint8_t> raw(input.flow.nodes.size());
+      for(const auto& region:owner.Summary().regions){for(const auto r:region.boundary->regions)owned[r.value]=1;for(const auto m:region.members)raw[m.node.value]=1;}
+      for(std::size_t b=0;b<close.size();++b)close[b]=raw[graph.phases[b].input.value];
+      const auto build=[&](const ValueProgram& g,const std::vector<std::uint8_t>& c,SemanticBudget b=SemanticBudget{}){return AnalyzeProtocolForwarding(g,plan,owned,c,b);};
+      test::Check(Take<ProtocolForwarding>(build(graph,close),"forwarding")==f);
+      const auto handler=std::find_if(f.blocks.begin(),f.blocks.end(),[](const auto& b){return b.has_value();})-f.blocks.begin();
+      test::Check(handler<f.blocks.size());auto overlap=close;overlap[handler]=1;
+      test::Check(std::holds_alternative<ForInFailure>(build(graph,overlap)));
+      const auto op=std::find_if(f.operations.begin(),f.operations.end(),[](const auto& o){return o.has_value();})-f.operations.begin();test::Check(op<graph.ops.size());
+      auto effectful=graph;effectful.ops[op].normal=LanguageEffect::kHeapWrite;
+      test::Check(std::holds_alternative<ForInFailure>(build(effectful,close)));
+      auto external=graph;bool changed=false;
+      for(auto& edge:external.edges)if(edge.kind==FlowEdgeKind::kException && f.blocks[edge.target.value] && !f.blocks[edge.source.value]){edge.kind=FlowEdgeKind::kFallthrough;changed=true;break;}
+      test::Check(changed && std::holds_alternative<ForInFailure>(build(external,close)));
+      const auto work=f.work;Take<ProtocolForwarding>(build(graph,close,{SemanticBudget{}.bytes,work}),"forwarding-exact-work");
+      test::Check(std::get<ForInFailure>(build(graph,close,{SemanticBudget{}.bytes,work-1})).kind==ForInError::kWorkLimit);
+      std::size_t lo=0,hi=SemanticBudget{}.bytes;while(lo<hi){const auto mid=lo+(hi-lo)/2;auto result=build(graph,close,{mid,SemanticBudget{}.work});if(std::holds_alternative<ProtocolForwarding>(result))hi=mid;else{test::Check(std::get<ForInFailure>(result).kind==ForInError::kResourceLimit);lo=mid+1;}}
+      Take<ProtocolForwarding>(build(graph,close,{lo,SemanticBudget{}.work}),"forwarding-exact-bytes");test::Check(lo && std::get<ForInFailure>(build(graph,close,{lo-1,SemanticBudget{}.work})).kind==ForInError::kResourceLimit);
+    }
     auto built_control=BuildExceptionControl(body,graph,input,plan,{},&owner);
     auto control=Take<ExceptionControl>(std::move(built_control),"control");
     const auto verify=[&](const ForOfIdentityIndex& value) {
@@ -188,6 +210,13 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEmissionView(graph,source,*evaluation.for_of,forged_view)));
     forged_view=view;test::Check(!forged_view.ports.empty());forged_view.ports.pop_back();
     test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEmissionView(graph,source,*evaluation.for_of,forged_view)));
+    if(!view.forwarding.regions.empty()) {
+      forged_view=view;const auto r=std::find_if(forged_view.forwarding.regions.begin(),forged_view.forwarding.regions.end(),[](const auto& f){return f.has_value();})-forged_view.forwarding.regions.begin();
+      forged_view.forwarding.regions[r]->payload={UINT32_MAX};
+      test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEmissionView(graph,source,*evaluation.for_of,forged_view)));
+      forged_view=view;forged_view.forwarding.exits.clear();
+      test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEmissionView(graph,source,*evaluation.for_of,forged_view)));
+    }
     auto missing_exception=evaluation;
     test::Check(!missing_exception.for_of->events.events.empty() && missing_exception.for_of->events.events[0].exception_exit);
     missing_exception.for_of->events.events[0].exception_exit.reset();
@@ -276,6 +305,15 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     bad_flow=recovered;bool wrong_continue=false;
     for(const auto& exit:sem.flow.original->iterations->exits)if(exit.kind==LoopTransferKind::kContinue){for(auto& edge:bad_flow.edges)if(edge.from==bad_flow.statements[exit.statement.value]&&edge.completion==FlowCompletion::kJump){edge.to=bad_flow.iterations[statement.value]->exit;wrong_continue=true;break;}break;}
     test::Check(wrong_continue);reject_flow(bad_flow);
+    if(!sem.flow.original->iterations->view.forwarding.regions.empty()) {
+      auto raw=*sem.flow.original;auto& f=raw.iterations->view.forwarding;
+      const auto r=std::find_if(f.regions.begin(),f.regions.end(),[](const auto& x){return x.has_value();})-f.regions.begin();
+      f.regions[r]->payload=raw.iterations->loops[0].iterator;
+      test::Check(std::holds_alternative<TreeStructureError>(recover(raw)));
+      raw=*sem.flow.original;auto& entries=raw.iterations->view.forwarding.exits;
+      const auto e=std::find_if(entries.begin(),entries.end(),[](const auto& x){return x.has_value();})-entries.begin();test::Check(e<entries.size());entries[e].reset();
+      test::Check(std::holds_alternative<TreeStructureError>(recover(raw)));
+    }
     auto wrong_raw=*sem.flow.original;wrong_raw.iterations->events.ports[0].outcome.pending.target=ExceptionNodeId{UINT32_MAX};
     test::Check(std::holds_alternative<TreeStructureError>(recover(wrong_raw)));
     wrong_raw=*sem.flow.original;wrong_raw.iterations->loops[0].advance=wrong_raw.iterations->loops[0].done;

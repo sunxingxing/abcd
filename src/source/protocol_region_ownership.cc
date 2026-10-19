@@ -19,9 +19,11 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
     ControlQuota quota(budget);
     // Occurrence coverage is checked separately from flags: an omitted close
     // or acquisition cannot authorize partial projection of the method.
-    std::vector<bool> acquisitions, owned;
+    std::vector<bool> acquisitions;
+    std::vector<std::uint8_t> owned, close_blocks, close_nodes;
     std::vector<std::pair<IteratorProtocolId, OpId>> regions;
     quota.Size(owned,plan.regions.size());
+    quota.Size(close_blocks,graph.blocks.size());quota.Size(close_nodes,input.flow.nodes.size());
     quota.Size(acquisitions, scan.candidates.size()); quota.Size(regions, summary.regions.size());
     for (std::size_t i=0; i<summary.regions.size(); ++i) {
       quota.Work(); const auto& r=summary.regions[i];
@@ -31,6 +33,7 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
           r.boundary->private_state!=CloseProofState::kVerified ||
           r.boundary->region_coverage!=CloseProofState::kVerified)
         return CloseCompletionFailure{CloseCompletionError::kOwnership,r.protocol,r.read};
+      for(const auto& member:r.members){quota.Work();if(member.node.value>=close_nodes.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};close_nodes[member.node.value]=1;}
       acquisitions[r.protocol.value]=true; regions[i]={r.protocol,r.read};
       for(const auto id:r.boundary->regions) {
         quota.Work();if(id.value>=owned.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
@@ -41,13 +44,18 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
     for(std::size_t i=1;i<regions.size();++i) {
       quota.Work(); if(regions[i-1]==regions[i])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
     }
-    // A remaining ordinary enclosure is not granted ownership. This stage
-    // retains the original control route/refusal for mixed ordinary scopes;
-    // it must never erase a user wrapper to make a protocol projection fit.
-    for(std::uint32_t r=0;r<owned.size();++r) {
-      quota.Work();if(!owned[r] && !plan.layout.regions[r].inactive) {
-        CloseCompletionFailure failure{CloseCompletionError::kOwnership};failure.region=TryId{r};return failure;
-      }
+    for(std::size_t b=0;b<graph.phases.size();++b){quota.Work();close_blocks[b]=close_nodes[graph.phases[b].input.value];}
+    ProtocolForwarding forwarding;
+    bool ordinary=false;for(std::size_t r=0;r<owned.size();++r){quota.Work();ordinary|=!owned[r] && !plan.layout.regions[r].inactive;}
+    if(ordinary){
+    auto forwarded=AnalyzeProtocolForwarding(graph,plan,owned,close_blocks,quota.Remaining());
+    if(const auto* f=std::get_if<ForInFailure>(&forwarded)){
+      CloseCompletionFailure failure{f->kind==ForInError::kWorkLimit?CloseCompletionError::kWorkLimit:f->kind==ForInError::kResourceLimit?CloseCompletionError::kResourceLimit:CloseCompletionError::kOwnership};
+      if(f->block)for(std::uint32_t r=0;r<plan.regions.size();++r){quota.Work();if(plan.regions[r].handler==*f->block || (plan.regions[r].binding && plan.regions[r].binding->block==*f->block)){failure.region=TryId{r};break;}}
+      return failure;
+    }
+    forwarding=std::get<ProtocolForwarding>(std::move(forwarded));
+    quota.Admit(forwarding.allocated_bytes,1);quota.Work(forwarding.work);
     }
     for(bool present:acquisitions) {quota.Work();if(!present)return CloseCompletionFailure{CloseCompletionError::kOwnership};}
     for(const auto& e:summary.entries) {
@@ -60,7 +68,7 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
     auto checked = VerifyCloseCompletion(body, profile, graph, input, plan, keys, scan, summary, quota.Remaining(), contract);
     if (const auto* failure = std::get_if<CloseCompletionFailure>(&checked)) return *failure;
     quota.Work(std::get<std::uint64_t>(checked));
-    return VerifiedProtocolRegionOwnership(std::move(summary),std::move(keys),std::move(scan),profile,contract,budget.work-quota.RemainingWork());
+    return VerifiedProtocolRegionOwnership(std::move(summary),std::move(keys),std::move(scan),std::move(forwarding),profile,contract,budget.work-quota.RemainingWork());
   } catch(ControlError error) {
     return CloseCompletionFailure{error==ControlError::kWorkLimit?CloseCompletionError::kWorkLimit:CloseCompletionError::kResourceLimit};
   } catch(const std::bad_alloc&) {return CloseCompletionFailure{CloseCompletionError::kResourceLimit};

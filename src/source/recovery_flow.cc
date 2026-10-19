@@ -350,6 +350,7 @@ class FlowBuilder {
     ProjectOriginal();
     VerifyForInRecovery(tree_, result, budget_);
     VerifyForOfRecovery(tree_,result,budget_);
+    VerifyProtocolForwardingRecovery(tree_,result,budget_);
     VerifyParameterDefaultFlow(tree_,result,budget_);
     result.allocated_bytes=budget_.Bytes();
     // Published buffers own their actual capacities. Construction admission

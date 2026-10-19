@@ -181,6 +181,14 @@ int main(int argc,char**argv) {
           std::cout<<"unowned-handler-forwarding="<<proof->blocks[handler.value].has_value()<<'\n';
         }
       }
+      if(const auto* f=std::get_if<CloseCompletionFailure>(&sealed);f && f->read && f->read->value<graph.ops.size()) {
+        const auto& op=graph.ops[f->read->value];const auto& origin=graph.origins[op.origin.value];
+        const auto& instruction=flow.instructions[graph.phases[op.block.value].instruction.value];
+        std::cout<<"ownership-read="<<f->read->value<<" pc="<<instruction.origin.value_or(instruction.pc).value<<" working-pc="<<origin.pc.value;
+        if(f->entry)std::cout<<" entry="<<*f->entry;
+        if(f->protocol)std::cout<<" protocol="<<f->protocol->value;
+        std::cout<<'\n';
+      }
       auto owner=Take<VerifiedProtocolRegionOwnership>(std::move(sealed),"ownership");
       auto control=Take<ExceptionControl>(BuildExceptionControl(body,graph,input,plan,{},&owner),"control");
       Take<std::uint64_t>(VerifyExceptionControl(body,graph,input,plan,control,{},&owner),"control-verify");

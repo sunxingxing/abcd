@@ -28,7 +28,8 @@ void Index(const ValueProgram& g,const ForOfEvaluationInput& source,ForOfEvaluat
   // not an internal iterator value, including its real body copies/phis.
   for(const auto& d:p.iteration.definitions){q.Step();keep(d.value);}
   for(const auto& use:g.uses){q.Step();if(use.life!=ValueLife::kLive)continue;const auto* v=std::get_if<ValueId>(&use.operand);if(!v)continue;
-    if(const auto* o=std::get_if<OpId>(&use.owner);o && !p.identity.operations[o->value])keep(*v);
+    if(const auto* o=std::get_if<OpId>(&use.owner);o && !p.identity.operations[o->value] &&
+        (source.ownership.Forwarding().operations.empty() || !source.ownership.Forwarding().operations[o->value]))keep(*v);
   }
   // Backwards ordinary liveness stops at protocol events. These boundaries
   // deliver a value once; they never replay their iterator dependencies.
@@ -39,6 +40,8 @@ void Index(const ValueProgram& g,const ForOfEvaluationInput& source,ForOfEvaluat
     else if(const auto* def=std::get_if<OpResult>(&origin);def && !p.identity.operations[def->op.value]){const auto& o=g.ops[def->op.value];for(std::uint32_t n=0;n<o.use_count;++n){q.Step();if(const auto* input=std::get_if<ValueId>(&g.uses[o.first_use.value+n].operand))keep(*input);}}
   }
   for(std::size_t o=0;o<p.operations.size();++o){q.Step();p.operations[o]=p.identity.operations[o];}
+  const auto& forwarding=source.ownership.Forwarding();
+  if(!forwarding.operations.empty())for(std::uint32_t o=0;o<g.ops.size();++o){q.Step();if(forwarding.operations[o]){q.Require(!p.operations[o]);p.operations[o]=ForOfMember{IteratorProtocolId{0},ForOfRole::kForwarded};}}
   // Closed scalar dependencies of close code can be transported without a
   // source variable. Expand only erasure-safe pure definitions/phis; getters,
   // calls and all ordinary body events are never absorbed by this closure.

@@ -20,7 +20,7 @@ struct ForOfIdentityFailure {
 };
 enum class ForOfRole : std::uint8_t {
   kAcquisition, kCachedNext, kAdvance, kObjectCheck, kDone, kDecision,
-  kValue, kTransport, kClose
+  kValue, kTransport, kClose, kForwarded
 };
 struct ForOfMember {
   IteratorProtocolId protocol;

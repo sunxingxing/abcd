@@ -211,3 +211,42 @@ represented in Node: the V2 acquisition and V4 external-exception premises remai
 explicit. Recovery mutations cover exhausted-edge writes, wrong close ports,
 missing exception evidence, forged next/receiver and a wrong continue, with
 200/201/400/800 variants and exact work/byte boundaries.
+
+## Round 81: transparent ordinary enclosures beside native close
+
+A remaining active ordinary try is accepted by protocol topology only as
+`ExceptionRegionRole::kForwardedTry`, backed by `ProtocolForwarding` in the
+sealed ownership record. `AnalyzeExceptionForwarding` remains the common
+universal same-payload, same-destination, effect-free, terminating-path proof.
+No new instruction sequence, block shape or source-language premise is used.
+
+The actual CatchBinding entry is distinct from the handler body's first
+instruction phase. The certificate starts at that Catch entry and indexes every
+original exceptional exit into it. Every external normal entry is refused.
+Shared handler paths are visited once and every original entry is still checked
+separately. A finite reverse-Kahn proof resolves enclosing transparent routes;
+cycles and routes into unproved handlers are refused. Protected instructions
+remain ordinary events at their original positions. Both the handler members
+and its protected/handler ranges must be disjoint from all close members.
+Instruction-identity prefix counts prove that disjointness in linear time.
+
+Topology re-derives the forwarding proof from immutable inputs before removing
+only the proven wrapper/handler, while retaining the ordinary control nodes.
+Evaluation marks forwarding transport separately (`kForwarded`) and allocates no
+source Catch or internal temporary for it. The AST operation carrier follows the
+existing for-in convention; it does not represent a handler's execution as an
+iterator event. OriginalFlow retains the actual TryId, Catch payload, handler
+members and each exceptional entry. Recovery independently checks raw effects,
+payloads, normal-path termination, dispatch, all entries and the final caller
+route on every projection. `FlowForwardedTryPhase` and
+`FlowForwardedTryDispatch` express handler paths without fabricated ExprIds or
+physical Catch points; external entries reuse `FlowForwardedException` with the
+real source action's Before/throw points. Effectful IteratorClose keeps its
+separate outcome-qualified completion proof.
+
+The extra indexes use O(V+E+R+U) space and linear passes beyond the existing
+shared SSA identity analysis (O(N log N)). Every buffer is prepaid through the
+existing PMR/control/recovery ledgers. The new fixture exercises an effectful
+RHS before acquisition, forwarding beside close, exceptional entries, independent
+TreeFlow/recovery, exact budgets and mutations. Node is an ordinary-iterable
+oracle under the existing V2/V4 premises, not an Ark internal-Hole oracle.

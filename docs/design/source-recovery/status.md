@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 81：透明转发 try 与 for-of 协议控制共存（cc 审查通过）
+
+- 复用 AnalyzeExceptionForwarding，新增类型化 `kForwardedTry`：逐入口证明相同 payload、相同最终目的地、路径终止且与 close 子图不重叠才接受；seal、topology、TreeFlow 与 recovery 分别复核；只有获证的 handler 不发射源码 try，其他普通 try 继续拒绝。结果：m23563、m23590、m39263、m60524 完整通过（record 仍被其他方法阻断）；m61486/m61706 转为嵌套 kNested；DeepTypeUtils 推进到 m39073 的 `kDecisionPrefix > kPrefixArms`（op85、PC209）。ComponentFactory 重编译输出的 m425 现在通过完整 ownership seal，证明此前是表示缺口。
+- cc 独立审查（基线 1c12589b）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 输出逐字节相同；`--language-source` 只有 o32 记录 38853 的首拒绝变化；526/620、573/620 不变；扫描只有既有的 family_source_cli_test 失败。
+
 ## Round 80：for-of 全量诊断（cc 审查通过）
 
 - 扫描 40 个输入、15,673 个方法，33 个含同步 acquisition 的方法、49 个 acquisition、12 个 record（for-of-round80.md）。分组：9 个 evaluation 已通过（record 被其他方法或后续分析阻断）、9 个 async 原始/规范化图对应、6 个“透明转发的普通 try 与协议控制共存”（含 DeepTypeUtils m39263 与 ComponentFactory 重编译输出：seal 与 topology 都拒绝任何未拥有的活跃普通 try，需把转发异常对应贯通 topology/TreeFlow/recovery）、3 个 close ownership、3 个输入值域、2 个嵌套 completion、1 个 driver 布局。没有可独立闭合的局部修复。

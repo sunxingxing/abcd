@@ -26,6 +26,7 @@ struct ForOfEmissionClose {
   bool operator==(const ForOfEmissionClose&) const = default;
 };
 struct ForOfEmissionView {
+  ProtocolForwarding forwarding;
   std::vector<ForOfEmissionLoop> loops;
   std::vector<std::optional<std::uint32_t>> wrappers;
   std::vector<std::optional<ForOfEmissionClose>> closes;

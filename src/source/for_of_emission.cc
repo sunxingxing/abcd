@@ -24,6 +24,8 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
   if(const auto* f=std::get_if<ForOfIterationFailure>(&checked))throw *f;
   q.Step(std::get<std::uint64_t>(checked));
   const auto& control=source.control;ForOfEmissionView out;
+  const auto copy=[&](auto& to,const auto& from){q.Array(to,from.size());std::copy(from.begin(),from.end(),to.begin());};
+  const auto& f=source.ownership.Forwarding();copy(out.forwarding.regions,f.regions);copy(out.forwarding.blocks,f.blocks);copy(out.forwarding.operations,f.operations);copy(out.forwarding.exits,f.exits);
   q.Array(out.loops,plan.identity.loops.size());q.Array(out.wrappers,control.skeleton.loops.size());
   q.Array(out.closes,control.units.size());q.Array(out.ports,plan.events.ports.size());q.Array(out.close_blocks,g.blocks.size());
   std::pmr::vector<std::optional<WorkBlockId>> raw_blocks(source.input.flow.nodes.size(),{},&q.memory);
@@ -82,7 +84,7 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
     out.closes[n]=ForOfEmissionClose{unit->protocol,unit->entry,unit->pending,first,count-first,*edge,payload};
   }
   q.Require(count==out.ports.size());
-  out.allocated_bytes=out.loops.capacity()*sizeof(ForOfEmissionLoop)+out.wrappers.capacity()*sizeof(out.wrappers[0])+out.closes.capacity()*sizeof(out.closes[0])+out.ports.capacity()*sizeof(ForOfClosePort)+out.close_blocks.capacity();
+  out.allocated_bytes=out.loops.capacity()*sizeof(ForOfEmissionLoop)+out.wrappers.capacity()*sizeof(out.wrappers[0])+out.closes.capacity()*sizeof(out.closes[0])+out.ports.capacity()*sizeof(ForOfClosePort)+out.close_blocks.capacity()+out.forwarding.regions.capacity()*sizeof(out.forwarding.regions[0])+(out.forwarding.blocks.capacity()+out.forwarding.operations.capacity()+out.forwarding.exits.capacity())*sizeof(std::optional<TryId>);
   out.peak_bytes=q.memory.Peak();out.work=q.initial-q.left;return out;
 }
 }
@@ -96,9 +98,9 @@ std::variant<std::uint64_t,ForOfIterationFailure> VerifyForOfEmissionView(
     const analysis::ValueProgram& g,const ForOfEvaluationInput& i,const ForOfEvaluationPlan& p,
     const ForOfEmissionView& view,analysis::SemanticBudget b) {
   auto built=BuildForOfEmissionView(g,i,p,b);if(const auto* f=std::get_if<ForOfIterationFailure>(&built))return *f;
-  const auto& actual=std::get<ForOfEmissionView>(built);const auto cost=view.loops.size()+view.wrappers.size()+view.closes.size()+view.ports.size()+view.close_blocks.size();
+  const auto& actual=std::get<ForOfEmissionView>(built);const auto cost=view.loops.size()+view.wrappers.size()+view.closes.size()+view.ports.size()+view.close_blocks.size()+view.forwarding.regions.size()+view.forwarding.blocks.size()+view.forwarding.operations.size()+view.forwarding.exits.size();
   if(cost>b.work-actual.work)return ForOfIterationFailure{Error::kWorkLimit};
-  if(actual.loops!=view.loops || actual.wrappers!=view.wrappers || actual.closes!=view.closes || actual.ports!=view.ports || actual.close_blocks!=view.close_blocks)return ForOfIterationFailure{Error::kCorrespondence};
+  if(!(actual.forwarding==view.forwarding) || actual.loops!=view.loops || actual.wrappers!=view.wrappers || actual.closes!=view.closes || actual.ports!=view.ports || actual.close_blocks!=view.close_blocks)return ForOfIterationFailure{Error::kCorrespondence};
   return actual.work+cost;
 }
 }

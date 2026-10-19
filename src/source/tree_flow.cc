@@ -78,7 +78,7 @@ class FlowCheck {
       budget.Array(flow_.tries, exceptions->regions.regions.size());
       std::size_t inactive = 0;
       for (const auto& r : exceptions->regions.layout.regions) { budget.Step(); inactive += r.inactive.has_value(); }
-      if (inactive) {
+      if (inactive || (exceptions->for_of && !exceptions->for_of->ownership.Forwarding().regions.empty())) {
         budget.Array(flow_.exception_regions,exceptions->regions.layout.regions.size());
         for (std::size_t r=0;r<flow_.exception_regions.size();++r) {
           budget.Step();const auto& input=exceptions->regions.layout.regions[r];
@@ -468,12 +468,12 @@ class FlowCheck {
             (value.life == analysis::ValueLife::kLive &&
              std::holds_alternative<analysis::CatchDefinition>(value.origin) &&
              (!enumeration_ || !enumeration_->forwarded_blocks[std::get<analysis::CatchDefinition>(value.origin).block.value]) &&
-             (!iteration_ || !iteration_->close_blocks[std::get<analysis::CatchDefinition>(value.origin).block.value])), Error::kPlacement);
+             (!iteration_ || (!iteration_->close_blocks[std::get<analysis::CatchDefinition>(value.origin).block.value] && (iteration_->forwarding.blocks.empty() || !iteration_->forwarding.blocks[std::get<analysis::CatchDefinition>(value.origin).block.value])))), Error::kPlacement);
       }
       for (std::size_t i = 0; i < flow_.tries.size(); ++i) {
         budget_.Step(); Require(flow_.tries[i].has_value() == (!exceptions_->regions.layout.regions[i].inactive &&
             (!enumeration_ || !enumeration_->forwarded_regions[i]) &&
-            (!iteration_ || exceptions_->control.region_roles[i]!=ExceptionRegionRole::kProtocolOwned)), Error::kControl);
+            (!iteration_ || (exceptions_->control.region_roles[i]!=ExceptionRegionRole::kProtocolOwned && exceptions_->control.region_roles[i]!=ExceptionRegionRole::kForwardedTry))), Error::kControl);
       }
     }
     VerifyConcurrentTree(graph_,evaluation_,tree_,flow_,budget_);
@@ -1276,7 +1276,8 @@ class FlowCheck {
     };
     for (std::size_t r = 0; r < flow_.tries.size(); ++r) {
       budget_.Step(); if (exceptions_->regions.layout.regions[r].inactive ||
-          (enumeration_ && enumeration_->forwarded_regions[r])) continue;
+          (enumeration_ && enumeration_->forwarded_regions[r]) ||
+          (iteration_ && (exceptions_->control.region_roles[r]==ExceptionRegionRole::kProtocolOwned || exceptions_->control.region_roles[r]==ExceptionRegionRole::kForwardedTry))) continue;
       Require(flow_.tries[r].has_value(), Error::kControl);
       const auto& syntax = std::get<TryStmt>(tree_.statements[flow_.tries[r]->value].statement);
       Require(syntax.handler.has_value(), Error::kControl);
@@ -1301,7 +1302,8 @@ class FlowCheck {
     const auto check = [&](analysis::OpId operation, ExprId expression) {
       budget_.Step();
       const auto site = graph_.phases[graph_.ops[operation.value].block.value].instruction.value;
-      const auto& expected = exceptions_->regions.layout.scopes[site];
+      auto expected = exceptions_->regions.layout.scopes[site];
+      if(expected && iteration_ && exceptions_->control.region_roles[expected->region.value]==ExceptionRegionRole::kForwardedTry)expected.reset();
       const auto& actual = scopes[expression_scopes_[expression.value].value];
       Require(expected.has_value() == actual.has_value() &&
           (!expected || (expected->region == actual->region && expected->part == actual->part)), Error::kPlacement);

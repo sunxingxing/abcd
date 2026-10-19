@@ -210,7 +210,7 @@ target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/for_in_emission.cc src/source/for_in_recovery.cc src/source/for_of_recovery.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/iterator_keys.cc src/source/iterator_protocol_scan.cc)
-target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc src/source/for_of_events.cc src/source/for_of_evaluation.cc src/source/for_of_emission.cc)
+target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/protocol_forwarding_recovery.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc src/source/for_of_events.cc src/source/for_of_evaluation.cc src/source/for_of_emission.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
@@ -589,6 +589,19 @@ if(BUILD_TESTING)
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/UI/CustomAnimationTab/artifacts/entry/default/default/modules/modules.abc")
     add_test(NAME for_of_draft_test COMMAND for_of_draft_test
       "${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/UI/CustomAnimationTab/artifacts/entry/default/default/modules/modules.abc" 7171)
+  endif()
+  add_test(NAME for_of_forwarding_test COMMAND for_of_draft_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_forwarding/main.abc" 391)
+  add_test(NAME for_of_forwarding_scale_test COMMAND for_of_draft_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_forwarding/main.abc" 391 --scale)
+  add_test(NAME for_of_forwarding_variants_test COMMAND for_of_draft_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_forwarding/main.abc" 391 --variants)
+  if(ABCD_NODE_EXECUTABLE AND EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+    add_test(NAME for_of_forwarding_cli_test COMMAND "${ABCD_NODE_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_forwarding.mjs" $<TARGET_FILE:abc_structure> $<TARGET_FILE:for_of_draft_test>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_forwarding/main.abc"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_forwarding/main.js"
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
   endif()
   add_test(NAME for_of_draft_fixture_test COMMAND for_of_draft_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/main.abc" 387)
