@@ -17,6 +17,7 @@ inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
       j["plan_cause"] = {{"domain", domain}, {"value", static_cast<unsigned>(cause)}};
     }
   }, v.plan_cause);
+  if (v.protocol_context) j["protocol_context"] = static_cast<unsigned>(*v.protocol_context);
   if(v.concurrent)j["concurrent"]=ConcurrentJson(*v.concurrent);
   if (v.for_in) {
     const auto& f = *v.for_in;
@@ -61,7 +62,7 @@ inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
 }
 inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::json& j) {
   std::uint32_t n;
-  if (!j.is_object() || !FailureNumber(j,"obligation",n) || n > static_cast<unsigned>(EvaluationObligation::kProtocolEvaluationPending) || !j.contains("location")) return {};
+  if (!j.is_object() || !FailureNumber(j,"obligation",n) || n > static_cast<unsigned>(EvaluationObligation::kProtocolContext) || !j.contains("location")) return {};
   EvaluationEvidence v; v.obligation = static_cast<EvaluationObligation>(n);
   auto location = ParseTreeLocation(j["location"]); if (!location) return {}; v.location = *location;
   if (j.contains("plan_cause")) {
@@ -73,6 +74,10 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
     else if (domain == "LiteralError" && n <= static_cast<unsigned>(LiteralError::kWorkLimit)) v.plan_cause = static_cast<LiteralError>(n);
     else if (domain == "EvaluationShapeError" && n <= static_cast<unsigned>(EvaluationShapeError::kMissingShape)) v.plan_cause = static_cast<EvaluationShapeError>(n);
     else return {};
+  }
+  if (j.contains("protocol_context")) {
+    if (!FailureNumber(j,"protocol_context",n) || n > static_cast<unsigned>(ProtocolContextCheck::kMissingPlan)) return {};
+    v.protocol_context = static_cast<ProtocolContextCheck>(n);
   }
   if(j.contains("concurrent")){v.concurrent=ParseConcurrent(j["concurrent"]);if(!v.concurrent)return {};}
   if (j.contains("for_in")) {

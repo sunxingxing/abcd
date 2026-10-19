@@ -590,6 +590,22 @@ if(BUILD_TESTING)
     add_test(NAME for_of_draft_test COMMAND for_of_draft_test
       "${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/UI/CustomAnimationTab/artifacts/entry/default/default/modules/modules.abc" 7171)
   endif()
+  add_executable(iteration_context_test tests/unit/source/for_of_iteration_test.cc)
+  target_compile_definitions(iteration_context_test PRIVATE ABCD_TEST_FOR_OF_EVALUATION=1 ABCD_TEST_ITERATION_CONTEXT=1)
+  target_link_libraries(iteration_context_test PRIVATE abcd_source abcd_json)
+  target_include_directories(iteration_context_test PRIVATE tests/support)
+  add_test(NAME iteration_context_test COMMAND iteration_context_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iteration_context/main.abc" 395)
+  add_test(NAME iteration_context_scale_test COMMAND iteration_context_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iteration_context/main.abc" 395 --scale)
+  add_test(NAME iteration_context_variants_test COMMAND iteration_context_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iteration_context/main.abc" 395 --variants)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME iteration_context_cli_test COMMAND "${ABCD_NODE_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/iteration_context.mjs" $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iteration_context/main.abc"
+      $<TARGET_FILE:abc_semantic>)
+  endif()
   add_executable(for_of_selection_test tests/unit/source/for_of_iteration_test.cc)
   target_compile_definitions(for_of_selection_test PRIVATE ABCD_TEST_FOR_OF_EVALUATION=1 ABCD_TEST_FOR_OF_DRAFT=1 ABCD_TEST_FOR_OF_SELECTION=1)
   target_link_libraries(for_of_selection_test PRIVATE abcd_source abcd_json)

@@ -106,6 +106,22 @@ std::optional<EvaluationFailure> BuildForOfEvaluation(const ValueProgram& g,cons
   plan.for_of=std::get<ForOfEvaluationPlan>(std::move(built));left.bytes-=plan.for_of->allocated_bytes;left.work-=plan.for_of->work;return {};
 }
 std::variant<std::uint64_t,EvaluationFailure> VerifyForOfEvaluation(const ValueProgram& g,const ForOfEvaluationInput* i,const EvaluationPlan& p,SemanticBudget budget){
-  if(bool(i)!=p.for_of.has_value())return EvaluationError::kOwnership;if(!i)return std::uint64_t{0};auto checked=VerifyForOfEvaluationPlan(g,*i,*p.for_of,budget);if(const auto* f=std::get_if<ForOfIterationFailure>(&checked))return ForOfEvaluationFailure(g,*f);return std::get<std::uint64_t>(checked);
+  if (bool(i) != p.for_of.has_value()) {
+    EvaluationEvidence evidence;
+    evidence.obligation = EvaluationObligation::kProtocolContext;
+    evidence.protocol_context = i ? ProtocolContextCheck::kMissingPlan : ProtocolContextCheck::kMissingInput;
+    // The mismatch owns the protocol acquisition, not an invented operand use.
+    // Map its real origin even when a caller omitted the immutable proof input.
+    for (std::uint32_t op = 0; op < g.ops.size(); ++op) {
+      if (op >= budget.work) return EvaluationError::kWorkLimit;
+      if (g.ops[op].life == ValueLife::kLive &&
+          std::holds_alternative<ValueIteratorAcquire>(g.ops[op].operation)) {
+        evidence.location = OperationLocation(g, OpId{op});
+        evidence.value = g.ops[op].result;
+        break;
+      }
+    }
+    return EvaluationFailure{EvaluationError::kOwnership, evidence};
+  }if(!i)return std::uint64_t{0};auto checked=VerifyForOfEvaluationPlan(g,*i,*p.for_of,budget);if(const auto* f=std::get_if<ForOfIterationFailure>(&checked))return ForOfEvaluationFailure(g,*f);return std::get<std::uint64_t>(checked);
 }
 }

@@ -131,7 +131,7 @@ int main() {
     d.allocation.operation=analysis::OpId{0};d.store.operation=analysis::OpId{3};d.creation.operation=analysis::OpId{1};
     RoundTrip(f);
   }
-  for(unsigned tag=0;tag<=static_cast<unsigned>(EvaluationObligation::kProtocolEvaluationPending);++tag) {
+  for(unsigned tag=0;tag<=static_cast<unsigned>(EvaluationObligation::kProtocolContext);++tag) {
     EvaluationFailure f{EvaluationError::kOwnership}; auto& e=f.evaluation;
     e.obligation=static_cast<EvaluationObligation>(tag);e.location.method=abc::EntityOffset{77};
     e.location.operation=analysis::OpId{0};e.location.pc=abc::CodeOffset{0};e.location.working_pc=abc::CodeOffset{17};
@@ -158,6 +158,17 @@ int main() {
     Check(route.method==abc::EntityOffset{77} && route.pc==abc::CodeOffset{0});RoundTrip(route);
     evidence.location={};evidence.location.synthetic=TreeSyntheticLocation{ControlOriginKind::kProtocolClose,0};
     RoundTrip(FamilyRouteFailure(EvaluationFailure{EvaluationError::kProtocolOperand,evidence}));
+  }
+  for (const auto check : {ProtocolContextCheck::kMissingInput, ProtocolContextCheck::kMissingPlan}) {
+    EvaluationFailure f{EvaluationError::kOwnership};
+    f.evaluation.obligation = EvaluationObligation::kProtocolContext;
+    f.evaluation.protocol_context = check;
+    f.evaluation.location.method = abc::EntityOffset{77};
+    f.evaluation.location.operation = analysis::OpId{0};
+    f.evaluation.location.pc = abc::CodeOffset{0};
+    f.evaluation.location.working_pc = abc::CodeOffset{17};
+    RoundTrip(FamilyRouteFailure(f));
+    f.evaluation.location = {}; RoundTrip(FamilyRouteFailure(f));
   }
   for(unsigned tag=0;tag<=static_cast<unsigned>(SnapshotCandidateReason::kConsumerPlacement);++tag) {
     EvaluationFailure f{EvaluationError::kOwnership};auto& e=f.evaluation;

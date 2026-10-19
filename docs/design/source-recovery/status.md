@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 83：DeepTypeUtils m39263 的定位诊断（cc 审查通过）
+
+- 拒绝定位为 `EvaluationError::kOwnership > kProtocolContext > kMissingInput`（op60、PC145、Value49）：方法同时含 for-in 与 for-of，for-in 分支重验证 evaluation 时没有传入 ForOfEvaluationInput。临时补齐后又暴露 for-in emission view 仍假定透明 handler 有物理 try，以及 for-in acquisition 的重抛 handler（op11/12/13）被 ForInStmt 与 ForOfStmt 重复认领；需要统一透明转发入口的协议所有者，跨 evaluation、树与 recovery，本轮只交付诊断与拒绝证据测试。
+- cc 独立审查（基线 66118ddf）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 输出逐字节相同；`--language-source` 只有 o32 的诊断变化；526/620、573/620 不变。
+
 ## Round 82：ProtocolOwned 投影下的 phased selection 绑定（cc 审查通过）
 
 - m39073 op85/PC209 的 kPrefixArms 是 round 63 已支持的 phased retained selection（`typeof key === "symbol" || !new RegExp(...).test(key)` 的布尔物化），但 ProtocolOwned 投影压缩了控制节点，FindPhasedSelections 把控制块当成原始 phase 块而丢失了已证明的选择。现在选择绑定显式使用 ExceptionControl 的 PhaseControlUnit 映射（header、arms、join、condition paths），TreeFlow 独立重建；没有新增准入。DeepTypeUtils 推进到 m39263 的 `kSemantics > EvaluationError::kOwnership > kPlan`。

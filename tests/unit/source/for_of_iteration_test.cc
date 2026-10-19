@@ -222,7 +222,22 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
 
     auto leak=evaluation;leak.operations[protocol.loops[0].advance.value]={EvaluationKind::kRoot,{},TemporaryReason::kCrossRegionValue};
     test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,leak,{},&source)));
-    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,evaluation)));
+    const auto missing_context = VerifyPhasedEvaluationPlan(graph,evaluation);
+    test::Check(std::holds_alternative<EvaluationFailure>(missing_context));
+    const auto& context_failure = std::get<EvaluationFailure>(missing_context).evaluation;
+    test::Check(context_failure.obligation == EvaluationObligation::kProtocolContext &&
+        context_failure.protocol_context == ProtocolContextCheck::kMissingInput &&
+        context_failure.location.operation == protocol.loops[0].acquisition);
+    const auto location_work = std::uint64_t(protocol.loops[0].acquisition.value) + 1;
+    const auto located = VerifyForOfEvaluation(graph,nullptr,evaluation,{0,location_work});
+    test::Check(std::get<EvaluationFailure>(located).evaluation == context_failure);
+    test::Check(std::get<EvaluationFailure>(VerifyForOfEvaluation(graph,nullptr,evaluation,{0,location_work-1})).kind == EvaluationError::kWorkLimit);
+    auto missing_plan = evaluation; missing_plan.for_of.reset();
+    const auto absent = VerifyPhasedEvaluationPlan(graph,missing_plan,{},&source);
+    test::Check(std::get<EvaluationFailure>(absent).evaluation.protocol_context == ProtocolContextCheck::kMissingPlan);
+#ifdef ABCD_TEST_ITERATION_CONTEXT
+    test::Check(evaluation.for_in && evaluation.for_of);
+#endif
 #ifdef ABCD_TEST_FOR_OF_DRAFT
     auto view=Take<ForOfEmissionView>(BuildForOfEmissionView(graph,source,*evaluation.for_of),"emission-view");
     Take<std::uint64_t>(VerifyForOfEmissionView(graph,source,*evaluation.for_of,view),"verify-emission-view");
@@ -472,6 +487,8 @@ int main(int argc,char**argv) {
   test::Check(argc>=2 && argc<=4);
 #ifdef ABCD_TEST_FOR_OF_DRAFT
   if(argc==4 && std::string_view(argv[3]).starts_with("--output="))draft_output=std::string_view(argv[3]).substr(std::string_view("--output=").size());
+#endif
+#if defined(ABCD_TEST_FOR_OF_DRAFT) || defined(ABCD_TEST_ITERATION_CONTEXT)
   if(argc==4 && std::string_view(argv[3])=="--variants") {Case(argv[1],0,std::stoul(argv[2]),1);Case(argv[1],0,std::stoul(argv[2]),0,true);return 0;}
   if(argc==4 && std::string_view(argv[3])=="--scale") {for(unsigned padding:{200U,201U,400U,800U})Case(argv[1],padding,std::stoul(argv[2]));return 0;}
 #endif

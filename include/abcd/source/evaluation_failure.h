@@ -15,7 +15,7 @@ enum class EvaluationError : std::uint8_t {
 enum class EvaluationObligation : std::uint8_t {
   kPlan, kProducerOwnership, kInlineConsumer, kPhiInput, kLogicalInput,
   kRootTemporary, kDuplicateVisit, kOperandOwnership, kLiveCoverage,
-  kPhaseRoot, kPhaseConsumption, kProjection, kTemporaryPresence, kTemporaryReason, kLogicalJoin, kLogicalInterval, kSnapshotCandidate, kLogicalCoverage, kUse, kProtocolEvaluationPending
+  kPhaseRoot, kPhaseConsumption, kProjection, kTemporaryPresence, kTemporaryReason, kLogicalJoin, kLogicalInterval, kSnapshotCandidate, kLogicalCoverage, kUse, kProtocolEvaluationPending, kProtocolContext
 };
 enum class SelectionExitReason : std::uint8_t {
   kNone, kNoUse, kMultipleUses, kPhiUse, kCrossBlock, kProtocolRole, kSnapshot, kKeepEdge
@@ -42,10 +42,12 @@ struct LogicalCoverageEvidence {
   bool registered = false, covered = false;
   bool operator==(const LogicalCoverageEvidence&) const = default;
 };
+enum class ProtocolContextCheck : std::uint8_t { kMissingInput, kMissingPlan };
 struct EvaluationEvidence {
   EvaluationObligation obligation = EvaluationObligation::kPlan;
   TreeLocation location;
   EvaluationPlanCause plan_cause;
+  std::optional<ProtocolContextCheck> protocol_context;
   std::optional<EvaluationInputCheck> input_check;
   std::optional<ForInFailure> for_in;
   std::optional<ConcurrentFailure> concurrent;
