@@ -5,6 +5,41 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Next eligible track: class-self scope design only (2026-10-20)
+
+- At HEAD / built wtbase **1d8326e8**, no additional small, premise-free
+  implementation was established outside the parked/previously ruled-out set.
+  Chose the largest eligible shared L track: **o0/4660 and o20/8166**, class-self
+  initialization scope, upper bound two. The five-line choice, fresh candidate
+  evidence, concrete joint proof/types, three gated increments and planned tests
+  are in [class-self-initialization-scope.md](class-self-initialization-scope.md).
+  No production code, tests, fixtures, contract, ISA ledger or admission changed.
+- Fresh probes: m5186's loop0/header block7 has distinct exits39 and33 (39 then
+  reaches33); the missing obligation is a common exit frontier preserving original
+  edges/copies, not permission to replace an exit ID. m16784 joins CapturedDepth0
+  with allocated EnvironmentId0 at original PC275 / working PC272; equal numeric
+  IDs do not prove storage identity. m37881 reaches the normal try-exit/pending
+  follow check at control_verify.cc:147. m58418's PC18 closure prelude still
+  precedes the Value IR/environment inputs required by the rest certificate.
+  These are not adapters to existing sealed facts. Parked paths remain untouched.
+- The class-self design retains Round76's **self store before initializer call**
+  evidence. It adds no claim that the outer publication binding is initialized.
+  Proposed proof joins readonly transitive storage, guard, native class-inner
+  name/scope, initializer-family captures, internal-vs-public commits and cleanup
+  unwind; no permissive Closed-reader switch or fake FunctionSelf/capture owner.
+  Existing refusal remains until independent tree/original/recovery checks close.
+- Fresh 40-input exports match wtbase byte-for-byte: **3,653 files, 532/620**
+  previous flags; **3,809 files, 584/620** source. Thus **36** source records
+  remain incomplete (35 refused, one partial), rather than the request's 37.
+  Complete/incomplete sets, first causes, text, positions and manifests unchanged.
+- Full build passes; existing serial source-regression **65/65**. Existing
+  CLI/corpus/failure/receipt/manifest sweep **78/79**; only
+  `family_source_cli_test` fails (owner/origin arena at CMake line77), reproduced
+  using rebuilt **1d8326e8** abc_semantic. No expectations were changed.
+  New proof, mutation, budget and Node tests are **planned, not implemented or
+  claimed passing**. Scratch probes, exact output comparison and baseline evidence
+  are in `build/review/next-choice/`. No commit, push or stash.
+
 ## Decision predicate literal commits (2026-10-20, uncommitted)
 
 - Chose the smallest fresh nonparked gap: **o2/10579 m11217**, an independently
