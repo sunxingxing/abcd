@@ -822,6 +822,9 @@ if(BUILD_TESTING)
   target_include_directories(phase_reference_test PRIVATE tests/support)
   target_link_libraries(phase_reference_test PRIVATE abcd_source)
   add_test(NAME phase_reference_test COMMAND phase_reference_test)
+  add_executable(decision_literal_test tests/unit/source/decision_literal_test.cc)
+  target_link_libraries(decision_literal_test PRIVATE abcd_source)
+  add_test(NAME decision_literal_test COMMAND decision_literal_test)
   add_executable(nested_literal_arm_test tests/unit/source/nested_literal_arm_test.cc)
   target_include_directories(nested_literal_arm_test PRIVATE tests/support)
   target_link_libraries(nested_literal_arm_test PRIVATE abcd_source)
@@ -2089,6 +2092,9 @@ if(BUILD_TESTING)
     add_test(NAME retained_literal_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_literal_arm.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/retained_literal_arm)
+    add_test(NAME decision_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_literal.mjs $<TARGET_FILE:abc_structure>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_literal)
     add_test(NAME nested_literal_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nested_literal_arm.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/nested_literal_arm)

@@ -537,6 +537,7 @@ class FlowCheck {
   void DecisionOperation(analysis::OpId op, StmtId parent, std::uint32_t child,
       ExprId* condition = nullptr, std::optional<analysis::OpId> root = {},
       std::optional<analysis::OpId> predicate = {}) {
+    LocationScope witness(*this, At(op));
     budget_.Step(); const auto& original = graph_.ops[op.value];
     if (original.life != analysis::ValueLife::kLive) return;
     if (exceptions_) {
@@ -559,6 +560,18 @@ class FlowCheck {
       const auto* boundary = std::get_if<BlockBoundary>(&sequences_.Anchor(*anchor));
       Require(boundary && boundary->block == parent && boundary->index == child, Error::kSequence);
       Require(!IsEnvironmentState(original.operation), Error::kPlacement);
+      return;
+    }
+    if (const auto* property = std::get_if<PropertyId>(&placement)) {
+      // A literal commit is owned by its allocation expression, not a second
+      // expression at the decision boundary. IndexPlacements established this
+      // unique PropertyId; Objects and OperandCheck independently recheck its
+      // allocation, order, key/value and exception correspondence. Keep all
+      // other property/root dispositions refused (decision_literal_test).
+      Require(kind == EvaluationKind::kInitializer &&
+          flow_.initializers[op.value] == *property &&
+          tree_.properties[property->value].origin.value == original.origin.value,
+          Error::kPlacement);
       return;
     }
     // Actual expression ownership/operands are checked by the common consumers;

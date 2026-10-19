@@ -5,6 +5,43 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Decision predicate literal commits (2026-10-20, uncommitted)
+
+- Chose the smallest fresh nonparked gap: **o2/10579 m11217**, an independently
+  verified literal's PropertyId commit inside a compound selection predicate.
+  The five-line choice, quoted ABC-only IR, rejected alternative and proof are
+  in [decision-literal-commits.md](decision-literal-commits.md).
+- TreeFlow's decision operand walk omitted the kInitializer/PropertyId case;
+  op46 PC117 fell through to kPlacement despite the existing literal proof.
+  It now checks the exact retained initializer and original commit origin.
+  Unique placement, allocation membership, key/value, order, exceptions and
+  recovery remain independently checked. No builder/evaluation admission,
+  printer, source contract or parked protocol change; no new buffer or scan.
+- **o2/10579 completes under both flag sets**. Fresh cohorts vs rebuilt wtbase
+  **80515095**: **531 -> 532/620** previous, **583 -> 584/620** source.
+  Only that record's manifest changes; three new source/position files per mode.
+  All existing source, positions and other files stay byte-identical. Both new
+  outputs pass `node --check`; no parked record's diagnostics change.
+- Full build passes; serial source-regression **65/65**; new tests **2/2**;
+  focused tree/decision/logical/literal/recovery/guard tests **13/13**.
+  Real es2abc fixture + engine-output Node differential: **288 scenarios / 12
+  observed mutations**, covering short-circuiting, getters/throws, receiver,
+  callee replacement, nested literals and an inherited setter that must not run.
+  Unit mutations reject missing/double/wrong/reordered property correspondence
+  and wrong execution edge/disposition; copies and block-split prefixes pass.
+- Exact TreeFlow budgets at 200/201/400/800 predicates are bytes
+  **1983817/1993697/3959817/7911817**, work
+  **879495/884187/1762965/3538277**. One below refuses. Full source cohort maximum
+  reported CLI peak RSS **39,436,288 bytes**; no cap changed.
+- Sweep **145/154**. All nine failures reproduce on freshly rebuilt **80515095**:
+  `family_source_cli_test`, `literal_construct_test`, `mixed_literal_test`,
+  `phased_literal_test`, `literal_closure_source_test`,
+  `unguarded_literal_closure_source_test`, `derived_literal_receiver_source_test`,
+  `unguarded_derived_literal_receiver_source_test`, `decision_snapshots_source_test`.
+  No stale expectations were changed. Logs, per-test baseline commands, complete
+  file comparison, red/green tests and RSS report: `build/review/next-slice/`.
+  `git diff --check` passes. No commit, push or stash.
+
 ## Guarded reference phi arms (2026-10-20, uncommitted)
 
 - ABC-only diagnosis distinguishes the two targets; full quoted IR and proof are
