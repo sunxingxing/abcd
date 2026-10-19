@@ -108,14 +108,14 @@ try {
         assert.deepEqual(await observe(source, scenario), await observe(oracle, scenario), JSON.stringify(scenario));
         ++cases;
       }
-  const writes = [...source.matchAll(/^\s*\(this\.[xy] = .*\);$/gm)].map(match => match[0]);
+  const writes = [...source.matchAll(/^\s*this\.[xy] = .*;$/gm)].map(match => match[0]);
   assert.equal(writes.length, 2);
   const mutants = [
     source.replace(/super\(\.\.\.[^)]+\)/, 'super()'),
     source.replace(writes[0], ''),
     source.replace(writes[0], writes[0] + writes[0]),
     source.replace(writes.join('\n'), [writes[1], writes[0]].join('\n')),
-    source.replace(writes[0], writes[0].replace(/\(this\.x = (.*)\);/, 'Object.defineProperty(this, "x", {value: $1});')),
+    source.replace(writes[0], writes[0].replace(/this\.x = (.*);/, 'Object.defineProperty(this, "x", {value: $1});')),
     source.replace(/("x", )this/, '$1{}'),
   ];
   for (let i = 0; i < mutants.length; ++i) {

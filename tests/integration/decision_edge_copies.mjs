@@ -45,7 +45,7 @@ try {
    if(name==='handled')assert.ok(ops.some(i=>i.exception_edge?.handler_pc!==undefined));
    for(const mode of modes){assert.equal(run(file,name,mode),expected.get(name+'/'+mode),label+'/'+name+'/'+mode);++comparisons;}
   }
-  const changed=[text.replace(/\(\$phi\d+ = \$value\d+\)/g,'0'),text.replace(/\(\$phi\d+ = \$value\d+\)/g,match=>match.replace(/\$value\d+/, 'null')),text.replaceAll(' || ',' && ')];
+  const changed=[text.replace(/\$phi\d+ = \$value\d+/g,'0'),text.replace(/\$phi\d+ = \$value\d+/g,match=>match.replace(/\$value\d+/, 'null')),text.replaceAll(' || ',' && ')];
   for(const [i,mutant] of changed.entries()){
    assert.notEqual(mutant,text);const path=join(dirname(file),'mutant'+i+'.mjs');writeFileSync(path,mutant);
    assert.ok(names.some(name=>modes.some(mode=>run(path,name,mode)!==expected.get(name+'/'+mode))));++mutants;

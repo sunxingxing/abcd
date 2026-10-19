@@ -119,7 +119,7 @@ ExpressionPrecedence TreeExpressionPrecedence(const TreeExpression& node) {
     else if constexpr (std::is_same_v<T, LogicalExpr>) return LogicalPrecedence(value.operation);
     else if constexpr (std::is_same_v<T, SequenceExpr>) return P::kSequence;
     else if constexpr (std::is_same_v<T, AssignmentExpr> || std::is_same_v<T, YieldExpr> ||
-                       std::is_same_v<T, FunctionExpr>) return P::kAssignment;
+                       std::is_same_v<T, FunctionExpr> || std::is_same_v<T, ClassExpr>) return P::kAssignment;
     else if constexpr (std::is_same_v<T, ConditionalExpr>) return P::kConditional;
     else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> ||
                        std::is_same_v<T, DeleteExpr>) return P::kUnary;
@@ -132,7 +132,7 @@ ExpressionPrecedence TreeExpressionPrecedence(const TreeExpression& node) {
           std::is_same_v<T, GlobalNameExpr> || std::is_same_v<T, RealmObjectExpr> ||
           std::is_same_v<T, SymbolConstructorExpr> || std::is_same_v<T, ThisExpr> ||
           std::is_same_v<T, EmptyArrayExpr> || std::is_same_v<T, EmptyObjectExpr> ||
-          std::is_same_v<T, ObjectExpr> || std::is_same_v<T, ClassExpr> ||
+          std::is_same_v<T, ObjectExpr> ||
           std::is_same_v<T, ArgumentSnapshotExpr> || std::is_same_v<T, ArrayExpr>);
       return P::kPrimary;
     }

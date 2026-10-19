@@ -30,13 +30,14 @@ try {
   const original=JSON.parse(run(probe,[input]));
   assert.deepEqual(JSON.parse(run(probe,[abc])),original);
   function roundtripMutation(label,changed) {
+    assert.notEqual(changed,text,label+' mutation located');
     const file=join(dir,label+'.ets'),abc=join(dir,label+'.abc');writeFileSync(file,changed);
     run(compiler,['--module','--merge-abc','--extension=ts','--opt-level=0','--record-name=sendable_closed',`--output=${abc}`,file]);
     assert.notDeepEqual(JSON.parse(run(probe,[abc])),original,label+' mutation must be detected');
   }
   roundtripMutation('missing-directive',text.replace('"use sendable"','"ordinary"'));
   roundtripMutation('wrong-mask',text.replace('value: number','value: string'));
-  roundtripMutation('missing-set',text.replace(/\s*\(this\.value = 0\);/,''));
+  roundtripMutation('missing-set',text.replace(/\s*this\.value = 0;/,''));
   roundtripMutation('extra-initializer',text.replace('value: number;','value: number = 1;'));
   // Source-oracle differential compares ordinary calls. The field declarations
   // are storage-only ArkTS input, so erase them entirely before Node execution.
@@ -54,7 +55,7 @@ try {
     return trace;
   }
   for(const n of [0,1,2,3])assert.deepEqual(observe(Closed,n),observe(Oracle,n));
-  const mutated=join(dir,'mutated.mjs');writeFileSync(mutated,js.replace(/\s*\(this\.value = 0\);/,''));
+  const mutated=join(dir,'mutated.mjs');writeFileSync(mutated,js.replace(/\s*this\.value = 0;/,''));
   const Mutant=(await import(pathToFileURL(mutated))).Closed;
   assert.notDeepEqual(observe(Mutant),observe(Oracle),'missing [[Set]] mutation');
   // Production discovery + finished proof on geometric field counts, including

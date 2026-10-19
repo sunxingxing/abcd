@@ -115,7 +115,7 @@ void PartialFamily() {
   Check(!draft.members[1].incomplete, "unrelated sibling stays complete");
   Check(out.str().starts_with("/* INCOMPLETE"), "root header identifies nested gaps");
   const auto returned = out.str().find("return ");
-  const auto keyword = out.str().find("(function", returned);
+  const auto keyword = out.str().find("function", returned);
   Check(returned != std::string::npos && keyword != std::string::npos &&
         out.str().substr(returned, keyword - returned).find('\n') == std::string::npos,
         "child annotation must not introduce automatic semicolon insertion after return");

@@ -45,11 +45,11 @@ try {
   for(const [label,text] of [['not-shared',shared.text.replace('\"use shared\";','')],['wrong-export',shared.text.replace(' as cache',' as other')]]){
     const file=join(dir,label+'.ets');writeFileSync(file,text);assert.notDeepEqual(proof(compile(file,label)),proof(sharedInput),label);
   }
-  const mutated=erase(base.text).replace(/\(this\.books_ = new library\.Store\(\)\);/,'');writeFileSync(join(dir,'mutant.mjs'),mutated);
+  const mutated=erase(base.text).replace(/this\.books_ = new library\.Store\(\);/,'');writeFileSync(join(dir,'mutant.mjs'),mutated);
   const {Cache:Mutant}=await import(pathToFileURL(join(dir,'mutant.mjs')));assert.notDeepEqual(await observe(Mutant,''),await observe(Oracle,''));
   // Actual source mutations must change the independent ABC contract.
   const original=proof(input);
-  for(const [label,text] of [['directive',base.text.replace('"use sendable"','"ordinary"')],['mask',base.text.replace('lock_: library.Lock','lock_: number')],['store',base.text.replace(/\(this\.books_ = new library\.Store\(\)\);/,'')]]){
+  for(const [label,text] of [['directive',base.text.replace('"use sendable"','"ordinary"')],['mask',base.text.replace('lock_: library.Lock','lock_: number')],['store',base.text.replace(/this\.books_ = new library\.Store\(\);/,'')]]){
     const file=join(dir,label+'.ets');writeFileSync(file,text);assert.notDeepEqual(proof(compile(file,label)),original,label);
   }
   // A direct imported constructor is the depth-zero form of the same proof.

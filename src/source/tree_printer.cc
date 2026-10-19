@@ -43,7 +43,7 @@
 namespace abcd::source {
 namespace {
 using Error = TreePrintError;
-enum class ClassPrintForm { kExpression, kInferredExpression, kNamedExpression, kDeclaration, kDerivedBody };
+enum class ClassPrintForm { kExpression, kInferredExpression, kNamedExpression, kBareNamedExpression, kDeclaration, kDerivedBody };
 std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClassPart(
     const ClassTree&, std::ostream&, EmitBudget, analysis::SemanticBudget,
     const GlobalScope*, std::size_t, ClassPrintForm, const ClassCaptureDestination* = nullptr,
@@ -63,6 +63,7 @@ struct ExpressionOperand {
   NameContext inferred_name = {};
   ExpressionObservation observation = ExpressionObservation::kValue;
   bool value_result = false;
+  bool statement_start = false;
 };
 // Composition of language Boolean results, not a bytecode recovery pattern.
 // Keep the original parent grammar until a remaining conversion is emitted.
@@ -92,8 +93,8 @@ struct ObjectCursor {
   bool multiline = false;
 };
 struct EndProperty { PropertyId id; };
-struct BeginFunction {};
-struct EndFunction {};
+struct BeginFunction { bool grouped = true; };
+struct EndFunction { bool grouped = true; };
 struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectElidedOperands, ExpressionOperand, BooleanOperand, PostfixSpine,
@@ -773,8 +774,8 @@ class TreePrinter {
       Push(std::string_view(optional ? "?.[" : "["));
     }
   }
-  void Member(ExprId base, const MemberKey& key, PostfixContext context = PostfixContext::kMemberBase, bool optional = false) {
-    PrintMemberKey(key, optional); Push(ExpressionOperand{base, {context}});
+  void Member(ExprId base, const MemberKey& key, PostfixContext context = PostfixContext::kMemberBase, bool optional = false, bool statement_start = false) {
+    PrintMemberKey(key, optional); Push(ExpressionOperand{base, {context}, {}, ExpressionObservation::kValue, false, statement_start});
   }
   void SuperMember(const MemberExpr& node) {
     const auto begin = written_; Append("super");
@@ -811,12 +812,12 @@ class TreePrinter {
     } else Push(ExpressionOperand{node.operand, {node.operation}, {},
         node.operation == TreeUnary::kNot ? ExpressionObservation::kTruthiness : ExpressionObservation::kValue});
   }
-  void Expression(BinaryExpr node) {
+  void Expression(BinaryExpr node, bool statement_start = false) {
     Push(ExpressionOperand{node.right, {node.operation, OperandSide::kRight}});
     Push(TreeBinaryToken(node.operation));
-    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}});
+    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}, {}, ExpressionObservation::kValue, false, statement_start});
   }
-  void Expression(LogicalExpr node, ExpressionObservation observation) {
+  void Expression(LogicalExpr node, ExpressionObservation observation, bool statement_start = false) {
     // &&/|| preserve truthiness and short-circuit effects in a Boolean context.
     // ?? selects by nullness: removing a Boolean conversion from its left would
     // change whether the right runs. Exact-value consumers keep both operands.
@@ -828,12 +829,12 @@ class TreePrinter {
     }
     Push(ExpressionOperand{node.right, {node.operation, OperandSide::kRight}, {}, right});
     Push(TreeLogicalToken(node.operation));
-    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}, {}, left});
+    Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}, {}, left, false, statement_start});
   }
-  void Expression(SequenceExpr node, ExpressionObservation observation) {
+  void Expression(SequenceExpr node, ExpressionObservation observation, bool statement_start = false) {
     Push(ExpressionOperand{node.right, {ExpressionGrammar::kAssignmentValue}, {}, observation});
     Push(std::string_view(", "));
-    Push(ExpressionOperand{node.left, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kDiscarded});
+    Push(ExpressionOperand{node.left, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kDiscarded, false, statement_start});
   }
   void Expression(UpdateExpr node) {
     const auto token = node.direction == UpdateDirection::kIncrement ? "++" : "--";
@@ -841,7 +842,7 @@ class TreePrinter {
     Push(SymbolName{node.symbol});
     if (node.result == UpdateResult::kPrefix) Append(token);
   }
-  void Expression(ConditionalExpr node, ExpressionObservation observation) {
+  void Expression(ConditionalExpr node, ExpressionObservation observation, bool statement_start = false) {
     auto condition = node.condition;
     bool inverted = false;
     // ECMA-262 2024 13.14: only the condition's truthiness is observed. Strip
@@ -861,7 +862,7 @@ class TreePrinter {
       Step(); BeginExpression(id);
       id = std::get<UnaryExpr>(Tree().expressions[id.value].expression).operand;
     }
-    Push(ExpressionOperand{condition, {ExpressionGrammar::kConditionalTest}, {}, ExpressionObservation::kTruthiness});
+    Push(ExpressionOperand{condition, {ExpressionGrammar::kConditionalTest}, {}, ExpressionObservation::kTruthiness, false, statement_start});
   }
   void Expression(const FieldDefinitionExpr& node) {
     if (!static_fields_) throw Error::kUnsupportedContext;
@@ -884,19 +885,19 @@ class TreePrinter {
       return;
     }
     Append(" = ");
-    Push(ExpressionOperand{node.value, {}, node.name});
+    Push(ExpressionOperand{node.value, {ExpressionGrammar::kAssignmentValue}, node.name});
   }
-  void Expression(const AssignmentExpr& node) {
+  void Expression(const AssignmentExpr& node, bool statement_start = false) {
     const auto* symbol = std::get_if<SymbolTarget>(&node.target);
     Push(ExpressionOperand{node.value, {ExpressionGrammar::kAssignmentValue}, symbol ? NameContext{Tree().symbols[Initializers().Storage(symbol->symbol).value].name} : NameContext{}});
     Push(std::string_view(" = "));
     if (symbol) Push(SymbolName{symbol->symbol});
     else {
       const auto& member = std::get<MemberTarget>(node.target);
-      Member(member.base, member.key);
+      Member(member.base, member.key, PostfixContext::kMemberBase, false, statement_start);
     }
   }
-  void Expression(const CallExpr& node) {
+  void Expression(const CallExpr& node, bool statement_start = false) {
     if (node.reference == CallReference::kValue) {
       Append("(0, ");
       Push(std::string_view(")"));
@@ -911,7 +912,7 @@ class TreePrinter {
       if (node.array_arguments) Push(ArrayArgumentCursor{*node.array_arguments});
       else Push(ArgumentCursor{node.arguments, 0});
       Push(std::string_view("("));
-      Push(ExpressionOperand{node.callee, {PostfixContext::kCallCallee}});
+      Push(ExpressionOperand{node.callee, {PostfixContext::kCallCallee}, {}, ExpressionObservation::kValue, false, statement_start});
     }
   }
   void Expression(const ConstructExpr& node) {
@@ -934,7 +935,7 @@ class TreePrinter {
     if (const auto* range = std::get_if<ArgumentRange>(&node.arguments)) Push(ArgumentCursor{*range, 0});
     else {
       Append("...");
-      Push(ExpressionOperand{std::get<SpreadArguments>(node.arguments).iterable, {}});
+      Push(ExpressionOperand{std::get<SpreadArguments>(node.arguments).iterable, {ExpressionGrammar::kAssignmentValue}});
     }
   }
   void Expression(EmptyArrayExpr) { Append("[]"); }
@@ -952,7 +953,7 @@ class TreePrinter {
     }
   }
   void Expression(EmptyObjectExpr, bool grouped = true) { Append(grouped ? "({})" : "{}"); }
-  void Expression(const ClassExpr& node, ExprId expression, NameContext inferred_name = {}) {
+  void Expression(const ClassExpr& node, ExprId expression, NameContext inferred_name, const ExpressionOperand& operand) {
     if(!concurrent_frames_.empty()&&concurrent_frames_.back().proof) {
       ConcurrentFailure e;e.kind=ConcurrentError::kRequestUses;e.method=Tree().method;ConcurrentRefusal(e);
     }
@@ -966,8 +967,12 @@ class TreePrinter {
       throw Error::kUnsupportedContext;
     const bool inferred = property || ContextName(inferred_name) == node.definition->name;
     const auto name = Names().Lookup(*node.definition); Step(name.work);
+    const bool known = !std::holds_alternative<std::monostate>(operand.context.parent);
+    const bool grouped = ReadableGrouping(TreeExpression{node},
+        {operand.context, operand.statement_start}, ExpressionHeadFacts(TreeExpression{node})).Parenthesized();
+    if (inferred && known && grouped) { Append("("); Push(std::string_view(")")); }
     ClassCreation(node, expression, inferred ? ClassPrintForm::kInferredExpression :
-        name.named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression);
+        name.named ? (known && !grouped ? ClassPrintForm::kBareNamedExpression : ClassPrintForm::kNamedExpression) : ClassPrintForm::kExpression);
   }
   void ClassCreation(const ClassExpr& node, ExprId expression, ClassPrintForm form) {
     // Final preparation and the family's original-barrier verification own
@@ -978,8 +983,8 @@ class TreePrinter {
     if (node.heritage) {
       if (!node.definition->DraftPrepared() || node.definition->callable != CallableKind::kDerivedConstructor)
         throw Error::kUnsupportedContext;
-      if (form == ClassPrintForm::kNamedExpression || form == ClassPrintForm::kDeclaration) {
-        Append(form == ClassPrintForm::kDeclaration ? "class " : "(class ");
+      if (form == ClassPrintForm::kNamedExpression || form == ClassPrintForm::kBareNamedExpression || form == ClassPrintForm::kDeclaration) {
+        Append(form == ClassPrintForm::kNamedExpression ? "(class " : "class ");
         Identifier(node.definition->name); Append(" extends (");
       }
       else {
@@ -1034,15 +1039,15 @@ class TreePrinter {
     }
     written_ += positions.bytes;
   }
-  void Expression(FunctionExpr node) {
+  void Expression(FunctionExpr node, bool grouped) {
     if (!family_) throw Error::kUnsupportedContext;
     const auto child = std::lower_bound(owners_.begin(), owners_.end(), node.child,
         [&](const auto& item, FunctionOwnerId owner) { Step(); return item.owner < owner; });
     if (child == owners_.end() || child->owner != node.child) throw Error::kUnsupportedContext;
     const auto parent = current_; current_ = child->member;
-    Push(BeginFunction{}); current_ = parent;
+    Push(BeginFunction{grouped}); current_ = parent;
   }
-  void Run(BeginFunction) {
+  void Run(BeginFunction start) {
     if(Tree().sendable) {
       const auto* site=ClassRoot()?class_root_->Constructor():nullptr;
       if(!site || site->creation.kind!=abc::ClassKind::kSendable ||
@@ -1084,7 +1089,7 @@ class TreePrinter {
       for (auto& at : Result().expressions) at = range;
       for (auto& at : Result().statements) at = range;
       for (auto& at : Result().anchors) at = begin;
-      Run(EndFunction{}); return;
+      Run(EndFunction{start.grouped}); return;
     }
     if (Result().incomplete) {
       Append("/* INCOMPLETE: partial decompilation; not executable-equivalent. */");
@@ -1093,7 +1098,7 @@ class TreePrinter {
       Append(family_ && current_ != family_->root.value ? " " : "\n");
     }
     if (ModuleBody()) {
-      Push(EndFunction{}); Push(Statement{Tree().body, depth_}); return;
+      Push(EndFunction{start.grouped}); Push(Statement{Tree().body, depth_}); return;
     }
     if (ClassRoot()) {
       Run(Indent{depth_});
@@ -1107,9 +1112,10 @@ class TreePrinter {
       }
       Key(class_root_->Name()); Append("(");
     } else if (Tree().self && Tree().self_form == SelfForm::kNamedFunction) {
-      Append(Tree().callable == CallableKind::kAsyncGenerator ? "(async function* " :
-          Tree().callable == CallableKind::kGenerator ? "(function* " :
-          Tree().callable == CallableKind::kAsyncFunction ? "(async function " : "(function ");
+      if (start.grouped) Append("(");
+      Append(Tree().callable == CallableKind::kAsyncGenerator ? "async function* " :
+          Tree().callable == CallableKind::kGenerator ? "function* " :
+          Tree().callable == CallableKind::kAsyncFunction ? "async function " : "function ");
       Name(*Tree().self); Append("(");
     } else if (Tree().inferred_name && !NativeName()) {
       if (Tree().self) {
@@ -1133,16 +1139,19 @@ class TreePrinter {
             Tree().callable == CallableKind::kGenerator ? "function*(" :
             Tree().callable == CallableKind::kAsyncFunction ? "async function(" : "function(");
       }
-    } else Append(Tree().callable == CallableKind::kAsyncArrow ? "(async (" : Tree().callable == CallableKind::kArrow ? "((" :
-        Tree().callable == CallableKind::kAsyncGenerator ? "(async function*(" :
-        Tree().callable == CallableKind::kGenerator ? "(function*(" :
-        Tree().callable == CallableKind::kAsyncFunction ? "(async function(" : "(function(");
-    Push(EndFunction{}); Push(Statement{Tree().body, depth_});
+    } else {
+      if (start.grouped) Append("(");
+      Append(Tree().callable == CallableKind::kAsyncArrow ? "async (" : Tree().callable == CallableKind::kArrow ? "(" :
+          Tree().callable == CallableKind::kAsyncGenerator ? "async function*(" :
+          Tree().callable == CallableKind::kGenerator ? "function*(" :
+          Tree().callable == CallableKind::kAsyncFunction ? "async function(" : "function(");
+    }
+    Push(EndFunction{start.grouped}); Push(Statement{Tree().body, depth_});
     Push(std::string_view(IsArrowCallable(Tree().callable) &&
         Tree().invocation == InvocationForm::kDeclared ? ") => " : ") "));
     Push(ParameterCursor{0});
   }
-  void Run(EndFunction) {
+  void Run(EndFunction end) {
     if(!concurrent_frames_.empty()&&concurrent_frames_.back().proof) {
       auto frame=concurrent_frames_.back();concurrent_frames_.pop_back();
       if(frame.owns){if(const auto failure=frame.proof->Finish())ConcurrentRefusal(*failure);}
@@ -1157,7 +1166,7 @@ class TreePrinter {
       if (Tree().inferred_name && !NativeName() && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding)) {
         Append("})["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
         if (Tree().self) { Append("; return "); Name(*Tree().self); Append("; })()"); }
-      } else Append(")");
+      } else if (end.grouped) Append(")");
     }
     if (family_) {
       draft_.functions[current_].end = written_;
@@ -1317,7 +1326,7 @@ class TreePrinter {
         if (TreeOperandGrouping(TreeExpression{normalized}, operand.expression.context)) {
           Append("("); Push(std::string_view(")"));
         }
-        Expression(normalized); return;
+        Expression(normalized, operand.expression.statement_start); return;
       }
     // NOT/Boolean choices compose as a polarity. ToBoolean has no user hook:
     // emit at most one NOT, or two for a positive exact Boolean value. A pure
@@ -1404,7 +1413,19 @@ class TreePrinter {
       Expression(literal);return;
     }
     if(const auto* read=std::get_if<SymbolExpr>(&expression)) {
-      Name(Initializers().ReadBinding(operand.id,read->symbol));return;
+      const auto binding = Initializers().ReadBinding(operand.id,read->symbol);
+      const auto storage = Initializers().Storage(binding);
+      const bool protect = StatementIdentifierGrouping(Tree().names[Tree().symbols[storage.value].name.value],
+          {operand.context, operand.statement_start});
+      if (protect) Append("(");
+      Name(binding);
+      if (protect) Append(")");
+      return;
+    }
+    if (const auto* global = std::get_if<GlobalNameExpr>(&expression)) {
+      if (StatementIdentifierGrouping(Tree().names[global->name.value], {operand.context, operand.statement_start})) {
+        Append("("); Expression(*global); Append(")"); return;
+      }
     }
     const auto* unary_parent = std::get_if<TreeUnary>(&operand.context.parent);
     if (operand.value_result &&
@@ -1426,26 +1447,33 @@ class TreePrinter {
     const bool readable = std::holds_alternative<SequenceExpr>(expression) ||
         std::holds_alternative<UpdateExpr>(expression) ||
         std::holds_alternative<ConditionalExpr>(expression) ||
-        std::holds_alternative<AssignmentExpr>(expression);
-    const bool grouped = readable ? ReadableGrouping(expression, {operand.context}).Parenthesized() :
+        std::holds_alternative<AssignmentExpr>(expression) ||
+        std::holds_alternative<FunctionExpr>(expression) ||
+        std::holds_alternative<EmptyObjectExpr>(expression) ||
+        (std::get_if<ObjectExpr>(&expression) && std::get<ObjectExpr>(expression).kind == AggregateKind::kObject);
+    const bool grouped = readable ? ReadableGrouping(expression, {operand.context, operand.statement_start}, ExpressionHeadFacts(expression)).Parenthesized() :
         TreeOperandGrouping(expression, operand.context);
-    if (grouped) { Append("("); Push(std::string_view(")")); }
+    if (grouped && !std::holds_alternative<FunctionExpr>(expression)) { Append("("); Push(std::string_view(")")); }
+    if (grouped) operand.statement_start = false;
     std::visit([&](const auto& node) {
-      if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id, operand.inferred_name);
+      if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id, operand.inferred_name, operand);
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, LogicalExpr> ||
           std::is_same_v<std::decay_t<decltype(node)>, ConditionalExpr> ||
-          std::is_same_v<std::decay_t<decltype(node)>, SequenceExpr>) Expression(node, operand.observation);
+          std::is_same_v<std::decay_t<decltype(node)>, SequenceExpr>) Expression(node, operand.observation, operand.statement_start);
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ObjectExpr> ||
           std::is_same_v<std::decay_t<decltype(node)>, EmptyObjectExpr>) {
-        const auto* grammar = std::get_if<ExpressionGrammar>(&operand.context.parent);
-        Expression(node, !grammar || *grammar != ExpressionGrammar::kAssignmentValue);
+        Expression(node, false);
       }
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, MemberExpr>) {
         if (node.lookup == analysis::PropertyLookup::kSuper) { SuperMember(node); return; }
         const auto* context = std::get_if<PostfixContext>(&operand.context.parent);
         Member(node.base, node.key, context && *context == PostfixContext::kConstructor ?
-            PostfixContext::kConstructor : PostfixContext::kMemberBase);
+            PostfixContext::kConstructor : PostfixContext::kMemberBase, false, operand.statement_start);
       }
+      else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, FunctionExpr>) Expression(node, grouped);
+      else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, BinaryExpr> ||
+          std::is_same_v<std::decay_t<decltype(node)>, AssignmentExpr> ||
+          std::is_same_v<std::decay_t<decltype(node)>, CallExpr>) Expression(node, operand.statement_start);
       else Expression(node);
     }, Tree().expressions[id.value].expression);
   }
@@ -1579,7 +1607,7 @@ class TreePrinter {
         throw Error::kUnsupportedContext;
     }
     Name(node.symbol); Push(std::string_view(";"));
-    if (node.initializer) { Append(" = "); Push(ExpressionOperand{*node.initializer, {}, Tree().symbols[node.symbol.value].name}); }
+    if (node.initializer) { Append(" = "); Push(ExpressionOperand{*node.initializer, {ExpressionGrammar::kAssignmentValue}, Tree().symbols[node.symbol.value].name}); }
   }
   void StatementNode(ExpressionStmt node, Statement at) {
     if (const auto& initializer = Initializers().statements[at.id.value]) {
@@ -1592,7 +1620,7 @@ class TreePrinter {
           Tree().symbols[Initializers().Storage(initializer->symbol).value].name});
       return;
     }
-    Push(std::string_view(";")); Push(node.expression);
+    Push(std::string_view(";")); Push(ExpressionOperand{node.expression, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kDiscarded, false, true});
   }
   void BeginDeclarationExpression(ExprId original, ExprId retained) {
     // The declaration pass owns the retained assignment identity. Follow only
@@ -1616,7 +1644,7 @@ class TreePrinter {
       Push(Statement{*node.alternate, at.depth}); Push(std::string_view(" else "));
     }
     Push(Statement{node.consequent, at.depth}); Push(std::string_view(") "));
-    Push(ExpressionOperand{node.condition, {}, {}, ExpressionObservation::kTruthiness});
+    Push(ExpressionOperand{node.condition, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kTruthiness});
   }
   void StatementNode(ReturnStmt node, Statement) {
     if (static_fields_) return;
@@ -1628,11 +1656,11 @@ class TreePrinter {
         // keep object literals and other leading tokens out of statement grammar.
         Append("("); Push(std::string_view(")"));
       } else Append(" ");
-      Push(*node.value);
+      Push(ExpressionOperand{*node.value, {ExpressionGrammar::kExpression}});
     }
   }
   void StatementNode(ThrowStmt node, Statement) {
-    Append("throw "); Push(std::string_view(";")); Push(node.value);
+    Append("throw "); Push(std::string_view(";")); Push(ExpressionOperand{node.value, {ExpressionGrammar::kExpression}});
   }
   void StatementNode(const TryStmt& node, Statement at) {
     Append("try ");
@@ -1651,7 +1679,7 @@ class TreePrinter {
     if (node.binding == ForInBinding::kPerIterationLet) Append("let ");
     Name(node.key); Append(" in ");
     Push(Statement{node.body, at.depth}); Push(std::string_view(") "));
-    Push(ExpressionOperand{node.object, {}});
+    Push(ExpressionOperand{node.object, {ExpressionGrammar::kExpression}});
   }
   void StatementNode(ForOfStmt node, Statement at) {
     if (node.binding != ForOfBinding::kAssignment) throw Error::kUnsupportedContext;
@@ -1758,7 +1786,7 @@ class TreePrinter {
         if (branch.alternate && branch.alternate != at.retained) Push(ElideStatement{*branch.alternate});
         if (*yes != *no) {
           Append("("); Push(std::string_view(")"));
-          Push(BooleanOperand{{branch.condition, {}, {}, ExpressionObservation::kTruthiness}, !*yes});
+          Push(BooleanOperand{{branch.condition, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kTruthiness}, !*yes});
         }
         else {
           Append("("); Push(std::string_view(*yes ? ", true)" : ", false)"));
@@ -1770,7 +1798,7 @@ class TreePrinter {
         else Push(std::string_view("true"));
         Push(std::string_view(" : ")); Push(LoopHeader{branch.consequent, at.retained});
         Push(std::string_view(") ? ")); Append("(");
-        Push(ExpressionOperand{branch.condition, {}, {}, ExpressionObservation::kTruthiness});
+        Push(ExpressionOperand{branch.condition, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kTruthiness});
       }
     }
   }
@@ -2283,8 +2311,8 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
     // export read inside a method. The wrapper is never exposed to user code.
     if (member_gaps) append("/* INCOMPLETE class: unrecovered members */\n");
     if (form == ClassPrintForm::kExpression) { append("({["); name(); append("]: class {\n"); }
-    else if (form == ClassPrintForm::kNamedExpression || form == ClassPrintForm::kDeclaration) {
-      append(form == ClassPrintForm::kDeclaration ? "class " : "(class ");
+    else if (form == ClassPrintForm::kNamedExpression || form == ClassPrintForm::kBareNamedExpression || form == ClassPrintForm::kDeclaration) {
+      append(form == ClassPrintForm::kNamedExpression ? "(class " : "class ");
       for (const auto unit : tree.name) {
         const char byte = static_cast<char>(unit); append(std::string_view(&byte,1));
       }

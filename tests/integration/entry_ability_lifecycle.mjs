@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {editExpression} from './expression_edits.mjs';
 
 const methods = [['onCreate',2],['onDestroy',0],['onWindowStageCreate',1],
   ['onWindowStageDestroy',0],['onForeground',0],['onBackground',0],['updateBreakpoint',1]];
@@ -267,13 +268,15 @@ export async function verifyEntryAbilities(records) {
       await assert.rejects(async () => assert.deepEqual(await observe(altered,app,options),
         await observe(reference,app,options)),error => error instanceof assert.AssertionError); ++mutations;
     }
-    const callbackReceiver = source.replace('((windowSize) => {','(function(windowSize) {')
+    const callbackReceiver = editExpression(source,
+      node => node.type === 'ArrowFunctionExpression' && node.params.length === 1 && node.params[0].name === 'windowSize',
+      (node,text) => 'function(windowSize) ' + text(node.body))
       .replace(/\$local\d+\.updateBreakpoint\(windowSize\.width\)/,'this.updateBreakpoint(windowSize.width)');
     assert.notEqual(callbackReceiver,source); new vm.SourceTextModule(callbackReceiver);
     await assert.rejects(async () => assert.deepEqual(await observe(callbackReceiver,app,{concurrent:true,reverse:true}),
       await observe(reference,app,{concurrent:true,reverse:true})),error => error instanceof assert.AssertionError); ++mutations;
     if (app === 'pasteboard') {
-      const altered = source.replace('(this.curBp = "");',
+      const altered = source.replace('this.curBp = "";',
         'Object.defineProperty(this,"curBp",{value:"",writable:true,enumerable:true,configurable:true});');
       assert.notEqual(altered,source); new vm.SourceTextModule(altered);
       await assert.rejects(assignments(altered,app,false),error => error instanceof assert.AssertionError); ++mutations;

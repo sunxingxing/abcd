@@ -1212,3 +1212,35 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
   `assignment_arguments.mjs`'s spelling assertion from `f((target...))` to
   `f(target...)`; its value/order/receiver differential and both mutations pass.
   `git diff --check` passes. No commit or push performed.
+
+### Readable grouping slice 1b (2026-10-19)
+
+- Extended print-time contexts to statement expressions, function/arrow/class
+  values, object member bases, declaration and return/throw values, condition
+  operands and iteration/spread RHSs. A fixed-size statement-start flag follows
+  the final leftmost print path; head syntax and lexical lookahead keep necessary
+  groups. Function open/close actions share their decision. Name-inference
+  envelopes, `(0, …)`, directives, optional boundaries and blocks are unchanged.
+- Added 32 function-family context/name cases with a Node differential; object
+  statement/value and reserved-name tests; retained independent grouping verifier
+  mutations and 200/201/400/800 exact budgets. Text-dependent mutation sites were
+  updated for removed parentheses; their original semantic assertions remain.
+- OLD is a retained build of the clean **b24c0a92** main checkout, made before
+  edits: the sandbox denied the requested worktree Git index write. Baseline
+  identity/hash/build evidence and all runs are in `build/review/paren1b/`.
+- Complete sets remain **526/620**, **576/620**, and **80** paired records. Both
+  compiler modes independently: **526/0/0**, **567/0/9**, **80/0/0**
+  pass/differ/unverified. Same nine pre-existing ArkTS export-alias failures,
+  no bytecode differences. Token checks pass all **526 / 563 / 80** JavaScript
+  pairs (13 ArkTS unverified). Removed pairs: **11,399 / 12,928 / 1,301**.
+- Every new JavaScript output passes Node syntax: **527 / 564 / 80**. Final
+  regenerated source and manifest record entries are byte-identical to the
+  compiler-checked copies. Full context boundaries, ten examples and counts are
+  recorded in [readable-grouping.md](readable-grouping.md).
+- Final verification: full build passed; `source-regression -j 1` **65/65**;
+  grouping/family/name targets **9/9**; updated integration targets **16/16**;
+  requested CLI/corpus/failure/receipt/manifest/position/grouping/call-spread/staged
+  sweep **96/97**, only the documented pre-existing `family_source_cli_test`
+  owner/origin-arena assertion. Formatting-dependent mutation patterns and the
+  partial-family return assertion were updated; semantic checks remain strict.
+  `git diff --check` passed. No commit or push.

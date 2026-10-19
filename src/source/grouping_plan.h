@@ -29,6 +29,8 @@ struct ExpressionSyntaxFacts {
   bool object_literal = false;
   auto operator<=>(const ExpressionSyntaxFacts&) const = default;
 };
+[[nodiscard]] bool StatementIdentifierGrouping(std::u16string_view, const GroupingContext&);
+[[nodiscard]] ExpressionSyntaxFacts ExpressionHeadFacts(const TreeExpression&);
 struct GroupingDecision {
   GroupingReason reason = GroupingReason::kNone;
   [[nodiscard]] bool Parenthesized() const { return reason != GroupingReason::kNone; }

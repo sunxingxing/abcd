@@ -158,7 +158,7 @@ const mutations = [
     null, 'html empty predicate reversed'],
   [page, source => editExpression(source, node => callsMember(node, 'addImageSpan') && node.arguments.length === 2,
     (node, text) => text(node.callee) + '(({width: 57, height: 57}), ' + text(node.arguments[1]) + ')'), null, 'pixel identity replaced by equal dimensions'],
-  [page, '($local0.pathStack = context.pathStack)', '($local0.pathStack = $local0.pathStack)', 'ready path identity ignored'],
+  [page, '$local0.pathStack = context.pathStack', '$local0.pathStack = $local0.pathStack', 'ready path identity ignored'],
   [prefix + 'pages/ShareDitect', '"PageBBuilder"', '"PageABuilder"', 'share route changed'],
   [prefix + 'pages/PageB', '"PageBBuilder"', '"PageABuilder"', 'page uri changed'],
 ];

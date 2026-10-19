@@ -36,6 +36,30 @@ FunctionTree Make(std::string_view form,unsigned count=1){
  const auto result=add(CallExpr{callee,{0,count},reference});
  t.statements={{BlockStmt{{1},0,1},{0}},{ReturnStmt{result},{0}}};t.children={{1}};return t;
 }
+FunctionTree Head(std::string_view form) {
+ auto t=Make("value");
+ t.expressions.clear();t.properties.clear();t.arguments.clear();
+ auto add=[&](TreeExpression e){ExprId id{static_cast<std::uint32_t>(t.expressions.size())};t.expressions.push_back({std::move(e),{0}});return id;};
+ if(form=="lethead") {
+   t.strictness=Strictness::kSloppy;t.names[2]=u"let";
+   const auto value=add(SymbolExpr{{2}});
+   const auto key=add(TreeLiteral{IntegerLiteral{0}});
+   const auto member=add(MemberExpr{value,ComputedKey{key}});
+   t.statements[1].statement=ExpressionStmt{member};
+   t.statements.push_back({ReturnStmt{add(SymbolExpr{{2}})},{0}});t.children.push_back({2});
+   std::get<BlockStmt>(t.statements[0].statement).child_count=2;return t;
+ }
+ const auto value=add(SymbolExpr{{2}});
+ t.properties.push_back({{3},value,{0}});
+ const auto object=add(ObjectExpr{{0,1}});
+ auto result=add(MemberExpr{object,NameId{3}});
+ if(form=="objectstatement") {
+   t.statements[1].statement=ExpressionStmt{result};
+   t.statements.push_back({ReturnStmt{add(SymbolExpr{{2}})},{0}});t.children.push_back({2});
+   std::get<BlockStmt>(t.statements[0].statement).child_count=2;
+ }else t.statements[1].statement=ReturnStmt{result};
+ return t;
+}
 std::string Print(const FunctionTree& t){
  std::ostringstream out;const auto result=PrintFunctionTree(t,out);Check(std::holds_alternative<PrintedFunction>(result));
  const auto& positions=std::get<PrintedFunction>(result);Check(positions.bytes==out.str().size());
@@ -45,7 +69,7 @@ std::string Print(const FunctionTree& t){
 }
 }
 int main(int argc,char** argv){
- if(argc==2){std::cout<<Print(Make(argv[1]));return 0;}
+ if(argc==2){std::string_view form=argv[1];std::cout<<Print((form.starts_with("object")||form=="lethead")?Head(form):Make(form));return 0;}
  for(auto form:{"value","member","base","sign","updatebase"}){
    auto text=Print(Make(form));
    if(std::string_view(form)=="sign") Check(text.find("+(++x)")!=std::string::npos);
@@ -54,5 +78,10 @@ int main(int argc,char** argv){
    Check(text.find("x = x + 1, {}")!=std::string::npos);
    if(std::string_view(form)=="base")Check(text.find("(x = []).push(")!=std::string::npos);
  }
+ // Current binding validation rejects reserved `let`, even in a sloppy tree.
+ // Test the lexical boundary independently without weakening that admission.
+ {std::ostringstream denied;Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(Head("lethead"),denied)));}
+ Check(Print(Head("objectstatement")).find("({p: x}).p;")!=std::string::npos);
+ Check(Print(Head("objectvalue")).find("return {p: x}.p;")!=std::string::npos);
  for(auto n:{200u,201u,400u,800u}){auto text=Print(Make("value",n));Check(!text.empty());}
 }

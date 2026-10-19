@@ -78,6 +78,21 @@ GroupingDecision Decide(const TreeExpression& expression, ExpressionSyntaxFacts 
   return {ReadableOperandGrouping(expression,context.operand) ? GroupingReason::kPrecedence : GroupingReason::kNone};
 }
 }
+bool StatementIdentifierGrouping(std::u16string_view name, const GroupingContext& context) {
+  const auto* parent = std::get_if<PostfixContext>(&context.operand.parent);
+  return context.statement_start && parent && *parent == PostfixContext::kMemberBase && name == u"let";
+}
+ExpressionSyntaxFacts ExpressionHeadFacts(const TreeExpression& expression) {
+  ExpressionSyntaxFacts facts;
+  const auto* object = std::get_if<ObjectExpr>(&expression);
+  facts.object_literal = std::holds_alternative<EmptyObjectExpr>(expression) ||
+      (object && object->kind == AggregateKind::kObject);
+  facts.statement_hazard = facts.object_literal || std::holds_alternative<FunctionExpr>(expression) ||
+      std::holds_alternative<ClassExpr>(expression);
+  if (const auto* literal = std::get_if<TreeLiteral>(&expression))
+    facts.string_literal = std::holds_alternative<TextId>(*literal);
+  return facts;
+}
 GroupingDecision ReadableGrouping(const TreeExpression& expression, const GroupingContext& context,
     ExpressionSyntaxFacts facts) { return Decide(expression, facts, context); }
 GroupingPlan BuildGroupingPlan(const FunctionTree& tree, std::span<const GroupingOccurrence> uses, TreeCheckBudget& budget) {

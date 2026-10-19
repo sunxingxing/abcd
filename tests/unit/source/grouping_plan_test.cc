@@ -68,7 +68,22 @@ void Operators() {
   Check(ReadableOperandGrouping(AssignmentExpr{SymbolTarget{{0}},a},{PostfixContext::kMemberBase}));
   Check(!ReadableOperandGrouping(AssignmentExpr{SymbolTarget{{0}},a},{ExpressionGrammar::kAssignmentValue}));
   Check(ReadableOperandGrouping(EmptyObjectExpr{},{ExpressionGrammar::kUnknown}));
+  Check(StatementIdentifierGrouping(u"let",{{PostfixContext::kMemberBase},true}));
+  Check(!StatementIdentifierGrouping(u"let",{{PostfixContext::kMemberBase},false}));
+  Check(!StatementIdentifierGrouping(u"other",{{PostfixContext::kMemberBase},true}));
+  Check(!StatementIdentifierGrouping(u"let",{{ExpressionGrammar::kAssignmentValue},true}));
   Check(TreeExpressionPrecedence(SequenceExpr{a,b})==P::kSequence);
+  for (const auto child : {TreeExpression{FunctionExpr{{0},{0,0}}},TreeExpression{ClassExpr{}}}) {
+    const auto facts=ExpressionHeadFacts(child); Check(facts.statement_hazard);
+    Check(!ReadableGrouping(child,{{ExpressionGrammar::kAssignmentValue}},facts).Parenthesized());
+    Check(ReadableGrouping(child,{{ExpressionGrammar::kExpression},true},facts).Parenthesized());
+    Check(ReadableGrouping(child,{{PostfixContext::kMemberBase}},facts).Parenthesized());
+    Check(ReadableGrouping(child,{},facts).Parenthesized());
+  }
+  Check(ReadableGrouping(EmptyObjectExpr{},{{PostfixContext::kMemberBase},true},
+      ExpressionHeadFacts(EmptyObjectExpr{})).Parenthesized());
+  Check(!ReadableGrouping(EmptyObjectExpr{},{{PostfixContext::kMemberBase}},
+      ExpressionHeadFacts(EmptyObjectExpr{})).Parenthesized());
 }
 void Scale(std::uint32_t count,bool deep) {
   FunctionTree tree;auto last=Add(tree,TreeLiteral{IntegerLiteral{1}});

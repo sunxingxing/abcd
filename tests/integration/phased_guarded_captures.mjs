@@ -47,8 +47,8 @@ console.log(JSON.stringify({early:m.early,late:m.late,trace:globalThis.trace}));
         text.replaceAll(`= ${cell};`, '= void 0;').replaceAll(`return ${cell};`, 'return void 0;'),
       ];
       if (name === 'read') {
-        assert.ok(/\(\$exception\d+ = 7\);/.test(text), 'catch state staging is exercised');
-        mutations.push(text.replace(/(\(\$exception\d+ = )7(\);)/, '$19$2'));
+        assert.ok(/\$exception\d+ = 7;/.test(text), 'catch state staging is exercised');
+        mutations.push(text.replace(/(\$exception\d+ = )7(;)/, '$19$2'));
       }
       for (const [i, mutant] of mutations.entries()) {
         assert.notEqual(mutant, text);

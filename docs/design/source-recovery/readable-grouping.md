@@ -206,3 +206,175 @@ Logs: `build/review/paren/{build-final.log,fixed-verified.log,grouping-final.log
 sweep-verified.log,node-all.json}`. Final outputs and manifest record entries
 were rechecked against the compiler-accepted copies after the grammar guards;
 no differences. No commit or push was made.
+
+# Slice 1b — additional print contexts (2026-10-19)
+
+The default policy now covers expression statements, function/arrow and named
+class values, object member bases, declaration initializers, return/throw values,
+if heads, loop-condition expression operands, for-in RHS (Expression), for-of RHS
+(AssignmentExpression), and spread operands. Unknown contexts keep grouping.
+
+`ExpressionOperand::statement_start` travels only down the actual printed
+leftmost path: member/call base, binary/logical/sequence left, conditional test,
+and member-assignment target. Emitting a group or a leading operator terminates
+that path. Committed declaration/value/Boolean projections preserve the flag
+when forwarding an operand. `ExpressionHeadFacts` decides whether the actual head
+is object/function/class syntax; the final identifier spelling handles `let [`.
+This keeps `({p: x}).p;`, while allowing `return {p: x}.p;`. There is no repeated
+left-spine scan or projected-occurrence adapter. Only fixed-size action fields
+were added; the existing prepaid action allocation accounts for their sizes.
+
+Function opening/closing actions carry the same grouping decision. Inferred-name
+object envelopes and `(0, function...)` remain unchanged. Named class expressions
+have a typed bare expression form distinct from declarations and from wrapped
+name-inference forms. Member/call bases remain grouped. Creation timing, names,
+scopes and directives do not change.
+
+No switch or template-substitution node exists in the current source-tree variant;
+this slice does not invent either construct or post-process emitted strings.
+The existing synthesized loop-header envelopes remain conservative where they
+have no operand context. Primitive literal spellings such as `(void 0)` and
+parenthesized negative/non-finite numbers are unchanged. For-init `[In]`, optional-chain boundaries, template
+tags, directive strings, indirect calls and all blocks are unchanged. Reserved
+`let` bindings are still rejected by the tree's binding validator; the lexical
+lookahead rule is tested independently, and the typed tree refusal is retained.
+
+## Slice 1b acceptance
+
+The requested `git -C build/review/wtbase checkout ...` was denied by the sandbox
+at `.git/worktrees/wtbase/index.lock`. Before editing, the clean main checkout at
+**b24c0a922f7c3975cf95c7643499cb0d858e8599** was built and its executable retained
+as `build/review/paren1b/base/abc_structure`. Its build log and SHA-256 are beside
+it. This supplies the same committed OLD source, without modifying Git metadata.
+
+All cohort outputs, tool commands and reports are under `build/review/paren1b/`.
+The same pinned compiler/disassembler and adaptations described above were used.
+The following compiler counts apply independently to **default optimization and
+`--opt-level=0`**; no instruction/register/branch/handler/metadata normalization.
+
+| Set | Complete OLD/NEW | Bytecode pass/differ/unverified | Token pass/unverified | Removed pairs (JS) |
+|---|---:|---:|---:|---:|
+| Previous flags | 526/526 | 526/0/0 | 526/0 | 11,399 |
+| Language source | 576/576 | 567/0/9 | 563/13 | 12,928 |
+| Paired samples | 80/80 | 80/0/0 | 80/0 | 1,301 |
+
+The same nine ArkTS quoted-export failures listed in slice 1a remain unverified
+on both sides. Token checks have zero failures. All generated JavaScript passes
+`node --check`: **527 / 564 / 80**, including the extra partial file in each
+cohort. Final rebuilt outputs and all manifest record entries match the
+compiler-checked copies byte-for-byte (`final-recheck.json`).
+
+| Set | `((` OLD → NEW | `({` OLD → NEW |
+|---|---:|---:|
+| Previous flags | 5,735 → 4,178 | 3,367 → 2,949 |
+| Language source | 6,812 → 5,004 | 3,781 → 3,324 |
+| Paired samples | 816 → 585 | 725 → 652 |
+
+New family tests execute 32 function/arrow/async/context combinations and check
+inferred names; printer tests check statement-head versus value object members.
+Existing verifier mutation and exact 200/201/400/800 width/depth budgets remain.
+All textual test changes retarget the same mutations after grouping removal;
+the callback mutation now uses the existing AST editor. No behavior comparison
+or mutation detection assertion is weakened.
+
+## Ten slice 1b output examples
+
+1. `o1/12874`
+
+```js
+// OLD
+let calc = (function(inputContent) {
+// NEW
+let calc = function(inputContent) {
+```
+
+2. `o0/3730`
+
+```js
+// OLD
+windowStage.loadContent("pages/Index", ((err, data) => {
+// NEW
+windowStage.loadContent("pages/Index", (err, data) => {
+```
+
+3. `o0/13660`
+
+```js
+// OLD
+return ({cancel: $local9.onCancel, confirm: $local9.onAccept, deviceName: $local9.deviceInfo.deviceName, deviceInfo: $local9.__deviceInfo});
+// NEW
+return {cancel: $local9.onCancel, confirm: $local9.onAccept, deviceName: $local9.deviceInfo.deviceName, deviceInfo: $local9.__deviceInfo};
+```
+
+4. `o0/13660`
+
+```js
+// OLD
+(this.cancel = (() => {
+// NEW
+this.cancel = () => {
+```
+
+5. `o0/13660`
+
+```js
+// OLD
+return ({id: 16777261, type: 20000, params: [], bundleName: "com.samples.devicemanager", moduleName: "entry"});
+// NEW
+return {id: 16777261, type: 20000, params: [], bundleName: "com.samples.devicemanager", moduleName: "entry"};
+```
+
+6. `o15/44200`
+
+```js
+// OLD
+const $value0 = (class Log {
+// NEW
+const $value0 = class Log {
+```
+
+7. `o0/13660`
+
+```js
+// OLD
+($local9 = this);
+// NEW
+$local9 = this;
+```
+
+8. `o0/13660`
+
+```js
+// OLD
+(($value8 = {builder: null, cancel: null, autoCancel: true, alignment: null, gridCount: 4, customStyle: null}).builder = ({["builder"]: () => {
+// NEW
+($value8 = {builder: null, cancel: null, autoCancel: true, alignment: null, gridCount: 4, customStyle: null}).builder = ({["builder"]: () => {
+```
+
+9. `o0/13660`
+
+```js
+// OLD
+}), Column);
+// NEW
+}, Column);
+```
+
+10. `o0/6954`
+
+```js
+// OLD
+return ({deviceInfo: item, visible: Visibility.Visible});
+// NEW
+return {deviceInfo: item, visible: Visibility.Visible};
+```
+
+Final tests: full build passed; fixed source regression **65/65**; grouping,
+family and function-name targets **9/9**; updated integration tests **16/16**.
+The requested CLI/corpus/failure/receipt/manifest/position/grouping/call-spread/
+staged sweep passes **96/97**; only the documented pre-existing
+`family_source_cli_test` owner/origin-arena assertion fails. Text-sensitive
+mutation selectors now match bare assignments/arrows, and the partial-family
+ASI assertion searches the function keyword without requiring an unnecessary
+opening parenthesis. Mutation non-equality and behavior assertions remain.
+Logs: `build/review/paren1b/{full-build-final,fixed-final,sweep-final,grouping-tests-final,updated-tests}.log`.

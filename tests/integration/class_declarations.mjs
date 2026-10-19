@@ -84,8 +84,8 @@ const mutations = [
   {source:safe,change:text => text.replace('class snapshot {','function snapshot() {').replace(
     '  constructor() {\n  }\n',''),outerRead:false},
   {source:safe,change:text => text.replace('snapshot = input','snapshot = 7'),outerRead:false},
-  {source:safe,change:text => text.replace('(answer = snapshot);',
-    'Object.defineProperty(snapshot, "name", {value:"WrongName"});\n(answer = snapshot);'),outerRead:false},
+  {source:safe,change:text => text.replace('answer = snapshot;',
+    'Object.defineProperty(snapshot, "name", {value:"WrongName"});\nanswer = snapshot;'),outerRead:false},
 ];
 for (const {source,change,outerRead} of mutations) {
   const changed = change(source); assert.notEqual(changed,source);

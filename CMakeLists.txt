@@ -543,6 +543,13 @@ if(BUILD_TESTING)
     add_test(NAME grouping_print_node_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/grouping_print.mjs $<TARGET_FILE:grouping_print_test>)
   endif()
+  add_executable(grouping_family_test tests/unit/source/grouping_family_test.cc)
+  target_link_libraries(grouping_family_test PRIVATE abcd_source abcd_json)
+  add_test(NAME grouping_family_test COMMAND grouping_family_test)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME grouping_family_node_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/grouping_family.mjs $<TARGET_FILE:grouping_family_test>)
+  endif()
   add_executable(grouping_plan_test tests/unit/source/grouping_plan_test.cc)
   target_link_libraries(grouping_plan_test PRIVATE abcd_source)
   add_test(NAME grouping_plan_test COMMAND grouping_plan_test)
@@ -1733,7 +1740,7 @@ if(BUILD_TESTING)
         "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entryability/EntryAbility.ts")
       if(EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/modules.abc" AND
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/MultiCommunityApplication/src/phone/src/main/ets/entryability/EntryAbility.ts")
-        add_test(NAME entry_ability_records_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        add_test(NAME entry_ability_records_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules --expose-internals
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/entry_ability_records.mjs $<TARGET_FILE:abc_semantic>
           ${ABCD_PAIRED_CORPUS_ROOT})
       endif()

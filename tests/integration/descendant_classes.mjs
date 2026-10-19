@@ -44,7 +44,7 @@ try{
   // or constructor exception behavior, not just syntax/check success.
   const text=readFileSync(output,'utf8');
   for(const [kind,changed] of [
-   ['set',text.replace(/\(this\.value = ([^;]+)\);/g,'Object.defineProperty(this, "value", {value: $1});')],
+   ['set',text.replace(/this\.value = ([^;]+);/g,'Object.defineProperty(this, "value", {value: $1});')],
    ['throw',text.replace(/throw new RangeError\([^;]+;/g,'return;')]]){
    assert.notEqual(changed,text,kind+' mutation located');const path=join(out,kind+'.mjs');writeFileSync(path,changed);
    assert.notEqual(run(process.execPath,[runner,pathToFileURL(path).href]),expected,kind+' mutation detected');

@@ -177,7 +177,7 @@ for(const row of rows) {
     let wrong;
     if(row.form===0||row.form===19||row.form===21||row.form===23||row.form===25||row.form===27||row.form===29||row.form===32||row.form===33||row.form===36)wrong=row.source.replace('input.read()','(input.read(), input.read())');
     if(row.form===2)wrong=row.source.replace('input.read()','false');
-    if(row.form===5)wrong=row.source.replace(/\(flag = input\.read\(\)\)/,'false').replace(/\(0, report\)\(flag, saved\)/,'(0, report)(flag, (flag = input.read()))');
+    if(row.form===5)wrong=row.source.replace(/flag = input\.read\(\);/,'false;').replace(/\(0, report\)\(flag, saved\)/,'(0, report)(flag, (flag = input.read()))');
     if(row.form===10)wrong=row.source.replace(/\(0, __snapshotMissing\)/,'__snapshotMissing');
     assert.notEqual(wrong,row.source);parseJavaScript(wrong);
     assert.notDeepStrictEqual(await observe(Function('"use strict";return '+wrong)(),row),await observe(expected,row));++mutations;
