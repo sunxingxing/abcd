@@ -199,3 +199,50 @@ CLI/corpus/failure/receipt/manifest sweep is **78/79**; its sole failure,
 rebuilt wtbase **1d8326e8**. No expectations were changed.
 No production behavior, new fixtures/tests, source contracts or ISA ledger
 classes changed. Scratch probes/reports are under `build/review/next-choice/`.
+
+# Implementation checkpoint: raw certificate only (2026-10-20)
+
+**Increment 1 is implemented; increment 2 is not finished.** The new
+`ClassSelfInitializationProof` and independent verifier join the actual creator
+occurrence, environment allocation/slot, original class and initializer call,
+complete constructor/member/initializer families, guarded reads and their
+exception exits, read-only transitive captures, and original cleanup dispatch.
+The verifier reconstructs literal/defined-member and descendant coverage; a
+missing child cannot conceal a writer. Plan-local CellIds are consulted only
+inside their owning plan. Cross-family correspondence resolves the original
+creation environment and incoming address. All buffers are admitted before
+allocation; each family is walked with flat indexed/sorted tables.
+
+The production hook is failure-only evidence, after retaining the original
+Closed refusal. It cannot return a plan, a ClassSelfOrder, a capture target or a
+source receipt. `ResolveClassInitializerContext` factors the genuine occurrence
+resolution out of the unchanged Closed reader, so conditional family evidence
+loads the initializer once. No verifier failure is retried for admission.
+Both manifest JSON paths and abc_semantic expose `class_self_initialization`;
+status 1 denotes **raw certificate verified**, not source scope/recovery verified.
+
+| Record / creator / initializer | Raw certificate | Guarded self reads across all families | Incoming cell records | Family roots | Cleanup |
+|---|---|---:|---:|---:|---:|
+| o0/4660 / m4850 / m5040 | verified | 5 | 4 | 18 | 1 |
+| o20/8166 / m8392 / m8556 | verified | 2 | 3 | 10 | 1 |
+
+The first refusals remain SemanticProofError::kInternalValue >
+InternalValueReason 6 at m5040 PC12 and m8556 PC13. **No kRecoveryGate is emitted.**
+Changing that cause now would misrepresent preparation completeness.
+
+Specifically, increment 2 still needs the typed ClassSelfBindingRef/class-inner
+scope in the real initializer family, ordinary forwarding/binding of non-self
+requirements before the creator freezes, full owner ranges, and distinct
+internal/self/initializer/completed/public ports through ClassSelfOrder and
+ClassTree. It must also compose accessor-definition events with initialization:
+m8392 installs eight accessor methods at PCs74–235 before its initializer call
+at PC261. The current BuildClassLayout rejects definitions together with an
+initializer, and ClassSelfOrder still requires empty captures/ClosedClassFields.
+The raw writer census can prepare those member families separately; it grants
+no permission to bypass either source placement check. Cleanup pop/rethrow must
+then be consumed as class-scope unwind with its original payload/dispatch, not
+as a transparent forwarding route. Joint recovery/publication remains increment 3.
+
+Fixtures and commands are in
+`tests/integration/fixtures/class_self_initialization/README.md`. They check the
+raw certificate and continued Closed refusal, not the future recovery gate.

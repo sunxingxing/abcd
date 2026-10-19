@@ -1,11 +1,11 @@
 #include "class_initializer_file.h"
 #include <algorithm>
 namespace abcd::source {
-std::variant<ClassInitializerFunction, ClassInitializerReadFailure> ReadClassInitializerFunction(
+std::variant<FunctionContext, ClassInitializerReadFailure> ResolveClassInitializerContext(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& sites, const FileFunction& parent,
-    const ClassInitializerCall& call, analysis::SemanticBudget budget, const RecordModuleContext* modules) {
+    const ClassInitializerCall& call, analysis::SemanticBudget budget) {
   using Error = ClassInitializerError;
   const auto& values = parent.values;
   const auto& graph = values.graph;
@@ -32,7 +32,18 @@ std::variant<ClassInitializerFunction, ClassInitializerReadFailure> ReadClassIni
       *occurrence, values.identity, budget, CreationContextMode::kMethodBody);
   if (const auto* failure = std::get_if<CreationContextFailure>(&resolved_context))
     return ClassInitializerReadFailure{*failure};
-  FunctionContext context{std::get<CreationTreeContext>(std::move(resolved_context))};
+  return FunctionContext{std::get<CreationTreeContext>(std::move(resolved_context))};
+}
+std::variant<ClassInitializerFunction, ClassInitializerReadFailure> ReadClassInitializerFunction(
+    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
+    const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& sites, const FileFunction& parent,
+    const ClassInitializerCall& call, analysis::SemanticBudget budget, const RecordModuleContext* modules) {
+  using Error=ClassInitializerError;
+  auto resolved=ResolveClassInitializerContext(file,header,index,lookup,roles,sites,parent,call,budget);
+  if(const auto* failure=std::get_if<ClassInitializerReadFailure>(&resolved))return *failure;
+  auto context=std::get<FunctionContext>(std::move(resolved));
+  const auto& values=parent.values;
   if (context.AllocatedBytes() > budget.bytes) return ClassInitializerReadFailure{Error::kResourceLimit};
   budget.bytes -= context.AllocatedBytes();
   if (context.Work() > budget.work) return ClassInitializerReadFailure{Error::kWorkLimit};

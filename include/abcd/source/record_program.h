@@ -73,6 +73,7 @@ struct RecordProgramFailure {
   std::optional<SendableFailure> sendable;
   std::optional<SharedModuleFailure> shared_module;
   std::optional<CellParameterDefaultDiagnostic> cell_parameter_default;
+  std::optional<ClassSelfInitializationDiagnostic> class_self_initialization;
 };
 struct RecordProgramBudget {
   std::size_t bytes = 128 * 1024 * 1024;

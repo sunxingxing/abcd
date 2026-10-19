@@ -1,3 +1,4 @@
+#include "../src/source/class_self_initialization_json.h"
 #include "../src/source/cell_parameter_default_json.h"
 #include "family_value_inspect.h"
 #include "tree_position_json.h"
@@ -88,6 +89,7 @@ template <class Error> unsigned Code(const Error& error) {
 }
 void Failure(nlohmann::json& report, const FamilyFileFailure& failure) {
   report["family_failure"] = failure.cause.index();
+  if(failure.class_self_initialization)report["class_self_initialization"]=ClassSelfInitializationJson(*failure.class_self_initialization);
   if (failure.method) report["failed_method"] = failure.method->value;
   if (failure.parent) report["creator"] = failure.parent->value;
   if (failure.creation_pc) report["creation_pc"] = failure.creation_pc->value;

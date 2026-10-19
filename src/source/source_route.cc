@@ -1,3 +1,4 @@
+#include "class_self_initialization_json.h"
 #include "non_executable_json.h"
 #include "cell_parameter_default_json.h"
 #include "sendable_failure_json.h"
@@ -270,6 +271,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
     if (receipt.failure->concurrent) failure["concurrent"] = ConcurrentJson(*receipt.failure->concurrent);
     if (receipt.failure->async) failure["async"] = AsyncCompletionJson(*receipt.failure->async);
     if (receipt.failure->exception_region) failure["exception_region"] = ExceptionRegionJson(*receipt.failure->exception_region);
+    if (receipt.failure->class_self_initialization) failure["class_self_initialization"] = ClassSelfInitializationJson(*receipt.failure->class_self_initialization);
     if (receipt.failure->family_creation) failure["family_creation"] = FamilyCreationJson(*receipt.failure->family_creation);
     if (receipt.failure->non_executable) failure["non_executable"] = NonExecutableJson(*receipt.failure->non_executable);
     if (receipt.failure->internal_value) failure["internal_value"] = InternalValueJson(*receipt.failure->internal_value);
@@ -473,6 +475,10 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     }
     if (const auto item = failure->find("exception_region"); item != failure->end()) {
       typed.exception_region=ParseExceptionRegionJson(*item);if(!typed.exception_region)return RouteReceiptError::kFailure;
+    }
+    if (const auto item=failure->find("class_self_initialization");item!=failure->end()) {
+      typed.class_self_initialization=ParseClassSelfInitialization(*item);
+      if(!typed.class_self_initialization)return RouteReceiptError::kFailure;
     }
     if (const auto item = failure->find("family_creation"); item != failure->end()) {
       typed.family_creation = ParseFamilyCreation(*item); if (!typed.family_creation) return RouteReceiptError::kFailure;

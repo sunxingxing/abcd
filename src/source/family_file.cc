@@ -1,4 +1,5 @@
 #include "family_file.h"
+#include "class_self_initialization_file.h"
 #include "family_cells.h"
 #include "creator_classes.h"
 #include "abcd/analysis/transparent_rethrow.h"
@@ -91,7 +92,7 @@ class FamilyReader {
       // its class work only at the actual barrier, preserving first-failure order.
       if (!member.class_projection && !parent.Phase() && class_sites_ &&
           !prepared_record_root && std::holds_alternative<analysis::ClassCreation>(operation)) {
-        SelfOrder(member.function.Normal());
+        SelfOrder(member.function.Normal(),cursor.member);
         const auto& values=member.function.Normal().values;
         const auto& self=member.function.Normal().self_order;
         auto projected=ProjectClassMembers(values.graph,values.initializers.calls,Remaining(),
@@ -432,7 +433,7 @@ class FamilyReader {
     Admit(function.allocated_bytes, 1);
     return function;
   }
-  void SelfOrder(FileFunction& parent) {
+  void SelfOrder(FileFunction& parent,FamilyId creator) {
     const auto& values = parent.values;
     if (!values.cells || !values.environments || values.initializers.calls.empty()) return;
     auto found = FindClassSelfStores(values.graph,*values.environments,*values.cells,values.initializers.calls,Remaining());
@@ -457,7 +458,14 @@ class FamilyReader {
       }
       const auto& call = values.initializers.calls[*calls[store.initializer.value]];
       auto loaded = ReadClassInitializerFunction(file_,header_,index_,lookup_,roles_,sites_,parent,call,Remaining(),modules_);
-      if (const auto* error = std::get_if<ClassInitializerReadFailure>(&loaded)) Fail(*error);
+      if (const auto* error = std::get_if<ClassInitializerReadFailure>(&loaded)) {
+        auto failure=FamilyFileFailure{*error,method_,parent_,pc_,root_};
+        // Evidence only: retain this precise Closed refusal regardless of the
+        // diagnostic's outcome. No verifier-error recovery or publication retry.
+        if(class_sites_) failure.class_self_initialization=DiagnoseClassSelfInitialization(
+            file_,header_,index_,lookup_,roles_,sites_,*class_sites_,parent,call,{*root_,result_.first_owner,{creator.value}},Remaining(),modules_);
+        throw failure;
+      }
       auto body = std::get<ClassInitializerFunction>(std::move(loaded));
       Admit(body.function.allocated_bytes,1); Admit(body.context.AllocatedBytes(),1); Step(body.context.Work());
       bodies.push_back(std::move(body)); witnesses.push_back({call,bodies.back()});
@@ -477,7 +485,7 @@ class FamilyReader {
     Grow(member.children, member.function.Children().size());
     if (id == FileFamily::kRoot && class_mode_ == FamilyClassMode::kRetainRoot) {
       Require(!member.function.Phase(), Error::kUnsupportedFlow);
-      SelfOrder(member.function.Normal());
+      SelfOrder(member.function.Normal(),id);
       const auto& values = member.function.Normal().values;
       const auto& order = member.function.Normal().self_order;
       auto projected = ProjectClassMembers(values.graph, values.initializers.calls, Remaining(), values.definitions.sites, order ? &*order : nullptr);

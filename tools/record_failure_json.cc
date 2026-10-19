@@ -1,3 +1,4 @@
+#include "../src/source/class_self_initialization_json.h"
 #include "../src/source/non_executable_json.h"
 #include "../src/source/cell_parameter_default_json.h"
 #include "../src/source/sendable_failure_json.h"
@@ -78,6 +79,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.failure.printing) record["source_failure"]["printing"] = source::TreePrintFailureJson(*failure.failure.printing);
       if (failure.failure.evaluation) record["source_failure"]["evaluation"] = source::EvaluationFailureJson(*failure.failure.evaluation);
       if (failure.failure.tree) record["source_failure"]["tree"] = source::TreeFailureJson(*failure.failure.tree);
+      if (failure.failure.class_self_initialization) record["source_failure"]["class_self_initialization"]=source::ClassSelfInitializationJson(*failure.failure.class_self_initialization);
       if (failure.failure.cell_parameter_default) record["source_failure"]["cell_parameter_default"]=source::CellParameterDefaultJson(*failure.failure.cell_parameter_default);
       if (failure.failure.deferred) record["source_failure"]["deferred"] = source::DeferredCellJson(*failure.failure.deferred);
       if (failure.failure.control) record["source_failure"]["control"] = source::ControlJson(*failure.failure.control);
@@ -111,6 +113,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.printing) record["source_printing"] = source::TreePrintFailureJson(*failure.printing);
       if (failure.evaluation) record["source_evaluation"] = source::EvaluationFailureJson(*failure.evaluation);
       if (failure.tree) record["source_tree"] = source::TreeFailureJson(*failure.tree);
+      if (failure.class_self_initialization) record["source_class_self_initialization"]=source::ClassSelfInitializationJson(*failure.class_self_initialization);
       if (failure.cell_parameter_default) record["source_cell_parameter_default"]=source::CellParameterDefaultJson(*failure.cell_parameter_default);
       if (failure.deferred) record["source_deferred"] = source::DeferredCellJson(*failure.deferred);
       if (failure.call_reference) record["source_call_reference"] = DescribeReference(*failure.call_reference);

@@ -1,16 +1,11 @@
 #ifndef ABCD_SOURCE_CREATOR_CLASSES_H_
 #define ABCD_SOURCE_CREATOR_CLASSES_H_
 #include "class_tree.h"
+#include "abcd/source/creator_class_occurrence.h"
 
 namespace abcd::source {
 // Borrowed input identity belongs to this occurrence, not to the constructor's
 // method entity. No source symbol or class body is allocated by discovery.
-struct CreatorClassOccurrence {
-  abc::EntityOffset family_root{};
-  FunctionOwnerId first_owner{};
-  FamilyOccurrenceId member{};
-  bool operator==(const CreatorClassOccurrence&) const = default;
-};
 struct CreatorClassInput {
   const corpus::AbcFile& file;
   const abc::Header& header;

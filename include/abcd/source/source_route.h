@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_SOURCE_ROUTE_H_
 #include "abcd/analysis/non_executable.h"
 #include "abcd/source/cell_parameter_default_failure.h"
+#include "abcd/source/class_self_failure.h"
 #include "abcd/source/concurrent_failure.h"
 #include "abcd/source/sendable_failure.h"
 #include "abcd/analysis/internal_value_failure.h"
@@ -127,6 +128,7 @@ struct RouteFailure {
   std::optional<SendableFailure> sendable;
   std::optional<SharedModuleFailure> shared_module;
   std::optional<CellParameterDefaultDiagnostic> cell_parameter_default;
+  std::optional<ClassSelfInitializationDiagnostic> class_self_initialization;
 };
 template <class E>
 constexpr std::string_view FailureDomain() {

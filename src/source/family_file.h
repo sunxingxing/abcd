@@ -98,6 +98,7 @@ struct FamilyFileFailure {
   // neither a child body nor permission to ignore other failure categories.
   std::optional<abc::EntityOffset> root;
   std::optional<FamilyCreationEvidence> family_creation;
+  std::optional<ClassSelfInitializationDiagnostic> class_self_initialization;
   std::variant<std::monostate, analysis::CreationError, analysis::CreationBindingError,
       abc::MethodTargetError, abc::MetadataError, abc::MethodAttributeError,
       ClassContextError, abc::LiteralFailure, abc::ClassBufferError, ClassTreeError> creation_cause;

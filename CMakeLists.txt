@@ -248,7 +248,7 @@ target_sources(abcd_source PRIVATE src/source/prepared_family.cc src/source/crea
 target_sources(abcd_source PRIVATE src/source/instruction_sources.cc)
 target_sources(abcd_source PRIVATE src/source/family_emission.cc)
 target_sources(abcd_source PRIVATE src/source/family_route_failure.cc)
-target_sources(abcd_source PRIVATE src/source/environment_cleanup.cc src/source/cleanup_body.cc src/source/class_self.cc src/source/closed_class_fields.cc src/source/closed_values.cc src/source/class_self_order.cc)
+target_sources(abcd_source PRIVATE src/source/environment_cleanup.cc src/source/cleanup_body.cc src/source/class_self.cc src/source/closed_class_fields.cc src/source/closed_values.cc src/source/class_self_order.cc src/source/class_self_initialization.cc src/source/class_self_initialization_file.cc)
 target_sources(abcd_source PRIVATE src/source/cell_defaults.cc src/source/cell_parameter_default.cc)
 target_sources(abcd_source PRIVATE src/source/cell_default_proof.cc)
 target_sources(abcd_source PRIVATE src/source/module_reads.cc)
@@ -1001,6 +1001,22 @@ if(BUILD_TESTING)
   add_executable(parameter_plan_test tests/unit/source/parameter_plan_test.cc)
   target_link_libraries(parameter_plan_test PRIVATE abcd_source)
   add_test(NAME parameter_plan_test COMMAND parameter_plan_test)
+  add_executable(class_self_initialization_test tests/unit/source/class_self_initialization_test.cc tools/record_failure_json.cc)
+  target_include_directories(class_self_initialization_test PRIVATE tests/support)
+  target_link_libraries(class_self_initialization_test PRIVATE abcd_source abcd_json)
+  add_test(NAME class_self_initialization_test COMMAND class_self_initialization_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/self.abc")
+  foreach(class_self_case outer throwing reentry branches copies)
+    add_test(NAME class_self_initialization_${class_self_case}_test COMMAND class_self_initialization_test
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/${class_self_case}.abc")
+  endforeach()
+  if(EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+    add_test(NAME class_self_initialization_scale_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_self_initialization_scale.py"
+      $<TARGET_FILE:class_self_initialization_test>
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc"
+      "${CMAKE_CURRENT_BINARY_DIR}/class-self-initialization-scale")
+  endif()
   add_executable(environment_cleanup_test tests/unit/source/environment_cleanup_test.cc tools/tree_position_json.cc)
   target_include_directories(environment_cleanup_test PRIVATE tests/support)
   target_link_libraries(environment_cleanup_test PRIVATE abcd_source abcd_json)

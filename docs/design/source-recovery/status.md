@@ -5,6 +5,52 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Class-self initialization: raw proof delivered; scope preparation unfinished (2026-10-20)
+
+- **Partial delivery of the requested increments 1–2: increment 1 only.** Added
+  occurrence/storage-bound `ClassSelfInitializationProof`, independent re-derivation,
+  complete member/descendant capture and writer coverage, retained guards and
+  exception exits, original initializer dispatch and cleanup pop/rethrow evidence.
+  The shared creator-occurrence type is extracted without changing its identity.
+  `ResolveClassInitializerContext` reuses the Closed reader's occurrence checks;
+  the existing Closed reader, ClassSelfOrder and all successful plans are retained.
+- Failure-only diagnostics verify both targets: **o0/4660 m4850 -> m5040**
+  (18 family roots, 5 self reads, 4 incoming-cell records, 1 cleanup) and
+  **o20/8166 m8392 -> m8556** (10 roots, 2 self reads, 3 incoming-cell records,
+  1 cleanup). Both JSON paths and abc_semantic expose the raw certificate status.
+  First causes remain `SemanticProofError::kInternalValue > InternalValueReason::kMixed`
+  at **m5040 PC12 / m8556 PC13**. **No recovery gate or publication is claimed.**
+- Increment 2 still needs real class-inner capture targets/scope, non-self demand
+  forwarding before creator freeze, full owner ranges, and internal-vs-public
+  commit/unwind ports through the source tree. m8392's eight accessor methods
+  at PCs74–235 coexist with its PC261 initializer; current ClassTree still rejects
+  combined definitions/initializer placement. Raw family preparation is write
+  evidence only and does not waive that check. The exact boundary is recorded in
+  [class-self-initialization-scope.md](class-self-initialization-scope.md).
+- Full build passes; serial source-regression **65/65**; new tests **7/7**.
+  Six real es2abc fixtures cover self construction, static-block outer access,
+  read-only reentry, throwing initialization, branches and copies. Mutations cover
+  storage/occurrence, guard/exception, ordering, omitted/extra roots and descendants,
+  plus a valid decoded-body self-write. Original ABC files are unchanged.
+  Exact 200/201/400/800 byte boundaries are **92,796 / 93,030 / 160,076 / 294,636**;
+  work boundaries **56,513 / 56,782 / 110,601 / 219,577**; one-below refusals pass.
+  Engine-output differential/recompile acceptance remains gated with increment 2/3.
+- Requested CLI/class/static/initializer/family/capture sweep: **150/158**.
+  All eight failures reproduce with rebuilt wtbase **1d8326e8**:
+  `family_source_cli_test`, `class_tree_source_test`, `captured_receiver_source_test`,
+  `unguarded_captured_receiver_source_test`, `reversed_captured_receiver_source_test`,
+  `unguarded_reversed_captured_receiver_source_test`,
+  `reversed_initialization_captured_receiver_source_test`,
+  `unguarded_reversed_initialization_captured_receiver_source_test`.
+  No expectations were weakened or changed.
+- Both fresh 40-input cohorts match wtbase in complete sets/statuses and all
+  non-manifest bytes: **532/620 previous flags (3,653 files)** and **584/620 source
+  (3,809 files)**. Only the two target manifests gain raw diagnostic fields;
+  all first causes remain unchanged. CLI peak RSS over all 40 inputs:
+  **41,631,744 bytes previous / 41,697,280 bytes source**. No cap/contract/ISA
+  ledger change. Logs, exact comparisons and baseline reproductions:
+  `build/review/class-self/`. No commit, push or stash.
+
 ## Next eligible track: class-self scope design only (2026-10-20)
 
 - At HEAD / built wtbase **1d8326e8**, no additional small, premise-free
