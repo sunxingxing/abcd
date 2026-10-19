@@ -1,4 +1,5 @@
 #include "literal_arm_view.h"
+#include "reference_arguments.h"
 #include "logical_regions.h"
 #include "evaluation_plan.h"
 #include "evaluation_liveness.h"
@@ -215,34 +216,7 @@ namespace {
 // Seed only an unresolved member Reference's argument tree. The original
 // placement view also lets independent verification reconstruct these seeds
 // after the interval proof has moved the callee. No names/owners are allocated.
-struct ReferenceArguments {
-  std::vector<std::uint8_t> calls, arguments;
-  ReferenceArguments(const ValueProgram& graph, const EvaluationPlan& evaluation,
-      TreeCheckBudget& budget) {
-    budget.Array(calls, graph.ops.size()); budget.Array(arguments, graph.ops.size());
-    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
-      budget.Step();
-      const auto property = MemberProperty(graph, evaluation, OpId{static_cast<std::uint32_t>(i)});
-      if (!property) continue;
-      const auto placement = BeforeLogicalFusion(graph, evaluation, property->value);
-      calls[i] = placement.kind == EvaluationKind::kRoot &&
-          placement.temporary == TemporaryReason::kCrossRegionValue;
-    }
-    // Existing eager inline edges run forward in operation order. Propagate
-    // the enclosing argument once, without per-selection ancestor walks.
-    for (std::size_t i = graph.ops.size(); i-- > 0;) {
-      budget.Step();
-      const auto placement = BeforeLogicalFusion(graph, evaluation, i);
-      if (placement.kind != EvaluationKind::kInline || !placement.consumer) continue;
-      arguments[i] = Contains(graph.uses[placement.consumer->value]);
-    }
-  }
-  bool Contains(const OperandUse& use) const {
-    const auto* owner = std::get_if<OpId>(&use.owner);
-    return owner && (arguments[owner->value] ||
-        (calls[owner->value] && use.role == OperandRole::kArgument));
-  }
-};
+
 std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const ModuleEvaluationIndex& modules, TreeCheckBudget& budget) {
   std::vector<SelectionRegion> result;

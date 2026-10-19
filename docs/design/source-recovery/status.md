@@ -5,6 +5,62 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Guarded reference phi arms (2026-10-20, uncommitted)
+
+- ABC-only diagnosis distinguishes the two targets; full quoted IR and proof are
+  in [guarded-call-references.md](guarded-call-references.md). o5/28303's Use257
+  reads op33's retained result v82, not the guarded TimeUtils read. Its earlier
+  read/guard ancestor is propagated into the diagnostic. A throwing selection
+  feeding a nonthrowing copy still lacks a transitive exception summary; that
+  phased path and its module-atom exclusion are unchanged and parked.
+- Implemented the smaller o5/49599 gap: normal evaluation already owns verified
+  cell-guard dependencies, while phi-use/tail indexing counted them as foreign.
+  The additional view is seeded only by an original unmet member Reference and
+  otherwise rejected phi inputs. Fresh cell/storage identities, unique guard,
+  raw predecessor-event flow, guard dominance before the exact phi edge, caller
+  exception correspondence and the existing all-path inert tail are re-proved.
+  No foreign event/copy/divergence is crossed. The independent evaluation
+  verifier reconstructs the view before unchanged selection/TreeFlow/recovery
+  checks. Guards, source TDZ ownership and catch-state refusals remain; no new
+  premise or initialized-cell fact. No printer or phased-composition change.
+- **o5/49599 m50922 PC297 completes under both flag sets**. o5/28303 m28799
+  remains unchanged: source PC620/op231 `kNotInline > kRoot >
+  kCrossRegionValue > GuardedCallError::kUse`, read20 PC56/guard21 PC58/Use257;
+  previous flags keep the original kMultipleExits at PC1146.
+- Full build passes; serial source-regression **65/65**; new tests **2/2**;
+  focused guard/phi/module/phase tests **9/9**. Real es2abc fixtures yield
+  **48 Node differential scenarios / 15 observed mutations**, covering captured
+  let/const arguments and callees, early TDZ, initialized imported receiver,
+  getter/throw/order/receiver/callee replacement and live cell writes. The early
+  capture fixture keeps its existing ScopeError under previous flags; it is not
+  counted as a differential pass there. See the fixture README for compiler
+  identity/commands/hashes and the unclaimed cyclic-module boundary.
+- 200/201/400/800 exact build bytes:
+  **3517953/3535517/7030753/14056353**; exact work:
+  **1531892/1539700/3083728/6209397**. One byte/work unit below refuses.
+  Mutation oracles also reject wrong/missing consumption, misplaced/dropped
+  guard ownership, wrong exception correspondence, duplicate guard evidence and
+  foreign events. Canonical copies and block-split phi transport are exercised.
+- Both 40-input cohorts against rebuilt/current **0d9a1707**: **530 -> 531/620**
+  previous flags, **582 -> 583/620** source. Only o5/49599 changes in manifests;
+  all existing files except o5's manifest are byte-identical, including every
+  previously complete source and position map. Three newly published files per
+  mode; both new sources pass `node --check`. Source cohort maximum CLI peak RSS
+  is **39,845,888 bytes**; no cap changed.
+- Required sweep **136/149**. All thirteen failures reproduce with rebuilt
+  baseline **0d9a1707** executables: `family_source_cli_test` (owner/origin arena),
+  `unguarded_derived_cells_source_test`, `unguarded_literal_closure_source_test`,
+  `unguarded_derived_literal_receiver_source_test`, `captured_receiver_source_test`,
+  `unguarded_captured_receiver_source_test`, `unguarded_forwarded_receiver_source_test`,
+  `reversed_captured_receiver_source_test`, `unguarded_reversed_captured_receiver_source_test`,
+  `unguarded_reversed_forwarded_receiver_source_test`,
+  `reversed_initialization_captured_receiver_source_test`,
+  `unguarded_reversed_initialization_captured_receiver_source_test`, and
+  `unguarded_reversed_initialization_forwarded_receiver_source_test`.
+  No stale expectations or behavioral checks changed. Logs, per-test baseline
+  evidence and cohort comparison are in `build/review/guarded-references/`.
+  `git diff --check` passes. No commit, push or stash.
+
 ## Deprecated ISA evidence: all 47 variants (2026-10-20, uncommitted)
 
 - Evidence-only slice based on **41f6b2a1** (HEAD and rebuilt wtbase).

@@ -2763,6 +2763,10 @@ if(BUILD_TESTING)
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_guards)
   endif()
+  add_executable(guarded_reference_arms_test tests/unit/source/guarded_reference_arms_test.cc)
+  target_link_libraries(guarded_reference_arms_test PRIVATE abcd_source)
+  target_include_directories(guarded_reference_arms_test PRIVATE tests/support)
+  add_test(NAME guarded_reference_arms_test COMMAND guarded_reference_arms_test)
   add_executable(guarded_call_test tests/unit/source/guarded_call_test.cc)
   target_link_libraries(guarded_call_test PRIVATE abcd_source abcd_json)
   target_include_directories(guarded_call_test PRIVATE tests/support)
@@ -2925,6 +2929,9 @@ if(BUILD_TESTING)
       add_test(NAME decision_continuations_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_continuations.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_continuations)
+      add_test(NAME guarded_reference_arms_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_reference_arms.mjs
+        $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_reference_arms)
       add_test(NAME guarded_calls_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_calls.mjs
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_calls)

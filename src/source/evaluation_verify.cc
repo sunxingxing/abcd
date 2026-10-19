@@ -334,7 +334,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       TreeCheckBudget phi_budget({bytes, work});
       const auto literal_ends = plan.literals ? IndexPhiLiteralEnds(graph, *plan.literals, phi_budget) :
           std::vector<std::optional<analysis::OpId>>{};
-      phi_inputs = IndexPhiExpressionInputs(graph, *plan.phis, module_index.peers, literal_ends, phi_budget, plan.aliases);
+      phi_inputs = IndexPhiExpressionInputs(graph, *plan.phis, module_index.peers, literal_ends, phi_budget, plan.aliases, &plan);
       admit(phi_budget.Bytes(), 1); step(phi_budget.Work());
     }
     TreeCheckBudget logical_budget({bytes, work});

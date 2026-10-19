@@ -6,6 +6,7 @@
 
 namespace abcd::source {
 struct LiteralPlan;
+struct EvaluationPlan;
 struct ForInPlan;
 class TreeCheckBudget;
 enum class PhiFlow : std::uint8_t { kNormal, kPhased };
@@ -58,12 +59,18 @@ enum class PhiCopyError : std::uint8_t {
 // another copy, effect, environment change or divergence. No producer whitelist
 // or Commit adjacency. Original pre-throw staging remains at its original site;
 // AST flow/operand/scope checks still own the eventual source placement.
-// One use census and backwards all-path tail index: O(I+B+E+U+P) work/scratch.
+// With a freshly verified normal source plan, only an unmet member argument
+// may additionally consume a certified cell guard with its read. Guard
+// dominance, a unique pair, caller exception correspondence and the same
+// all-path inert tail are rederived; no binding/TDZ premise is added. Existing
+// eligible inputs are unchanged. See guarded-call-references.md.
+// Shared censuses/tails plus one dominance proof: O((V+E) log V) at most.
 [[nodiscard]] std::vector<std::optional<analysis::UseId>> IndexPhiExpressionInputs(
     const analysis::ValueProgram& graph, const PhiCopies& copies,
     std::span<const std::optional<analysis::OpId>> module_guards,
     std::span<const std::optional<analysis::OpId>> literal_ends, TreeCheckBudget& budget,
-    std::span<const analysis::ValueId> aliases = {});
+    std::span<const analysis::ValueId> aliases = {},
+    const EvaluationPlan* source = nullptr);
 // O(ops + definitions), no per-phi literal inventory scan. Statements/corridors
 // are excluded: only verified same-block native literal expressions qualify.
 [[nodiscard]] std::vector<std::optional<analysis::OpId>> IndexPhiLiteralEnds(

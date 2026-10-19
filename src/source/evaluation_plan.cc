@@ -543,7 +543,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       TreeCheckBudget phi_budget({bytes, work});
       const auto literal_ends = plan.literals ? IndexPhiLiteralEnds(graph, *plan.literals, phi_budget) :
           std::vector<std::optional<analysis::OpId>>{};
-      const auto phi_inputs = IndexPhiExpressionInputs(graph, *plan.phis, module_index.peers, literal_ends, phi_budget, plan.aliases);
+      const auto phi_inputs = IndexPhiExpressionInputs(graph, *plan.phis, module_index.peers, literal_ends, phi_budget, plan.aliases, &plan);
       admit(phi_budget.Bytes(), 1); step(phi_budget.Work());
       for (std::size_t i = 0; i < phi_inputs.size(); ++i) {
         step(); if (!phi_inputs[i] || pinned[i]) continue;
