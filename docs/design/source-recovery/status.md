@@ -5,6 +5,56 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Private declaration prefix before native rest (2026-10-20, uncommitted)
+
+- o32/53454 m54264 `findProperties`: PC0 environment allocation, PC14 helper
+  creation, PC23 fresh-cell store, PC25 COPYRESTARGS(1). The order proof now
+  distinguishes private declaration instantiation from observable work, using
+  the real creator's verified environment/storage identity and a closed CFG
+  cut. Calls, early escape/read, outer-cell stores, argument-window mutation,
+  scalar argument observation and repeated rest allocation remain refused.
+  Residual order/captures, fresh arrays, .length, ABI and recovery are unchanged;
+  async-prelude admission is untouched. The independent verifier re-derives
+  typed declaration events and charges its comparison work. Syntax failures
+  retain RestOwnershipError and the available PC.
+- Target advances, does not complete: --language-source now stops at
+  **FamilyEnclosureError::kStructure** (no published location; scratch probe:
+  **m53795 `f`, TreeStructureError::kBinding**). Previous flags stop at
+  **ArrayInitializationError::kContract**, m54291 `getProperty`, no PC.
+  These downstream refusals are parked. See [rest-declarations.md](rest-declarations.md).
+- Real es2abc positive fixture: **48** Node differential scenarios for private
+  helpers and captured ordinary parameters, freshness/isolation, argument and
+  body getters/throws, missing/undefined arguments and length 1. Three emitted
+  signatures recompile with COPYRESTARGS(1) and two formal slots. A rest-to-
+  ordinary-parameter mutation is detected. The exact captured-rest helper
+  fixture remains a separately asserted **kArgumentUse** refusal for its raw
+  scalar-to-cell staging; it is not counted as a successful source differential.
+  Pinned compiler identity/hash/options and adaptation are in the fixture.
+- Unit proof/verifier mutations and exact 200/201/400/800 byte/work boundaries
+  pass; a register/copy/block-split variant passes. The checker borrows charged
+  topology; its 200/201/400/800 declaration cases use **9485/9532/18885/37685**
+  bytes and **10618/10671/21218/42418** planner work. Verification additionally
+  charges one comparison per declaration event. All buffers are prepaid.
+- Both 40-input cohorts versus **f1a0cb7e**: **530/620** previous flags and
+  **582/620** source unchanged, no regression or text/position-map drift in
+  previously complete records. Only o32/53454's diagnostic changes per flag set.
+- Full build passed; stable-binary serial `ctest --preset source-regression -j 1`
+  **65/65**; focused rest/unit/Node/recompile/CLI tests **4/4**. The existing
+  for-in CLI expectation now asserts the exact downstream refusal per contract
+  and retains CLI/manifest equality. Requested sweep **124/133**; all nine
+  failures reproduce at **f1a0cb7e**: `family_source_cli_test` (owner/origin
+  arena assertion), `snapshot_syntax_test`, `snapshot_syntax_source_test`,
+  `captured_receiver_source_test`, `unguarded_captured_receiver_source_test`,
+  `reversed_captured_receiver_source_test`,
+  `unguarded_reversed_captured_receiver_source_test`,
+  `reversed_initialization_captured_receiver_source_test`, and
+  `unguarded_reversed_initialization_captured_receiver_source_test`.
+  Baseline snapshot tests were rerun after building their producer; the baseline
+  family CLI was run directly because its paired-root CTest is not registered.
+  Final build, accepted test logs, cohort comparisons and baseline reproductions
+  are under `build/review/rest-prefix/`. `git diff --check` passes. No commit,
+  push or stash.
+
 ## Cross-plan lexical-cell stores (2026-10-20, uncommitted)
 
 - Fixed o18/56008 m56581 PC108: the discovery plan's Cell2 and the final

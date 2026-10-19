@@ -2077,6 +2077,16 @@ if(BUILD_TESTING)
     add_test(NAME literal_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_arm.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/literal_arm)
+    add_test(NAME rest_declarations_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/rest_declarations.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/rest_declarations)
+    if(EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+      add_test(NAME rest_declarations_roundtrip_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/rest_declarations.mjs
+        $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/rest_declarations --round-trip)
+    endif()
     add_test(NAME lexical_cell_correspondence_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/lexical_cell_correspondence.mjs
       $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/lexical_cell_correspondence)

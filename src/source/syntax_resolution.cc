@@ -21,8 +21,9 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const FunctionContext& context,
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
-    FunctionOwnerId owner, analysis::SemanticBudget budget, std::span<const SignatureString> signature,
-    const CellPlan* cells) {
+    FunctionOwnerId owner, analysis::SemanticBudget budget,
+    std::span<const SignatureString> signature, const CellPlan* cells,
+    const analysis::ValueEnvironments* environments) {
   try {
     auto bytes = budget.bytes;
     auto work = budget.work;
@@ -142,13 +143,32 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
       // Hoist only an allocation owned by this argument frame. CFG effects
       // and SSA origins establish this; compiler copy order and local numbers
       // do not define native rest. Independent arrays/scalar slots stay distinct.
-      const auto ownership = ProveRestOwnership(graph, body, frame, *rest_argument, {bytes, work});
+      RestOwnershipFailure location;
+      const auto ownership =
+          ProveRestOwnership(graph, body, frame, *rest_argument, {bytes, work},
+                             &location, environments);
       if (const auto* error = std::get_if<RestOwnershipError>(&ownership)) {
         if (*error == RestOwnershipError::kResourceLimit) throw Error::kResourceLimit;
         if (*error == RestOwnershipError::kWorkLimit) throw Error::kWorkLimit;
-        throw Error::kParameters;
+        return SyntaxResolutionFailure{SyntaxRestFailure{
+            Error::kParameters, *error, location.operation, location.pc}};
       }
       const auto& proof = std::get<RestOwnership>(ownership); admit(proof.allocated_bytes, 1); step(proof.work);
+      if (!proof.declarations.empty()) {
+        const auto verified =
+            VerifyRestOwnership(graph, body, frame, *rest_argument, proof,
+                                {bytes, work}, environments);
+        if (const auto* error = std::get_if<RestOwnershipError>(&verified)) {
+          if (*error == RestOwnershipError::kResourceLimit)
+            throw Error::kResourceLimit;
+          if (*error == RestOwnershipError::kWorkLimit) throw Error::kWorkLimit;
+          return SyntaxResolutionFailure{
+              SyntaxRestFailure{Error::kParameters, *error, {}, {}}};
+        }
+        const auto& checked = std::get<RestOwnership>(verified);
+        admit(checked.allocated_bytes, 1);
+        step(checked.work);
+      }
       syntax.parameters[*rest_argument].rest = true;
     }
     // Scope literals name proven storage, never infer storage from spelling.

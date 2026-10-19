@@ -81,8 +81,18 @@ class FamilyTrees {
         }
         Step(std::get<std::uint64_t>(checked));
       }
-      auto syntax = Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
-          file_, header_, index_, context, phase ? phase->OriginalBody() : function.Body(), graph, family.Owner(member_), left_, function.Defaults() ? function.Defaults()->Strings() : std::span<const SignatureString>{}, function.Cells()));
+      auto syntax =
+          Take<ResolvedSyntax, SyntaxResolutionFailure>(ResolveFunctionSyntax(
+              file_, header_, index_, context,
+              phase ? phase->OriginalBody() : function.Body(), graph,
+              family.Owner(member_), left_,
+              function.Defaults() ? function.Defaults()->Strings()
+                                  : std::span<const SignatureString>{},
+              function.Cells(),
+              phase ? phase->Phases().CellEnvironments()
+                    : (function.Normal().values.environments
+                           ? &*function.Normal().values.environments
+                           : nullptr)));
       Account(syntax);
       auto& normal_aliases = normal_aliases_[i];
       const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;

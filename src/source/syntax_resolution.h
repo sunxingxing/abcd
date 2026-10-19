@@ -3,6 +3,7 @@
 
 #include "function_context.h"
 #include "function_syntax.h"
+#include "rest_ownership.h"
 #include "tree_constants.h"
 
 namespace abcd::source {
@@ -26,8 +27,15 @@ struct ResolvedSyntax {
 enum class SyntaxResolutionError : std::uint8_t {
   kContext, kParameters, kResourceLimit, kWorkLimit
 };
-using SyntaxResolutionFailure = std::variant<SyntaxResolutionError,
-    TreeConstantError, abc::MetadataError, ConcurrentFailure>;
+struct SyntaxRestFailure {
+  SyntaxResolutionError kind = SyntaxResolutionError::kParameters;
+  RestOwnershipError cause = RestOwnershipError::kOrder;
+  std::optional<analysis::OpId> operation;
+  std::optional<abc::CodeOffset> pc;
+};
+using SyntaxResolutionFailure =
+    std::variant<SyntaxResolutionError, TreeConstantError, abc::MetadataError,
+                 ConcurrentFailure, SyntaxRestFailure>;
 // Shared by standalone and family preparation. Context, body and verified
 // graph belong to the same unchanged file/method; the context supplies actual
 // callable/strictness/frame facts. Owner identifies this syntax occurrence,
@@ -35,11 +43,14 @@ using SyntaxResolutionFailure = std::variant<SyntaxResolutionError,
 // globals are separate proof steps, never inferred from successful naming.
 // Existing inputs are caller-admitted. Constants and recovered-name storage,
 // including replaced arena capacity, share this additional byte allowance.
-[[nodiscard]] std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
+[[nodiscard]] std::variant<ResolvedSyntax, SyntaxResolutionFailure>
+ResolveFunctionSyntax(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const FunctionContext& context,
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
     FunctionOwnerId owner, analysis::SemanticBudget budget = {},
-    std::span<const SignatureString> signature = {}, const CellPlan* cells = nullptr);
+    std::span<const SignatureString> signature = {},
+    const CellPlan* cells = nullptr,
+    const analysis::ValueEnvironments* environments = nullptr);
 }  // namespace abcd::source
 #endif

@@ -15,13 +15,16 @@ try {
     const rows=JSON.parse(readFileSync(join(out,'manifest.json'),'utf8')).records;
     for(const [record,method,pc,causes] of [
       [21089,21280,599,[['FunctionTreeError',0],['EvaluationError',2],['EvaluationObligation',0],['ForInError',8],['TreeObligation',14]]],
-      [53454,54264,undefined,[['SyntaxResolutionError',1]]],
+      // Private declaration-prefix rest proof now passes. Keep each contract's
+      // real next refusal and the strict CLI/manifest correspondence.
+      [53454,i==='old'?54291:undefined,undefined,
+        [[i==='old'?'ArrayInitializationError':'FamilyEnclosureError',i==='old'?0:1]]],
     ]) {
       const row=rows.find(r=>r.entity===record);assert.equal(row.source_complete,false);assert.equal(row.source,undefined);
       const f=row.source_failure;
       assert.deepEqual(f.causes,causes.map(([type,value])=>({domain:`abcd::source::${type}`,value})));
       assert.equal(f.method,method);assert.equal(f.pc,pc);assert.equal(f.working_pc,pc);
-      const report=JSON.parse(run(semantic,[abc,String(method),'--record-source','--value-source',...flags],1));
+      const report=JSON.parse(run(semantic,[abc,String(method??54264),'--record-source','--value-source',...flags],1));
       assert.deepEqual(report.source_failure,f);
     }
     // Round 60 discharges Filter's later decision-edge phi transfer; the record

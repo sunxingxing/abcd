@@ -329,9 +329,12 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
         (evaluation->cells && evaluation->cells->incoming != IncomingCells::kReject))
       throw Error::kEvaluation;
     if (!phased) { budget.Admit(evaluation->allocated_bytes, 1); budget.Step(evaluation->work); }
-    auto syntax_result = ResolveFunctionSyntax(file, header, index, *context, *body,
-        graph, {context->Position().value}, budget.Remaining(), defaults ? defaults->Strings() : std::span<const SignatureString>{},
-        evaluation->cells ? &evaluation->cells->cells : nullptr);
+    auto syntax_result = ResolveFunctionSyntax(
+        file, header, index, *context, *body, graph,
+        {context->Position().value}, budget.Remaining(),
+        defaults ? defaults->Strings() : std::span<const SignatureString>{},
+        evaluation->cells ? &evaluation->cells->cells : nullptr,
+        evaluation->cells ? evaluation->cells->environments.get() : nullptr);
     auto* resolved_syntax = std::get_if<ResolvedSyntax>(&syntax_result);
     if (!resolved_syntax) {
       const auto& failure = std::get<SyntaxResolutionFailure>(syntax_result);
@@ -347,6 +350,8 @@ std::variant<VerifiedFunction, FunctionPrepareFailure> VerifiedFunction::Prepare
         } else if constexpr (std::is_same_v<T, TreeConstantError>) {
           if (error == TreeConstantError::kResourceLimit) throw Error::kResourceLimit;
           if (error == TreeConstantError::kWorkLimit) throw Error::kWorkLimit;
+        } else if constexpr (std::is_same_v<T, SyntaxRestFailure>) {
+          throw Error::kParameters;
         } else if constexpr (std::is_same_v<T, ConcurrentFailure>) {
           if(error.kind==ConcurrentError::kResourceLimit)throw Error::kResourceLimit;
           if(error.kind==ConcurrentError::kWorkLimit)throw Error::kWorkLimit;
