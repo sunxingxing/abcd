@@ -101,7 +101,8 @@ bool TreeOperandGrouping(const TreeExpression& child, const TreeOperatorContext&
     } else if constexpr (std::is_same_v<T, ExpressionPrecedence>) return child_precedence < parent;
     else if constexpr (std::is_same_v<T, ExpressionGrammar>) {
       switch (parent) {
-        case ExpressionGrammar::kAssignmentValue: return false;
+        case ExpressionGrammar::kAssignmentValue: case ExpressionGrammar::kExpression:
+        case ExpressionGrammar::kConditionalTest: case ExpressionGrammar::kUnknown: return false;
       }
       throw TreePrintError::kUnsupportedContext;
     } else {
@@ -109,6 +110,78 @@ bool TreeOperandGrouping(const TreeExpression& child, const TreeOperatorContext&
       return false;
     }
   }, context.parent);
+}
+ExpressionPrecedence TreeExpressionPrecedence(const TreeExpression& node) {
+  using P = ExpressionPrecedence;
+  return std::visit([&](const auto& value) -> P {
+    using T = std::decay_t<decltype(value)>;
+    if constexpr (std::is_same_v<T, BinaryExpr>) return TreeBinarySyntax(value.operation).precedence;
+    else if constexpr (std::is_same_v<T, LogicalExpr>) return LogicalPrecedence(value.operation);
+    else if constexpr (std::is_same_v<T, SequenceExpr>) return P::kSequence;
+    else if constexpr (std::is_same_v<T, AssignmentExpr> || std::is_same_v<T, YieldExpr> ||
+                       std::is_same_v<T, FunctionExpr>) return P::kAssignment;
+    else if constexpr (std::is_same_v<T, ConditionalExpr>) return P::kConditional;
+    else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> ||
+                       std::is_same_v<T, DeleteExpr>) return P::kUnary;
+    else if constexpr (std::is_same_v<T, UpdateExpr>) return value.result == UpdateResult::kPostfix ? P::kPostfix : P::kUnary;
+    else if constexpr (std::is_same_v<T, MemberExpr> || std::is_same_v<T, CallExpr> ||
+                       std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr>) return P::kPostfix;
+    else if constexpr (std::is_same_v<T, FieldDefinitionExpr> || std::is_same_v<T, ArrayElement>) return P::kLowest;
+    else {
+      static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
+          std::is_same_v<T, GlobalNameExpr> || std::is_same_v<T, RealmObjectExpr> ||
+          std::is_same_v<T, SymbolConstructorExpr> || std::is_same_v<T, ThisExpr> ||
+          std::is_same_v<T, EmptyArrayExpr> || std::is_same_v<T, EmptyObjectExpr> ||
+          std::is_same_v<T, ObjectExpr> || std::is_same_v<T, ClassExpr> ||
+          std::is_same_v<T, ArgumentSnapshotExpr> || std::is_same_v<T, ArrayExpr>);
+      return P::kPrimary;
+    }
+  }, node);
+}
+bool ReadableOperandGrouping(const TreeExpression& child, const TreeOperatorContext& context) {
+  const auto precedence = TreeExpressionPrecedence(child);
+  return std::visit([&](const auto& parent) {
+    using T = std::decay_t<decltype(parent)>;
+    if constexpr (std::is_same_v<T, std::monostate>) return true; // Unknown use retains grouping.
+    else if constexpr (std::is_same_v<T, ExpressionGrammar>) {
+      switch(parent) {
+        case ExpressionGrammar::kExpression: return false;
+        case ExpressionGrammar::kAssignmentValue: return precedence < ExpressionPrecedence::kAssignment;
+        case ExpressionGrammar::kConditionalTest: return precedence <= ExpressionPrecedence::kConditional;
+        case ExpressionGrammar::kUnknown: return true;
+      }
+      return true;
+    } else if constexpr (std::is_same_v<T, ExpressionPrecedence>) return precedence < parent;
+    else if constexpr (std::is_same_v<T, analysis::BinaryOperator>) {
+      const auto syntax = TreeBinarySyntax(parent);
+      if(parent == analysis::BinaryOperator::kExponent && context.side == OperandSide::kLeft &&
+          (std::holds_alternative<UnaryExpr>(child) || std::holds_alternative<AwaitExpr>(child) ||
+           std::holds_alternative<DeleteExpr>(child))) return true;
+      if(precedence != syntax.precedence) return precedence < syntax.precedence;
+      return syntax.associativity == OperatorAssociativity::kLeft ?
+          context.side == OperandSide::kRight : context.side == OperandSide::kLeft;
+    } else if constexpr (std::is_same_v<T, TreeLogical>) {
+      if(const auto* logical=std::get_if<LogicalExpr>(&child);logical &&
+          ((parent==TreeLogical::kNullish)!=(logical->operation==TreeLogical::kNullish))) return true;
+      const auto p=LogicalPrecedence(parent);
+      return precedence<p || (precedence==p && context.side==OperandSide::kRight);
+    } else if constexpr (std::is_same_v<T, TreeUnary>) {
+      if(const auto* unary=std::get_if<UnaryExpr>(&child);unary && Sign(parent) && Sign(unary->operation)) return true;
+      // A prefix update must not join a unary sign into +++ or --- tokens.
+      if (const auto* update = std::get_if<UpdateExpr>(&child);
+          update && update->result == UpdateResult::kPrefix && Sign(parent)) return true;
+      return precedence<ExpressionPrecedence::kUnary;
+    } else {
+      static_assert(std::is_same_v<T, PostfixContext>);
+      // UpdateExpression is not a MemberExpression/CallExpression base.
+      if (std::holds_alternative<UpdateExpr>(child)) return true;
+      if(parent==PostfixContext::kConstructor &&
+          (std::holds_alternative<CallExpr>(child)||std::holds_alternative<SuperCallExpr>(child))) return true;
+      if(parent!=PostfixContext::kCallCallee) if(const auto* literal=std::get_if<TreeLiteral>(&child);literal &&
+          (std::holds_alternative<IntegerLiteral>(*literal)||std::holds_alternative<NumberLiteral>(*literal))) return true;
+      return precedence<ExpressionPrecedence::kPostfix;
+    }
+  },context.parent);
 }
 std::string_view TreeBinaryToken(analysis::BinaryOperator operation) { return TreeBinarySyntax(operation).token; }
 std::string_view TreeUnaryToken(TreeUnary operation) {

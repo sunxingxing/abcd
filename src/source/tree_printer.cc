@@ -29,6 +29,7 @@
 #include "abcd/source/scalar_expression.h"
 #include "abcd/source/string_literal.h"
 #include "tree_print_tokens.h"
+#include "grouping_plan.h"
 #include "tree_globals.h"
 #include "family_print.h"
 #include "class_tree.h"
@@ -830,14 +831,12 @@ class TreePrinter {
     Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}, {}, left});
   }
   void Expression(SequenceExpr node, ExpressionObservation observation) {
-    Append("("); Push(std::string_view(")"));
-    Push(ExpressionOperand{node.right, {}, {}, observation});
+    Push(ExpressionOperand{node.right, {ExpressionGrammar::kAssignmentValue}, {}, observation});
     Push(std::string_view(", "));
-    Push(ExpressionOperand{node.left, {}, {}, ExpressionObservation::kDiscarded});
+    Push(ExpressionOperand{node.left, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kDiscarded});
   }
   void Expression(UpdateExpr node) {
     const auto token = node.direction == UpdateDirection::kIncrement ? "++" : "--";
-    Append("("); Push(std::string_view(")"));
     if (node.result == UpdateResult::kPostfix) Push(std::string_view(token));
     Push(SymbolName{node.symbol});
     if (node.result == UpdateResult::kPrefix) Append(token);
@@ -852,10 +851,9 @@ class TreePrinter {
       Step(); if (unary->operation != TreeUnary::kNot) break;
       inverted = !inverted; condition = unary->operand;
     }
-    Append("("); Push(std::string_view(")"));
-    Push(ExpressionOperand{inverted ? node.consequent : node.alternate, {}, {}, observation});
+    Push(ExpressionOperand{inverted ? node.consequent : node.alternate, {ExpressionGrammar::kAssignmentValue}, {}, observation});
     Push(std::string_view(" : "));
-    Push(ExpressionOperand{inverted ? node.alternate : node.consequent, {}, {}, observation});
+    Push(ExpressionOperand{inverted ? node.alternate : node.consequent, {ExpressionGrammar::kAssignmentValue}, {}, observation});
     Push(std::string_view(" ? "));
     // Omitted NOTs retain the actual condition's span. Their end actions run
     // before either branch; no node is falsely located over a swapped arm.
@@ -863,7 +861,7 @@ class TreePrinter {
       Step(); BeginExpression(id);
       id = std::get<UnaryExpr>(Tree().expressions[id.value].expression).operand;
     }
-    Push(ExpressionOperand{condition, {}, {}, ExpressionObservation::kTruthiness});
+    Push(ExpressionOperand{condition, {ExpressionGrammar::kConditionalTest}, {}, ExpressionObservation::kTruthiness});
   }
   void Expression(const FieldDefinitionExpr& node) {
     if (!static_fields_) throw Error::kUnsupportedContext;
@@ -889,9 +887,8 @@ class TreePrinter {
     Push(ExpressionOperand{node.value, {}, node.name});
   }
   void Expression(const AssignmentExpr& node) {
-    Append("("); Push(std::string_view(")"));
     const auto* symbol = std::get_if<SymbolTarget>(&node.target);
-    Push(ExpressionOperand{node.value, {}, symbol ? NameContext{Tree().symbols[Initializers().Storage(symbol->symbol).value].name} : NameContext{}});
+    Push(ExpressionOperand{node.value, {ExpressionGrammar::kAssignmentValue}, symbol ? NameContext{Tree().symbols[Initializers().Storage(symbol->symbol).value].name} : NameContext{}});
     Push(std::string_view(" = "));
     if (symbol) Push(SymbolName{symbol->symbol});
     else {
@@ -949,9 +946,9 @@ class TreePrinter {
     Push(ArgumentCursor{node.elements, 0});
   }
   void Expression(const ArrayElement& node) {
-    if (const auto* value = std::get_if<ArrayValueElement>(&node.element)) Push(ExpressionOperand{value->value, {}});
+    if (const auto* value = std::get_if<ArrayValueElement>(&node.element)) Push(ExpressionOperand{value->value, {ExpressionGrammar::kAssignmentValue}});
     else if (const auto* spread = std::get_if<ArraySpreadElement>(&node.element)) {
-      Append("..."); Push(ExpressionOperand{spread->iterable, {}});
+      Append("..."); Push(ExpressionOperand{spread->iterable, {ExpressionGrammar::kAssignmentValue}});
     }
   }
   void Expression(EmptyObjectExpr, bool grouped = true) { Append(grouped ? "({})" : "{}"); }
@@ -1231,7 +1228,7 @@ class TreePrinter {
     if (cursor.index == cursor.range.count) return;
     if (cursor.index != 0) Append(", ");
     Push(ArgumentCursor{cursor.range, cursor.index + 1});
-    Push(Tree().arguments[cursor.range.first + cursor.index]);
+    Push(ExpressionOperand{Tree().arguments[cursor.range.first + cursor.index], {ExpressionGrammar::kAssignmentValue}});
   }
   void Run(ArrayArgumentCursor cursor) {
     // A checked private array is an argument carrier, never a spread iterable.
@@ -1254,7 +1251,7 @@ class TreePrinter {
     Append("(arguments.length > "); Numeric(cursor.index); Append(" ? ");
     Push(SnapshotCursor{cursor.range, cursor.index + 1});
     Push(std::string_view(" : void 0)"));
-    Push(Tree().arguments[cursor.range.first + cursor.index]);
+    Push(ExpressionOperand{Tree().arguments[cursor.range.first + cursor.index], {ExpressionGrammar::kAssignmentValue}});
   }
   void Run(std::string_view token) { Append(token); }
   void Run(SymbolName symbol) { Name(symbol.id); }
@@ -1424,9 +1421,15 @@ class TreePrinter {
     }
     if (const auto* conditional = std::get_if<ConditionalExpr>(&expression);
         conditional && BooleanChoice(*conditional, operand, false)) return;
-    if (TreeOperandGrouping(Tree().expressions[id.value].expression, operand.context)) {
-      Append("("); Push(std::string_view(")"));
-    }
+    // Group only after all value/name/Boolean projections above. Uncovered
+    // contexts retain the node's old grouping. No reference wrapper is removed.
+    const bool readable = std::holds_alternative<SequenceExpr>(expression) ||
+        std::holds_alternative<UpdateExpr>(expression) ||
+        std::holds_alternative<ConditionalExpr>(expression) ||
+        std::holds_alternative<AssignmentExpr>(expression);
+    const bool grouped = readable ? ReadableGrouping(expression, {operand.context}).Parenthesized() :
+        TreeOperandGrouping(expression, operand.context);
+    if (grouped) { Append("("); Push(std::string_view(")")); }
     std::visit([&](const auto& node) {
       if constexpr (std::is_same_v<std::decay_t<decltype(node)>, ClassExpr>) Expression(node, id, operand.inferred_name);
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, LogicalExpr> ||

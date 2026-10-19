@@ -10,7 +10,7 @@ namespace abcd::source {
 // Ordered by ECMAScript binding strength. Grammar exceptions (exponent bases,
 // adjacent signs and nullish/logical mixing) are checked separately.
 enum class ExpressionPrecedence : std::uint8_t {
-  kLowest, kLogicalOr, kLogicalAnd, kBitOr, kBitXor, kBitAnd, kEquality,
+  kLowest, kSequence, kAssignment, kConditional, kLogicalOr, kLogicalAnd, kBitOr, kBitXor, kBitAnd, kEquality,
   kRelational, kShift, kAdditive, kMultiplicative, kExponent, kUnary, kPostfix, kPrimary
 };
 enum class OperatorAssociativity : std::uint8_t { kLeft, kRight };
@@ -26,7 +26,7 @@ struct BinarySyntax {
 enum class PostfixContext : std::uint8_t { kMemberBase, kCallCallee, kConstructor };
 // Object/array elements are AssignmentExpression positions. An object literal
 // can start here without the ExpressionStatement's leading-brace ambiguity.
-enum class ExpressionGrammar : std::uint8_t { kAssignmentValue };
+enum class ExpressionGrammar : std::uint8_t { kAssignmentValue, kExpression, kConditionalTest, kUnknown };
 struct TreeOperatorContext {
   std::variant<std::monostate, analysis::BinaryOperator, TreeUnary, TreeLogical, ExpressionPrecedence, PostfixContext, ExpressionGrammar> parent;
   OperandSide side = OperandSide::kLeft;
@@ -36,6 +36,8 @@ struct TreeOperatorContext {
 // abrupt completion. Relational comparisons are not complements in the NaN
 // domain; absence retains the original NOT. ECMA-262 2024 13.10/13.11.
 [[nodiscard]] std::optional<analysis::BinaryOperator> TreeEqualityComplement(analysis::BinaryOperator);
+[[nodiscard]] ExpressionPrecedence TreeExpressionPrecedence(const TreeExpression&);
+[[nodiscard]] bool ReadableOperandGrouping(const TreeExpression&, const TreeOperatorContext&);
 [[nodiscard]] bool TreeOperandGrouping(const TreeExpression&, const TreeOperatorContext&);
 // Textual boundary only; semantic decisions remain in the typed tree.
 [[nodiscard]] std::string_view TreeBinaryToken(analysis::BinaryOperator operation);

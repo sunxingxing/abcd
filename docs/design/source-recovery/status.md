@@ -1152,3 +1152,63 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
 
 阶段一（固定五份）的未完项见 [Claude 交接](2026-10-12-claude-handoff.md) §4–6。按审计共识，
 固定五份只作为回归集，不再是完成条件。
+
+### Readable grouping slice 1 — unfinished WIP (2026-10-19)
+
+- Added standalone occurrence-indexed `GroupingPlan` / re-deriving verifier,
+  conservative syntax classification and prepaid iterative summaries. Added
+  mutation and 200/201/400/800 exact-budget tests, plus a pinned Acorn grouping-token
+  checker that preserves literal spelling, comments and line terminators.
+- **Not wired into TreePrinter.** Existing parentheses, `(0, …)` wrappers, blocks,
+  output policy/cache keys and source behavior remain unchanged. Projected use
+  enumeration (declaration/boolean/nullish/loop/name envelopes), full grammar
+  coverage and the es2abc/ark_disasm acceptance driver are still required.
+- Full build and fixed source regression 65/65 passed for the foundation. This is
+  component evidence only, not completion of the user's readability request;
+  no cleaned output or compiler-equivalence acceptance is claimed.
+- Fresh cohort checks of this non-integrated foundation: previous flags
+  **526/620**, language-source **576/620**, zero complete-status or complete-text
+  changes against the retained d4076bd2 cohort outputs. Grouping removals: **0**.
+- Requested CLI/corpus/failure/receipt/manifest/ISA/call-spread/staged/position sweep
+  plus the new grouping tests: **100/101**; `family_source_cli_test` remains the
+  previously recorded failure. `grouping_plan_test` and `grouping_tokens_test`
+  pass. Compiler equality, paired-sample acceptance and full Node differentials
+  have not been run; these remain required before enabling output changes.
+
+### Readable grouping slice 1a — print-time subset (2026-10-19)
+
+- Supersedes the integration boundary above: no projected-occurrence adapter.
+  `TreePrinter` classifies actual operand contexts after its print projections.
+  Sequence/update/conditional/assignment emitters share `ReadableGrouping`;
+  arguments, array elements/spreads and value arms use AssignmentExpression.
+  Unknown contexts stay grouped. Prefix-update sign adjacency and update member
+  bases remain parenthesized. Every `(0, …)` wrapper and every block is retained.
+- Added production-printer/counting-sink/span tests and a five-form ordinary-call
+  Node differential; standalone plan mutations and 200/201/400/800 exact budgets
+  remain passing. Updated the progress-bar mutation's literal spelling only:
+  `(this.options = ({controller: this.controller}))` becomes
+  `(this.options = {controller: this.controller})`; the alias mutation still must
+  be detected. No behavioral assertion was removed.
+- Baseline d4076bd2 vs current: identical complete sets **526/620** previous flags,
+  **576/620** language-source, **80/80** paired complete outputs. Acorn grouping-only
+  checks and Node syntax checks pass **526 + 563 + 80** JavaScript files, with
+  **13 ArkTS files explicitly unverified**. Removed pairs: **4,670 / 5,158 / 1,177**.
+- Both default optimization and O0 compiler/disassembler checks independently:
+  **526/0/0**, **567/0/9**, **80/0/0** pass/differ/unverified. No normalization of
+  registers, branches, exceptions or metadata. Nine ArkTS files fail on both sides
+  at pre-existing quoted export aliases. They are not passes. Tool hashes,
+  commands, ten actual examples, text counts and remaining conservative contexts
+  are in [readable-grouping.md](readable-grouping.md).
+- Final grammar guards were followed by regenerated outputs: all **527 / 577 / 80**
+  source files are byte-identical to the compiler-checked current copies.
+  Evidence is under `build/review/paren/`, including `final-recheck.json`.
+- Final full build passes; `ctest --preset source-regression -j 1` **65/65**;
+  grouping tests **4/4** (including the printer Node differential). All generated
+  JavaScript passes `node --check`: **527 / 564 / 80**. These include the extra
+  partial JavaScript file in each cohort; the 13 ArkTS files are not Node checks.
+- Final requested CLI/corpus/failure/receipt/manifest/ISA/call-spread/staged/
+  position/grouping sweep: **102/103**. Sole failure is the documented pre-existing
+  `family_source_cli_test` (`node escaped its owner or origin arena`). Also updated
+  `assignment_arguments.mjs`'s spelling assertion from `f((target...))` to
+  `f(target...)`; its value/order/receiver differential and both mutations pass.
+  `git diff --check` passes. No commit or push performed.

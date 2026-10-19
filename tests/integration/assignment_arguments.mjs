@@ -34,7 +34,7 @@ try {
       const file = join(output,records[0].source);
       assert.equal(evaluate(file),expected,name);
       const text = readFileSync(file,'utf8');
-      assert.match(text, /globalThis\.obj\.f\(\(globalThis\.target/);
+      assert.match(text, /globalThis\.obj\.f\(globalThis\.target/);
       if (name !== 'computed') {
         const mutated = join(directory,name+'-mutated.mjs');
         const replaced = text.replace(' = globalThis.rhs()', ' = (globalThis.rhs(), 999)');

@@ -85,7 +85,7 @@ const mutations = [
   ['"getDataWithProgress success"', '"wrong completion"', 'completion log changed'],
   ['($local0.pathStack = context.pathStack)', '($local0.pathStack = $local0.pathStack)', 'new ready path identity discarded'],
   ['progressIndicator: pasteboard.ProgressIndicator.NONE', 'progressIndicator: 99', 'transfer indicator changed'],
-  ['(this.options = ({controller: this.controller}))', '(this.options = ({controller: new RichEditorController()}))', 'controller alias split'],
+  ['(this.options = {controller: this.controller})', '(this.options = {controller: new RichEditorController()})', 'controller alias split'],
   ['elmtId = (-1)', 'elmtId = 0', 'constructor default id changed', {construct: 'default', lambda: false}],
   ['paramsLambda = (void 0)', 'paramsLambda = (() => {})', 'default parameters callback fabricated', {construct: 'default', lambda: false}],
   ['super(parent, __localStorage, elmtId, extraInfo)', 'super(parent, elmtId, __localStorage, extraInfo)', 'super argument order changed'],
