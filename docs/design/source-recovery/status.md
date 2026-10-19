@@ -5,6 +5,47 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Class-self increment 6: effectful member defaults diagnosed; gates retained (2026-10-20)
+
+- **No new completion.** o20/8166 remains `kRecoveryGate / kMemberAbi`,
+  constructor m8638, declared `.length = 1` / recovered `.length = 7`.
+  Its seven visible parameters are one required parameter followed by defaults
+  `SizeMode.Normal`, `0`, `0`, `-1`, `1`, `VerticalAlign.Center`.
+  The first fallback is a live guarded **module** read plus property access,
+  not a direct captured-cell default. No rest/destructuring/arguments-tail gap
+  was found. The final default performs a global lookup and property access.
+- Production raw-IR probing identifies the first discovery refusal: the arm has
+  module-read/guard/property-read events and exceeds the constant/negation arm
+  representation in `default_candidates.cc`. Later constant defaults are
+  intentionally not projected past that uncertified boundary. Increasing the
+  limit would not suffice: signature construction/verification and ABI admit
+  only literals or proven capture references, and parameter recovery lacks a
+  certificate for these effectful expression events and their caller exits.
+  The design checkpoint records the generic parameter-expression extension
+  required across those layers. No ABI or ownership check was relaxed.
+- Added a real pinned-es2abc fixture and production-graph/source regression
+  asserting the honest **1/7** member-ABI gate; forged property-as-constant
+  initializers are rejected even with falsified pure effects. All changes are
+  tests/build registration/documentation; production behavior is unchanged.
+- o0/4660 remains `kRecoveryGate / kClassInitializationPorts` at m5040 PC12.
+  Its creator m4850 exports the result of `getInstance()`, not the class; a
+  distinct completed-class availability correspondence is still needed. No
+  publication port is fabricated from that export. Neither target publishes,
+  so there is no target engine-output Node differential or target bytecode
+  equivalence result in this round. `tree_failure.mjs` remains correct.
+- Both fresh 40-input cohorts against wtbase **024e759c** have no process
+  failures: **532/620** previous flags and **584/620** source. Source and
+  manifests are all byte-identical (3,653 / 3,809 files including 40 manifests).
+  There are no regressions, new completions, or diagnostic changes.
+- Full build passes. Serial source-regression **65/65**; focused new/boundary
+  tests **3/3**; class-self fixtures **12/12** within the requested sweep. The
+  sweep is **219/233**, with exactly the 14 documented pre-existing failures
+  (no additions or omissions). Existing fixture Node differentials and
+  round-trip tests pass; the new fixture source also passes `node --check`.
+  `git diff --check` passes. No commit, push or stash.
+  Evidence: `build/review/class-self6/`; details and next proof obligations in
+  [class-self-initialization-scope.md](class-self-initialization-scope.md).
+
 ## Class-self increment 5: initialization ports consumed; constructor ABI gate (2026-10-20)
 
 - **o20/8166 is still incomplete.** Its m8556 initializer now passes the common

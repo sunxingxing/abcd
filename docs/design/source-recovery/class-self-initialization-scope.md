@@ -644,3 +644,134 @@ captures; a certified inner binding cannot silently fall back to an anonymous
 class form. The normal ClassExpr path uses its real creator and the existing
 name plan, source/recovery ports and actual capture targets. The new negative
 unit check exercises detached outer-capture refusal.
+
+## Increment 6 checkpoint: member ABI diagnosis (2026-10-20)
+
+Baseline: `024e759c`, including `build/review/wtbase/b/abc_structure`.
+This checkpoint does **not** implement expression-default recovery or publish
+another class. The independent negative regression preserves the real ABI gate.
+
+### m8638: defaults are present, but their expression proof is missing
+
+The original creation in m8392 PC39 records constructor length **1**. m8638 has
+**seven** visible frame parameters; the callable/receiver ABI entries are not
+visible parameters. The first is required. Its original prologue is:
+
+| Visible parameter | Undefined test / branch PC | Missing-path initializer PC | Value |
+| --- | --- | --- | --- |
+| 2 | 31 / 34 | 36, 38, 46 | live external module slot 1, HoleGuard `SizeMode`, then `Normal` property read |
+| 3 | 57 / 60 | 62 | integer 0 |
+| 4 | 74 / 77 | 79 | integer 0 |
+| 5 | 91 / 94 | 96, 105 | integer 1, numeric negation (-1) |
+| 6 | 114 / 117 | 119 | integer 1 |
+| 7 | 131 / 134 | 136, 144 | global lookup `VerticalAlign`, then `Center` property read |
+
+These are actual branch/phi defaults, not rest, destructuring, an `arguments`
+tail or seven required parameters. In particular, the first initializer is a
+**module** binding plus property access, not a direct captured lexical-cell
+initializer. There is no fresh-object default in this constructor. The raw
+value graph (IDs from the production reader, not paired source) contains:
+
+```
+op13 PC31 B0: StrictEqual(entry v16 [parameter index 1], undefined) -> v41
+op14 PC34 B0: Branch(v41), Use15
+op15 PC36 B1: ModuleRead(external slot 1) -> v100
+op16 PC38 B1: HoleGuard(v100), Use16
+op19 PC46 B1: NamedRead(base v100, pool "Normal") -> v103, Use19
+phi v22 B2: provided entry v16 | missing result v103
+op69 PC167 B12: NamedWrite(this v14, stored v22), Uses74/75
+...
+op57 PC136 B11: GlobalRead("VerticalAlign") -> v84
+op60 PC144 B11: NamedRead(base v84, pool "Center") -> v87, Use64
+phi v27 B12: provided entry v21 | missing result v87
+op73..89 PC178..222: remaining field stores
+```
+
+The module load, guard and property read retain their individual original
+possible-throw exits to the caller. The property reads may execute getters;
+neither can be replaced by its base, a cached value or an invented constant.
+The body field stores occur only after the full default chain.
+
+`FindDefaultCandidates` reaches the first missing arm with three live value
+operations. `default_candidates.cc`'s `arm_facts.value_operations >
+kLiteralAndNegation` branch returns not-applicable. `Finder::Find` then stops
+at the **first** uncertified parameter; it does not migrate later constants out
+of order. `CaptureBoundary` cannot certify this arm either: it is not an incoming
+lexical read whose result is the fallback. Consequently the seven body-owned
+parameters have no signature defaults and their source `.length` is 7.
+
+This is not only a discovery limit that can safely be removed:
+
+- `DefaultValueProof::CheckCandidate` proves constants or one direct incoming
+  cell read/guard; it has no property-expression event owner.
+- `DefaultBody` and `BuildDefaultSignature` build literal or capture-reference
+  roots. `VerifyDefaultSignature` independently accepts those same roots.
+- `VerifyFunctionAbi` permits only literal/default capture expressions and
+  correctly rejects source length 7 against original length 1.
+- The original/recovery conditional parameter chain in `parameter_recovery.cc`
+  is bound to `CellParameterDefaultProof`. No current certificate owns this
+  module load, its guard, the getter, the global lookup and their exception
+  exits in parameter scope. Merely printing a default would bypass that joint
+  correspondence and could move a throw into the body catch.
+
+A native signature with the six defaults is the intended result. It needs a
+**generic parameter-initializer expression proof**, not a class-self exception
+or a new source premise. The narrow next implementation should reuse the
+ordinary expression evaluator for a certified conditional initializer forest:
+
+1. Derive argument-entry / missing decision / provided and missing commit /
+   initialized-parameter identities from SSA and original edges. A shared
+   def-use/control/effect index proves conditional ownership, unique consumption,
+   left-to-right parameter order and no body/local/receiver dependency that the
+   parameter scope cannot resolve. Keep existing literal/cell paths unchanged.
+2. Retain each initializer's actual expression events and original exception
+   exits. Resolve live module/global names through the real binding domain;
+   preserve the HoleGuard and getter timing. Seal and independently rederive
+   before removing those operations from the residual body.
+3. Build the signature expression from that owner and verify its tree, ABI and
+   OriginalFlow/RecoveryFlow parameter-entry chain on every projection. Missing
+   input/guard/order/catch/ownership correspondence remains a typed refusal.
+   No synthetic `= undefined` solely to reduce `.length` is valid.
+
+This crosses discovery, signature ownership, module/name binding, ABI and
+recovery; it is not justified by increasing the old arm-operation limit.
+
+### Regressions and remaining completed-class port
+
+`tests/integration/fixtures/member_expression_defaults/defaults.abc` is a new
+real es2abc fixture with the same generic parameter obligations and a native
+static self reference. It reaches `kRecoveryGate / kMemberAbi` with **1 / 7**;
+the test asserts that outcome, not source recovery. The production-graph probe
+also reproduces the empty candidate set on m8638. `default_candidates_test`
+rejects a property access passed off as a constant, even with falsified pure
+effects. No decoder, lifter, source or recovery production behavior changes.
+
+For o0, the existing independently verified scope inventory still has **zero
+class-valued public stores**. m4850 retains the class after PC51, reads/calls
+`getInstance` at PC78, and exports that **result** at PC81. The current port
+verifier requires a real PublicPublish. Removing that requirement would leave
+completed-class availability and the saved class reference unmodelled. A
+separate ClassCompleted continuation must tie static Commit to the retained
+class value before the member read/call; the export remains a different result
+identity. This checkpoint keeps `kClassInitializationPorts` at m5040 PC12 and
+does not forge a publication port from the export.
+
+
+### Increment 6 validation
+
+- Full `cmake --build build/regression -j 6`: passed.
+- `ctest --preset source-regression -j 1`: **65/65**.
+- New/boundary tests: **3/3**. Class-self fixture suite: **12/12** in the
+  requested broader sweep, including existing engine-output Node differentials,
+  SDK round trips and 200/201/400/800 exact-budget tests.
+- Requested tree/scope/capture/class/static/initializer/family/receipt/manifest/
+  CLI/binding/cell/parameter/default sweep: **219/233**. The 14 failures exactly
+  match the user-supplied pre-existing list; no failure was relabelled or fixed.
+- Fresh old/new 40-input cohorts against wtbase `024e759c`: **532/620** previous
+  flags and **584/620** source, no process failures. All 3,653 / 3,809 output
+  files, including manifests, are byte-identical. No new target text exists;
+  target Node differential and target original-vs-recompiled equivalence are
+  **not performed**, rather than counted as passes.
+- `build/review/class-self6/` retains raw m8638 IR, the actual disassembly,
+  compiler/fixture identity, build/test logs, target first-refusal comparison and
+  full cohort comparison. `tree_failure.mjs` needs no expectation change.

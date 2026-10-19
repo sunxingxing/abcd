@@ -573,5 +573,30 @@ void CapturedBoundary() {
   graph.ops[3].operation=ValueDebugger{}; graph.ops[3].normal=LanguageEffect::kDebugger;
   Check(!Find(graph).capture);
 }
+void PropertyDefaultBoundary() {
+  auto graph = DefaultDiamond();
+  const auto parameters = std::get<ParameterPlan>(BuildParameterPlan(graph, 1));
+  const auto literal = Find(graph);
+  Check(literal.values.size() == 1);
+  // A missing-path property access is not its base value or an invented
+  // literal. Signature migration needs to own the getter and exception exit.
+  graph.ops[2].operation = ValueNamedRead{{1}};
+  graph.ops[2].normal = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+  graph.ops[2].before_throw = graph.ops[2].normal;
+  graph.ops[2].exceptional = ExceptionalCompletion::kMayThrow;
+  graph.uses[6].role = OperandRole::kBase;
+  graph.uses[6].operand = ValueId{0};
+  Relink(graph);
+  const auto found = Find(graph);
+  Check(found.values.empty() && !found.capture);
+  Check(std::holds_alternative<DefaultProofError>(
+      DefaultValueProof::Build(graph, parameters, literal, 0)));
+  graph.ops[2].exceptional = ExceptionalCompletion::kImpossible;
+  graph.ops[2].normal = graph.ops[2].before_throw = LanguageEffect::kNone;
+  // Falsifying effects must not turn an operation of the wrong semantic kind
+  // into a certified constant initializer.
+  Check(std::holds_alternative<DefaultProofError>(
+      DefaultValueProof::Build(graph, parameters, literal, 0)));
+}
 }  // namespace
-int main() { CapturedBoundary(); UnusedDefault(); EnvironmentPrefix(); MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); SnapshotDefault(); UndefinedProducer(); MaterializedNumber(); }
+int main() { PropertyDefaultBoundary(); CapturedBoundary(); UnusedDefault(); EnvironmentPrefix(); MatchAndBoundaries(); RejectCoincidences(); NegatedLiteral(); ProofAndEscapes(); BodyProjection(); SnapshotDefault(); UndefinedProducer(); MaterializedNumber(); }

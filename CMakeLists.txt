@@ -1048,6 +1048,18 @@ if(BUILD_TESTING)
   add_executable(default_candidates_test tests/unit/source/default_candidates_test.cc)
   target_link_libraries(default_candidates_test PRIVATE abcd_source)
   add_test(NAME default_candidates_test COMMAND default_candidates_test)
+  add_executable(member_expression_default_test tests/unit/source/member_expression_default_test.cc)
+  target_include_directories(member_expression_default_test PRIVATE tests/support)
+  target_link_libraries(member_expression_default_test PRIVATE abcd_source)
+  add_test(NAME member_expression_default_test COMMAND member_expression_default_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/member_expression_defaults/defaults.abc" 461)
+  if(ABCD_BUILD_TOOLS)
+    add_test(NAME member_expression_default_source_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/member_expression_default.py"
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:member_expression_default_test>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/member_expression_defaults/defaults.abc"
+      "${CMAKE_CURRENT_BINARY_DIR}/member-expression-default")
+  endif()
   add_executable(class_accessor_tree_test tests/unit/source/class_accessor_tree_test.cc
     tests/unit/source/class_names_checks.cc)
   target_link_libraries(class_accessor_tree_test PRIVATE abcd_source abcd_corpus abcd_json)
