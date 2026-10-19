@@ -5,6 +5,55 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Staged indexed-array commits across selections (2026-10-19, uncommitted)
+
+- Diagnosed o8/42040 m42490: allocation op17 PC47 creates the private empty
+  array; the selected string phi v17 is committed by op48 PC126
+  `STOWNBYINDEX`, then the array is stored into an outer object and passed to
+  the saved member call. The pinned interpreter uses own-property definition,
+  not indexed Set. See [literal-initialization.md](literal-initialization.md).
+- Added a prepaid indexed-commit table using the shared array cursor equation.
+  Literal verification independently reconstructs each original stored use,
+  definition order, Language domain, private identity and activation proof.
+  Existing normal selection/aggregate coverage now admits certified array
+  storage. Every staged indexed commit must acquire that independently checked
+  complete native array projection; no indexed assignment fallback is allowed.
+  Tree operands and existing original/recovery ports retain successful commits
+  and exception exits. No printer change, new premise or shape-specific path.
+- All three targets complete under --language-source: **o8/42040 m42490,
+  o15/20252 m20697, o28/41167 m41622**. Under previous flags o8 and o28 complete;
+  o15 retains metadata-level `ModuleEnclosureError::kContract` for lazy imports
+  (no method/PC). Both 40-input cohorts versus **abf950a8** have no regressions
+  and no text or position-map drift in any previously complete record:
+  **528 -> 530/620** previous flags; **578 -> 581/620** --language-source.
+  Only those two/three manifests change, respectively.
+- New/refreshed tests **5/5**. The pinned es2abc fixture asserts its own indexed
+  definitions and caller exception exits, then passes **234** original-source /
+  engine-output Node scenarios: short-circuit/getter/throw order, receiver,
+  callee replacement, descriptor flags, fresh identities and hostile inherited
+  indexed setters. Replacing a literal definition with indexed Set is detected.
+  Synthetic tests cover wrong-edge commits, early observation, cursor/domain/
+  coverage/projection mutations, copies/register/block variants, fresh loop
+  activations and unfinished re-entry. Exact byte/work limits pass at
+  **200/201/400/800**; measured work/storage grow linearly.
+- Full build passed; fixed source regression suite **65/65** serial. Required
+  CLI/corpus/failure/receipt/manifest/ISA/call-spread/staged/literal/logical/array
+  sweep **149/157**. Its eight failures are the previously documented
+  `family_source_cli_test`, `literal_construct_test`, `mixed_literal_test`,
+  `phased_literal_test`, `literal_closure_source_test`,
+  `unguarded_literal_closure_source_test`, `derived_literal_receiver_source_test`
+  and `unguarded_derived_literal_receiver_source_test`; none of their checks
+  were weakened. All eight reproduce on the rebuilt **abf950a8** baseline at
+  the same assertions (`baseline-failures.json` and per-test logs).
+- All new .mjs outputs pass `node --check`. o15 is existing lazy-import ArkTS
+  syntax: its body passes Node syntax checking with only `import lazy` adapted
+  to `import`; pinned es2abc accepts the full lazy form after the documented
+  string-export alias adaptation (`as "KeyMenu"` -> `as KeyMenu`). Neither is
+  a claim about Node executing lazy imports. Peak reported CLI RSS is
+  **42,549,248 bytes** (previous flags) / **40,517,632 bytes** (--language-source);
+  even four simultaneous CLI peaks are below **171 MB**, plus the small driver.
+  Evidence: `build/review/staged-indexed/`.
+
 ## Retained predicate snapshot with a private literal argument (2026-10-19, uncommitted)
 
 - Diagnosed m27565 PC903: op302 PC812 is an already-materialized condition

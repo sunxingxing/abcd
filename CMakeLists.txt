@@ -1061,6 +1061,10 @@ if(BUILD_TESTING)
   target_link_libraries(literal_plan_test PRIVATE abcd_source)
   add_test(NAME literal_plan_test COMMAND literal_plan_test)
   add_test(NAME staged_activation_test COMMAND literal_plan_test --staged-activations)
+  add_executable(staged_indexed_array_test tests/unit/source/staged_indexed_array_test.cc)
+  target_link_libraries(staged_indexed_array_test PRIVATE abcd_source)
+  add_test(NAME staged_indexed_array_test COMMAND staged_indexed_array_test)
+  add_test(NAME staged_indexed_activation_test COMMAND literal_plan_test --indexed-activations)
   add_executable(literal_construct_test tests/integration/literal_construct.cc)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
@@ -2073,6 +2077,9 @@ if(BUILD_TESTING)
     add_test(NAME literal_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_arm.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/literal_arm)
+    add_test(NAME staged_indexed_array_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/staged_indexed_array.mjs
+      $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/staged_indexed_array $<TARGET_FILE:abc_semantic>)
     add_test(NAME staged_activation_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/staged_activation.mjs
       $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/staged_activation)

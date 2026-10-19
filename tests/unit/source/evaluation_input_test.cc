@@ -18,7 +18,8 @@ ValueProgram Graph(unsigned count, bool copy = false, bool split = false, unsign
   const auto reg = static_cast<std::uint8_t>(shift);
   for (unsigned i = 0; i < count; ++i) {
     // Fresh array, then a conditional string, then an indexed definition.
-    // The phi value does not exist at allocation, unlike an available RHS.
+    // Deliberately omit index 0: this diagnoses an invalid cursor equation,
+    // since the ordinary staged conditional case now has full support.
     bytes.insert(bytes.end(), {0x05,0,0x61,reg,0x60,static_cast<std::uint8_t>(shift+2)});
     const auto branch = bytes.size(); bytes.insert(bytes.end(), {0x4f,0});
     bytes.insert(bytes.end(), {0x3e,0,0});
@@ -28,7 +29,7 @@ ValueProgram Graph(unsigned count, bool copy = false, bool split = false, unsign
     bytes[jump+1] = static_cast<std::uint8_t>(bytes.size()-jump);
     if (copy) bytes.insert(bytes.end(), {0x61,static_cast<std::uint8_t>(shift+1),0x60,static_cast<std::uint8_t>(shift+1)});
     if (split) bytes.insert(bytes.end(), {0x4d,2});
-    bytes.insert(bytes.end(), {0x79,0,reg,0,0,0x60,reg});
+    bytes.insert(bytes.end(), {0x79, 0, reg, 1, 0, 0x60, reg});
   }
   bytes.push_back(0x64);
   const auto body = test::Body(bytes);
@@ -46,20 +47,18 @@ void Located(const ValueProgram& graph) {
   EvaluationInputSite site;
   const auto literal = BuildLiteralPlan(graph,{}, {}, {}, {}, nullptr, &site);
   Check(std::get<LiteralError>(literal) == LiteralError::kDefinition);
-  Check(site.check == EvaluationInputCheck::kLiteralStagedStorage && site.operation);
-  Check(std::holds_alternative<ValueArrayAllocation>(graph.ops[site.operation->value].operation));
-  // A caller-supplied staged array cannot bypass the independent literal
-  // verifier. It must produce the same refusal and exact allocation witness.
-  LiteralPlan forged{graph.revision,graph.cfg_revision};
-  forged.staged.resize(graph.ops.size());
-  for (std::size_t i=0;i<graph.ops.size();++i) {
-    if (!std::holds_alternative<ValueIndexedWrite>(graph.ops[i].operation)) continue;
-    const auto& use=graph.uses[graph.ops[i].first_use.value];
-    const auto value=std::get<ValueId>(use.operand);
-    const auto allocation=std::get<OpResult>(graph.values[value.value].origin).op;
-    forged.objects.push_back({allocation,static_cast<std::uint32_t>(forged.definitions.size()),1,LiteralForm::kStatements});
-    forged.definitions.push_back(OpId{static_cast<std::uint32_t>(i)});forged.staged[i]=1;
-  }
+  Check(site.check == EvaluationInputCheck::kLiteralOrder && site.operation);
+  Check(std::holds_alternative<ValueIndexedWrite>(
+      graph.ops[site.operation->value].operation));
+  // A valid cursor certificate cannot mask a changed original indexed commit.
+  // The verifier independently re-derives the same located failure.
+  auto valid = graph;
+  for (auto& op : valid.ops)
+    if (auto* write = std::get_if<ValueIndexedWrite>(&op.operation))
+      write->index = 0;
+  auto certificate = BuildLiteralPlan(valid);
+  Check(std::holds_alternative<LiteralPlan>(certificate));
+  const auto& forged = std::get<LiteralPlan>(certificate);
   EvaluationInputSite independently_located;
   const auto verified=VerifyLiteralPlan(graph,forged,{}, {}, {}, {},nullptr,&independently_located);
   Check(std::get<LiteralError>(verified)==LiteralError::kDefinition);

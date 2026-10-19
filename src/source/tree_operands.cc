@@ -534,7 +534,10 @@ class OperandCheck {
           const auto expected = std::to_string(operation.index);
           RequireMeaning(property.key.value < tree_.names.size() &&
               tree_.names[property.key.value] == std::u16string(expected.begin(), expected.end()), Error::kConstant);
-          const auto previous = edge_input_; edge_input_ = true;
+          const auto previous = edge_input_;
+          edge_input_ = !IsStagedLiteral(
+              evaluation_.literals ? &*evaluation_.literals : nullptr,
+              current_);
           InputAt(1, property.value); edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
           if (IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_) &&

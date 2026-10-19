@@ -23,6 +23,10 @@ struct ArrayInitializationStep {
   std::optional<analysis::UseId> value;
   bool operator==(const ArrayInitializationStep&) const = default;
 };
+// Shared constant-index own-definition equation. Callers separately prove the
+// allocation identity, private activation, operand order and catch state.
+[[nodiscard]] std::variant<ArrayInitializationStep, ArrayInitializationError>
+IndexedArrayElement(const analysis::ValueProgram&, analysis::OpId, ArrayCursor);
 struct ArrayInitialization {
   analysis::OpId allocation;
   std::uint32_t first, count, buffered;

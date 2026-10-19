@@ -1,0 +1,13 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "options": [
+    "--module",
+    "--merge-abc",
+    "--opt-level=0"
+  ],
+  "hashes": {
+    "arrays.js": "839f7104b2b9cbce327c1d054bdc044fde8f1a6d4ac91198ad270dfa29301e42",
+    "arrays.abc": "fd0288c5389ccd229988775b698147690feccac4da20f2da4ec0e65e5b5710b4"
+  }
+}

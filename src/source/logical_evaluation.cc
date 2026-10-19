@@ -335,8 +335,14 @@ std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const Evalu
   // Domain owns availability, execution count and effect order, including the
   // common linear prefix. Allocation/header block identity proves none of them.
   if (definitions.empty() || index.first_selections[allocation.value] != route.front()->branch) return {};
-  const auto* buffer = std::get_if<ValueObjectAllocation>(&graph.ops[allocation.value].operation);
-  if (!buffer || !buffer->literal) return {};
+  const auto storage = [&](OpId id) {
+    const auto* object =
+        std::get_if<ValueObjectAllocation>(&graph.ops[id.value].operation);
+    return (object && object->literal) ||
+           (index.objects[id.value] &&
+            plan.literals->objects[*index.objects[id.value]].indexed_first);
+  };
+  if (!storage(allocation)) return {};
   auto block = route.front()->header;
   bool selected = false;
   for (const auto definition : definitions) {
@@ -354,7 +360,15 @@ std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const Evalu
       } else if (&region != route.front()) return {};
       selected = true; block = region.join;
     }
-    if (field.use_count != 2 || !std::holds_alternative<ValueOwnWrite>(field.operation) || field.block != block) return {};
+    const auto owner = index.fields[definition.value];
+    const bool indexed =
+        owner && index.objects[owner->value] &&
+        plan.literals->objects[*index.objects[owner->value]].indexed_first &&
+        std::holds_alternative<ValueIndexedWrite>(field.operation);
+    if (field.use_count != 2 ||
+        (!std::holds_alternative<ValueOwnWrite>(field.operation) && !indexed) ||
+        field.block != block)
+      return {};
   }
   if (!selected) return {};
   const auto external = index.object_consumers[allocation.value];
@@ -363,8 +377,7 @@ std::optional<SelectedObject> ObjectRoute(const ValueProgram& graph, const Evalu
   if (graph.ops[owner.value].block != route.back()->join || owner <= definitions.back()) return {};
   for (const auto id : allocations) {
     budget.Step();
-    const auto* object = std::get_if<ValueObjectAllocation>(&graph.ops[id.value].operation);
-    if (!object || !object->literal || !index.object_consumers[id.value]) return {};
+    if (!storage(id) || !index.object_consumers[id.value]) return {};
   }
   return SelectedObject{allocation, allocations, definitions, *external};
 }

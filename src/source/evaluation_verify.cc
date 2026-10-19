@@ -342,6 +342,33 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     admit(logical_budget.Bytes(), 1); step(logical_budget.Work());
     TreeCheckBudget fusion_budget({bytes, work});
     VerifyLogicalValues(graph, plan, fusion_budget);
+    // A staged indexed DefineOwnProperty has no source indexed-Set fallback.
+    // The typed commit table proves construction; the independently verified
+    // complete aggregate projection must additionally own every commit.
+    if (plan.literals)
+      for (const auto& object : plan.literals->objects) {
+        fusion_budget.Step();
+        if (!object.indexed_first) continue;
+        if (plan.logical_objects.empty() ||
+            !plan.logical_objects[object.allocation.value]) {
+          auto evidence = EvaluationAt(graph, plan, object.allocation,
+                                       EvaluationObligation::kProjection);
+          evidence.plan_cause = LiteralError::kDefinition;
+          evidence.input_check = EvaluationInputCheck::kLiteralStagedStorage;
+          throw EvaluationFailure{Error::kUnsupportedOperation, evidence};
+        }
+        Require(plan.logical_objects[object.allocation.value] ==
+                    plan.literals->definitions[object.first + object.count - 1],
+                Error::kOwnership);
+        for (std::uint32_t i = 0; i < object.count; ++i) {
+          fusion_budget.Step();
+          Require(plan.operations[plan.literals->definitions[object.first + i]
+                                      .value]
+                          .kind == EvaluationKind::kInitializer,
+                  Error::kOwnership);
+        }
+      }
+
     admit(fusion_budget.Bytes(), 1); step(fusion_budget.Work());
     const auto module_copies = VerifyModuleCatchCopies(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<EvaluationFailure>(&module_copies)) return *error;

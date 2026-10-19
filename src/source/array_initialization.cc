@@ -209,12 +209,21 @@ class Construction {
           Require(!indexed || indexed->kind == IndexedDefinition::kOwnStore, Error::kDefinition);
           Require(!op.result && op.use_count == (indexed ? 2U : 3U), Error::kDefinition);
           Role(op, 0, OperandRole::kBase);
-          const auto index = indexed ? ArrayCursor{{}, indexed->index} : Cursor(Input(op, 1));
-          Require(index == current, Error::kCursor);
-          if (!indexed) Role(op, 1, OperandRole::kKey);
-          item.value = UseId{op.first_use.value + (indexed ? 1U : 2U)};
-          Require(g_.uses[item.value->value].role == OperandRole::kStoredValue, Error::kDefinition);
-          Require(current.offset < UINT64_MAX, Error::kCursor); ++current.offset;
+          if (indexed) {
+            auto element = IndexedArrayElement(g_, *next, current);
+            if (const auto* error = std::get_if<Error>(&element)) throw *error;
+            item = std::get<ArrayInitializationStep>(element);
+            current = item.after;
+          } else {
+            Require(Cursor(Input(op, 1)) == current, Error::kCursor);
+            Role(op, 1, OperandRole::kKey);
+            item.value = UseId{op.first_use.value + 2};
+            Require(
+                g_.uses[item.value->value].role == OperandRole::kStoredValue,
+                Error::kDefinition);
+            Require(current.offset < UINT64_MAX, Error::kCursor);
+            ++current.offset;
+          }
         }
         item.after = current;
         if (item.value) Consume(*item.value, result, previous, throwing, corridors ? &*corridors : nullptr);
@@ -465,6 +474,28 @@ class Construction {
   std::vector<std::optional<OpId>> cursor_owners_, finals_;
   std::vector<std::optional<ArrayCursor>> cursors_;
 };
+}
+std::variant<ArrayInitializationStep, ArrayInitializationError>
+IndexedArrayElement(const analysis::ValueProgram& graph, analysis::OpId id,
+                    ArrayCursor before) {
+  using namespace analysis;
+  if (id.value >= graph.ops.size())
+    return ArrayInitializationError::kDefinition;
+  const auto& op = graph.ops[id.value];
+  const auto* write = std::get_if<ValueIndexedWrite>(&op.operation);
+  if (!write || write->kind != IndexedDefinition::kOwnStore || op.result ||
+      op.use_count != 2 || op.first_use.value >= graph.uses.size() ||
+      graph.uses.size() - op.first_use.value < 2 ||
+      graph.uses[op.first_use.value].role != OperandRole::kBase ||
+      graph.uses[op.first_use.value + 1].role != OperandRole::kStoredValue)
+    return ArrayInitializationError::kDefinition;
+  if (before.spread || write->index != before.offset ||
+      before.offset == UINT64_MAX)
+    return ArrayInitializationError::kCursor;
+  auto after = before;
+  ++after.offset;
+  return ArrayInitializationStep{id, ArrayStepKind::kElement, before, after,
+                                 UseId{op.first_use.value + 1}};
 }
 std::variant<ArrayInitializationPlan, ArrayInitializationError> BuildArrayInitializations(
     const analysis::ValueProgram& graph, SourceContract contract, ExpressionConstants constants,

@@ -41,6 +41,9 @@ struct ObjectInit {
   std::uint32_t first;
   std::uint32_t count;
   LiteralForm form = LiteralForm::kExpression;
+  // Original indexed own commits, not permission for source indexed Set.
+  // A complete native selection/aggregate projection is required to publish.
+  std::optional<std::uint32_t> indexed_first;
 };
 struct LiteralPlan {
   analysis::IrRevision revision;
@@ -48,6 +51,7 @@ struct LiteralPlan {
   std::optional<ArrayInitializationPlan> arrays;
   std::vector<ObjectInit> objects;
   std::vector<analysis::OpId> definitions;
+  std::vector<ArrayInitializationStep> indexed_commits;
   std::vector<std::uint8_t> staged;
   // Per nested allocation/value expression, the unique immediate consumer use.
   // Operand trees preserve initialization/operand/property order; module guards are paired. Empty

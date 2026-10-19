@@ -811,3 +811,93 @@ traversal. Budget exhaustion is a typed refusal, never an acyclicity result.
 Tests cover fresh repeated activations, unfinished re-entry, repeated writes
 without reallocation, exact budgets, and engine-output Node traces. Existing
 private ownership, descriptor, scope, exception and recovery checks remain binding.
+
+## Staged indexed commits across selections (2026-10-19, evidence first)
+
+For o8/42040 m42490 the reported PC47 is the **allocation**, not the write.
+The original normal-flow IR (`phases.size()==0`) is:
+- PC11 op5 reads the global -> v23; PC19 op8 saves its member callee -> v26.
+- PC25 op10 allocates buffered outer object v28. PC42 op16 defines its first
+  field (u14/base=v28, u15/stored=v33, from the original `void` expression).
+- PC47 op17 `ValueArrayAllocation -> v34`; copies v35 retain that same array.
+- PC51..77 op19..29 read the original lexical/member and guarded module/member
+  operands; PC80 op30 branches on u27/v45.
+- PC82 op31 supplies string v94. The other edge reaches a second comparison,
+  op43/v55 and branch op44 PC116, with strings v57 PC118 and v56 PC123.
+- Phi v17 has u82=v94 on edge2, u83=v57 on edge5, u84=v56 on edge6.
+- PC126 op48 `ValueIndexedWrite(kOwnStore,index=0)` consumes u39/base=v34 and
+  u40/stored=v17, with a possibly-throwing exit to the caller and normal Commit.
+- PC133 op50 defines the enclosing object's field (u42/base=v28,u43/stored=v34).
+  PC144 op54 invokes saved callee u47/v26, receiver u48/v23, argument u49/v28.
+The `kLiteralStagedStorage` check rejects array op17 because it only accepts
+buffered object storage followed by named own definitions. The element's value
+and array identity are otherwise represented; the issue is not a raw indexed Set.
+
+Pinned semantics: `STOWNBYINDEX_IMM8_V8_IMM16` in
+`references/openharmony/arkcompiler/ets_runtime/ecmascript/interpreter/interpreter-inl.cpp:5898`
+uses the own-store IC and `SetPropertyByIndex<Status::UseOwn>` fast path (:5935),
+then `SlowRuntimeStub::StOwnByIndex` (:5949). The latter forwards at
+`ecmascript/interpreter/slow_runtime_stub.cpp:545` to
+`RuntimeStubs::RuntimeStOwnByIndex` in `ecmascript/stubs/runtime_stubs-inl.h:790`:
+a value descriptor with writable/enumerable/configurable true for ordinary
+arrays is passed to `JSTaggedValue::DefineOwnProperty`; failure throws TypeError.
+The own fast path stops prototype traversal (`object_fast_operator-inl.h:584`).
+ACC is restored by the interpreter on success. Thus a fresh-array literal's
+CreateDataProperty is the source operation; an ordinary indexed assignment is
+not an equivalent projection in the presence of an inherited indexed setter.
+
+The extension records staged indexed commits using the existing array
+step/cursor equations. Allocation identity, final-write availability, no escape
+and unfinished-activation cycles reuse LiteralPlan's shared analyses. A staged
+array must acquire a complete existing selection/literal event-forest projection
+before evaluation verification succeeds; there is no indexed-assignment fallback.
+The tree keeps the allocation before element evaluation and the indexed own
+commit after the selected value. Existing tree/original/recovery verification
+must independently match every definition, successful commit and exception exit.
+Diagnostic evidence: `build/review/staged-indexed/`.
+
+Implementation: `IndexedArrayElement` is the constant-time cursor equation shared
+with `BuildArrayInitializations`/its independent verifier. LiteralPlan pre-counts
+and charges one `indexed_commits` table, then records each original operation,
+stored UseId and before/after cursor. Its verifier derives the equations again,
+checks Language element domains and complete coverage, and runs the unchanged
+shared identity/dominance/escape/activation analyses. No construction performs a
+new whole-CFG walk. Additional work and storage are O(operations + definitions),
+within the existing O((V+E) log V) common flow proof.
+
+The normal selection/aggregate route accepts this certified storage alongside
+buffered objects. The independent evaluation verifier re-derives that route and
+requires every staged array commit to belong to its complete native aggregate
+projection. An incomplete projection keeps the located `kLiteralStagedStorage`
+refusal; it cannot fall back to source indexed assignment. Buffered staged arrays
+still refuse until their constant prefix extent/replacement evidence is supplied.
+Phased staged arrays without a complete native aggregate route retain the gate;
+no catch staging, dynamic-index or sparse-array admission is added.
+Tree operands match selected RHS values at their actual property events rather
+than treating them as values available before allocation. The existing native
+array TreeFlow/original/recovery property ports retain own-definition identity,
+order and throwing exits. Printer actions are unchanged.
+
+`staged_indexed_array_test` covers complete native trees, independent cursor,
+commit, domain, coverage and projection mutations, valid wrong-edge/early-read
+negative graphs, register renaming, SSA copies and allocation/selection block
+splits. `staged_indexed_activation_test` checks fresh activations across loops
+and unfinished/repeated re-entry. Exact byte/work boundaries are tested at
+200/201/400/800 elements. The measured unsplit literal-proof costs are:
+
+| Elements | Construction work | Verification work | Minimum charged bytes | Retained bytes |
+|---:|---:|---:|---:|---:|
+| 200 | 258994 | 141915 | 820000 | 12204 |
+| 201 | 260286 | 142623 | 824086 | 12263 |
+| 400 | 517394 | 283515 | 1637200 | 24004 |
+| 800 | 1034194 | 566715 | 3271600 | 47604 |
+
+The pinned es2abc fixture produces three complete functions. It asserts the
+original indexed definitions and their caller exception exits, then compares
+234 engine-output/original-source scenarios in Node, including a hostile
+Array.prototype[0] setter and an indexed-Set mutation that must be detected.
+The three target records complete under --language-source. Under previous flags
+o8/42040 and o28/41167 complete; o15/20252 retains the separate metadata-level
+`ModuleEnclosureError::kContract` (lazy imports; no method/PC). No new premise is
+introduced. Cohort comparisons and final acceptance logs are retained under
+`build/review/staged-indexed/`.

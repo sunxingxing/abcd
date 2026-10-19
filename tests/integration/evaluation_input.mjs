@@ -1,4 +1,5 @@
-// Evidence-only regression: ABC inputs, never paired source, drive recovery.
+// ABC inputs, never paired source, drive recovery. Staged indexed arrays now
+// complete; the unrelated module-contract and decision failures remain checked.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
@@ -6,10 +7,10 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 const [semantic,structure,root]=process.argv.slice(2);
 const cases=[
- [42040,42490,2,8,17,47],
- [41167,41622,2,8,17,47],
- [20252,20697,2,8,17,47],
- [37520,38116,null,null,null,null],
+ [42040,42490],
+ [41167,41622],
+ [20252,20697],
+ [37520,38116],
 ];
 // Paths are cohort fixture boundaries, not engine admission criteria. Resolve
 // their current configured ABC input rather than guessing an application alias.
@@ -19,19 +20,27 @@ const ordinals=[8,28,15,24];
 const run=(exe,args)=>{const p=spawnSync(exe,args,{encoding:'utf8',timeout:180000,maxBuffer:32*1024*1024});assert.ifError(p.error);assert.equal(p.signal,null);return p;};
 const dir=mkdtempSync(join(tmpdir(),'abcd-evaluation-input-'));
 try {
- for(const [ci,[record,method,leaf,check,operation,pc]] of cases.entries()) {
+ for(const [ci,[record,method]] of cases.entries()) {
   const abc=join(config.roots[cohort.root],cohort.inputs[ordinals[ci]].path);
   for(const [name,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
    const out=join(dir,`${ci}-${name}`),p=run(structure,[abc,out,'--value-source',...flags]);
    assert.equal(p.status,0,p.stderr);
    const row=JSON.parse(readFileSync(join(out,'manifest.json'))).records.find(r=>r.entity===record);
-   assert.equal(row.source_complete,false);
-   const s=run(semantic,[abc,String(method),'--record-source',...flags]);assert.equal(s.status,1,s.stdout);
+   const s=run(semantic,[abc,String(method),'--record-source',...flags]);
    const report=JSON.parse(s.stdout);
    if(ci===2&&name==='old') {
+    assert.equal(row.source_complete,false);assert.equal(s.status,1,s.stdout);
     assert.deepEqual(row.source_causes,[{domain:'abcd::source::ModuleEnclosureError',value:10}]);
     assert.deepEqual(report.source_causes,row.source_causes);continue;
    }
+   if(ci<3) {
+    assert.equal(s.status,0,s.stdout); assert.equal(row.source_complete,true);
+    assert.equal(report.source_complete,true); assert.equal(row.source_failure,undefined);
+    assert.equal(report.source_failure,undefined);
+    assert.match(report.source,/params: \[/);
+    continue;
+   }
+   assert.equal(s.status,1,s.stdout); assert.equal(row.source_complete,false);
    assert.deepEqual(report.source_failure,row.source_failure);
    const f=row.source_failure;
    if(ci===3) {
@@ -44,12 +53,8 @@ try {
       prefix_event:{method:38116,control:1396,synthetic:{kind:2,source:8}}});
     continue;
    }
-   assert.deepEqual(f.causes,[['EvaluationError',2],['EvaluationObligation',0],['LiteralError',leaf],['EvaluationInputCheck',check]].map(([domain,value])=>({domain:`abcd::source::${domain}`,value})));
-   assert.equal(f.method,method);assert.equal(f.evaluation.input_check,check);
-   assert.deepEqual(f.evaluation.plan_cause,{domain:'LiteralError',value:leaf});
-   assert.equal(f.evaluation.location.operation,operation??undefined);
-   assert.equal(f.pc,pc??undefined);assert.equal(f.working_pc,pc??undefined);
+
   }
  }
- console.log('evaluation_input_cli_test: four records, both contracts, leaf/location and CLI/manifest agreement');
+ console.log('evaluation_input_cli_test: three staged-array completions, both contracts, retained module/decision refusals and CLI/manifest agreement');
 } finally {rmSync(dir,{recursive:true,force:true});}

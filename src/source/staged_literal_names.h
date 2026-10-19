@@ -16,6 +16,9 @@ bool CheckStagedLiteralNames(const LiteralPlan& plan, ExpressionConstants consta
     std::span<const std::u16string> names, Step step, Admit admit) {
   for (const auto& object : plan.objects) {
     step(1); if (object.form != LiteralForm::kStatements) continue;
+    // Indexed commits publish only as independently verified native arrays,
+    // never the buffered-object assignment projection checked below.
+    if (object.indexed_first) continue;
     if (object.allocation.value >= constants.operations.size()) return false;
     const auto* buffer = std::get_if<AggregateConstant>(&constants.operations[object.allocation.value]);
     if (!buffer || buffer->kind != AggregateKind::kObject || buffer->first > constants.properties.size() ||

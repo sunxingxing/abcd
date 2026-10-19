@@ -204,6 +204,49 @@ void StagedActivations() {
     Check(std::get<LiteralError>(BuildLiteralPlan(graph, budget)) == LiteralError::kResourceLimit);
   }
 }
+// Staging retains the own-definition cursor and activation proof even when
+// surrounding loops prevent a whole-method DAG proof.
+void IndexedActivations() {
+  const auto array = [](ValueProgram graph) {
+    graph.ops[0].operation = ValueArrayAllocation{};
+    std::uint32_t index = 0;
+    for (auto& op : graph.ops)
+      if (std::holds_alternative<ValueOwnWrite>(op.operation))
+        op.operation = ValueIndexedWrite{index++, 0};
+    return graph;
+  };
+  for (const auto count : {1U, 200U, 201U, 400U, 800U}) {
+    const auto graph = array(CyclicStaged(count));
+    Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(graph)));
+    const auto built = BuildLiteralPlan(graph);
+    Check(std::holds_alternative<LiteralPlan>(built));
+    const auto& plan = std::get<LiteralPlan>(built);
+    Check(plan.indexed_commits.size() == count);
+    Check(
+        std::holds_alternative<std::uint64_t>(VerifyLiteralPlan(graph, plan)));
+    for (auto changed : {array(CyclicStaged(count, true)),
+                         array(CyclicStaged(count, false, true))}) {
+      auto candidate = plan;
+      ArrayCursor cursor;
+      for (std::size_t i = 0; i < candidate.indexed_commits.size(); ++i) {
+        const auto step = std::get<ArrayInitializationStep>(
+            IndexedArrayElement(changed, candidate.definitions[i], cursor));
+        candidate.indexed_commits[i] = step;
+        cursor = step.after;
+      }
+      EvaluationInputSite failure;
+      Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(
+          changed, candidate, {}, {}, {}, {}, nullptr, &failure)));
+      Check(failure.check == EvaluationInputCheck::kLiteralStagedAcyclic);
+    }
+    auto changed = graph;
+    const auto read = std::get<OpResult>(graph.values[2].origin).op;
+    changed.uses[changed.ops[read.value].first_use.value].operand =
+        *graph.ops[0].result;
+    Check(
+        std::holds_alternative<LiteralError>(VerifyLiteralPlan(changed, plan)));
+  }
+}
 void StagedBuffer(bool print = false) {
   auto graph = StagedGraph();
   const auto planned = BuildLiteralPlan(graph);
@@ -1081,6 +1124,10 @@ void PredicateLiterals(bool print = false) {
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--indexed-activations") {
+    IndexedActivations();
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--staged-activations") { StagedActivations(); return 0; }
   StagedActivations(); OrderedFields();
   if (argc == 2 && std::string_view(argv[1]) == "--predicate-sources") { PredicateLiterals(true); return 0; }

@@ -720,11 +720,20 @@ void VerifyStaged(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     EvaluationInputScope site(failure, {EvaluationInputCheck::kLiteralStagedStorage, object.allocation});
     const auto& allocation = graph.ops[object.allocation.value];
     const auto* buffer = std::get_if<analysis::ValueObjectAllocation>(&allocation.operation);
-    Require(buffer && buffer->literal, Error::kDefinition);
+    const auto* array =
+        std::get_if<analysis::ValueArrayAllocation>(&allocation.operation);
+    Require((buffer && buffer->literal && !object.indexed_first) ||
+                (array && !array->literal && object.indexed_first),
+            Error::kDefinition);
     auto last = object.allocation;
     for (std::uint32_t i = 0; i < object.count; ++i) {
       budget.Step(); const auto id = plan.definitions[object.first + i]; const auto& op = graph.ops[id.value];
-      Require(std::holds_alternative<analysis::ValueOwnWrite>(op.operation), Error::kDefinition);
+      Require(
+          object.indexed_first
+              ? std::holds_alternative<analysis::ValueIndexedWrite>(
+                    op.operation)
+              : std::holds_alternative<analysis::ValueOwnWrite>(op.operation),
+          Error::kDefinition);
       if (cyclic) {
         EvaluationInputScope order_site(failure, {EvaluationInputCheck::kLiteralOrder, id});
         Require(precedes(object.allocation, id), Error::kDefinition);
@@ -801,7 +810,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     std::vector<std::uint8_t> allocations;
     budget.Admit(1, sizeof(owners) + sizeof(allocations));
     budget.Size(owners, graph.ops.size()); budget.Size(allocations, graph.ops.size());
-    std::size_t next = 0;
+    std::size_t next = 0, indexed_next = 0;
     for (const auto& object : plan.objects) {
       budget.Step();
       Require(object.allocation.value < graph.ops.size() && !allocations[object.allocation.value] &&
@@ -810,6 +819,37 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
       Require(object.form == LiteralForm::kExpression || object.form == LiteralForm::kStatements, Error::kDefinition);
       allocations[object.allocation.value] = 1;
       const auto& allocation = graph.ops[object.allocation.value];
+      const bool indexed_staged =
+          object.form == LiteralForm::kStatements &&
+          std::holds_alternative<analysis::ValueArrayAllocation>(
+              allocation.operation);
+      Require(indexed_staged == object.indexed_first.has_value(),
+              Error::kCoverage);
+      if (indexed_staged) {
+        Require(*object.indexed_first == indexed_next &&
+                    indexed_next <= plan.indexed_commits.size() &&
+                    object.count <= plan.indexed_commits.size() - indexed_next,
+                Error::kCoverage);
+        ArrayCursor cursor{};
+        for (std::uint32_t p = 0; p < object.count; ++p) {
+          budget.Step();
+          const auto id = plan.definitions[object.first + p];
+          EvaluationInputScope site(failure,
+                                    {EvaluationInputCheck::kLiteralOrder, id});
+          auto proof = IndexedArrayElement(graph, id, cursor);
+          Require(std::holds_alternative<ArrayInitializationStep>(proof),
+                  Error::kDefinition);
+          const auto step = std::get<ArrayInitializationStep>(proof);
+          Require(plan.indexed_commits[indexed_next++] == step,
+                  Error::kCoverage);
+          const auto operand =
+              path.Resolve(graph.uses[step.value->value].operand);
+          if (const auto* value = std::get_if<analysis::ValueId>(&operand))
+            Require(graph.values[value->value].domain.IsLanguage(),
+                    Error::kDomain);
+          cursor = step.after;
+        }
+      }
       auto prior = object.allocation;
       std::optional<std::uint32_t> previous_index;
       for (std::uint32_t i = 0; i < object.count; ++i) {
@@ -858,7 +898,9 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
         owners[id.value] = object.allocation;
       }
     }
-    Require(next == plan.definitions.size(), Error::kCoverage);
+    Require(next == plan.definitions.size() &&
+                indexed_next == plan.indexed_commits.size(),
+            Error::kCoverage);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const bool own = (projected.empty() || !projected[i]) && graph.ops[i].life == analysis::ValueLife::kLive && !IsReceiverField(graph, graph.ops[i]) &&
@@ -960,6 +1002,37 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         for (std::uint32_t p = 0; p < object.count; ++p) { budget.Step(); plan.staged[plan.definitions[object.first + p].value] = 1; }
       }
     }
+    std::size_t indexed_count = 0;
+    for (auto& object : plan.objects) {
+      budget.Step();
+      if (object.form != LiteralForm::kStatements ||
+          !std::holds_alternative<analysis::ValueArrayAllocation>(
+              graph.ops[object.allocation.value].operation))
+        continue;
+      Require(indexed_count <= UINT32_MAX &&
+                  object.count <= UINT32_MAX - indexed_count,
+              Error::kResourceLimit);
+      object.indexed_first = static_cast<std::uint32_t>(indexed_count);
+      indexed_count += object.count;
+    }
+    budget.Size(plan.indexed_commits, indexed_count);
+    for (const auto& object : plan.objects) {
+      budget.Step();
+      if (!object.indexed_first) continue;
+      ArrayCursor cursor{};
+      for (std::uint32_t p = 0; p < object.count; ++p) {
+        budget.Step();
+        const auto id = plan.definitions[object.first + p];
+        EvaluationInputScope site(failure,
+                                  {EvaluationInputCheck::kLiteralOrder, id});
+        auto built = IndexedArrayElement(graph, id, cursor);
+        Require(std::holds_alternative<ArrayInitializationStep>(built),
+                Error::kDefinition);
+        const auto step = std::get<ArrayInitializationStep>(built);
+        plan.indexed_commits[*object.indexed_first + p] = step;
+        cursor = step.after;
+      }
+    }
     {
       for (const auto& object : plan.objects) for (std::uint32_t p = 0; p < object.count; ++p) {
         budget.Step(); if (object.form == LiteralForm::kStatements) continue;
@@ -1013,9 +1086,12 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining(), guards, projected, receiver_guards, cells, failure);
     if (const auto* error = std::get_if<Error>(&verified)) return *error;
     budget.Step(std::get<std::uint64_t>(verified));
-    plan.allocated_bytes = sizeof(plan) + plan.objects.capacity() * sizeof(ObjectInit) +
+    plan.allocated_bytes =
+        sizeof(plan) + plan.objects.capacity() * sizeof(ObjectInit) +
         plan.definitions.capacity() * sizeof(analysis::OpId) +
-        plan.nested.capacity() * sizeof(std::optional<analysis::UseId>) + plan.staged.capacity();
+        plan.indexed_commits.capacity() * sizeof(ArrayInitializationStep) +
+        plan.nested.capacity() * sizeof(std::optional<analysis::UseId>) +
+        plan.staged.capacity();
     plan.work = budget.Work();
     return plan;
   } catch (Error error) { return error;
