@@ -122,3 +122,38 @@ remain unfinished. Tests assert the current typed gap, not permanent refusal;
 update those assertions as each semantic family is implemented. Node / Ark
 round-trip / Ark runtime columns remain empty. Constructed decoding and frontend
 emission do not justify SupportedVerified or NonExecutable classification.
+
+
+## Increment 2b raw semantics boundary (2026-10-19, incomplete)
+
+The four WITHNAMESET encodings now reuse `OwnWrite` / `ComputedOwnWrite` with
+`PropertyNameSetting::kPropertyKey`. Value import preserves that attribute.
+They preserve acc, can throw after observable writes, and include name allocation
+and heap effects. The ordinary receiver-field shortcut cannot erase the
+attribute. Evaluation construction and verification refuse source publication
+with located `LiteralError::kNameSettingProof` until the native naming proof is
+represented through literal, family and recovery verification. This is **raw
+lifting, not completed source recovery**; no Node semantic oracle is claimed.
+
+A further domain distinction was found in the pinned runtime (ets_runtime
+`f04900cf951c66c2ea18b2bab5b591d5336c34b9`):
+
+- `ecmascript/interpreter/interpreter-inl.cpp:2929` (wide counterpart at 6860)
+  defines the property, then passes the original computed key register to
+  `JSFunction::SetFunctionNameNoPrefix` on the successful fast path.
+- `ecmascript/object_fast_operator-inl.h:849` accepts numeric keys and can
+  successfully define an indexed element without converting the original key.
+- `ecmascript/js_function.cpp:948` keeps a non-Symbol name unchanged. Thus this
+  path can install a numeric `.name`, whereas native object-literal naming
+  produces a string. This is source inspection, not an Ark execution result.
+- `ecmascript/stubs/runtime_stubs-inl.h:1291` instead performs ToPropertyKey on
+  the slow path, defines the own descriptor, and names the function afterwards.
+
+A source projection must prove its key domain/path equivalent; it cannot assume
+that all numeric computed keys match native NamedEvaluation. No extra premise is
+assumed. Likewise, the fresh function must have no observable name before the
+projection, and moving native naming before definition must be unobservable on
+the private destination. Computed object keys and property-driven anonymous-name
+selection still need explicit tree/family correspondence; the current printer's
+creation-name preservation is not such a proof. Classes additionally require
+checking static-initializer timing rather than treating them as plain closures.

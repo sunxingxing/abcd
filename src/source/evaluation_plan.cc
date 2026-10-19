@@ -61,7 +61,11 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
     plan.flow = flow;
     bool has_notification=false;
-    for(const auto& op:graph.ops){step();has_notification|=std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);}
+    for(std::size_t i = 0; i < graph.ops.size(); ++i) {
+      step(); const auto& op = graph.ops[i];
+      if (const auto failure = NameSettingRefusal(graph, {static_cast<std::uint32_t>(i)})) return *failure;
+      has_notification |= std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);
+    }
     if(has_notification) {
       auto proof=BuildConcurrentCompletion(graph,{bytes,work});
       if(const auto* failure=std::get_if<ConcurrentFailure>(&proof)) {

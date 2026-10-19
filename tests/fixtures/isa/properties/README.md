@@ -1,9 +1,10 @@
 # Property instruction evidence (ISA increment 2, partial)
 
 These are decode/emission fixtures, **not semantic-support fixtures**. No engine
-output or Ark runtime oracle has passed for the 21 target variants. The current
-production lifter refuses every target instruction with UnsupportedInstruction;
-the test explicitly distinguishes that from NonExecutable. No runtime execution
+output or Ark runtime oracle has passed for the 21 target variants. The four WITHNAMESET variants now lift with a typed property-name mutation;
+source recovery remains sealed by `LiteralError::kNameSettingProof`. The other
+17 target instructions still refuse with UnsupportedInstruction. The test
+explicitly distinguishes both outcomes from NonExecutable. No runtime execution
 of the constructed methods is claimed (their arbitrary receivers need not meet
 runtime preconditions).
 

@@ -3,18 +3,23 @@
 #include "abcd/abc/pool_reference.h"
 #include "abcd/abc/register_access.h"
 namespace abcd::analysis {
+// Pinned WITHNAMESET defines the property before mutating the function name.
+// This is not an assignment or a name-neutral own definition.
+enum class PropertyNameSetting : std::uint8_t { kNone, kPropertyKey };
 enum class OwnWriteKind { kStore, kDefineField };
 struct OwnWrite {
   OwnWriteKind kind;
   abc::PoolIndex name;
   abc::RegisterId object;
   std::uint16_t cache_slot = 0;
+  PropertyNameSetting name_setting = PropertyNameSetting::kNone;
 };
 // Computed own store preserves acc; key coercion and descriptor changes may throw.
 struct ComputedOwnWrite {
   abc::RegisterId object;
   abc::RegisterId key;
   std::uint16_t cache_slot;
+  PropertyNameSetting name_setting = PropertyNameSetting::kNone;
 };
 enum class OwnWriteError {
   kUnsupportedOpcode,

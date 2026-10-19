@@ -120,7 +120,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, DefineAccessor>) {
       return ValueDefineAccessor{};
     } else if constexpr (std::is_same_v<T, ComputedOwnWrite>) {
-      return ValueComputedOwnWrite{};
+      return ValueComputedOwnWrite{op.name_setting};
     } else if constexpr (std::is_same_v<T, ArraySpread>) {
       return ValueArraySpread{};
     } else if constexpr (std::is_same_v<T, IndexedWrite>) {
@@ -128,7 +128,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, OwnWrite>) {
       switch (op.kind) {
         case OwnWriteKind::kStore: case OwnWriteKind::kDefineField:
-          return ValueOwnWrite{op.kind, op.name, op.cache_slot};
+          return ValueOwnWrite{op.kind, op.name, op.cache_slot, op.name_setting};
       }
       throw ValueImportFailure{Error::kUnsupportedOperation, {}};
     } else if constexpr (std::is_same_v<T, BranchOperation>) {

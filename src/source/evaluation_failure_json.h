@@ -71,7 +71,7 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
     const auto domain = c["domain"].get<std::string>();
     if (domain == "HoleProtocolError" && n <= static_cast<unsigned>(HoleProtocolError::kWorkLimit)) v.plan_cause = static_cast<HoleProtocolError>(n);
     else if (domain == "CellEvaluationError" && n <= static_cast<unsigned>(CellEvaluationError::kWorkLimit)) v.plan_cause = static_cast<CellEvaluationError>(n);
-    else if (domain == "LiteralError" && n <= static_cast<unsigned>(LiteralError::kWorkLimit)) v.plan_cause = static_cast<LiteralError>(n);
+    else if (domain == "LiteralError" && n <= static_cast<unsigned>(LiteralError::kNameSettingProof)) v.plan_cause = static_cast<LiteralError>(n);
     else if (domain == "EvaluationShapeError" && n <= static_cast<unsigned>(EvaluationShapeError::kMissingShape)) v.plan_cause = static_cast<EvaluationShapeError>(n);
     else return {};
   }

@@ -12,6 +12,28 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## ISA increment 2b：原始 name-setting 语义（未完成源码恢复）
+
+- 基线 `163b91aa`；四个 WITHNAMESET 变体增加类型化 `PropertyNameSetting`，复用
+  own definition，保留 acc、descriptor/name mutation 的可抛出效果与 Value IR 身份。
+  接收者字段捷径不丢弃该属性；evaluation builder/verifier 以有位置的
+  `LiteralError::kNameSettingProof` 拒绝尚未证明的源码投影。
+- **本轮请求尚未完成**：computed object-key 事件、fresh anonymous function/arrow/class
+  的 property-driven naming、独立 tree/family/recovery 证明和 engine-output Node
+  差分仍缺失。没有将 raw lifting 或拒绝门当作源码支持。numeric computed key 的
+  pinned fast-path `.name` 差异已记录在 [runtime evidence](isa-properties-runtime-evidence.md)。
+- 完整构建通过；固定集 **65/65**；name_setting / evaluation_input / property evidence /
+  constructed branches / coverage matrix **5/5**。新测试覆盖所有四个格式、操作数变异、
+  独立 import verifier 拒绝删除 naming 属性、200/201/400/800 和精确 byte/work 边界。
+- 指定 CLI/corpus/failure/receipt/manifest/ISA sweep **85/86**；唯一失败为已登记的
+  `family_source_cli_test`：`node escaped its owner or origin arena`，与基线相同。
+- 台账重跑 237 ABC / 941,774 occurrences，分类无变化（128 SupportedUnverified、
+  176 Unmeasured、28 NonExecutable）。两个探索 flag 集与保存的证据基线逐文件
+  byte-identical（3,635 / 3,776，含 manifests）；526/620、573/620 无状态变化。
+- 构建与测试日志：`/private/tmp/isa2b-full-build-final.log`、`isa2b-fixed.log`、
+  `isa2b-targeted-final.log`、`isa2b-sweep.log`；台账 `/private/tmp/isa2b-coverage`。
+  未 commit/push/stash；用户输入 ABC 未修改。
+
 ## ISA increment 2：属性变体证据切片（未完成实现）
 
 - 基线 `5e057b6f`；**没有生产代码改动，没有新增属性指令 lifting 或源码支持**。

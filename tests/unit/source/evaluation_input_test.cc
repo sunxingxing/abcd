@@ -132,6 +132,8 @@ int main() {
     if(previous_bytes) { Check(bytes<=previous_bytes*3); Check(work<=previous_work*3); }
     previous_bytes=bytes; previous_work=work;
   }
+  EvaluationEvidence naming; naming.plan_cause=LiteralError::kNameSettingProof;
+  Check(ParseEvaluationFailure(EvaluationFailureJson(naming))==naming);
   EvaluationEvidence e; e.plan_cause=EvaluationShapeError::kMissingShape;
   auto j=EvaluationFailureJson(e); Check(ParseEvaluationFailure(j)==e);
   j["plan_cause"]["value"]=99U; Check(!ParseEvaluationFailure(j));

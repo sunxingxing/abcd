@@ -117,9 +117,16 @@ class Properties(unittest.TestCase):
                     self.assertEqual(path.read_bytes(),build(specimen(spec))[0])
                     self.assertEqual(rows[1]['encoding']['opcode'],entry['opcode'])
                     self.assertEqual(rows[1]['encoding']['format'],spec['format'])
-                    # This is a measured implementation gap, not NonExecutable.
-                    self.assertEqual(rows[1]['lift']['status'],'refused')
-                    self.assertEqual(rows[1]['lift']['cause']['value'],1)
+                    # Raw naming semantics are now lifted; this is still not
+                    # a claim that source recovery or an oracle passed.
+                    if 'WITHNAMESET' in entry['name']:
+                        self.assertEqual(rows[1]['lift']['status'],'ok')
+                        self.assertEqual(rows[1]['lift']['roles']['name_setting'],1)
+                        self.assertIsNone(rows[1]['lift']['normal_commit'])
+                        self.assertEqual(rows[1]['lift']['exceptional_completion'],1)
+                    else:
+                        self.assertEqual(rows[1]['lift']['status'],'refused')
+                        self.assertEqual(rows[1]['lift']['cause']['value'],1)
                     self.assertNotIn('non_executable',rows[1]['lift'])
                 else:
                     regenerated=Path(tmp)/path.name

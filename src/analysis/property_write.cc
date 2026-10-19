@@ -6,11 +6,14 @@ namespace abcd::analysis {
 std::variant<PropertyWrite, PropertyWriteError> LiftPropertyWrite(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
   const auto own = LiftOwnWrite(instruction, frame_size);
-  if (const auto* write = std::get_if<OwnWrite>(&own))
+  if (const auto* write = std::get_if<OwnWrite>(&own)) {
+    if (write->name_setting != PropertyNameSetting::kNone)
+      return PropertyWriteError::kUnsupportedOpcode;
     return PropertyWrite{write->kind == OwnWriteKind::kStore
                              ? PropertyWriteKind::kOwnStore
                              : PropertyWriteKind::kDefineField,
                          write->name, write->object};
+  }
   switch (std::get<OwnWriteError>(own)) {
     case OwnWriteError::kRegisterRange:
       return PropertyWriteError::kRegisterRange;

@@ -457,6 +457,10 @@ SemanticEffects Effects(const SemanticOperation& operation,
                              std::is_same_v<T, ValueWrite>) {
           effects.normal = LanguageEffect::kHeapWrite |
                            LanguageEffect::kUserCode;
+          if constexpr (std::is_same_v<T, OwnWrite>) {
+            if (value.name_setting != PropertyNameSetting::kNone)
+              effects.normal = effects.normal | LanguageEffect::kHeapRead | LanguageEffect::kAllocation;
+          }
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, ModuleLoad>) {

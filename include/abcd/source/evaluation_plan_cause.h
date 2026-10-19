@@ -18,7 +18,7 @@ enum class CellEvaluationError : std::uint8_t {
 };
 enum class LiteralError : std::uint8_t {
   kRevision, kFlow, kDefinition, kReceiver, kObserved, kLateValue, kDomain,
-  kCoverage, kResourceLimit, kWorkLimit
+  kCoverage, kResourceLimit, kWorkLimit, kNameSettingProof
 };
 enum class EvaluationShapeError : std::uint8_t { kMissingShape };
 enum class EvaluationInputCheck : std::uint8_t {

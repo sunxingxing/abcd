@@ -4,12 +4,19 @@ namespace abcd::analysis {
 std::variant<OwnWrite, OwnWriteError> LiftOwnWrite(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
   OwnWriteKind kind;
+  auto naming = PropertyNameSetting::kNone;
   std::uint64_t cache_max;
   switch (instruction.opcode) {
+    case abc::Opcode::kSTOWNBYNAMEWITHNAMESET_IMM8_ID16_V8:
+      naming = PropertyNameSetting::kPropertyKey;
+      [[fallthrough]];
     case abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8:
       kind = OwnWriteKind::kStore;
       cache_max = UINT8_MAX;
       break;
+    case abc::Opcode::kSTOWNBYNAMEWITHNAMESET_IMM16_ID16_V8:
+      naming = PropertyNameSetting::kPropertyKey;
+      [[fallthrough]];
     case abc::Opcode::kSTOWNBYNAME_IMM16_ID16_V8:
       kind = OwnWriteKind::kStore;
       cache_max = UINT16_MAX;
@@ -39,14 +46,21 @@ std::variant<OwnWrite, OwnWriteError> LiftOwnWrite(
       kind,
       {static_cast<std::uint32_t>(instruction.operands[kName].raw_bits)},
       {static_cast<std::uint32_t>(instruction.operands[kObject].raw_bits)},
-      static_cast<std::uint16_t>(instruction.operands[kCache].raw_bits)};
+      static_cast<std::uint16_t>(instruction.operands[kCache].raw_bits), naming};
 }
 // Pinned v7.0 interpreter STOWNBYVALUE: IC slot, destination, key, acc value.
 std::variant<ComputedOwnWrite, OwnWriteError> LiftComputedOwnWrite(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
   std::uint64_t maximum;
+  auto naming = PropertyNameSetting::kNone;
   switch (instruction.opcode) {
+    case abc::Opcode::kSTOWNBYVALUEWITHNAMESET_IMM8_V8_V8:
+      naming = PropertyNameSetting::kPropertyKey;
+      [[fallthrough]];
     case abc::Opcode::kSTOWNBYVALUE_IMM8_V8_V8: maximum = UINT8_MAX; break;
+    case abc::Opcode::kSTOWNBYVALUEWITHNAMESET_IMM16_V8_V8:
+      naming = PropertyNameSetting::kPropertyKey;
+      [[fallthrough]];
     case abc::Opcode::kSTOWNBYVALUE_IMM16_V8_V8: maximum = UINT16_MAX; break;
     default: return OwnWriteError::kUnsupportedOpcode;
   }
@@ -61,6 +75,6 @@ std::variant<ComputedOwnWrite, OwnWriteError> LiftComputedOwnWrite(
   }
   return ComputedOwnWrite{{static_cast<std::uint32_t>(instruction.operands[kObject].raw_bits)},
       {static_cast<std::uint32_t>(instruction.operands[kKey].raw_bits)},
-      static_cast<std::uint16_t>(instruction.operands[kCache].raw_bits)};
+      static_cast<std::uint16_t>(instruction.operands[kCache].raw_bits), naming};
 }
 }  // namespace abcd::analysis

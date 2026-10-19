@@ -46,7 +46,7 @@ template<class T> Json Describe(const T& value) {
     FIELD(arguments); FIELD(first); FIELD(count); FIELD(values); FIELD(constructor);
     FIELD(literal); FIELD(length); FIELD(parent); FIELD(cache_slot); FIELD(mode);
     FIELD(target); FIELD(predicate); FIELD(op); FIELD(completion); FIELD(lookup);
-    FIELD(loading); FIELD(domain); FIELD(operation); FIELD(scope); FIELD(id);
+    FIELD(loading); FIELD(name_setting); FIELD(domain); FIELD(operation); FIELD(scope); FIELD(id);
 #undef FIELD
     if constexpr (requires { value.First(); value.Count(); }) {
       result["first"]=Describe(value.First()); result["count"]=value.Count();
