@@ -460,10 +460,26 @@ class FamilyReader {
       auto loaded = ReadClassInitializerFunction(file_,header_,index_,lookup_,roles_,sites_,parent,call,Remaining(),modules_);
       if (const auto* error = std::get_if<ClassInitializerReadFailure>(&loaded)) {
         auto failure=FamilyFileFailure{*error,method_,parent_,pc_,root_};
-        // Evidence only: retain this precise Closed refusal regardless of the
-        // diagnostic's outcome. No verifier-error recovery or publication retry.
-        if(class_sites_) failure.class_self_initialization=DiagnoseClassSelfInitialization(
-            file_,header_,index_,lookup_,roles_,sites_,*class_sites_,parent,call,{*root_,result_.first_owner,{creator.value}},Remaining(),modules_);
+        // The Closed route stays authoritative unless fresh occurrence/storage
+        // evidence can construct a separate class-inner draft. That draft is
+        // never wrapped as ConstructedFunction: enclosure/recovery must verify
+        // before publication, and every uncertified case keeps this refusal.
+        if (class_sites_)
+          failure.class_self_initialization = ConsumeClassSelfInitialization(
+              file_, header_, index_, lookup_, roles_, sites_, *class_sites_,
+              parent, call, {*root_, result_.first_owner, {creator.value}},
+              Remaining(), modules_);
+        if (failure.class_self_initialization &&
+            failure.class_self_initialization->recovery) {
+          const auto& recovery = *failure.class_self_initialization->recovery;
+          if (recovery.kind == ClassSelfInitializationError::kRecoveryGate)
+            failure.cause = ClassSelfError::kRecoveryGate;
+          else if (recovery.kind ==
+                   ClassSelfInitializationError::kResourceLimit)
+            failure.cause = ClassSelfError::kResourceLimit;
+          else if (recovery.kind == ClassSelfInitializationError::kWorkLimit)
+            failure.cause = ClassSelfError::kWorkLimit;
+        }
         throw failure;
       }
       auto body = std::get<ClassInitializerFunction>(std::move(loaded));

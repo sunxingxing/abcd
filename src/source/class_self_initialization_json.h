@@ -19,6 +19,7 @@ inline nlohmann::json ClassSelfFailureJson(
   id("guard", f.guard);
   id("slot", f.slot);
   id("use", f.use);
+  if (f.projection) e["projection"] = static_cast<unsigned>(*f.projection);
   return e;
 }
 inline nlohmann::json ClassSelfInitializationJson(
@@ -46,6 +47,11 @@ inline nlohmann::json ClassSelfInitializationJson(
     if (scope.failure) e["failure"] = ClassSelfFailureJson(*scope.failure);
     j["scope_view"] = std::move(e);
   }
+  if (v.recovery) {
+    j["recovery"] = ClassSelfFailureJson(*v.recovery);
+    j["tree_references"] = v.tree_references;
+    j["syntax_owners"] = v.syntax_owners;
+  }
   return j;
 }
 inline std::optional<ClassSelfInitializationFailure> ParseClassSelfFailure(
@@ -63,6 +69,14 @@ inline std::optional<ClassSelfInitializationFailure> ParseClassSelfFailure(
   const auto location = ParseTreeLocation(e["location"]);
   if (!location) return {};
   f.location = *location;
+  if (e.contains("projection")) {
+    std::uint32_t p;
+    if (!FailureNumber(e, "projection", p) ||
+        p > static_cast<unsigned>(
+                ClassSelfInitializationFailure::Projection::kCleanup))
+      return {};
+    f.projection = static_cast<ClassSelfInitializationFailure::Projection>(p);
+  }
   if (!FailureOptionalId(e, "creation", f.creation) ||
       !FailureOptionalId(e, "allocation", f.allocation) ||
       !FailureOptionalId(e, "store", f.store) ||
@@ -132,6 +146,16 @@ ParseClassSelfInitialization(const nlohmann::json& j) {
       (v.status == ClassSelfInitializationStatus::kVerified &&
        (!v.reads || !v.families)))
     return {};
+  if (j.contains("recovery")) {
+    v.recovery = ParseClassSelfFailure(j["recovery"]);
+    if (!v.recovery || v.status != ClassSelfInitializationStatus::kVerified ||
+        !FailureNumber(j, "tree_references", v.tree_references) ||
+        !FailureNumber(j, "syntax_owners", v.syntax_owners))
+      return {};
+    if (v.recovery->kind == ClassSelfInitializationError::kRecoveryGate &&
+        !v.recovery->projection)
+      return {};
+  }
   return v;
 }
 }  // namespace abcd::source

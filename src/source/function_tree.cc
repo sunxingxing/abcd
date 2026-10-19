@@ -1,12 +1,4 @@
 #include "function_tree.h"
-#include "for_in_emission.h"
-#include "for_of_emission.h"
-#include "recovery_flow.h"
-#include "for_in_evaluation.h"
-#include "for_of_evaluation.h"
-#include "evaluation_disposition.h"
-#include "completion_tree.h"
-#include "exception_tree.h"
 
 #include <algorithm>
 #include <array>
@@ -17,11 +9,20 @@
 
 #include "abcd/source/global_reference.h"
 #include "abcd/source/scalar_expression.h"
-#include "tree_semantics.h"
 #include "capture_aliases.h"
 #include "cell_lifetime.h"
-#include "tree_structure.h"
+#include "completion_tree.h"
+#include "evaluation_disposition.h"
+#include "exception_tree.h"
+#include "family_file.h"
+#include "for_in_emission.h"
+#include "for_in_evaluation.h"
+#include "for_of_emission.h"
+#include "for_of_evaluation.h"
+#include "recovery_flow.h"
 #include "tree_labels.h"
+#include "tree_semantics.h"
+#include "tree_structure.h"
 
 namespace abcd::source {
 namespace {
@@ -46,19 +47,49 @@ constexpr std::size_t kDecisionExpressionSlots = 4;
 constexpr std::size_t kDecisionCopyExpressionSlots = 3;
 constexpr std::size_t kDecisionStatementSlots = 3;
 
-enum class TreeBuildPurpose : std::uint8_t { kFunction, kForOfDraft };
+enum class TreeBuildPurpose : std::uint8_t {
+  kFunction,
+  kForOfDraft,
+  kClassInitializerDraft
+};
 class TreeBuilder {
  public:
   TreeBuilder(const analysis::ValueProgram& graph, const ControlPlan& control,
-      const EvaluationPlan& evaluation, FunctionSyntax syntax,
-      ExpressionConstants constants, analysis::SemanticBudget budget,
-      const IncomingCaptureTree* incoming, const ExceptionTreeInput* exceptions = nullptr,
-      RecoveryMode recovery = RecoveryMode::kCompleteOnly, TreeBuildPurpose purpose = TreeBuildPurpose::kFunction)
-      : graph_(graph), control_(control), evaluation_(evaluation),
-        syntax_(std::move(syntax)), constants_(constants), budget_(budget),
-        bytes_(budget.bytes), work_(budget.work), purpose_(purpose), incoming_(incoming), exceptions_(exceptions), recovery_(recovery) {}
+              const EvaluationPlan& evaluation, FunctionSyntax syntax,
+              ExpressionConstants constants, analysis::SemanticBudget budget,
+              const IncomingCaptureTree* incoming,
+              const ExceptionTreeInput* exceptions = nullptr,
+              RecoveryMode recovery = RecoveryMode::kCompleteOnly,
+              TreeBuildPurpose purpose = TreeBuildPurpose::kFunction,
+              const ClassInitializerTreeInput* class_input = nullptr)
+      : graph_(graph),
+        control_(control),
+        evaluation_(evaluation),
+        syntax_(std::move(syntax)),
+        constants_(constants),
+        budget_(budget),
+        bytes_(budget.bytes),
+        work_(budget.work),
+        purpose_(purpose),
+        incoming_(incoming),
+        exceptions_(exceptions),
+        recovery_(recovery),
+        class_input_(class_input) {}
 
   ExceptionFunctionDraft Build() {
+    if (class_input_) {
+      Require(purpose_ == TreeBuildPurpose::kClassInitializerDraft &&
+                  !incoming_ && syntax_.captures.empty() &&
+                  class_input_->name.value < syntax_.names.size(),
+              Error::kCapture);
+      for (const auto& r : class_input_->scope.requirements) {
+        Step();
+        if (r.owner.family == class_input_->family &&
+            r.owner.member == class_input_->member &&
+            r.kind == ClassSelfRequirementKind::kOuter)
+          class_outer_ = true;
+      }
+    }
     if(evaluation_.for_of) {
       const auto acquisition=evaluation_.for_of->identity.loops.front().acquisition;
       WitnessScope witness(*this,TreeObligation::kForOfCorrespondence,At(acquisition));
@@ -249,9 +280,14 @@ class TreeBuilder {
     tree_.body = drafts_[root].statement;
     for (std::size_t i = forest_.bindings.SourceParameterCount(); i < tree_.symbols.size(); ++i) {
       Step();
-      if (tree_.symbols[i].kind == BindingKind::kLocal || tree_.symbols[i].kind == BindingKind::kCapture ||
-          tree_.symbols[i].kind == BindingKind::kModule || tree_.symbols[i].kind == BindingKind::kFunctionSelf ||
-          tree_.symbols[i].kind == BindingKind::kCatchParameter) continue;
+      if (tree_.symbols[i].kind == BindingKind::kLocal ||
+          tree_.symbols[i].kind == BindingKind::kCapture ||
+          tree_.symbols[i].kind == BindingKind::kClassInner ||
+          tree_.symbols[i].kind == BindingKind::kCaptureRequirement ||
+          tree_.symbols[i].kind == BindingKind::kModule ||
+          tree_.symbols[i].kind == BindingKind::kFunctionSelf ||
+          tree_.symbols[i].kind == BindingKind::kCatchParameter)
+        continue;
       const SymbolId symbol{static_cast<std::uint32_t>(i)};
       const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
       tree_.origins.emplace_back(BindingOrigin{symbol});
@@ -328,6 +364,14 @@ class TreeBuilder {
       Fail(Error::kStructure, *error, TreeObligation::kStructure);
     }
     Admit(std::get<TreeStorage>(labels).bytes, 1); Step(std::get<TreeStorage>(labels).work);
+    if (class_input_) {
+      return {std::move(tree_),
+              budget_.bytes - bytes_,
+              budget_.work - work_,
+              {},
+              std::move(forest_.bindings),
+              std::move(forest_.operations)};
+    }
     if(iteration_ && purpose_==TreeBuildPurpose::kFunction) {
       CheckSemantics();
       WitnessScope witness(*this,TreeObligation::kForOfRecovery,At(evaluation_.for_of->identity.loops.front().acquisition));
@@ -519,9 +563,11 @@ class TreeBuilder {
   }
   void Reserve() {
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
-    const auto capture_scopes = syntax_.captures.empty() ? 0U : 1U;
+    const auto capture_scopes =
+        syntax_.captures.empty() && !class_outer_ ? 0U : 1U;
     const auto module_scopes = syntax_.modules.empty() ? 0U : 1U;
-    const auto self_scopes = forest_.bindings.self ? 1U : 0U;
+    const auto self_scopes =
+        (forest_.bindings.self ? 1U : 0U) + (class_input_ ? 1U : 0U);
     Require(control_.nodes.size() <= (kMaxId - kFunctionScopes - capture_scopes - module_scopes - self_scopes) / kBranchArms,
             Error::kResourceLimit);
     const auto blocks = control_.nodes.size() * kBranchArms + 1;
@@ -573,6 +619,8 @@ class TreeBuilder {
     Grow(tree_.symbols, symbols + staging);
     Grow(tree_.parameters, forest_.bindings.SourceParameterCount());
     Grow(tree_.captures, syntax_.captures.size());
+    if (class_input_ && evaluation_.cells)
+      Grow(tree_.capture_requirements, evaluation_.cells->cells.cells.size());
     Grow(tree_.modules, syntax_.modules.size());
     Grow(tree_.scopes, blocks + 1 + capture_scopes + module_scopes + self_scopes);
     Grow(tree_.statements, statements);
@@ -637,6 +685,8 @@ class TreeBuilder {
     });
   }
   bool EnclosingName(std::u16string_view text) {
+    if (class_input_ && tree_.names[class_input_->name.value] == text)
+      return true;
     return constants_.name_reservations && constants_.name_reservations->Contains(text, [&](std::uint64_t count) { Step(count); });
   }
   bool UniqueReservedName(NameId candidate) {
@@ -756,13 +806,23 @@ class TreeBuilder {
     }
     tree_.parameter_scope = kParameterScope;
     tree_.body_scope = kBodyScope;
-    if (!syntax_.captures.empty()) tree_.capture_scope = kCaptureScope;
+    if (!syntax_.captures.empty() || class_outer_)
+      tree_.capture_scope = kCaptureScope;
     if (!syntax_.modules.empty())
       tree_.module_scope = ScopeId{static_cast<std::uint32_t>(kFunctionScopes + (tree_.capture_scope ? 1U : 0U))};
     tree_.scopes.push_back({ScopeKind::kParameters, tree_.capture_scope ? tree_.capture_scope : tree_.module_scope});
     tree_.scopes.push_back({ScopeKind::kFunctionBody, kParameterScope});
     if (tree_.capture_scope) tree_.scopes.push_back({ScopeKind::kCaptures, tree_.module_scope});
     if (tree_.module_scope) tree_.scopes.push_back({ScopeKind::kModule, {}});
+    if (class_input_) {
+      const ScopeId scope{static_cast<std::uint32_t>(tree_.scopes.size())};
+      tree_.class_inner = FunctionTree::ClassScope{class_input_->scope.binding,
+                                                   scope, class_input_->name};
+      tree_.scopes.push_back(
+          {ScopeKind::kClassInner,
+           tree_.capture_scope ? tree_.capture_scope : tree_.module_scope});
+      tree_.scopes[kParameterScope.value].parent = scope;
+    }
     std::optional<ScopeId> self_scope;
     if (forest_.bindings.self) {
       Require((AllowsNamedSelf(tree_.callable) || IsArrowCallable(tree_.callable)) && tree_.inferred_name &&
@@ -832,6 +892,50 @@ class TreeBuilder {
       if (const auto* cell = std::get_if<CellBinding>(&binding)) {
         Require(evaluation_.cells && cell->cell.value < evaluation_.cells->cells.cells.size(), Error::kBinding);
         if (std::holds_alternative<IncomingCell>(evaluation_.cells->cells.cells[cell->cell.value].storage)) {
+          if (class_input_) {
+            const auto address = std::get<IncomingCell>(
+                evaluation_.cells->cells.cells[cell->cell.value].storage);
+            const ClassSelfRequirement* requirement = nullptr;
+            const auto key =
+                std::tuple{class_input_->family, class_input_->member,
+                           address.depth.value, address.slot.value};
+            const auto& requirements = class_input_->scope.requirements;
+            const auto found = std::lower_bound(
+                requirements.begin(), requirements.end(), key,
+                [&](const auto& r, auto k) {
+                  Step();
+                  return std::tuple{r.owner.family, r.owner.member,
+                                    r.incoming.depth.value,
+                                    r.incoming.slot.value} < k;
+                });
+            if (found != requirements.end() &&
+                std::tuple{found->owner.family, found->owner.member,
+                           found->incoming.depth.value,
+                           found->incoming.slot.value} == key)
+              requirement = &*found;
+            Require(requirement && tree_.class_inner, Error::kCapture);
+            if (requirement->kind == ClassSelfRequirementKind::kClassInner) {
+              tree_.symbols.push_back({tree_.class_inner->scope,
+                                       class_input_->name,
+                                       BindingKind::kClassInner,
+                                       DeclarationKind::kConst,
+                                       NameEvidence::kMetadata,
+                                       {}});
+            } else {
+              Require(tree_.capture_scope.has_value(), Error::kCapture);
+              tree_.symbols.push_back({*tree_.capture_scope,
+                                       SyntheticName(u"$outer", i),
+                                       BindingKind::kCaptureRequirement,
+                                       DeclarationKind::kLet,
+                                       NameEvidence::kSynthesized,
+                                       {}});
+              tree_.capture_requirements.push_back(
+                  {SymbolId{static_cast<std::uint32_t>(i)},
+                   {address.depth, address.slot},
+                   requirement->domain});
+            }
+            continue;
+          }
           Require(evaluation_.cells->incoming == IncomingCells::kConditional &&
               next_capture < syntax_.captures.size(), Error::kBinding);
           const auto& capture = syntax_.captures[next_capture++];
@@ -1921,6 +2025,8 @@ class TreeBuilder {
   std::vector<std::optional<SymbolId>> catch_symbols_;
   std::vector<std::optional<std::size_t>> catch_ranges_, throw_ranges_;
   RecoveryMode recovery_;
+  const ClassInitializerTreeInput* class_input_ = nullptr;
+  bool class_outer_ = false;
 };
 }  // namespace
 
@@ -1937,6 +2043,59 @@ std::variant<ConstructedFunction, FunctionTreeFailure> BuildFunctionTree(
   } catch (const FunctionTreeFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<ClassInitializerTreeDraft, FunctionTreeFailure>
+BuildClassInitializerTreeDraft(const analysis::ValueProgram& graph,
+                               const ControlPlan& control,
+                               const EvaluationPlan& evaluation,
+                               FunctionSyntax syntax,
+                               ExpressionConstants constants,
+                               const ClassInitializerTreeInput& input,
+                               analysis::SemanticBudget budget) {
+  try {
+    const auto initial = budget;
+    auto verified = VerifyClassSelfScope(input.original, input.initialization,
+                                         input.scope, budget);
+    if (const auto* failure =
+            std::get_if<ClassSelfInitializationFailure>(&verified)) {
+      if (failure->kind == ClassSelfInitializationError::kResourceLimit)
+        return Error::kResourceLimit;
+      if (failure->kind == ClassSelfInitializationError::kWorkLimit)
+        return Error::kWorkLimit;
+      return Error::kCapture;
+    }
+    const auto cost = std::get<ClassSelfInitializationCost>(verified);
+    if (cost.bytes > budget.bytes) return Error::kResourceLimit;
+    if (cost.work > budget.work) return Error::kWorkLimit;
+    budget.bytes -= cost.bytes;
+    budget.work -= cost.work;
+    if (input.family >= input.original.families.size()) return Error::kCapture;
+    const auto& family = input.original.families[input.family].family;
+    if (input.member >= family.members.size() ||
+        &family.members[input.member].function.Graph() != &graph ||
+        syntax.owner != family.Owner(FamilyId{input.member}) ||
+        syntax.method != family.members[input.member].function.Method())
+      return Error::kCapture;
+    auto built =
+        TreeBuilder(graph, control, evaluation, std::move(syntax), constants,
+                    budget, nullptr, nullptr, RecoveryMode::kCompleteOnly,
+                    TreeBuildPurpose::kClassInitializerDraft, &input)
+            .Build();
+    if (!built.class_bindings) return Error::kBinding;
+    return ClassInitializerTreeDraft{
+        std::move(built.tree), std::move(*built.class_bindings),
+        std::move(built.class_expressions),
+        built.allocated_bytes + initial.bytes - budget.bytes,
+        built.work + initial.work - budget.work};
+  } catch (Error e) {
+    return e;
+  } catch (const FunctionTreeFailure& f) {
+    return f;
+  } catch (const std::bad_alloc&) {
+    return Error::kResourceLimit;
+  } catch (const std::length_error&) {
+    return Error::kResourceLimit;
+  }
 }
 std::variant<ExceptionFunctionDraft, FunctionTreeFailure> BuildExceptionFunctionDraft(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,

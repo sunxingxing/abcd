@@ -40,6 +40,9 @@ SourceCells AnalyzeSourceCells(const FunctionTree& tree,TreeCheckBudget& budget)
     budget.Step();const auto& symbol=tree.symbols[i];
     RequireTree(symbol.scope.value<tree.scopes.size(),TreeStructureError::kScope);
     switch(symbol.kind){
+      case BindingKind::kClassInner:
+      case BindingKind::kCaptureRequirement:
+        throw TreeStructureError::kBinding;
       case BindingKind::kParameter:result.access[i]=result.mapped_arguments?CellVisibility::kExternal:CellVisibility::kClosed;break;
       case BindingKind::kCapture:case BindingKind::kModule:result.access[i]=CellVisibility::kExternal;break;
       case BindingKind::kLocal:case BindingKind::kCompilerTemporary:

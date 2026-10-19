@@ -94,6 +94,9 @@ bool WritableRecoveryBinding(const FunctionTree& tree,SymbolId symbol) {
     case BindingKind::kLocal:case BindingKind::kCompilerTemporary:
     case BindingKind::kParameter:case BindingKind::kCatchParameter:return true;
     case BindingKind::kCapture:case BindingKind::kModule:case BindingKind::kFunctionSelf:return false;
+    case BindingKind::kClassInner:
+    case BindingKind::kCaptureRequirement:
+      throw TreeStructureError::kBinding;
   }
   throw TreeStructureError::kBinding;
 }

@@ -265,12 +265,20 @@ class FlowBuilder {
         result.bindings[i].allocation=scope_lifetimes_[scope.value]->enter;
       }
       else switch(tree_.symbols[i].kind) {
-        case BindingKind::kParameter:case BindingKind::kFunctionSelf:
-        case BindingKind::kCapture:case BindingKind::kModule:
-          result.bindings[i].lifetime=EnclosingBindingLifetime{};break;
-        case BindingKind::kLocal:case BindingKind::kCompilerTemporary:
-        case BindingKind::kCatchParameter:
-          result.bindings[i].lifetime=UnmodeledBindingLifetime{};break;
+          case BindingKind::kClassInner:
+          case BindingKind::kCaptureRequirement:
+            throw Error::kBinding;
+          case BindingKind::kParameter:
+          case BindingKind::kFunctionSelf:
+          case BindingKind::kCapture:
+          case BindingKind::kModule:
+            result.bindings[i].lifetime = EnclosingBindingLifetime{};
+            break;
+          case BindingKind::kLocal:
+          case BindingKind::kCompilerTemporary:
+          case BindingKind::kCatchParameter:
+            result.bindings[i].lifetime = UnmodeledBindingLifetime{};
+            break;
       }
       if(!projection_.stable_entries.empty())result.bindings[i].stable_entry=projection_.stable_entries[i]!=0;
       if(!scopes.unique_spellings.empty())result.bindings[i].unique_spelling=scopes.unique_spellings[i]!=0;

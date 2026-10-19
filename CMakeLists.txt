@@ -248,7 +248,7 @@ target_sources(abcd_source PRIVATE src/source/prepared_family.cc src/source/crea
 target_sources(abcd_source PRIVATE src/source/instruction_sources.cc)
 target_sources(abcd_source PRIVATE src/source/family_emission.cc)
 target_sources(abcd_source PRIVATE src/source/family_route_failure.cc)
-target_sources(abcd_source PRIVATE src/source/environment_cleanup.cc src/source/cleanup_body.cc src/source/class_self.cc src/source/closed_class_fields.cc src/source/closed_values.cc src/source/class_self_order.cc src/source/class_self_initialization.cc src/source/class_self_initialization_file.cc src/source/class_self_scope.cc)
+target_sources(abcd_source PRIVATE src/source/environment_cleanup.cc src/source/cleanup_body.cc src/source/class_self.cc src/source/closed_class_fields.cc src/source/closed_values.cc src/source/class_self_order.cc src/source/class_self_initialization.cc src/source/class_self_initialization_file.cc src/source/class_self_scope.cc src/source/class_self_tree.cc)
 target_sources(abcd_source PRIVATE src/source/cell_defaults.cc src/source/cell_parameter_default.cc)
 target_sources(abcd_source PRIVATE src/source/cell_default_proof.cc)
 target_sources(abcd_source PRIVATE src/source/module_reads.cc)
@@ -1011,6 +1011,13 @@ if(BUILD_TESTING)
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/${class_self_case}.abc")
   endforeach()
   if(EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+    if(ABCD_BUILD_TOOLS)
+      add_test(NAME class_self_consumption_source_test COMMAND ${Python3_EXECUTABLE}
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_self_consumption.py"
+        $<TARGET_FILE:abc_structure>
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization"
+        "${CMAKE_CURRENT_BINARY_DIR}/class-self-consumption")
+    endif()
     add_test(NAME class_self_initialization_scale_test COMMAND ${Python3_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_self_initialization_scale.py"
       $<TARGET_FILE:class_self_initialization_test>

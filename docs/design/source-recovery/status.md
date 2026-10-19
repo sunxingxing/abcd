@@ -5,6 +5,56 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Class-self increment 3: consumed initializer scope, explicit recovery gates (2026-10-20)
+
+- Consumes `ClassSelfScopeProof` through the common FunctionTree builder on the
+  certified failure path. Self reads now become immutable `kClassInner` symbols
+  in a real class-inner source scope; original guard provenance stays attached.
+  Ordinary outer cells remain typed capture requirements with their real
+  addresses/domains. They are not fictional function captures or initialized
+  aliases. Existing successful Closed paths stay unchanged.
+- Before creator freeze, root-family demands merge into the real creator storage;
+  prepared full owner ranges supply actual syntax owners. ClassSelfOrder binds
+  the original internal self store, and ClassTree keeps separate internal/public
+  ports plus original initializer dispatch/cleanup. Independent verification
+  recomputes scope/storage, owner ranges, evaluation/bindings, lexical resolution,
+  ports, cleanup and exactly-once read/guard correspondence. Ordinary printing
+  and recovery reject these drafts; none is a ConstructedFunction.
+- **m8556 PC13 now passes the internal-value leak:** two real class-inner tree
+  references, ten allocated owners. o20/8166's first cause is
+  `ClassSelfError::kRecoveryGate / Projection::kCaptureEnclosure`, because the two
+  ordinary outer requirements still need the actual creator CaptureTree binding
+  (including final spellings and TDZ domains). Demand forwarding alone does not
+  establish it. Native class initialization/public-binding/cleanup event ports
+  must then pass joint OriginalFlow/recovery on every projection before printing.
+- o0/4660 advances to `kRecoveryGate / kClassInitializationPorts` at m5040 PC12:
+  one initializer-tree self reference, 23 owners, five certified raw family reads.
+  Additional member-family enclosure and the separate completed-class
+  availability/getInstance result remain unresolved. No class-valued publication
+  is fabricated from the getInstance export. **Neither record publishes yet.**
+- Seven real es2abc fixtures assert the gate through the production record
+  exporter as well as draft construction: outer capture enclosure for `outer`,
+  class-initialization recovery ports for self/throwing/reentry/branches/copies/
+  accessors. Mutations cover wrong scope/storage, mutable self, lost guard origin,
+  a forged public port, owner collision and missing cleanup; receipt and both JSON
+  paths round-trip the new gate. Exact 200/201/400/800 draft admission boundaries
+  are **2,347,215 / 2,358,103 / 4,606,735 / 9,125,775 bytes**, work
+  **1,445,501 / 1,452,838 / 2,864,716 / 5,708,978**; one-below refuses.
+- Fresh OLD/NEW runs at baseline **9d77c21b** retain **532/620 previous flags /
+  584/620 language-source**, identical complete sets and every non-manifest byte
+  (3,613 / 3,769 files). Only o0/4660 and o20/8166 manifest causes/evidence change;
+  abc_semantic agrees. No new engine-output Node differential or es2abc-equivalence
+  result is claimed while publication is closed.
+- Full build passes; focused tests **9/9**, serial source-regression **65/65**.
+  The requested sweep is **87/95**: its eight failures all reproduce at
+  **9d77c21b** (family_source_cli, class_tree_source and the six documented
+  captured-receiver source variants). No expectations were weakened. The new
+  exporter test uses a fresh temporary output directory per run, respecting the
+  CLI's refusal to overwrite an existing export directory. Design/remaining gates:
+  [class-self-initialization-scope.md](class-self-initialization-scope.md).
+  Scratch logs, exact comparisons, fixture exports, budgets and baseline failure
+  reproductions: `build/review/class-self3/`. No commit/push/stash.
+
 ## Class-self increment 2 continuation: verified scope view only (2026-10-20)
 
 - **Partial delivery; the requested recovery gate is not reached.** Added

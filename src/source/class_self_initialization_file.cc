@@ -7,14 +7,15 @@
 #include "class_self_scope.h"
 #include "class_tree.h"
 namespace abcd::source {
-ClassSelfInitializationDiagnostic DiagnoseClassSelfInitialization(
+static ClassSelfInitializationDiagnostic PrepareClassSelfInitialization(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions,
     const analysis::ClassMethodSites& classes, const FileFunction& parent,
     const ClassInitializerCall& call, CreatorClassOccurrence occurrence,
-    analysis::SemanticBudget budget, const RecordModuleContext* modules) {
+    analysis::SemanticBudget budget, const RecordModuleContext* modules,
+    FileFunction* consumer) {
   using Error = ClassSelfInitializationError;
   ClassSelfInitializationDiagnostic result;
   result.creator = parent.input.Method();
@@ -81,7 +82,7 @@ ClassSelfInitializationDiagnostic DiagnoseClassSelfInitialization(
         call.creation, parent.input.Identity(), nullptr, budget, nullptr,
         definitions, {static_cast<std::uint32_t>(family->members.size())},
         RecoveryMode::kCompleteOnly, nullptr, ClassRootBinding::kRequirements);
-    const auto* members = std::get_if<ClassPreparation>(&prepared);
+    auto* members = std::get_if<ClassPreparation>(&prepared);
     require(members, ClassSelfResource(prepared).value_or(Error::kScope));
     admit(members->allocated_bytes);
     step(members->work);
@@ -168,6 +169,69 @@ ClassSelfInitializationDiagnostic DiagnoseClassSelfInitialization(
             scope.public_commits +=
                 port.kind == ClassSelfPortKind::kPublicCommit;
           }
+          if (consumer) {
+            auto built = BuildClassSelfClassDraft(input, evidence, prepared,
+                                                  members->layout, *consumer,
+                                                  budget, modules);
+            if (const auto* error =
+                    std::get_if<ClassSelfInitializationFailure>(&built)) {
+              auto recovery = *error;
+              if (recovery.kind != Error::kResourceLimit &&
+                  recovery.kind != Error::kWorkLimit) {
+                recovery.projection =
+                    recovery.kind == Error::kName
+                        ? ClassSelfInitializationFailure::Projection::
+                              kNameResolution
+                    : recovery.kind == Error::kGuard
+                        ? ClassSelfInitializationFailure::Projection::kGuard
+                        : ClassSelfInitializationFailure::Projection::kSyntax;
+                recovery.kind = Error::kRecoveryGate;
+              }
+              result.recovery = recovery;
+            } else {
+              auto& draft = std::get<ClassSelfClassDraft>(built);
+              admit(draft.allocated_bytes);
+              step(draft.work);
+              consumer->self_order.emplace(std::move(draft.order));
+              const auto& tree = draft.initializer.tree;
+              result.syntax_owners =
+                  static_cast<std::uint32_t>(members->next_owner);
+              for (const auto& expression : tree.expressions) {
+                step(1);
+                const auto* ref =
+                    std::get_if<SymbolExpr>(&expression.expression);
+                if (ref && tree.symbols[ref->symbol.value].kind ==
+                               BindingKind::kClassInner)
+                  ++result.tree_references;
+              }
+              ClassSelfInitializationFailure recovery{Error::kRecoveryGate};
+              recovery.creator = evidence.creator;
+              recovery.initializer = evidence.initializer;
+              recovery.creation = evidence.call.creation;
+              recovery.allocation = evidence.allocation;
+              recovery.store = evidence.store;
+              recovery.slot = evidence.slot;
+              recovery.location = OperationLocation(
+                  parent.values.graph, evidence.call.call, evidence.creator);
+              for (const auto& reference : prepared.references) {
+                step(1);
+                if (reference.owner.family || reference.owner.member) continue;
+                const auto& function = family->members[0].function;
+                recovery.read = reference.read;
+                recovery.guard = reference.guard;
+                recovery.location = OperationLocation(
+                    function.Graph(), reference.guard, function.Method());
+                break;
+              }
+              recovery.projection =
+                  tree.capture_requirements.empty()
+                      ? ClassSelfInitializationFailure::Projection::
+                            kClassInitializationPorts
+                      : ClassSelfInitializationFailure::Projection::
+                            kCaptureEnclosure;
+              result.recovery = recovery;
+            }
+          }
         }
       }
     } catch (const ClassSelfInitializationFailure& error) {
@@ -188,5 +252,29 @@ ClassSelfInitializationDiagnostic DiagnoseClassSelfInitialization(
     result.failure = failure;
     return result;
   }
+}
+ClassSelfInitializationDiagnostic DiagnoseClassSelfInitialization(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions,
+    const analysis::ClassMethodSites& classes, const FileFunction& parent,
+    const ClassInitializerCall& call, CreatorClassOccurrence occurrence,
+    analysis::SemanticBudget budget, const RecordModuleContext* modules) {
+  return PrepareClassSelfInitialization(file, header, index, lookup, roles,
+                                        functions, classes, parent, call,
+                                        occurrence, budget, modules, nullptr);
+}
+ClassSelfInitializationDiagnostic ConsumeClassSelfInitialization(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions,
+    const analysis::ClassMethodSites& classes, FileFunction& parent,
+    const ClassInitializerCall& call, CreatorClassOccurrence occurrence,
+    analysis::SemanticBudget budget, const RecordModuleContext* modules) {
+  return PrepareClassSelfInitialization(file, header, index, lookup, roles,
+                                        functions, classes, parent, call,
+                                        occurrence, budget, modules, &parent);
 }
 }  // namespace abcd::source

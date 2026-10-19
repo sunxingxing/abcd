@@ -1,20 +1,19 @@
 #ifndef ABCD_SOURCE_SOURCE_TREE_H_
 #define ABCD_SOURCE_SOURCE_TREE_H_
 
-#include "abcd/source/evaluation_kind.h"
-#include "abcd/source/concurrent_directive.h"
-
-#include <string>
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 
 #include "abcd/analysis/value_ir.h"
-#include "abcd/source/source_route.h"
-
+#include "abcd/source/class_inner_binding.h"
+#include "abcd/source/concurrent_directive.h"
+#include "abcd/source/evaluation_kind.h"
 #include "abcd/source/source_ids.h"
+#include "abcd/source/source_route.h"
 
 namespace abcd::source {
 struct PropertyId { std::uint32_t value = 0; auto operator<=>(const PropertyId&) const = default; };
@@ -50,8 +49,27 @@ constexpr bool IsMethodCallable(CallableKind kind) {
 }
 enum class HomeObjectBinding : std::uint8_t { kNone, kClass };
 enum class Strictness : std::uint8_t { kStrict, kSloppy };
-enum class ScopeKind : std::uint8_t { kParameters, kFunctionBody, kBlock, kCaptures, kModule, kFunctionSelf, kCatch };
-enum class BindingKind : std::uint8_t { kParameter, kLocal, kFunctionSelf, kCompilerTemporary, kCapture, kModule, kCatchParameter };
+enum class ScopeKind : std::uint8_t {
+  kParameters,
+  kFunctionBody,
+  kBlock,
+  kCaptures,
+  kModule,
+  kFunctionSelf,
+  kCatch,
+  kClassInner
+};
+enum class BindingKind : std::uint8_t {
+  kParameter,
+  kLocal,
+  kFunctionSelf,
+  kCompilerTemporary,
+  kCapture,
+  kModule,
+  kCatchParameter,
+  kClassInner,
+  kCaptureRequirement
+};
 enum class SelfForm : std::uint8_t { kNamedFunction, kCreationBinding };
 // Preserve the ABC callable kind. A method carrier supplies an arrow owner's
 // native invocation only after receiver/new.target observation is excluded.
@@ -367,6 +385,20 @@ struct SendableConstructorDirective {
   bool operator==(const SendableConstructorDirective&)const=default;
 };
 struct FunctionTree {
+  struct ClassScope {
+    ClassInnerBinding binding;
+    ScopeId scope;
+    NameId name;
+  };
+  struct CaptureRequirement {
+    SymbolId symbol;
+    analysis::CapturedSlot storage;
+    analysis::CaptureDomain domain;
+  };
+  // Unpublished class-initializer syntax. A requirement is NOT an alias or an
+  // initialized external binding. Ordinary structure/publication rejects it.
+  std::optional<ClassScope> class_inner;
+  std::vector<CaptureRequirement> capture_requirements;
   // Native class absence of an explicit constructor; whole-function CFG/SSA
   // proof supplies its executable default behavior, including raw forwarding.
   ConstructorForm constructor_form = ConstructorForm::kExplicit;

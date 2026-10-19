@@ -1,10 +1,12 @@
 # Class-self initialization evidence fixtures
 
 These are real dynamic es2abc outputs. Adjacent JS is an independent test
-oracle and is never an engine input. This increment proves raw initialization,
-read-only capture and cleanup facts; it does **not** admit source class scope.
-The Closed initializer reader must still refuse these fixtures. No engine-output
-Node differential or recovery gate is claimed yet.
+oracle and is never an engine input. The Closed initializer reader still
+refuses them. Certified consumption now builds an unpublished initializer tree
+with a real class-inner scope and immutable self references. Every fixture
+asserts `kRecoveryGate`: `outer` requires the real creator capture enclosure;
+the others first require class-initialization event ports in joint recovery.
+No published engine-output differential is claimed.
 
 Compiler: DevEco Studio es2abc, SHA-256
 `4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`.
@@ -30,8 +32,13 @@ The increment-2 scope-view tests additionally check real incoming addresses,
 complete relative owner ranges, self-vs-outer requirements, separate internal and
 public commit ports, and the private accessor-installation corridor. `accessors`
 contains instance getter/setter, a static getter, and self-reading static-field
-initialization. These fixtures still assert the original Closed refusal: the
-scope view is not yet consumed by ClassTree, so no recovery gate is claimed.
+initialization. Consumption checks the original Closed refusal as a negative
+control, then independently verifies the conditional initializer tree, real
+owner ranges, separate commit ports and cleanup correspondence. Ordinary tree
+verification must reject the draft. Missing cleanup, a forged public port,
+wrong incoming storage, a writable inner binding, a wrong scope and a lost
+read/guard origin all reject; recovery-gate receipts and both JSON paths round
+trip. The gate is not a claim that the unresolved outer cells are initialized.
 
 `class_self_initialization_scale_test` generates 200/201/400/800 fields under the
 build directory. Each size checks exact work and the minimum admitted byte

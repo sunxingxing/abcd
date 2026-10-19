@@ -1,21 +1,13 @@
 #ifndef ABCD_SOURCE_CLASS_SELF_SCOPE_H_
 #define ABCD_SOURCE_CLASS_SELF_SCOPE_H_
 
+#include "abcd/source/class_inner_binding.h"
 #include "class_self_initialization.h"
 
 namespace abcd::source {
 // A class scope is an occurrence plus ORIGINAL storage, never a fictional
 // function owner or a CellId borrowed from a different plan. Spelling and tree
 // enclosure are subsequent obligations; this view grants no printer admission.
-struct ClassInnerBinding {
-  CreatorClassOccurrence occurrence;
-  analysis::OpId creation, allocation;
-  analysis::LexicalSlot slot;
-  bool operator==(const ClassInnerBinding& other) const {
-    return occurrence == other.occurrence && creation == other.creation &&
-           allocation == other.allocation && slot.value == other.slot.value;
-  }
-};
 struct ClassSelfOwnerRange {
   std::uint32_t family, first, count;
   bool operator==(const ClassSelfOwnerRange&) const = default;

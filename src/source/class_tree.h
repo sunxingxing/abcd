@@ -8,6 +8,7 @@
 #include "abcd/abc/class_buffer.h"
 #include "abcd/source/sendable_failure.h"
 namespace abcd::source {
+struct ClassTree;
 // One class-creation expression, with optional native static fields whose
 // actual invocation is projected by the enclosing tree. Decorators, export
 // stores and surrounding captures remain outside. Members keep wire order.
@@ -18,6 +19,27 @@ struct ClassStaticFields {
   abc::EntityOffset record;
   TreeFlow flow;
 };
+// Actual unpublished syntax, not another raw-analysis diagnostic. In particular
+// ordinary captured cells remain unresolved requirements, never fake aliases.
+struct ClassSelfClassDraft {
+  ClassInitializerTreeDraft initializer;
+  ClassSelfOrder order;
+  EvaluationPlan evaluation;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
+};
+std::variant<ClassSelfClassDraft, ClassSelfInitializationFailure>
+BuildClassSelfClassDraft(const ClassSelfInitializationInput&,
+                         const ClassSelfInitialization&, const ClassSelfScope&,
+                         ClassTree&, FileFunction& creator,
+                         analysis::SemanticBudget = {},
+                         const RecordModuleContext* = nullptr);
+std::variant<ClassSelfInitializationCost, ClassSelfInitializationFailure>
+VerifyClassSelfClassDraft(const ClassSelfInitializationInput&,
+                          const ClassSelfInitialization&, const ClassSelfScope&,
+                          const ClassTree&, const EvaluationPlan&,
+                          const ClassInitializerTreeDraft&,
+                          analysis::SemanticBudget = {});
 // Original input failure at a real root or descendant creation occurrence.
 // The entire containing class member is omitted; a nested callback never gets
 // a fabricated FunctionTree/body/signature or source receipt.
@@ -55,7 +77,16 @@ struct SendableTypeSpelling {
   std::uint32_t depth;
   bool operator==(const SendableTypeSpelling&) const = default;
 };
+struct ClassTreeInitialization {
+  ClassInnerBinding binding;
+  std::vector<ClassSelfPort> ports;
+  std::vector<ClassSelfCleanup> cleanup;
+  std::optional<analysis::DispatchTarget> exception;
+  FunctionOwnerId first_owner;
+  std::uint64_t owner_end;
+};
 struct ClassTree {
+  std::optional<ClassTreeInitialization> class_self;
   RouteInputIdentity identity;
   ClassConstructorSite creation;
   analysis::OpId operation{}; // Actual creation in the unchanged owner graph.

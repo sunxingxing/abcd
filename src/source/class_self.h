@@ -17,7 +17,14 @@ struct ClassSelfStores {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
-enum class ClassSelfError : std::uint8_t { kInput, kCells, kFlow, kResourceLimit, kWorkLimit };
+enum class ClassSelfError : std::uint8_t {
+  kInput,
+  kCells,
+  kFlow,
+  kResourceLimit,
+  kWorkLimit,
+  kRecoveryGate
+};
 // Discover class-result initialization of a fresh, otherwise unwritten local
 // cell before its static initializer, with absent heritage, no intervening
 // observer. Common SSA/effect identity and must-reach prove the private interval;

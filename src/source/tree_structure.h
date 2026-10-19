@@ -29,5 +29,10 @@ struct TreeStructure {
 [[nodiscard]] std::variant<TreeStructure, TreeStructureError>
 VerifyTreeStructure(const FunctionTree& tree,
                     analysis::SemanticBudget budget = {}, const GlobalScope* destination = nullptr);
+// Conditional syntax only. Ordinary verification/printing rejects this class
+// draft until actual creator enclosure and recovery ports have been checked.
+[[nodiscard]] std::variant<TreeStructure, TreeStructureError>
+VerifyClassInitializerStructure(const FunctionTree&,
+                                analysis::SemanticBudget = {});
 }  // namespace abcd::source
 #endif

@@ -1,12 +1,16 @@
 #ifndef ABCD_SOURCE_CLASS_SELF_ORDER_H_
 #define ABCD_SOURCE_CLASS_SELF_ORDER_H_
-#include "class_self.h"
 #include "abcd/analysis/semantic_validation.h"
+#include "abcd/source/class_inner_binding.h"
+#include "class_self.h"
 
 namespace abcd::source {
 struct FileFunction;
 class FunctionInput;
 struct ClassInitializerFunction;
+struct ClassSelfInitializationInput;
+struct ClassSelfInitialization;
+struct ClassSelfScope;
 struct ClassInitializerWitness {
   ClassInitializerCall call;
   const ClassInitializerFunction& function;
@@ -26,6 +30,9 @@ class ClassSelfOrder {
   ClassSelfOrder& operator=(ClassSelfOrder&&) noexcept = default;
   static std::variant<ClassSelfOrder, ClassSelfOrderError> Build(const FileFunction&,
       std::span<const ClassInitializerWitness>, analysis::SemanticBudget = {});
+  static std::variant<ClassSelfOrder, ClassSelfOrderError> BindInitialization(
+      const ClassSelfInitializationInput&, const ClassSelfInitialization&,
+      const ClassSelfScope&, analysis::SemanticBudget = {});
   std::span<const ClassSelfStore> Stores(const analysis::ValueProgram& graph) const;
   std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization>> Prefixes(
       const FunctionInput&, const analysis::ValueProgram&) const;
@@ -43,6 +50,7 @@ class ClassSelfOrder {
   analysis::CfgRevision cfg_;
   std::size_t operation_count_ = 0, value_count_ = 0, bytes_ = 0;
   std::uint64_t work_ = 0;
+  std::optional<ClassInnerBinding> class_inner_;
 };
 }  // namespace abcd::source
 #endif

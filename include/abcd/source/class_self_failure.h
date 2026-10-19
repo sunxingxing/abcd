@@ -26,6 +26,18 @@ struct ClassSelfInitializationFailure {
   std::optional<analysis::OpId> creation, allocation, store, read, guard;
   std::optional<analysis::LexicalSlot> slot;
   std::optional<analysis::UseId> use;
+  enum class Projection : std::uint8_t {
+    kCaptureEnclosure,
+    kClassInitializationPorts,
+    kClassCompletion,
+    kFamilyEnclosure,
+    kSyntax,
+    kNameResolution,
+    kGuard,
+    kWrite,
+    kCleanup
+  };
+  std::optional<Projection> projection;
 };
 enum class ClassSelfInitializationStatus : std::uint8_t { kMissing, kVerified };
 // This is a storage-bound scope VIEW, not a ClassTree/recovery receipt. A
@@ -45,6 +57,8 @@ struct ClassSelfInitializationDiagnostic {
   std::uint32_t reads = 0, captures = 0, cleanup = 0, families = 0;
   std::optional<ClassSelfInitializationFailure> failure;
   std::optional<ClassSelfScopeDiagnostic> scope_view;
+  std::optional<ClassSelfInitializationFailure> recovery;
+  std::uint32_t tree_references = 0, syntax_owners = 0;
 };
 }  // namespace abcd::source
 #endif

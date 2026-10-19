@@ -73,12 +73,15 @@ try {
       assert.ok(lines.some(line=>line.pc===pc || line.offset===pc),`${entity}: real instruction boundary ${pc}`);
     }
     if(entity===4660 || entity===8166) {
+      // Class-self reads are consumed as class-inner bindings; publication
+      // stops at the typed recovery gate (ports for 4660, enclosure for 8166).
       assert.deepEqual(report.source_failure.causes,[
-        {domain:'abcd::analysis::SemanticProofError',value:3},
-        {domain:'abcd::analysis::InternalValueReason',value:6}]);
-      assert.deepEqual(report.source_failure.internal_value,{
-        domains:[0,1,2,3,4],observer_instruction:6,producer_instruction:5,
-        producer_kind:1,read_ordinal:0,reason:6,value:entity===4660?14:22});
+        {domain:'abcd::source::ClassSelfError',value:5}]);
+      const recovery=report.source_failure.class_self_initialization.recovery;
+      assert.equal(recovery.kind,13);
+      assert.equal(recovery.projection,entity===4660?1:0);
+      assert.equal(recovery.read,5);
+      assert.equal(recovery.guard,6);
     }
     if(entity===28303) {
       // Staged activation and for-of cell-lifetime checks now succeed. Keep

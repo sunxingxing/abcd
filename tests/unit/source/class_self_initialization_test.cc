@@ -332,6 +332,94 @@ void ScopeMutations(const ClassSelfInitializationInput& input,
             << proof.Evidence().references.size() << " ports "
             << proof.Evidence().ports.size() << '\n';
 }
+void DraftMutations(const ClassSelfInitializationInput& input,
+                    const ClassSelfInitialization& raw,
+                    const ClassSelfScope& scope, ClassTree& layout,
+                    FileFunction& creator, const RecordModuleContext& module,
+                    ClassSelfClassDraft& draft) {
+  using E = ClassSelfInitializationError;
+  const auto reject = [&] {
+    test::Check(std::holds_alternative<ClassSelfInitializationFailure>(
+        VerifyClassSelfClassDraft(input, raw, scope, layout, draft.evaluation,
+                                  draft.initializer)));
+  };
+  auto& tree = draft.initializer.tree;
+  const auto original_binding = tree.class_inner->binding;
+  ++tree.class_inner->binding.slot.value;
+  reject();
+  tree.class_inner->binding = original_binding;
+  ++tree.class_inner->binding.allocation.value;
+  reject();
+  tree.class_inner->binding = original_binding;
+  const auto inner_scope = tree.class_inner->scope;
+  tree.class_inner->scope = tree.parameter_scope;
+  reject();
+  tree.class_inner->scope = inner_scope;
+  const auto ports = layout.class_self->ports;
+  layout.class_self->ports.front().kind = ClassSelfPortKind::kPublicCommit;
+  reject();
+  layout.class_self->ports = ports;
+  auto cleanup = std::move(layout.class_self->cleanup);
+  layout.class_self->cleanup.clear();
+  reject();
+  layout.class_self->cleanup = std::move(cleanup);
+  ++layout.class_self->owner_end;
+  reject();
+  --layout.class_self->owner_end;
+  for (auto& expression : tree.expressions) {
+    const auto* symbol = std::get_if<SymbolExpr>(&expression.expression);
+    if (!symbol ||
+        tree.symbols[symbol->symbol.value].kind != BindingKind::kClassInner)
+      continue;
+    const auto origin = expression.origin;
+    expression.origin = TreeOriginId{UINT32_MAX};
+    reject();
+    expression.origin = origin;
+    auto& binding = tree.symbols[symbol->symbol.value];
+    binding.declaration = DeclarationKind::kLet;
+    reject();
+    binding.declaration = DeclarationKind::kConst;
+    break;
+  }
+  if (!tree.capture_requirements.empty()) {
+    ++tree.capture_requirements.front().storage.slot.value;
+    reject();
+    --tree.capture_requirements.front().storage.slot.value;
+  }
+  test::Check(std::holds_alternative<ClassSelfInitializationCost>(
+      VerifyClassSelfClassDraft(input, raw, scope, layout, draft.evaluation,
+                                draft.initializer)));
+  // Exhaustion cannot turn a conditional draft into a publishable function.
+  const auto build = [&](analysis::SemanticBudget budget) {
+    return BuildClassSelfClassDraft(input, raw, scope, layout, creator, budget,
+                                    &module);
+  };
+  const auto full = Take<ClassSelfClassDraft>(build({}));
+  analysis::SemanticBudget exact;
+  exact.work = full.work;
+  test::Check(std::holds_alternative<ClassSelfClassDraft>(build(exact)));
+  --exact.work;
+  test::Check(std::get<ClassSelfInitializationFailure>(build(exact)).kind ==
+              E::kWorkLimit);
+  std::size_t low = 0, high = analysis::SemanticBudget{}.bytes;
+  while (low < high) {
+    const auto mid = low + (high - low) / 2;
+    const auto result = build({mid, analysis::SemanticBudget{}.work});
+    if (std::holds_alternative<ClassSelfClassDraft>(result))
+      high = mid;
+    else {
+      test::Check(std::get<ClassSelfInitializationFailure>(result).kind ==
+                  E::kResourceLimit);
+      low = mid + 1;
+    }
+  }
+  test::Check(low && std::holds_alternative<ClassSelfClassDraft>(
+                         build({low, analysis::SemanticBudget{}.work})));
+  test::Check(std::get<ClassSelfInitializationFailure>(
+                  build({low - 1, analysis::SemanticBudget{}.work}))
+                  .kind == E::kResourceLimit);
+  std::cout << "draft exact bytes " << low << " work " << full.work << '\n';
+}
 void Run(const char* path, std::optional<abc::EntityOffset> requested) {
   auto file =
       Take<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
@@ -391,7 +479,8 @@ void Run(const char* path, std::optional<abc::EntityOffset> requested) {
         if (d.creation == call.creation) definitions.push_back(d);
       auto prepared = Take<ClassPreparation>(PrepareClassTree(
           *file, header, index, lookup, roles, sites, classes, *parent,
-          call.creation, identity, nullptr, {}, nullptr, definitions, {},
+          call.creation, identity, nullptr, {}, nullptr, definitions,
+          {static_cast<std::uint32_t>(family.members.size())},
           RecoveryMode::kCompleteOnly, nullptr,
           ClassRootBinding::kRequirements));
       std::vector<ClassSelfFamilyInput> families;
@@ -548,6 +637,66 @@ void Run(const char* path, std::optional<abc::EntityOffset> requested) {
                 << proof.Evidence().reads.size() << " captures "
                 << proof.Evidence().captures.size() << " cleanup "
                 << proof.Evidence().cleanup.size() << '\n';
+      const auto scoped = Take<ClassSelfScopeProof>(
+          ClassSelfScopeProof::Build(input, proof.Evidence()));
+      auto consumed =
+          BuildClassSelfClassDraft(input, proof.Evidence(), scoped.Evidence(),
+                                   prepared.layout, *parent, {}, &module);
+      if (const auto* f =
+              std::get_if<ClassSelfInitializationFailure>(&consumed)) {
+        std::cerr << "consumption failed kind "
+                  << static_cast<unsigned>(f->kind) << " method "
+                  << (f->location.method ? f->location.method->value : 0)
+                  << " pc " << (f->location.pc ? f->location.pc->value : 0)
+                  << '\n';
+      }
+      auto draft = Take<ClassSelfClassDraft>(std::move(consumed));
+      test::Check(draft.initializer.tree.class_inner.has_value());
+      test::Check(std::holds_alternative<ClassSelfInitializationCost>(
+          VerifyClassSelfClassDraft(input, proof.Evidence(), scoped.Evidence(),
+                                    prepared.layout, draft.evaluation,
+                                    draft.initializer)));
+      test::Check(std::holds_alternative<TreeStructureError>(
+          VerifyTreeStructure(draft.initializer.tree)));
+      DraftMutations(input, proof.Evidence(), scoped.Evidence(),
+                     prepared.layout, *parent, module, draft);
+      const auto gate = ConsumeClassSelfInitialization(
+          *file, header, index, lookup, roles, sites, classes, *parent, call,
+          {parent->input.Method(), {}, {}}, {}, &module);
+      test::Check(gate.recovery &&
+                  gate.recovery->kind ==
+                      ClassSelfInitializationError::kRecoveryGate &&
+                  gate.recovery->projection && gate.tree_references > 0 &&
+                  gate.syntax_owners >= gate.families);
+      const auto gate_json = ClassSelfInitializationJson(gate);
+      test::Check(ParseClassSelfInitialization(gate_json).has_value());
+      test::Check(*gate.recovery->projection ==
+                  (draft.initializer.tree.capture_requirements.empty()
+                       ? ClassSelfInitializationFailure::Projection::
+                             kClassInitializationPorts
+                       : ClassSelfInitializationFailure::Projection::
+                             kCaptureEnclosure));
+      failure.class_self_initialization = gate;
+      receipt.failure = failure;
+      const auto gate_receipt = Take<MethodRouteReceipt>(
+          ParseRouteReceipt(Take<std::string>(SerializeRouteReceipt(receipt))));
+      test::Check(gate_receipt.failure &&
+                  ClassSelfInitializationJson(
+                      *gate_receipt.failure->class_self_initialization) ==
+                      gate_json);
+      abcd::tools::DescribeRecordFailure(RouteRefusal{failure}, output);
+      test::Check(output["source_failure"]["class_self_initialization"] ==
+                  gate_json);
+      record_failure.class_self_initialization = gate;
+      abcd::tools::DescribeRecordFailure(record_failure, output);
+      test::Check(output["source_class_self_initialization"] == gate_json);
+      malformed = gate_json;
+      malformed["recovery"]["projection"] = 255U;
+      test::Check(!ParseClassSelfInitialization(malformed));
+      std::cout << "recovery projection "
+                << static_cast<unsigned>(*gate.recovery->projection)
+                << " tree references " << gate.tree_references << " owners "
+                << gate.syntax_owners << '\n';
       seen = true;
     }
   }

@@ -342,3 +342,73 @@ not an aggregate cohort RSS claim. Logs and exact comparison:
 Fixtures and commands are in
 `tests/integration/fixtures/class_self_initialization/README.md`. They check the
 raw certificate and continued Closed refusal, not the future recovery gate.
+
+## Increment 3 consumption checkpoint (2026-10-20, baseline 9d77c21b)
+
+The verified scope is now consumed by the **common FunctionTree builder**.
+`BuildClassSelfClassDraft` freshly verifies the occurrence/storage certificate,
+merges root family demands into the real creator's CellPlan before creator
+freeze, and uses the owner ranges already allocated by class preparation.
+`ClassSelfOrder::BindInitialization` binds the original private self store;
+ClassTree retains separate internal/public ports, selected initializer dispatch
+and the exact cleanup entries. Accessor installation uses the certified corridor
+above; it is not admitted by opcode adjacency or by deleting the old mixed-class
+check. The successful Closed path is unchanged.
+
+The initializer gets a real `kClassInner` scope between its parameter scope and
+its original outer capture/module scopes. Incoming cells are joined by verified
+occurrence and original environment/address; only certified self requirements
+become immutable `kClassInner` SymbolExprs with the native class spelling. Locals
+reserve that spelling. Ordinary outer requirements remain typed, address/domain-
+bound `kCaptureRequirement`s, **not** fabricated CapturedSymbol aliases or
+initialized external bindings. Real module aliases use the existing ModuleAliases
+path. No method entity, invented owner or plan-local CellId establishes a
+cross-family target.
+
+`VerifyClassSelfClassDraft` independently re-verifies the original certificate,
+owner ranges, ports/cleanup, binding plan, scope/name resolution, and exactly one
+source reference for each original initializer self read/guard. It summarizes
+original-site DAGs once; sorted address joins are O(log N) each. Buffers and
+nested analysis costs are charged before allocation; resource/work exhaustion
+refuses. A separate conditional structure verifier checks draft syntax; ordinary
+VerifyTreeStructure and recovery reject class-inner/pending-capture drafts.
+It is never a ConstructedFunction and cannot reach the printer.
+
+**Publication is still closed, for specific projection gaps rather than an
+internal-value leak.** m8556 now has two real class-inner expressions and ten
+allocated family owners. Its two ordinary outer requirements still need the
+real creator CaptureTree enclosure, including native spellings/TDZ domains;
+its first refusal is ClassSelfError::kRecoveryGate with
+`Projection::kCaptureEnclosure` at m8556 PC13. Joining those requirements to
+creator demand storage is not that enclosure proof. After that come joint
+OriginalFlow/recovery of the class-initialization ports, public-binding lifetime,
+and completion/cleanup on each projection. Those are deliberately not assumed.
+
+m5040 has one initializer-tree self expression (five across the raw family
+inventory) and 23 allocated owners. Its first gate is
+`kClassInitializationPorts` at PC12; its retained completed-class availability,
+additional member-family enclosure and getInstance/export correspondence remain
+unverified. Its export must not be relabelled as the class publication.
+
+All seven fixtures build and independently check the initializer draft, and
+assert a typed recovery gate: `outer` needs capture enclosure; self/throwing/
+reentry/branches/copies/accessors first need class-initialization recovery ports.
+No emitted class is offered as semantically accepted output. Consequently Node
+and es2abc equivalence on *newly published* class text are not claimed this round.
+
+### Consumption acceptance
+
+Full build passes; focused tests **9/9** (including the real record exporter),
+serial source-regression **65/65**. The requested sweep passes **87/95**; the
+other eight failures reproduce at **9d77c21b**: family_source_cli, class_tree_source
+and the six captured-receiver variants listed in status.md. A first run exposed
+that the new exporter test reused a directory the CLI intentionally refuses to
+overwrite. Its per-run temporary output fixes that test harness issue; repeat
+runs and the full sweep retain all semantic gate assertions.
+
+Both fresh cohorts and exact directory comparisons retain **532/620 / 584/620**,
+with no status or source-text changes, and all 3,613 / 3,769 non-manifest files
+identical. Only o0/4660 and o20/8166 diagnostics move to the stated typed gates;
+abc_semantic agrees with the manifests. Exact 200/201/400/800 draft bytes are
+2,347,215 / 2,358,103 / 4,606,735 / 9,125,775; work is 1,445,501 / 1,452,838 /
+2,864,716 / 5,708,978. Scratch logs: `build/review/class-self3/`.

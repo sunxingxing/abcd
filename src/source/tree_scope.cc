@@ -95,6 +95,21 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
         RequireTree(tree.capture_scope == symbol.scope && symbol.declaration == DeclarationKind::kLet &&
                     !symbol.temporary, Error::kBinding);
         break;
+      case BindingKind::kClassInner:
+        RequireTree(tree.class_inner &&
+                        tree.class_inner->scope == symbol.scope &&
+                        tree.class_inner->name == symbol.name &&
+                        symbol.declaration == DeclarationKind::kConst &&
+                        !symbol.temporary,
+                    Error::kBinding);
+        declared_[i] = 1;
+        break;
+      case BindingKind::kCaptureRequirement:
+        RequireTree(tree.class_inner && tree.capture_scope == symbol.scope &&
+                        symbol.declaration == DeclarationKind::kLet &&
+                        !symbol.temporary,
+                    Error::kBinding);
+        break;
       case BindingKind::kModule:
         RequireTree(tree.module_scope == symbol.scope &&
             (symbol.declaration == DeclarationKind::kLet || symbol.declaration == DeclarationKind::kConst) &&
@@ -141,6 +156,15 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
     declared_[capture.symbol.value] = 1;
   }
   std::vector<ModuleSymbol> targets;
+  for (const auto& requirement : tree.capture_requirements) {
+    budget.Step();
+    RequireTree(tree.class_inner && requirement.symbol.value < count &&
+                    tree.symbols[requirement.symbol.value].kind ==
+                        BindingKind::kCaptureRequirement &&
+                    !declared_[requirement.symbol.value],
+                Error::kBinding);
+    declared_[requirement.symbol.value] = 1;
+  }
   budget.Array(targets, tree.modules.size());
   for (std::size_t i = 0; i < tree.modules.size(); ++i) {
     budget.Step();

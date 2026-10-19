@@ -1,12 +1,13 @@
 #ifndef ABCD_SOURCE_FUNCTION_TREE_H_
 #define ABCD_SOURCE_FUNCTION_TREE_H_
 
+#include "capture_tree.h"
+#include "class_self_scope.h"
+#include "completion_plan.h"
 #include "control_plan.h"
 #include "expression_forest.h"
 #include "function_syntax.h"
-#include "capture_tree.h"
 #include "tree_flow.h"
-#include "completion_plan.h"
 #include "tree_semantics.h"
 
 namespace abcd::source {
@@ -52,5 +53,28 @@ BuildFunctionTree(const analysis::ValueProgram& graph, const ControlPlan& contro
     ExpressionConstants constants, analysis::SemanticBudget budget = {},
     const IncomingCaptureTree* incoming = nullptr,
     RecoveryMode recovery = RecoveryMode::kCompleteOnly);
+struct ClassInitializerTreeInput {
+  const ClassSelfInitializationInput& original;
+  const ClassSelfInitialization& initialization;
+  const ClassSelfScope& scope;
+  std::uint32_t family, member;
+  NameId name;
+};
+// Statement/expression construction uses the common builder. This type cannot
+// be wrapped as ConstructedFunction: enclosing captures and original-flow
+// class-initialization ports remain independent publication obligations.
+struct ClassInitializerTreeDraft {
+  FunctionTree tree;
+  BindingPlan bindings;
+  std::vector<std::optional<ExprId>> expressions;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
+};
+std::variant<ClassInitializerTreeDraft, FunctionTreeFailure>
+BuildClassInitializerTreeDraft(const analysis::ValueProgram&,
+                               const ControlPlan&, const EvaluationPlan&,
+                               FunctionSyntax, ExpressionConstants,
+                               const ClassInitializerTreeInput&,
+                               analysis::SemanticBudget = {});
 }  // namespace abcd::source
 #endif

@@ -89,9 +89,15 @@ void CheckCallable(const FunctionTree& tree) {
 
 class StructureCheck {
  public:
-  StructureCheck(const FunctionTree& tree, TreeCheckBudget& budget, std::vector<ScopeId>& expression_scopes,
-      const GlobalScope* destination)
-      : tree_(tree), budget_(budget), scopes_(tree, budget), expression_scopes_(expression_scopes), destination_(destination) {
+  StructureCheck(const FunctionTree& tree, TreeCheckBudget& budget,
+                 std::vector<ScopeId>& expression_scopes,
+                 const GlobalScope* destination, bool class_draft = false)
+      : tree_(tree),
+        budget_(budget),
+        scopes_(tree, budget),
+        expression_scopes_(expression_scopes),
+        destination_(destination),
+        class_draft_(class_draft) {
     budget.Array(expression_scopes_, tree.expressions.size());
     budget.Array(expressions_, tree.expressions.size());
     budget.Array(array_elements_, tree.expressions.size());
@@ -111,6 +117,10 @@ class StructureCheck {
     budget.Array(stack_, tree.expressions.size() + tree.statements.size());
   }
   std::size_t Run() {
+    RequireTree(class_draft_ ? tree_.class_inner.has_value()
+                             : (!tree_.class_inner &&
+                                tree_.capture_requirements.empty()),
+                Error::kUnsupportedSyntax);
     CheckCallable(tree_);
     for (const auto& issue : tree_.recovery_issues) {
       budget_.Step();
@@ -148,7 +158,20 @@ class StructureCheck {
                 tree_.parameter_scope != tree_.body_scope, Error::kScope);
     const auto& parameters = tree_.scopes[tree_.parameter_scope.value];
     const auto& body = tree_.scopes[tree_.body_scope.value];
-    const auto outer = tree_.capture_scope ? tree_.capture_scope : tree_.module_scope;
+    const auto ordinary_outer =
+        tree_.capture_scope ? tree_.capture_scope : tree_.module_scope;
+    const auto outer = tree_.class_inner
+                           ? std::optional{tree_.class_inner->scope}
+                           : ordinary_outer;
+    if (tree_.class_inner) {
+      const auto& inner = *tree_.class_inner;
+      RequireTree(
+          class_draft_ && inner.scope.value < tree_.scopes.size() &&
+              inner.name.value < tree_.names.size() &&
+              tree_.scopes[inner.scope.value].kind == ScopeKind::kClassInner &&
+              tree_.scopes[inner.scope.value].parent == ordinary_outer,
+          Error::kScope);
+    }
     std::optional<ScopeId> self_scope;
     if (tree_.self) {
       const auto& self = tree_.symbols[tree_.self->value];
@@ -174,7 +197,10 @@ class StructureCheck {
     const auto enclosing = self_scope ? self_scope : outer;
     RequireTree(parameters.kind == ScopeKind::kParameters && parameters.parent == enclosing &&
                 body.kind == ScopeKind::kFunctionBody && body.parent == tree_.parameter_scope, Error::kScope);
-    RequireTree(tree_.capture_scope.has_value() == !tree_.captures.empty(), Error::kScope);
+    RequireTree(
+        tree_.capture_scope.has_value() ==
+            (!tree_.captures.empty() || !tree_.capture_requirements.empty()),
+        Error::kScope);
     RequireTree(tree_.module_scope.has_value() == !tree_.modules.empty(), Error::kScope);
     if (tree_.module_scope) {
       const auto scope = *tree_.module_scope;
@@ -190,6 +216,7 @@ class StructureCheck {
       scopes_.Enter(scope);
     }
     RequireTree(tree_.body.value < tree_.statements.size(), Error::kRange);
+    if (tree_.class_inner) scopes_.Enter(tree_.class_inner->scope);
     const auto* root = std::get_if<BlockStmt>(&tree_.statements[tree_.body.value].statement);
     RequireTree(root && root->scope == tree_.body_scope && !root->label, Error::kScope);
     if (self_scope) scopes_.Enter(*self_scope);
@@ -242,6 +269,7 @@ class StructureCheck {
     }
     scopes_.Leave(tree_.parameter_scope);
     if (self_scope) scopes_.Leave(*self_scope);
+    if (tree_.class_inner) scopes_.Leave(tree_.class_inner->scope);
     if (tree_.capture_scope) scopes_.Leave(*tree_.capture_scope);
     if (tree_.module_scope) scopes_.Leave(*tree_.module_scope);
     scopes_.Finish();
@@ -329,8 +357,13 @@ class StructureCheck {
           RequireTree(!capture_edges_[at], Error::kOwnership); capture_edges_[at] = 1;
           const auto symbol = tree_.closure_captures[at];
           scopes_.Reference(symbol);
-          RequireTree(tree_.symbols[symbol.value].kind == BindingKind::kLocal ||
-              tree_.symbols[symbol.value].kind == BindingKind::kCapture, Error::kBinding);
+          RequireTree(
+              tree_.symbols[symbol.value].kind == BindingKind::kClassInner ||
+                  tree_.symbols[symbol.value].kind ==
+                      BindingKind::kCaptureRequirement ||
+                  tree_.symbols[symbol.value].kind == BindingKind::kLocal ||
+                  tree_.symbols[symbol.value].kind == BindingKind::kCapture,
+              Error::kBinding);
         }
       } else if constexpr (std::is_same_v<T, FieldDefinitionExpr>) {
         RequireTree(expression.name.value < tree_.names.size(), Error::kName);
@@ -781,6 +814,7 @@ class StructureCheck {
   TreeScopeCheck scopes_;
   std::vector<ScopeId>& expression_scopes_;
   const GlobalScope* destination_;
+  bool class_draft_ = false;
   std::vector<std::uint8_t> expressions_;
   std::vector<std::uint8_t> statements_;
   std::vector<std::uint8_t> children_;
@@ -794,8 +828,9 @@ class StructureCheck {
 };
 }  // namespace
 
-std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
-    const FunctionTree& tree, analysis::SemanticBudget budget, const GlobalScope* destination) {
+static std::variant<TreeStructure, TreeStructureError> VerifyStructure(
+    const FunctionTree& tree, analysis::SemanticBudget budget,
+    const GlobalScope* destination, bool class_draft) {
   TreePrintTrace trace(true);
   TreePrintSiteScope site(TreePrintSite::kStructureVerification);
   TreePrintLocationScope location(tree);
@@ -827,7 +862,10 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
     }
     checked.Admit(1, sizeof(TreeStructure));
     TreeStructure result{tree.value_revision, tree.cfg_revision};
-    result.maximum_depth = StructureCheck(tree, checked, result.expression_scopes, destination).Run();
+    result.maximum_depth =
+        StructureCheck(tree, checked, result.expression_scopes, destination,
+                       class_draft)
+            .Run();
     CheckTreeOrigins(tree, checked);
     result.allocated_bytes = checked.Bytes(); result.work = checked.Work();
     result.input_bytes=input_bytes;
@@ -836,5 +874,14 @@ std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
   } catch (Error error) { trace.failure.cause=error;trace.Propagate();return error;
   } catch (const std::bad_alloc&) { PrintCharge(TreePrintBudgetKind::kHostAllocation,{},0,0); trace.Propagate();return Error::kResourceLimit;
   } catch (const std::length_error&) { PrintCharge(TreePrintBudgetKind::kCapacityOverflow,{},0,0); trace.Propagate();return Error::kResourceLimit; }
+}
+std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
+    const FunctionTree& tree, analysis::SemanticBudget budget,
+    const GlobalScope* destination) {
+  return VerifyStructure(tree, budget, destination, false);
+}
+std::variant<TreeStructure, TreeStructureError> VerifyClassInitializerStructure(
+    const FunctionTree& tree, analysis::SemanticBudget budget) {
+  return VerifyStructure(tree, budget, nullptr, true);
 }
 }  // namespace abcd::source

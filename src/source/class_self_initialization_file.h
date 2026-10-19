@@ -11,5 +11,14 @@ ClassSelfInitializationDiagnostic DiagnoseClassSelfInitialization(
     const analysis::FunctionCreationSites&, const analysis::ClassMethodSites&,
     const FileFunction&, const ClassInitializerCall&, CreatorClassOccurrence,
     analysis::SemanticBudget = {}, const RecordModuleContext* = nullptr);
+// Production consumption of a sealed scope into actual initializer syntax and
+// real creator storage. Success still requires enclosing/recovery projection;
+// recovery identifies that missing projection, not the original internal value.
+ClassSelfInitializationDiagnostic ConsumeClassSelfInitialization(
+    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+    const abc::MethodLookup&, const analysis::MethodRoleIndex&,
+    const analysis::FunctionCreationSites&, const analysis::ClassMethodSites&,
+    FileFunction&, const ClassInitializerCall&, CreatorClassOccurrence,
+    analysis::SemanticBudget = {}, const RecordModuleContext* = nullptr);
 }  // namespace abcd::source
 #endif

@@ -1842,6 +1842,9 @@ class Initializers {
         case BindingKind::kCatchParameter:case BindingKind::kFunctionSelf:return true;
         case BindingKind::kLocal:case BindingKind::kCompilerTemporary:
         case BindingKind::kCapture:case BindingKind::kModule:return false;
+        case BindingKind::kClassInner:
+        case BindingKind::kCaptureRequirement:
+          throw TreeStructureError::kBinding;
       }
       throw TreeStructureError::kBinding;
     };

@@ -18,11 +18,18 @@ std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
     using T = typename std::decay_t<decltype(items)>::value_type;
     return admit(items.capacity(), sizeof(T));
   };
-  if (!admit(1, sizeof(FunctionTree)) || !arena(tree.parameters) || !arena(tree.captures) || !arena(tree.modules) ||
-      !arena(tree.scopes) || !arena(tree.symbols) || !arena(tree.names) ||
-      !arena(tree.texts) || !arena(tree.expressions) || !arena(tree.properties) || !arena(tree.arguments) || !arena(tree.statements) ||
-      !arena(tree.receiver_guards) || !arena(tree.children) || !arena(tree.closure_captures) || !arena(tree.origins) || !arena(tree.origin_parts) ||
-      !arena(tree.anchors) || !arena(tree.operations) || !arena(tree.signature) || !arena(tree.recovery_issues) || !arena(tree.labels) || !arena(tree.finalizers) || !arena(tree.yield_returns))
+  if (!admit(1, sizeof(FunctionTree)) || !arena(tree.capture_requirements) ||
+      !arena(tree.parameters) || !arena(tree.captures) ||
+      !arena(tree.modules) || !arena(tree.scopes) || !arena(tree.symbols) ||
+      !arena(tree.names) || !arena(tree.texts) || !arena(tree.expressions) ||
+      !arena(tree.properties) || !arena(tree.arguments) ||
+      !arena(tree.statements) || !arena(tree.receiver_guards) ||
+      !arena(tree.children) || !arena(tree.closure_captures) ||
+      !arena(tree.origins) || !arena(tree.origin_parts) ||
+      !arena(tree.anchors) || !arena(tree.operations) ||
+      !arena(tree.signature) || !arena(tree.recovery_issues) ||
+      !arena(tree.labels) || !arena(tree.finalizers) ||
+      !arena(tree.yield_returns))
     return TreeStorageError::kResourceLimit;
   if(tree.concurrent&&!admit(tree.concurrent->AllocatedBytes(),1))return TreeStorageError::kResourceLimit;
   const auto payloads = [&](const auto& strings) -> std::optional<TreeStorageError> {
