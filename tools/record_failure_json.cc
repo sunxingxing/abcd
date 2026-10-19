@@ -1,3 +1,4 @@
+#include "../src/source/non_executable_json.h"
 #include "../src/source/cell_parameter_default_json.h"
 #include "../src/source/sendable_failure_json.h"
 #include "../src/source/concurrent_failure_json.h"
@@ -72,6 +73,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.failure.async) record["source_failure"]["async"] = source::AsyncCompletionJson(*failure.failure.async);
       if (failure.failure.exception_region) record["source_failure"]["exception_region"] = source::ExceptionRegionJson(*failure.failure.exception_region);
       if (failure.failure.family_creation) record["source_failure"]["family_creation"] = source::FamilyCreationJson(*failure.failure.family_creation);
+      if (failure.failure.non_executable) record["source_failure"]["non_executable"] = source::NonExecutableJson(*failure.failure.non_executable);
       if (failure.failure.internal_value) record["source_failure"]["internal_value"] = source::InternalValueJson(*failure.failure.internal_value);
       if (failure.failure.printing) record["source_failure"]["printing"] = source::TreePrintFailureJson(*failure.failure.printing);
       if (failure.failure.evaluation) record["source_failure"]["evaluation"] = source::EvaluationFailureJson(*failure.failure.evaluation);
@@ -104,6 +106,7 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       if (failure.async) record["source_async"] = source::AsyncCompletionJson(*failure.async);
       if (failure.exception_region) record["source_exception_region"] = source::ExceptionRegionJson(*failure.exception_region);
       if (failure.family_creation) record["source_family_creation"] = source::FamilyCreationJson(*failure.family_creation);
+      if (failure.non_executable) record["source_non_executable"] = source::NonExecutableJson(*failure.non_executable);
       if (failure.internal_value) record["source_internal_value"] = source::InternalValueJson(*failure.internal_value);
       if (failure.printing) record["source_printing"] = source::TreePrintFailureJson(*failure.printing);
       if (failure.evaluation) record["source_evaluation"] = source::EvaluationFailureJson(*failure.evaluation);

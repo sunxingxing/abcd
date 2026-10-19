@@ -12,6 +12,39 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## ISA increment 1b：构造 ABC 与不可执行分支拒绝（待 cc 审查）
+
+- 基线 `845c786a`。新增 `SemanticError::kNonExecutableInstruction`（7，原值不变），
+  用固定大小的 opcode / `RuntimeEvidence::kPinnedExtendedBranches`（0）见证保留
+  28 个扩展分支的 pinned-runtime 拒绝。有效分支不再错误折叠为 malformed；
+  未解析目标仍是 malformed。JEQZ/JNEZ 及资源分类未变。见证贯通 raw probe、
+  `abc_semantic`、route receipt 和 record-entry JSON，并校验反序列化。
+- 测试专用两遍 writer 在 `tests/support/abc/builder.py`：单一 12.0.6 ECMAScript
+  module/method、ASCII 字符串池、类型化实体/标签、相对跳转、catch-all、region/index、
+  Adler-32；预先计费，checked uint/ULEB/branch/label，最大 128 MiB，不供生产调用。
+  28 个独立拒绝 ABC 经 engine decoder 和 SDK ark_disasm 交叉验证。两个
+  JEQZ/JNEZ 控制 ABC 与 es2abc 等价源码均由引擎导出，再作 Node getter/异常轨迹差分。
+  不执行这 28 个不可执行指令，不将 disassembly 或拒绝称作语义支持。
+- [覆盖台账](isa-coverage.md)：214 ABC / 934,957 occurrences，167 个变体出现，
+  28 NonExecutable、128 SupportedUnverified、176 Unmeasured，其余三类为 0。
+  NonExecutable 必须有被 hash 固定的引用、构造文件、raw/record 拒绝和通过的测试；
+  只给实测 profile 分类。JSON 生成物在 `build/isa-coverage/coverage.json`。
+- 完整构建 `cmake --build build/regression -j 6 -- -k` 通过；固定串行 **65/65**；
+  定向 non_executable / constructed branches / coverage matrix / branch condition /
+  record_failure_json / source_route **6/6**。构造 suite 内含 5 组测试，覆盖
+  200/201/400/800 和精确预算、错误标签/范围/编码字段、JSON 变异、citation/hash 变异。
+- CLI/corpus/failure/receipt/manifest/isa 扫描 **84/85**，唯一失败是既有
+  `family_source_cli_test`（node escaped its owner or origin arena）。修复了
+  `isa_pin_test` 的测试准备：继承父配置选定的 Ruby 3.2.3，复制缺失的 access/ISA
+  catalog 模板；pin/mutation 断言没有放宽，现通过。
+- 最终扫描 `/private/tmp/isa1b-coverage-final` 对已保存的 increment-0 输出
+  `/private/tmp/isa-coverage-full`：旧 flags 3,635 文件、V4 3,776 文件（含 manifests）
+  全部逐字节相同，**526/620、573/620**，0 状态变化、0 文本变化。
+  对比回执 `/tmp/isa1b-cohort-compare.json`；cc 仍可独立对当前基线复验。
+- 日志：`/tmp/isa1b-build-acceptance.log`、`/tmp/isa1b-fixed.log`、
+  `/tmp/isa1b-targeted-final.log`、`/tmp/isa1b-sweep-acceptance.log`。
+  未 commit/push/stash；用户的 `sample.tar.gz` 和 `tests/samples/big.abc` 未改动。
+
 ## Round 76：静态初始化器 self-binding（证据阶段停止，待 cc 审查）
 
 - 基线 `a19178ed`。仅新增[证据记录](round-76-static-self.md)，没有修改生产代码或测试，

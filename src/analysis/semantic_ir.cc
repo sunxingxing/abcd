@@ -37,6 +37,14 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       const auto predicate = LiftBranchCondition(decoded);
       if (const auto* condition = std::get_if<UnaryExpression>(&predicate))
         return BranchOperation{*condition, *site.branch_target};
+      if (std::get<BranchError>(predicate) == BranchError::kUnsupportedOpcode) {
+        if (const auto evidence = NonExecutable(decoded.opcode)) {
+          auto failure = Fail(SemanticError::kNonExecutableInstruction, site.offset);
+          failure.non_executable = evidence;
+          return failure;
+        }
+        return Fail(SemanticError::kUnsupportedInstruction, site.offset);
+      }
       return Fail(SemanticError::kMalformedInstruction, site.offset);
     }
     case ControlTransfer::kJump:

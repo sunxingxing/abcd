@@ -1,3 +1,4 @@
+#include "non_executable_json.h"
 #include "cell_parameter_default_json.h"
 #include "sendable_failure_json.h"
 #include "concurrent_failure_json.h"
@@ -269,6 +270,7 @@ std::variant<std::string, RouteReceiptError> SerializeRouteReceipt(
     if (receipt.failure->async) failure["async"] = AsyncCompletionJson(*receipt.failure->async);
     if (receipt.failure->exception_region) failure["exception_region"] = ExceptionRegionJson(*receipt.failure->exception_region);
     if (receipt.failure->family_creation) failure["family_creation"] = FamilyCreationJson(*receipt.failure->family_creation);
+    if (receipt.failure->non_executable) failure["non_executable"] = NonExecutableJson(*receipt.failure->non_executable);
     if (receipt.failure->internal_value) failure["internal_value"] = InternalValueJson(*receipt.failure->internal_value);
     if (receipt.failure->printing) failure["printing"] = TreePrintFailureJson(*receipt.failure->printing);
     if (receipt.failure->evaluation) failure["evaluation"] = EvaluationFailureJson(*receipt.failure->evaluation);
@@ -473,6 +475,9 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
     }
     if (const auto item = failure->find("family_creation"); item != failure->end()) {
       typed.family_creation = ParseFamilyCreation(*item); if (!typed.family_creation) return RouteReceiptError::kFailure;
+    }
+    if (const auto item = failure->find("non_executable"); item != failure->end()) {
+      typed.non_executable = ParseNonExecutable(*item); if (!typed.non_executable) return RouteReceiptError::kFailure;
     }
     if (const auto item = failure->find("internal_value"); item != failure->end()) {
       typed.internal_value = ParseInternalValue(*item); if (!typed.internal_value) return RouteReceiptError::kFailure;

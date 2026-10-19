@@ -7,9 +7,26 @@ import tempfile
 import unittest
 sys.dont_write_bytecode = True
 sys.path.insert(0,str(pathlib.Path(__file__).parent))
-from coverage_matrix import catalog, fingerprint, validate_encoding, validate_registry
+from coverage_matrix import catalog, fingerprint, validate_encoding, validate_registry, validate_non_executable
 
 class CoverageTest(unittest.TestCase):
+    def test_non_executable_evidence_mutations(self):
+        root=pathlib.Path(__file__).resolve().parents[2]
+        entry=json.loads((root/'tests/isa/coverage_manifest.json').read_text())['fixtures'][0]
+        ev={'opcode':entry['opcodes'][0], 'evidence':entry['evidence_id']}
+        row={'profile':entry['profile'], 'encoding':{'opcode':ev['opcode']},
+             'lift':{'status':'refused','cause':{'domain':'SemanticError','value':7},'non_executable':ev},
+             'recovery':{flag:{'record_first_refusal':{'non_executable':ev}} for flag in ('previous','v4')}}
+        self.assertTrue(validate_non_executable(entry,row,root))
+        bad=copy.deepcopy(row);bad['lift']['status']='ok'
+        with self.assertRaises(ValueError):validate_non_executable(entry,bad,root)
+        bad=copy.deepcopy(row);bad['lift']['non_executable']['evidence']=9
+        with self.assertRaises(ValueError):validate_non_executable(entry,bad,root)
+        bad=copy.deepcopy(row);bad['recovery']['previous']['record_first_refusal']=None
+        with self.assertRaises(ValueError):validate_non_executable(entry,bad,root)
+        bad=copy.deepcopy(entry);bad['evidence_sha256']='0'*64
+        with self.assertRaises(ValueError):validate_non_executable(bad,row,root)
+
     def test_catalog_and_encoding_mutations(self):
         rows=catalog(sys.argv[1],sys.argv[2])
         self.assertEqual(332,len(rows))

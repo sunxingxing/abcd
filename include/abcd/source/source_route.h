@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_SOURCE_ROUTE_H_
 #define ABCD_SOURCE_SOURCE_ROUTE_H_
+#include "abcd/analysis/non_executable.h"
 #include "abcd/source/cell_parameter_default_failure.h"
 #include "abcd/source/concurrent_failure.h"
 #include "abcd/source/sendable_failure.h"
@@ -120,6 +121,7 @@ struct RouteFailure {
   std::optional<ExceptionRegionEvidence> exception_region;
   std::optional<AsyncCompletionEvidence> async;
   std::optional<analysis::InternalValueEvidence> internal_value;
+  std::optional<analysis::NonExecutableEvidence> non_executable;
   std::optional<FamilyCreationEvidence> family_creation;
   std::optional<ConcurrentFailure> concurrent;
   std::optional<SendableFailure> sendable;

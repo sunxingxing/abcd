@@ -55,6 +55,26 @@ def validate_registry(entry, digest, seen):
             raise ValueError('refusal cannot count as support')
         raise ValueError('verified classification requires occurrence-level oracle importer (not enabled)')
 
+def validate_non_executable(entry, row, root):
+    """A constructed refusal plus the pinned citation, never refusal alone."""
+    if entry.get('classification') != 'NonExecutable':
+        return False
+    evidence = root / entry['evidence']
+    if fingerprint(evidence) != entry.get('evidence_sha256'):
+        raise ValueError('stale runtime evidence')
+    if row['profile'] != entry['profile'] or row['encoding']['opcode'] not in entry['opcodes']:
+        return False
+    lift = row['lift']
+    if (lift['status'] != 'refused' or lift['cause'].get('domain') != 'SemanticError'
+        or lift['cause'].get('value') != 7 or
+        lift.get('non_executable') != {'opcode': row['encoding']['opcode'], 'evidence': entry['evidence_id']}):
+        raise ValueError('non-executable classification without typed runtime refusal')
+    for flag in ('previous','v4'):
+        failure = row['recovery'][flag]['record_first_refusal']
+        if not failure or failure.get('non_executable') != lift['non_executable']:
+            raise ValueError('non-executable classification without record refusal')
+    return True
+
 def recovery_manifest(structure, path, output, flags, digest):
     manifest = output / 'manifest.json'
     if not manifest.exists():
@@ -92,7 +112,9 @@ def run(args):
     by_opcode = {s['opcode']: s for s in specs}
     registry = json.loads((root / 'tests/isa/coverage_manifest.json').read_text())['fixtures']
     registered = {str((root / e['path']).resolve()): e for e in registry}
-    stats = {}; files = []; first = []; failures = []; unattributed = []
+    stats = {}; files = []; first = []; failures = []; unattributed = []; non_executable = {}
+    if any(e.get('classification') == 'NonExecutable' for e in registry):
+        subprocess.run([sys.executable, root / 'tests/isa/constructed_branches_test.py'], check=True)
     flags = {'previous': ['--language-numeric', '--language-constructors'], 'v4': ['--language-source']}
     def state(profile, opcode):
         key = (profile, opcode)
@@ -183,6 +205,9 @@ def run(args):
                              'opcode': opcode, 'name': by_opcode[opcode]['name'], 'flag': flag, 'failure': failure, 'attribution': 'located_first_refusal'}
                     first.append(entry); matched.add((flag, rid))
                     if group == 'exploration': s['first'][flag].add((digest, rid))
+                registry_entry = registered.get(str(path.resolve()))
+                if registry_entry and validate_non_executable(registry_entry, row, root):
+                    non_executable[(row['profile'], opcode)] = {'evidence': registry_entry['evidence'], 'evidence_sha256': registry_entry['evidence_sha256'], 'evidence_id': registry_entry['evidence_id'], 'fixture': registry_entry['path'], 'refusal_test': registry_entry['refusal_test']}
                 row['oracles'] = {'node': None, 'ark_round_trip': None, 'ark_runtime': None}
                 dest.write(json.dumps(row, separators=(',', ':')) + '\n')
         if str(path.resolve()) in registered: validate_registry(registered[str(path.resolve())], digest, seen)
@@ -205,6 +230,11 @@ def run(args):
                        current_first_refusal={f: len(v) for f,v in s['first'].items()},
                        oracles={'node': None, 'ark_round_trip': None, 'ark_runtime': None},
                        classification='SupportedUnverified' if s['complete_occurrence'] else 'Unmeasured')
+            if (profile, spec['opcode']) in non_executable:
+                if s['complete_occurrence'] or s['lift'].get('ok',0):
+                    raise ValueError('non-executable evidence conflicts with successful lift')
+                row['classification'] = 'NonExecutable'
+                row['classification_evidence'] = non_executable[(profile, spec['opcode'])]
             rows.append(row)
     profile_rows = rows
     variants = []
@@ -218,6 +248,10 @@ def run(args):
         merged['profiles'] = members
         merged['occurrences'] = sum(r['occurrences'] for r in members)
         merged['classification'] = 'SupportedUnverified' if any(r['classification'] == 'SupportedUnverified' for r in members) else 'Unmeasured'
+        if any(r['classification'] == 'NonExecutable' for r in members):
+            if merged['classification'] == 'SupportedUnverified':
+                raise ValueError('profile conflict requires separate classification')
+            merged['classification'] = 'NonExecutable'
         variants.append(merged)
     family_rollups = []
     for family, name in enumerate(FAMILIES):
@@ -239,7 +273,7 @@ def run(args):
               'files': files, 'failures': failures, 'first_refusals': first, 'unsupported_first_refusals': unsupported_first, 'unattributed_first_refusals': unattributed, 'rows': variants, 'profile_rows': profile_rows, 'families': family_rollups,
               'classes': {kind: sum(r['classification'] == kind for r in variants) for kind in CLASSES}}
     (out / 'matrix.json').write_text(json.dumps(result, indent=2)+'\n')
-    lines = ['# Measured ISA coverage', '', 'Generated by `tests/isa/coverage_matrix.py`. No oracle evidence is imported in increment 0.', '',
+    lines = ['# Measured ISA coverage', '', 'Generated by `tests/isa/coverage_matrix.py`. Oracle layers remain separate. NonExecutable requires a pinned citation and passing constructed-ABC refusal tests.', '',
              f'Engine: `{result["engine_revision"]}`. Files: {len(files)}. Occurrences: {sum(f["instructions"] for f in files)}.', '',
              'Raw lift and record completion do not prove per-instruction source equivalence. Method status is unmeasured unless independently inspected.', '',
              '| Opcode | Family | Occurrences | Measured profiles | Classification |',

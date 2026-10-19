@@ -260,6 +260,17 @@ int main() {
   bad_exit([](auto& exits) { exits[1]["pc"] = 0; });
   bad_exit([](auto& exits) { exits[0]["source"] = -1; });
   bad_exit([](auto& exits) { exits.erase(1); });
+  caused.failure->non_executable = analysis::NonExecutable(abc::Opcode::kJSTRICTEQZ_IMM8);
+  const auto branch_json = nlohmann::json::parse(std::get<std::string>(SerializeRouteReceipt(caused)));
+  const auto branch_roundtrip = std::get<MethodRouteReceipt>(ParseRouteReceipt(branch_json.dump()));
+  Check(branch_roundtrip.failure->non_executable == caused.failure->non_executable);
+  for (const auto& key : {"opcode", "evidence"}) {
+    auto bad = branch_json; bad["failure"]["non_executable"][key] = 65536;
+    Check(std::holds_alternative<RouteReceiptError>(ParseRouteReceipt(bad.dump())));
+  }
+  auto supported_branch = branch_json;
+  supported_branch["failure"]["non_executable"]["opcode"] = static_cast<unsigned>(abc::Opcode::kJEQZ_IMM8);
+  Check(std::holds_alternative<RouteReceiptError>(ParseRouteReceipt(supported_branch.dump())));
   const auto samples = {RefusedReceipt(), caused, deep, complete_value};
   for (const auto& receipt : samples) {
     const auto serialized = SerializeRouteReceipt(receipt);

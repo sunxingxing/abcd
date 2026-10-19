@@ -50,6 +50,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     if constexpr (std::is_same_v<E, FunctionInputFailure>) {
       const auto detail = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{FunctionFileFailure{cause}}});
       failure.internal_value = detail.internal_value;
+      failure.non_executable = detail.non_executable;
       failure.method = detail.method; failure.pc = detail.pc; failure.working_pc = detail.working_pc;
     }
     if constexpr(std::is_same_v<E,TreePrintFailure>) { failure.concurrent=cause.concurrent; failure.printing=cause;failure.method=cause.location.method;failure.pc=cause.location.pc;failure.working_pc=cause.location.working_pc; }
@@ -74,6 +75,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         failure.async = detail.async;
         failure.evaluation = detail.evaluation;
         failure.internal_value = detail.internal_value;
+        failure.non_executable = detail.non_executable;
         failure.tree = detail.tree; failure.deferred = detail.deferred;
         failure.method = detail.method.value_or(index.methods[entry.value].offset);
         if (failure.evaluation && !failure.evaluation->location.method)

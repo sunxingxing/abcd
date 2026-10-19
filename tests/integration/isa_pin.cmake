@@ -13,11 +13,16 @@ file(REMOVE_RECURSE "${root}")
 file(MAKE_DIRECTORY "${source}/tools/templates" "${isa}")
 
 set(pinned "${ABCD_ISA_ROOT}")
+# The nested configure must use the same pinned Ruby as the parent build.
+set(ruby_argument)
+if(DEFINED ABCD_TEST_RUBY)
+  list(APPEND ruby_argument "-DRuby_EXECUTABLE=${ABCD_TEST_RUBY}")
+endif()
 foreach(name IN ITEMS isa.yaml isapi.rb gen.rb)
   file(COPY "${pinned}/${name}" DESTINATION "${isa}")
 endforeach()
 foreach(name IN ITEMS isa_opcode.h.erb isa_table.inc.erb isa_cases.inc.erb
-                      isa_flow.inc.erb)
+                      isa_flow.inc.erb access_catalog.inc.erb isa_catalog.inc.erb)
   file(COPY "${ABCD_SOURCE_DIR}/tools/templates/${name}"
        DESTINATION "${source}/tools/templates")
 endforeach()
@@ -27,7 +32,7 @@ file(WRITE "${source}/CMakeLists.txt"
      "include(\"${ABCD_SOURCE_DIR}/cmake/IsaDependency.cmake\")\n")
 
 execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${build}"
-                        "-DABCD_ISA_ROOT=${isa}"
+                        "-DABCD_ISA_ROOT=${isa}" ${ruby_argument}
                 RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error)
 if(NOT status EQUAL 0)
   message(FATAL_ERROR "valid pinned ISA configure failed:\n${output}\n${error}")
@@ -55,7 +60,7 @@ foreach(name IN ITEMS isa.yaml isapi.rb gen.rb)
   endif()
   file(COPY "${pinned}/${name}" DESTINATION "${isa}")
   execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${build}"
-                          "-DABCD_ISA_ROOT=${isa}"
+                          "-DABCD_ISA_ROOT=${isa}" ${ruby_argument}
                   RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error)
   if(NOT status EQUAL 0)
     message(FATAL_ERROR "restored ${name} configure failed:\n${output}\n${error}")

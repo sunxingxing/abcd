@@ -11,6 +11,19 @@ void Check(bool value) {
 
 int main() {
   using namespace abcd;
+  const auto non_executable = analysis::NonExecutable(abc::Opcode::kJSTRICTEQZ_IMM8);
+  Check(non_executable.has_value());
+  source::RouteFailure branch{source::RouteFailureClass::kUnproved, source::ValueRouteError::kTreeStage, abc::CodeOffset{0}};
+  branch.non_executable = non_executable;
+  source::AppendFailureCause(branch.causes, analysis::SemanticError::kNonExecutableInstruction);
+  nlohmann::json branch_route;
+  tools::DescribeRecordFailure(source::RouteRefusal{branch}, branch_route);
+  source::RecordProgramFailure branch_entry{source::RecordProgramError::kEntry, abc::CodeOffset{0}};
+  branch_entry.non_executable = non_executable; branch_entry.causes = branch.causes;
+  nlohmann::json branch_record;
+  tools::DescribeRecordFailure(branch_entry, branch_record);
+  Check(branch_route["source_failure"]["non_executable"] == branch_record["source_non_executable"]);
+  Check(branch_record["source_causes"] == branch_route["source_failure"]["causes"]);
   // A route refusal names its domain, class, reason and optional pc.
   nlohmann::json refused;
   tools::DescribeRecordFailure(source::RouteRefusal{{source::RouteFailureClass::kUnproved,

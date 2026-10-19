@@ -368,11 +368,16 @@ if(BUILD_TESTING)
   target_include_directories(isa_coverage_test PRIVATE tests/support)
   target_link_libraries(isa_coverage_test PRIVATE abcd_analysis)
   add_test(NAME isa_coverage_test COMMAND isa_coverage_test)
+  add_executable(non_executable_test tests/unit/analysis/non_executable_test.cc)
+  target_link_libraries(non_executable_test PRIVATE abcd_analysis)
+  add_test(NAME non_executable_test COMMAND non_executable_test)
   if(ABCD_BUILD_TOOLS)
     add_executable(isa_coverage_probe tests/support/isa/coverage_probe.cc)
     target_include_directories(isa_coverage_probe PRIVATE tools)
     target_link_libraries(isa_coverage_probe PRIVATE abcd_analysis abcd_corpus abcd_json abcd_process)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME isa_constructed_branches_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/constructed_branches_test.py)
     add_test(NAME isa_coverage_matrix_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/coverage_matrix_test.py
       $<TARGET_FILE:isa_coverage_probe>
@@ -2555,6 +2560,7 @@ if(BUILD_TESTING)
     message(WARNING "Node unavailable: JS source oracle tests not registered")
   endif()
   add_test(NAME isa_pin_test COMMAND ${CMAKE_COMMAND}
+    "-DABCD_TEST_RUBY=${Ruby_EXECUTABLE}"
     -DABCD_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
     -DABCD_TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}
     -DABCD_ISA_ROOT=${ABCD_ISA_ROOT}

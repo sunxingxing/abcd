@@ -1,5 +1,398 @@
 {
   "schema": 1,
-  "fixtures": [],
-  "note": "Increment 0 measures existing ABCs without importing prior oracle claims. Empty oracle columns mean unmeasured, not skipped-pass."
+  "fixtures": [
+    {
+      "path": "tests/fixtures/isa/branches/jstricteqz_imm8.abc",
+      "sha256": "b0c9eba59af08daa25115e9d15d5a9ff50a8e59bbc7a74e0599749e5f341cd2d",
+      "profile": 4,
+      "opcodes": [
+        82
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jstricteqz_imm16.abc",
+      "sha256": "eab76957b400b507364ea1546fce515e8675e7dc4e0e4ede50173fce21532150",
+      "profile": 4,
+      "opcodes": [
+        157
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnstricteqz_imm8.abc",
+      "sha256": "df93d494b85cc9fe0b5fa0c22cd7553aa5f14ad7cc69569fe9ce8ad5b276b309",
+      "profile": 4,
+      "opcodes": [
+        83
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnstricteqz_imm16.abc",
+      "sha256": "edaf109437a1fadec769f9dd1e4fb045cccdba37eb3bac0eae4af3940b61c9e9",
+      "profile": 4,
+      "opcodes": [
+        158
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jeqnull_imm8.abc",
+      "sha256": "180118ffa09a987a6b0bacc4c0c45b98f50f25c48646b3eb9c6746e1b3c47a59",
+      "profile": 4,
+      "opcodes": [
+        84
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jeqnull_imm16.abc",
+      "sha256": "a6e8d8dfca029d27c66143368334eba329d5821bd43c3544470bae6bc7dfadad",
+      "profile": 4,
+      "opcodes": [
+        159
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnenull_imm8.abc",
+      "sha256": "614cd3869cda45ecebf5b6c03eeeccdbf8bf08ff87d14f372625057d78eb5321",
+      "profile": 4,
+      "opcodes": [
+        85
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnenull_imm16.abc",
+      "sha256": "db6e0309bc5f0b8cf35d4c46ecb9aa3baa886841d604547be8f0d2246cb86a23",
+      "profile": 4,
+      "opcodes": [
+        160
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jstricteqnull_imm8.abc",
+      "sha256": "c848195de6cf1b959f130f3619aaa79338a0f6f7a4def64db3bda52534cdfb6a",
+      "profile": 4,
+      "opcodes": [
+        86
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jstricteqnull_imm16.abc",
+      "sha256": "d0c80feb031d1433432715bc4b82e3fc8f60bc969d8307702a08664d52488ef6",
+      "profile": 4,
+      "opcodes": [
+        161
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnstricteqnull_imm8.abc",
+      "sha256": "1316a977cb03ecef8da7dab5358656b7bacafc6c167b547562e7199890444dfe",
+      "profile": 4,
+      "opcodes": [
+        87
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnstricteqnull_imm16.abc",
+      "sha256": "707e344b76d20227b7d78ae0597e2e84fa3126eb548bf94a4fc02f04ff902250",
+      "profile": 4,
+      "opcodes": [
+        162
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jequndefined_imm8.abc",
+      "sha256": "1e68467c9821682f131c09e30829ef81075d59349bcbe4135b2d2bf826c17648",
+      "profile": 4,
+      "opcodes": [
+        88
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jequndefined_imm16.abc",
+      "sha256": "0450881220f49e5abd8e3f522c0d0b44830d5e361f550ff6a5cf94185a9704b1",
+      "profile": 4,
+      "opcodes": [
+        163
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jneundefined_imm8.abc",
+      "sha256": "7e5cd7d9dfb09ba9f1347ba75122fd2338ff6bc26f5e135b95eaf7e742490b19",
+      "profile": 4,
+      "opcodes": [
+        89
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jneundefined_imm16.abc",
+      "sha256": "bd0378cb1d625d09c06c09ec3ce77e70d94c7b6b7ae6ff86fa58235016aa9fa2",
+      "profile": 4,
+      "opcodes": [
+        164
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jstrictequndefined_imm8.abc",
+      "sha256": "4a8f46f24557f41ff18a4a5b7b2a23dc0ab4d893ea65c84db1373869ffaa1efc",
+      "profile": 4,
+      "opcodes": [
+        90
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jstrictequndefined_imm16.abc",
+      "sha256": "e2246ba89e26c880cb27f0116951f13a3c70ade53b3a3af6f62600d14d8e61a0",
+      "profile": 4,
+      "opcodes": [
+        165
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnstrictequndefined_imm8.abc",
+      "sha256": "7f66fd3d0e709fe7a214e7b6059d7e8629b4f513f30db89f628236f4067f4db9",
+      "profile": 4,
+      "opcodes": [
+        91
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnstrictequndefined_imm16.abc",
+      "sha256": "3b6690d55db2d3dc1ac4265227c999922c9e3af49ef93d3885f42e01744dfe85",
+      "profile": 4,
+      "opcodes": [
+        166
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jeq_v8_imm8.abc",
+      "sha256": "bd4354b9e303d559e0c01726b0f7763debcd2dad66ac1f5c639eb53ff8ee0c98",
+      "profile": 4,
+      "opcodes": [
+        92
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jeq_v8_imm16.abc",
+      "sha256": "6437fb368211bc935a33b6b8568cbb843b120d9fd544a416874fdbbff39339bc",
+      "profile": 4,
+      "opcodes": [
+        167
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jne_v8_imm8.abc",
+      "sha256": "7aae60b511b595b7e0035bf4b7380aacb88599bd4dc5f61ae6f98c7cb00ce681",
+      "profile": 4,
+      "opcodes": [
+        93
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jne_v8_imm16.abc",
+      "sha256": "709e8baf6996ee255ab4fc8b212b47822147ddd8722c34331c5a7b21ccb121e4",
+      "profile": 4,
+      "opcodes": [
+        168
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jstricteq_v8_imm8.abc",
+      "sha256": "e2e9b18efcfb8adac5d37a3cd514d7b1cd27dee12b27b1909f981b42d6d888e5",
+      "profile": 4,
+      "opcodes": [
+        94
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jstricteq_v8_imm16.abc",
+      "sha256": "195742ca327c62344385731c30f211941a997e2b2d90d2df558c4c26a4ed7fb5",
+      "profile": 4,
+      "opcodes": [
+        169
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnstricteq_v8_imm8.abc",
+      "sha256": "aa3fe81b99717bf2d9ba1f10b77472e0b5d293616681d473a8588edda210d03d",
+      "profile": 4,
+      "opcodes": [
+        95
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/branches/jnstricteq_v8_imm16.abc",
+      "sha256": "559fe9f99217c21bb61f5f225b5becbd7c059638007bd549efdb4426eda382e0",
+      "profile": 4,
+      "opcodes": [
+        170
+      ],
+      "classification": "NonExecutable",
+      "evidence_id": 0,
+      "evidence": "docs/design/source-recovery/isa-branches-runtime-evidence.md",
+      "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
+      "refusal_test": "isa_constructed_branches_test",
+      "oracles": {}
+    }
+  ],
+  "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass."
 }

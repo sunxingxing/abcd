@@ -1,6 +1,7 @@
 #ifndef ABCD_ANALYSIS_SEMANTIC_IR_H_
 #define ABCD_ANALYSIS_SEMANTIC_IR_H_
 
+#include "abcd/analysis/non_executable.h"
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -192,12 +193,14 @@ enum class SemanticError : std::uint8_t {
   kFlow,
   kSsa,
   kResourceLimit,
+  kNonExecutableInstruction,
 };
 struct SemanticFailure {
   SemanticError kind;
   abc::CodeOffset pc;
   std::variant<std::monostate, RegisterUseFailure, IdfError,
                DominatorError, SsaError> ssa_cause;
+  std::optional<NonExecutableEvidence> non_executable;
 };
 // Default source recovery has no configured work cutoff. Keep the machine
 // counter range for accounting and legacy callers that explicitly request a

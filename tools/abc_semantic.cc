@@ -1,3 +1,4 @@
+#include "../src/source/non_executable_json.h"
 #include <algorithm>
 #include <array>
 #include <charconv>
@@ -310,8 +311,9 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
           }
         }
       } else {
-        output["semantic_error"] = static_cast<unsigned>(
-            std::get<analysis::SemanticFailure>(semantic).kind);
+        const auto& failure = std::get<analysis::SemanticFailure>(semantic);
+        output["semantic_error"] = static_cast<unsigned>(failure.kind);
+        if (failure.non_executable) output["non_executable"] = source::NonExecutableJson(*failure.non_executable);
       }
       if (!dispatch && site.offset == body->instructions.front().offset) {
         const auto& failure = std::get<analysis::DispatchFailure>(dispatched);
@@ -345,9 +347,11 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
   const auto* method_ir = std::get_if<analysis::SemanticMethod>(&built);
   if (!method_ir) {
     const auto& failure = std::get<analysis::SemanticFailure>(built);
-    ReportFailure({{"error", static_cast<unsigned>(InspectError::kSemantic)},
-                   {"semantic_error", static_cast<unsigned>(failure.kind)},
-                   {"pc", failure.pc.value}});
+    nlohmann::json report{{"error", static_cast<unsigned>(InspectError::kSemantic)},
+                         {"semantic_error", static_cast<unsigned>(failure.kind)},
+                         {"pc", failure.pc.value}};
+    if (failure.non_executable) report["non_executable"] = source::NonExecutableJson(*failure.non_executable);
+    ReportFailure(report);
     return EXIT_FAILURE;
   }
   std::cout << nlohmann::json{

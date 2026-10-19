@@ -1,4 +1,4 @@
-# Measured ISA ledger (increment 0)
+# Measured ISA ledger (increments 0–1b)
 
 This is test tooling, not an admission table. No production source is selected by
 an opcode name, fixture path, classification, or diagnostic string.
@@ -57,8 +57,11 @@ refusal. `unsupported_first_refusals` separately selects the typed semantic
 unsupported-instruction cause. Unlocated/synthetic/unmatched failures remain in
 `unattributed_first_refusals`; PC zero is a real location, not an absence default.
 
-`coverage_manifest.json` is deliberately empty until fixture/oracle evidence is
-registered. Registry checks reject stale hashes, missing decoded opcodes, and
+`coverage_manifest.json` registers the 28 constructed extended-branch refusals.
+The ledger runs `isa_constructed_branches_test` before accepting NonExecutable
+classification, then independently checks the runtime citation hash, fixture
+hash, raw typed refusal and both record refusals. Only the measured profile is
+classified; no runtime/Node pass is imported for these instructions. Registry checks reject stale hashes, missing decoded opcodes, and
 skipped or undocumented oracle passes. Refusals cannot become verified support.
 
 ## Storage and work
@@ -79,3 +82,13 @@ in the output directory. Catalog grouping is indexed, not a variant-by-occurrenc
 cross product. Hashing uses 1 MiB chunks. Production recovery keeps its own
 existing limits. The probe reports its measured RSS; on Darwin the shared process
 limit helper explicitly reports that an address-space limit was not established.
+
+The generated large JSON remains untracked (`build/isa-coverage/coverage.json`);
+copy `matrix.json` there after a complete run. The Markdown variant table is
+checked in at `docs/design/source-recovery/isa-coverage.md`.
+
+The generated ledger classifies the 28 non-executable variants only in the
+measured 12.0.6 profile; it does not transfer a fixture's observation to other
+profiles. `validate_non_executable` also rejects a successful lift, a mismatched
+runtime-evidence ID, missing record refusal, or a stale citation hash. The raw
+probe includes the fixed-size `non_executable` witness on its refusal row.

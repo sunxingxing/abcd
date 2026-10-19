@@ -1,0 +1,1 @@
+if (!input) { observed; }

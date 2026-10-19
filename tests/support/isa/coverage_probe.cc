@@ -205,6 +205,7 @@ int Probe(const char* path, const char* previous, const char* v4) {
       } else {
         const auto& f=std::get<analysis::SemanticFailure>(lifted);
         row["lift"]={{"status","refused"},{"cause",{{"domain","SemanticError"},{"value",unsigned(f.kind)},{"pc",f.pc.value}}}};
+        if (f.non_executable) row["lift"]["non_executable"]={{"opcode",unsigned(f.non_executable->opcode)},{"evidence",unsigned(f.non_executable->evidence)}};
         // Raw instruction lifting has no SSA construction and no nested SSA cause.
         if (f.ssa_cause.index()!=0) throw std::logic_error("unserialized raw SSA cause");
       }
