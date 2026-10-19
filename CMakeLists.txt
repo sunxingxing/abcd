@@ -364,6 +364,21 @@ if(BUILD_TESTING)
   target_link_libraries(argument_window_test PRIVATE abcd_analysis)
   add_test(NAME argument_window_test COMMAND argument_window_test)
   add_executable(access_catalog_test tests/unit/analysis/access_catalog_test.cc)
+  add_executable(isa_coverage_test tests/unit/analysis/isa_coverage_test.cc)
+  target_include_directories(isa_coverage_test PRIVATE tests/support)
+  target_link_libraries(isa_coverage_test PRIVATE abcd_analysis)
+  add_test(NAME isa_coverage_test COMMAND isa_coverage_test)
+  if(ABCD_BUILD_TOOLS)
+    add_executable(isa_coverage_probe tests/support/isa/coverage_probe.cc)
+    target_include_directories(isa_coverage_probe PRIVATE tools)
+    target_link_libraries(isa_coverage_probe PRIVATE abcd_analysis abcd_corpus abcd_json abcd_process)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME isa_coverage_matrix_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/coverage_matrix_test.py
+      $<TARGET_FILE:isa_coverage_probe>
+      ${CMAKE_CURRENT_BINARY_DIR}/generated/abcd/abc/generated_isa.h
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/await_catch_flow/flow.abc)
+  endif()
   add_executable(isa_catalog_test tests/unit/analysis/isa_catalog_test.cc)
   target_include_directories(isa_catalog_test PRIVATE tests/support)
   target_link_libraries(isa_catalog_test PRIVATE abcd_analysis)

@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-10-15。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-19。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
@@ -35,6 +35,28 @@
   新输出 Node 检查不适用。没有实施新投影，未把临时 probe 当作 Node 差分或规模验收。
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
+
+## ISA 覆盖增量 0：实测台账（待 cc 审查）
+
+- 生产代码未改；复用现有 `LiftSemanticInstruction`，逐指令测量不在首个拒绝后停止。
+  test-only probe、流式 JSONL 汇总、空 oracle registry 和一致性测试已加入；详见
+  [332 变体矩阵](isa-coverage.md)及[机器数据](../../../tests/isa/coverage.json)。
+- 扫描 40 个探索 ABC（620 module records）、5 个配对 ABC、137 个 tests fixture，
+  共 934,840 条指令、139 个实际出现的变体。128 个 SupportedUnverified，
+  204 个 Unmeasured；未导入指令级 oracle，SupportedVerified 为 0。
+- V4 三个 unsupported 首拒绝均实际解码为 APPLY：o7/17736 m18306@379、
+  o31/10300 m10718@56、o31/28731 m29198@100。旧 flags 另有 SendableTest 的契约差异。
+- 完整构建通过；新增测试加 catalog 3/3；固定集串行 65/65；指定 sweep 78/79，
+  唯一失败为已登记的 family_source_cli_test（owner/origin arena）。没有更新旧测试期望。
+- 探索输出对现存 Round83 after-old/after-source 比较：3,635 / 3,776 个文件
+  （包括 manifest）逐字节相同，无缺失；仍为 526/620、573/620。
+  原始及关联 JSONL、生产回执在 `/private/tmp/isa-coverage-full/`；构建/测试日志为
+  `/tmp/isa-{full-build-final,new-tests-final,fixed,sweep}.log`。未 commit/push/stash。
+
+## ISA 覆盖增量 0：实测台账（cc 审查通过）
+
+- 用户目标（2026-10-19）：覆盖 isa.yaml 全部指令的反编译，以构造样本或用例验证。设计获批：profile+变体为键的矩阵、逐 occurrence 证据、经生产 lifter 逐指令测量、方法完成不等于逐指令语义验证、oracle 分层、拒绝不算支持、deprecated 不推定不可执行、六类分类含 Unmeasured。增量 0：`tests/support/isa/coverage_probe.cc`（直接调用现有 LiftSemanticInstruction，无生产改动）、`tests/isa/coverage_matrix.py`、`isa_coverage_test`。扫描 182 个 ABC、934,840 条指令：332 个变体中 139 个有 occurrence；128 个 SupportedUnverified、204 个 Unmeasured，其余各类为 0；47 个 deprecated 均未出现。V4 当前三条 unsupported 首拒绝全部是 APPLY_IMM8_V8_V8。矩阵见 isa-coverage.md（完整 JSON 为生成物，放在不纳入版本控制的 build/isa-coverage/）。
+- cc 独立审查（基线 c112ecae）：构建通过；固定集串行 65/65；两组输出逐字节相同（526/620、573/620）；isa_coverage/isa_catalog 测试通过。`isa_pin_test` 失败原因是嵌套 cmake 配置找不到 pinned Ruby（未传 Ruby_EXECUTABLE），属既有环境问题，与本轮无关。
 
 ## Round 83：DeepTypeUtils m39263 的定位诊断（cc 审查通过）
 
