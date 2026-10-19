@@ -157,3 +157,44 @@ the private destination. Computed object keys and property-driven anonymous-name
 selection still need explicit tree/family correspondence; the current printer's
 creation-name preservation is not such a proof. Classes additionally require
 checking static-initializer timing rather than treating them as plain closures.
+
+## Increment 2c: string-key native naming (2026-10-19)
+
+Only `ValueOwnWrite` with a constant-pool name and
+`PropertyNameSetting::kPropertyKey` enters this projection. Computed-key stores
+remain `kNameSettingProof`, including string-valued computed keys: this increment
+does not prove their key conversion/path. No new source contract is used.
+
+`LiteralPlan` requires a unique nested creation after the private destination's
+allocation. Its existing operand/use census and ordered initialization intervals
+prove that the value and destination cannot be observed before definition and
+that sibling effects retain their order and exception mapping. A staged literal
+statement cannot discharge the obligation. Class member projections cannot
+silently consume the name-setting attribute.
+
+The source property carries the typed attribute. `tree_operands` compares it,
+the resolved pool key, and the stored value with the original definition.
+Family enclosure rechecks the child's absent self-binding and empty verified
+runtime creation name. Tree structure checks the equivalent anonymous class
+condition; classes with a static-initializer site remain refused because naming
+before static evaluation has not been proved equivalent. The class expression
+uses the existing class/prototype/Hole protocol proofs and creation-site checks,
+not a second class decoder or a layout template.
+
+The printer supplies a property-naming context only for the verified attribute.
+It emits an anonymous function/arrow/class, so native NamedEvaluation supplies
+the key as the name. It adds no explicit inner name and no assignment or
+Object.defineProperty. The private destination and unobserved fresh value make
+the native naming/definition ordering unobservable. The descriptor remains the
+ordinary own data-property descriptor; inherited setters are not called.
+
+The existing runtime citations above apply to this operation's definition and
+name mutation. The new fixture exercises both named encodings, functions,
+arrows, an empty anonymous class, getter order/throws, descriptors and a
+prototype setter through actual engine output under both contracts. See
+[fixture commands and hashes](../../../tests/fixtures/isa/named_properties/README.md).
+The independent unit verifier also rejects a shared/non-fresh value, environment
+interference, an early receiver observation, a Set substitution, removed naming,
+a changed key and a swapped stored function. Scale and exact-budget checks cover
+200/201/400/800 properties. This is not an Ark runtime execution result, and the
+ledger's occurrence-level oracle columns remain empty until their importer exists.

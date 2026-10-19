@@ -3,14 +3,17 @@
 #include "evaluation_plan.h"
 namespace abcd::source {
 // A name-neutral initializer is not a proof of the second, ordered name
-// mutation. Keep the new raw operations sealed until literal/name provenance
-// and native NamedEvaluation are independently represented through recovery.
+// mutation. Named private literals have a separate proof; computed keys and
+// class-member projections cannot erase the name mutation.
 inline std::optional<EvaluationFailure> NameSettingRefusal(
-    const analysis::ValueProgram& graph, analysis::OpId id) {
+    const analysis::ValueProgram& graph, analysis::OpId id, bool projected = false) {
   const auto& op = graph.ops[id.value];
   if (op.life != analysis::ValueLife::kLive) return {};
   auto naming = analysis::PropertyNameSetting::kNone;
-  if (const auto* named = std::get_if<analysis::ValueOwnWrite>(&op.operation)) naming = named->name_setting;
+  if (projected) if (const auto* named = std::get_if<analysis::ValueOwnWrite>(&op.operation))
+    naming = named->name_setting;
+  // Named definitions are checked by LiteralPlan and the family naming proof.
+  // Computed keys still require an independent key-domain proof.
   if (const auto* computed = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation)) naming = computed->name_setting;
   if (naming == analysis::PropertyNameSetting::kNone) return {};
   EvaluationEvidence witness;

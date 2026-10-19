@@ -63,7 +63,7 @@ void Instructions() {
     graph.ops.push_back({imported, {0}, 0, {0}, 0, {}, raw.effects.normal,
                         raw.effects.before_throw, raw.effects.exceptional, {0}});
     const auto failure = source::NameSettingRefusal(graph, {0});
-    Check(failure && failure->evaluation.plan_cause == source::EvaluationPlanCause{source::LiteralError::kNameSettingProof});
+    Check(named ? !failure : (failure && failure->evaluation.plan_cause == source::EvaluationPlanCause{source::LiteralError::kNameSettingProof}));
     graph.ops[0].operation = ValueNamedWrite{{0}};
     Check(!source::NameSettingRefusal(graph, {0}));
     // Width, operand kind, and frame mutations are malformed, never a different

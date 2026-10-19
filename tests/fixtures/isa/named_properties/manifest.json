@@ -1,0 +1,16 @@
+{
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "options": [
+    "--module",
+    "--merge-abc",
+    "--opt-level=0"
+  ],
+  "hashes": {
+    "names.js": "c461b8049a34a241da909f879712b64f767fc16ccad5d62077895df1a2a40e6d",
+    "names.abc": "5211460b53978ecf7de6489704c1bc823b6e11f0f35e77d9436fbb669e4f169b"
+  },
+  "opcodes": [
+    142,
+    212
+  ]
+}

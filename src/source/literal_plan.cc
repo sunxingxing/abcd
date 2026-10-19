@@ -12,6 +12,7 @@
 #include "evaluation_liveness.h"
 #include "phase_corridor.h"
 #include "effect_order.h"
+#include "hole_protocol.h"
 #include "abcd/analysis/dominators.h"
 
 namespace abcd::source {
@@ -340,10 +341,16 @@ bool Aggregate(const analysis::ValueOperation& op) {
   return std::holds_alternative<analysis::ValueArrayAllocation>(op) ||
       std::holds_alternative<analysis::ValueObjectAllocation>(op);
 }
-bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::ValueOp& op, std::size_t index, Guards guards) {
+bool AbsentHeritage(const analysis::ValueProgram& graph, const analysis::ValueOp& op,
+    const analysis::ValueOperand& operand) {
+  const auto* value = std::get_if<analysis::ValueId>(&operand);
+  return std::holds_alternative<analysis::ValueClassCreation>(op.operation) && value &&
+      graph.values[value->value].domain == analysis::ValueKinds::Hole();
+}
+bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::ValueOp& op, std::size_t index, Guards guards, bool property_name = false) {
   const auto shape = DescribeEvaluation(op.operation);
   if (!shape || !shape->expression || shape->Count() != op.use_count ||
-      shape->inputs != InputEvaluation::kEager || !op.result ||
+      (shape->inputs != InputEvaluation::kEager && !(property_name && shape->inputs == InputEvaluation::kClassHeritage)) || !op.result ||
       !graph.values[op.result->value].domain.IsLanguage()) return false;
   switch (shape->source) {
     case SourceEvaluation::kPure:
@@ -392,7 +399,7 @@ bool ReferenceReceiver(const analysis::ValueProgram& graph, analysis::UseId use,
 // operand order. Name globals retain their actual read site and lexical
 // destination; var/object-global lookups, catch snapshots and escapes refuse.
 void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
-    const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget, Guards guards,
+    const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget, Guards guards, Guards projected,
     const LiteralPath& path, const EvaluationPlan* evaluation,
     std::span<const std::uint8_t> initialized_receivers, EvaluationInputSite* failure) {
   if (plan.nested.empty()) return;
@@ -428,7 +435,10 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     budget.Step(); if (!plan.nested[i]) continue;
     EvaluationInputScope site(failure, {EvaluationInputCheck::kLiteralNesting, analysis::OpId{static_cast<std::uint32_t>(i)}, plan.nested[i]});
     const auto& op = graph.ops[i]; const auto use = *plan.nested[i];
-    Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || LiteralExpression(graph, op, i, guards)) && op.result &&
+    const auto* naming_parent = std::get_if<analysis::OpId>(&graph.uses[use.value].owner);
+    const auto* naming = naming_parent ? std::get_if<analysis::ValueOwnWrite>(&graph.ops[naming_parent->value].operation) : nullptr;
+    Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || LiteralExpression(graph, op, i, guards,
+        naming && naming->name_setting == analysis::PropertyNameSetting::kPropertyKey)) && op.result &&
         use.value < graph.uses.size(), Error::kDefinition);
     const auto& occurrence = graph.uses[use.value];
     const auto* parent = std::get_if<analysis::OpId>(&occurrence.owner);
@@ -446,7 +456,8 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const auto* user = std::get_if<analysis::OpId>(&read.owner);
     // Flow independently certified dead closure before this census. Its
     // original operands/PCs remain in the graph and later source anchors.
-    if (user && (graph.ops[user->value].life != analysis::ValueLife::kLive || path.Alias(*user) || path.Elided(*user) || path.InitializedGuard(*user) ||
+    if (user && ((!projected.empty() && projected[user->value] &&
+        plan.nested[projected[user->value]->value]) || graph.ops[user->value].life != analysis::ValueLife::kLive || path.Alias(*user) || path.Elided(*user) || path.InitializedGuard(*user) ||
         (!initialized_receivers.empty() && initialized_receivers[user->value]))) continue;
     const auto operand = path.Resolve(read.operand);
     const auto* value = std::get_if<analysis::ValueId>(&operand);
@@ -469,6 +480,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
       Require(!CheckEvaluationUse(graph, graph.uses[use.value], *shape, u), Error::kDefinition);
       if (ReferenceReceiver(graph, use, path)) continue;
       const auto operand = path.Resolve(graph.uses[use.value].operand);
+      if (AbsentHeritage(graph, op, operand)) continue;
       const auto* value = std::get_if<analysis::ValueId>(&operand);
       const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
       if (!result) continue;
@@ -486,12 +498,28 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
       } else Require(result->op.value < value_owners[i]->value, Error::kLateValue);
     }
   }
+  bool class_heritage = false;
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); class_heritage |= plan.nested[i] &&
+        std::holds_alternative<analysis::ValueClassCreation>(graph.ops[i].operation);
+  }
+  if (class_heritage) {
+    auto checked = AnalyzeHoleProtocol(graph, budget.Remaining());
+    if (const auto* error = std::get_if<HoleProtocolError>(&checked)) {
+      if (*error == HoleProtocolError::kResourceLimit) throw Error::kResourceLimit;
+      if (*error == HoleProtocolError::kWorkLimit) throw Error::kWorkLimit;
+      throw Error::kNameSettingProof;
+    }
+    const auto& proof = std::get<HoleProtocol>(checked);
+    budget.Admit(proof.allocated_bytes, 1); budget.Step(proof.work);
+  }
   std::size_t depth = 0;
   std::optional<analysis::OpId> catch_site;
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); const auto& op = graph.ops[i];
     if (depth) Require(path.Same(graph.ops[stack[0].value].block, op.block), Error::kFlow);
-    if (op.life != analysis::ValueLife::kLive || path.Alias({static_cast<std::uint32_t>(i)}) || path.InitializedGuard({static_cast<std::uint32_t>(i)})) continue;
+    if ((!projected.empty() && projected[i] && plan.nested[projected[i]->value]) ||
+        op.life != analysis::ValueLife::kLive || path.Alias({static_cast<std::uint32_t>(i)}) || path.InitializedGuard({static_cast<std::uint32_t>(i)})) continue;
     // Every effect folded into native aggregate syntax retains the outer
     // allocation's dispatch and staged catch values, not merely a normal path.
     // Comparing each site's copy bundle once is bounded by original copy volume.
@@ -545,6 +573,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
           budget.Step(); const analysis::UseId use{op.first_use.value + p};
           if (ReferenceReceiver(graph, use, path)) continue;
           const auto operand = path.Resolve(graph.uses[use.value].operand);
+          if (AbsentHeritage(graph, op, operand)) continue;
           const auto* value = std::get_if<analysis::ValueId>(&operand);
           const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
           if (result && plan.nested[result->op.value] != use)
@@ -553,6 +582,9 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
       } else if (nested_guard) {
         Require(value_owners[guards[i]->value] == stack[depth - 1], Error::kObserved);
       } else Require((!initialized_receivers.empty() && initialized_receivers[i]) ||
+          (class_heritage && std::holds_alternative<analysis::ValueHole>(op.operation) &&
+           op.normal == analysis::LanguageEffect::kNone && op.before_throw == analysis::LanguageEffect::kNone &&
+           op.exceptional == analysis::ExceptionalCompletion::kImpossible) ||
           analysis::CanErasePureOp(op), Error::kObserved);
     }
     if (depth && ends[stack[depth - 1].value] == analysis::OpId{static_cast<std::uint32_t>(i)}) --depth;
@@ -713,6 +745,9 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
           previous_index = indexed->index;
         }
         if (object.form == LiteralForm::kStatements) {
+          const auto* named = std::get_if<analysis::ValueOwnWrite>(&op.operation);
+          Require(!named || named->name_setting == analysis::PropertyNameSetting::kNone,
+              Error::kNameSettingProof);
           Require(plan.nested.empty() || !plan.nested[id.value], Error::kDefinition);
           owners[id.value] = object.allocation; continue;
         }
@@ -723,6 +758,18 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
         const auto* value = std::get_if<analysis::ValueId>(&operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
         const bool nested = result && !plan.nested.empty() && plan.nested[result->op.value] == rhs;
+        if (const auto* named = std::get_if<analysis::ValueOwnWrite>(&op.operation);
+            named && named->name_setting == analysis::PropertyNameSetting::kPropertyKey) {
+          // Native NamedEvaluation precedes definition. Only a private, unique
+          // creation inside this construction makes that reordering unobservable.
+          // VerifyNesting independently excludes aliases/escapes and preserves
+          // the operand/member interval. Anonymous identity is checked with the
+          // file-backed child/class tree before publication.
+          Require(nested && (std::holds_alternative<analysis::ValueFunctionCreation>(
+              graph.ops[result->op.value].operation) ||
+              std::holds_alternative<analysis::ValueClassCreation>(graph.ops[result->op.value].operation)),
+              Error::kNameSettingProof);
+        }
         if (nested) Require(path.Before(allocation, graph.ops[result->op.value]), Error::kLateValue);
         else EarlyValue(graph, allocation, operand, path, id, rhs, failure);
         owners[id.value] = object.allocation;
@@ -737,7 +784,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     }
     VerifyStaged(graph, plan, owners, budget, path, failure);
     const auto initialized_receivers = InitializedReceiverChecks(graph, receiver_guards, budget, evaluation);
-    VerifyNesting(graph, plan, owners, budget, guards, path, evaluation, initialized_receivers, failure);
+    VerifyNesting(graph, plan, owners, budget, guards, projected, path, evaluation, initialized_receivers, failure);
     {
       std::vector<std::optional<std::size_t>> objects;
       budget.Size(objects, graph.values.size());
@@ -838,7 +885,9 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         const auto operand = path.Resolve(graph.uses[rhs.value].operand);
         const auto* value = std::get_if<analysis::ValueId>(&operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
-        if (!result || !(Aggregate(graph.ops[result->op.value].operation) || LiteralExpression(graph, graph.ops[result->op.value], result->op.value, guards)) ||
+        const auto* naming = std::get_if<analysis::ValueOwnWrite>(&definition.operation);
+        if (!result || !(Aggregate(graph.ops[result->op.value].operation) || LiteralExpression(graph, graph.ops[result->op.value], result->op.value, guards,
+            naming && naming->name_setting == analysis::PropertyNameSetting::kPropertyKey)) ||
             !path.Before(graph.ops[object.allocation.value], graph.ops[result->op.value])) continue;
         if (plan.nested.empty()) budget.Size(plan.nested, graph.ops.size());
         Require(!plan.nested[result->op.value], Error::kObserved);
@@ -866,6 +915,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
           budget.Step(); const analysis::UseId use{op.first_use.value + p};
           if (ReferenceReceiver(graph, use, path)) continue;
           const auto operand = path.Resolve(graph.uses[use.value].operand);
+          if (AbsentHeritage(graph, op, operand)) continue;
           const auto* value = std::get_if<analysis::ValueId>(&operand);
           const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
           if (!result || result->op.value < allocation[i]->value) continue;

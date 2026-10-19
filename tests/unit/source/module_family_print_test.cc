@@ -100,6 +100,22 @@ ConstructedFamily Naming(CallableKind kind, NamingPlace place, std::string_view 
   ConstructedFamily family; family.root = {1};
   family.members = {{std::move(child), {}, {}}, {std::move(root), {}, {}}}; return family;
 }
+void PropertyNames() {
+  for (const auto kind : {CallableKind::kFunction, CallableKind::kArrow})
+  for (const auto key : {"foo", "42", "", "__proto__", "a.\\name"}) {
+    auto family = Naming(kind, NamingPlace::kProperty, "", key);
+    family.members[1].tree.properties[0].name_setting = analysis::PropertyNameSetting::kPropertyKey;
+    std::ostringstream output;
+    Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, output)));
+    std::cout << nlohmann::json{{"source", output.str()}, {"key", key}}.dump() << '\n';
+    auto renamed = family; renamed.members[0].tree.names[1] = u"explicit";
+    std::ostringstream denied;
+    Check(std::holds_alternative<TreePrintFailure>(PrintFamilyDraft(renamed, denied)));
+    auto shared = family;
+    shared.members[1].tree.expressions[0].expression = TreeLiteral{IntegerLiteral{1}};
+    Check(std::holds_alternative<TreePrintFailure>(PrintFamilyDraft(shared, denied)));
+  }
+}
 void Snapshot(ConstructedFamily& family) {
   auto& root = family.members[family.root.value].tree;
   const NameId name{static_cast<std::uint32_t>(root.names.size())}; root.names.push_back(u"saved");
@@ -341,6 +357,7 @@ void TailCompletions() {
 int main(int argc, char** argv) {
   if (argc == 2 && std::string_view(argv[1]) == "--tail-completions") { TailCompletions(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--snapshot-names") { SnapshotNames(); return 0; }
+  if (argc == 2 && std::string_view(argv[1]) == "--property-names") { PropertyNames(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--names") { Names(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--default-names") { DefaultNames(); return 0; }
   if (argc == 2 && std::string_view(argv[1]) == "--name-shadow") { NameShadow(); return 0; }

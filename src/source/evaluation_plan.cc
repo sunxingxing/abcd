@@ -189,6 +189,8 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       const auto shape = op.life == analysis::ValueLife::kLive ? DescribeEvaluation(op.operation) : std::nullopt;
       has_arguments |= shape && shape->NeedsArgumentFrame();
       has_spread |= op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueArraySpread>(op.operation);
+      if (projected_op(i)) if (const auto failure = NameSettingRefusal(graph,
+          {static_cast<std::uint32_t>(i)}, true)) return *failure;
       step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&
           (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);

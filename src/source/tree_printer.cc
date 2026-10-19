@@ -53,7 +53,8 @@ struct ProjectedExpression { ExprId id; std::uint64_t begin, end; GeneratedExten
 struct ProjectElidedOperands { ExprId expression, retained; };
 struct NoInferredName {};
 struct DefaultInferredName {};
-using NameContext = std::variant<NoInferredName, NameId, DefaultInferredName>;
+struct PropertyInferredName { NameId key; };
+using NameContext = std::variant<NoInferredName, NameId, DefaultInferredName, PropertyInferredName>;
 enum class ExpressionObservation : std::uint8_t { kValue, kTruthiness, kDiscarded };
 struct ExpressionOperand {
   ExprId id;
@@ -354,6 +355,7 @@ class TreePrinter {
   std::u16string_view ContextName(NameContext context) const {
     if (const auto* name = std::get_if<NameId>(&context)) return Tree().names[name->value];
     if (std::holds_alternative<DefaultInferredName>(context)) return u"default";
+    if (const auto* property = std::get_if<PropertyInferredName>(&context)) return Tree().names[property->key.value];
     return u"";
   }
   void PrepareClassNames() {
@@ -387,9 +389,13 @@ class TreePrinter {
       const auto expected = ContextName(context);
       if (target.inferred_name)
         Step(std::min(target.names[target.inferred_name->value].size(), expected.size()) + 1);
+      const bool property = std::holds_alternative<PropertyInferredName>(context);
+      if (property && (!target.inferred_name || target.self ||
+          !target.names[target.inferred_name->value].empty() || target.invocation != InvocationForm::kDeclared))
+        throw Error::kUnsupportedContext;
       native_names_[child->member] = target.inferred_name && !target.self &&
           target.invocation == InvocationForm::kDeclared &&
-          target.names[target.inferred_name->value] == expected;
+          (property || target.names[target.inferred_name->value] == expected);
     };
     // ECMA IsAnonymousFunctionDefinition/NamedEvaluation belongs to the actual
     // expression destination. Identifier bindings and own data properties infer
@@ -441,7 +447,8 @@ class TreePrinter {
         if (const auto* object = std::get_if<ObjectExpr>(&expression)) {
           for (std::uint32_t p = 0; p < object->properties.count; ++p) {
             const auto& property = Tree().properties[object->properties.first + p];
-            push(property.value, object->kind == AggregateKind::kObject ? NameContext{property.key} : NameContext{});
+            push(property.value, object->kind == AggregateKind::kObject ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
+                NameContext{PropertyInferredName{property.key}} : NameContext{property.key}) : NameContext{});
           }
         } else VisitExpressionChildren(Tree(), expression, [&](ExprId child) {
           NameContext name;
@@ -955,7 +962,10 @@ class TreePrinter {
     // Identifier initialization/assignment performs NamedEvaluation without
     // adding an immutable inner class binding. Other naming contexts use the
     // common lexical plan, which proves no actual reference is shadowed.
-    const bool inferred = ContextName(inferred_name) == node.definition->name;
+    const bool property = std::holds_alternative<PropertyInferredName>(inferred_name);
+    if (property && (!node.definition->name.empty() || node.definition->initializer_site))
+      throw Error::kUnsupportedContext;
+    const bool inferred = property || ContextName(inferred_name) == node.definition->name;
     const auto name = Names().Lookup(*node.definition); Step(name.work);
     ClassCreation(node, expression, inferred ? ClassPrintForm::kInferredExpression :
         name.named ? ClassPrintForm::kNamedExpression : ClassPrintForm::kExpression);
@@ -1211,7 +1221,8 @@ class TreePrinter {
     }
     Push(ObjectCursor{cursor.range, cursor.index + 1, cursor.kind, cursor.multiline});
     Push(EndProperty{id}); Push(ExpressionOperand{property.value, {ExpressionGrammar::kAssignmentValue},
-        cursor.kind == AggregateKind::kObject ? NameContext{property.key} : NameContext{}});
+        cursor.kind == AggregateKind::kObject ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
+                NameContext{PropertyInferredName{property.key}} : NameContext{property.key}) : NameContext{}});
   }
   void Run(EndProperty property) { Result().properties[property.id.value].end = written_; }
   void Run(ArgumentCursor cursor) {

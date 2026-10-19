@@ -641,6 +641,18 @@
       "classification": "Unmeasured",
       "oracles": {},
       "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/named_properties/names.abc",
+      "sha256": "5211460b53978ecf7de6489704c1bc823b6e11f0f35e77d9436fbb669e4f169b",
+      "profile": 6,
+      "opcodes": [
+        142,
+        212
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Named own-property engine-output Node differential is registered in CTest; ledger has no occurrence-level oracle importer."
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass."

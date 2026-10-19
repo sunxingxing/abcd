@@ -368,6 +368,9 @@ if(BUILD_TESTING)
   target_include_directories(isa_coverage_test PRIVATE tests/support)
   target_link_libraries(isa_coverage_test PRIVATE abcd_analysis)
   add_test(NAME isa_coverage_test COMMAND isa_coverage_test)
+  add_executable(name_setting_literal_test tests/unit/source/name_setting_literal_test.cc)
+  target_link_libraries(name_setting_literal_test PRIVATE abcd_source)
+  add_test(NAME name_setting_literal_test COMMAND name_setting_literal_test)
   add_executable(name_setting_test tests/unit/analysis/name_setting_test.cc)
   target_include_directories(name_setting_test PRIVATE tests/support)
   target_link_libraries(name_setting_test PRIVATE abcd_source)
@@ -2009,6 +2012,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/anonymous_module.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_family_print_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_family_print.mjs $<TARGET_FILE:module_family_print_test>)
+    add_test(NAME name_setting_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/name_setting_literal.mjs
+      $<TARGET_FILE:abc_structure> $<TARGET_FILE:isa_coverage_probe> $<TARGET_FILE:module_family_print_test>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/named_properties)
     add_test(NAME native_function_names_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/native_function_names.mjs $<TARGET_FILE:module_family_print_test>)
     add_test(NAME default_callable_exports_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

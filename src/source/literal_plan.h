@@ -74,6 +74,10 @@ inline bool IsStagedLiteral(const LiteralPlan* plan, analysis::OpId id) {
 // CallPlan and tree operand verification independently check that pairing.
 // A closure retains its creation environment and child/capture obligations;
 // literal ownership neither executes its body nor proves its cells immutable.
+// Named name-setting definitions require a uniquely owned fresh creation after
+// allocation; their anonymous runtime name is checked with the real child tree.
+// Only those obligations seed class-heritage/prototype composition. An absent
+// heritage consumes the closed Hole protocol, never a fabricated JS value.
 // Staged buffered objects instead preserve allocation and write sites in a normal
 // DAG. No escape precedes the final write; tree construction independently proves
 // every assigned key already denotes a writable own buffer data property.

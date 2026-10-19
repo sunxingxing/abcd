@@ -558,6 +558,7 @@ class OperandCheck {
           RequireMeaning(flow_.initializers[i].has_value(), Error::kOperand);
           const auto& property = tree_.properties[flow_.initializers[i]->value];
           original_.operations[i].intrinsic_property=flow_.initializers[i];
+          RequireMeaning(property.name_setting == operation.name_setting, Error::kOperator);
           const auto* name = std::get_if<NameId>(&constants_.operations[i]);
           RequireMeaning(name && name->value < constants_.name_count && property.key == *name, Error::kConstant);
           // LiteralPlan proved the receiver's allocation; only its stored value

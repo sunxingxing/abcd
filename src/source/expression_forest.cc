@@ -415,28 +415,8 @@ class ForestBuilder {
           forest_.operations[i] = Add(ArgumentSnapshotExpr{owner_, slots}, origin);
           continue;
         }
-        if (const auto* creation = std::get_if<analysis::ValueClassCreation>(&op.operation)) {
-          const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[i]);
-          if (!definition || !*definition) throw Error::kUnsupportedOperation;
-          Require(op.use_count == 1, Error::kOwnership);
-          if (evaluation_.flow == EvaluationFlow::kPhased) {
-            const auto checked = CheckClassParentScope(**definition, work_);
-            if (std::holds_alternative<ClassTreeError>(checked)) throw Error::kWorkLimit;
-            const auto scope = std::get<ClassParentScope>(checked); Step(scope.work);
-            Require(scope.independent, Error::kOwnership);
-          }
-          const auto* heritage = std::get_if<analysis::ValueId>(&graph_.uses[op.first_use.value].operand);
-          const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
-          Require((*definition)->callable ==
-              (absent ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor), Error::kOwnership);
-          const auto& site = (*definition)->creation;
-          Require(site.creation.constructor == creation->constructor && site.creation.literal == creation->literal &&
-              site.creation.length == creation->length && site.creation.cache_slot == creation->cache_slot &&
-              site.pc == graph_.origins[op.origin.value].pc,
-              Error::kConstant);
-          forest_.operations[i] = Add(ClassExpr{*definition, absent ? std::nullopt :
-              std::optional{Operand(graph_.uses[op.first_use.value].operand, origin)}}, origin);
-          continue;
+        if (std::holds_alternative<analysis::ValueClassCreation>(op.operation)) {
+          Class(i, op, origin); continue;
         }
         if (std::holds_alternative<analysis::ValueSuperSpread>(op.operation)) {
           // Explicit language equivalence selects native parent and iterator
@@ -640,6 +620,31 @@ class ForestBuilder {
     }
     return true;
   }
+  // Native class construction is identical in a literal-owned dependency and
+  // an ordinary root; the original creation occurrence and heritage prove it.
+  void Class(std::size_t i, const analysis::ValueOp& op, TreeOriginId origin) {
+    const auto& creation = std::get<analysis::ValueClassCreation>(op.operation);
+    const auto* definition = std::get_if<std::shared_ptr<const ClassTree>>(&constants_.operations[i]);
+    if (!definition || !*definition) throw Error::kUnsupportedOperation;
+    Require(op.use_count == 1, Error::kOwnership);
+    if (evaluation_.flow == EvaluationFlow::kPhased) {
+      const auto checked = CheckClassParentScope(**definition, work_);
+      if (std::holds_alternative<ClassTreeError>(checked)) throw Error::kWorkLimit;
+      const auto scope = std::get<ClassParentScope>(checked); Step(scope.work);
+      Require(scope.independent, Error::kOwnership);
+    }
+    const auto* heritage = std::get_if<analysis::ValueId>(&graph_.uses[op.first_use.value].operand);
+    const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
+    Require((*definition)->callable ==
+        (absent ? CallableKind::kBaseConstructor : CallableKind::kDerivedConstructor), Error::kOwnership);
+    const auto& site = (*definition)->creation;
+    Require(site.creation.constructor == creation.constructor && site.creation.literal == creation.literal &&
+        site.creation.length == creation.length && site.creation.cache_slot == creation.cache_slot &&
+        site.pc == graph_.origins[op.origin.value].pc,
+        Error::kConstant);
+    forest_.operations[i] = Add(ClassExpr{*definition, absent ? std::nullopt :
+        std::optional{Operand(graph_.uses[op.first_use.value].operand, origin)}}, origin);
+  }
   void NestedTrees() {
     if (!evaluation_.literals || (evaluation_.literals->nested.empty() && !ArrayInitializations(evaluation_))) return;
     // Each checked nested value has one syntax consumer. Redirect own-write
@@ -692,6 +697,7 @@ class ForestBuilder {
       else if (!std::holds_alternative<NoCall>(forest_.calls.operations[i]))
         forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
       else if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) Module(i, op, origin);
+      else if (std::holds_alternative<analysis::ValueClassCreation>(op.operation)) Class(i, op, origin);
       else {
         std::array<ExprId, kFixedExpressionOperands> operands{};
         Require(op.use_count <= operands.size(), Error::kUnsupportedOperation);
@@ -794,7 +800,9 @@ class ForestBuilder {
       const auto value = Operand(graph_.uses[op.first_use.value + 1].operand, field_origin);
       Require(forest_.properties.size() < forest_.properties.capacity(), Error::kResourceLimit);
       const PropertyId property{static_cast<std::uint32_t>(forest_.properties.size())};
-      forest_.properties.push_back({name, value, field_origin});
+      const auto* own = std::get_if<analysis::ValueOwnWrite>(&op.operation);
+      forest_.properties.push_back({name, value, field_origin,
+          own ? own->name_setting : analysis::PropertyNameSetting::kNone});
       forest_.initializers[id.value] = property; forest_.operations[id.value] = value;
     }
     return Add(ObjectExpr{range, kind, prefix}, origin);

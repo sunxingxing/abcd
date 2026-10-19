@@ -65,6 +65,36 @@ class EnclosureCheck {
       Add(scopes, tree.scopes.size()); Add(bindings, tree.symbols.size());
       Add(modules, tree.modules.size());
     }
+    // Only new property-naming obligations enter this proof. Original function
+    // naming plans retain their creation names. File-backed creation contexts
+    // have already checked inferred_name against RuntimeName; an empty name and
+    // absent self binding are required, not a spelling guessed from an opcode.
+    bool naming = false;
+    for (const auto& member : family_.members) for (const auto& property : member.tree.properties) {
+      Step(); naming |= property.name_setting == analysis::PropertyNameSetting::kPropertyKey;
+    }
+    if (naming) {
+      std::vector<std::pair<FunctionOwnerId, std::size_t>> owners;
+      Array(owners, count);
+      for (std::size_t i = 0; i < count; ++i) { Step(); owners[i] = {family_.members[i].tree.owner, i}; }
+      std::sort(owners.begin(), owners.end(), [&](const auto& a, const auto& b) { Step(); return a.first < b.first; });
+      for (std::size_t i = 0; i < count; ++i) {
+        member_ = FamilyId{static_cast<std::uint32_t>(i)};
+        const auto& tree = family_.members[i].tree;
+        for (const auto& property : tree.properties) {
+          Step(); if (property.name_setting != analysis::PropertyNameSetting::kPropertyKey) continue;
+          const auto* function = std::get_if<FunctionExpr>(&tree.expressions[property.value.value].expression);
+          if (!function) continue; // Class anonymity/static timing checked by TreeStructure.
+          const auto child = std::lower_bound(owners.begin(), owners.end(), function->child,
+              [&](const auto& a, FunctionOwnerId b) { Step(); return a.first < b; });
+          Require(child != owners.end() && child->first == function->child, Error::kStructure);
+          const auto& target = family_.members[child->second].tree;
+          Require(!target.self && target.inferred_name &&
+              target.names[target.inferred_name->value].empty() &&
+              target.invocation == InvocationForm::kDeclared, Error::kStructure);
+        }
+      }
+    }
     Array(parents_, scopes); Array(intervals_, scopes);
     std::optional<std::size_t> root;
     for (std::size_t i = 0; i < count; ++i) {

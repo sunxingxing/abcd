@@ -207,7 +207,12 @@ struct ObjectExpr {
 // Computed string data property, never a colon-style __proto__ setter or method.
 // Array aggregates reuse the ordered property arena with canonical decimal keys;
 // keys must equal element ordinals and are implicit in native array syntax.
-struct DataProperty { NameId key; ExprId value; TreeOriginId origin; };
+struct DataProperty {
+  NameId key; ExprId value; TreeOriginId origin;
+  // An ordered own definition with native anonymous NamedEvaluation; verified
+  // against the original store, private construction and creation identity.
+  analysis::PropertyNameSetting name_setting = analysis::PropertyNameSetting::kNone;
+};
 // This operation is not [[Set]]. Only a field-definition destination may
 // print it; ordinary function expression output must refuse it.
 struct FieldDefinitionExpr { ExprId receiver; NameId name; ExprId value; };

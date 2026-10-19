@@ -278,6 +278,26 @@ class FamilyTrees {
               uses[occurrence].domain == analysis::CaptureDomain::kGuarded && cell && tdz[i][cell->value]) guarded.push_back(pair);
         }
       }
+      std::optional<ClassPrototypeReads> named_prototypes;
+      bool property_naming = false;
+      if (!phase) for (const auto& op : graph.ops) {
+        Step(1); const auto* own = std::get_if<analysis::ValueOwnWrite>(&op.operation);
+        property_naming |= op.life == analysis::ValueLife::kLive && own &&
+            own->name_setting == analysis::PropertyNameSetting::kPropertyKey;
+      }
+      if (property_naming) {
+        auto found = FindClassPrototypeReads(graph, left_);
+        if (const auto* error = std::get_if<ClassPrototypeError>(&found)) {
+          if (*error == ClassPrototypeError::kResourceLimit) Fail(FamilyTreeError::kResourceLimit);
+          if (*error == ClassPrototypeError::kWorkLimit) Fail(FamilyTreeError::kWorkLimit);
+          Fail(FamilyTreeError::kContext);
+        }
+        named_prototypes.emplace(std::get<ClassPrototypeReads>(std::move(found)));
+        Account(*named_prototypes);
+        std::erase_if(named_prototypes->reads, [&](const auto& site) {
+          Step(1); return !HasClassPrototypeKey(site, syntax.View(), syntax.syntax.names, syntax.syntax.texts);
+        });
+      }
       const auto for_of=phase?phase->Phases().ForOfInput():std::optional<ForOfEvaluationInput>{};
       auto evaluated = phase ?
           BuildPhasedEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
@@ -285,7 +305,8 @@ class FamilyTrees {
           BuildEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
               member.children, module_evaluations, demands, function.Normal().values.initializers.calls, analysis::ClosureWrites::kLanguage,
               function.Normal().values.definitions.sites, guards, entries,
-              function.Normal().self_order ? &*function.Normal().self_order : nullptr, {}, array_source);
+              function.Normal().self_order ? &*function.Normal().self_order : nullptr,
+              named_prototypes ? std::span<const ClassPrototypeRead>(named_prototypes->reads) : std::span<const ClassPrototypeRead>{}, array_source);
       if (array_error) Fail(*array_error);
       if(auto* error=std::get_if<EvaluationFailure>(&evaluated);error&&error->evaluation.concurrent&&context.Concurrent()) {
         const auto detail=*error->evaluation.concurrent;auto located=context.Concurrent()->location;

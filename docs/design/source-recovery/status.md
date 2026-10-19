@@ -12,6 +12,34 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## ISA increment 2c：常量字符串键的原生 name-setting
+
+- 基线 `67083c01`。仅对 STOWNBYNAMEWITHNAMESET 两种宽度解除已证明的 private
+  literal 门：新建且唯一消费的匿名 function/arrow/class、pool key 身份、构造区间
+  内效果/异常顺序及不逃逸均复验。DataProperty 保留 name-setting 属性；独立
+  tree operands / family enclosure / structure 检查身份与匿名性，打印保持匿名，
+  使用原生 NamedEvaluation，不生成显式函数名或普通赋值。
+- class RHS 复用原 class/prototype/Hole 证明及同一 expression lowering；只对新
+  naming obligation 种下该证明，不重排已有 literal。带 static initializer 的
+  class、共享/已命名的值、非 private/staged store 和 computed-key stores 继续拒绝。
+  computed numeric-key `.name` 差异没有获得新前提，也未开放。
+- 完整构建通过；固定集 **65/65**；7 项定向测试 **7/7**。新增 literal proof/
+  mutation、200/201/400/800 与精确 byte/work 边界、真实 es2abc 两宽度 fixture，
+  两种契约的 engine-output Node 差分（name/descriptor、prototype setter、sibling
+  getter 顺序及异常）通过。node --check 通过，编译器命令/hash 已登记。
+- `cli|corpus|failure|_receipt|manifest|isa` sweep **85/86**；唯一失败
+  `family_source_cli_test`（node escaped its owner or origin arena）与
+  `/private/tmp/isa2b-sweep.log` 的基线失败相同；未修改既有断言。
+- 全 ledger 238 ABC / 942,564 指令：**130 SupportedUnverified / 174 Unmeasured /
+  28 NonExecutable**。named 两宽度仅在实际有 complete fixture 的 profile 6
+  提升；computed 两宽度仍 Unmeasured。Node 证据独立记录，不伪造 occurrence oracle。
+- 两种探索集所有文件（含 manifest/partial）逐字相同：旧 flags **526/620**，
+  V4 **573/620**；3,635 / 3,776 文件无差异。既有 paired/fixture 记录也无状态
+  变化，仅新增 named_properties fixture 完成。比较记录：
+  `/private/tmp/isa2c-cohort-comparison.json`；ledger `/private/tmp/isa2c-coverage`。
+- 参见 [语义与证明边界](isa-properties-runtime-evidence.md) 和
+  [fixture README](../../../tests/fixtures/isa/named_properties/README.md)。未 commit/push。
+
 ## ISA increment 2b：原始 name-setting 语义（未完成源码恢复）
 
 - 基线 `163b91aa`；四个 WITHNAMESET 变体增加类型化 `PropertyNameSetting`，复用

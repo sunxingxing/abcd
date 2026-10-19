@@ -185,6 +185,8 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       if (op.life == analysis::ValueLife::kLive && IsEnvironmentState(op.operation)) ++environment_epoch;
       environment_epochs[i] = environment_epoch;
       has_spread |= op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueArraySpread>(op.operation);
+      if (projected_op(i)) if (const auto failure = NameSettingRefusal(graph,
+          {static_cast<std::uint32_t>(i)}, true)) return *failure;
       step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&
           (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
