@@ -177,7 +177,7 @@ void Names() {
           const auto& ranges = std::get<PrintedFamilyDraft>(printed);
           const auto at = ranges.functions[0];
           const auto child = output.str().substr(at.begin, at.end - at.begin);
-          Check((child.find("({[") == std::string::npos) == native);
+          Check((child.find("{[") == std::string::npos) == native);
           std::cout << nlohmann::json{{"callable", CallableLabel(kind)}, {"place", static_cast<unsigned>(place)},
               {"wanted", wanted}, {"key", key}, {"native", native}, {"sequence",sequence}, {"source", output.str()}} << '\n';
           // The resource gate depends on actual wrapper syntax. It must fail

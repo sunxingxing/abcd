@@ -78,6 +78,13 @@ GroupingDecision Decide(const TreeExpression& expression, ExpressionSyntaxFacts 
   return {ReadableOperandGrouping(expression,context.operand) ? GroupingReason::kPrecedence : GroupingReason::kNone};
 }
 }
+GroupingDecision ReadableLiteralEnvelope(const TreeLiteral& literal,const TreeOperatorContext& context) {
+  const auto* grammar=std::get_if<ExpressionGrammar>(&context.parent);
+  if(std::holds_alternative<UndefinedLiteral>(literal) && grammar &&
+      (*grammar==ExpressionGrammar::kAssignmentValue || *grammar==ExpressionGrammar::kExpression))
+    return {GroupingReason::kNone};
+  return {GroupingReason::kUnknown};
+}
 bool StatementIdentifierGrouping(std::u16string_view name, const GroupingContext& context) {
   const auto* parent = std::get_if<PostfixContext>(&context.operand.parent);
   return context.statement_start && parent && *parent == PostfixContext::kMemberBase && name == u"let";

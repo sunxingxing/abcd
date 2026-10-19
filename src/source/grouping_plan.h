@@ -38,6 +38,8 @@ struct GroupingDecision {
 };
 [[nodiscard]] GroupingDecision ReadableGrouping(const TreeExpression&, const GroupingContext&,
     ExpressionSyntaxFacts = {});
+// Synthesized literal spelling has its own grammar (undefined prints void 0).
+[[nodiscard]] GroupingDecision ReadableLiteralEnvelope(const TreeLiteral&,const TreeOperatorContext&);
 struct GroupingPlan {
   PrinterPolicy policy = PrinterPolicy::kReadableV1;
   std::vector<ExpressionSyntaxFacts> facts;

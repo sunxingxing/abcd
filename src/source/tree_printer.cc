@@ -170,7 +170,7 @@ class TreePrinter {
              !std::holds_alternative<SymbolExpr>(Tree().expressions[parameter.initializer->value].expression)))
           throw Error::kUnsupportedContext;
         Append(" = ");
-        Push(*parameter.initializer);
+        Push(ExpressionOperand{*parameter.initializer,{ExpressionGrammar::kAssignmentValue}});
         Drain();
       }
       Result().parameters[i].end = written_;
@@ -746,6 +746,15 @@ class TreePrinter {
     }
   }
   void Literal(TextId id) { Quoted(Tree().texts[id.value]); }
+  void ContextLiteral(const TreeLiteral& node,const TreeOperatorContext& context) {
+    // The spelling `void 0` is a UnaryExpression, not a primary literal.
+    // These complete grammar positions accept it directly. All operator,
+    // postfix and unknown uses retain the existing envelope.
+    if(!ReadableLiteralEnvelope(node,context).Parenthesized()) {
+      Append("void 0");return;
+    }
+    Expression(node);
+  }
   void Expression(const TreeLiteral& node) {
     std::visit([&](auto value) { Literal(value); }, node);
   }
@@ -1147,8 +1156,11 @@ class TreePrinter {
       // A native async method supplies this VM invocation's arguments without
       // introducing an extra promise/await turn; lexical receiver reads remain
       // explicit capture bindings, as required by the arrow ABI checks.
+      // This object is the name-preserving member base. In a proven value
+      // position its braces need no envelope; self-binding IIFEs keep theirs.
+      if(start.grouped || Tree().self)Append("(");
       Append(Tree().invocation == InvocationForm::kArrowMethod && IsAsyncCallable(Tree().callable)
-          ? "({async [" : "({[");
+          ? "{async [" : "{[");
       Quoted(Tree().names[Tree().inferred_name->value]);
       if (Tree().invocation == InvocationForm::kArrowMethod) Append("](");
       else {
@@ -1183,7 +1195,7 @@ class TreePrinter {
     // Class-body syntax closes with the block itself, not an expression wrap.
     if (!ClassRoot() && !ModuleBody()) {
       if (Tree().inferred_name && !NativeName() && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding)) {
-        Append("})["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
+        Append(end.grouped || Tree().self ? "})[" : "}["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
         if (Tree().self) { Append("; return "); Name(*Tree().self); Append("; })()"); }
       } else if (end.grouped) Append(")");
     }
@@ -1204,7 +1216,7 @@ class TreePrinter {
       if ((!std::holds_alternative<TreeLiteral>(Tree().expressions[parameter.initializer->value].expression) &&
              !std::holds_alternative<SymbolExpr>(Tree().expressions[parameter.initializer->value].expression)))
         throw Error::kUnsupportedContext;
-      Append(" = "); Push(*parameter.initializer);
+      Append(" = "); Push(ExpressionOperand{*parameter.initializer,{ExpressionGrammar::kAssignmentValue}});
     }
   }
   void Run(EndParameter end) { Result().parameters[end.index].end = written_; }
@@ -1418,7 +1430,7 @@ class TreePrinter {
     if(const auto transport=Initializers().transports[id.value]) {
       const auto& literal=Initializers().primitives[transport->replacement.value];
       if(TreeOperandGrouping(TreeExpression{literal},operand.context)){Append("(");Push(std::string_view(")"));}
-      Expression(literal);return;
+      ContextLiteral(literal,operand.context);return;
     }
     if(const auto replacement=Initializers().replacements[id.value]) {
       // The planner owns elision. Transport the omitted operand's origin to
@@ -1429,7 +1441,7 @@ class TreePrinter {
     if (const auto* read = std::get_if<SymbolExpr>(&expression)) if (const auto value = Initializers().ReadLiteral(operand.id,read->symbol)) {
       const auto& literal = Initializers().primitives[value->value];
       if (TreeOperandGrouping(TreeExpression{literal},operand.context)) { Append("(");Push(std::string_view(")")); }
-      Expression(literal);return;
+      ContextLiteral(literal,operand.context);return;
     }
     if(const auto* read=std::get_if<SymbolExpr>(&expression)) {
       const auto binding = Initializers().ReadBinding(operand.id,read->symbol);
@@ -1493,6 +1505,7 @@ class TreePrinter {
       else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, BinaryExpr> ||
           std::is_same_v<std::decay_t<decltype(node)>, AssignmentExpr> ||
           std::is_same_v<std::decay_t<decltype(node)>, CallExpr>) Expression(node, operand.statement_start);
+      else if constexpr (std::is_same_v<std::decay_t<decltype(node)>, TreeLiteral>) ContextLiteral(node,operand.context);
       else Expression(node);
     }, Tree().expressions[id.value].expression);
   }

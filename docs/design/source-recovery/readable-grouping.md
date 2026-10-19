@@ -766,3 +766,203 @@ pre-existing `family_source_cli_test` owner/origin-arena failure. The corrected
 binding differential passes unchanged (including its source-fixture prerequisite).
 Logs: `build/review/braces/{build-corrected,regression-final,focused-final,sweep-final,binding-corrected}.log`.
 `git diff --check` passes. No commit, push or stash.
+
+
+## Slice 1c: residual value contexts (2026-10-19)
+
+Baseline `6bdd4ae9`. The census parses every emitted JS/ArkTS source file,
+including incomplete files, with the pinned SDK TypeScript parser. String-named
+export aliases are replaced by same-width placeholder identifiers only in the
+parser's input: original source offsets and examples are retained. No source
+output is adapted by this tool. All files parse successfully.
+`tests/tools/grouping_census.mjs` streams occurrence queries to the test-only
+`grouping_census_probe`, which invokes production `ReadableGrouping` and
+`ReadableLiteralEnvelope` with typed syntax/context values. An unmapped AST
+context or child remains `kUnknown`. This is a printed-grammar census, not a
+claim to reconstruct recovery provenance; `kNone` means the mapped grammar
+permits removal, not that an unknown synthetic wrapper's other duties may be
+ignored. Intrinsic wrapper detail is recorded separately from that decision.
+The complete occurrence lists, parser hash and both top-15 reports are in
+`build/review/paren1c/census-{before,after}.{json,txt}`; previous-flags censuses
+are in `census-oldflags-{before,after}.{json,txt}`.
+
+The constructor argument already had AssignmentValue context. Its extra group
+came from the unconditional undefined literal spelling, not the argument cursor.
+`ReadableLiteralEnvelope` now permits bare `void 0` only in explicit Expression
+or AssignmentValue contexts. Default parameter cursors now supply AssignmentValue
+as well. Operator/postfix/unknown contexts and signed/nonfinite numeric literal
+spelling remain conservative. No precedence of a synthetic unary spelling is
+mistaken for that of a primary literal.
+
+The paramsGenerator example is a synthesized name-preserving member selection:
+`({["paramsLambda"]: () => { ... }})["paramsLambda"]`. The computed key,
+function creation and selection remain intact. Its object envelope is omitted
+only where the existing function operand decision is ungrouped and there is no
+self-binding IIFE. Statement/call/member/constructor-sensitive and unknown uses
+retain the envelope. `(0, ...)`, inferred-name suppression, classes and all
+braces are unchanged. No new allocations or analysis walks enter production.
+
+### Census and scope
+
+Source cohort, all files: **5,861 -> 3,985** grouping pairs (**1,876 removed**).
+Previous flags: **4,991 -> 3,354** (**1,637 removed**). These are AST grouping
+pairs, not call syntax, parameter lists or control-head delimiters. Complete-JS
+token-verified removals are **1,624 / 1,786 / 220** for previous/source/paired;
+the all-file source difference additionally includes 77 ArkTS pairs and 13
+pairs in the partial JS output.
+
+Top 15 before:
+
+| Count | Parent context | Child | Decision | Example |
+|---:|---|---|---|---|
+| 1181 | Binary/ExclamationEqualsEqualsToken/right | VoidExpression | kUnknown | (void 0) |
+| 631 | MemberBase | ObjectLiteralExpression | kNone | ({["paramsLambda"]: () => { return {}; }}) |
+| 526 | AssignmentValue/NewArgument | VoidExpression | kNone | (void 0) |
+| 415 | Unknown/ExpressionWithTypeArguments | Identifier | kUnknown | (ViewPU) |
+| 411 | Unary/PrefixUnaryExpression | BinaryExpression | kPrecedence | ("finalizeConstruction" in ViewPU.prototype) |
+| 313 | AssignmentValue/Parameter | PrefixUnaryExpression | kUnknown | (-1) |
+| 296 | AssignmentValue/Parameter | VoidExpression | kNone | (void 0) |
+| 236 | StatementStart | AwaitExpression | kNone | (await store.setDistributedTables(["EMPLOYEE", "EMPLOYEE2"], relationalStore.DistributedType.DISTRIBUTED_DEVIC |
+| 233 | Expression/ReturnStatement | VoidExpression | kNone | (void 0) |
+| 201 | Binary/PlusToken/right | BinaryExpression | kPrecedence | (this.textInfo + "\u000a") |
+| 188 | MemberBase | BinaryExpression | kPrecedence | ($value0 = $local1.uiContext) |
+| 158 | CallCallee | BinaryExpression | kPrecedence | (0, ({["observedDeepRender"]: () => { $local2.observeComponentCreation2($local1, GridItem); $local2.observeCom |
+| 116 | MemberBase | ConditionalExpression | kPrecedence | ($local4 ? $local4 : $local5) |
+| 104 | AssignmentValue/VariableDeclaration | VoidExpression | kNone | (void 0) |
+| 93 | Unknown/ForStatement | BinaryExpression | kUnknown | ($phi0 < $value7.length) |
+
+Top 15 after:
+
+| Count | Parent context | Child | Decision | Example |
+|---:|---|---|---|---|
+| 1181 | Binary/ExclamationEqualsEqualsToken/right | VoidExpression | kUnknown | (void 0) |
+| 415 | Unknown/ExpressionWithTypeArguments | Identifier | kUnknown | (ViewPU) |
+| 411 | Unary/PrefixUnaryExpression | BinaryExpression | kPrecedence | ("finalizeConstruction" in ViewPU.prototype) |
+| 313 | AssignmentValue/Parameter | PrefixUnaryExpression | kUnknown | (-1) |
+| 236 | StatementStart | AwaitExpression | kNone | (await store.setDistributedTables(["EMPLOYEE", "EMPLOYEE2"], relationalStore.DistributedType.DISTRIBUTED_DEVIC |
+| 201 | Binary/PlusToken/right | BinaryExpression | kPrecedence | (this.textInfo + "\u000a") |
+| 188 | MemberBase | BinaryExpression | kPrecedence | ($value0 = $local1.uiContext) |
+| 158 | CallCallee | BinaryExpression | kPrecedence | (0, ({["observedDeepRender"]: () => { $local2.observeComponentCreation2($local1, GridItem); $local2.observeCom |
+| 116 | MemberBase | ConditionalExpression | kPrecedence | ($local4 ? $local4 : $local5) |
+| 93 | Unknown/ForStatement | BinaryExpression | kUnknown | ($phi0 < $value7.length) |
+| 78 | Binary/EqualsEqualsEqualsToken/right | VoidExpression | kUnknown | (void 0) |
+| 56 | Unknown/ForStatement | PrefixUnaryExpression | kUnknown | (++$phi0) |
+| 50 | AssignmentValue/VariableDeclaration | AwaitExpression | kNone | (await store.sync(relationalStore.SyncMode.SYNC_MODE_PUSH, $value6)) |
+| 37 | MemberBase | ObjectLiteralExpression | kNone | ({["observedDeepRender"]: () => { $local2.observeComponentCreation2($local1, GridItem); $local2.observeCompone |
+| 25 | StatementStart | ParenthesizedExpression | kUnknown | (($phi3 = 0)) |
+
+The required assignment-as-member-base group remains: all **188** such
+source-cohort occurrences are unchanged. Remaining `kNone` await and synthetic
+wrapper entries are census findings, not broadened admission in this slice.
+Await/yield/delete envelopes, heritage, loop headers, signed numbers and
+operator-position undefined literals remain outside this bounded change.
+
+### Acceptance
+
+| Input | Complete OLD/NEW | Strict default pass/differ/unverified | Strict O0 | Token pass/fail/unverified |
+|---|---:|---|---|---|
+| previous flags | 526/526 | 526/0/0 | 526/0/0 | 526/0/0 |
+| language-source | 576/576 | 567/0/9 | 567/0/9 | 563/0/13 |
+| paired samples | 80/80 | 80/0/0 | 80/0/0 | 80/0/0 |
+
+No allowed bytecode differences or normalization were used. Nine files fail
+compilation on both sides for the existing reasons; 13 ArkTS files are outside
+Acorn/Node. All-JS Node syntax checks, including partial outputs, pass
+**527 / 564 / 80**, with zero failures. Compiler identity/options/diffs and
+individual records are in `build/review/paren1c/{check,checks,checkpair}`.
+Tests cover constructor arguments, required member-base grouping, conservative
+unknowns, name inference, values, counting/real sink spans, and 200/201/400/800
+width/depth/budget cases. Two selectors changed solely to follow new spellings:
+ProgressBar's fabricated-default mutant and the native-name wrapper-presence
+assertion. Their behavioral/name/mutation assertions are unchanged.
+
+Ten changed-line examples (enclosing bodies are omitted):
+
+`o14/18164`
+```js
+// OLD
+return new TaskpoolCancel((void 0), {});
+// NEW
+return new TaskpoolCancel(void 0, {});
+```
+
+`o0/13660`
+```js
+// OLD
+$value0.paramsGenerator_ = ({["paramsLambda"]: () => {
+// NEW
+$value0.paramsGenerator_ = {["paramsLambda"]: () => {
+```
+
+`o0/6954`
+```js
+// OLD
+$value2.paramsGenerator_ = ({["paramsLambda"]: () => {
+// NEW
+$value2.paramsGenerator_ = {["paramsLambda"]: () => {
+```
+
+`o0/3730`
+```js
+// OLD
+return (void 0);
+// NEW
+return void 0;
+```
+
+`o0/13660`
+```js
+// OLD
+constructor(parent, params, __localStorage, elmtId = (-1), paramsLambda = (void 0), extraInfo) {
+// NEW
+constructor(parent, params, __localStorage, elmtId = (-1), paramsLambda = void 0, extraInfo) {
+```
+
+`o0/13660`
+```js
+// OLD
+$local9.__deviceInfo = new ObservedPropertyObjectPU((void 0), $local9, "deviceInfo");
+// NEW
+$local9.__deviceInfo = new ObservedPropertyObjectPU(void 0, $local9, "deviceInfo");
+```
+
+`o0/13660`
+```js
+// OLD
+($value0 = new DeleteDeviceDialog($local9, {cancel: $local9.onCancel, confirm: $local9.onAccept, deviceName: $local9.deviceInfo.deviceName, deviceInfo: $local9.__deviceInfo}, (void 0), -1, () => {
+// NEW
+($value0 = new DeleteDeviceDialog($local9, {cancel: $local9.onCancel, confirm: $local9.onAccept, deviceName: $local9.deviceInfo.deviceName, deviceInfo: $local9.__deviceInfo}, void 0, -1, () => {
+```
+
+`o0/6954`
+```js
+// OLD
+const $value2 = ({["forEachItemGenFunction"]: (_item, index) => {
+// NEW
+const $value2 = {["forEachItemGenFunction"]: (_item, index) => {
+```
+
+`o0/13660`
+```js
+// OLD
+let $local9 = (void 0);
+// NEW
+let $local9 = void 0;
+```
+
+`o1/12874`
+```js
+// OLD
+return new Index((void 0), {}, $local19.useSharedStorage ? LocalStorage.getShared() : (void 0));
+// NEW
+return new Index(void 0, {}, $local19.useSharedStorage ? LocalStorage.getShared() : void 0);
+```
+
+Final verification: full build passed; fixed suite **65/65**; grouping/brace
+**10/10**; required sweep **101/102**, only the documented pre-existing
+`family_source_cli_test` failure. Logs are
+`build/review/paren1c/{build-final2,fixed-final,focused,sweep-final}.log`.
+On the JS-only population matching the review's baseline counts:
+`(` **56,512 -> 54,713**, `((` **4,928 -> 4,744**, `({` **3,246 -> 2,685**,
+`(0, ` **623 -> 623**. All-file counts (including ArkTS) are recorded separately
+in `text-counts.json`. No commit, push or stash.

@@ -5,6 +5,30 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Readable grouping slice 1c: residual contexts (2026-10-19, uncommitted)
+
+- Baseline `6bdd4ae9`. Test-only syntax census covers every emitted JS/ArkTS
+  grouping pair, queries production grouping decisions, and retains `kUnknown`
+  for unmapped contexts. Source census **5,861 -> 3,985**; previous flags
+  **4,991 -> 3,354**. Occurrences/top-15/examples are under
+  `build/review/paren1c/`; see [readable-grouping.md](readable-grouping.md).
+- Bare `void 0` is limited to explicit Expression/AssignmentValue positions;
+  parameter cursors now supply the latter. Synthetic name-preserving object
+  selections omit their envelope only in already-proven ungrouped positions,
+  without self-binding IIFEs. Computed keys, selection, names, scopes, `(0, ...)`
+  and all brace rules are unchanged. Unknown/operator/postfix contexts stay
+  conservative; all 188 assignment/member-base groups remain.
+- Complete sets/statuses **526/576/80** unchanged. Strict es2abc/disasm at both
+  default and O0: **526/0/0**, **567/0/9**, **80/0/0**
+  (pass/differ/unverified), no allowance. Complete-JS token removals:
+  **1,624 / 1,786 / 220**; token checks **526/0/0**, **563/0/13**, **80/0/0**.
+  All-JS Node checks including partial outputs **527/564/80**, zero failures.
+- Full build passed; fixed suite **65/65**; grouping/brace **10/10**;
+  required sweep **101/102**, only pre-existing `family_source_cli_test`.
+  ProgressBar's mutation selector and the native-name wrapper-presence selector
+  follow new spellings; behavioral/name assertions are unchanged. Tests include
+  200/201/400/800 widths/depths and exact budgets. No commit/push/stash.
+
 ## Readable grouping slice 3: braces (2026-10-19, uncommitted)
 
 - Baseline `edc9821e`. A prepaid `BracePlan` in `SourceVariables` uses original

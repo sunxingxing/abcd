@@ -22,6 +22,7 @@ FunctionTree Make(std::string_view form,unsigned count=1){
    callee=add(MemberExpr{base,NameId{4}});reference=CallReference::kMember;
  }
  for(unsigned i=0;i<count;++i){
+   if(form=="void"){t.arguments.push_back(add(TreeLiteral{UndefinedLiteral{}}));continue;}
    if(form=="evalalias"){t.texts.push_back(u"typeof x");t.arguments.push_back(add(TreeLiteral{TextId{0}}));continue;}
    if(form=="rebind"){t.arguments.push_back(add(AssignmentExpr{SymbolTarget{{0}},read(1)}));continue;}
    auto update=add(UpdateExpr{{2},UpdateDirection::kIncrement,
@@ -43,6 +44,11 @@ FunctionTree Head(std::string_view form) {
  auto t=Make("value");
  t.expressions.clear();t.properties.clear();t.arguments.clear();
  auto add=[&](TreeExpression e){ExprId id{static_cast<std::uint32_t>(t.expressions.size())};t.expressions.push_back({std::move(e),{0}});return id;};
+ if(form=="voidconstruct") {
+   const auto constructor=add(SymbolExpr{{0}});
+   t.arguments={add(TreeLiteral{UndefinedLiteral{}}),add(EmptyObjectExpr{})};
+   t.statements[1].statement=ReturnStmt{add(ConstructExpr{constructor,ArgumentRange{0,2}})};return t;
+ }
  if(form=="lethead") {
    t.strictness=Strictness::kSloppy;t.names[2]=u"let";
    const auto value=add(SymbolExpr{{2}});
@@ -72,7 +78,7 @@ std::string Print(const FunctionTree& t){
 }
 }
 int main(int argc,char** argv){
- if(argc==2){std::string_view form=argv[1];std::cout<<Print((form.starts_with("object")||form=="lethead")?Head(form):Make(form));return 0;}
+ if(argc==2){std::string_view form=argv[1];std::cout<<Print((form.starts_with("object")||form=="lethead"||form=="voidconstruct")?Head(form):Make(form));return 0;}
  for(auto form:{"value","member","base","sign","updatebase"}){
    auto text=Print(Make(form));
    if(std::string_view(form)=="sign") Check(text.find("+(++x)")!=std::string::npos);
@@ -99,7 +105,8 @@ int main(int argc,char** argv){
  // Current binding validation rejects reserved `let`, even in a sloppy tree.
  // Test the lexical boundary independently without weakening that admission.
  {std::ostringstream denied;Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(Head("lethead"),denied)));}
+ Check(Print(Head("voidconstruct")).find("new f(void 0, {})")!=std::string::npos);
  Check(Print(Head("objectstatement")).find("({p: x}).p;")!=std::string::npos);
  Check(Print(Head("objectvalue")).find("return {p: x}.p;")!=std::string::npos);
- for(auto n:{200u,201u,400u,800u}){auto text=Print(Make("value",n));Check(!text.empty());}
+ for(auto n:{200u,201u,400u,800u}){auto text=Print(Make("value",n));Check(!text.empty());auto literals=Print(Make("void",n));Check(literals.find("(void 0)")==std::string::npos);}
 }

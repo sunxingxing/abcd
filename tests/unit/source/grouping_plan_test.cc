@@ -11,6 +11,12 @@ ExprId Add(FunctionTree& tree, TreeExpression expression) {
 }
 GroupingContext Assignment() {return {{ExpressionGrammar::kAssignmentValue}};}
 void Grammar() {
+  Check(!ReadableLiteralEnvelope(TreeLiteral{UndefinedLiteral{}},{ExpressionGrammar::kAssignmentValue}).Parenthesized());
+  Check(!ReadableLiteralEnvelope(TreeLiteral{UndefinedLiteral{}},{ExpressionGrammar::kExpression}).Parenthesized());
+  Check(ReadableLiteralEnvelope(TreeLiteral{UndefinedLiteral{}},{PostfixContext::kMemberBase}).Parenthesized());
+  Check(ReadableLiteralEnvelope(TreeLiteral{UndefinedLiteral{}},{}).Parenthesized());
+  Check(ReadableLiteralEnvelope(TreeLiteral{IntegerLiteral{-1}},{ExpressionGrammar::kAssignmentValue}).Parenthesized());
+
   FunctionTree tree;
   const auto a=Add(tree,TreeLiteral{IntegerLiteral{1}});
   const auto b=Add(tree,TreeLiteral{IntegerLiteral{2}});

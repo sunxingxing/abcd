@@ -29,3 +29,7 @@ console.log('grouping print differential: seven forms, both branches passed');
 {const text=execFileSync(process.argv[2],['evalalias'],{encoding:'utf8'});
  const call=Function('"use strict";return '+text)();
  assert.equal(call(eval,false,17),'undefined');} // Alias remains indirect eval.
+
+{const text=execFileSync(process.argv[2],['voidconstruct'],{encoding:'utf8'});
+ const call=Function('return '+text)();function C(...args){return args;}
+ assert.deepEqual(call(C),[undefined,{}]);assert(text.includes('new f(void 0, {})'));}

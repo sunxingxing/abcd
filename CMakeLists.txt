@@ -536,6 +536,8 @@ if(BUILD_TESTING)
   target_link_libraries(print_memory_test PRIVATE abcd_source)
   add_test(NAME print_memory_test COMMAND print_memory_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME grouping_census_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/grouping_census.mjs --self-test)
     add_test(NAME grouping_tokens_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/grouping_tokens.mjs)
   endif()
@@ -547,6 +549,8 @@ if(BUILD_TESTING)
     add_test(NAME brace_print_node_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/brace_print.mjs $<TARGET_FILE:brace_plan_test>)
   endif()
+  add_executable(grouping_census_probe tests/support/source/grouping_census_probe.cc)
+  target_link_libraries(grouping_census_probe PRIVATE abcd_source abcd_json)
   add_executable(grouping_print_test tests/unit/source/grouping_print_test.cc)
   target_link_libraries(grouping_print_test PRIVATE abcd_source)
   add_test(NAME grouping_print_test COMMAND grouping_print_test)
