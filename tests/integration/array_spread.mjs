@@ -48,7 +48,7 @@ try {
   const repeated = text.replace(/\.\.\.(\$\w+)/, '...$1, ...$1');
   assert.notEqual(repeated, text); assert.notEqual(evaluate('twice', repeated), expected);
   // Moving a getter before the preceding iterator or evaluating it twice is observable.
-  const reordered = text.replace(/(\.\.\.\(0, \$\w+\)\(\)), (\$\w+\.item)/, '$2, $1');
+  const reordered = text.replace(/(\.\.\.\$\w+\(\)), (\$\w+\.item)/, '$2, $1');
   assert.notEqual(reordered, text); assert.notEqual(evaluate('rhs-order', reordered), expected);
   const getterTwice = text.replace(/(\$\w+\.item)/, '($1, $1)');
   assert.notEqual(getterTwice, text); assert.notEqual(evaluate('getter-twice', getterTwice), expected);

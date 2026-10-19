@@ -101,3 +101,49 @@ export function inferGroupingRemovals(oldSource, newSource) {
   checkGroupingTokens(oldSource,newSource,removed);
   return removed;
 }
+
+// Slice 2 only: a call-callee ParenthesizedExpression containing exactly
+// Sequence(0, Identifier), never eval/member/optional/new/tag. No other token
+// changes are permitted. Module parsing excludes with environments.
+export function checkValueCallRemovals(oldSource, newSource) {
+  const ast=acorn.parse(oldSource,{ecmaVersion:'latest',sourceType:'module',preserveParens:true});
+  const candidates=new Map(), pending=[ast];
+  while(pending.length) {
+    const n=pending.pop();
+    if(n.type==='CallExpression'&&!n.optional&&n.callee.type==='ParenthesizedExpression') {
+      const p=n.callee,e=p.expression;
+      if(e.type==='SequenceExpression'&&e.expressions.length===2&&e.expressions[0].type==='Literal'&&
+          e.expressions[0].raw==='0'&&e.expressions[1].type==='Identifier'&&e.expressions[1].name!=='eval')
+        candidates.set(p.start,{end:p.end-1,name:e.expressions[1].start});
+    }
+    for(const v of Object.values(n))if(Array.isArray(v)){for(const c of v)if(c?.type)pending.push(c);}else if(v?.type)pending.push(v);
+  }
+  const old=scan(oldSource),next=scan(newSource), removed=new Set();let j=0,count=0;
+  for(let i=0;i<old.tokens.length;++i) {
+    const t=old.tokens[i];if(removed.has(t.start))continue;
+    const c=candidates.get(t.start);
+    if(c&&next.tokens[j]?.type.label!=='(') {
+      while(old.tokens[i].start<c.name){removed.add(old.tokens[i].start);++i;}
+      removed.add(c.end);++count;
+    }
+    const a=old.tokens[i],b=next.tokens[j++];
+    assert(b&&a.type.label===b.type.label&&oldSource.slice(a.start,a.end)===newSource.slice(b.start,b.end),'non-wrapper token change');
+  }
+  assert.equal(j,next.tokens.length);
+  const kept=old.tokens.filter(t=>!removed.has(t.start));
+  const deleted=old.tokens.filter(t=>removed.has(t.start));let di=0;
+  let aend=0,bend=0;
+  for(let i=0;i<=kept.length;++i){
+    const a=i<kept.length?kept[i].start:oldSource.length,b=i<next.tokens.length?next.tokens[i].start:newSource.length;
+    let gap=oldSource.slice(aend,a),touched=false;
+    const local=[];while(di<deleted.length&&deleted[di].end<=a)local.push(deleted[di++]);
+    for(const token of local.reverse()){
+      gap=gap.slice(0,token.start-aend)+gap.slice(token.end-aend);touched=true;
+    }
+    const actual=newSource.slice(bend,b);
+    if(gap!==actual){assert(touched,'unrelated whitespace change');assert.equal(gap.replace(/[ \t]/g,''),actual.replace(/[ \t]/g,''));}
+    if(i<kept.length){aend=kept[i].end;bend=next.tokens[i].end;}
+  }
+  assert.deepEqual(old.comments.map(c=>oldSource.slice(c.start,c.end)),next.comments.map(c=>newSource.slice(c.start,c.end)));
+  return count;
+}

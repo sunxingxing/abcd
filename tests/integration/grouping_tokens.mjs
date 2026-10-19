@@ -17,3 +17,15 @@ assert.throws(()=>inferGroupingRemovals('(0, obj.f)(x);','obj.f(x);'));
 assert.throws(()=>inferGroupingRemovals('f(x);','f((x));'));
 assert.throws(()=>inferGroupingRemovals('(x + y) * z;','x + (y * z);'));
 console.log('grouping token checker: 13 checks passed');
+const {checkValueCallRemovals: calls}=await import('../tools/grouping_tokens.mjs');
+assert.equal(calls('(0, f)(x);','f(x);'),1);
+assert.equal(calls('(0, renamed)((f = other));','renamed((f = other));'),1);
+for(const [a,b] of [
+ ['(0, eval)(x);','eval(x);'],['(0, obj.f)(x);','obj.f(x);'],
+ ['new (0, f)();','new f();'],['(0, f)?.();','f?.();'],
+ ['(0, f)`x`;','f`x`;'],['typeof (0, f);','typeof f;'],
+ ['let x=(0, function(){});','let x=function(){};'],
+ ['(0, f)(x);','f(y);'],['(0, f)(x);','f(\nx);']])assert.throws(()=>calls(a,b));
+const moduleAlias='import {f as eval} from "x";(0, eval)();';
+assert.throws(()=>calls(moduleAlias,moduleAlias.replace('(0, eval)','eval')));
+console.log('value-call token checker: remove and forbidden-context mutations passed');

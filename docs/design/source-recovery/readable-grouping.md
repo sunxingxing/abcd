@@ -378,3 +378,165 @@ mutation selectors now match bare assignments/arrows, and the partial-family
 ASI assertion searches the function keyword without requiring an unnecessary
 opening parenthesis. Mutation non-equality and behavior assertions remain.
 Logs: `build/review/paren1b/{full-build-final,fixed-final,sweep-final,grouping-tests-final,updated-tests}.log`.
+
+# Slice 2 — identifier value calls (2026-10-19)
+
+`PlainValueCallee` removes the synthetic comma wrapper only at `CallExpr` with
+`CallReference::kValue`, for a strict validated tree and a final `SymbolExpr` or
+`GlobalNameExpr` spelling other than `eval`. Symbol spelling uses
+`ReadBinding` then `Storage`, exactly as printing does. Literal transports,
+replacement expressions and literal read projections conservatively retain the
+wrapper. The validated scope kinds (parameters/body/block/captures/module/self/
+catch) contain no object/with environment; strictness alone is not a claim about
+an arbitrary function created inside a foreign with environment. This rule is
+for these verified source trees, not arbitrary JavaScript input.
+
+The rule does not run for construction, optional-call projections, tags, member
+callees, inferred-name suppression or typeof-global value projections. Sloppy
+and unproven cases retain the wrapper. Existing admission rejects reserved
+strict binding names such as a local/import alias `eval`; that refusal remains.
+The final-spelling exclusion also protects any admissible global eval reference.
+
+ECMA-262 [EvaluateCall](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-evaluatecall)
+uses GetThisValue for property references and WithBaseObject for environment
+references. [Declarative](https://tc39.es/ecma262/multipage/executable-code-and-execution-contexts.html#sec-declarative-environment-records-withbaseobject)
+and [global](https://tc39.es/ecma262/multipage/executable-code-and-execution-contexts.html#sec-global-environment-records-withbaseobject)
+environments supply undefined; module environments are declarative. The call
+expression's direct-eval special case is why the spelling `eval` is excluded.
+The pinned `references/openharmony/arkcompiler/ets_runtime/ecmascript/interpreter/interpreter-inl.cpp`
+sets `callThis=false` in CALLARG0 at 1268–1273 and `callThis=true` in CALLTHIS0 at
+1347–1353; line 1512 passes VALUE_UNDEFINED for the former, versus the explicit
+receiver for the latter. No call opcode or receiver proof changes in this slice.
+
+## Slice 2 acceptance policy
+
+`grouping_bytecode.py --value-calls` is opt-in; its default remains strict.
+The Acorn checker accepts only removal of a call-callee `(0, Identifier)` with
+non-eval spelling, excluding optional/new/tag and other value contexts. All
+other tokens, comments and line terminators must remain. The bytecode allowance
+is deletion of `ldai 0x0` immediately before an identical accumulator-overwriting
+register or lexical/module/global binding load; no intervening label, store or
+accumulator-consuming instruction. The runtime load handlers are at 2792/2834,
+6067/6084, 6304/6323 in interpreter-inl.cpp. The matching instruction and every
+other assembly line (including labels, handlers, registers and metadata) must
+be identical. Deleted loads are counted and bounded by source wrapper witnesses.
+ArkTS without a token witness is unverified, never an allowed-difference pass.
+
+OLD is the supplied `build/review/wtbase/b/abc_structure` at **1d62926c**.
+Final compiler reports are `build/review/paren2/check-previous/report.json`,
+`build/review/paren2/accept-source/report.json`, and
+`build/review/paren2/accept-paired/report.json`; each records compiler identity
+and commands. Earlier probe/check-source reports are not acceptance results.
+
+| Set | Complete | Default pass/allowed/differ/unverified | O0 pass/allowed/differ/unverified | Token pass/unverified | Verified removed wrappers |
+|---|---:|---:|---:|---:|---:|
+| Previous flags | 526 | 526/0/0/0 | 284/242/0/0 | 526/0 | 704 |
+| Language source | 576 | 567/0/0/9 | 296/270/0/10 | 563/13 | 979 |
+| Paired samples | 80 | 80/0/0/0 | 69/11/0/0 | 80/0 | 21 |
+
+All complete sets are unchanged. The nine pre-existing ArkTS compilation failures
+remain; O0 additionally leaves o15/45013 unverified because its wrapper deletion
+has no JS-grammar witness. Node syntax passes all 526/563/80 complete JavaScript
+outputs. Textual `(0, ` counts are **1260→556**, **1613→632**, **115→94**;
+the source total includes two removals in ArkTS, excluded from the verified
+wrapper count. Counting and real sinks use the same decision and original
+position-map machinery; no new allocation or subtree walk is introduced.
+
+Ten cohort examples (unchanged surrounding source omitted):
+
+`o0/13660`
+```js
+// OLD
+      Image.create($local0.getDeviceTypeIcon((0, Number)($local0.deviceInfo.deviceType)));
+// NEW
+      Image.create($local0.getDeviceTypeIcon(Number($local0.deviceInfo.deviceType)));
+```
+
+`o0/6954`
+```js
+// OLD
+        (0, setTimeout)(() => {
+// NEW
+        setTimeout(() => {
+```
+
+`o0/6954`
+```js
+// OLD
+          (0, itemCreation)(elmtId, isInitialRender);
+// NEW
+          itemCreation(elmtId, isInitialRender);
+```
+
+`o0/6954`
+```js
+// OLD
+(0, registerNamedRoute)(() => {
+// NEW
+registerNamedRoute(() => {
+```
+
+`o1/12874`
+```js
+// OLD
+  const $value1 = (0, parseInfixExpression)(inputContent);
+// NEW
+  const $value1 = parseInfixExpression(inputContent);
+```
+
+`o1/12874`
+```js
+// OLD
+  const $value2 = (0, toSuffixExpression)($value1);
+// NEW
+  const $value2 = toSuffixExpression($value1);
+```
+
+`o1/12874`
+```js
+// OLD
+  return (0, calcSuffixExpression)($value2);
+// NEW
+  return calcSuffixExpression($value2);
+```
+
+`o1/12874`
+```js
+// OLD
+    if (!(0, isOperator)($value2)) {
+// NEW
+    if (!isOperator($value2)) {
+```
+
+`o1/12874`
+```js
+// OLD
+    if (!(0, isGrouping)($value12)) {
+// NEW
+    if (!isGrouping($value12)) {
+```
+
+`o1/12874`
+```js
+// OLD
+        if (!(0, isSymbol)($value12) || !($phi2 === 0 || inputContent[$phi2 - 1] === "(")) {
+// NEW
+        if (!isSymbol($value12) || !($phi2 === 0 || inputContent[$phi2 - 1] === "(")) {
+```
+
+Final verification: full build passed; `source-regression -j 1` **65/65**;
+grouping tests **7/7** (including the narrow bytecode-allowance mutations,
+callee reassignment and indirect-eval alias differential). The required sweep
+passes **98/99**, only the documented pre-existing `family_source_cli_test`
+owner/origin-arena assertion. A broader receiver/reference run passes **15/29**;
+the 14 failures are the registered derived/captured/forwarded receiver variants
+listed in status.md's existing-failure inventory, failing family construction
+before printing. Native function-name and call-reference tests pass.
+Text-sensitive mutation selectors were updated to bare call spellings; their
+non-equality and behavioral assertions remain in force.
+
+The final executable regenerates byte-identical text to the compiler-checked
+copies (`final-output-check.json`). Node syntax checks including partial outputs
+pass **527 / 564 / 80**, zero failures (`node-all.json`). `git diff --check`
+passes. Final logs: `build/review/paren2/{build-final,fixed-final,sweep-final,grouping-final,targeted-final}.log`.
+No commit, push or stash.

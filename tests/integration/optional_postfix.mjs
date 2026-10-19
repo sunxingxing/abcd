@@ -87,7 +87,7 @@ for (const row of rows) {
   if (!decoded && !row.repeated && row.depth === 3 && !row.computed && !row.formed && !row.reversed) {
     const optional = row.source.replace(/(?<!\?)\.field/g, '?.field'); assert.notEqual(optional, row.source);
     assert.ok(!isDeepStrictEqual(observe(compile(optional), row, 'object', null, 0, {}), observe(oracle, row, 'object', null, 0, {}))); ++mutations;
-    const first = row.firstCall ? 'value?.((0, key)())' : 'value?.field((0, key)())';
+    const first = row.firstCall ? 'value?.(key())' : 'value?.field(key())';
     const ended = row.source.replace(first, '(' + first + ')'); assert.notEqual(ended, row.source);
     assert.ok(!isDeepStrictEqual(observe(compile(ended), row, null, 'object', 0, {}), observe(oracle, row, null, 'object', 0, {}))); ++mutations;
   }

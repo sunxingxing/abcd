@@ -1244,3 +1244,29 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
   owner/origin-arena assertion. Formatting-dependent mutation patterns and the
   partial-family return assertion were updated; semantic checks remain strict.
   `git diff --check` passed. No commit or push.
+
+### Readable grouping slice 2 — identifier value-call wrappers (2026-10-19)
+
+- Remove `(0, name)` only at value calls with a verified strict tree, supported
+  declarative/module/global scope, a final identifier spelling other than eval,
+  and no literal/replacement projection. Preserve member receivers, optional
+  calls, constructor/tag contexts, typeof and inferred-name suppression.
+- OLD is cc's 1d62926c executable. Complete sets remain **526 / 576 / 80**.
+  Default compilation: **526/0/0**, **567/0/9**, **80/0/0**
+  pass/differ/unverified. O0 pass/allowed/differ/unverified:
+  **284/242/0/0**, **296/270/0/10**, **69/11/0/0**.
+- Opt-in acceptance allows only zero loads immediately discarded by identical
+  register/binding loads; all other assembly is exact. Strict remains default.
+  Allowed deleted instructions **704 / 979 / 21**. Token and Node checks pass
+  all **526 / 563 / 80** JavaScript files; 13 ArkTS token checks remain unverified.
+  Nine pre-existing compile failures remain; O0 o15/45013 is additionally
+  unverified without a token witness. No unapproved bytecode difference.
+- Full evidence, wrapper counts and ten examples are in
+  [readable-grouping.md](readable-grouping.md) and `build/review/paren2/`.
+- Final verification: full build passed; fixed suite **65/65**; grouping **7/7**;
+  required sweep **98/99**, only pre-existing `family_source_cli_test`.
+  Broader receiver/reference checks **15/29**: the 14 registered receiver-family
+  failures occur before printing; function-name and call-reference checks pass.
+  Callee-reassignment and indirect-eval-alias Node differentials pass.
+  Syntax including partial files **527/564/80**, zero failures. Final executable
+  output matches compiler-checked text; `git diff --check` passes. No commit/push.

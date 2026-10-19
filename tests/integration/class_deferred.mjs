@@ -84,7 +84,7 @@ try {
         if (name === 'late' || name === 'multiple' || name === 'phased') {
           assert.ok(expected.includes('ReferenceError'), expected);
           // Same storage requested by two class occurrences: one declaration.
-          const matches = [...text.matchAll(/^let (\$\w+) = \(0, __initialize\)\(/gm)];
+          const matches = [...text.matchAll(/^let (\$\w+) = __initialize\(/gm)];
           assert.equal(matches.length, 1, text);
           const symbol = matches[0][1];
           const changed = `let ${symbol};\n` + text.replace(`let ${symbol} =`, `${symbol} =`);

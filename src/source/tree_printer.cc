@@ -897,8 +897,26 @@ class TreePrinter {
       Member(member.base, member.key, PostfixContext::kMemberBase, false, statement_start);
     }
   }
+  bool PlainValueCallee(ExprId id) {
+    // Validated ScopeKind has no object/with alternative, and strict source
+    // cannot introduce with. These declarative/module/global references supply
+    // undefined as call receiver (ECMA-262 EvaluateCall/WithBaseObject).
+    // Do not infer this from an opcode, or from the pre-projection spelling.
+    if (Tree().strictness != Strictness::kStrict ||
+        Initializers().transports[id.value] || Initializers().replacements[id.value]) return false;
+    const auto& expression = Tree().expressions[id.value].expression;
+    if (const auto* read = std::get_if<SymbolExpr>(&expression)) {
+      if (Initializers().ReadLiteral(id, read->symbol)) return false;
+      const auto binding = Initializers().ReadBinding(id, read->symbol);
+      const auto storage = Initializers().Storage(binding);
+      return Tree().names[Tree().symbols[storage.value].name.value] != u"eval";
+    }
+    if (const auto* global = std::get_if<GlobalNameExpr>(&expression))
+      return Tree().names[global->name.value] != u"eval";
+    return false;
+  }
   void Expression(const CallExpr& node, bool statement_start = false) {
-    if (node.reference == CallReference::kValue) {
+    if (node.reference == CallReference::kValue && !PlainValueCallee(node.callee)) {
       Append("(0, ");
       Push(std::string_view(")"));
       if (node.array_arguments) Push(ArrayArgumentCursor{*node.array_arguments});

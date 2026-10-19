@@ -98,7 +98,7 @@ void RetainedCall() {
   test::Check(!std::get<ConstructedFunction>(recovered).flow);
   const auto& tree = std::get<ConstructedFunction>(recovered).tree;
   const auto source = Print(tree);
-  test::Check(source.find("(0, ") < source.find("debugger;"));
+  test::Check(source.find("();") < source.find("debugger;"));
   test::Check(source.find("debugger;") < source.find("UNRECOVERED"));
 }
 void CompleteAndBranched() {

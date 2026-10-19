@@ -48,8 +48,8 @@ try {
   }
   assert.deepEqual(run(file),expected,label);comparisons+=expected.length;
   const changed=[
-   text.replaceAll('(0, $arg1)()','((0, $arg1)(), (0, $arg1)())'),
-   text.replaceAll('(0, $arg1)()','0'),
+   text.replaceAll('$arg1()','($arg1(), $arg1())'),
+   text.replaceAll('$arg1()','0'),
    text.replaceAll(' || ',' && '),
    text.replaceAll('$arg0.call(','(0, $arg0.call)('),
    text.replaceAll('$arg0.earlier','($arg0.later, $arg0.earlier)'),

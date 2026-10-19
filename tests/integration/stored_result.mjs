@@ -89,7 +89,7 @@ for(const row of rows) {
     assert.deepStrictEqual(await observe(actual,row,scenario),await observe(expected,row,scenario),JSON.stringify({form:row.form,count:row.count,scenario},(_,value)=>typeof value==='bigint'?String(value):value));++cases;
   }
   if(!row.count&&[1,2,13].includes(row.form)) {
-    const wrong=row.form===1?row.source.replace('(0, other)()', 'input'):
+    const wrong=row.form===1?row.source.replace('other()', 'input'):
       row.form===2?row.source.replace('++state','state++'):
       editExpression(row.source,node=>node.type==='AssignmentExpression'&&node.left.type==='MemberExpression',
         (node,text)=>`(${text(node.left)} = 0)`);

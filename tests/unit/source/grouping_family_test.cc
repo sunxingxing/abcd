@@ -53,7 +53,7 @@ int main(int argc,char**) {
       for(const auto& member:spans.members) for(const auto& span:member.expressions)
         Check(span.begin<=span.end && span.end<=output.str().size());
       if(place==6) Check(output.str().find(").name")!=std::string::npos);
-      if(place==1) Check(output.str().find("(0, f)(")!=std::string::npos);
+      if(place==1) Check(output.str().find("return f(")!=std::string::npos);
       if(argc>1) std::cout<<nlohmann::json{{"place",place},{"source",output.str()}}.dump()<<'\n';
     }
 }

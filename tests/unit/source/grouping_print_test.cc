@@ -3,9 +3,10 @@
 #include <sstream>
 #include <iostream>
 #include <cstdlib>
+#include <source_location>
 using namespace abcd;using namespace abcd::source;
 namespace {
-void Check(bool x){if(!x)std::abort();}
+void Check(bool x,std::source_location at=std::source_location::current()){if(!x){std::cerr<<at.line()<<"\n";std::abort();}}
 FunctionTree Make(std::string_view form,unsigned count=1){
  FunctionTree t{};t.owner={0};t.callable=CallableKind::kFunction;t.strictness=Strictness::kStrict;
  t.parameter_scope={0};t.body_scope={1};t.body={0};
@@ -21,6 +22,8 @@ FunctionTree Make(std::string_view form,unsigned count=1){
    callee=add(MemberExpr{base,NameId{4}});reference=CallReference::kMember;
  }
  for(unsigned i=0;i<count;++i){
+   if(form=="evalalias"){t.texts.push_back(u"typeof x");t.arguments.push_back(add(TreeLiteral{TextId{0}}));continue;}
+   if(form=="rebind"){t.arguments.push_back(add(AssignmentExpr{SymbolTarget{{0}},read(1)}));continue;}
    auto update=add(UpdateExpr{{2},UpdateDirection::kIncrement,
        form=="sign" ? UpdateResult::kPrefix : UpdateResult::kPostfix});
    if(form=="sign") update=add(UnaryExpr{TreeUnary::kPlus,update});
@@ -78,6 +81,21 @@ int main(int argc,char** argv){
    Check(text.find("x = x + 1, {}")!=std::string::npos);
    if(std::string_view(form)=="base")Check(text.find("(x = []).push(")!=std::string::npos);
  }
+ // Value-call removal is restricted to the final plain non-eval binding.
+ Check(Print(Make("value")).find("return f(")!=std::string::npos);
+ {auto t=Make("value");t.strictness=Strictness::kSloppy;
+  Check(Print(t).find("(0, f)(")!=std::string::npos);}
+ {auto t=Make("value");t.names[0]=u"renamed";
+  Check(Print(t).find("return renamed(")!=std::string::npos);}
+ {auto t=Make("value");t.names[0]=u"eval";
+  std::ostringstream denied;Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(t,denied)));}
+ {auto t=Make("value");t.expressions[0].expression=GlobalNameExpr{{0}};t.names[0]=u"eval";
+  // Existing global-reference admission rejects eval. Retain that typed
+  // refusal; the independent token tests cover the required wrapper.
+  t.names.push_back(u"unused");t.symbols[0].name={5};
+  std::ostringstream denied;Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(t,denied)));}
+ {auto t=Make("member");std::get<CallExpr>(t.expressions.back().expression).reference=CallReference::kValue;
+  Check(Print(t).find("(0, f.push)(")!=std::string::npos);}
  // Current binding validation rejects reserved `let`, even in a sloppy tree.
  // Test the lexical boundary independently without weakening that admission.
  {std::ostringstream denied;Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(Head("lethead"),denied)));}

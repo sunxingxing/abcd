@@ -19,3 +19,13 @@ for(const form of ['value','member','base','sign','updatebase','objectstatement'
  }else{assert.equal(f(null,true,4),1);assert.equal(f(null,false,4),1);}
 }
 console.log('grouping print differential: seven forms, both branches passed');
+
+{const text=execFileSync(process.argv[2],['rebind'],{encoding:'utf8'});
+ const call=Function('"use strict";return '+text)(),seen=[];
+ function original(value){seen.push(this);return value;}
+ const replacement=()=>{throw Error('callee re-read');};
+ assert.equal(call(original,replacement,0),replacement);assert.deepEqual(seen,[undefined]);}
+
+{const text=execFileSync(process.argv[2],['evalalias'],{encoding:'utf8'});
+ const call=Function('"use strict";return '+text)();
+ assert.equal(call(eval,false,17),'undefined');} // Alias remains indirect eval.
