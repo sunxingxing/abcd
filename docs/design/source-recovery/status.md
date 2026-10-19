@@ -5,6 +5,100 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Readable-output test expectation refresh (2026-10-19, uncommitted)
+
+- Test-only follow-up: updated stale assignment/object/function/arrow/default
+  grouping expectations and mutation selectors. The three requested tests
+  (member chain, record imports, widget globals) pass. Found and repaired the
+  same issue in Index, Content, window/breakpoint/card/tabbar/viewmodel records,
+  module entry initialization, deferred captures and phased nested literals.
+  Every repaired mutation still changes parseable source and is behaviorally
+  detected; no production code or behavioral assertions were weakened.
+- Conservative printed-token source scan selected **688 tests**, run with
+  `-j 6`: initially **637 passed / 51 failed**. Final repaired/related batch
+  **20/20**; fixed source suite **65/65** serial; logical/literal-arm **8/8**;
+  required sweep **103/104**, only the documented `family_source_cli_test`.
+- **37 broad-run failures remain** after the repaired batch: documented
+  snapshot/literal/receiver/try/class/generator failures, a historical community
+  ability worker failure, plus low-level failures independently reproduced
+  using a fresh archive build of pre-grouping **d4076bd2** (register_uses,
+  metadata_index, derived_cells, expression_precedence and decision_snapshots).
+  The latter already has an invalid mutation before grouping; it was left
+  unchanged. No claim is made that the community worker's empty error identifies
+  a timeout. The ordinary community graph test passed.
+- Full test lists, per-failure evidence and logs:
+  `build/review/readable-tests/report.md`, `tests.txt`, `remaining-tests.txt`,
+  `{selected,repaired,fixed,logical,sweep}.log`, and `baseline-*.log`.
+  Worktree checkout was sandbox-blocked; a read-only git archive was used.
+  Existing wtbase stays at **41c20e3c**. No commit, push or stash.
+
+## Conditional literal arm integration (2026-10-19, uncommitted)
+
+- Baseline `41c20e3c`. The exact m65897 ValueIR shows **normal**, not phased,
+  flow: op8/v25 is the saved `Image.create` read, refused because it crosses the
+  argument selection before op27/PC64. The allocation is already a verified
+  phi-input literal. See [literal-event-view.md](literal-event-view.md) for the
+  ValueIds/UseIds/PCs and the original `MemberReferenceInline` failure.
+- Added `LiteralArmIndex` over the accepted LiteralEventView: original entry/phi
+  edges, unique external observation, committed final value, dominated all-path
+  forest coverage, acyclic single execution and original exception exits.
+  Shared prepaid indexes and memoized disjoint arm walks retain O((V+E) log V).
+  The verifier reconstructs independently. Only an unmet member Reference seeds
+  the new normal selection path; the existing order/receiver/evaluation/tree/
+  recovery proofs remain authoritative. Phased allocation exclusion unchanged;
+  no joint predicate/keep-edge admission, new premise or printer changes.
+- **o24/63384 now completes**, including m65897 and the sibling fallback in the
+  same record. Both 40-input cohorts: **527/620 previous flags**, **577/620
+  language-source**, up one each. All 526/576 previously complete outputs are
+  byte-identical; only record o24/63384's manifest entry changes (3 -> 0).
+  Both new outputs pass `node --check`. No other target was pursued.
+- Full build passed; fixed `ctest --preset source-regression -j 1`: **65/65**.
+  New tests **3/3** (event view, arm view, real es2abc/Node fixture), including
+  200/201/400/800 widths, exact byte/work budgets and arm/value/exit/catch/order/
+  consumption mutations. Fixture was incomplete at baseline (method480 PC69,
+  `kNotInline > kRoot > kCrossRegionValue`); now complete, with **140 Node
+  differential scenarios** against original source and compiler/hash metadata.
+- Required sweep **103/104**: pre-existing `family_source_cli_test` owner/origin
+  arena failure. Broader logical target selection **3/5**: `logical_regions_test`
+  and its Node wrapper fail the same stale `value.items(({probe:` formatting
+  assertion, independently reproduced in baseline 41c20e3c (old line1170).
+  These expectations were not weakened or changed in this slice.
+- Evidence: `build/review/literal-integration/{full-build,fixed,new-tests,
+  targeted,sweep}.log`, `comparison.json`, `value-ir.txt`, fixture baseline and
+  cohort logs. Native process RSS measurement via `/usr/bin/time -l` was blocked
+  by the sandbox's `sysctl kern.clockrate`; no new RSS claim is made.
+  Staged/multiblock initializer discovery and phased-arm composition remain
+  separate work; o24/27331 and excluded o7/28433 remain unchanged.
+
+## Conditional literal event view: partial foundation (2026-10-19, uncommitted)
+
+- Baseline `41c20e3c`. Added an **unhooked event census**, not completed
+  conditional selection composition. `LiteralEventView` retains original
+  allocation/definition/nested operand identities, consumers, Commit phases
+  and exception exits; its verifier recomputes the census from the original
+  graph and independently verified LiteralPlan. Explicit-stack forest indexing
+  is linear and uses prepaid TreeCheckBudget storage.
+- The allocation exclusion, selection admission, member-reference checks and
+  all production placements remain unchanged. **m65897 is not complete**:
+  o24/63384 still has `kNotInline > kRoot > kCrossRegionValue` at PC64;
+  o24/27331 m27565 still has the same chain at PC369. o7/28433 was not touched.
+  Conditional arm coverage, selection/composition integration, independent
+  TreeFlow/recovery consumption and the real es2abc/Node fixture are outstanding.
+  See [literal-event-view.md](literal-event-view.md); this is below the requested
+  m65897 acceptance boundary and must not be counted as completion.
+- Full build passed. New `literal_event_view_test` passed (existing bytecode/SSA
+  fixtures, nested/empty-array/exception cases, mutations, 200/201/400/800 and
+  exact byte/work budgets). Fixed source suite **65/65**. Targeted tests **2/3**:
+  `phased_literal_test` fails its existing `kArmSelection` mutation's `changed`
+  assertion, reproduced using the baseline test executable (old line662,
+  new line707). Required sweep **103/104**: the previously documented
+  `family_source_cli_test` owner/origin-arena failure remains unchanged.
+- Regenerated both OLD and NEW 40-input cohorts: **526/576 complete** unchanged;
+  every manifest and every emitted source file byte-identical, not merely the
+  previously complete subset. No new complete output requires node --check.
+  Evidence: `build/review/literal-event-view/{build,fixed,targeted,sweep}.log`
+  and `comparison.json`. No new engine-output Node differential is claimed.
+
 ## Readable grouping slice 1c: residual contexts (2026-10-19, uncommitted)
 
 - Baseline `6bdd4ae9`. Test-only syntax census covers every emitted JS/ArkTS

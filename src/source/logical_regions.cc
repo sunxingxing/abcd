@@ -1,3 +1,4 @@
+#include "literal_arm_view.h"
 #include "logical_regions.h"
 #include "evaluation_plan.h"
 #include "evaluation_liveness.h"
@@ -246,6 +247,8 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     const EvaluationPlan& evaluation, const ModuleEvaluationIndex& modules, TreeCheckBudget& budget) {
   std::vector<SelectionRegion> result;
   const ReferenceArguments references(graph, evaluation, budget);
+  std::optional<LiteralArmIndex> literal_arms;
+
   const auto literal_ends = evaluation.literals ? IndexPhiLiteralEnds(graph, *evaluation.literals, budget) :
       std::vector<std::optional<OpId>>{};
   std::vector<std::optional<ValueId>> phis;
@@ -355,8 +358,9 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       }
     }
   }
-  struct Path { WorkBlockId block; WorkBlockId join; std::optional<EdgeId> incoming; std::optional<std::size_t> child; bool suffix = false; };
+  struct Path { WorkBlockId block; WorkBlockId join; std::optional<EdgeId> incoming; std::optional<std::size_t> child; bool suffix = false; EdgeId entry; };
   const auto path = [&](std::optional<ControlId> at, EdgeId entry) -> std::optional<Path> {
+    const auto original_entry = entry;
     while (at) {
       budget.Step(); const auto& node = control.nodes[at->value];
       if (!std::holds_alternative<std::monostate>(node.synthetic)) return {};
@@ -373,7 +377,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
               evaluation.operations[id].kind != EvaluationKind::kPredicateSnapshot &&
               !OwnedGuard(graph, evaluation, modules, id)) return {};
         }
-        if (!node.next) return Path{node.block, region.join, {}, child};
+        if (!node.next) return Path{node.block, region.join, {}, child, false, original_entry};
         // Distinct joins remain distinct in the CFG/SSA. Only an exclusively
         // consumed child phi and either pure forwarding or one independently
         // closed suffix can enter the parent expression. Each child is examined once.
@@ -387,10 +391,10 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
           budget.Step(); const auto& op = graph.ops[tail.first_op.value + i];
           if (op.life == ValueLife::kLive && (!std::holds_alternative<ValueJump>(op.operation) || !Pure(op))) suffix = true;
         }
-        return Path{bridge.block, graph.edges[tail.first_edge.value].target, tail.first_edge, child, suffix};
+        return Path{bridge.block, graph.edges[tail.first_edge.value].target, tail.first_edge, child, suffix, original_entry};
       }
       if (block.edge_count != 1) return {};
-      if (!node.next) return Path{node.block, graph.edges[block.first_edge.value].target, block.first_edge, {}};
+      if (!node.next) return Path{node.block, graph.edges[block.first_edge.value].target, block.first_edge, {}, false, original_entry};
       for (std::uint32_t i = 0; i < block.op_count; ++i) {
         budget.Step(); const auto& op = graph.ops[block.first_op.value + i];
         if (op.life == ValueLife::kLive && (!std::holds_alternative<ValueJump>(op.operation) || !Pure(op))) return {};
@@ -537,17 +541,35 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       if (!kept) kept = std::get_if<SelectionSnapshot>(&*alternate);
       // The legacy logical owner requires an arm-local RHS expression. A
       // retained fallback has no such producer. For an unmet Reference only,
-      // keep this already-proved conditional (including the predicate's
-      // existing snapshot): both incoming edges read saved values, not replayed
-      // producers. The interval, tree and original-flow checkers still own
+      // keep the conditional and the predicate's existing snapshot. The old
+      // two-snapshot path stays unchanged; a literal arm requires its own
+      // complete event-forest proof below. The interval/tree/flow checkers own
       // movement, truth/phi correspondence and single evaluation. This does
       // not widen the deferred joint predicate/keep-edge consumer admission.
       if (kept && boolean.use_count == 1 &&
           SameValue(graph.uses[boolean.first_use.value].operand, kept->value)) {
         const auto& used = value_uses[merged.value];
+        if (used.multiple || !used.use || !references.Contains(graph.uses[used.use->value])) continue;
         if (!std::holds_alternative<SelectionSnapshot>(*consequent) ||
-            !std::holds_alternative<SelectionSnapshot>(*alternate) ||
-            used.multiple || !used.use || !references.Contains(graph.uses[used.use->value])) continue;
+            !std::holds_alternative<SelectionSnapshot>(*alternate)) {
+          // The saved member read, not the argument allocation, is the unmet
+          // Reference. Preserve the predicate snapshot and BOTH original phi
+          // edges. Each non-retained arm must own its entire literal forest;
+          // the normal interval proof then composes the saved callee, this
+          // conditional event and the invocation. No joint keep-edge admission.
+          if (!evaluation.literals) continue;
+          if (!literal_arms) {
+            try { literal_arms.emplace(graph, evaluation, budget); }
+            catch (LiteralEventError) { throw EvaluationError::kOwnership; }
+          }
+          const auto proven = [&](const Path& arm, const SelectionOperand& value) {
+            if (std::holds_alternative<SelectionSnapshot>(value)) return true;
+            return arm.incoming && edge_inputs[arm.incoming->value] &&
+                std::holds_alternative<LiteralArmView>(literal_arms->Prove(
+                    arm.entry, *edge_inputs[arm.incoming->value]));
+          };
+          if (!proven(yes, *consequent) || !proven(no, *alternate)) continue;
+        }
       }
     }
     const auto leaves = (yes.child && !yes.incoming ? leaf_counts[*yes.child] : 1) +

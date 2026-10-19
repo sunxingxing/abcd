@@ -1,3 +1,4 @@
+#include "../../../src/source/literal_event_view.h"
 #include "../../../src/analysis/phased_value_import.h"
 #include "../../../src/analysis/value_edits.h"
 #include "../../../src/analysis/value_flow.h"
@@ -23,6 +24,7 @@ namespace {
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
+bool check_event_view = false;
 enum class Shape {
   kAllPath, kAllPathArray, kAllPathBypass, kAllPathBarrier, kAllPathLoop, kAllPathCatchObserve,
   kStagedRead, kStagedReadBarrier, kStagedSelectionBarrier, kStagedSelectionUnary, kStagedSelectionAlias, kStagedLateSnapshot,
@@ -516,6 +518,49 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
   test::Check(evaluation.literals && evaluation.literals->objects.size() == (nested ? fields + 1 : 1));
   test::Check(std::holds_alternative<std::uint64_t>(VerifyPhasedEvaluationPlan(graph, evaluation)));
   const auto& literal = *evaluation.literals;
+  if (check_event_view) {
+    TreeCheckBudget budget({});
+    const auto view = BuildLiteralEventView(graph, literal, budget);
+    TreeCheckBudget verification({});
+    VerifyLiteralEventView(graph, literal, view, verification);
+    const auto rejects = [&](const LiteralEventView& changed) {
+      TreeCheckBudget quota({});
+      try { VerifyLiteralEventView(graph, literal, changed, quota); }
+      catch (LiteralEventError) { return true; }
+      return false;
+    };
+    auto changed = view;
+    ++changed.revision.value;
+    test::Check(rejects(changed));
+    for (std::size_t i = 0; i < view.events.size(); ++i) {
+      if (!view.events[i]) continue;
+      changed = view; changed.events[i].reset();
+      test::Check(rejects(changed));
+      changed = view; changed.events[i]->allocation = OpId{static_cast<std::uint32_t>(graph.ops.size())};
+      test::Check(rejects(changed));
+      changed = view; changed.events[i]->consumer = UseId{static_cast<std::uint32_t>(graph.uses.size())};
+      test::Check(rejects(changed));
+      if (view.events[i]->exception_exit) {
+        changed = view; changed.events[i]->exception_exit.reset();
+        test::Check(rejects(changed));
+      }
+      break;
+    }
+    TreeCheckBudget exact({budget.Bytes(), budget.Work()});
+    static_cast<void>(BuildLiteralEventView(graph, literal, exact));
+    for (const bool bytes : {false, true}) {
+      auto allowance = SemanticBudget{budget.Bytes(), budget.Work()};
+      if (bytes) --allowance.bytes; else --allowance.work;
+      TreeCheckBudget small(allowance);
+      bool refused = false;
+      try { static_cast<void>(BuildLiteralEventView(graph, literal, small)); }
+      catch (TreeStructureError error) {
+        refused = error == (bytes ? TreeStructureError::kResourceLimit : TreeStructureError::kWorkLimit);
+      }
+      test::Check(refused);
+    }
+  }
+
   if (!evaluation.logical_objects.empty()) {
     auto forged = evaluation;
     const auto allocation = literal.objects.front().allocation;
@@ -720,6 +765,17 @@ std::uint64_t Run(abc::ProfileId profile, Shape shape = Shape::kReturn,
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--event-view") {
+    check_event_view = true;
+    for (const auto fields : {1U, 200U, 201U, 400U, 800U}) {
+      Run(abc::ProfileId::kDynamic1206, Shape::kNestedCatch, 0, fields);
+      Run(abc::ProfileId::kDynamic1206, Shape::kNestedDeadArray, 1, fields);
+    }
+    for (const auto shape : {Shape::kReturn, Shape::kCatch, Shape::kNested,
+        Shape::kUnaryCatch, Shape::kAllPath, Shape::kStaged})
+      Run(abc::ProfileId::kDynamic1206, shape);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--early-phi-source") {
     Run(abc::ProfileId::kDynamic1206, Shape::kEarlyPhi, 2, 2,
         abc::Opcode::kSTOWNBYNAME_IMM8_ID16_V8, abc::Opcode::kNEG_IMM8, true, false);

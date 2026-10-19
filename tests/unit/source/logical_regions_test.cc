@@ -1,4 +1,5 @@
 #include "../../../src/source/logical_regions.h"
+#include "../../../src/source/literal_arm_view.h"
 #include "../../../src/source/evaluation_liveness.h"
 #include "../../../src/source/instruction_sources.h"
 #include "../../../src/source/function_tree.h"
@@ -157,7 +158,7 @@ analysis::ValueProgram ConditionalCall(bool method_first) {
 }
 analysis::ValueProgram ConditionalLiteralCall(bool getter = false, bool barrier = false,
     unsigned count = 1, abc::ProfileId profile = abc::ProfileId::kDynamic1206,
-    std::optional<FunctionInput>* input = nullptr) {
+    std::optional<FunctionInput>* input = nullptr, bool retained = false) {
   // Read the method before the branch, then initialize a fresh buffered object
   // in only the selected arm. Its field RHS may itself be a nested allocation
   // or a getter that replaces the method. Neither reference may be reread.
@@ -169,7 +170,9 @@ analysis::ValueProgram ConditionalLiteralCall(bool getter = false, bool barrier 
   };
   for (unsigned i = 0; i < count; ++i) {
     bytes.insert(bytes.end(), {0x60, 3, 0x42, 0, 1, 0, 0x61, 0,
-        0x60, 3, 0x42, 0, 0, 0, 0xfb, 0x13, 0});
+        0x60, 3, 0x42, 0, 0, 0});
+    if (retained) bytes.insert(bytes.end(), {0x61, 1});
+    bytes.insert(bytes.end(), {0xfb, 0x13, 0});
     const auto branch = bytes.size(); bytes.insert(bytes.end(), {0x4f, 0});
     const auto arm = [&](bool taken) {
       bytes.insert(bytes.end(), {0x07, 0, 0, 0, 0x61, 2});
@@ -182,7 +185,7 @@ analysis::ValueProgram ConditionalLiteralCall(bool getter = false, bool barrier 
     };
     arm(false); const auto jump = bytes.size(); bytes.insert(bytes.end(), {0x4d, 0});
     bytes[branch + 1] = static_cast<std::uint8_t>(bytes.size() - branch);
-    arm(true); bytes[jump + 1] = static_cast<std::uint8_t>(bytes.size() - jump);
+    if (retained) bytes.insert(bytes.end(), {0x60, 1}); else arm(true); bytes[jump + 1] = static_cast<std::uint8_t>(bytes.size() - jump);
     bytes.insert(bytes.end(), {0x61, 1, 0x60, 0});
     emit(abc::Opcode::kCALLTHIS1_IMM8_V8_V8); bytes.insert(bytes.end(), {0, 3, 1});
   }
@@ -880,6 +883,95 @@ std::string BooleanDecision(unsigned count, abc::ProfileId profile) {
   return Source(graph,true,&*input,false,count == 0,count == 0);
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--literal-arm") {
+    using namespace analysis;
+    for (const unsigned count : {1U, 200U, 201U, 400U, 800U}) {
+      const auto graph = ConditionalLiteralCall(false, false, count,
+          abc::ProfileId::kDynamic1206, nullptr, true);
+      const auto result = BuildEvaluationPlan(graph);
+      Check(std::holds_alternative<EvaluationPlan>(result));
+      const auto& plan = std::get<EvaluationPlan>(result);
+      Check(std::holds_alternative<CallPlan>(BuildCallPlan(graph, plan)));
+      Check(!std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, plan)));
+      std::vector<LiteralArmView> proofs;
+      TreeCheckBudget budget({}); LiteralArmIndex index(graph, plan, budget);
+      for (const auto& object : plan.literals->objects) {
+        const auto block = graph.ops[object.allocation.value].block;
+        std::optional<EdgeId> entry; std::optional<UseId> phi;
+        for (std::size_t i=0;i<graph.edges.size();++i)
+          if (graph.edges[i].target==block) entry=EdgeId{static_cast<std::uint32_t>(i)};
+        for (std::size_t i=0;i<graph.uses.size();++i)
+          if (graph.uses[i].life==ValueLife::kLive && graph.uses[i].role==OperandRole::kPhiInput &&
+              std::get_if<ValueId>(&graph.uses[i].operand) &&
+              *std::get_if<ValueId>(&graph.uses[i].operand)==*graph.ops[object.allocation.value].result)
+            phi=UseId{static_cast<std::uint32_t>(i)};
+        Check(entry && phi);
+        const auto proof=index.Prove(*entry,*phi); Check(std::holds_alternative<LiteralArmView>(proof));
+        proofs.push_back(std::get<LiteralArmView>(proof));
+      }
+      Check(proofs.size()==count);
+      const auto bytes=budget.Bytes(); const auto work=budget.Work();
+      for (const auto limits : {SemanticBudget{bytes,work}, SemanticBudget{bytes-1,work}, SemanticBudget{bytes,work-1}}) {
+        bool passed=false;
+        try { TreeCheckBudget exact(limits); LiteralArmIndex repeated(graph,plan,exact);
+          for(const auto& p:proofs) Check(std::holds_alternative<LiteralArmView>(repeated.Prove(p.entry,p.phi)));
+          passed=true;
+        } catch(TreeStructureError e) {Check(e==TreeStructureError::kResourceLimit || e==TreeStructureError::kWorkLimit);}
+        Check(passed==(limits.bytes==bytes && limits.work==work));
+      }
+      if(count!=1) continue;
+      for(unsigned mutation=0;mutation<5;++mutation) {
+        auto wrong=proofs.front();
+        if(mutation==0) ++wrong.entry.value;
+        if(mutation==1) ++wrong.exit.value;
+        if(mutation==2) ++wrong.value.value;
+        if(mutation==3) ++wrong.events;
+        if(mutation==4) ++wrong.phi.value;
+        bool rejected=false;
+        try {TreeCheckBudget check({}); LiteralArmIndex independent(graph,plan,check); independent.Verify(wrong);}
+        catch(LiteralEventError) {rejected=true;}
+        Check(rejected);
+      }
+      // Mutate the original catch correspondence, not just the emitted view.
+      {
+        auto caught=graph; bool changed=false;
+        for(auto& exit:caught.exceptional_exits) if(exit.op==proofs.front().allocation) {
+          exit.handler=ValueHandler{}; changed=true; break;
+        }
+        Check(changed); bool refused=false;
+        try {TreeCheckBudget check({}); LiteralArmIndex independent(caught,plan,check);
+          const auto result=independent.Prove(proofs.front().entry,proofs.front().phi);
+          refused=std::holds_alternative<LiteralArmError>(result);
+        } catch(LiteralEventError) {refused=true;}
+        Check(refused);
+      }
+      for(unsigned mutation=0;mutation<3;++mutation) {
+        TreeCheckBudget build({}); auto wrong=BuildLiteralEventView(graph,*plan.literals,build);
+        const auto root=proofs.front().allocation.value;
+        const auto definition=plan.literals->definitions.front().value;
+        if(mutation==0) std::swap(wrong.events[root],wrong.events[definition]);
+        if(mutation==1) wrong.events[root]->exception_exit.reset();
+        if(mutation==2) wrong.events[definition]=wrong.events[root];
+        bool refused=false;
+        try {TreeCheckBudget check({});VerifyLiteralEventView(graph,*plan.literals,wrong,check);}
+        catch(LiteralEventError) {refused=true;}
+        Check(refused);
+      }
+      for(const bool missing:{false,true}) {
+        auto wrong=plan;
+        for(std::size_t i=0;i<graph.ops.size();++i) {
+          if(!std::holds_alternative<ValueNamedRead>(graph.ops[i].operation) ||
+             wrong.operations[i].kind!=EvaluationKind::kInline) continue;
+          if(missing) wrong.operations[i].consumer.reset();
+          else wrong.operations[i].consumer=proofs.front().phi;
+          break;
+        }
+        Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph,wrong)));
+      }
+    }
+    return 0;
+  }
+
   if (argc == 2 && std::string_view(argv[1]) == "--boolean-phi-sources") {
     for (const auto profile : {abc::ProfileId::kDynamic1202,abc::ProfileId::kDynamic1206,abc::ProfileId::kDynamic1301})
       for (const bool mixed : {false,true}) for (const bool converted : {false,true})
@@ -1167,7 +1259,7 @@ int main(int argc, char** argv) {
   const auto buffered_binding = BuildCallPlan(buffered_call, buffered_evaluation);
   Check(std::holds_alternative<CallPlan>(buffered_binding));
   Check(Source(buffered_call).find("$value") == std::string::npos);
-  Check(Source(buffered_call).find("value.items(({probe:") != std::string::npos);
+  Check(Source(buffered_call).find("value.items({probe:") != std::string::npos);
   Check(!Source(BufferedOptionalAccess(true, false)).empty());
   Check(Source(BufferedOptionalAccess()).find("$value") == std::string::npos);
   for (const auto barrier : {BufferedBarrier::kBeforeAllocation, BufferedBarrier::kAfterAllocation,
