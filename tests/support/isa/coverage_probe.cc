@@ -61,13 +61,18 @@ Json Slot(const analysis::ScalarSlot& slot) {
 Json Encoding(const abc::DecodedInstruction& d) {
   const auto code = static_cast<unsigned>(d.opcode);
   Json operands = Json::array();
+  unsigned operand_bits = 0;
   for (std::size_t i = 0; i < d.operand_count; ++i) {
     const auto& o = d.operands[i];
+    operand_bits += o.width_bits;
     operands.push_back({{"kind", unsigned(o.kind)}, {"access", unsigned(o.access)},
       {"width", o.width_bits}, {"signed", o.is_signed}, {"float", o.is_float}});
   }
-  return {{"opcode", code}, {"prefix", code > 255 ? Json(code & 255) : Json(nullptr)},
-    {"opcode_byte", code > 255 ? code >> 8 : code}, {"size", d.size},
+  // Prefixed opcode zero has an enum value below 256. Decode size, not enum
+  // magnitude, distinguishes its two-byte encoding (e.g. wide opcode 0).
+  const bool prefixed = d.size - (operand_bits + 7) / 8 == 2;
+  return {{"opcode", code}, {"prefix", prefixed ? Json(code & 255) : Json(nullptr)},
+    {"opcode_byte", prefixed ? code >> 8 : code}, {"size", d.size},
     {"format", operands}, {"acc_read", d.accumulator_read}, {"acc_write", d.accumulator_write}};
 }
 void Catalog() {

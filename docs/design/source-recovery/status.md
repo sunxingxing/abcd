@@ -12,6 +12,35 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## ISA increment 3：current Unmeasured 指令证据
+
+- 基线 `7d97d2a6`；按用户允许的边界完成 **127 个 current** 变体的证据表，
+  **47 个 deprecated 留待后续**，未推定它们不能执行。完整逐变体 handler/编译器
+  引用、O0/default 实测、raw lift 和语料影响见
+  [current ISA evidence](isa-current-evidence.md) 与 `tests/isa/current_variants.json`。
+- 125 个 C++ handler 已实现，NOP 为显式 no-op；LDNEWTARGET 在 C++ interpreter
+  FATAL、assembly 路径 stub，但 baseline/AOT 有实现。因此 **没有新增 NonExecutable**
+  拒绝，也没有生产语义/准入改动。仅修复 test-only coverage_probe 对 prefixed
+  secondary-opcode 0 的 prefix 报告（按真实 decoded size/operand widths 计算）。
+- 127 个 constructed ABC 全部 engine + SDK ark_disasm 交叉解码，raw lift
+  **43 ok / 84 UnsupportedInstruction**；builder 新增预先计费的空 tagged literal
+  pool/index，保留旧默认序列化。它们不是可执行协议样本，不计 Node/Ark oracle。
+- 24 种源码/模式、**48 次 es2abc O0/default** 编译与重新编译 hash 对比通过；
+  **82 个变体 observed，45 个 not observed**。后者不是 impossible；patch 的
+  additional-var/symbol-table 工作流仍是 emitter probe 缺口。编译器、命令和所有
+  hash 见 [fixture README](../../../tests/fixtures/isa/current/README.md) / manifest。
+- 完整构建通过；固定集 **65/65**；新测试的三组检查通过（全量 cross-decode/lift、
+  48 命令重编译、200/201/400/800 与精确 builder budget）。最终 sweep **86/87**，
+  唯一 `family_source_cli_test` 为既有 owner/origin arena 失败，未弱化断言。
+- ledger **413 ABC / 1,309,154 指令**，无 probe failure：**144 SupportedUnverified /
+  160 Unmeasured / 28 NonExecutable**；14 项提升来自新增 complete-fixture 证据，
+  不是新增实现。oracle columns 仍为空，不能把重新编译输入当作 decompile round-trip。
+- 两种探索集逐字相同（包括 manifest/partial）：旧 flags **526/620**、V4
+  **573/620**；3,635 / 3,776 文件无差异。报告 `/private/tmp/isa3-cohort-comparison.json`。
+  未 commit/push。下一步优先 APPLY 私有参数数组联合证明（3 个 first-refusal record），
+  再补原有 primitive/width 的语义 oracle，随后 this/super/对象协议；复杂 async/
+  generator 和 patch/frame track 分开。无额外 premise 授权被假定。
+
 ## ISA increment 2c：常量字符串键的原生 name-setting
 
 - 基线 `67083c01`。仅对 STOWNBYNAMEWITHNAMESET 两种宽度解除已证明的 private

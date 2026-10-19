@@ -76,6 +76,8 @@ class Module:
     catches: tuple[Catch, ...] = ()
     name: str = 'isa_branch'
     pool_strings: tuple[str, ...] = ()
+    # Empty tagged literal arrays for decode/lift probes (not executable class layouts).
+    empty_literals: int = 0
 
 class Writer:
     def __init__(self, limit, offsets, output=None):
@@ -123,7 +125,9 @@ class Writer:
 
 def code_layout(module, limit):
     # Prepay the sparse label table and instruction positions before allocation.
-    charge = len(module.instructions) * 256 + len(module.catches) * 256 + len(module.pool_strings) * 256
+    if not 0 <= module.empty_literals <= U32_MAX:
+        raise BuildError(BuildErrorKind.INTEGER)
+    charge = module.empty_literals * 256 + len(module.instructions) * 256 + len(module.catches) * 256 + len(module.pool_strings) * 256
     if charge > limit:
         raise BuildError(BuildErrorKind.BYTES)
     labels, pc = {}, 0
@@ -182,7 +186,7 @@ def layout(w, module, labels, code_size):
     w.uint(0, 4); w.uint(0, 4)  # no foreign region
     w.uint(1, 4); w.ref(Entity.CLASS_INDEX)
     w.uint(0, 4); w.uint(0, 4)  # no debug programs
-    w.uint(1, 4); w.ref(Entity.LITERAL_INDEX)  # module literal
+    w.uint(1 + module.empty_literals, 4); w.ref(Entity.LITERAL_INDEX)  # module + tagged literals
     w.uint(1, 4); w.ref(Entity.REGION)
     if w.pos != HEADER_BYTES:
         raise BuildError(BuildErrorKind.LAYOUT)
@@ -190,13 +194,17 @@ def layout(w, module, labels, code_size):
     w.mark(Entity.REGION)
     w.uint(HEADER_BYTES, 4); w.ref(Entity.END)
     w.uint(2, 4); w.ref(Entity.CLASS_TYPES)
-    w.uint(1 + len(module.pool_strings), 4); w.ref(Entity.METHOD_INDEX)
+    w.uint(1 + len(module.pool_strings) + module.empty_literals, 4); w.ref(Entity.METHOD_INDEX)
     w.uint(0, 4); w.uint(0, 4); w.uint(0, 4); w.uint(0, 4)
     w.mark(Entity.CLASS_TYPES); w.ref(Entity.RECORD); w.uint(6, 4)  # U32 field type
     w.mark(Entity.METHOD_INDEX); w.ref(Entity.METHOD)
     for i in range(len(module.pool_strings)):
         w.ref((Entity.METHOD_INDEX, i))
+    for i in range(module.empty_literals):
+        w.ref((Entity.LITERAL_INDEX, i))
     w.mark(Entity.LITERAL_INDEX); w.ref(Entity.MODULE)
+    for i in range(module.empty_literals):
+        w.ref((Entity.LITERAL_INDEX, i))
     for i, value in enumerate(module.pool_strings):
         w.mark((Entity.METHOD_INDEX, i)); w.string(value)
     w.mark(Entity.METHOD_NAME); w.string('func_main_0')
@@ -204,6 +212,8 @@ def layout(w, module, labels, code_size):
     w.mark(Entity.MODULE)
     for _ in range(7):
         w.uint(0, 4)  # encoded count + six empty module sections
+    for i in range(module.empty_literals):
+        w.mark((Entity.LITERAL_INDEX, i)); w.uint(0, 4)
     w.mark(Entity.RECORD)
     # Descriptor is streamed: never allocate a concatenated uncharged name.
     if len(module.name) + 2 > w.limit - w.pos or not module.name.isascii() or '\0' in module.name:

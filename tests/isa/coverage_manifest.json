@@ -653,6 +653,1835 @@
       "classification": "Unmeasured",
       "oracles": {},
       "note": "Named own-property engine-output Node differential is registered in CTest; ledger has no occurrence-level oracle importer."
+    },
+    {
+      "path": "tests/fixtures/isa/current/xor2_imm8_v8.abc",
+      "sha256": "23f4e19fed0deead18b0deded3e9154b93843126c512abfda38f1d013cbccfc4",
+      "profile": 4,
+      "opcodes": [
+        26
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/exp_imm8_v8.abc",
+      "sha256": "49fa603d0e1d17108886f4552245ad8f9c919ee87e28611dffccdfb141719453",
+      "profile": 4,
+      "opcodes": [
+        27
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/tonumber_imm8.abc",
+      "sha256": "eb8805268ad10cffe4540f2d09426b9df5ac443d092d8051046058ea4e348abb",
+      "profile": 4,
+      "opcodes": [
+        29
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/not_imm8.abc",
+      "sha256": "c7355f91d6ed4ec9f1f3912a953e0abe06d7e90b28dbddf0881308be729231b2",
+      "profile": 4,
+      "opcodes": [
+        32
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldsuperbyvalue_imm8_v8.abc",
+      "sha256": "7a1212219b3202c567ce286d04fdfcfa2d88dc13e44fea1e13112c06ecbfb5bc",
+      "profile": 4,
+      "opcodes": [
+        57
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldobjbyindex_imm8_imm16.abc",
+      "sha256": "278881f4f47ef8d6e17c193e4648278bd9de3dd798a5e46889f622ed0bfe3ae5",
+      "profile": 4,
+      "opcodes": [
+        58
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stobjbyindex_imm8_v8_imm16.abc",
+      "sha256": "6303390c12d23139468aaea9616d2497b7e0a1310721ec85f04d4960bf05ffa8",
+      "profile": 4,
+      "opcodes": [
+        59
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/trystglobalbyname_imm8_id16.abc",
+      "sha256": "088107aa1a73f8b3739969024682d553ed13337d48013f5793b6954f8d6400d0",
+      "profile": 4,
+      "opcodes": [
+        64
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldglobalvar_imm16_id16.abc",
+      "sha256": "5642db3c49aca049e5bdec68eabcd9f3c39170dd42e7e29ad7df7b99cd9cd3cc",
+      "profile": 4,
+      "opcodes": [
+        65
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stconsttoglobalrecord_imm16_id16.abc",
+      "sha256": "bd1751860cb84f364a42a95070a93af5040b1f50f1f56486c3c67fcdc6d2b288",
+      "profile": 4,
+      "opcodes": [
+        71
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/sttoglobalrecord_imm16_id16.abc",
+      "sha256": "51ce27674c8910ecf57bf248ceb7e5f209d121771bdd028ca2e3958338e65040",
+      "profile": 4,
+      "opcodes": [
+        72
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldthisbyname_imm8_id16.abc",
+      "sha256": "097f21fb663100efe17ee4cc038b319e27c8eb4307e02566de42b03fc04bdf01",
+      "profile": 4,
+      "opcodes": [
+        73
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stthisbyname_imm8_id16.abc",
+      "sha256": "e518b48ec266687f5931674e55c0021369010093e17214b7ffbdcccb9fbfc99f",
+      "profile": 4,
+      "opcodes": [
+        74
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldthisbyvalue_imm8.abc",
+      "sha256": "4160c01361b95dcec46486d618f6acf4eeaa43ad8eb56b6de2a6bcbe367e8f3d",
+      "profile": 4,
+      "opcodes": [
+        75
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stthisbyvalue_imm8_v8.abc",
+      "sha256": "317e8ed31f619cd0a03f04dc269ab5696afe24475d5403ce35824612bc2ac9cb",
+      "profile": 4,
+      "opcodes": [
+        76
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/closeiterator_imm8_v8.abc",
+      "sha256": "f78d0f9fa9f5cfbf8d0ce55877a024b402e24be5c87a7cdde5e0ba7dab508ae7",
+      "profile": 4,
+      "opcodes": [
+        104
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldnan.abc",
+      "sha256": "19d86f9322ffd9e65b5e8390d50aed89b851b80baed21c59bb47ff3209be8c44",
+      "profile": 4,
+      "opcodes": [
+        106
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldinfinity.abc",
+      "sha256": "9b59d58043ae82c2d6a8a61c510d08e97640974ecb4f777d7a5d31aa9e2fe4cb",
+      "profile": 4,
+      "opcodes": [
+        107
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/getunmappedargs.abc",
+      "sha256": "ec52837a87f3cf36108e6c4dcd575656ff9ecf56452ede8e61dd3a47e2bd69ac",
+      "profile": 4,
+      "opcodes": [
+        108
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldnewtarget.abc",
+      "sha256": "f4aef0d2878cf0c9c84baef92d3fedeeaec89edccac573b866db454949ce712f",
+      "profile": 4,
+      "opcodes": [
+        110
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldthis.abc",
+      "sha256": "70414b9e43cb1373accf561b773d9f250bd99c5bbb41ef80ea93a67d472f8c62",
+      "profile": 4,
+      "opcodes": [
+        111
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/createregexpwithliteral_imm8_id16_imm8.abc",
+      "sha256": "6cf5b0da3bb7230d5ccc860588391019857fc8f4f9e371bb95b1f52504c4b35a",
+      "profile": 4,
+      "opcodes": [
+        113
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/createregexpwithliteral_imm16_id16_imm8.abc",
+      "sha256": "d4d3c45f6d52eb91ba4ac9a6888ba87a9701d983e77c90de2e58185c20f0a290",
+      "profile": 4,
+      "opcodes": [
+        114
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/gettemplateobject_imm8.abc",
+      "sha256": "bdccf55f3b16b6ddceff0101e1c681234de49c3190ad4f437afdd2c775ab351e",
+      "profile": 4,
+      "opcodes": [
+        118
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/setobjectwithproto_imm8_v8.abc",
+      "sha256": "cf02f37c6abf35a6ba31dc78fe1cff4a019035d31c85dffe8d91d1b22ff587cc",
+      "profile": 4,
+      "opcodes": [
+        119
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/getmodulenamespace_imm8.abc",
+      "sha256": "eedafe213a64bfc58884c4a8e8a5da1fad1700b3b86ce6167d782447dbc5a95f",
+      "profile": 4,
+      "opcodes": [
+        123
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stglobalvar_imm16_id16.abc",
+      "sha256": "d64d7b2c8c8b2c2ecaf012a951603b9ba9545a3fdddd57daabd49c3649309643",
+      "profile": 4,
+      "opcodes": [
+        127
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/typeof_imm16.abc",
+      "sha256": "db6136022af82b46b21d14d9e8b3781b9f8a2146bd839633ee62c87a79ccce5c",
+      "profile": 4,
+      "opcodes": [
+        132
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stobjbyvalue_imm16_v8_v8.abc",
+      "sha256": "1d3b9062e4e1f4dcc2016f230ffc909c6ce8e115ec5d2fbffcc46f77a2d8706a",
+      "profile": 4,
+      "opcodes": [
+        134
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldsuperbyvalue_imm16_v8.abc",
+      "sha256": "17d58fafc404ddd9bd0dc3d8034aaa71dab4954654715ec84e72d9aef2f1a460",
+      "profile": 4,
+      "opcodes": [
+        135
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldobjbyindex_imm16_imm16.abc",
+      "sha256": "83e4dac2108fa71a0a22a004449852fc31482c2a50abd499d139dbbab2cc2f03",
+      "profile": 4,
+      "opcodes": [
+        136
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stobjbyindex_imm16_v8_imm16.abc",
+      "sha256": "f373255678710cf59ea457936e83026c2dd5647a4b56021fd49d18b3e4a85c34",
+      "profile": 4,
+      "opcodes": [
+        137
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/trystglobalbyname_imm16_id16.abc",
+      "sha256": "3df4d4c386dfb8de3df117cb23f5b750205b748080cc2fc89d30b0cda81a074a",
+      "profile": 4,
+      "opcodes": [
+        141
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldsuperbyname_imm16_id16.abc",
+      "sha256": "cb265cd2b43333b4ce9d42534545f5d5f25575a4a8d03e2332fca03574bfa65c",
+      "profile": 4,
+      "opcodes": [
+        146
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldthisbyname_imm16_id16.abc",
+      "sha256": "9069aad337c7f8b9a1876c6cae3b73e9639ec804014ff97cb1173ab4b428cd63",
+      "profile": 4,
+      "opcodes": [
+        147
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stthisbyname_imm16_id16.abc",
+      "sha256": "92bde7d0e95f8a13ea00ff86626662e4a3b6b3f6efbe07dfe96b1c238391736e",
+      "profile": 4,
+      "opcodes": [
+        148
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldthisbyvalue_imm16.abc",
+      "sha256": "c99fe3e5330dd7bf829f3a494598c46708eb19b096843edc5afc344bcf3e72ee",
+      "profile": 4,
+      "opcodes": [
+        149
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stthisbyvalue_imm16_v8.abc",
+      "sha256": "0689ba9b35796aca243da1e20e99326e502dee563d28c005470c392c7b1e5e2f",
+      "profile": 4,
+      "opcodes": [
+        150
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/asyncgeneratorreject_v8.abc",
+      "sha256": "0a40ca9f300618b2e69f918e853b0ad93ca011a8169e7acb00f869fafab9450f",
+      "profile": 4,
+      "opcodes": [
+        151
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/jmp_imm32.abc",
+      "sha256": "b23f0311f20ff3074ac3c31fc51d8136bf31eb29cc73ab0b15b1f60fd1087f85",
+      "profile": 4,
+      "opcodes": [
+        152
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stownbyvaluewithnameset_imm8_v8_v8.abc",
+      "sha256": "ce0c1cddde638b0ef8a3ee94985914b20f8e1e2fe307764e17c2247641dedac0",
+      "profile": 4,
+      "opcodes": [
+        153
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/jeqz_imm32.abc",
+      "sha256": "b0f31ab29d229d6fb1a9e01b7a4e9868f9d61ca8fc69a2bf5b7f59ef18c0f87f",
+      "profile": 4,
+      "opcodes": [
+        154
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/jnez_imm32.abc",
+      "sha256": "752f417dc2e97d5372bd514200682dcb30682bd01d5891f9a85256feb7e0e438",
+      "profile": 4,
+      "opcodes": [
+        156
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/getiterator_imm16.abc",
+      "sha256": "f701fd5156850550fc3ee8f0660351c7fe0fbfbbdbd53bc343f3dcdae86552aa",
+      "profile": 4,
+      "opcodes": [
+        171
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/closeiterator_imm16_v8.abc",
+      "sha256": "6e6885e8dc5bbae01092ba2e3b08bb4a5d5c1a60b6d792fd459322c81733cfb2",
+      "profile": 4,
+      "opcodes": [
+        172
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldsymbol.abc",
+      "sha256": "2956f4ba00e9c83e2dea3267bfef16bf1116fc3a763190d79c86dd1a9cc633fa",
+      "profile": 4,
+      "opcodes": [
+        173
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldfunction.abc",
+      "sha256": "482fbe96fd87068e1c468ab651323dcb44d30b71bf0cb1410f4276fb284d8573",
+      "profile": 4,
+      "opcodes": [
+        175
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/debugger.abc",
+      "sha256": "7c287d40de72a1cde0882d51b5b79b7afa3b0202f37cf917cfb669e3bd0cd7a8",
+      "profile": 4,
+      "opcodes": [
+        176
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/creategeneratorobj_v8.abc",
+      "sha256": "ce769ec91c099f2e5b15e4655f7b058e19cda1f01f2669679d6fa6d578ca9655",
+      "profile": 4,
+      "opcodes": [
+        177
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/createiterresultobj_v8_v8.abc",
+      "sha256": "a05be8d7ac7f27929ea5a32259e18cc16c708b762dc4227eff1e8c5311f55d74",
+      "profile": 4,
+      "opcodes": [
+        178
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/createobjectwithexcludedkeys_imm8_v8_v8.abc",
+      "sha256": "806771197e3b314583e3c989bcc5c0ce1203f4dd35555ac5435ebd4038f2d4a1",
+      "profile": 4,
+      "opcodes": [
+        179
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/newobjapply_imm8_v8.abc",
+      "sha256": "c253d0401bc1656014d1bf5b29279006cb538dff19e63a5089b61e56ed01df89",
+      "profile": 4,
+      "opcodes": [
+        180
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/newobjapply_imm16_v8.abc",
+      "sha256": "593d61d83e664fb52e0edacb211b89a344926fe5806bf94b604210feff10e6c1",
+      "profile": 4,
+      "opcodes": [
+        181
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/createasyncgeneratorobj_v8.abc",
+      "sha256": "c1ede3f7f6bde84a4e6e6d6f059e2dac7633bebfd4da5d1a6121310eee8bf8b1",
+      "profile": 4,
+      "opcodes": [
+        183
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/asyncgeneratorresolve_v8_v8_v8.abc",
+      "sha256": "1ba4a9ef0db2e998070dcdf6169d1a7a6a1d2da44d3174edddf0125f1c99fd04",
+      "profile": 4,
+      "opcodes": [
+        184
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/apply_imm8_v8_v8.abc",
+      "sha256": "96d127c1da662a7499d6ff2a1db43963906200311450efb3d9672177f5c78b38",
+      "profile": 4,
+      "opcodes": [
+        186
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/supercallarrowrange_imm8_imm8_v8.abc",
+      "sha256": "3d59ec071946c11032fcde6e2d14222340fa91f14991822cc2f49460d671404b",
+      "profile": 4,
+      "opcodes": [
+        187
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/dynamicimport.abc",
+      "sha256": "7d3efd3cd89fea6331a11bc16e03afdcf61d9060ad376bde1d9b2ef86f204a6c",
+      "profile": 4,
+      "opcodes": [
+        189
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/definemethod_imm16_id16_imm8.abc",
+      "sha256": "3b4be318690f004858923a417a1aa4c13463534487d13be16eec6fd5484946c3",
+      "profile": 4,
+      "opcodes": [
+        190
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/resumegenerator.abc",
+      "sha256": "b7bef8116a5c7038b16feeef94f1757974c8710d9351035b5d977120378892e7",
+      "profile": 4,
+      "opcodes": [
+        191
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/getresumemode.abc",
+      "sha256": "7ac22512e93eabd0fe656278eebe544e71535a9f6ffe019f20b0cdc1dd413e02",
+      "profile": 4,
+      "opcodes": [
+        192
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/gettemplateobject_imm16.abc",
+      "sha256": "a5d85ccfab792ddb5dd675e68716d3f6b8aa55dbf9b60680008ced96b7166eb5",
+      "profile": 4,
+      "opcodes": [
+        193
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/suspendgenerator_v8.abc",
+      "sha256": "dfad2defd4a812d295e6bf9f52d2aa55ebe09d257d1e8c3c2ea9a34ecbb3e384",
+      "profile": 4,
+      "opcodes": [
+        195
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/asyncfunctionawaituncaught_v8.abc",
+      "sha256": "837298d85bf4741030d108d17ce4be97d0416927f4ce01d89559607fa9d581b5",
+      "profile": 4,
+      "opcodes": [
+        196
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/copydataproperties_v8.abc",
+      "sha256": "8d5c6d8092c1feaae748ac92ab63fd39b68672997326bc07441ec0cb92094049",
+      "profile": 4,
+      "opcodes": [
+        197
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/setobjectwithproto_imm16_v8.abc",
+      "sha256": "038df2c3913209c407eb9a2160df903a290f9a8cc43512bc0e41ae75da7abbf1",
+      "profile": 4,
+      "opcodes": [
+        199
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stownbyvalue_imm16_v8_v8.abc",
+      "sha256": "7b9e4e6bcd8c612bcb2a37a274c210cdd606321fc5000b7462c7d8a92cb10bae",
+      "profile": 4,
+      "opcodes": [
+        200
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stsuperbyvalue_imm8_v8_v8.abc",
+      "sha256": "18aa2cf77cc6def4ba89fae4cc9ca5c671e6805ab485e9ca30b05ca3572a480b",
+      "profile": 4,
+      "opcodes": [
+        201
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stsuperbyvalue_imm16_v8_v8.abc",
+      "sha256": "2f562398b60aaab6502d1d20abcd6458534c192ecc02cee7e0bb93995d0778d1",
+      "profile": 4,
+      "opcodes": [
+        202
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stownbyname_imm16_id16_v8.abc",
+      "sha256": "0b772dec6ba8ca056c9bdd1e9b5c287dfa51bafcd3a9f9e64c5ce5824e97df8b",
+      "profile": 4,
+      "opcodes": [
+        204
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stsuperbyname_imm8_id16_v8.abc",
+      "sha256": "049b873f4c4560c84e5d58d0bbb47f2f3bc49a857845add8e5cbda924700a5e5",
+      "profile": 4,
+      "opcodes": [
+        208
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stsuperbyname_imm16_id16_v8.abc",
+      "sha256": "0062b3bec70e9d9a2f18cc306e25681faa3f7a8b2fc9f43e89723ab721320ac5",
+      "profile": 4,
+      "opcodes": [
+        209
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stownbyvaluewithnameset_imm16_v8_v8.abc",
+      "sha256": "a953fd95dbe6c07be34ea858796c4d08d9071e2688fcad04ab62de509db52ec5",
+      "profile": 4,
+      "opcodes": [
+        210
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldbigint_id16.abc",
+      "sha256": "8c3c3e0163b431c490b53adca8577de8c9d89d6b7510439ed79533866547013d",
+      "profile": 4,
+      "opcodes": [
+        211
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/nop.abc",
+      "sha256": "8cc6bcd9b5b2b17328800ea7b2074327a0c2a26db3e1df06945696daedac982e",
+      "profile": 4,
+      "opcodes": [
+        213
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/setgeneratorstate_imm8.abc",
+      "sha256": "386cddefe1db3827d45e6162aeb2b7373afc687440ee955a293cb1380f5ad366",
+      "profile": 4,
+      "opcodes": [
+        214
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/getasynciterator_imm8.abc",
+      "sha256": "311551380a49493657dd490ad3a97eaeb2f15b0cff0f18cecc09bc65634b59bc",
+      "profile": 4,
+      "opcodes": [
+        215
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/ldprivateproperty_imm8_imm16_imm16.abc",
+      "sha256": "c59de2665458b012f7c0ca338f0fe8cbcfd4fe73c3b77941f11ea9932cdcfeb9",
+      "profile": 4,
+      "opcodes": [
+        216
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/stprivateproperty_imm8_imm16_imm16_v8.abc",
+      "sha256": "3b57ebc4b91090ef8cc5342a1bcf226c154d4cb38baafc6c424f4e3a7b8b37fa",
+      "profile": 4,
+      "opcodes": [
+        217
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/testin_imm8_imm16_imm16.abc",
+      "sha256": "e801837a9e6a9cd894d6f0606a29de2ae9a61b5c11633390e982d20d2e70cf65",
+      "profile": 4,
+      "opcodes": [
+        218
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_createobjectwithexcludedkeys_pref_imm16_v8_v8.abc",
+      "sha256": "594b8dee770ff650e1f6bdbdeb49a5868ec1354e9fb9d776b66cc2cf78636874",
+      "profile": 4,
+      "opcodes": [
+        253
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_definefieldbyvalue_pref_imm8_v8_v8.abc",
+      "sha256": "beecf35d3c4396be1d842a4f7e04301dcccbf8ccf65a09a6b9fa44bc86acd18b",
+      "profile": 4,
+      "opcodes": [
+        507
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_newobjrange_pref_imm16_v8.abc",
+      "sha256": "91d136e03b9167d4ddd8fc39db85d0252fa7170888f602e665503420e9d15c9d",
+      "profile": 4,
+      "opcodes": [
+        509
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/throw_notexists_pref_none.abc",
+      "sha256": "5488c83350ba5a98a809fa9fea4194a8d5fa807fd5b639c5ac2c37c6909222ba",
+      "profile": 4,
+      "opcodes": [
+        510
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_newlexenv_pref_imm16.abc",
+      "sha256": "83cbd757c7d242ca34e3f45e79a3aef3a685eb7342089ef30cd6231a69f2b337",
+      "profile": 4,
+      "opcodes": [
+        765
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/throw_patternnoncoercible_pref_none.abc",
+      "sha256": "8c18adc358f19c01fe457c7399d2f2a3be25d6a9a5f59854c43d84a25a343617",
+      "profile": 4,
+      "opcodes": [
+        766
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_topropertykey_pref_none.abc",
+      "sha256": "d2b04f0f5b0f9f24d06c9171846a32de400ca45e2b650ef26ab8f8b5c568dd0a",
+      "profile": 4,
+      "opcodes": [
+        1019
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_newlexenvwithname_pref_imm16_id16.abc",
+      "sha256": "7dc395ab565a9bbbf78416ec77ca3e1546d6e3d0a78f4629ef0680f572f59a42",
+      "profile": 4,
+      "opcodes": [
+        1021
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/throw_deletesuperproperty_pref_none.abc",
+      "sha256": "3a54242ae64023fff2508d592189adeb0af73789320b8b06fd7353b1453c68a6",
+      "profile": 4,
+      "opcodes": [
+        1022
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_createprivateproperty_pref_imm16_id16.abc",
+      "sha256": "a2ec36dcea13d672462a8ac59fb1d79617a4480865269ce15d404984f095232e",
+      "profile": 4,
+      "opcodes": [
+        1275
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_callrange_pref_imm16_v8.abc",
+      "sha256": "bf14fc28af6be6753b8ea39f6d512a08f13fb5238e22575daf7e820a02d491d4",
+      "profile": 4,
+      "opcodes": [
+        1277
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/throw_constassignment_pref_v8.abc",
+      "sha256": "e640e6a6d3754c5b708579c6a9be29db02eb5498d607324cca240818f60986b2",
+      "profile": 4,
+      "opcodes": [
+        1278
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_defineprivateproperty_pref_imm8_imm16_imm16_v8.abc",
+      "sha256": "7b7153cc49e53bdacf3c250e4594c7e8a9769950ea7185fd2b5fa9e6a534ce74",
+      "profile": 4,
+      "opcodes": [
+        1531
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_callthisrange_pref_imm16_v8.abc",
+      "sha256": "6de63d0e60dfabf7b6d7ac05ababfb0b689423b39dc61cedda8c340dbd0ea820",
+      "profile": 4,
+      "opcodes": [
+        1533
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_callinit_pref_imm8_v8.abc",
+      "sha256": "98582c4046660e1e5750babf0804af8eb46f54c9a071287fb849ee337ee85b7c",
+      "profile": 4,
+      "opcodes": [
+        1787
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_supercallthisrange_pref_imm16_v8.abc",
+      "sha256": "f34dfbc70b489fb4b2c9295bee3ab6eafb3784bd2cea837ae911c1977c8d5b53",
+      "profile": 4,
+      "opcodes": [
+        1789
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/throw_undefinedifhole_pref_v8_v8.abc",
+      "sha256": "b2c584efda6fb4f5063eb3cab91b9c720f7f7dbc35262267a9ab0426a609f46b",
+      "profile": 4,
+      "opcodes": [
+        1790
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_supercallarrowrange_pref_imm16_v8.abc",
+      "sha256": "6d09bf201e4ecc5dad5f2342a111eff2b07f0ed5ff99919ab59e7e1b379f4853",
+      "profile": 4,
+      "opcodes": [
+        2045
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_ldsendableclass_pref_imm16.abc",
+      "sha256": "3191459f2ace1ee08e7ff2978eea860e79ec8793c6f8352e11eb9a4cd0f06832",
+      "profile": 4,
+      "opcodes": [
+        2299
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_ldobjbyindex_pref_imm32.abc",
+      "sha256": "e3a635dbbfc9cdf6d4b8d53823326ca1f4ec79b7328a0d8c07c0b9db075ad691",
+      "profile": 4,
+      "opcodes": [
+        2301
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/throw_ifsupernotcorrectcall_pref_imm16.abc",
+      "sha256": "eced50251ebc42bc4e0d3bab955a2e972f1f21b4b14bc1b6e875f4b07a970900",
+      "profile": 4,
+      "opcodes": [
+        2302
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_stobjbyindex_pref_v8_imm32.abc",
+      "sha256": "aa73bac922957225558dd210e58a7a2a4a551633d8e97a7ee1f5d1ad298f8001",
+      "profile": 4,
+      "opcodes": [
+        2557
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_wideldsendableexternalmodulevar_pref_imm16.abc",
+      "sha256": "904d9eb5eac5a7c967f4ff0efcd6882479652fb3fe0fcf18310f610e3dc4f14d",
+      "profile": 4,
+      "opcodes": [
+        2811
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_stownbyindex_pref_v8_imm32.abc",
+      "sha256": "c15286cf5ef38309b568844308f72dff78637e61a88aa27f2017cf60ec9a0d2f",
+      "profile": 4,
+      "opcodes": [
+        2813
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_newsendableenv_pref_imm8.abc",
+      "sha256": "79cf47bccbf0da6ee4e91d4085c29559bc53f571e77c025a1098e71cf00438f0",
+      "profile": 4,
+      "opcodes": [
+        3067
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_copyrestargs_pref_imm16.abc",
+      "sha256": "d183e37829b23ddfb834dac23552a4b4dc18258ce84fb07a7071cd8d11c6b40b",
+      "profile": 4,
+      "opcodes": [
+        3069
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_widenewsendableenv_pref_imm16.abc",
+      "sha256": "8172ca5f788816aa1c1b0e556626057f09e72144c87ea458188949d364303685",
+      "profile": 4,
+      "opcodes": [
+        3323
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_ldlexvar_pref_imm16_imm16.abc",
+      "sha256": "68e64f835429796a1e08b29501ea149c95fa0ee45676d478b6d95b6642110ea2",
+      "profile": 4,
+      "opcodes": [
+        3325
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_stsendablevar_pref_imm4_imm4.abc",
+      "sha256": "ec4ac181d67348889d818f2a166eb51aecec25932c80f1b860872a5dafbc754b",
+      "profile": 4,
+      "opcodes": [
+        3579
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_stlexvar_pref_imm16_imm16.abc",
+      "sha256": "2191ba73487affc0e1fe5702c719f5659d5f04eba337065f106959cb308ac7b6",
+      "profile": 4,
+      "opcodes": [
+        3581
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_stsendablevar_pref_imm8_imm8.abc",
+      "sha256": "793cb2b67d70faa34edb3ab08dd1f88c128d427bb383123482d914164d909a0e",
+      "profile": 4,
+      "opcodes": [
+        3835
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_getmodulenamespace_pref_imm16.abc",
+      "sha256": "702247e6efd49ba981552a344c9d1d94a05d473848758be6065f97dba1aa25fa",
+      "profile": 4,
+      "opcodes": [
+        3837
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_widestsendablevar_pref_imm16_imm16.abc",
+      "sha256": "f876e6bbedf6f55841a86f28a364dd7370a3d5d390479db961acc8c67824bad7",
+      "profile": 4,
+      "opcodes": [
+        4091
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_stmodulevar_pref_imm16.abc",
+      "sha256": "40089b9a2a675b0f01c8f258ff600ee4c549d69276514fd297d8e08d57220fa1",
+      "profile": 4,
+      "opcodes": [
+        4093
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_ldsendablevar_pref_imm4_imm4.abc",
+      "sha256": "10cab931eef9ceafd7453ac27addbbde887bcd9f30cef63a887e22b1833b0b60",
+      "profile": 4,
+      "opcodes": [
+        4347
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_ldlocalmodulevar_pref_imm16.abc",
+      "sha256": "28960f995047ee986760b40b76403b110d6755bc9b6d6a798f7d361bf847b1fb",
+      "profile": 4,
+      "opcodes": [
+        4349
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_ldsendablevar_pref_imm8_imm8.abc",
+      "sha256": "83c22dda55688ea1f9d6de4a48df547b8ce2b5a2e5576600fc36734da77e421c",
+      "profile": 4,
+      "opcodes": [
+        4603
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_ldexternalmodulevar_pref_imm16.abc",
+      "sha256": "faa9cce0570577ba75d8eee91718526e25c7fa378e15bd2172e41c997737cd40",
+      "profile": 4,
+      "opcodes": [
+        4605
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_wideldsendablevar_pref_imm16_imm16.abc",
+      "sha256": "39b2e7d50e6cc96ee03b160c7c511b7e9a4b0754c3da7e5a117bdebeb0193adb",
+      "profile": 4,
+      "opcodes": [
+        4859
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_ldpatchvar_pref_imm16.abc",
+      "sha256": "afa3267267befd8675d4b1a7d185ccc6f62ef3422b4a8b2a068aec335aa8a2da",
+      "profile": 4,
+      "opcodes": [
+        4861
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_stpatchvar_pref_imm16.abc",
+      "sha256": "8409ef2a3be3451e2f1815db9206f468915b4d15b28ed59ca47c154f3bff8185",
+      "profile": 4,
+      "opcodes": [
+        5117
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_callthisrangewithname_pref_imm16_id16_v8.abc",
+      "sha256": "b8b01a8f925e1ece951ce21f506c71cdf15fbef88d55c5374f4f47678bc6a6ad",
+      "profile": 4,
+      "opcodes": [
+        5373
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_wideldlazymodulevar_pref_imm16.abc",
+      "sha256": "e8ed33601de6ace03ef0672f696f396a2c1f0eeb5fb411f64aaaf940282671b8",
+      "profile": 4,
+      "opcodes": [
+        5883
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_ldlazysendablemodulevar_pref_imm8.abc",
+      "sha256": "6e8195a44477f65f855ecdf79f85872967d694d052b76ca7408e015b2a924dc1",
+      "profile": 4,
+      "opcodes": [
+        6139
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_wideldlazysendablemodulevar_pref_imm16.abc",
+      "sha256": "719d5b17a66f444a232279557ab125264f34a4ac9c6d34e2e1a3e8f3561064f3",
+      "profile": 4,
+      "opcodes": [
+        6395
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_ldsendablelocalmodulevar_pref_imm8.abc",
+      "sha256": "ce37235f9913b7f44111649de9dd9d9733225531e8bd6421027b283fb25c01a2",
+      "profile": 4,
+      "opcodes": [
+        6907
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/callruntime_wideldsendablelocalmodulevar_pref_imm16.abc",
+      "sha256": "d89420f6f06a9e6653bbbdbfecbb3ed64efb94734f76d0ffe9f4e7f51e38bc39",
+      "profile": 4,
+      "opcodes": [
+        7163
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/expressions-o0.abc",
+      "sha256": "1491701d4896efc9fd6950f243746fb923a6bdb551ab622021895ca953146acd",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/expressions-default.abc",
+      "sha256": "182b7a1676e6bb79788e544ac52d35ce2c06983019ca03267d32455c8b31fb69",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/generators-o0.abc",
+      "sha256": "72f4d4ab31b1cdee10c26e2a566cb56c9bb0fa3b8ffd27812d65d3b607902dee",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/generators-default.abc",
+      "sha256": "45fd763ebf7d1444fce6d9f4eb224b219c928cddf212d7d318fc0e8ba460d968",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/calls-o0.abc",
+      "sha256": "c9a0f5484e519d9946c69b4bdddaec37f936bb07327873c9952f9056c2a0d458",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/calls-default.abc",
+      "sha256": "70a9185b1655eb0e0fda145a38d6dea4165c9e04106e3fa363e473fe0958c2d6",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/private-o0.abc",
+      "sha256": "f80d9df85ddeaf802effc1cc72cd49d6c98b3dadb07953776fd4f6dde6b762af",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/private-default.abc",
+      "sha256": "075aa81ac89fd3a9818334ad3a5be99d957e399f1cbd0b80e2855ce74a87d7dd",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/globals-o0.abc",
+      "sha256": "73a876a136ee7fd4dc8a831c815645203d3cb1c0132f7d0354a8716f62ad4d55",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/globals-default.abc",
+      "sha256": "497f945895a16106f4f63bd6fafc63ef4bad97f028a06822429269094f65206c",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/exceptions-o0.abc",
+      "sha256": "24ec1b1541afe2365b7f36fa1294b5bc03569ad05fd5c21f344f91e9cfe2d829",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/exceptions-default.abc",
+      "sha256": "fc8cef92c8d11d904eba3cb6f92e048795d09b10873c10b4c82d5bd10b646e19",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_ic-o0.abc",
+      "sha256": "792260e46ad9624ebaa435603328eae5970cc0501848c81f41aad7a02607022c",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_ic-default.abc",
+      "sha256": "e2139011e22adcd8cfb87a09db497b8ca1b763264e7726ed693b16422e60a4cc",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_range-o0.abc",
+      "sha256": "31609ad0b04d493d3a14a2d4df064794fd3af2701c37c4e12760e562c858aec5",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_range-default.abc",
+      "sha256": "719205c7fc6337c216575f4e3233c97050ad1c776f3121b218781d8af5887526",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_cells-o0.abc",
+      "sha256": "856e246aba1cbbd8bd000701ed87abcbc6f6d29b1398ba3fef2fd68a3c2018fb",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_cells-default.abc",
+      "sha256": "8eaa0ead5aee834d194e1ae960595d8ef8c9ec44d6dbba95c10906dd10e141bf",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_module-o0.abc",
+      "sha256": "5d0e3b78f8b971445226688e78df4b6d5f74b324cebdfef9a7ff960143041a12",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_module-default.abc",
+      "sha256": "421a515acc1a672471d030bd9a941184dc195ac67aec839098eb9b66eb1815d3",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/lazy-o0.abc",
+      "sha256": "88b651ee1d960779b4559698558578d5f22bce3232dea8483c00c637a1b4dda3",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/lazy-default.abc",
+      "sha256": "25c462dfb35ba8a95074c82e2996195a8fbe9b469f5cde8625ea5330c025549a",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/sendable-o0.abc",
+      "sha256": "0d83aafedc2c84cf6ce6437c9f2e9ee40484efa99a7c61504131d46fe693bf9b",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/sendable-default.abc",
+      "sha256": "b3bc1fa91ba6670e895eb3ebdf2ff2a4ee7fbce16e76d49f4a648c20d739985c",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/lazy_sendable-o0.abc",
+      "sha256": "d5a65e1b69c7b1aecbd571c15cefea7b105091d0da24f410d79db5dc0888ae70",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/lazy_sendable-default.abc",
+      "sha256": "b89667730d8cc9a0f997ae50565613f01807bdf0c212e4c519b78c38b806a209",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/shared-o0.abc",
+      "sha256": "5fd81e6fe1fc10f019735aef95b76d78a993b0ce952ff3e63f828077d49f93b2",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/shared-default.abc",
+      "sha256": "90b06b824fff9465775cd816d1606cb6a617a3515b0fe4cdb898bd6aed6ad58f",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/debugger-o0.abc",
+      "sha256": "627862a8140a4aa872e34cbedc0ddcdc9f4fe31eceb1bc730762c3890d69aa19",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/debugger-default.abc",
+      "sha256": "658f69c53bcc0780383bbcf8e5fbcc84344ec25e94b63055eafcef569ec20d2f",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/namespace-o0.abc",
+      "sha256": "8e391334695ae5f9eb911689f1c23c3d33a21afa78ef37aa0b5d71e890dd2549",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/namespace-default.abc",
+      "sha256": "acc05705ac96fc355f56ab502143f77fc7ba7d03d3efe1d327ea90ef15db0349",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/patch-o0.abc",
+      "sha256": "ebd91e154bd31f01aadf36dcb0cf75dc90da7ed238a05c52c2970fe2ce359584",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/patch-default.abc",
+      "sha256": "9f6d9aa3c7f632a55ba1c2ae479df797bacac2e6e6d220e00221ac01ee5feb05",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/api12-o0.abc",
+      "sha256": "695bbee2cf113dc8f732389f85537cd3304087076f75a7e55051d7cf52b3815f",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/api12-default.abc",
+      "sha256": "b4aca51275237dd20ae968020143a17cbdc18cad12c13600905006b26f0354fe",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_lazy-o0.abc",
+      "sha256": "014a2e16e68949574bc82de9228f0cefbfb318559ce81b7acd5ae59fcbf7eec9",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_lazy-default.abc",
+      "sha256": "84ba4971879da7c9bba53b07f52095ac7bd7808e2c934cda5c35ae2cd733a2cd",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_sendable-o0.abc",
+      "sha256": "84e39ff9b4277b0552d69b07f98cd700d14fd7f5b0874dd05504143804432010",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_sendable-default.abc",
+      "sha256": "8957dede6c367c1790363830826f118cc885f1be393b27f4fe7d7ed1f3c227fb",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_named_call-o0.abc",
+      "sha256": "597ec8277b2d5cb50b42ba16d74b4b90374b017e0a5ccdfceeb5a5c9e3af715a",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_named_call-default.abc",
+      "sha256": "6168403699584cf4197b1683f40a9a5250ed390f3c26ac358d7b96055f42addb",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_rest-o0.abc",
+      "sha256": "7eb6cf2f2c1cbbf06871d0e3ad45c0d83492682a2249a674c782ad38130a6374",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_rest-default.abc",
+      "sha256": "65a7f66c01d2e8052dec99e4c90ddcaae6ced2e1fed78a82c486e96983b7f20e",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_patterns-o0.abc",
+      "sha256": "b14c11fd52324ca863e4a53ebe1dae5c8c83874c51af60ee386ce936016bb70f",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_patterns-default.abc",
+      "sha256": "7052fec449af16e4dd386683d25465318b829a911b0a7bc491c41566a034cb3e",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_jump-o0.abc",
+      "sha256": "9199e50017efd844db7d6c694d98f86ce28931a1861504b03e187cc218610117",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
+    },
+    {
+      "path": "tests/fixtures/isa/current/wide_jump-default.abc",
+      "sha256": "c26584908eb5cbcb5d76e5563c4ecddb54366cc97f2637cb2cc37ab02bf79087",
+      "profile": 6,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Decode/raw lift only; arbitrary operands are not an executable protocol or source oracle."
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass."
