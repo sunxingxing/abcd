@@ -5,6 +5,7 @@
 
 #include "../../../src/source/class_self_initialization_file.h"
 #include "../../../src/source/class_self_initialization_json.h"
+#include "../../../src/source/class_self_scope.h"
 #include "../../../src/source/class_tree.h"
 #include "../../../tools/record_failure_json.h"
 #include "analysis/ssa_fixture.h"
@@ -190,6 +191,147 @@ void OriginalMutations(const ClassSelfInitializationInput& input,
   test::Check(std::holds_alternative<ClassSelfInitializationCost>(
       VerifyClassSelfInitialization(input, proof.Evidence())));
 }
+void ScopeMutations(const ClassSelfInitializationInput& input,
+                    const ClassSelfInitializationProof& raw) {
+  using E = ClassSelfInitializationError;
+  auto built = ClassSelfScopeProof::Build(input, raw.Evidence());
+  if (const auto* e = std::get_if<ClassSelfInitializationFailure>(&built))
+    Error(e->kind);
+  const auto proof = Take<ClassSelfScopeProof>(std::move(built));
+  const auto& reference = proof.Evidence().references.front();
+  test::Check(proof.FindReference(reference.owner, reference.read) ==
+              &reference);
+  auto unlisted = reference.owner;
+  ++unlisted.family;
+  test::Check(!proof.FindReference(unlisted, reference.read));
+  unlisted = reference.owner;
+  ++unlisted.revision.value;
+  test::Check(!proof.FindReference(unlisted, reference.read));
+  test::Check(std::holds_alternative<ClassSelfInitializationCost>(
+      VerifyClassSelfScope(input, raw.Evidence(), proof.Evidence())));
+  const auto verification = std::get<ClassSelfInitializationCost>(
+      VerifyClassSelfScope(input, raw.Evidence(), proof.Evidence()));
+  analysis::SemanticBudget verify_exact;
+  verify_exact.work = verification.work;
+  test::Check(
+      std::holds_alternative<ClassSelfInitializationCost>(VerifyClassSelfScope(
+          input, raw.Evidence(), proof.Evidence(), verify_exact)));
+  --verify_exact.work;
+  const auto verify_limited = VerifyClassSelfScope(
+      input, raw.Evidence(), proof.Evidence(), verify_exact);
+  test::Check(std::get<ClassSelfInitializationFailure>(verify_limited).kind ==
+              E::kWorkLimit);
+  const auto reject = [&](ClassSelfScope proposed, E expected) {
+    const auto result = VerifyClassSelfScope(input, raw.Evidence(), proposed);
+    test::Check(std::holds_alternative<ClassSelfInitializationFailure>(result));
+    test::Check(std::get<ClassSelfInitializationFailure>(result).kind ==
+                expected);
+  };
+  auto changed = proof.Evidence();
+  ++changed.binding.slot.value;
+  reject(changed, E::kStorage);
+  changed = proof.Evidence();
+  ++changed.binding.allocation.value;
+  reject(changed, E::kStorage);
+  changed = proof.Evidence();
+  changed.owners.pop_back();
+  reject(changed, E::kScope);
+  changed = proof.Evidence();
+  ++changed.ranges.front().count;
+  reject(changed, E::kScope);
+  changed = proof.Evidence();
+  changed.requirements.clear();
+  reject(changed, E::kScope);
+  changed = proof.Evidence();
+  for (auto& requirement : changed.requirements) {
+    if (requirement.kind == ClassSelfRequirementKind::kOuter) {
+      requirement.kind = ClassSelfRequirementKind::kClassInner;
+      reject(changed, E::kScope);
+      break;
+    }
+  }
+  changed = proof.Evidence();
+  // A forged reference from an unlisted occurrence cannot borrow the same
+  // incoming address, even if the method entity and slot number are equal.
+  ++changed.references.front().owner.family;
+  reject(changed, E::kGuard);
+  changed = proof.Evidence();
+  changed.references.front().incoming.slot.value++;
+  reject(changed, E::kGuard);
+  changed = proof.Evidence();
+  changed.ports.front().kind = ClassSelfPortKind::kPublicCommit;
+  reject(changed, E::kOrder);
+  changed = proof.Evidence();
+  changed.ports[1].operation = raw.Evidence().call.call;
+  reject(changed, E::kOrder);
+  if (!proof.Evidence().installations.empty()) {
+    changed = proof.Evidence();
+    changed.installations.pop_back();
+    reject(changed, E::kOrder);
+  }
+  changed = proof.Evidence();
+  changed.cleanup.clear();
+  reject(changed, E::kCatchState);
+  changed = proof.Evidence();
+  changed.initializer_exception.reset();
+  reject(changed, E::kCatchState);
+  auto extra = raw.Evidence();
+  ++extra.reads.front().family;
+  test::Check(std::holds_alternative<ClassSelfInitializationFailure>(
+      ClassSelfScopeProof::Build(input, extra)));
+  // Original creator read moved before successful initializer completion must
+  // not acquire an initialized class-inner interpretation.
+  auto& graph = const_cast<FileFunction&>(input.creator).values.graph;
+  const auto cell =
+      FindCell(*input.creator.values.cells,
+               AllocatedCell{raw.Evidence().allocation, raw.Evidence().slot});
+  test::Check(cell.has_value());
+  const auto& local = input.creator.values.cells->cells[cell->value];
+  for (std::uint32_t a = 0; a < local.count; ++a) {
+    const auto& access = input.creator.values.cells->accesses[local.first + a];
+    if (access.kind != CellAccessKind::kLoad) continue;
+    auto& read = graph.ops[access.operation.value];
+    auto& call = graph.ops[input.call.call.value];
+    std::swap(read.order, call.order);
+    test::Check(std::holds_alternative<ClassSelfInitializationFailure>(
+        ClassSelfScopeProof::Build(input, raw.Evidence())));
+    std::swap(read.order, call.order);
+    break;
+  }
+  analysis::SemanticBudget exact;
+  exact.work = proof.Cost().work;
+  test::Check(std::holds_alternative<ClassSelfScopeProof>(
+      ClassSelfScopeProof::Build(input, raw.Evidence(), exact)));
+  --exact.work;
+  const auto work = ClassSelfScopeProof::Build(input, raw.Evidence(), exact);
+  test::Check(std::get<ClassSelfInitializationFailure>(work).kind ==
+              E::kWorkLimit);
+  std::size_t low = 0, high = analysis::SemanticBudget{}.bytes;
+  while (low < high) {
+    const auto mid = low + (high - low) / 2;
+    const auto result = ClassSelfScopeProof::Build(
+        input, raw.Evidence(), {mid, analysis::SemanticBudget{}.work});
+    if (std::holds_alternative<ClassSelfScopeProof>(result))
+      high = mid;
+    else {
+      test::Check(std::get<ClassSelfInitializationFailure>(result).kind ==
+                  E::kResourceLimit);
+      low = mid + 1;
+    }
+  }
+  test::Check(
+      low &&
+      std::holds_alternative<ClassSelfScopeProof>(ClassSelfScopeProof::Build(
+          input, raw.Evidence(), {low, analysis::SemanticBudget{}.work})));
+  const auto memory = ClassSelfScopeProof::Build(
+      input, raw.Evidence(), {low - 1, analysis::SemanticBudget{}.work});
+  test::Check(std::get<ClassSelfInitializationFailure>(memory).kind ==
+              E::kResourceLimit);
+  std::cout << "scope exact bytes " << low << " work " << proof.Cost().work
+            << " owners " << proof.Evidence().owners.size() << " references "
+            << proof.Evidence().references.size() << " ports "
+            << proof.Evidence().ports.size() << '\n';
+}
 void Run(const char* path, std::optional<abc::EntityOffset> requested) {
   auto file =
       Take<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
@@ -318,6 +460,7 @@ void Run(const char* path, std::optional<abc::EntityOffset> requested) {
         family.members.front().function = std::move(saved);
       }
       Mutations(input, proof);
+      ScopeMutations(input, proof);
       OriginalMutations(input, proof, *parent, family);
       test::Check(std::holds_alternative<ClassInitializerReadFailure>(
           ReadClassInitializerFunction(*file, header, index, lookup, roles,
@@ -328,6 +471,12 @@ void Run(const char* path, std::optional<abc::EntityOffset> requested) {
       test::Check(diagnostic.status ==
                       ClassSelfInitializationStatus::kVerified &&
                   !diagnostic.failure);
+      test::Check(diagnostic.scope_view &&
+                  diagnostic.scope_view->status ==
+                      ClassSelfInitializationStatus::kVerified &&
+                  !diagnostic.scope_view->failure &&
+                  diagnostic.scope_view->references ==
+                      proof.Evidence().reads.size());
       const auto exhausted = DiagnoseClassSelfInitialization(
           *file, header, index, lookup, roles, sites, classes, *parent, call,
           {parent->input.Method(), {}, {}}, {0, analysis::kDefaultSemanticWork},
@@ -377,6 +526,22 @@ void Run(const char* path, std::optional<abc::EntityOffset> requested) {
       test::Check(!ParseClassSelfInitialization(malformed));
       malformed = json;
       malformed["slot"] = 65536U;
+      test::Check(!ParseClassSelfInitialization(malformed));
+      malformed = json;
+      malformed["scope_view"]["status"] = 8U;
+      test::Check(!ParseClassSelfInitialization(malformed));
+      malformed = json;
+      malformed["scope_view"]["owners"] = 0U;
+      test::Check(!ParseClassSelfInitialization(malformed));
+      auto missing_scope = diagnostic;
+      missing_scope.scope_view->status =
+          ClassSelfInitializationStatus::kMissing;
+      missing_scope.scope_view->failure = ClassSelfInitializationFailure{
+          ClassSelfInitializationError::kPreparationGate};
+      const auto missing_json = ClassSelfInitializationJson(missing_scope);
+      test::Check(ParseClassSelfInitialization(missing_json).has_value());
+      malformed = missing_json;
+      malformed["scope_view"]["failure"]["kind"] = 255U;
       test::Check(!ParseClassSelfInitialization(malformed));
       std::cout << "creator m" << method.offset.value << " initializer m"
                 << initializer.Target().value << " reads "

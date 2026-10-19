@@ -28,6 +28,14 @@ struct ClassSelfInitializationFailure {
   std::optional<analysis::UseId> use;
 };
 enum class ClassSelfInitializationStatus : std::uint8_t { kMissing, kVerified };
+// This is a storage-bound scope VIEW, not a ClassTree/recovery receipt. A
+// verified view must not be confused with admission of a captured initializer.
+struct ClassSelfScopeDiagnostic {
+  ClassSelfInitializationStatus status = ClassSelfInitializationStatus::kMissing;
+  std::uint32_t owners = 0, references = 0, inner = 0, outer = 0,
+                public_commits = 0;
+  std::optional<ClassSelfInitializationFailure> failure;
+};
 struct ClassSelfInitializationDiagnostic {
   ClassSelfInitializationStatus status =
       ClassSelfInitializationStatus::kMissing;
@@ -36,6 +44,7 @@ struct ClassSelfInitializationDiagnostic {
   analysis::LexicalSlot slot{};
   std::uint32_t reads = 0, captures = 0, cleanup = 0, families = 0;
   std::optional<ClassSelfInitializationFailure> failure;
+  std::optional<ClassSelfScopeDiagnostic> scope_view;
 };
 }  // namespace abcd::source
 #endif

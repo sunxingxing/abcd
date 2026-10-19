@@ -243,6 +243,102 @@ no permission to bypass either source placement check. Cleanup pop/rethrow must
 then be consumed as class-scope unwind with its original payload/dispatch, not
 as a transparent forwarding route. Joint recovery/publication remains increment 3.
 
+## Increment 2 continuation: storage-bound scope view (partial, uncommitted)
+
+`class_self_scope.{h,cc}` now consumes the raw certificate only after fresh
+`VerifyClassSelfInitialization`. Its independently recomputed view contains:
+
+- `ClassInnerBinding`: creator occurrence, original creation/allocation and slot.
+  `ClassInnerReference` keeps its actual incoming address, owner occurrence and
+  revisions, original read/value/guard and exception destination. Indexed lookup
+  rejects unlisted owners and stale revisions; no name or cross-plan CellId join.
+- Complete relative owner ranges, including forwarding-only descendants, and
+  occurrence/address-bound requirements. Self requirements and ordinary outer
+  requirements are distinct. The existing capture-domain lattice is preserved;
+  m8556's outer Language requirements cannot become initialized self references.
+  Relative ranges are preparation reservations, **not** fabricated syntax owners.
+- Separate original class-availability, internal-store Commit, initializer
+  Before/Commit and public-store Commit ports. Original self loads in the creator
+  are available only after the initializer. Original cleanup entries and selected
+  initializer dispatch are retained, never treated as transparent forwarding.
+- A private member-installation corridor. Shared effect predecessor/successor
+  identities prove every installation completes before the initializer and that
+  no unrelated observer is hidden between the internal store and invocation.
+  Fixed class-prototype reads reuse `FindClassPrototypeReads` and resolved
+  `HasClassPrototypeKey`; an arbitrary property read cannot enter the corridor.
+
+The production change is still failure-only diagnostics: optional `scope_view`
+counts/status/failure in the existing diagnostic, on both manifest JSON paths,
+abc_semantic and receipt round trips. A verified scope **view** is not a prepared
+ClassTree. The original Closed refusal remains; no `kRecoveryGate` is fabricated.
+
+Real-input results (baseline `19b5b561`): m4850 has 23 owner occurrences,
+5 references, 2 inner/2 ordinary outer requirements and **zero direct class-valued
+public stores**. Its PC81 export consumes the getInstance result, not the class.
+The class result retained after PC51 therefore needs its own completed-class
+availability correspondence; treating that export as the class publication would
+be wrong. m8392 has 10 owners, 2 references, 1 inner/2 outer requirements and one
+direct public commit. Its accessor-installation corridor verifies. These counts
+are diagnostics, not substitution of either original value or source binding.
+
+### Accessors before initialization
+
+Pinned `ets_runtime/ecmascript/interpreter/interpreter-inl.cpp:2627–2645`
+passes the actual object/key/getter/setter/flag to the runtime and commits the
+returned object only on success. `ecmascript/stubs/runtime_stubs-inl.h:2708–2775`
+performs ToPropertyKey, optionally names the functions, constructs a configurable,
+non-enumerable accessor descriptor on class/prototype targets and calls
+DefineOwnProperty. It does **not** invoke the getter or setter. The stub bridge is
+`runtime_stubs.cpp:2896–2907`. Thus constant keys, fresh original home objects,
+unchanged descriptor/name semantics and a private must-reach installation corridor
+can preserve this order in a source class body; moving an installation across an
+unknown call is not justified.
+
+The pinned dynamic frontend agrees: `ets_frontend/es2panda/ir/base/classDefinition.cpp:
+410–422` initializes the class name, compiles missing properties, then calls the
+static initializer. The new real `accessors.js/.abc` fixture exercises accessors
+and self-reading static initialization together. This closes the **ordering**
+question; the current ClassTree's mixed-definition/initializer gate is deliberately
+not removed before its source binding/enclosure checks exist.
+
+### Remaining admission boundary
+
+This continuation is **not the requested complete increment 2**. The view is not
+yet a new TreeCapture target or a native class-inner Scope/SymbolExpr in the actual
+initializer tree. `FamilyPreparation` must consume its requirements before creator
+freeze, reserve the real full owner ranges and bind non-self cells through the real
+creator Storage. Then ClassSelfOrder/ProjectClassMembers must consume the certified
+private corridor, and ClassTree must finish the initializer family with the typed
+binding, separate ports and cleanup-unwind correspondence. Native class-name
+spelling/shadowing and real `.name` remain source obligations. Only after those
+checks can an immediately-pre-publication recovery gate truthfully replace the
+current internal-value failure. The Closed reader and all successful paths remain
+unchanged in this continuation.
+
+### Continuation acceptance at 19b5b561
+
+Full build passes; serial source-regression **65/65**; focused tests **8/8**.
+The class/static/initializer/family/capture/receipt/manifest sweep is **86/94**.
+All eight failures reproduce using wtbase `19b5b561`: family_source_cli,
+class_tree_source, captured_receiver, unguarded_captured_receiver,
+reversed_captured_receiver, unguarded_reversed_captured_receiver,
+reversed_initialization_captured_receiver and its unguarded variant (all `_test`
+source-test names as listed in status.md). No expected output was relaxed.
+
+The new scope view's exact 200/201/400/800 byte boundaries are
+99,150 / 99,468 / 183,230 / 351,390; work boundaries are
+60,194 / 60,474 / 116,482 / 229,858. Build and verifier work exhaustion, one-byte
+below admission and the ownership/storage/order/cleanup mutations all refuse.
+
+Fresh cohort exports and `cmp_cohort.py` retain **532/620** previous flags and
+**584/620** source. Complete sets, every first cause and all non-manifest files
+are byte-identical (3,653 / 3,809 files). Only the two target manifests add
+`scope_view`; receipt and both JSON-path round trips pass. abc_semantic reports
+the same first refusals at m5040 PC12 and m8556 PC13 with verified view counts.
+Target CLI peak RSS is 13,484,032 / 9,256,960 bytes; this is target-probe evidence,
+not an aggregate cohort RSS claim. Logs and exact comparison:
+`build/review/class-self2/`. No kRecoveryGate or engine-output acceptance yet.
+
 Fixtures and commands are in
 `tests/integration/fixtures/class_self_initialization/README.md`. They check the
 raw certificate and continued Closed refusal, not the future recovery gate.

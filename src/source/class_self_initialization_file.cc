@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "class_self_resource.h"
+#include "class_self_scope.h"
 #include "class_tree.h"
 namespace abcd::source {
 ClassSelfInitializationDiagnostic DiagnoseClassSelfInitialization(
@@ -111,6 +112,9 @@ ClassSelfInitializationDiagnostic DiagnoseClassSelfInitialization(
     if (const auto* error =
             std::get_if<ClassSelfInitializationFailure>(&verified))
       throw *error;
+    const auto verified_cost = std::get<ClassSelfInitializationCost>(verified);
+    admit(verified_cost.bytes);
+    step(verified_cost.work);
     const auto& evidence = proof.Evidence();
     require(evidence.reads.size() <= UINT32_MAX &&
                 evidence.captures.size() <= UINT32_MAX &&
@@ -125,6 +129,52 @@ ClassSelfInitializationDiagnostic DiagnoseClassSelfInitialization(
     result.captures = static_cast<std::uint32_t>(evidence.captures.size());
     result.cleanup = static_cast<std::uint32_t>(evidence.cleanup.size());
     result.families = static_cast<std::uint32_t>(families.size());
+    // Retain the original Closed refusal. The scope view is a fresh consumer
+    // of the raw seal, not permission to retry the reader or fabricate a tree.
+    ClassSelfScopeDiagnostic scope;
+    try {
+      auto scoped = ClassSelfScopeProof::Build(input, evidence, budget);
+      if (const auto* error =
+              std::get_if<ClassSelfInitializationFailure>(&scoped)) {
+        scope.failure = *error;
+      } else {
+        const auto& view = std::get<ClassSelfScopeProof>(scoped);
+        admit(view.Cost().bytes);
+        step(view.Cost().work);
+        const auto checked =
+            VerifyClassSelfScope(input, evidence, view.Evidence(), budget);
+        if (const auto* error =
+                std::get_if<ClassSelfInitializationFailure>(&checked)) {
+          scope.failure = *error;
+        } else {
+          const auto checked_cost =
+              std::get<ClassSelfInitializationCost>(checked);
+          admit(checked_cost.bytes);
+          step(checked_cost.work);
+          const auto& prepared = view.Evidence();
+          scope.status = ClassSelfInitializationStatus::kVerified;
+          scope.owners = static_cast<std::uint32_t>(prepared.owners.size());
+          scope.references =
+              static_cast<std::uint32_t>(prepared.references.size());
+          for (const auto& requirement : prepared.requirements) {
+            step(1);
+            if (requirement.kind == ClassSelfRequirementKind::kClassInner)
+              ++scope.inner;
+            else
+              ++scope.outer;
+          }
+          for (const auto& port : prepared.ports) {
+            step(1);
+            scope.public_commits +=
+                port.kind == ClassSelfPortKind::kPublicCommit;
+          }
+        }
+      }
+    } catch (const ClassSelfInitializationFailure& error) {
+      scope.status = ClassSelfInitializationStatus::kMissing;
+      scope.failure = error;
+    }
+    result.scope_view = scope;
     return result;
   } catch (const ClassSelfInitializationFailure& error) {
     result.failure = error;

@@ -5,6 +5,57 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Class-self increment 2 continuation: verified scope view only (2026-10-20)
+
+- **Partial delivery; the requested recovery gate is not reached.** Added
+  `ClassSelfScopeProof` and independent fresh-input verification. The view gives
+  occurrence/storage-bound `ClassInnerBinding` references with retained guards,
+  full relative owner ranges, separate self/outer requirements, internal versus
+  explicit public-store ports, original initializer dispatch and cleanup entries.
+  Plan-local CellIds never establish cross-owner correspondence. Unlisted/stale
+  owners cannot resolve a reference. It is not yet a TreeCapture/ClassExpr scope.
+- Both real methods verify the view: m4850 has **23 owners / 5 references /
+  2 inner + 2 outer requirements / 0 direct class-valued public stores**;
+  m8392 has **10 / 2 / 1 + 2 / 1**. m4850's export receives getInstance's result;
+  its retained class result still needs a distinct completed-class availability
+  port. Both targets retain **kInternalValue > kMixed**, at m5040 PC12 and
+  m8556 PC13. No recovery gate, source admission or publication is claimed.
+- The accessor-before-initializer order is justified under a private must-reach
+  installation corridor, fresh home identity and resolved constant keys. The
+  pinned runtime defines accessor descriptors without invoking their functions;
+  the frontend emits class-name initialization, missing properties, then static
+  initialization. New `accessors.js/.abc` exercises the combination. Existing
+  ClassTree mixed-definition/initializer and ClassSelfOrder/Closed restrictions
+  remain intact until source preparation consumes the evidence. Details and
+  runtime/frontend citations: [class-self-initialization-scope.md](class-self-initialization-scope.md).
+- All new buffers are prepaid; shared per-input effect/constant/prototype indexes,
+  sorted occurrence/address joins and indexed reference lookup avoid per-read CFG
+  walks. Exact 200/201/400/800 scope-view admission boundaries are **99,150 /
+  99,468 / 183,230 / 351,390 bytes**, with work **60,194 / 60,474 / 116,482 /
+  229,858**. One-below memory/work and verifier-work refusals pass. Mutation
+  coverage includes unlisted owners, wrong storage, weakened outer identity,
+  missing requirements/installations, forged commit ports, a creator read moved
+  before completion, broken cleanup and exhausted budgets.
+- Full build passes; serial source-regression **65/65**; focused tests **8/8**.
+  Requested class/static/initializer/family/capture/receipt/manifest sweep:
+  **86/94**. Its eight failures all reproduce at **19b5b561**: family_source_cli,
+  class_tree_source, and the six documented captured-receiver source variants.
+  No expectations changed. Seven real es2abc fixtures cover the raw certificate
+  and scope view; they still assert the Closed refusal, **not** kRecoveryGate.
+  No new engine-output differential is claimed while publication stays closed.
+- Fresh OLD/NEW exports using `eval_cohort.py` and `cmp_cohort.py` retain
+  **532/620 previous flags / 584/620 source**, identical complete sets and all
+  non-manifest bytes (3,653 / 3,809 files). Only **o0/4660 and o20/8166** gain
+  nested `scope_view` diagnostics on both JSON paths and abc_semantic; every first
+  cause stays unchanged. Receipt/JSON positive and negative round trips pass.
+  Scratch evidence: `build/review/class-self2/`, including exact whole-directory
+  comparison, target probes, disassembly, budgets and baseline reproductions.
+- Remaining increment 2: consume the view in real initializer-family binding,
+  merge requirements into creator storage before freeze, allocate actual syntax
+  owner ranges, prove class-inner spelling/enclosure, and project the member/
+  initializer/cleanup events through ClassSelfOrder and ClassTree. Only then may
+  a truthful pre-publication recovery gate replace kMixed. No commit/push/stash.
+
 ## Class-self initialization: raw proof delivered; scope preparation unfinished (2026-10-20)
 
 - **Partial delivery of the requested increments 1–2: increment 1 only.** Added

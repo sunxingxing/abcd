@@ -3,6 +3,24 @@
 #include "abcd/source/class_self_failure.h"
 #include "tree_failure_json.h"
 namespace abcd::source {
+inline nlohmann::json ClassSelfFailureJson(
+    const ClassSelfInitializationFailure& f) {
+  nlohmann::json e{{"kind", static_cast<unsigned>(f.kind)},
+                   {"location", TreeLocationJson(f.location)},
+                   {"creator", f.creator.value},
+                   {"initializer", f.initializer.value}};
+  const auto id = [&](const char* key, auto value) {
+    if (value) e[key] = value->value;
+  };
+  id("creation", f.creation);
+  id("allocation", f.allocation);
+  id("store", f.store);
+  id("read", f.read);
+  id("guard", f.guard);
+  id("slot", f.slot);
+  id("use", f.use);
+  return e;
+}
 inline nlohmann::json ClassSelfInitializationJson(
     const ClassSelfInitializationDiagnostic& v) {
   nlohmann::json j{{"status", static_cast<unsigned>(v.status)},
@@ -16,25 +34,48 @@ inline nlohmann::json ClassSelfInitializationJson(
                    {"captures", v.captures},
                    {"cleanup", v.cleanup},
                    {"families", v.families}};
-  if (v.failure) {
-    const auto& f = *v.failure;
-    nlohmann::json e{{"kind", static_cast<unsigned>(f.kind)},
-                     {"location", TreeLocationJson(f.location)},
-                     {"creator", f.creator.value},
-                     {"initializer", f.initializer.value}};
-    const auto id = [&](const char* key, auto value) {
-      if (value) e[key] = value->value;
-    };
-    id("creation", f.creation);
-    id("allocation", f.allocation);
-    id("store", f.store);
-    id("read", f.read);
-    id("guard", f.guard);
-    id("slot", f.slot);
-    id("use", f.use);
-    j["failure"] = std::move(e);
+  if (v.failure) j["failure"] = ClassSelfFailureJson(*v.failure);
+  if (v.scope_view) {
+    const auto& scope = *v.scope_view;
+    nlohmann::json e{{"status", static_cast<unsigned>(scope.status)},
+                     {"owners", scope.owners},
+                     {"references", scope.references},
+                     {"inner", scope.inner},
+                     {"outer", scope.outer},
+                     {"public_commits", scope.public_commits}};
+    if (scope.failure) e["failure"] = ClassSelfFailureJson(*scope.failure);
+    j["scope_view"] = std::move(e);
   }
   return j;
+}
+inline std::optional<ClassSelfInitializationFailure> ParseClassSelfFailure(
+    const nlohmann::json& e) {
+  ClassSelfInitializationFailure f;
+  std::uint32_t kind;
+  if (!e.is_object() || !FailureNumber(e, "kind", kind) ||
+      kind >
+          static_cast<unsigned>(ClassSelfInitializationError::kRecoveryGate) ||
+      !e.contains("location") ||
+      !FailureNumber(e, "creator", f.creator.value) ||
+      !FailureNumber(e, "initializer", f.initializer.value))
+    return {};
+  f.kind = static_cast<ClassSelfInitializationError>(kind);
+  const auto location = ParseTreeLocation(e["location"]);
+  if (!location) return {};
+  f.location = *location;
+  if (!FailureOptionalId(e, "creation", f.creation) ||
+      !FailureOptionalId(e, "allocation", f.allocation) ||
+      !FailureOptionalId(e, "store", f.store) ||
+      !FailureOptionalId(e, "read", f.read) ||
+      !FailureOptionalId(e, "guard", f.guard) ||
+      !FailureOptionalId(e, "use", f.use))
+    return {};
+  if (e.contains("slot")) {
+    std::uint32_t n;
+    if (!FailureNumber(e, "slot", n) || n > UINT16_MAX) return {};
+    f.slot = analysis::LexicalSlot{static_cast<std::uint16_t>(n)};
+  }
+  return f;
 }
 inline std::optional<ClassSelfInitializationDiagnostic>
 ParseClassSelfInitialization(const nlohmann::json& j) {
@@ -57,33 +98,34 @@ ParseClassSelfInitialization(const nlohmann::json& j) {
   v.status = static_cast<ClassSelfInitializationStatus>(status);
   v.slot = {static_cast<std::uint16_t>(slot)};
   if (j.contains("failure")) {
-    const auto& e = j["failure"];
-    ClassSelfInitializationFailure f;
-    std::uint32_t kind;
-    if (!e.is_object() || !FailureNumber(e, "kind", kind) ||
-        kind > static_cast<unsigned>(
-                   ClassSelfInitializationError::kRecoveryGate) ||
-        !e.contains("location") ||
-        !FailureNumber(e, "creator", f.creator.value) ||
-        !FailureNumber(e, "initializer", f.initializer.value))
+    v.failure = ParseClassSelfFailure(j["failure"]);
+    if (!v.failure) return {};
+  }
+  if (j.contains("scope_view")) {
+    const auto& e = j["scope_view"];
+    ClassSelfScopeDiagnostic scope;
+    std::uint32_t state;
+    if (!e.is_object() || !FailureNumber(e, "status", state) ||
+        state >
+            static_cast<unsigned>(ClassSelfInitializationStatus::kVerified) ||
+        !FailureNumber(e, "owners", scope.owners) ||
+        !FailureNumber(e, "references", scope.references) ||
+        !FailureNumber(e, "inner", scope.inner) ||
+        !FailureNumber(e, "outer", scope.outer) ||
+        !FailureNumber(e, "public_commits", scope.public_commits))
       return {};
-    f.kind = static_cast<ClassSelfInitializationError>(kind);
-    const auto location = ParseTreeLocation(e["location"]);
-    if (!location) return {};
-    f.location = *location;
-    if (!FailureOptionalId(e, "creation", f.creation) ||
-        !FailureOptionalId(e, "allocation", f.allocation) ||
-        !FailureOptionalId(e, "store", f.store) ||
-        !FailureOptionalId(e, "read", f.read) ||
-        !FailureOptionalId(e, "guard", f.guard) ||
-        !FailureOptionalId(e, "use", f.use))
-      return {};
-    if (e.contains("slot")) {
-      std::uint32_t n;
-      if (!FailureNumber(e, "slot", n) || n > UINT16_MAX) return {};
-      f.slot = analysis::LexicalSlot{static_cast<std::uint16_t>(n)};
+    scope.status = static_cast<ClassSelfInitializationStatus>(state);
+    if (e.contains("failure")) {
+      scope.failure = ParseClassSelfFailure(e["failure"]);
+      if (!scope.failure) return {};
     }
-    v.failure = f;
+    if ((scope.status == ClassSelfInitializationStatus::kMissing) !=
+            scope.failure.has_value() ||
+        (scope.status == ClassSelfInitializationStatus::kVerified &&
+         (!scope.owners || !scope.references || !scope.inner)) ||
+        v.status != ClassSelfInitializationStatus::kVerified)
+      return {};
+    v.scope_view = scope;
   }
   if ((v.status == ClassSelfInitializationStatus::kMissing) !=
           v.failure.has_value() ||

@@ -248,7 +248,7 @@ target_sources(abcd_source PRIVATE src/source/prepared_family.cc src/source/crea
 target_sources(abcd_source PRIVATE src/source/instruction_sources.cc)
 target_sources(abcd_source PRIVATE src/source/family_emission.cc)
 target_sources(abcd_source PRIVATE src/source/family_route_failure.cc)
-target_sources(abcd_source PRIVATE src/source/environment_cleanup.cc src/source/cleanup_body.cc src/source/class_self.cc src/source/closed_class_fields.cc src/source/closed_values.cc src/source/class_self_order.cc src/source/class_self_initialization.cc src/source/class_self_initialization_file.cc)
+target_sources(abcd_source PRIVATE src/source/environment_cleanup.cc src/source/cleanup_body.cc src/source/class_self.cc src/source/closed_class_fields.cc src/source/closed_values.cc src/source/class_self_order.cc src/source/class_self_initialization.cc src/source/class_self_initialization_file.cc src/source/class_self_scope.cc)
 target_sources(abcd_source PRIVATE src/source/cell_defaults.cc src/source/cell_parameter_default.cc)
 target_sources(abcd_source PRIVATE src/source/cell_default_proof.cc)
 target_sources(abcd_source PRIVATE src/source/module_reads.cc)
@@ -1006,7 +1006,7 @@ if(BUILD_TESTING)
   target_link_libraries(class_self_initialization_test PRIVATE abcd_source abcd_json)
   add_test(NAME class_self_initialization_test COMMAND class_self_initialization_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/self.abc")
-  foreach(class_self_case outer throwing reentry branches copies)
+  foreach(class_self_case outer throwing reentry branches copies accessors)
     add_test(NAME class_self_initialization_${class_self_case}_test COMMAND class_self_initialization_test
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/${class_self_case}.abc")
   endforeach()
