@@ -147,7 +147,8 @@ class TreeBuilder {
     if (evaluation_.phis) {
       TreeCheckBudget logical_budget({bytes_, work_});
       try {
-        logicals_ = FindSelectionExpressions(graph_, control_, evaluation_, logical_budget);
+        logicals_ = FindSelectionExpressions(graph_, control_, evaluation_, logical_budget,
+            exceptions_ ? &exceptions_->control : nullptr);
         if (!logicals_.empty()) {
           logical_budget.Array(logical_branches_, graph_.ops.size());
           Grow(selection_paths_, control_.nodes.size());

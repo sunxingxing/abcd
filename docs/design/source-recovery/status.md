@@ -36,6 +36,11 @@
 - 原始指令、probe、构建/测试日志和逐记录比较在 `/private/tmp/abcd-round76/`。
   未跑全套测试、留出集或 RSS 基准；独立只读复核支持停止结论，仍待 cc 审查。
 
+## Round 82：ProtocolOwned 投影下的 phased selection 绑定（cc 审查通过）
+
+- m39073 op85/PC209 的 kPrefixArms 是 round 63 已支持的 phased retained selection（`typeof key === "symbol" || !new RegExp(...).test(key)` 的布尔物化），但 ProtocolOwned 投影压缩了控制节点，FindPhasedSelections 把控制块当成原始 phase 块而丢失了已证明的选择。现在选择绑定显式使用 ExceptionControl 的 PhaseControlUnit 映射（header、arms、join、condition paths），TreeFlow 独立重建；没有新增准入。DeepTypeUtils 推进到 m39263 的 `kSemantics > EvaluationError::kOwnership > kPlan`。
+- cc 独立审查（基线 31687603）：构建通过；固定集串行 65/65；配对样本逐字节相同；原 flags 输出逐字节相同；`--language-source` 只有 o32 的 DeepTypeUtils 首拒绝变化；526/620、573/620 不变；扫描只有既有失败（family_source_cli_test、decision_snapshots_source_test）。
+
 ## Round 81：透明转发 try 与 for-of 协议控制共存（cc 审查通过）
 
 - 复用 AnalyzeExceptionForwarding，新增类型化 `kForwardedTry`：逐入口证明相同 payload、相同最终目的地、路径终止且与 close 子图不重叠才接受；seal、topology、TreeFlow 与 recovery 分别复核；只有获证的 handler 不发射源码 try，其他普通 try 继续拒绝。结果：m23563、m23590、m39263、m60524 完整通过（record 仍被其他方法阻断）；m61486/m61706 转为嵌套 kNested；DeepTypeUtils 推进到 m39073 的 `kDecisionPrefix > kPrefixArms`（op85、PC209）。ComponentFactory 重编译输出的 m425 现在通过完整 ownership seal，证明此前是表示缺口。

@@ -3,6 +3,8 @@
 #include "../../../src/source/function_values.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/logical_regions.h"
+#include "../../../src/source/tree_checks.h"
 #include "../../../src/source/tree_structure.h"
 #include "../../../src/source/source_variables.h"
 #include "../../support/analysis/ssa_fixture.h"
@@ -89,6 +91,16 @@ std::pair<std::uint64_t, std::size_t> Run(unsigned count, bool copies = false, b
   const auto regions=Take<ExceptionPlan>(BuildExceptionPlan(body,graph,input));
   const auto control=Take<ExceptionControl>(BuildExceptionControl(body,graph,input,regions));
   const ExceptionTreeInput exceptions{body,input,regions,control};
+  TreeCheckBudget legacy_budget({}), projected_budget({});
+  const auto legacy=FindSelectionExpressions(graph,control.skeleton,evaluation,legacy_budget);
+  const auto projected=FindSelectionExpressions(graph,control.skeleton,evaluation,projected_budget,&control);
+  Check(legacy.size()==projected.size());
+  for(std::size_t i=0;i<legacy.size();++i) {
+    Check(legacy[i].branch==projected[i].branch && legacy[i].header==projected[i].header &&
+        legacy[i].join==projected[i].join && legacy[i].keep_path==projected[i].keep_path &&
+        legacy[i].evaluate_path==projected[i].evaluate_path && legacy[i].condition_blocks==projected[i].condition_blocks);
+  }
+
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {100}; syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"o", u"first", u"flag", u"left", u"right", u"test", u"yes", u"no", u"later"};

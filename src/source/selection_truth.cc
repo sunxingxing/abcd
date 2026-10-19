@@ -190,8 +190,16 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
     const auto* no = std::get_if<SelectionSnapshot>(&region.right);
     if (!yes && !no) continue;
     bool closed = true;
-    for (const auto block : region.condition_blocks) {
-      budget.Step(); if (!pure(control.nodes[block.value].block)) closed = false;
+    RequireTree(graph.phases.empty() || region.condition_phases.size() == region.condition_blocks.size(),
+        TreeStructureError::kOwnership);
+    for (std::size_t i = 0; i < region.condition_blocks.size(); ++i) {
+      budget.Step();
+      // The phased adapter has already bound these original phase identities
+      // to control owners. A projected control-unit index is not a block ID.
+      const auto block = graph.phases.empty()
+          ? control.nodes[region.condition_blocks[i].value].block
+          : region.condition_phases[i];
+      if (!pure(block)) closed = false;
     }
     if (!closed) continue;
     std::optional<Truth> condition;

@@ -590,6 +590,22 @@ if(BUILD_TESTING)
     add_test(NAME for_of_draft_test COMMAND for_of_draft_test
       "${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/UI/CustomAnimationTab/artifacts/entry/default/default/modules/modules.abc" 7171)
   endif()
+  add_executable(for_of_selection_test tests/unit/source/for_of_iteration_test.cc)
+  target_compile_definitions(for_of_selection_test PRIVATE ABCD_TEST_FOR_OF_EVALUATION=1 ABCD_TEST_FOR_OF_DRAFT=1 ABCD_TEST_FOR_OF_SELECTION=1)
+  target_link_libraries(for_of_selection_test PRIVATE abcd_source abcd_json)
+  target_include_directories(for_of_selection_test PRIVATE tests/support)
+  add_test(NAME for_of_selection_test COMMAND for_of_selection_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_selection/main.abc" 395)
+  add_test(NAME for_of_selection_scale_test COMMAND for_of_selection_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_selection/main.abc" 395 --scale)
+  add_test(NAME for_of_selection_variants_test COMMAND for_of_selection_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_selection/main.abc" 395 --variants)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME for_of_selection_cli_test COMMAND "${ABCD_NODE_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_selection.mjs" $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_selection/main.abc"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_selection/main.js")
+  endif()
   add_test(NAME for_of_forwarding_test COMMAND for_of_draft_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_forwarding/main.abc" 391)
   add_test(NAME for_of_forwarding_scale_test COMMAND for_of_draft_test

@@ -8,6 +8,7 @@
 namespace abcd::source {
 class TreeCheckBudget;
 struct EvaluationPlan;
+struct ExceptionControl;
 // A value-selection diamond, not permission to move effects across its header.
 // The expression planner must still own the RHS subtree, remove its phi copies,
 // and preserve the order of every surrounding call/reference before emission.
@@ -104,7 +105,8 @@ inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::O
 // arm must be one owned evaluation subtree; the predicate remains at its site.
 [[nodiscard]] std::vector<SelectionRegion> FindSelectionExpressions(
     const analysis::ValueProgram& graph, const ControlPlan& control,
-    const EvaluationPlan& evaluation, TreeCheckBudget& budget);
+    const EvaluationPlan& evaluation, TreeCheckBudget& budget,
+    const ExceptionControl* projection = nullptr);
 // Project only branch-owned pure truth equations testing the exact retained
 // SSA value. Copies/aliases, unary composition and predicate polarity share
 // one indexed proof; VM numeric predicates require a Boolean input.
@@ -120,7 +122,8 @@ void ProjectSelectionLogicals(const analysis::ValueProgram& graph, const Control
 // authoritative. Selected expression arms cannot require pre-throw copies.
 [[nodiscard]] std::vector<SelectionRegion> FindPhasedSelections(
     const analysis::ValueProgram& graph, const ControlPlan& control,
-    const EvaluationPlan& evaluation, TreeCheckBudget& budget);
+    const EvaluationPlan& evaluation, TreeCheckBudget& budget,
+    const ExceptionControl* projection = nullptr);
 // Indexed eligible LHS producers; only the exact predicate/keep-edge pair is
 // projected. Requires checked value uses and base evaluation placements. Each
 // producer stays in its header, across no observable event/environment change.

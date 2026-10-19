@@ -1,5 +1,7 @@
 // Read-only standalone certificate diagnostic. No production admission hook.
 #include "../../../src/source/for_of_iteration.h"
+#include "../../../src/source/logical_regions.h"
+#include "../../../src/source/tree_checks.h"
 #include "../../../src/source/for_of_events.h"
 #ifdef ABCD_TEST_FOR_OF_DRAFT
 #include "../../../src/source/tree_semantics.h"
@@ -192,6 +194,26 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     if(const auto* f=std::get_if<EvaluationFailure>(&full)){std::cerr<<"evaluation kind="<<unsigned(f->kind)<<" obligation="<<unsigned(f->evaluation.obligation);if(f->evaluation.location.operation)std::cerr<<" op="<<f->evaluation.location.operation->value;if(f->evaluation.location.pc)std::cerr<<" pc="<<f->evaluation.location.pc->value;std::cerr<<'\n';}
     auto evaluation=Take<EvaluationPlan>(std::move(full),"evaluation");
     Take<std::uint64_t>(VerifyPhasedEvaluationPlan(graph,evaluation,{},&source),"verify-evaluation");
+#ifdef ABCD_TEST_FOR_OF_SELECTION
+    TreeCheckBudget selection_budget({});
+    const auto selections=FindSelectionExpressions(graph,control.skeleton,evaluation,selection_budget,&control);
+    std::optional<OpId> remapped_selection;
+    for(const auto& selection:selections) {
+      for(std::size_t n=0;n<control.units.size();++n) {
+        const auto* phase=std::get_if<PhaseControlUnit>(&control.units[n]);
+        if(!phase || phase->block!=selection.header || control.skeleton.nodes[n].block==phase->block)continue;
+        test::Check(!evaluation.for_of->operations[selection.branch.value]);
+        remapped_selection=selection.branch;
+        auto wrong=control;std::get<PhaseControlUnit>(wrong.units[n]).block=selection.join;
+        test::Check(std::holds_alternative<ExceptionControlError>(VerifyExceptionControl(body,graph,input,plan,wrong,{},&owner)));
+        TreeCheckBudget mutated_budget({});
+        const auto missing=FindSelectionExpressions(graph,wrong.skeleton,evaluation,mutated_budget,&wrong);
+        test::Check(std::none_of(missing.begin(),missing.end(),[&](const auto& r){return r.branch==selection.branch;}));
+        break;
+      }
+    }
+    test::Check(remapped_selection.has_value());
+#endif
     for(std::uint32_t v=0;v<graph.values.size();++v)if(evaluation.for_of->values[v])if(const auto* op=std::get_if<OpResult>(&graph.values[v].origin))test::Check(evaluation.operations[op->op.value].kind==EvaluationKind::kForOfEvent && !evaluation.operations[op->op.value].temporary);
     if(evaluation.phis)for(std::size_t n=0;n<evaluation.phis->inputs.size();++n){const auto& use=graph.uses[evaluation.phis->inputs[n].value];const auto target=std::get<ValueId>(use.owner);if(evaluation.for_of->values[target.value])test::Check(evaluation.phis->projection[n]==PhiCopyUse::kForOfProtocol);}
     const auto full_build=[&](SemanticBudget b){return BuildPhasedEvaluationPlan(graph,b,IncomingCells::kConditional,{},{},{},{},ClosureWrites::kLanguage,{},{},&source);};
@@ -277,6 +299,19 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     }
     test::Check(missing_continue && std::holds_alternative<TreeStructure>(VerifyTreeStructure(bad_tree)));
     test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,bad_tree)));
+#ifdef ABCD_TEST_FOR_OF_SELECTION
+    const auto selected=std::find_if(draft.tree.operations.begin(),draft.tree.operations.end(),[&](const auto& p){return p.operation==*remapped_selection;});
+    test::Check(selected!=draft.tree.operations.end());
+    auto dropped=draft.tree;dropped.operations.erase(dropped.operations.begin()+(selected-draft.tree.operations.begin()));
+    test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,dropped)));
+    auto doubled=draft.tree;doubled.operations.push_back(*selected);
+    test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,doubled)));
+    auto swapped=draft.tree;bool swapped_arms=false;
+    for(auto& expression:swapped.expressions)if(auto* conditional=std::get_if<ConditionalExpr>(&expression.expression)) {
+      std::swap(conditional->consequent,conditional->alternate);swapped_arms=true;break;
+    }
+    test::Check(swapped_arms && !std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(graph,exceptions,evaluation,swapped,resolved)));
+#endif
     auto semantic=VerifyExceptionTreeSemantics(graph,exceptions,evaluation,draft.tree,resolved);
     if(const auto* error=std::get_if<TreeSemanticError>(&semantic))std::cerr<<"for-of semantics error="<<unsigned(*error)<<'\n';
     auto sem=Take<TreeSemantics>(std::move(semantic),"for-of-original-flow");

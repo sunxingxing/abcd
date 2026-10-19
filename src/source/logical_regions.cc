@@ -603,12 +603,12 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
 }
 }  // namespace
 std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph, const ControlPlan& control,
-    const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
+    const EvaluationPlan& evaluation, TreeCheckBudget& budget, const ExceptionControl* projection) {
   if (!graph.phases.empty() && control.view == ControlViewKind::kProjection &&
       evaluation.flow == EvaluationFlow::kPhased && control.revision == graph.revision &&
       control.cfg_revision == graph.cfg_revision && evaluation.revision == graph.revision &&
       evaluation.cfg_revision == graph.cfg_revision && evaluation.operations.size() == graph.ops.size()) {
-    auto regions = FindPhasedSelections(graph, control, evaluation, budget);
+    auto regions = FindPhasedSelections(graph, control, evaluation, budget, projection);
     ProjectSelectionLogicals(graph, control, evaluation, regions, budget);
     return regions;
   }

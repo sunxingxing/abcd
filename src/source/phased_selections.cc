@@ -1,4 +1,5 @@
 #include "logical_regions.h"
+#include "exception_control.h"
 #include "evaluation_plan.h"
 #include "evaluation_liveness.h"
 #include "tree_checks.h"
@@ -225,7 +226,20 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
 // Bind graph candidates to the actual exception-control owner before emission.
 // Control IDs never substitute for phase-block IDs in the discovery algorithm.
 std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& graph,
-    const ControlPlan& control, const EvaluationPlan& evaluation, TreeCheckBudget& budget) {
+    const ControlPlan& control, const EvaluationPlan& evaluation, TreeCheckBudget& budget,
+    const ExceptionControl* projection) {
+  // Control nodes address projection units, not original phase blocks. Close
+  // and forwarded-handler removal can change every later index. Bind only
+  // PhaseControlUnit identities; wrappers/close ports cannot own a selection.
+  // Both emission and TreeFlow rebuild this binding after control verification.
+  const auto source_block = [&](const ControlNode& node) -> std::optional<analysis::WorkBlockId> {
+    if (!std::holds_alternative<std::monostate>(node.synthetic)) return {};
+    if (!projection) return node.block;
+    const auto index = static_cast<std::size_t>(&node - control.nodes.data());
+    if (index >= projection->units.size()) return {};
+    const auto* phase = std::get_if<PhaseControlUnit>(&projection->units[index]);
+    return phase ? std::optional{phase->block} : std::nullopt;
+  };
   using namespace analysis;
   auto regions = FindPhasedPhiSelections(graph, evaluation, budget);
   auto bindings = FindPhaseSelectionBindings(graph, evaluation, regions, budget);
@@ -237,19 +251,19 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
   budget.Array(headers, graph.blocks.size()); budget.Array(counts, graph.blocks.size());
   for (std::size_t i = 0; i < control.nodes.size(); ++i) {
     budget.Step(); const auto& node = control.nodes[i];
-    if (!node.arms || node.block.value >= headers.size() ||
-        !std::holds_alternative<std::monostate>(node.synthetic)) continue;
-    if (counts[node.block.value]) { headers[node.block.value].reset(); continue; }
-    counts[node.block.value] = 1; headers[node.block.value] = ControlId{static_cast<std::uint32_t>(i)};
+    const auto block = source_block(node);
+    if (!node.arms || !block || block->value >= headers.size()) continue;
+    if (counts[block->value]) { headers[block->value].reset(); continue; }
+    counts[block->value] = 1; headers[block->value] = ControlId{static_cast<std::uint32_t>(i)};
   }
   const auto path = [&](std::optional<ControlId> first, EdgeId edge, WorkBlockId terminal, bool child) {
     for (std::size_t visited = 0; first && visited < control.nodes.size(); ++visited) {
       budget.Step(); const auto& node = control.nodes[first->value];
-      if (!std::holds_alternative<std::monostate>(node.synthetic) ||
-          node.block != graph.edges[edge.value].target) return false;
-      if (node.block == terminal) return child ? node.arms.has_value() : !node.arms && !node.next;
+      const auto original = source_block(node);
+      if (!original || original != graph.edges[edge.value].target) return false;
+      if (original == terminal) return child ? node.arms.has_value() : !node.arms && !node.next;
       if (node.arms || node.decision) return false;
-      const auto& block = graph.blocks[node.block.value];
+      const auto& block = graph.blocks[original->value];
       std::optional<EdgeId> normal;
       for (std::uint32_t e = 0; e < block.edge_count; ++e) {
         budget.Step(); const EdgeId candidate{block.first_edge.value + e};
@@ -277,8 +291,8 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
     }
     const auto& node = control.nodes[headers[region.header.value]->value];
     if (region.parent) {
-      if (node.next && control.nodes[node.next->value].block != region.join) continue;
-    } else if (!node.next || control.nodes[node.next->value].block != region.join) continue;
+      if (node.next && source_block(control.nodes[node.next->value]) != region.join) continue;
+    } else if (!node.next || source_block(control.nodes[node.next->value]) != region.join) continue;
     const auto* last = &node; std::size_t phase = 0; bool bound = true;
     budget.Array(region.condition_blocks, region.condition_phases.size());
     for (std::size_t i = 1; i < region.conditions.size() && bound; ++i) {
@@ -288,20 +302,20 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
       auto at = last->decision->evaluate; const auto terminal = last->decision->predicate.value_or(at);
       for (std::size_t visited = 0; visited < control.nodes.size(); ++visited) {
         budget.Step(); const auto& part = control.nodes[at.value];
-        if (phase >= region.condition_phases.size() || part.block != region.condition_phases[phase] ||
+        if (phase >= region.condition_phases.size() || source_block(part) != region.condition_phases[phase] ||
             !std::holds_alternative<std::monostate>(part.synthetic)) { bound = false; break; }
         region.condition_blocks[phase++] = at;
         if (at == terminal) { last = &part; break; }
         if (part.arms || part.decision || !part.next) { bound = false; break; }
         at = *part.next;
       }
-      if (!bound || graph.phases[last->block.value].operation != region.conditions[i].branch) bound = false;
+      if (!bound || graph.phases[source_block(*last)->value].operation != region.conditions[i].branch) bound = false;
     }
     if (!bound || phase != region.condition_phases.size() || last->decision) continue;
     const bool first_taken = region.conditions.front().shared_on_taken;
     const bool last_taken = region.conditions.back().shared_on_taken;
     const auto first = graph.blocks[region.header.value].first_edge;
-    const auto end = graph.blocks[last->block.value].first_edge;
+    const auto end = graph.blocks[source_block(*last)->value].first_edge;
     const auto shared = first_taken ? node.arms->taken : node.arms->fallthrough;
     const auto fallback = last_taken ? last->arms->fallthrough : last->arms->taken;
     if (!path(shared, EdgeId{first.value + (first_taken ? 0U : 1U)}, *region.keep,
