@@ -9,7 +9,7 @@ const cases=[
  [42040,42490,2,8,17,47],
  [41167,41622,2,8,17,47],
  [20252,20697,2,8,17,47],
- [37520,38333,1,9,null,null],
+ [37520,38116,null,null,null,null],
 ];
 // Paths are cohort fixture boundaries, not engine admission criteria. Resolve
 // their current configured ABC input rather than guessing an application alias.
@@ -34,13 +34,21 @@ try {
    }
    assert.deepEqual(report.source_failure,row.source_failure);
    const f=row.source_failure;
+   if(ci===3) {
+    // Activation-local construction now verifies m38333; the record reaches
+    // a separate phased decision-prefix obligation in m38116.
+    assert.deepEqual(f.causes,[{domain:'abcd::source::FunctionTreeError',value:0},{domain:'abcd::source::TreeObligation',value:3}]);
+    assert.equal(f.method,38116);assert.equal(f.pc,undefined);
+    assert.deepEqual(f.tree,{obligation:3,decision_prefix:2,
+      location:{method:38116,control:1396,synthetic:{kind:2,source:8}},
+      prefix_event:{method:38116,control:1396,synthetic:{kind:2,source:8}}});
+    continue;
+   }
    assert.deepEqual(f.causes,[['EvaluationError',2],['EvaluationObligation',0],['LiteralError',leaf],['EvaluationInputCheck',check]].map(([domain,value])=>({domain:`abcd::source::${domain}`,value})));
    assert.equal(f.method,method);assert.equal(f.evaluation.input_check,check);
    assert.deepEqual(f.evaluation.plan_cause,{domain:'LiteralError',value:leaf});
    assert.equal(f.evaluation.location.operation,operation??undefined);
    assert.equal(f.pc,pc??undefined);assert.equal(f.working_pc,pc??undefined);
-   // CameraService's failure owns the entire staged CFG, not an instruction.
-   if(pc===null)assert.deepEqual(f.evaluation.location,{method});
   }
  }
  console.log('evaluation_input_cli_test: four records, both contracts, leaf/location and CLI/manifest agreement');

@@ -5,6 +5,56 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Activation-local staged literals (2026-10-19, uncommitted)
+
+- Baseline: `66ed407c`. `VerifyStaged` retains the existing DAG path unchanged.
+  Only cyclic methods use the new shared full-flow dominator/DFS-feedback index.
+  Allocation and successful definition commits form a dominance-ordered chain;
+  unfinished-region feedback and definition re-entry refuse. Exiting an
+  allocation-dominated region may abandon an unobservable object, but cannot
+  return to its definitions without a fresh allocation. Original exception
+  edges, no-escape uses, successful-commit availability and tree/recovery checks
+  remain binding. No symbols, names or publication layout are changed.
+- The fallback uses linear prepaid storage/indexing plus the existing dominator
+  bound O((V+E) log V), with constant-time interval queries per construction;
+  there is no per-literal CFG scan. Build and verification independently
+  recompute the input proof. No new source-language premise.
+- Target outcomes under V5: o5/28303 m28799 passes staged acyclicity and reaches
+  `FunctionTreeError::kBinding > TreeObligation::kBindings` (no owned PC).
+  o24/37520 passes that obligation in m38333 and reaches m38116
+  `FunctionTreeError::kControl > TreeObligation::kDecisionPrefix`,
+  `DecisionPrefixError::kPhaseUnit`, control1396 / synthetic Try8 (no PC).
+  Neither record completes; downstream obligations were not changed.
+- Both 40-input comparisons against retained `66ed407c`-equivalent outputs:
+  **526/620** previous flags and **576/620** V5, zero status regressions and zero
+  complete-record text/extension drift. Diagnostic changes are only o24/37520
+  under previous flags and o5/28303 plus o24/37520 under V5. Maximum CLI RSS:
+  **39,485,440** / **39,452,672** bytes respectively.
+- Full build passed (`cmake --build build/regression -j 6 -- -k`). Serial fixed
+  preset **65/65**; staged/literal targeted **6/6**, including the two new tests
+  (**2/2** on the final fixtures). The serial CLI/corpus/failure/receipt/manifest/
+  ISA/call-spread sweep is **89/90**; only the previously documented
+  `family_source_cli_test` fails. `evaluation_input_cli_test` and
+  `tree_failure_cli_test` now assert the actual next leaves above, preserving
+  CLI/manifest equality and real synthetic/absent-location evidence.
+- Real es2abc fixtures and engine-output Node differential cover conditional
+  initialization inside loops, surrounding/nested loops, fresh identities,
+  property order, zero iterations and throws after an earlier field commit.
+  The unfinished catch-cycle fixture stays a typed negative. Unit mutations
+  reject unfinished re-entry, repeated definitions without reallocation and
+  partial-object observation; 200/201/400/800 and exact byte/work budgets pass.
+  Emitted positive fixture output passes `node --check`; no new cohort output
+  was published. Compiler/source/ABC hashes and commands are in the fixture.
+- The existing ISA generator refreshed the checked-in report: **417 ABCs /
+  1,309,699 instructions**, no probe failures; **145 SupportedUnverified /
+  159 Unmeasured / 28 NonExecutable**. The historical APPLY unsupported rows
+  are gone. The remaining raw unsupported first refusal is Sendable creation
+  under previous flags; none under V5. JSON stays untracked under
+  `build/review/triage/staged-accepted-isa/`. This is refreshed measurement of
+  prior APPLY support, not new ISA semantics or a SupportedVerified claim.
+- Acceptance logs, per-record comparisons and scratch diagnostics are under
+  `build/review/triage/staged-accepted-*`. Temporary instrumentation was removed.
+
 ## Nested APPLY snapshot accounting — uncommitted follow-up to 8922134a
 
 - Evidence: o7/17736 m18306 op138 PC379 has the correct result consumer Use160

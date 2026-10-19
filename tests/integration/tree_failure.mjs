@@ -81,21 +81,15 @@ try {
         producer_kind:1,read_ordinal:0,reason:6,value:entity===4660?14:22});
     }
     if(entity===28303) {
-      // C4 continues into the real evaluator. Its ordinary staged literal now
-      // exposes the whole-CFG acyclicity gap; this is NOT the requested tree
-      // gate yet. A whole-graph refusal must not borrow the acquisition's PC.
+      // The activation-local staged proof succeeds. The next independent
+      // refusal is binding validation; it owns no instruction PC.
       assert.equal(report.source_failure.pc,undefined);
       assert.equal(report.source_failure.working_pc,undefined);
-      assert.equal(report.source_failure.deferred,undefined);
-      assert.equal(report.source_failure.exception_region,undefined);
+      assert.equal(report.source_failure.method,28799);
       assert.deepEqual(report.source_failure.causes,[
-        {domain:'abcd::source::EvaluationError',value:2},
-        {domain:'abcd::source::EvaluationObligation',value:0},
-        {domain:'abcd::source::LiteralError',value:1},
-        {domain:'abcd::source::EvaluationInputCheck',value:9}]);
-      assert.deepEqual(report.source_failure.evaluation,{
-        obligation:0,location:{method:28799},input_check:9,
-        plan_cause:{domain:'LiteralError',value:1}});
+        {domain:'abcd::source::FunctionTreeError',value:2},
+        {domain:'abcd::source::TreeObligation',value:11}]);
+      assert.deepEqual(report.source_failure.tree,{obligation:11,location:{method:28799}});
     }
 
 

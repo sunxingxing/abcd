@@ -1,3 +1,4 @@
+#include "../../../src/analysis/value_flow.h"
 #include "../../../src/source/literal_plan.h"
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
@@ -110,6 +111,98 @@ ValueProgram StagedGraph(bool observed = false) {
   graph.edges = {{{0}, {1}, FlowEdgeKind::kTaken, 0}};
   for (std::size_t i = split; i < graph.ops.size(); ++i) { graph.ops[i].block = {1}; graph.ops[i].order -= split; }
   return std::move(graph);
+}
+ValueProgram CyclicStaged(std::uint32_t fields, bool unfinished = false, bool repeat = false) {
+  Fixture f;
+  f.graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
+  f.Add(ValueObjectAllocation{abcd::abc::PoolIndex{0}}, true, {});
+  f.graph.ops.back().normal = f.graph.ops.back().before_throw = LanguageEffect::kAllocation;
+  f.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  if (unfinished) f.Add(ValueBranch{UnaryOperator::kToBoolean}, false, {{OperandRole::kCondition, ValueId{0}}});
+  else f.Add(ValueJump{}, false, {});
+  const auto split = static_cast<std::uint32_t>(f.graph.ops.size());
+  for (std::uint32_t i = 0; i < fields; ++i) {
+    f.Add(ValueNamedRead{{i}}, true, {{OperandRole::kBase, ValueId{0}}});
+    const auto rhs = *f.graph.ops.back().result;
+    f.graph.ops.back().normal = f.graph.ops.back().before_throw = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
+    f.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+    f.Add(ValueOwnWrite{OwnWriteKind::kDefineField, {i}, 0}, false,
+        {{OperandRole::kBase, ValueId{1}}, {OperandRole::kStoredValue, rhs}});
+    f.graph.ops.back().normal = f.graph.ops.back().before_throw = LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+    f.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  }
+  f.Add(ValueBranch{UnaryOperator::kToBoolean}, false, {{OperandRole::kCondition, ValueId{0}}});
+  const auto end = static_cast<std::uint32_t>(f.graph.ops.size());
+  f.Add(ValueReturn{}, false, {{OperandRole::kReturnValue, ValueId{1}}});
+  auto& g = f.graph;
+  g.blocks = {{{0}, split, {0}, static_cast<std::uint8_t>(unfinished ? 2 : 1)},
+      {{split}, end - split, {static_cast<std::uint32_t>(unfinished ? 2 : 1)}, 2},
+      {{end}, 1, {static_cast<std::uint32_t>(unfinished ? 4 : 3)}, 0}};
+  g.edges.push_back({{0}, {1}, FlowEdgeKind::kTaken, 0});
+  if (unfinished) g.edges.push_back({{0}, {0}, FlowEdgeKind::kFallthrough, 1});
+  g.edges.push_back({{1}, {repeat ? 1U : 0U}, FlowEdgeKind::kTaken, 0});
+  g.edges.push_back({{1}, {2}, FlowEdgeKind::kFallthrough, 1});
+  for (std::uint32_t i = split; i < end; ++i) { g.ops[i].block = {1}; g.ops[i].order -= split; }
+  g.ops[end].block = {2}; g.ops[end].order = 0;
+  for (auto& op : g.ops) ++op.block.value;
+  for (auto& edge : g.edges) { ++edge.source.value; ++edge.target.value; }
+  for (auto& block : g.blocks) ++block.first_edge.value;
+  g.edges.insert(g.edges.begin(), {{0}, {1}, FlowEdgeKind::kFallthrough, 0});
+  g.blocks.insert(g.blocks.begin(), {{0}, 0, {0}, 1});
+  return std::move(g);
+}
+void StagedActivations() {
+  for (const auto fields : {1U, 200U, 201U, 400U, 800U}) {
+    auto graph = CyclicStaged(fields);
+    const auto flow = VerifyValueFlow(graph);
+    Check(std::holds_alternative<ValueFlowProof>(flow));
+    EvaluationInputSite failure;
+    const auto built = BuildLiteralPlan(graph, {}, {}, {}, {}, nullptr, &failure);
+
+    Check(std::holds_alternative<LiteralPlan>(built));
+    const auto& plan = std::get<LiteralPlan>(built);
+    const auto verified = VerifyLiteralPlan(graph, plan);
+    Check(std::holds_alternative<std::uint64_t>(verified));
+    SemanticBudget verification_budget;
+    verification_budget.work = std::get<std::uint64_t>(verified);
+    Check(std::holds_alternative<std::uint64_t>(VerifyLiteralPlan(graph, plan, verification_budget)));
+    --verification_budget.work;
+    Check(std::get<LiteralError>(VerifyLiteralPlan(graph, plan, verification_budget)) == LiteralError::kWorkLimit);
+    for (auto changed : {CyclicStaged(fields, true), CyclicStaged(fields, false, true)}) {
+      Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(changed)));
+      EvaluationInputSite rejected;
+      Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(changed, plan, {}, {}, {}, {}, nullptr, &rejected)));
+      Check(rejected.check == EvaluationInputCheck::kLiteralStagedAcyclic);
+    }
+    auto exposed = graph;
+    exposed.uses[exposed.ops[2].first_use.value].operand = ValueId{1};
+    for (auto& value : exposed.values) value.first_use.reset();
+    for (std::size_t u = 0; u < exposed.uses.size(); ++u) {
+      auto& use = exposed.uses[u]; use.previous.reset(); use.next.reset();
+      if (const auto* value = std::get_if<ValueId>(&use.operand)) {
+        use.next = exposed.values[value->value].first_use;
+        if (use.next) exposed.uses[use.next->value].previous = UseId{static_cast<std::uint32_t>(u)};
+        exposed.values[value->value].first_use = UseId{static_cast<std::uint32_t>(u)};
+      }
+    }
+    Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(exposed)));
+    Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(exposed, plan)));
+    SemanticBudget budget; budget.work = plan.work;
+    Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph, budget)));
+    --budget.work;
+    Check(std::get<LiteralError>(BuildLiteralPlan(graph, budget)) == LiteralError::kWorkLimit);
+    std::size_t low = 0, high = SemanticBudget{}.bytes;
+    while (low < high) {
+      const auto middle = low + (high - low) / 2;
+      budget = {}; budget.bytes = middle;
+      if (std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph, budget))) high = middle;
+      else low = middle + 1;
+    }
+    budget = {}; budget.bytes = low;
+    Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph, budget)));
+    --budget.bytes;
+    Check(std::get<LiteralError>(BuildLiteralPlan(graph, budget)) == LiteralError::kResourceLimit);
+  }
 }
 void StagedBuffer(bool print = false) {
   auto graph = StagedGraph();
@@ -988,7 +1081,8 @@ void PredicateLiterals(bool print = false) {
 }
 }  // namespace
 int main(int argc, char** argv) {
-  OrderedFields();
+  if (argc == 2 && std::string_view(argv[1]) == "--staged-activations") { StagedActivations(); return 0; }
+  StagedActivations(); OrderedFields();
   if (argc == 2 && std::string_view(argv[1]) == "--predicate-sources") { PredicateLiterals(true); return 0; }
   PredicateLiterals();
   if (argc == 2 && std::string_view(argv[1]) == "--staged-source") { StagedBuffer(true); return 0; }

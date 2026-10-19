@@ -79,7 +79,8 @@ inline bool IsStagedLiteral(const LiteralPlan* plan, analysis::OpId id) {
 // Only those obligations seed class-heritage/prototype composition. An absent
 // heritage consumes the closed Hole protocol, never a fabricated JS value.
 // Staged buffered objects instead preserve allocation and write sites in a normal
-// DAG. No escape precedes the final write; tree construction independently proves
+// DAG, or a verified activation-local acyclic unfinished region in a cyclic CFG.
+// No escape precedes the final write; tree construction independently proves
 // every assigned key already denotes a writable own buffer data property.
 // module_guards must be the unchanged IndexModuleEvaluations peer index;
 // standalone calls without it cannot fold late guarded module reads.

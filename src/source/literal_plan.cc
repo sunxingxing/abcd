@@ -592,9 +592,66 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   Require(depth == 0, Error::kDefinition);
   budget.Step(phase_budget.Cost().work);
 }
-// Staged buffer writes remain at their original CFG sites. Until the last
-// write, only these own-field base uses may observe the fresh object. Acyclic
-// control plus dominance excludes an escape followed by a later initialization.
+// Dominator subtrees isolate an activation: allocation subtree minus successful
+// final Commit subtree is unfinished. DFS feedback-edge range censuses exclude
+// cycles/re-entry there. A path leaving the allocation subtree cannot return to
+// a dominated definition without re-executing the allocation (otherwise that
+// definition would not be dominated). Such a path may abandon the private object,
+// including on exception; the separate use census still forbids its escape.
+// All edges participate. O(V+E) prepaid shared indexes, O(1) queries per literal;
+// no per-construction reachability scans and no dependence on block layout.
+void VerifyStagedActivations(const analysis::ValueProgram& graph,
+    const analysis::DominatorTree& dom,
+    std::span<const std::optional<analysis::OpId>> finals,
+    std::span<const std::optional<analysis::OpId>> allocations,
+    std::span<const analysis::WorkBlockId> commits, LiteralBudget& budget,
+    EvaluationInputSite* failure) {
+  const auto n = graph.blocks.size();
+  Require(n <= std::numeric_limits<std::uint32_t>::max() - 2, Error::kResourceLimit);
+  std::vector<std::uint8_t> color;
+  std::vector<std::size_t> stack, next, sources, targets;
+  budget.Size(color, n); budget.Size(stack, n); budget.Size(next, n);
+  budget.Size(sources, n + 2); budget.Size(targets, n + 2);
+  for (std::size_t root = 0; root < n; ++root) {
+    budget.Step(); if (color[root] || !dom.nodes[root].begin) continue;
+    std::size_t depth = 1; stack[0] = root; next[0] = 0; color[root] = 1;
+    while (depth) {
+      budget.Step(); const auto b = stack[depth - 1]; const auto& block = graph.blocks[b];
+      if (next[depth - 1] == block.edge_count) { color[b] = 2; --depth; continue; }
+      const auto target = graph.edges[block.first_edge.value + next[depth - 1]++].target.value;
+      if (color[target] == 1) {
+        ++sources[dom.nodes[b].begin]; ++targets[dom.nodes[target].begin];
+      } else if (!color[target]) {
+        color[target] = 1; stack[depth] = target; next[depth++] = 0;
+      }
+    }
+  }
+  for (std::size_t i = 1; i < sources.size(); ++i) {
+    budget.Step(); sources[i] += sources[i - 1]; targets[i] += targets[i - 1];
+  }
+  const auto census = [](const auto& index, const analysis::DominatorNode& node) {
+    return index[node.end - 1] - index[node.begin - 1];
+  };
+  for (std::size_t v = 0; v < finals.size(); ++v) {
+    budget.Step(); if (!finals[v]) continue;
+    EvaluationInputScope site(failure, {EvaluationInputCheck::kLiteralStagedAcyclic, allocations[v]});
+    const auto a = graph.ops[allocations[v]->value].block;
+    const auto f = commits[finals[v]->value];
+    const auto& an = dom.nodes[a.value]; const auto& fn = dom.nodes[f.value];
+    Require(an.begin && fn.begin && dom.Dominates({a.value}, {f.value}), Error::kFlow);
+    Require(census(sources, an) == census(sources, fn), Error::kFlow);
+    // Returning to the allocation starts a fresh identity, but only after the
+    // preceding activation completed (the source census above). Re-entering a
+    // definition without reallocation is never a fresh activation.
+    const auto allocation_targets = targets[an.begin] - targets[an.begin - 1];
+    const auto final_reentry = graph.ops[finals[v]->value].block == f && a != f ?
+        targets[fn.begin] - targets[fn.begin - 1] : 0;
+    Require(census(targets, an) - census(targets, fn) + final_reentry ==
+        (a == f ? 0 : allocation_targets), Error::kFlow);
+  }
+}
+// Staged writes retain their CFG sites. The historical DAG proof is unchanged;
+// cyclic methods additionally prove activation-local coverage before use checks.
 void VerifyStaged(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     std::span<const std::optional<analysis::OpId>> owners, LiteralBudget& budget, const LiteralPath& path, EvaluationInputSite* failure) {
   if (plan.staged.empty()) return;
@@ -621,12 +678,7 @@ void VerifyStaged(const analysis::ValueProgram& graph, const LiteralPlan& plan,
       if (!--incoming[target]) order[count++] = target;
     }
   }
-  {
-    // This is a whole-CFG acyclicity obligation, not a failing instruction.
-    // Do not borrow a PC from a previously visited allocation or branch.
-    EvaluationInputScope site(failure, {EvaluationInputCheck::kLiteralStagedAcyclic});
-    Require(count == graph.blocks.size(), Error::kFlow);
-  }
+  const bool cyclic = count != graph.blocks.size();
   const auto allowance = budget.Remaining();
   auto built = analysis::BuildNormalDominators(flow, {}, {allowance.bytes, allowance.work});
   if (const auto* error = std::get_if<analysis::DominatorError>(&built)) {
@@ -636,6 +688,31 @@ void VerifyStaged(const analysis::ValueProgram& graph, const LiteralPlan& plan,
   }
   const auto& dom = std::get<analysis::DominatorTree>(built);
   budget.Step(dom.work.steps); budget.Admit(dom.work.allocated_bytes, 1);
+  std::vector<analysis::WorkBlockId> commits;
+  if (cyclic) {
+    budget.Size(commits, graph.ops.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      budget.Step(); const auto& op = graph.ops[i]; commits[i] = op.block;
+      if (!path.Phased()) continue;
+      const auto& before = graph.blocks[op.block.value];
+      if (graph.phases[op.block.value].phase != analysis::ExceptionPhase::kBefore) continue;
+      std::optional<analysis::WorkBlockId> commit;
+      for (std::uint32_t e = 0; e < before.edge_count; ++e) {
+        budget.Step(); const auto& edge = graph.edges[before.first_edge.value + e];
+        if (edge.kind == analysis::FlowEdgeKind::kException) continue;
+        const auto& phase = graph.phases[edge.target.value];
+        Require(!commit && phase.phase == analysis::ExceptionPhase::kCommit &&
+            phase.operation == analysis::OpId{static_cast<std::uint32_t>(i)}, Error::kFlow);
+        commit = edge.target;
+      }
+      if (commit) commits[i] = *commit;
+    }
+  }
+  const auto precedes = [&](analysis::OpId a, analysis::OpId b) {
+    const auto& first = graph.ops[a.value]; const auto& second = graph.ops[b.value];
+    return dom.Dominates({commits[a.value].value}, {second.block.value}) &&
+        (first.block != second.block || first.order < second.order);
+  };
   std::vector<std::optional<analysis::OpId>> finals, allocations;
   budget.Size(finals, graph.values.size()); budget.Size(allocations, graph.values.size());
   for (const auto& object : plan.objects) {
@@ -648,12 +725,18 @@ void VerifyStaged(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     for (std::uint32_t i = 0; i < object.count; ++i) {
       budget.Step(); const auto id = plan.definitions[object.first + i]; const auto& op = graph.ops[id.value];
       Require(std::holds_alternative<analysis::ValueOwnWrite>(op.operation), Error::kDefinition);
-      if (rank[op.block.value] > rank[graph.ops[last.value].block.value] ||
+      if (cyclic) {
+        EvaluationInputScope order_site(failure, {EvaluationInputCheck::kLiteralOrder, id});
+        Require(precedes(object.allocation, id), Error::kDefinition);
+        if (precedes(last, id)) last = id;
+        else Require(precedes(id, last), Error::kDefinition);
+      } else if (rank[op.block.value] > rank[graph.ops[last.value].block.value] ||
           (op.block == graph.ops[last.value].block && op.order > graph.ops[last.value].order)) last = id;
     }
     finals[allocation.result->value] = last;
     allocations[allocation.result->value] = object.allocation;
   }
+  if (cyclic) VerifyStagedActivations(graph, dom, finals, allocations, commits, budget, failure);
   // Resolve each occurrence once. Copy aliases in phased IR must not hide an
   // early escape; conversely, a pure register copy is not an observation.
   for (std::size_t i = 0; i < graph.uses.size(); ++i) {

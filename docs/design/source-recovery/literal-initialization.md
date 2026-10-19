@@ -776,3 +776,38 @@ is `LiteralError::kFlow / kLiteralStagedAcyclic`, with the method but no PC:
 the failed check owns the full CFG, not either arbitrarily chosen backedge.
 Replacing that proof requires construction-activation and escape/order facts
 for cyclic flow; it is not part of this evidence increment.
+
+## Activation-local staged construction in cyclic methods (2026-10-19)
+
+The historical DAG path and its ordering stay unchanged. Only a failed whole-CFG
+acyclicity check invokes the fallback in `VerifyStaged`. Both construction and
+independent plan verification recompute it from the value graph, including
+exception edges. Staged indexed arrays remain a separate unsupported storage
+case; this change does not admit them.
+
+Successful allocation and definition commits must form a dominance-ordered
+chain. Define the unfinished region as the allocation's dominator subtree minus
+the final successful commit's subtree. A shared iterative DFS indexes feedback
+edge sources and targets in dominator Euler order. No feedback source may lie
+in the unfinished region. No feedback target may re-enter a definition region;
+returning to the allocation itself is permitted only after completion, producing
+a new activation. Normal blocks containing the final write are included in the
+re-entry check: re-entering that block repeats the write, unlike entering a
+separate phased Commit node.
+
+A path leaving the allocation-dominated region cannot return to a dominated
+write without passing through the allocation again: otherwise the original
+full-flow dominance fact would be false. Such paths can abandon a private object,
+including through a catch shared with other sites. The existing use census still
+rejects every observable use before the final commit, including exceptional phi
+snapshots. No catch edge is omitted, and a final write's Before node is never
+confused with successful Commit. Cycles remaining inside the unfinished region
+still refuse; `caught.abc` exercises this conservative boundary.
+
+The shared DFS and Euler prefix indexes use O(V+E+O+U) storage/work in addition
+to the existing O((V+E) log V) dominance computation, with all buffers charged
+before allocation. Each construction adds constant-time range queries, not a CFG
+traversal. Budget exhaustion is a typed refusal, never an acyclicity result.
+Tests cover fresh repeated activations, unfinished re-entry, repeated writes
+without reallocation, exact budgets, and engine-output Node traces. Existing
+private ownership, descriptor, scope, exception and recovery checks remain binding.

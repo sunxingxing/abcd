@@ -1018,6 +1018,7 @@ if(BUILD_TESTING)
   add_executable(literal_plan_test tests/unit/source/literal_plan_test.cc)
   target_link_libraries(literal_plan_test PRIVATE abcd_source)
   add_test(NAME literal_plan_test COMMAND literal_plan_test)
+  add_test(NAME staged_activation_test COMMAND literal_plan_test --staged-activations)
   add_executable(literal_construct_test tests/integration/literal_construct.cc)
   target_include_directories(literal_construct_test PRIVATE tests/support)
   target_link_libraries(literal_construct_test PRIVATE abcd_source)
@@ -2020,6 +2021,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/anonymous_module.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_family_print_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_family_print.mjs $<TARGET_FILE:module_family_print_test>)
+    add_test(NAME staged_activation_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/staged_activation.mjs
+      $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/staged_activation)
     add_test(NAME call_spread_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/call_spread.mjs
       $<TARGET_FILE:abc_structure> $<TARGET_FILE:isa_coverage_probe>
