@@ -369,10 +369,15 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
       while (decision) {
         auto at = decision->evaluate;
         const auto last = decision->predicate.value_or(at);
-        const auto scope = lifetimes.blocks[root.block.value];
+        const auto root_block = ExceptionNodeBlock(context, {root.block.value});
+        test::Check(root_block.has_value());
+        const auto scope = lifetimes.blocks[root_block->value];
+        test::Check(scope.has_value());
         while (true) {
           const auto& condition = control.skeleton.nodes[at.value];
-          test::Check(lifetimes.blocks[condition.block.value].value == scope.value);
+          const auto block = ExceptionNodeBlock(context, {condition.block.value});
+          test::Check(block.has_value());
+          test::Check(lifetimes.blocks[block->value] == scope);
           if (at == last) break;
           at = *condition.next;
         }

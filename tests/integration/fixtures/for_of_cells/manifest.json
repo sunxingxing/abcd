@@ -1,0 +1,23 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "options": [
+    "--module",
+    "--merge-abc",
+    "--opt-level=0"
+  ],
+  "hashes": {
+    "callback.abc": "ac8b7c4b06d679df68e3146efad940b58e5d2865055718d8b89e1e66c914b1e9",
+    "callback.js": "40cdef8c07e5be88565fa89eb129f87df91afdcf22e030dc6c4c3ad68b3455a2",
+    "cells.abc": "bbb8b2b74d6818eddf8913c2c00d15371ce0c77165e389a73632347dfbe76e0d",
+    "cells.js": "c1a7b70efc8f96cb718ffa4a070c57aff5d4153d66e137e78551c38e55884118",
+    "finish.abc": "f6a8bab7078b6ac77061a74d50f587a1b16011449f9f88b78073ad6d99ea2ad3",
+    "finish.js": "750629cd05ae1279ed73764e20d4e7f6baa97b4c48b2766e9e1f78d4f03c59b1",
+    "skip.abc": "5b1d8505ec9c6f3490f78443f74328a521cc823611bbb6b0b60a3e6a6b568fcf",
+    "skip.js": "a91a460fb52de71f148117f0d9b8ffa6e053ac06faa21bb00a506d034d9b23ae",
+    "stop.abc": "5846fef4e916bbe06d199a6264b5ba3d5d3298d90a12b28f9577af34a122f38a",
+    "stop.js": "40dcbd2385576013587fa71cac826b41470b02ec3ffd2502cd6685738e3fb666",
+    "throwing.abc": "7f71c13f7b7cc92a6c00a9b641c0bca05f67e06027639c8f7dcef4573d5d17c9",
+    "throwing.js": "49031f45de95413ea6f8b7fef8a50c016d74d609ef49c1a0397724168e1575c8"
+  }
+}

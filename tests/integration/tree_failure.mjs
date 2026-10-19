@@ -10,7 +10,7 @@ const cases = [
   ['DocsSample/DistributedAppDev/DistributedAuthentication', 4660, 5040, 12],
   ['UI/CustomAnimationTab', 8166, 8556, 13],
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
-  ['UI/CalendarViewSwitch', 28303, 28799],
+  ['UI/CalendarViewSwitch', 28303, 28799, 620],
   ['UI/CustomAnimationTab', 6952, 7171, 93],
   ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket', 28264, 29676, 114],
   ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo', 29268, 29450, 90],
@@ -81,15 +81,22 @@ try {
         producer_kind:1,read_ordinal:0,reason:6,value:entity===4660?14:22});
     }
     if(entity===28303) {
-      // The activation-local staged proof succeeds. The next independent
-      // refusal is binding validation; it owns no instruction PC.
-      assert.equal(report.source_failure.pc,undefined);
-      assert.equal(report.source_failure.working_pc,undefined);
-      assert.equal(report.source_failure.method,28799);
+      // Staged activation and for-of cell-lifetime checks now succeed. Keep
+      // the exact downstream guarded-reference refusal and original sites.
+      assert.equal(report.source_failure.working_pc,620);
       assert.deepEqual(report.source_failure.causes,[
-        {domain:'abcd::source::FunctionTreeError',value:2},
-        {domain:'abcd::source::TreeObligation',value:11}]);
-      assert.deepEqual(report.source_failure.tree,{obligation:11,location:{method:28799}});
+        {domain:'abcd::source::FunctionTreeError',value:1},
+        {domain:'abcd::source::ExpressionError',value:4},
+        {domain:'abcd::source::CallPlanError',value:4},
+        {domain:'abcd::source::CallReferenceError',value:1},
+        {domain:'abcd::source::EvaluationKind',value:1},
+        {domain:'abcd::source::TemporaryReason',value:4},
+        {domain:'abcd::source::GuardedCallError',value:1}]);
+      assert.deepEqual(report.source_failure.call_reference,{
+        kind:1,call:231,property:183,placement:1,temporary:4,
+        checked:{kind:1,call:231,read:20,guard:21,use:257,
+          read_pc:56,read_working_pc:56,guard_pc:58,guard_working_pc:58}});
+      assert.equal(report.source_failure.tree,undefined);
     }
 
 

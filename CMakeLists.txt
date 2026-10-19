@@ -655,6 +655,22 @@ if(BUILD_TESTING)
     add_test(NAME for_of_tree_node_test COMMAND ${ABCD_NODE_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_tree.mjs" $<TARGET_FILE:for_of_tree_test>)
   endif()
+  add_executable(for_of_cell_lifetime_test tests/unit/source/for_of_iteration_test.cc)
+  target_compile_definitions(for_of_cell_lifetime_test PRIVATE
+    ABCD_TEST_FOR_OF_EVALUATION=1 ABCD_TEST_FOR_OF_DRAFT=1 ABCD_TEST_FOR_OF_CELLS=1)
+  target_link_libraries(for_of_cell_lifetime_test PRIVATE abcd_source abcd_json)
+  target_include_directories(for_of_cell_lifetime_test PRIVATE tests/support)
+  add_test(NAME for_of_cell_lifetime_test COMMAND for_of_cell_lifetime_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_cells/cells.abc" 396)
+  add_test(NAME for_of_cell_lifetime_scale_test COMMAND for_of_cell_lifetime_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_cells/cells.abc" 396 --scale)
+  add_test(NAME for_of_cell_lifetime_variants_test COMMAND for_of_cell_lifetime_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_cells/cells.abc" 396 --variants)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME for_of_cells_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_cells.mjs"
+      $<TARGET_FILE:abc_structure> "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_cells")
+  endif()
   add_executable(for_of_draft_test tests/unit/source/for_of_iteration_test.cc)
   target_compile_definitions(for_of_draft_test PRIVATE ABCD_TEST_FOR_OF_EVALUATION=1 ABCD_TEST_FOR_OF_DRAFT=1)
   target_link_libraries(for_of_draft_test PRIVATE abcd_source abcd_json)

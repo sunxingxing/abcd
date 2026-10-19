@@ -5,6 +5,58 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Cell lifetimes over verified for-of (2026-10-20, uncommitted)
+
+- Fixed o5/28303 m28799's `CellLifetimeError::kControl`: the lifetime checker
+  now threads and independently re-verifies ProtocolOwned ownership plus the
+  existing ForOfEmissionView. Native done edges retain the original LoopId
+  scope instead of adding a lexical arm. Close units retain certified
+  completion ports, without a source scope or transparent-handler treatment.
+  Optional block mappings require every cell allocation/access to have a real
+  visited scope; skipped blocks never default to function scope. Original
+  environment/activation, scope-escape, catch and tree-declaration checks remain.
+  No printer, async or close/recovery admission change. See
+  [for-of-cell-lifetimes.md](for-of-cell-lifetimes.md).
+- Target advances, does not complete: m28799 **op231 PC620**, now
+  `FunctionTreeError::kExpression > ExpressionError::kUnsupportedOperation >
+  CallPlanError::kReference > CallReferenceError::kNotInline >
+  EvaluationKind::kRoot > TemporaryReason::kCrossRegionValue >
+  GuardedCallError::kUse` (read op20 PC56, guard op21 PC58, Use257).
+  Parked. Previous flags keep `kMultipleExits` at PC1146, TryId0/H1171.
+- Real es2abc callback fixture: **34** engine/original Node cases for captured
+  accumulator/helper identity/isolation, iterator effects and throw-driven
+  close failures; source passes Node syntax and an accumulation mutation is
+  observed. Direct body-cell recovery, explicit break/return close ownership,
+  and explicit body-throw evaluation shapes remain typed negative fixtures;
+  they are not claimed as successful engine differentials.
+- Exact 200/201/400/800 graph byte boundaries:
+  **519944/521012/733544/1164840**; work:
+  **5181629/5186561/6168349/8141377**. Proof mutations, register/copy/block
+  variants, ordinary control, cells and phased initialization tests pass.
+- Both 40-input cohorts against **85d86079**: **530/620** previous flags,
+  **582/620** source unchanged; zero status regressions or source/entry/method
+  position drift in complete records. Only source o5/28303's diagnostic moves;
+  previous-flag manifests are unchanged. Baseline HEAD and executable freshness
+  checked against the baseline build-log start.
+- Full build, focused **7/7** checks and serial source-regression **65/65**
+  passed. The ordinary composition test also resolves the projected control
+  unit to its real block and requires an explicit scope; it cannot pass by
+  comparing two absent mappings. The TimeUtils CLI/manifest test now asserts
+  PC620 and the exact guarded-reference cause/evidence, replacing the stale
+  unlocated lifetime/binding expectation. Requested sweep **156/166**; all ten
+  failures reproduce with baseline **85d86079** executables rebuilt:
+  `family_source_cli_test` (owner/origin arena assertion), `derived_cells_test`,
+  `derived_cells_source_test`, `unguarded_derived_cells_source_test`,
+  `captured_receiver_source_test`, `unguarded_captured_receiver_source_test`,
+  `reversed_captured_receiver_source_test`,
+  `unguarded_reversed_captured_receiver_source_test`,
+  `reversed_initialization_captured_receiver_source_test`, and
+  `unguarded_reversed_initialization_captured_receiver_source_test`.
+  Baseline family CLI was run directly because its paired-root CTest is not
+  registered. Fresh review found no important correctness/accounting issue.
+  Build, accepted test logs, comparisons and baseline evidence are under
+  `build/review/for-of-cells/`. `git diff --check` passes. No commit, push or stash.
+
 ## Private declaration prefix before native rest (2026-10-20, uncommitted)
 
 - o32/53454 m54264 `findProperties`: PC0 environment allocation, PC14 helper

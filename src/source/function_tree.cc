@@ -488,7 +488,8 @@ class TreeBuilder {
     Require(evaluation_.cells && evaluation_.cells->environments, Error::kBinding);
     const auto& states = *evaluation_.cells->environments;
     const auto lifetimes = BuildPhasedCellLifetimes(graph_, states, evaluation_.cells->cells,
-        *exceptions_, {bytes_, work_});
+        *exceptions_, {bytes_, work_}, evaluation_.for_of ? &*evaluation_.for_of : nullptr,
+        iteration_ ? &*iteration_ : nullptr);
     if (const auto* error = std::get_if<CellLifetimeError>(&lifetimes)) {
       if (*error == CellLifetimeError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == CellLifetimeError::kWorkLimit) throw Error::kWorkLimit;

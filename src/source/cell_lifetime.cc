@@ -1,5 +1,6 @@
 #include "cell_lifetime.h"
 #include "exception_tree.h"
+#include "for_of_emission.h"
 
 #include <limits>
 #include <new>
@@ -15,8 +16,10 @@ struct Visit { CellScopeId scope; bool exit; };
 class Planner {
  public:
   Planner(const analysis::ValueProgram& graph, const CellPlan& cells, const ControlPlan& control,
-      analysis::SemanticBudget budget, const ExceptionTreeInput* exceptions = nullptr)
-      : graph_(graph), cells_(cells), control_(control), initial_(budget), left_(budget), exceptions_(exceptions) {}
+      analysis::SemanticBudget budget, const ExceptionTreeInput* exceptions = nullptr,
+      const ForOfEvaluationPlan* iteration = nullptr, const ForOfEmissionView* view = nullptr)
+      : graph_(graph), cells_(cells), control_(control), initial_(budget), left_(budget),
+        exceptions_(exceptions), iteration_(iteration), view_(view) {}
   void Step(std::uint64_t n = 1) { Require(n <= left_.work, Error::kWorkLimit); left_.work -= n; }
   void Admit(std::size_t n, std::size_t width) { Require(n <= left_.bytes / width, Error::kResourceLimit); left_.bytes -= n * width; }
   template <class T> void Reserve(std::vector<T>& items, std::size_t n) {
@@ -34,7 +37,8 @@ class Planner {
     Step(std::get<std::uint64_t>(checked_cells));
     if (exceptions_) {
       const auto checked = VerifyExceptionControl(exceptions_->body, graph_, exceptions_->input,
-          exceptions_->regions, exceptions_->control, left_);
+          exceptions_->regions, exceptions_->control, left_,
+          exceptions_->for_of ? &exceptions_->for_of->ownership : nullptr);
       if (const auto* error = std::get_if<ExceptionControlError>(&checked)) {
         if (*error == ExceptionControlError::kResourceLimit) throw Error::kResourceLimit;
         if (*error == ExceptionControlError::kWorkLimit) throw Error::kWorkLimit;
@@ -50,6 +54,26 @@ class Planner {
       }
       Step(std::get<std::uint64_t>(checked_control));
     }
+    std::vector<std::optional<IteratorProtocolId>> decisions;
+    if (exceptions_ && exceptions_->for_of) {
+      Require(iteration_ && view_, Error::kControl);
+      // Recompute identity, ownership, ports and the emission projection from
+      // immutable original inputs. The builder's consumed flags are no proof.
+      const auto checked = VerifyForOfEmissionView(graph_, *exceptions_->for_of,
+          *iteration_, *view_, left_);
+      if (const auto* error = std::get_if<ForOfIterationFailure>(&checked)) {
+        if (error->kind == ForOfIterationError::kResourceLimit) throw Error::kResourceLimit;
+        if (error->kind == ForOfIterationError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kControl;
+      }
+      Step(std::get<std::uint64_t>(checked));
+      Size(decisions, control_.nodes.size());
+      for (std::uint32_t i = 0; i < view_->loops.size(); ++i) {
+        Step(); const auto at = view_->loops[i].decision.value;
+        Require(at < decisions.size() && !decisions[at], Error::kControl);
+        decisions[at] = view_->loops[i].protocol;
+      }
+    } else Require(!iteration_ && !view_, Error::kControl);
     constexpr std::size_t kArms = 2;
     Require(control_.nodes.size() <= (std::numeric_limits<std::uint32_t>::max() - 1) / kArms, Error::kResourceLimit);
     const auto capacity = control_.nodes.size() * kArms + 1;
@@ -89,6 +113,10 @@ class Planner {
             continue;
           }
           if (std::holds_alternative<TryExitUnit>(unit)) continue;
+          if (const auto* close = std::get_if<ProtocolCloseUnit>(&unit)) {
+            CloseUnit({node.block.value}, *close);
+            continue;
+          }
           result.blocks[std::get<PhaseControlUnit>(unit).block.value] = task.scope;
         } else {
           result.blocks[node.block.value] = task.scope;
@@ -131,6 +159,18 @@ class Planner {
           if (fallback) child(task.scope, CellArmScope{predicate, selected_taken ?
               analysis::FlowEdgeKind::kFallthrough : analysis::FlowEdgeKind::kTaken}, *fallback);
         }
+        if (!decisions.empty() && decisions[task.control.value]) {
+          Require(node.arms && !node.decision, Error::kControl);
+          // The not-done edge initializes the native binding inside the same
+          // original LoopId scope. Exhaustion adds no lexical arm container.
+          // Walk both proven edges (including their transfers), never remap
+          // unseen blocks to the function scope or erase body control identity.
+          for (const auto arm : {node.arms->taken, node.arms->fallthrough}) if (arm) {
+            Require(tasks.size() < tasks.capacity(), Error::kResourceLimit);
+            tasks.push_back({*arm, task.scope, task.stop});
+          }
+          continue;
+        }
         if (node.arms) {
           if (node.arms->taken) child(task.scope, CellArmScope{task.control, analysis::FlowEdgeKind::kTaken}, *node.arms->taken);
           if (node.arms->fallthrough) child(task.scope, CellArmScope{task.control, analysis::FlowEdgeKind::kFallthrough}, *node.arms->fallthrough);
@@ -150,7 +190,14 @@ class Planner {
       Step();
       if (seen[i]) continue;
       Require(exceptions_ && std::holds_alternative<std::monostate>(control_.nodes[i].synthetic), Error::kControl);
-      const auto* phase = std::get_if<PhaseControlUnit>(&exceptions_->control.units[control_.nodes[i].block.value]);
+      const auto at = control_.nodes[i].block.value;
+      const auto& unit = exceptions_->control.units[at];
+      if (const auto* close = std::get_if<ProtocolCloseUnit>(&unit)) {
+        // Exception-only close entries are verified native completion ports,
+        // not source declarations or lexical containers. Leave them unmapped.
+        CloseUnit({at}, *close); continue;
+      }
+      const auto* phase = std::get_if<PhaseControlUnit>(&unit);
       Require(phase && inactive[phase->block.value], Error::kControl);
     }
     // Euler intervals permit one constant-time enclosure check per access.
@@ -174,28 +221,52 @@ class Planner {
         Step(); pending.push_back({*child, false});
       }
     }
+    for (const auto& access : cells_.accesses) {
+      Step(); Require(result.blocks[graph_.ops[access.operation.value].block.value].has_value(),
+                      Error::kScopeEscape);
+    }
     for (std::size_t c = 0; c < cells_.cells.size(); ++c) {
       Step(); const auto& cell = cells_.cells[c];
       const auto* allocation = std::get_if<AllocatedCell>(&cell.storage);
       if (!allocation) { result.cells[c] = IncomingLifetime{}; continue; }
       const auto scope = result.blocks[graph_.ops[allocation->allocation.value].block.value];
-      result.cells[c] = scope; const auto owner = intervals[scope.value];
+      Require(scope.has_value(), Error::kScopeEscape);
+      result.cells[c] = *scope; const auto owner = intervals[scope->value];
       for (std::uint32_t i = 0; i < cell.count; ++i) {
         Step(); const auto op = cells_.accesses[cell.first + i].operation;
-        const auto use = intervals[result.blocks[graph_.ops[op.value].block.value].value].begin;
+        const auto scope = result.blocks[graph_.ops[op.value].block.value];
+        Require(scope.has_value(), Error::kScopeEscape);
+        const auto use = intervals[scope->value].begin;
         Require(owner.begin <= use && use < owner.end, Error::kScopeEscape);
       }
     }
     result.allocated_bytes = sizeof(result) + result.scopes.capacity() * sizeof(CellScope) +
-        result.blocks.capacity() * sizeof(CellScopeId) + result.cells.capacity() * sizeof(decltype(result.cells)::value_type);
+        result.blocks.capacity() * sizeof(decltype(result.blocks)::value_type) + result.cells.capacity() * sizeof(decltype(result.cells)::value_type);
     result.work = initial_.work - left_.work; return result;
   }
  private:
+  void CloseUnit(ControlNodeId unit, const ProtocolCloseUnit& close) {
+    Require(view_ && unit.value < view_->closes.size() &&
+        view_->closes[unit.value], Error::kControl);
+    const auto& entry = *view_->closes[unit.value];
+    Require(entry.protocol == close.protocol && entry.entry == close.entry &&
+        entry.pending == close.pending && entry.port_count != 0 &&
+        entry.first_port <= view_->ports.size() &&
+        entry.port_count <= view_->ports.size() - entry.first_port, Error::kControl);
+    // The independently verified ports preserve all outcomes and payloads.
+    // Only the ordinary continuation has a source scope; never assign one to
+    // the implicit close subgraph or turn it into a transparent rethrow.
+    for (std::uint32_t p = 0; p < entry.port_count; ++p) {
+      Step(); Require(view_->ports[entry.first_port + p].unit == unit, Error::kControl);
+    }
+  }
   const analysis::ValueProgram& graph_;
   const CellPlan& cells_;
   const ControlPlan& control_;
   analysis::SemanticBudget initial_, left_;
   const ExceptionTreeInput* exceptions_;
+  const ForOfEvaluationPlan* iteration_;
+  const ForOfEmissionView* view_;
 };
 }  // namespace
 std::variant<CellLifetimes, CellLifetimeError> BuildCellLifetimes(
@@ -208,8 +279,10 @@ std::variant<CellLifetimes, CellLifetimeError> BuildCellLifetimes(
 }
 std::variant<CellLifetimes, CellLifetimeError> BuildPhasedCellLifetimes(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
-    const CellPlan& cells, const ExceptionTreeInput& exceptions, analysis::SemanticBudget budget) {
-  try { return Planner(graph, cells, exceptions.control.skeleton, budget, &exceptions).Build(environments);
+    const CellPlan& cells, const ExceptionTreeInput& exceptions, analysis::SemanticBudget budget,
+    const ForOfEvaluationPlan* iteration, const ForOfEmissionView* view) {
+  try { return Planner(graph, cells, exceptions.control.skeleton, budget, &exceptions,
+                       iteration, view).Build(environments);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

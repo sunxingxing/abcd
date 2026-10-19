@@ -13,6 +13,9 @@
 #include <fstream>
 #endif
 #include "../../../src/source/for_of_evaluation.h"
+#ifdef ABCD_TEST_FOR_OF_CELLS
+#include "../../../src/source/cell_lifetime.h"
+#endif
 #include "../../../src/analysis/value_edits.h"
 #include "../../../src/source/exception_control.h"
 #include "../../../src/source/exception_topology.h"
@@ -169,6 +172,65 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
 #ifdef ABCD_TEST_FOR_OF_EVALUATION
     const ForOfEvaluationInput source{body,input,plan,control,owner,SourceContract::kLanguageSourceV4};
     auto evaluation_protocol=Take<ForOfEvaluationPlan>(BuildForOfEvaluationPlan(graph,source),"evaluation-protocol");
+#ifdef ABCD_TEST_FOR_OF_CELLS
+    {
+    auto cell_environments=Take<ValueEnvironments>(BuildPhasedValueEnvironments(graph),"cell-environments");
+    auto cell_plan=Take<CellPlan>(BuildPhasedCellPlan(graph,cell_environments),"cell-plan");
+    auto view=Take<ForOfEmissionView>(BuildForOfEmissionView(graph,source,evaluation_protocol),"cell-emission-view");
+    const ExceptionTreeInput cell_input{body,input,plan,control,source};
+    const auto lifetimes = [&](const ExceptionTreeInput& context,
+        const CellPlan& cells, const ForOfEmissionView& projection,
+        SemanticBudget budget = SemanticBudget{}) {
+      return BuildPhasedCellLifetimes(graph,cell_environments,cells,context,budget,
+                                     &evaluation_protocol,&projection);
+    };
+    const auto scopes=Take<CellLifetimes>(lifetimes(cell_input,cell_plan,view),"cell-lifetimes");
+    test::Check(!cell_plan.cells.empty());
+    bool loop_access=false;
+    for(const auto& access:cell_plan.accesses) {
+      const auto block=graph.ops[access.operation.value].block;
+      test::Check(scopes.blocks[block.value].has_value());
+      for(auto scope=scopes.blocks[block.value];scope;scope=scopes.scopes[scope->value].parent)
+        if(const auto* loop=std::get_if<CellLoopScope>(&scopes.scopes[scope->value].origin)) {
+          test::Check(loop->loop==view.loops[0].loop);loop_access=true;
+        }
+    }
+    test::Check(loop_access);
+    for(std::size_t b=0;b<view.close_blocks.size();++b)
+      if(view.close_blocks[b])test::Check(!scopes.blocks[b]);
+    auto no_seal=cell_input;no_seal.for_of.reset();
+    test::Check(std::get<CellLifetimeError>(lifetimes(no_seal,cell_plan,view))==CellLifetimeError::kControl);
+    auto wrong_view=view;wrong_view.ports[0].pending.target=ExceptionNodeId{UINT32_MAX};
+    test::Check(std::get<CellLifetimeError>(lifetimes(cell_input,cell_plan,wrong_view))==CellLifetimeError::kControl);
+    wrong_view=view;wrong_view.ports.pop_back();
+    test::Check(std::get<CellLifetimeError>(lifetimes(cell_input,cell_plan,wrong_view))==CellLifetimeError::kControl);
+    wrong_view=view;wrong_view.loops[0].loop={UINT32_MAX};
+    test::Check(std::get<CellLifetimeError>(lifetimes(cell_input,cell_plan,wrong_view))==CellLifetimeError::kControl);
+    auto wrong_cells=cell_plan;
+    bool declaration=false;
+    for(auto& cell:wrong_cells.cells)if(auto* at=std::get_if<AllocatedCell>(&cell.storage)) {
+      at->allocation=protocol.loops[0].acquisition;declaration=true;break;
+    }
+    test::Check(declaration && std::get<CellLifetimeError>(lifetimes(cell_input,wrong_cells,view))==CellLifetimeError::kCells);
+    test::Check(std::get<CellLifetimeError>(lifetimes(cell_input,cell_plan,view,
+        {SemanticBudget{}.bytes,scopes.work-1}))==CellLifetimeError::kWorkLimit);
+    Take<CellLifetimes>(lifetimes(cell_input,cell_plan,view,
+        {SemanticBudget{}.bytes,scopes.work}),"cell-exact-work");
+    std::size_t low=0,high=SemanticBudget{}.bytes;
+    while(low<high){const auto mid=low+(high-low)/2;
+      auto test=lifetimes(cell_input,cell_plan,view,{mid,SemanticBudget{}.work});
+      if(std::holds_alternative<CellLifetimes>(test))high=mid;
+      else {test::Check(std::get<CellLifetimeError>(test)==CellLifetimeError::kResourceLimit);low=mid+1;}
+    }
+    Take<CellLifetimes>(lifetimes(cell_input,cell_plan,view,{low,scopes.work}),"cell-exact-both");
+    test::Check(low && std::get<CellLifetimeError>(lifetimes(cell_input,cell_plan,view,
+        {low-1,scopes.work}))==CellLifetimeError::kResourceLimit);
+    std::cout<<"cell-boundary padding="<<padding<<" bytes="<<low<<" work="<<scopes.work
+             <<" scopes="<<scopes.scopes.size()<<" cells="<<cell_plan.cells.size()<<'\n';
+    return;
+    }
+#endif
+
     Take<std::uint64_t>(VerifyForOfEvaluationPlan(graph,source,evaluation_protocol),"verify-evaluation-protocol");
     auto forged_disposition=evaluation_protocol;forged_disposition.operations[protocol.loops[0].acquisition.value].reset();
     test::Check(std::holds_alternative<ForOfIterationFailure>(VerifyForOfEvaluationPlan(graph,source,forged_disposition)));
