@@ -392,6 +392,255 @@
       "evidence_sha256": "95b27ec604b43bbbb770f9db837f84f1ab2e60facd31818b733ccb139b772d2b",
       "refusal_test": "isa_constructed_branches_test",
       "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/properties/ldsuperbyvalue_imm8_v8.abc",
+      "sha256": "181aecfbc3eb1d28873c84cb158a76337a689548ced1898124a1ee1d1cff3540",
+      "profile": 4,
+      "opcodes": [
+        57
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stobjbyindex_imm8_v8_imm16.abc",
+      "sha256": "16303df04e0cc609248c53abe222cbc8f8928feb40443ad139982495ec8412e2",
+      "profile": 4,
+      "opcodes": [
+        59
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/ldthisbyname_imm8_id16.abc",
+      "sha256": "b08fa1fc43153adc37885b21bdbcb14fabfcb747a41a31a9dce22b621b4ebab0",
+      "profile": 4,
+      "opcodes": [
+        73
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stthisbyname_imm8_id16.abc",
+      "sha256": "977525ef02a180d1ed11dd200e489b139c08ae180683f9d979c50fd516cfe0c7",
+      "profile": 4,
+      "opcodes": [
+        74
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/ldthisbyvalue_imm8.abc",
+      "sha256": "af7ed615027cf14f9bcf32652f6ec5267ac7d9ca4f9e5aaaafce3975e02e7def",
+      "profile": 4,
+      "opcodes": [
+        75
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stthisbyvalue_imm8_v8.abc",
+      "sha256": "8be78a9f67fab4da36afa9f97525a2e7ddb8f4eee5269acaac61eb0db4edfe2a",
+      "profile": 4,
+      "opcodes": [
+        76
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/ldsuperbyvalue_imm16_v8.abc",
+      "sha256": "864f732a74effbf1ec3f1f9ab3db7907837c0dd2990bada5b46320bdce6342fd",
+      "profile": 4,
+      "opcodes": [
+        135
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stobjbyindex_imm16_v8_imm16.abc",
+      "sha256": "0aa7cc3cfa4c040c203601dc6f0c2878c4def71c44d0da02b6e798f47ef1770d",
+      "profile": 4,
+      "opcodes": [
+        137
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stownbynamewithnameset_imm8_id16_v8.abc",
+      "sha256": "08d61c838aac39cf92893143595101222bd9f7767e8312a1d8c4376ad1d0119f",
+      "profile": 4,
+      "opcodes": [
+        142
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/ldthisbyname_imm16_id16.abc",
+      "sha256": "0c3cf07268271c31ccba62b889f5b64629083eacd05e0e3b92ae579c417099c6",
+      "profile": 4,
+      "opcodes": [
+        147
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stthisbyname_imm16_id16.abc",
+      "sha256": "542c653b04dfeffb8cf7e68392db6e59b344584416296d4ae42e42804e4a6471",
+      "profile": 4,
+      "opcodes": [
+        148
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/ldthisbyvalue_imm16.abc",
+      "sha256": "04cedf2345848d6effe8f48aa6342d42a51a40c0322aa867ef16f36706ecbfc6",
+      "profile": 4,
+      "opcodes": [
+        149
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stthisbyvalue_imm16_v8.abc",
+      "sha256": "4146f4e774d32bd2f218e16c1694c659adb53f2f342a466972e8714128694722",
+      "profile": 4,
+      "opcodes": [
+        150
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stownbyvaluewithnameset_imm8_v8_v8.abc",
+      "sha256": "f82b8cbe88b526c55f067e8d3909c69f8dbf4ba994bf308d5b631cc160bdbaa8",
+      "profile": 4,
+      "opcodes": [
+        153
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stsuperbyvalue_imm8_v8_v8.abc",
+      "sha256": "34ba2fb209614102206d671466b845576a8152c862e9e7fab4996ba97453579c",
+      "profile": 4,
+      "opcodes": [
+        201
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stsuperbyvalue_imm16_v8_v8.abc",
+      "sha256": "5dfb431232141188dbe819ca0084a4082883051437c4fbacff0aceeea20309d5",
+      "profile": 4,
+      "opcodes": [
+        202
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stsuperbyname_imm8_id16_v8.abc",
+      "sha256": "f04732fef9a343f27eb8800af4edec962137816d65dd2c7726f2632571187721",
+      "profile": 4,
+      "opcodes": [
+        208
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stsuperbyname_imm16_id16_v8.abc",
+      "sha256": "0540ce6b470fdb6f238037784382af120dd9e124fadaed13941df88e60df4ade",
+      "profile": 4,
+      "opcodes": [
+        209
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stownbyvaluewithnameset_imm16_v8_v8.abc",
+      "sha256": "e8b8876964296d9c5c9175d9dabcdf8222fa1dea922d6feb392a0b6aec36a543",
+      "profile": 4,
+      "opcodes": [
+        210
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/stownbynamewithnameset_imm16_id16_v8.abc",
+      "sha256": "4b0cfd6c715fbaff5b2f25c8036ccf76bb0a01a100978c9c0c3bdbb906e87a67",
+      "profile": 4,
+      "opcodes": [
+        212
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/wide_stobjbyindex_pref_v8_imm32.abc",
+      "sha256": "f045b7b91e0265b6d2f9e0db9ca65ba6d3b3be3ddaa2a549a4314615d94b5ecd",
+      "profile": 4,
+      "opcodes": [
+        2557
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/o0.abc",
+      "sha256": "184250bcb6955da63803ff479924dfd79bcf7209db30e4438469597675b5964c",
+      "profile": 4,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
+    },
+    {
+      "path": "tests/fixtures/isa/properties/default.abc",
+      "sha256": "58524816a33881a311010135449de1131c411b1b45fb9f3e584d76bb3ce7ee7a",
+      "profile": 4,
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Implemented pinned handler; decode/emission evidence only, source semantics not verified."
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass."

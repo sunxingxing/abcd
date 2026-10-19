@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "source_sha256": "fbac15eb4abfb3884cf0659957064ca8578941b5a45e0ecb28bd4f4ae2c842f6",
+  "fixtures": [
+    {
+      "name": "LDSUPERBYVALUE_IMM8_V8",
+      "opcode": 57,
+      "path": "ldsuperbyvalue_imm8_v8.abc",
+      "sha256": "181aecfbc3eb1d28873c84cb158a76337a689548ced1898124a1ee1d1cff3540",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STOBJBYINDEX_IMM8_V8_IMM16",
+      "opcode": 59,
+      "path": "stobjbyindex_imm8_v8_imm16.abc",
+      "sha256": "16303df04e0cc609248c53abe222cbc8f8928feb40443ad139982495ec8412e2",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "LDTHISBYNAME_IMM8_ID16",
+      "opcode": 73,
+      "path": "ldthisbyname_imm8_id16.abc",
+      "sha256": "b08fa1fc43153adc37885b21bdbcb14fabfcb747a41a31a9dce22b621b4ebab0",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STTHISBYNAME_IMM8_ID16",
+      "opcode": 74,
+      "path": "stthisbyname_imm8_id16.abc",
+      "sha256": "977525ef02a180d1ed11dd200e489b139c08ae180683f9d979c50fd516cfe0c7",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "LDTHISBYVALUE_IMM8",
+      "opcode": 75,
+      "path": "ldthisbyvalue_imm8.abc",
+      "sha256": "af7ed615027cf14f9bcf32652f6ec5267ac7d9ca4f9e5aaaafce3975e02e7def",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STTHISBYVALUE_IMM8_V8",
+      "opcode": 76,
+      "path": "stthisbyvalue_imm8_v8.abc",
+      "sha256": "8be78a9f67fab4da36afa9f97525a2e7ddb8f4eee5269acaac61eb0db4edfe2a",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "LDSUPERBYVALUE_IMM16_V8",
+      "opcode": 135,
+      "path": "ldsuperbyvalue_imm16_v8.abc",
+      "sha256": "864f732a74effbf1ec3f1f9ab3db7907837c0dd2990bada5b46320bdce6342fd",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STOBJBYINDEX_IMM16_V8_IMM16",
+      "opcode": 137,
+      "path": "stobjbyindex_imm16_v8_imm16.abc",
+      "sha256": "0aa7cc3cfa4c040c203601dc6f0c2878c4def71c44d0da02b6e798f47ef1770d",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STOWNBYNAMEWITHNAMESET_IMM8_ID16_V8",
+      "opcode": 142,
+      "path": "stownbynamewithnameset_imm8_id16_v8.abc",
+      "sha256": "08d61c838aac39cf92893143595101222bd9f7767e8312a1d8c4376ad1d0119f",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "LDTHISBYNAME_IMM16_ID16",
+      "opcode": 147,
+      "path": "ldthisbyname_imm16_id16.abc",
+      "sha256": "0c3cf07268271c31ccba62b889f5b64629083eacd05e0e3b92ae579c417099c6",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STTHISBYNAME_IMM16_ID16",
+      "opcode": 148,
+      "path": "stthisbyname_imm16_id16.abc",
+      "sha256": "542c653b04dfeffb8cf7e68392db6e59b344584416296d4ae42e42804e4a6471",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "LDTHISBYVALUE_IMM16",
+      "opcode": 149,
+      "path": "ldthisbyvalue_imm16.abc",
+      "sha256": "04cedf2345848d6effe8f48aa6342d42a51a40c0322aa867ef16f36706ecbfc6",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STTHISBYVALUE_IMM16_V8",
+      "opcode": 150,
+      "path": "stthisbyvalue_imm16_v8.abc",
+      "sha256": "4146f4e774d32bd2f218e16c1694c659adb53f2f342a466972e8714128694722",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STOWNBYVALUEWITHNAMESET_IMM8_V8_V8",
+      "opcode": 153,
+      "path": "stownbyvaluewithnameset_imm8_v8_v8.abc",
+      "sha256": "f82b8cbe88b526c55f067e8d3909c69f8dbf4ba994bf308d5b631cc160bdbaa8",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STSUPERBYVALUE_IMM8_V8_V8",
+      "opcode": 201,
+      "path": "stsuperbyvalue_imm8_v8_v8.abc",
+      "sha256": "34ba2fb209614102206d671466b845576a8152c862e9e7fab4996ba97453579c",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STSUPERBYVALUE_IMM16_V8_V8",
+      "opcode": 202,
+      "path": "stsuperbyvalue_imm16_v8_v8.abc",
+      "sha256": "5dfb431232141188dbe819ca0084a4082883051437c4fbacff0aceeea20309d5",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STSUPERBYNAME_IMM8_ID16_V8",
+      "opcode": 208,
+      "path": "stsuperbyname_imm8_id16_v8.abc",
+      "sha256": "f04732fef9a343f27eb8800af4edec962137816d65dd2c7726f2632571187721",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STSUPERBYNAME_IMM16_ID16_V8",
+      "opcode": 209,
+      "path": "stsuperbyname_imm16_id16_v8.abc",
+      "sha256": "0540ce6b470fdb6f238037784382af120dd9e124fadaed13941df88e60df4ade",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STOWNBYVALUEWITHNAMESET_IMM16_V8_V8",
+      "opcode": 210,
+      "path": "stownbyvaluewithnameset_imm16_v8_v8.abc",
+      "sha256": "e8b8876964296d9c5c9175d9dabcdf8222fa1dea922d6feb392a0b6aec36a543",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "STOWNBYNAMEWITHNAMESET_IMM16_ID16_V8",
+      "opcode": 212,
+      "path": "stownbynamewithnameset_imm16_id16_v8.abc",
+      "sha256": "4b0cfd6c715fbaff5b2f25c8036ccf76bb0a01a100978c9c0c3bdbb906e87a67",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "name": "WIDE_STOBJBYINDEX_PREF_V8_IMM32",
+      "opcode": 2557,
+      "path": "wide_stobjbyindex_pref_v8_imm32.abc",
+      "sha256": "f045b7b91e0265b6d2f9e0db9ca65ba6d3b3be3ddaa2a549a4314615d94b5ecd",
+      "origin": "constructed",
+      "oracle": null
+    },
+    {
+      "path": "o0.abc",
+      "sha256": "184250bcb6955da63803ff479924dfd79bcf7209db30e4438469597675b5964c",
+      "origin": "es2abc",
+      "options": [
+        "--opt-level=0"
+      ],
+      "variants": [
+        "LDSUPERBYVALUE_IMM8_V8",
+        "LDSUPERBYVALUE_IMM16_V8",
+        "STOWNBYNAMEWITHNAMESET_IMM8_ID16_V8",
+        "STOWNBYVALUEWITHNAMESET_IMM8_V8_V8",
+        "STSUPERBYVALUE_IMM8_V8_V8",
+        "STSUPERBYVALUE_IMM16_V8_V8",
+        "STSUPERBYNAME_IMM8_ID16_V8",
+        "STSUPERBYNAME_IMM16_ID16_V8",
+        "STOWNBYVALUEWITHNAMESET_IMM16_V8_V8",
+        "STOWNBYNAMEWITHNAMESET_IMM16_ID16_V8"
+      ],
+      "oracle": null
+    },
+    {
+      "path": "default.abc",
+      "sha256": "58524816a33881a311010135449de1131c411b1b45fb9f3e584d76bb3ce7ee7a",
+      "origin": "es2abc",
+      "options": [],
+      "variants": [
+        "LDSUPERBYVALUE_IMM8_V8",
+        "LDSUPERBYVALUE_IMM16_V8",
+        "STOWNBYNAMEWITHNAMESET_IMM8_ID16_V8",
+        "STOWNBYVALUEWITHNAMESET_IMM8_V8_V8",
+        "STSUPERBYVALUE_IMM8_V8_V8",
+        "STSUPERBYVALUE_IMM16_V8_V8",
+        "STSUPERBYNAME_IMM8_ID16_V8",
+        "STSUPERBYNAME_IMM16_ID16_V8",
+        "STOWNBYVALUEWITHNAMESET_IMM16_V8_V8",
+        "STOWNBYNAMEWITHNAMESET_IMM16_ID16_V8"
+      ],
+      "oracle": null
+    }
+  ]
+}

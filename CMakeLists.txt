@@ -376,6 +376,8 @@ if(BUILD_TESTING)
     target_include_directories(isa_coverage_probe PRIVATE tools)
     target_link_libraries(isa_coverage_probe PRIVATE abcd_analysis abcd_corpus abcd_json abcd_process)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME isa_property_evidence_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/property_variants_test.py)
     add_test(NAME isa_constructed_branches_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/constructed_branches_test.py)
     add_test(NAME isa_coverage_matrix_test COMMAND ${Python3_EXECUTABLE}

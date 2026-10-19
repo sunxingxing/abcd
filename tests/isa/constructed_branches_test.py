@@ -75,6 +75,8 @@ def generate():
         js.write_text('if (' + ('' if name.startswith('JEQZ') else '!') + 'input) { observed; }\n')
         subprocess.run([ES2ABC, '--module', '--merge-abc', '--opt-level=0',
             '--output=' + str(FIXTURES / (name.lower() + '-es2abc.abc')), js], check=True)
+    prior = json.loads((ROOT / 'tests/isa/coverage_manifest.json').read_text())['fixtures']
+    registry.extend(e for e in prior if not e['path'].startswith('tests/fixtures/isa/branches/'))
     (ROOT / 'tests/isa/coverage_manifest.json').write_text(json.dumps(
         {'schema': 1, 'fixtures': registry,
          'note': 'NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.'}, indent=2)+'\n')
@@ -122,6 +124,8 @@ class BuilderTest(unittest.TestCase):
 
     def test_all_refusals_and_sdk(self):
         registry = json.loads((ROOT/'tests/isa/coverage_manifest.json').read_text())['fixtures']
+        registry = [e for e in registry if e['path'].startswith('tests/fixtures/isa/branches/')]
+        self.assertTrue(all(e.get('classification') == 'NonExecutable' for e in registry))
         self.assertEqual(len(registry),28)
         with tempfile.TemporaryDirectory() as tmp:
             for n, name in enumerate(variants()):

@@ -12,6 +12,29 @@
   [审计共识](2026-10-12-audit-consensus.md) §5。
 - 全语料批跑、RSS 基准和全套测试仍按用户要求暂停；固定 65 项和定向验证可以运行。
 
+## ISA increment 2：属性变体证据切片（未完成实现）
+
+- 基线 `5e057b6f`；**没有生产代码改动，没有新增属性指令 lifting 或源码支持**。
+  [逐变体证据](isa-properties-runtime-evidence.md) 确认 21 个 handler 全部实现；
+  不能沿用上一轮 NonExecutable 分类。真实 O0/default 编译均覆盖 6 个 super
+  变体和 4 个 name-setting 变体；8 个 frame-this 与 3 个 indexed store 在探针中
+  未出现（不宣称穷尽不可生成）。21 个独立构造 ABC 加两个编译 ABC 均通过双 decoder。
+- 发现 indexed Set 的 numeric Proxy key 与源码 string key 差异；frame-this 不能
+  换成可写 ABI 寄存器；name-setting 是 define 后的第二个有序 heap effect；computed
+  super/write 需要扩展原有 home-object/receiver/coercion 对应证明。尚未实现这些证明，
+  没有假定新 premise，也没有把普通写入/定义互换。engine-output Node、语义变异和
+  新 lifting 的预算测试仍未完成。
+- `isa_property_evidence_test` 含 3 组：全部编码/handler 证据、hash/重编译/SDK 与
+  engine decode/current refusal、200/201/400/800 和精确 builder budget。注册表生成器
+  保留其他 family 的 fixture。覆盖台账 237 ABC / 941,774 occurrences / 189 observed
+  variants，分类仍为 128 SupportedUnverified / 176 Unmeasured / 28 NonExecutable。
+- 完整构建通过；固定集串行 **65/65**；property evidence / constructed branches /
+  coverage matrix **3/3**；指定 CLI/corpus/failure/receipt/manifest/ISA sweep **85/86**，
+  唯一失败为既有 `family_source_cli_test`：`node escaped its owner or origin arena`。
+- `/private/tmp/isa2-coverage` 与保存的 `/private/tmp/isa1b-coverage-final` 逐文件比较：
+  old flags 3,635 文件、V4 3,776 文件，含 manifest **全部 byte-identical**；526/620、
+  573/620 不变。比较回执 `/private/tmp/isa2-cohort-compare.json`。未 commit/push/stash。
+
 ## ISA increment 1b：构造 ABC 与不可执行分支拒绝（待 cc 审查）
 
 - 基线 `845c786a`。新增 `SemanticError::kNonExecutableInstruction`（7，原值不变），
