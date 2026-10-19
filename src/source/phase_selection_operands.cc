@@ -1,10 +1,12 @@
+#include <algorithm>
+
+#include "../analysis/value_flow.h"
+#include "evaluation_aliases.h"
+#include "evaluation_liveness.h"
 #include "logical_evaluation.h"
 #include "logical_regions.h"
 #include "phase_corridor.h"
-#include "evaluation_aliases.h"
 #include "phase_predicate_prefix.h"
-
-#include <algorithm>
 
 namespace abcd::source {
 namespace {
@@ -322,18 +324,65 @@ class OperandSelections {
     }
     return true;
   }
+  bool CertifiedLiteralCondition(const SelectionRegion& region) const {
+    if (plan_.literal_arm_inputs.empty() || !region.consequent) return false;
+    for (const auto* arm : {&region.right, &*region.consequent}) {
+      const auto* value = std::get_if<ValueId>(arm);
+      const auto* origin =
+          value ? std::get_if<OpResult>(&graph_.values[value->value].origin)
+                : nullptr;
+      if (!origin || origin->op.value >= plan_.literal_arm_inputs.size())
+        continue;
+      const auto input = plan_.literal_arm_inputs[origin->op.value];
+      if (!input) continue;
+      const auto& use = graph_.uses[input->value];
+      const auto* merged = std::get_if<ValueId>(&use.owner);
+      if (merged && *merged == region.merged) return true;
+    }
+    return false;
+  }
   std::optional<std::size_t> PredicatePrefix(const SelectionRegion& region, OpId execution, Placement placement = Placement::kConsumer) {
     const auto range = predicates_.ranges[region.branch.value];
-    std::size_t count = 0;
+    std::size_t count = 0, retained = 0;
+    const bool can_retain =
+        placement == Placement::kConsumer && CertifiedLiteralCondition(region);
     for (std::size_t p = 0; p < range.count; ++p) {
       budget_.Step(); const auto id = predicates_.operations[range.first + p];
       const auto next = p + 1 == range.count ? region.branch : predicates_.operations[range.first + p + 1];
       const auto& op = graph_.ops[id.value];
-      if (predicates_.order.after[id.value] != next || predicates_.order.before[next.value] != EffectPredecessor{id} ||
-          !predicates_.order.Before(graph_, id, graph_.ops[region.branch.value].block, graph_.ops[region.branch.value].order) ||
-          (placement == Placement::kOriginal && corridors_.HasCatchCopies(id)) ||
-          (placement == Placement::kConsumer && op.exceptional == ExceptionalCompletion::kMayThrow &&
-           !corridors_.SameCatch(id, execution))) return {};
+      const bool adjacent =
+          predicates_.order.after[id.value] == next &&
+          predicates_.order.before[next.value] == EffectPredecessor{id};
+      if (!adjacent && can_retain) {
+        // Exclusive use is not permission to replay a retained call/getter
+        // across a saved Reference or private allocation. Keep the original
+        // materialized prefix and compose only its contiguous movable suffix.
+        // Each omitted root is checked once; SSA Commit availability proves
+        // the condition reads the already initialized language snapshot.
+        for (; retained <= p; ++retained) {
+          budget_.Step();
+          const auto saved = predicates_.operations[range.first + retained];
+          const auto& root = graph_.ops[saved.value];
+          const auto& branch = graph_.ops[region.branch.value];
+          if (!root.result ||
+              !HasRetainedEvaluationValue(graph_, plan_, *root.result) ||
+              !ValueAvailableAt(graph_, predicates_.order.dominators,
+                                *root.result, branch.block, branch.order))
+            return {};
+        }
+        count = 0;
+        continue;
+      }
+      if (!adjacent ||
+          !predicates_.order.Before(graph_, id,
+                                    graph_.ops[region.branch.value].block,
+                                    graph_.ops[region.branch.value].order) ||
+          (placement == Placement::kOriginal &&
+           corridors_.HasCatchCopies(id)) ||
+          (placement == Placement::kConsumer &&
+           op.exceptional == ExceptionalCompletion::kMayThrow &&
+           !corridors_.SameCatch(id, execution)))
+        return {};
       Require(count < prefix_.size()); prefix_[count++] = id;
     }
     return count;

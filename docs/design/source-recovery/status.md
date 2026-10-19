@@ -5,6 +5,40 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Retained predicate snapshot with a private literal argument (2026-10-19, uncommitted)
+
+- Diagnosed m27565 PC903: op302 PC812 is an already-materialized condition
+  input. Its projected effect successor is the saved member op313 PC839,
+  rather than branch319. The previous prefix proof correctly refused moving
+  that call across the Reference and outer allocation, but had no way to keep
+  its existing storage while composing the independently proved literal arms.
+- Added a bounded prefix split only for original certified literal-arm phi
+  occurrences seeded by unmet References. Every retained leading root needs
+  a language snapshot and successful Commit availability at the condition;
+  its order, temporary and original exception exit stay ordinary. The movable
+  suffix retains the original order/catch checks. Independent selection and
+  existing TreeFlow/recovery verification remain required. No printer change,
+  allocation-exclusion removal, new premise or joint keep-edge admission.
+- **o24/27331 completes**, including m27565 op337 PC903. Both 40-input cohorts
+  versus **6514565c** change only that record: **527 -> 528/620** previous
+  flags, **577 -> 578/620** --language-source. All previously complete text is
+  byte-identical, with no status regression. Both new corpus outputs pass
+  `node --check`.
+- New pinned es2abc fixture exports three complete functions and passes
+  **216** original-source/engine-output Node scenarios, including producer
+  before the body's try/catch, once-only evaluation, callee/receiver identity,
+  argument getters/throws and mutation after the snapshot. Synthetic variants
+  and mutations pass, with exact byte/work boundaries at **200/201/400/800**
+  for the arm, enclosing reference and independent selection verifiers.
+- Full build passed; `ctest --preset source-regression -j 1` **65/65**;
+  new tests **2/2**; targeted **13/14**, with only the documented
+  `phased_literal_test` kArmSelection mutation at line707. Required sweep
+  (including nested_literal/literal_arm/logical) **115/116**, with only the
+  documented `family_source_cli_test` owner/origin-arena failure. No assertions
+  or printer expectations were weakened.
+  See [literal-event-view.md](literal-event-view.md); scratch diagnostics,
+  baseline comparisons and test logs: `build/review/literal903/`.
+
 ## Nested literal selection in a member-call argument (2026-10-19, uncommitted)
 
 - Extended the original LiteralEventView/arm proof to phased inputs, then added

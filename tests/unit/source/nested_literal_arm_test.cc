@@ -2,6 +2,7 @@
 #include "../../../src/source/call_plan.h"
 #include "../../../src/source/literal_arm_view.h"
 #include "../../../src/source/literal_reference_view.h"
+#include "../../../src/source/logical_evaluation.h"
 #include "../../../src/source/phase_composition.h"
 #include "abcd/analysis/arithmetic_semantics.h"
 #include "analysis/ssa_fixture.h"
@@ -13,8 +14,10 @@ using namespace abcd::source;
 // One outer private literal with N ordered definitions, a selected pair of
 // independently proved nested literal forests, then the member invocation.
 ValueProgram Graph(unsigned count, bool split = false, bool escape = false,
-                   bool rename = false) {
+                   bool rename = false, bool retained = false,
+                   bool producer_outside_try = false) {
   std::vector<std::uint8_t> code;
+  std::uint32_t try_begin = 0;
   const auto local = [&](std::uint8_t value) {
     constexpr std::uint8_t permutation[] = {2, 0, 3, 1};
     return rename && value < std::size(permutation) ? permutation[value]
@@ -58,6 +61,14 @@ ValueProgram Graph(unsigned count, bool split = false, bool escape = false,
       code[at + 1 + j] = static_cast<std::uint8_t>(delta >> (8 * j));
   };
   {
+    if (retained) {
+      load(9);
+      emit(abc::Opcode::kCALLARG0_IMM8);
+      code.push_back(0);
+      save(8);
+      if (producer_outside_try)
+        try_begin = static_cast<std::uint32_t>(code.size());
+    }
     load(7);
     emit(abc::Opcode::kLDOBJBYNAME_IMM8_ID16);
     code.insert(code.end(), {0, 0, 0});
@@ -107,8 +118,8 @@ ValueProgram Graph(unsigned count, bool split = false, bool escape = false,
   emit(abc::Opcode::kRETURN);
   auto body = test::Body(code);
   abc::TryRegion region;
-  region.offset = {0};
-  region.length = handler_pc;
+  region.offset = {try_begin};
+  region.length = handler_pc - try_begin;
   region.handler_count = 1;
   abc::CatchHandler handler;
   handler.offset = {handler_pc};
@@ -144,8 +155,10 @@ ValueProgram Graph(unsigned count, bool split = false, bool escape = false,
   return std::get<ValueProgram>(
       ImportPhasedValues({flow, ssa, env, values, proof, frame}));
 }
-std::uint64_t Check(unsigned count, bool split, bool rename = false) {
-  const auto graph = Graph(count, split, false, rename);
+std::uint64_t Check(unsigned count, bool split, bool rename = false,
+                    bool retained = false, bool producer_outside_try = false) {
+  const auto graph =
+      Graph(count, split, false, rename, retained, producer_outside_try);
   const auto built = BuildPhasedEvaluationPlan(graph);
   if (const auto* e = std::get_if<EvaluationFailure>(&built))
     std::cerr << "build failure count=" << count << " kind=" << int(e->kind)
@@ -220,16 +233,63 @@ std::uint64_t Check(unsigned count, bool split, bool rename = false) {
     }
     test::Check(refused);
   }
+  std::uint64_t selection_work = 0;
+  if (retained) {
+    // The preceding call remains a real root, outside the selected forest.
+    test::Check(std::holds_alternative<ValueInvoke>(graph.ops[1].operation));
+    test::Check(plan.operations[1].kind == EvaluationKind::kRoot &&
+                plan.operations[1].temporary);
+    test::Check(!members[1] && !plan.phase_prefixes[1]);
+    TreeCheckBudget selection({});
+    VerifyPhaseSelectionOperands(graph, plan, selection);
+    selection_work = selection.Work();
+    for (bool bytes : {false, true}) {
+      auto limits = SemanticBudget{selection.Bytes(), selection.Work()};
+      TreeCheckBudget exact(limits);
+      VerifyPhaseSelectionOperands(graph, plan, exact);
+      if (bytes)
+        --limits.bytes;
+      else
+        --limits.work;
+      bool refused = false;
+      try {
+        TreeCheckBudget limited(limits);
+        VerifyPhaseSelectionOperands(graph, plan, limited);
+      } catch (TreeStructureError e) {
+        refused = e == TreeStructureError::kResourceLimit ||
+                  e == TreeStructureError::kWorkLimit;
+      } catch (EvaluationError e) {
+        refused = e == EvaluationError::kResourceLimit ||
+                  e == EvaluationError::kWorkLimit;
+      }
+      test::Check(refused);
+    }
+  }
   std::cout << count << " definitions: arm bytes=" << budget.Bytes()
             << " work=" << budget.Work()
             << " reference bytes=" << references.Bytes()
             << " work=" << references.Work() << '\n';
-  if (count != 1) return budget.Work() + references.Work();
+  if (count != 1) return budget.Work() + references.Work() + selection_work;
   const auto rejects = [&](const EvaluationPlan& wrong) {
     test::Check(std::holds_alternative<EvaluationFailure>(
         VerifyPhasedEvaluationPlan(graph, wrong)));
   };
   auto wrong = plan;
+  if (retained) {
+    wrong.operations[1].temporary.reset();
+    rejects(wrong);
+    wrong = plan;
+    wrong.phase_prefixes[1] = plan.phase_selections.front().branch;
+    wrong.phase_selections.front().prefix.push_back(OpId{1});
+    rejects(wrong);
+    wrong = plan;
+    wrong.operations[1] = {
+        EvaluationKind::kInline,
+        graph.ops[plan.phase_selections.front().branch.value].first_use,
+        {}};
+    rejects(wrong);
+  }
+  wrong = plan;
   wrong.literal_arm_inputs.clear();
   rejects(wrong);
   for (std::size_t i = 0; i < arms.size(); ++i)
@@ -269,10 +329,22 @@ std::uint64_t Check(unsigned count, bool split, bool rename = false) {
           VerifyPhasedEvaluationPlan(changed, plan)));
       break;
     }
-  return budget.Work() + references.Work();
+  return budget.Work() + references.Work() + selection_work;
 }
 }  // namespace
-int main() {
+int main(int argc, char**) {
+  if (argc > 1) {
+    Check(1, false, false, true);
+    Check(1, true, true, true);
+    Check(1, false, false, true, true);
+    std::uint64_t previous = 0;
+    for (const auto count : {200U, 201U, 400U, 800U}) {
+      const auto work = Check(count, false, false, true);
+      if (previous) test::Check(work < 3 * previous);
+      previous = work;
+    }
+    return 0;
+  }
   Check(1, false);
   Check(1, true);
   Check(1, true, true);

@@ -164,3 +164,77 @@ The target's PC369 obligation is discharged. The same method now stops at a
 later independent call: m27565 op337 PC903, whose saved property op313 is still
 `kNotInline > kRoot > kCrossRegionValue`. This later obligation is not admitted
 by the new view and remains outside this slice. o7/28433 remains excluded.
+
+## m27565 PC903: retained predicate snapshot (2026-10-19)
+
+The next failure is still the saved member Reference, not a new argument protocol.
+PC812 op302 invokes u318/callee=v301, u319/receiver=v292, u320/argument=v300 -> v302;
+it is a `kRoot/kCrossRegionValue` snapshot (copy v303), with a verified invocation lifetime.
+PC832 op310 invokes the receiver factory -> v310 (copies v311/v312).
+PC839 op313 `ValueNamedRead(u332/base=v312) -> v313` is the unmet saved callee.
+PC845 op315 allocates outer object v315 (copy v316).
+PC853 op318 tests the retained v302 via u336/v317; PC854 op319 branches on u337/v318.
+PC856 op320 allocates v328, with nested array op322/v330 and definition op324/u341;
+PC875 op327 allocates v319, with nested array op329/v321 and definition op331/u346.
+Phi v31 joins u757=v332 (copy of v328), edge693, and u758=v323 (copy of v319), edge707.
+PC892 op333 defines the outer field: u348/base=v316, u349/stored=v31.
+PC903 op337 invokes u353/callee=v326 (copy of v313), u354/receiver=v311,
+u355/argument=v325 (copy of v315). The required owner of op313 is u353.
+Both arm LiteralPlans and original phi inputs are already verified. The original
+normal/exception graph has no optional-chain, update-result or joint keep-edge obligation here.
+
+`IndexPhasePredicatePrefixes` nominates op302 as branch319's exclusive root
+input. Its original projected effect successor is **op313, not branch319**.
+`OperandSelections::PredicatePrefix` therefore correctly refuses moving it.
+What is missing is permission to keep that already-materialized input in its
+original position. The new proof will retain only an already-proven language
+snapshot with Commit availability at the condition, and only for the literal-arm
+extension seeded by an unmet Reference. The independent selection check must
+recompute that split. Contiguous movable suffixes keep their existing order and
+catch checks; a non-retainable prefix still refuses. The existing enclosing
+literal/reference forest proof then checks all intervening events and the final
+invocation, without absorbing or replaying op302.
+
+Diagnostic probe: `build/review/literal903/before-ir.txt` and `before.json`.
+
+### Retained-prefix integration and verification
+
+The implementation leaves already accepted prefix plans unchanged. Only a
+condition whose original phi arm carries an independently checked
+`literal_arm_inputs` occurrence may use the new split (those occurrences are
+already seeded from unmet member References). If the original effect successor
+breaks the nominated movable prefix, every discarded leading root must have a
+retained language-value lifetime and an original successful Commit available at
+the branch. Otherwise the existing refusal remains. A monotonically advancing
+cursor checks each discarded root once; no per-root graph walk or allocation is
+added. The remaining contiguous suffix keeps the existing effect/catch/scope
+proof. No completed expression is retried after a verifier error.
+
+The producer retains its root placement, temporary and original exception exit.
+It is not a member of the literal forest or a moved selection prefix. The
+ordinary evaluation, TreeFlow and recovery paths continue to account for that
+root, including when its catch differs from the argument's catch. The independent
+selection verifier recomputes the omitted/moved split from the original graph;
+removing storage, claiming the producer as a prefix or inlining it into the
+branch is rejected. Existing arm, nested-literal, outer-definition and member
+Reference proofs discharge the remainder without new admission.
+
+The real es2abc fixture has three complete functions and 216 engine-output Node
+comparisons. The synthetic phased test covers original, copy/block-split and
+register-renamed graphs, producer outside try, retained-storage/prefix/consumer
+mutations, the existing wrong-arm/escape/order/catch mutations, and exact
+byte/work boundaries for the arm, outer-reference and selection verifiers at
+200/201/400/800 widths. The new scan is linear in indexed prefix entries; total
+analysis remains O((V+E) log V), with all existing buffers prepaid.
+
+m27565 now passes the PC903 call and o24/27331 completes under both flag sets.
+The 40-input cohort comparison versus 6514565c is 527 -> 528/620 under previous
+flags and 577 -> 578/620 under --language-source, with no status regression or
+text drift for previously complete records. Only o24/27331's manifest entry
+changes; the new outputs pass `node --check`. Evidence is under
+`build/review/literal903/`.
+
+Final acceptance: full build passed; fixed source suite 65/65 serial; new tests
+2/2; targeted 13/14 (known phased_literal_test mutation failure); required sweep
+115/116 (known family_source_cli_test owner/origin-arena failure). No printer or
+printed-spelling expectation changes were needed.

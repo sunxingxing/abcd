@@ -808,6 +808,7 @@ if(BUILD_TESTING)
   target_include_directories(nested_literal_arm_test PRIVATE tests/support)
   target_link_libraries(nested_literal_arm_test PRIVATE abcd_source)
   add_test(NAME nested_literal_arm_test COMMAND nested_literal_arm_test)
+  add_test(NAME retained_literal_arm_test COMMAND nested_literal_arm_test --retained)
   add_executable(phase_composition_test tests/unit/source/phase_composition_test.cc)
   target_include_directories(phase_composition_test PRIVATE tests/support)
   target_link_libraries(phase_composition_test PRIVATE abcd_source)
@@ -2063,6 +2064,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/anonymous_module.mjs $<TARGET_FILE:record_import_tree_test>)
     add_test(NAME module_family_print_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/module_family_print.mjs $<TARGET_FILE:module_family_print_test>)
+    add_test(NAME retained_literal_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/retained_literal_arm.mjs $<TARGET_FILE:abc_structure>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/retained_literal_arm)
     add_test(NAME nested_literal_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nested_literal_arm.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/nested_literal_arm)
