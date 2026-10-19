@@ -5,6 +5,43 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Nested literal selection in a member-call argument (2026-10-19, uncommitted)
+
+- Extended the original LiteralEventView/arm proof to phased inputs, then added
+  `LiteralReferenceView` for a selected field inside an enclosing verified
+  private literal. Only unmet member References seed discovery. Original arm
+  phi uses, definition/Commit identities, private ownership, effect order and
+  catch correspondence are independently rederived before forest membership
+  may replace ordinary phase equations. Ordinary allocation exclusion stays;
+  no joint predicate/keep-edge admission, printer change, or new premise.
+- o24/27331 m27565's saved `showToast` Reference (op107 PC305), enclosing object
+  and selected `message` definition now compose into call op131 PC369. The
+  record remains incomplete at **m27565 op337 PC903**, saved property op313:
+  `FunctionTreeError::kExpression > ExpressionError::kCall >
+  CallPlanError::kReference > CallReferenceError::kNotInline >
+  EvaluationKind::kRoot > TemporaryReason::kCrossRegionValue`. This later
+  obligation is parked; o7/28433 remains excluded.
+- Full build passed. The two new tests pass; the real pinned es2abc fixture
+  exports both functions as complete source and passes `node --check` plus
+  **120** original-source/engine-output Node scenarios (selected getters and
+  throws, catch, field order/descriptors, receiver and callee replacement).
+  The synthetic phased test includes copy/block-split/register-renaming,
+  wrong-arm/consumer, duplicate consumption, escaping inner value, reordered
+  outer definitions, wrong catch and exact byte/work refusals. Both indexes
+  pass **200/201/400/800** widths with measured linear growth; at 800 the arm
+  index uses 1,104,989 charged bytes and the enclosing index 1,327,203 bytes.
+- Final verification: full build, fixed source suite **65/65** serial, new
+  tests **2/2**, targeted **11/12**. The targeted failure is the documented
+  `phased_literal_test` kArmSelection mutation (`changed` at line707), also
+  reproduced on the baseline test executable (line662). Required sweep
+  **112/113**; its only failure is the documented `family_source_cli_test`
+  owner/origin-arena failure. No assertions or printer spellings were changed.
+  Verification logs and comparisons: `build/review/literal-nesting/`.
+- Both 40-input cohorts versus **3168de42** retain **527/620** and **577/620**
+  complete. No source, position map, or record metadata file changes; the only
+  file change in each cohort is `o24/manifest.json`, solely the target's first
+  refusal location PC369 -> PC903. No new corpus output needs `node --check`.
+
 ## Readable-output test expectation refresh (2026-10-19, uncommitted)
 
 - Test-only follow-up: updated stale assignment/object/function/arrow/default

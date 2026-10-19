@@ -1,8 +1,9 @@
-# Conditional literal composition: normal fallback arms
+# Conditional literal event composition
 
-The normal-flow integration completes o24/63384 (m65897 PC64). The production
-allocation exclusion in `phase_composition.cc` remains unchanged. This is not a
-new phased event mask or a joint predicate/keep-edge admission.
+The normal-flow integration completes o24/63384 (m65897 PC64). The phased
+inner-selection/outer-definition extension is documented below. The ordinary
+allocation exclusion in `phase_composition.cc` remains unchanged; neither path
+admits the deferred joint predicate/keep-edge obligation.
 
 `LiteralEventView` references the original graph and the existing independently
 verified `LiteralPlan`. It records allocations, definitions and nested operands,
@@ -76,7 +77,7 @@ its prefix count must agree; successful ranges are disjoint, since a foreign
 allocation would violate coverage. Failed queries are cached. No per-allocation
 whole-CFG scan is introduced.
 
-## Tests and remaining boundaries
+## Normal-flow tests and original boundary
 
 - `literal_event_view_test`: original bytecode/SSA phased fixtures, nested objects,
   empty arrays, exception exits, copies, missing/wrong members and consumers,
@@ -99,3 +100,67 @@ existing construction obligations. No new language premise is used.
 o24/27331's inner-selection/outer-definition ownership chain is deferred;
 o7/28433 is excluded. Phased literal selections still require their own
 composition integration. Run evidence: `build/review/literal-integration/`.
+
+## m27565 evidence before nested integration (2026-10-19)
+
+The production graph is phased (`phases.size() == 1414`), not m65897's normal route.
+PC305 op107 `ValueNamedRead(showToast, u120/base=v108) -> v109` is `kRoot/kCrossRegionValue`.
+The receiver is the saved result of op104's `getPromptAction` call (v106, copied to v107/v108).
+PC311 op109 allocates outer object v111 (copy v112); LiteralPlan stages its definition op127.
+PC319 op112 tests saved v113; PC320 op113 branches to the two original arms.
+PC322 op114 allocates v124; PC328 op116 allocates array v126; PC332 op118 defines its array field (u128/base=v125, u129/value=v126).
+PC341 op121 allocates v115; PC347 op123 allocates array v117; PC351 op125 defines its array field (u133/base=v116, u134/value=v117).
+Phi v29 has u753=v128 (copy of v124) on edge257 and u754=v119 (copy of v115) on edge271.
+PC358 op127 defines outer `message`: u136/base=v112, u137/value=v29.
+PC369 op131 invokes u141/callee=v122 (copy of v109), u142/receiver=v107, u143/argument=v121 (copy of v111).
+`MemberReferenceInline` refuses **op107/v109**, whose sole call-callee occurrence is u141; it is not an arm allocation escaping.
+Both arm objects have verified expression LiteralPlans (op114/def118 and op121/def125), but remain root snapshots: phased `IndexPhiLiteralEnds` currently returns no intervals.
+The accepted LiteralArmIndex rejects phased inputs, and its previous integration seeds only a selection observed by the call, not an outer definition.
+The extension must first certify phased literal phi arms, then retain selection -> outer definition -> private outer forest -> invocation ownership.
+Every original Before/Commit/exception identity and the real receiver remain authoritative; no phase-composition allocation exclusion may be deleted.
+
+## Nested phased literal integration (2026-10-19)
+
+The preceding boundary describes the implementation at 3168de42. The new path
+uses the same LiteralEventView for phased arms. `LiteralArmIndex` now proves
+normal-edge entry/exit coverage and Before/Commit dominance on the original
+exception graph, while retaining every exceptional exit. All throwing arm
+events must retain their catch and need no catch copies. The old normal-route
+handler restriction remains unchanged.
+
+`IndexNestedLiteralInputs` builds one definition-owner/use census, seeded only
+by an unmet member Reference. Each selected arm still needs its own expression
+LiteralPlan. Its sole external observation is the original phi occurrence;
+that phi is the stored value of a definition in the enclosing private object.
+Existing phased selection and object-operand proofs then establish the joined
+value, conditional execution, and the enclosing object's ordered definitions.
+No staged arm, escaping inner object, or joint predicate/keep-edge admission is
+added. Splitting an initializer which already lacks a native LiteralPlan stays
+refused; equivalent copies/splits at the proved arm boundary are tested.
+
+`LiteralReferenceView` reconstructs the complete outer forest and the original
+effect chain: saved callee/receiver -> allocation -> selected initializer and
+other definitions -> invocation. Its allocation/definition span is a separate
+typed composition boundary; the ordinary allocation exclusion is retained.
+Every ordered forest event keeps the call's catch correspondence. Before full
+membership may replace ordinary phase equations, the verifier re-proves inline
+operand consumer identity, single consumption, fuse semantics and contiguous
+interval order. Pure inline dependencies belong to the forest too. Implicit
+own-definition base uses are construction correspondences, not a second read
+of the final literal value. Existing independent selection, LiteralPlan,
+TreeFlow and recovery checks remain in force.
+
+All new indexes and work stacks are charged before allocation. Functional
+ownership roots are memoized; original effects and operand intervals are
+scanned once, not once per construction. Dominance/SSA work retains the existing
+O((V+E) log V) bound. The arm and enclosing-reference indexes each have exact
+byte/work boundary tests at 200/201/400/800 ordered-definition widths. Mutations
+cover wrong phi/arm identity, duplicate consumption, reordered outer definitions,
+a forged endpoint/consumer, missing composition, wrong catch and an escaping
+inner value. The real es2abc fixture adds the selected field between ordinary
+getter definitions, with 120 engine-output/Node differential scenarios.
+
+The target's PC369 obligation is discharged. The same method now stops at a
+later independent call: m27565 op337 PC903, whose saved property op313 is still
+`kNotInline > kRoot > kCrossRegionValue`. This later obligation is not admitted
+by the new view and remains outside this slice. o7/28433 remains excluded.

@@ -1,24 +1,26 @@
-#include "call_spread_inputs.h"
 #include "evaluation_plan.h"
-#include "for_in_evaluation.h"
-#include "for_of_evaluation.h"
-#include "evaluation_failure.h"
-#include "assignment_values.h"
-#include "evaluation_flow.h"
-#include "evaluation_liveness.h"
-#include "evaluation_aliases.h"
-#include "integer_nan.h"
-#include "module_evaluation.h"
-#include "phase_evaluation.h"
-#include "phase_composition.h"
-#include "logical_regions.h"
-#include "logical_evaluation.h"
-#include "tree_checks.h"
 
-#include <limits>
 #include <bit>
+#include <limits>
 #include <new>
 #include <stdexcept>
+
+#include "assignment_values.h"
+#include "call_spread_inputs.h"
+#include "evaluation_aliases.h"
+#include "evaluation_failure.h"
+#include "evaluation_flow.h"
+#include "evaluation_liveness.h"
+#include "for_in_evaluation.h"
+#include "for_of_evaluation.h"
+#include "integer_nan.h"
+#include "literal_arm_view.h"
+#include "logical_evaluation.h"
+#include "logical_regions.h"
+#include "module_evaluation.h"
+#include "phase_composition.h"
+#include "phase_evaluation.h"
+#include "tree_checks.h"
 
 namespace abcd::source {
 namespace {
@@ -518,6 +520,22 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     }
     witness = {};
     Require(next_op == graph.ops.size(), Error::kInvalidGraph);
+    if (flow == EvaluationFlow::kPhased) {
+      TreeCheckBudget arm_budget({bytes, work});
+      plan.literal_arm_inputs =
+          IndexNestedLiteralInputs(graph, plan, arm_budget);
+      for (std::size_t i = 0; i < plan.literal_arm_inputs.size(); ++i) {
+        arm_budget.Step();
+        if (!plan.literal_arm_inputs[i]) continue;
+        pinned[i] = 0;
+        literal_allocations[i] = 1;
+        visible[i] = {plan.literal_arm_inputs[i], false};
+        plan.operations[i] = {
+            EvaluationKind::kPhiInput, plan.literal_arm_inputs[i], {}};
+      }
+      admit(arm_budget.Bytes(), 1);
+      step(arm_budget.Work());
+    }
     if (plan.phis) {
       // Every producer uses the same original-edge ownership proof, including
       // checked module reads. Their TDZ event and catch staging remain part of
@@ -601,19 +619,44 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow,for_of);
     if (const auto* error = std::get_if<EvaluationFailure>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    plan.allocated_bytes = plan.checked_failures.capacity() * sizeof(GuardedCallFailure) + plan.assignment_values.capacity() * sizeof(std::optional<analysis::OpId>) + plan.assignment_consumers.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_children.capacity() * sizeof(std::optional<analysis::OpId>) + plan.closed_expressions.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_references.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) + (plan.phase_compositions.capacity() + plan.checked_compositions.capacity()) * sizeof(analysis::OpId) + plan.phase_transports.capacity() * sizeof(std::optional<analysis::UseId>) + plan.phase_selections.capacity() * sizeof(PhaseSelectionOperand) + plan.integer_nans.capacity() * sizeof(NaNProjection) + plan.operations.capacity() * sizeof(OpEvaluation) +
+    plan.allocated_bytes =
+        plan.literal_arm_inputs.capacity() *
+            sizeof(std::optional<analysis::UseId>) +
+        plan.checked_failures.capacity() * sizeof(GuardedCallFailure) +
+        plan.assignment_values.capacity() *
+            sizeof(std::optional<analysis::OpId>) +
+        plan.assignment_consumers.capacity() *
+            sizeof(std::optional<analysis::UseId>) +
+        plan.phase_children.capacity() * sizeof(std::optional<analysis::OpId>) +
+        plan.closed_expressions.capacity() *
+            sizeof(std::optional<analysis::UseId>) +
+        plan.phase_references.capacity() *
+            sizeof(std::optional<analysis::UseId>) +
+        plan.phase_prefixes.capacity() * sizeof(std::optional<analysis::OpId>) +
+        (plan.phase_compositions.capacity() +
+         plan.checked_compositions.capacity()) *
+            sizeof(analysis::OpId) +
+        plan.phase_transports.capacity() *
+            sizeof(std::optional<analysis::UseId>) +
+        plan.phase_selections.capacity() * sizeof(PhaseSelectionOperand) +
+        plan.integer_nans.capacity() * sizeof(NaNProjection) +
+        plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
-        plan.logical_objects.capacity() * sizeof(std::optional<analysis::OpId>) +
+        plan.logical_objects.capacity() *
+            sizeof(std::optional<analysis::OpId>) +
         plan.aliases.capacity() * sizeof(analysis::ValueId) +
         plan.functions.capacity() * sizeof(FunctionBinding) +
         plan.modules.capacity() * sizeof(ModuleEvaluation) +
-        plan.class_initializers.capacity() * sizeof(ClassInitializerCall) + plan.class_projection.allocated_bytes +
+        plan.class_initializers.capacity() * sizeof(ClassInitializerCall) +
+        plan.class_projection.allocated_bytes +
         plan.class_definitions.capacity() * sizeof(ClassDefinitionSite) +
         plan.class_prototype_reads.capacity() * sizeof(ClassPrototypeRead) +
         plan.receiver_guards.capacity() * sizeof(analysis::OpId) +
         (plan.phis ? plan.phis->allocated_bytes : 0) +
         (plan.literals ? plan.literals->allocated_bytes : 0) +
-        (ArrayInitializations(plan) ? ArrayInitializations(plan)->allocated_bytes : 0);
+        (ArrayInitializations(plan)
+             ? ArrayInitializations(plan)->allocated_bytes
+             : 0);
     for (const auto& call : plan.phase_selections) plan.allocated_bytes += call.prefix.capacity() * sizeof(analysis::OpId) + call.ancestors.capacity() * sizeof(PhaseCallReference);
     if (plan.for_of) plan.allocated_bytes += plan.for_of->allocated_bytes;
     if (plan.for_in) plan.allocated_bytes += plan.for_in->allocated_bytes + plan.for_in_events->allocated_bytes;
@@ -629,8 +672,13 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (const EvaluationFailure& error) { return error;
   } catch (Error error) { return EvaluationFailure{error, witness};
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (LiteralEventError) {
+    return Error::kOwnership;
+  } catch (const std::bad_alloc&) {
+    return Error::kResourceLimit;
+  } catch (const std::length_error&) {
+    return Error::kResourceLimit;
+  }
 }
 std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(const analysis::ValueProgram& graph,
     analysis::SemanticBudget budget, IncomingCells incoming,

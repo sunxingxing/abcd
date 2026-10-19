@@ -1,13 +1,14 @@
-#include "logical_regions.h"
-#include "exception_control.h"
-#include "evaluation_plan.h"
-#include "evaluation_liveness.h"
-#include "tree_checks.h"
-#include "phased_selection_paths.h"
-#include "phase_predicate_prefix.h"
-#include "logical_evaluation.h"
-
 #include <algorithm>
+
+#include "evaluation_liveness.h"
+#include "evaluation_plan.h"
+#include "exception_control.h"
+#include "literal_event_view.h"
+#include "logical_evaluation.h"
+#include "logical_regions.h"
+#include "phase_predicate_prefix.h"
+#include "phased_selection_paths.h"
+#include "tree_checks.h"
 
 namespace abcd::source {
 std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgram& graph,
@@ -42,6 +43,9 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
     const auto* stage = std::get_if<ThrowCopies>(&evaluation.exceptions->placements[i]);
     if (stage && evaluation.phis->bundles[i].count) staged[stage->operation.value] = 1;
   }
+  std::optional<LiteralEventView> literal_events;
+  if (!evaluation.literal_arm_inputs.empty())
+    literal_events = BuildLiteralEventView(graph, *evaluation.literals, budget);
   struct Arm { WorkBlockId tail; EdgeId edge; SelectionOperand value; ValueId merged; };
   const auto arm = [&](EdgeId entry, std::size_t first_incoming = 1) -> std::optional<Arm> {
     auto at = graph.edges[entry.value].target;
@@ -73,6 +77,14 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
               op.exceptional != ExceptionalCompletion::kImpossible) return {};
           continue;
         }
+        if (literal_events && literal_events->events[id.value]) {
+          const auto root = literal_events->events[id.value]->allocation;
+          if (evaluation.literal_arm_inputs[root.value]) {
+            if (producer && *producer != root) return {};
+            producer = root;
+            continue;
+          }
+        }
         if (kind != EvaluationKind::kPhiInput && kind != EvaluationKind::kInline && kind != EvaluationKind::kModuleGuard) return {};
         const auto root = roots[id.value];
         if (evaluation.operations[root.value].kind != EvaluationKind::kPhiInput ||
@@ -88,9 +100,17 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
         const auto* merged = std::get_if<ValueId>(&use.owner);
         if (!value || !merged) return {};
         if (producer) {
-          if (graph.ops[producer->value].result != *value ||
-              evaluation.operations[producer->value].consumer != input) return {};
-          return Arm{at, edge, *value, *merged};
+          const bool literal =
+              !evaluation.literal_arm_inputs.empty() &&
+              evaluation.literal_arm_inputs[producer->value] == input;
+          const auto actual =
+              literal ? ResolveEvaluationOperand(evaluation, use.operand)
+                      : use.operand;
+          const auto* final = std::get_if<ValueId>(&actual);
+          if (!final || graph.ops[producer->value].result != *final ||
+              evaluation.operations[producer->value].consumer != input)
+            return {};
+          return Arm{at, edge, *final, *merged};
         }
         // An inert arm forwards an original available binding. Resolve verified
         // copy aliases once; preserve the first phi/catch materialization and

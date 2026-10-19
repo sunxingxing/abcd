@@ -1,5 +1,9 @@
-#include "logical_evaluation.h"
+#include "assignment_values.h"
+#include "call_plan.h"
 #include "effect_order.h"
+#include "evaluation_aliases.h"
+#include "literal_reference_view.h"
+#include "logical_evaluation.h"
 #include "phase_corridor.h"
 
 namespace abcd::source {
@@ -10,7 +14,9 @@ void Require(bool value) { if (!value) throw EvaluationError::kOwnership; }
 // Source ownership is a functional forest, including selected phi arms and
 // native nested initializers. Resolve each parent once; storage/PC order is not
 // an ownership proof, and a cycle cannot become an executable source subtree.
-std::vector<OpId> Owners(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
+std::vector<OpId> Owners(const ValueProgram& graph, const EvaluationPlan& plan,
+                         TreeCheckBudget& budget,
+                         bool restore_references = false) {
   std::vector<std::optional<OpId>> parents;
   std::vector<OpId> roots, stack;
   std::vector<std::uint8_t> color;
@@ -25,12 +31,21 @@ std::vector<OpId> Owners(const ValueProgram& graph, const EvaluationPlan& plan, 
   };
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); const auto& placement = plan.operations[i];
+    // A composed staged allocation is the forest's original boundary, not an
+    // owned child of the call when rederiving its allocation/definition chain.
+    if (i < plan.logical_objects.size() && plan.logical_objects[i]) continue;
     if ((placement.kind == EvaluationKind::kInline || placement.kind == EvaluationKind::kNestedLiteral ||
          placement.kind == EvaluationKind::kPhiInput || placement.kind == EvaluationKind::kLogicalValue) &&
         placement.consumer) parents[i] = consumer(*placement.consumer);
     if (i < plan.phase_prefixes.size() && plan.phase_prefixes[i]) parents[i] = plan.phase_prefixes[i];
     if (i < plan.phase_children.size() && plan.phase_children[i]) parents[i] = plan.phase_children[i];
   }
+  if (restore_references)
+    for (const auto call : plan.phase_compositions) {
+      budget.Step();
+      if (const auto property = MemberProperty(graph, plan, call))
+        parents[property->value].reset();
+    }
   for (const auto& module : plan.modules) {
     budget.Step(); if (module.pair.guard) parents[module.pair.guard->value] = module.pair.read;
   }
@@ -141,6 +156,225 @@ std::vector<std::optional<OpId>> Objects(const ValueProgram& graph, const Evalua
   return selected;
 }
 }  // namespace
+
+std::vector<std::optional<LiteralReferenceView>> IndexLiteralReferences(
+    const ValueProgram& graph, const EvaluationPlan& plan,
+    TreeCheckBudget& budget, std::vector<std::optional<OpId>>* members) {
+  std::vector<std::optional<LiteralReferenceView>> result;
+  if (plan.literal_arm_inputs.empty() || plan.logical_objects.empty() ||
+      !plan.literals)
+    return result;
+  const auto roots = Owners(graph, plan, budget, true);
+  auto checked = BuildEffectOrder(graph, budget.Remaining(), roots);
+  if (const auto* e = std::get_if<ValueAvailabilityError>(&checked)) {
+    if (*e == ValueAvailabilityError::kResourceLimit)
+      throw EvaluationError::kResourceLimit;
+    if (*e == ValueAvailabilityError::kWorkLimit)
+      throw EvaluationError::kWorkLimit;
+    throw EvaluationError::kOwnership;
+  }
+  const auto& effects = std::get<EffectOrder>(checked);
+  budget.Admit(effects.allocated_bytes, 1);
+  budget.Step(effects.work);
+  std::vector<std::optional<OpId>> fields;
+  std::vector<std::optional<UseId>> external;
+  std::vector<std::uint8_t> invalid, selected;
+  budget.Array(fields, graph.ops.size());
+  budget.Array(external, graph.ops.size());
+  budget.Array(invalid, graph.ops.size());
+  budget.Array(selected, graph.ops.size());
+  budget.Array(result, graph.ops.size());
+  std::vector<std::optional<OpId>> local_members;
+  auto& owned = members ? *members : local_members;
+  budget.Array(owned, graph.ops.size());
+  for (auto& member : owned) {
+    budget.Step();
+    member.reset();
+  }
+  for (const auto& object : plan.literals->objects) {
+    budget.Step();
+    if (!plan.logical_objects[object.allocation.value]) continue;
+    for (std::uint32_t i = 0; i < object.count; ++i) {
+      budget.Step();
+      fields[plan.literals->definitions[object.first + i].value] =
+          object.allocation;
+    }
+  }
+  for (const auto& selection : plan.phase_selections) {
+    budget.Step();
+    if (!selection.input) continue;
+    const auto* owner =
+        std::get_if<OpId>(&graph.uses[selection.input->value].owner);
+    if (owner && fields[owner->value])
+      selected[fields[owner->value]->value] = 1;
+  }
+  for (std::size_t u = 0; u < graph.uses.size(); ++u) {
+    budget.Step();
+    const auto& use = graph.uses[u];
+    if (use.life != ValueLife::kLive || IsIdentityPhiInput(plan, use)) continue;
+    const auto* owner = std::get_if<OpId>(&use.owner);
+    if (owner &&
+        (plan.operations[owner->value].kind == EvaluationKind::kAlias ||
+         plan.operations[owner->value].kind == EvaluationKind::kElidedPure))
+      continue;
+    const auto value = ResolveEvaluationOperand(plan, use.operand);
+    const auto* v = std::get_if<ValueId>(&value);
+    const auto* origin =
+        v ? std::get_if<OpResult>(&graph.values[v->value].origin) : nullptr;
+    if (!origin || !selected[origin->op.value]) continue;
+    if (owner && fields[owner->value] == origin->op &&
+        use.role == OperandRole::kBase)
+      continue;
+    if (external[origin->op.value]) invalid[origin->op.value] = 1;
+    external[origin->op.value] = UseId{static_cast<std::uint32_t>(u)};
+  }
+  for (const auto& object : plan.literals->objects) {
+    budget.Step();
+    const auto allocation = object.allocation;
+    if (!selected[allocation.value] || invalid[allocation.value] ||
+        !external[allocation.value])
+      continue;
+    const auto use = *external[allocation.value];
+    const auto& occurrence = graph.uses[use.value];
+    const auto* call = std::get_if<OpId>(&occurrence.owner);
+    if (!call || occurrence.role != OperandRole::kArgument) continue;
+    const auto callee = MemberProperty(graph, plan, *call);
+    if (!callee) continue;
+    const auto saved = BeforeLogicalFusion(graph, plan, callee->value);
+    const bool proposed =
+        saved.kind == EvaluationKind::kInline &&
+        saved.consumer == graph.ops[call->value].first_use &&
+        std::binary_search(plan.phase_compositions.begin(),
+                           plan.phase_compositions.end(), *call);
+    if (!proposed && (saved.kind != EvaluationKind::kRoot ||
+                      saved.temporary != TemporaryReason::kCrossRegionValue))
+      continue;
+    const auto last = *plan.logical_objects[allocation.value];
+    // The complete object proof contracts selected arms into their owning
+    // definition. Original owner edges must leave no unrelated effect between
+    // saved Reference, allocation, definitions and invocation.
+    auto previous = allocation;
+    bool ordered = true;
+    for (std::uint32_t i = 0; i < object.count; ++i) {
+      budget.Step();
+      const auto definition = plan.literals->definitions[object.first + i];
+      ordered &=
+          effects.after[previous.value] == definition &&
+          effects.before[definition.value] == EffectPredecessor{previous};
+      previous = definition;
+    }
+    if (!ordered || previous != last ||
+        effects.after[callee->value] != allocation ||
+        effects.before[allocation.value] != EffectPredecessor{*callee} ||
+        effects.after[last.value] != *call ||
+        effects.before[call->value] != EffectPredecessor{last})
+      continue;
+    result[allocation.value] =
+        LiteralReferenceView{allocation, last, *call, *callee, use};
+  }
+  PhaseBudget phase_budget(budget.Remaining());
+  PhaseCorridors phases(graph, plan, phase_budget);
+  // One pass charges each original forest event once. Source-owner roots also
+  // include predicate prefixes, selected arm literals, nested values and calls.
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step();
+    const auto root = roots[i];
+    const auto allocation =
+        fields[root.value] ? fields[root.value] : std::optional{root};
+    if (!allocation || !result[allocation->value]) continue;
+    owned[i] = allocation;
+    if (!HasOrderedEffect(graph.ops[i])) continue;
+    auto& proof = *result[allocation->value];
+    ++proof.events;
+    proof.may_throw |=
+        graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow;
+    const OpId id{static_cast<std::uint32_t>(i)};
+    if (phases.HasCatchCopies(id) ||
+        (graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow &&
+         !phases.SameCatch(id, proof.call)))
+      invalid[allocation->value] = 1;
+  }
+  // Reprove ordinary operand trees BEFORE their membership can replace the
+  // usual phase equations. Ownership flags alone cannot hide a reordered or
+  // duplicated getter. LiteralPlan and selection certificates retain their
+  // separate nested/protocol uses; implicit definition bases are not reads.
+  std::vector<PhaseEffectInterval> intervals;
+  std::vector<std::uint8_t> consumed;
+  budget.Array(intervals, graph.ops.size());
+  budget.Array(consumed, graph.ops.size());
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step();
+    const OpId id{static_cast<std::uint32_t>(i)};
+    intervals[i] = phases.Interval(id);
+    if (!owned[i]) continue;
+    const auto allocation = *owned[i];
+    const auto& op = graph.ops[i];
+    const auto shape = DescribeEvaluation(op.operation);
+    if (!shape || shape->Count() != op.use_count) {
+      invalid[allocation.value] = 1;
+      continue;
+    }
+    std::optional<PhaseEffectInterval> children;
+    for (std::uint32_t j = 0; j < op.use_count; ++j) {
+      budget.Step();
+      const UseId use{op.first_use.value + j};
+      const auto& occurrence = graph.uses[use.value];
+      if (IsMemberReceiver(graph, plan, occurrence) ||
+          (fields[i] && occurrence.role == OperandRole::kBase))
+        continue;
+      const auto child = EvaluationProducer(graph, plan, use);
+      if (!child) continue;
+      const auto& placement = plan.operations[child->value];
+      if (placement.kind != EvaluationKind::kInline ||
+          CrossLogicalInline(graph, plan, *child))
+        continue;
+      if (placement.consumer != use || consumed[child->value] ||
+          shape->NeedsSnapshot(occurrence.role) ||
+          occurrence.role == OperandRole::kReceiver ||
+          PredicateSnapshot(graph, op, occurrence.operand) ||
+          !phases.CanFuse(*child, id, use)) {
+        invalid[allocation.value] = 1;
+        continue;
+      }
+      consumed[child->value] = 1;
+      const auto interval = intervals[child->value];
+      if (interval.count > interval.end) invalid[allocation.value] = 1;
+      if (std::holds_alternative<ValueBranch>(op.operation) && interval.count)
+        invalid[allocation.value] = 1;
+      if (!interval.count) continue;
+      if (children) {
+        if (children->end != interval.end - interval.count)
+          invalid[allocation.value] = 1;
+        children->count += interval.count;
+        children->end = interval.end;
+      } else
+        children = interval;
+    }
+    if (children) {
+      if (children->end != phases.EffectsBefore(id))
+        invalid[allocation.value] = 1;
+      intervals[i].count += children->count;
+    }
+  }
+  for (std::size_t i = 0; i < owned.size(); ++i) {
+    budget.Step();
+    if (!owned[i] || i == owned[i]->value) continue;
+    if (plan.operations[i].kind == EvaluationKind::kInline && !consumed[i] &&
+        !CrossLogicalInline(graph, plan, {static_cast<std::uint32_t>(i)}))
+      invalid[owned[i]->value] = 1;
+  }
+  budget.Admit(phase_budget.Cost().bytes, 1);
+  budget.Step(phase_budget.Cost().work);
+  for (std::size_t i = 0; i < result.size(); ++i) {
+    budget.Step();
+    if (invalid[i]) result[i].reset();
+  }
+  for (auto& member : owned) {
+    budget.Step();
+    if (member && !result[member->value]) member.reset();
+  }
+  return result;
+}
 
 void BuildPhasedObjectOperands(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
   auto selected = Objects(graph, plan, budget);

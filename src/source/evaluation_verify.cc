@@ -1,23 +1,24 @@
+#include <bit>
+#include <new>
+#include <stdexcept>
+
+#include "../analysis/value_edits.h"
+#include "assignment_values.h"
 #include "call_spread_inputs.h"
-#include "integer_nan.h"
+#include "evaluation_aliases.h"
+#include "evaluation_failure.h"
+#include "evaluation_flow.h"
 #include "evaluation_plan.h"
 #include "for_in_evaluation.h"
 #include "for_of_evaluation.h"
-#include "evaluation_failure.h"
-#include "assignment_values.h"
-#include "evaluation_flow.h"
-#include "evaluation_aliases.h"
-#include "module_evaluation.h"
-#include "phase_evaluation.h"
-#include "phase_corridor.h"
-#include "logical_regions.h"
+#include "integer_nan.h"
+#include "literal_arm_view.h"
 #include "logical_evaluation.h"
+#include "logical_regions.h"
+#include "module_evaluation.h"
+#include "phase_corridor.h"
+#include "phase_evaluation.h"
 #include "tree_checks.h"
-#include "../analysis/value_edits.h"
-
-#include <new>
-#include <bit>
-#include <stdexcept>
 
 namespace abcd::source {
 namespace {
@@ -279,6 +280,20 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
             pinned[result->op.value] = 1;
       }
     }
+    {
+      TreeCheckBudget arm_budget({bytes, work});
+      const auto expected = IndexNestedLiteralInputs(graph, plan, arm_budget);
+      Require(expected == plan.literal_arm_inputs, Error::kOwnership);
+      for (std::size_t i = 0; i < expected.size(); ++i) {
+        arm_budget.Step();
+        if (expected[i]) {
+          pinned[i] = 0;
+          literal_allocations[i] = 1;
+        }
+      }
+      admit(arm_budget.Bytes(), 1);
+      step(arm_budget.Work());
+    }
     // Recompute actual observations after identity projection, including uses
     // transported through phi/copy aliases. Each original use is visited once.
     TreeCheckBudget use_budget({bytes,work});
@@ -462,9 +477,14 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
         visits[i] = EvaluationVisit::kDone;
       } else if (placement.kind == EvaluationKind::kPhiInput) {
         witness.obligation = EvaluationObligation::kPhiInput;
-        Require(!pinned[i] && op.result && !placement.temporary && placement.consumer &&
-            !phi_inputs.empty() && phi_inputs[i] == placement.consumer && visible[i].first == placement.consumer &&
-            !visible[i].multiple, Error::kOwnership);
+        Require(
+            !pinned[i] && op.result && !placement.temporary &&
+                placement.consumer &&
+                ((!phi_inputs.empty() && phi_inputs[i] == placement.consumer) ||
+                 (!plan.literal_arm_inputs.empty() &&
+                  plan.literal_arm_inputs[i] == placement.consumer)) &&
+                visible[i].first == placement.consumer && !visible[i].multiple,
+            Error::kOwnership);
       } else if (placement.kind == EvaluationKind::kLogicalLeft) {
         witness.obligation = EvaluationObligation::kLogicalInput;
         Require(!pinned[i] && op.result && !placement.temporary && placement.consumer &&
@@ -653,8 +673,13 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (const EvaluationFailure& error) { return error;
   } catch (Error error) { return EvaluationFailure{error, witness};
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (LiteralEventError) {
+    return Error::kOwnership;
+  } catch (const std::bad_alloc&) {
+    return Error::kResourceLimit;
+  } catch (const std::length_error&) {
+    return Error::kResourceLimit;
+  }
 }
 std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan, analysis::SemanticBudget budget) {

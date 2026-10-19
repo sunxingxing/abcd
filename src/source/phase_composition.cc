@@ -1,10 +1,11 @@
 #include "phase_composition.h"
-#include "assignment_values.h"
-#include "checked_read_event.h"
-#include "call_plan.h"
 
 #include <algorithm>
 
+#include "assignment_values.h"
+#include "call_plan.h"
+#include "checked_read_event.h"
+#include "literal_reference_view.h"
 #include "logical_evaluation.h"
 #include "logical_regions.h"
 #include "phase_corridor.h"
@@ -44,6 +45,9 @@ class Composition {
     budget.Admit(phase_budget_.Cost().bytes, 1);
     accounted_work_ = phase_budget_.Cost().work; budget.Step(accounted_work_);
     regions_ = FindPhasedPhiSelections(graph, plan, budget);
+    if (!checked)
+      literal_atoms_ =
+          IndexLiteralReferences(graph, plan, budget, &literal_members_);
     const auto roots = IndexPhaseInlineRoots(graph, plan, budget);
     budget.Array(region_of_, graph.ops.size()); budget.Array(join_of_, graph.blocks.size());
     budget.Array(shared_join_, graph.blocks.size());
@@ -161,6 +165,16 @@ class Composition {
       last_[consumer.value] = guard; begin_[consumer.value] = preceding.after;
       return true;
     }
+    if (const auto* atom = LiteralAtom(consumer)) {
+      // Separate verified forest boundary. The ordinary allocation exclusion
+      // below is unchanged: this span includes every conditional arm, Commit
+      // and exception, independently rederived by IndexLiteralReferences.
+      valid_[consumer.value] = events_[consumer.value] =
+          selection_[consumer.value] = 1;
+      begin_[consumer.value] = {op.block, op.order};
+      last_[consumer.value] = atom->last;
+      return true;
+    }
     if (op.life != ValueLife::kLive || excluded_[consumer.value] ||
         (!PhaseCorridors::Expression(op.operation) && !PhaseCorridors::ConsumesOperands(op.operation))) return fail();
     // A moved throw point keeps this consumer's handler and needs no staging.
@@ -217,8 +231,10 @@ class Composition {
               *GuardedPeer(plan_, read), use};
         }
       }
-      if (excluded_[producer.value] || Owned(producer) || !valid_[producer.value] ||
-          (!Transport(producer) && !Fusable(producer, consumer, use))) {
+      if ((!LiteralAtom(producer) && excluded_[producer.value]) ||
+          Owned(producer) || !valid_[producer.value] ||
+          (!LiteralAtom(producer) && !Transport(producer) &&
+           !Fusable(producer, consumer, use))) {
         if (link.added) continue;  // An eligible root keeps its snapshot.
         return fail();
       }
@@ -227,7 +243,9 @@ class Composition {
       // none. Checking the child itself therefore covers its whole subtree.
       bool fits = !events_[producer.value] ||
           (stop.kind == Stop::Kind::kEvent && last_[producer.value] && stop.op == *last_[producer.value]);
-      if (fits && EvaluationMayThrow(graph_, plan_, producer)) {
+      if (fits && (LiteralAtom(producer)
+                       ? LiteralAtom(producer)->may_throw
+                       : EvaluationMayThrow(graph_, plan_, producer))) {
         fits = fits_catch(producer);
         if (!fits && checked_mode_ && failures_[consumer.value]) failures_[consumer.value]->kind = GuardedCallError::kCatchState;
       }
@@ -331,6 +349,18 @@ class Composition {
       output.push_back(failure);
     }
   }
+  void MaskLiteralMembers(std::vector<std::uint8_t>& mask) {
+    // Only forests reached from independently verified composition roots may
+    // replace interval equations. Include their full original event membership,
+    // especially implicit definition-base uses, not just the allocation token.
+    for (std::size_t i = 0; i < literal_members_.size(); ++i) {
+      budget_.Step();
+      const auto owner = literal_members_[i];
+      if (!owner || !mask[owner->value]) continue;
+      Require(!mask[i] || i == owner->value);
+      mask[i] = 1;
+    }
+  }
   void Account() { budget_.Step(phase_budget_.Cost().work - accounted_work_); accounted_work_ = phase_budget_.Cost().work; }
 
  private:
@@ -415,6 +445,11 @@ class Composition {
         !PredicateSnapshot(graph_, parent, occurrence.operand) &&
         corridors_.FuseSemantics(producer, consumer, use).has_value();
   }
+  const LiteralReferenceView* LiteralAtom(OpId id) const {
+    return id.value < literal_atoms_.size() && literal_atoms_[id.value]
+               ? &*literal_atoms_[id.value]
+               : nullptr;
+  }
   bool Eligible(OpId producer, OpId consumer, UseId use) const {
     const auto& placement = plan_.operations[producer.value];
     return placement.kind == EvaluationKind::kRoot && placement.temporary != TemporaryReason::kMultipleUses &&
@@ -441,6 +476,10 @@ class Composition {
     const auto producer = *result;
     const auto placement = Placement(producer);
     if (placement.kind == EvaluationKind::kInline && placement.consumer == use) return {std::nullopt, producer};
+    if (const auto* atom = LiteralAtom(producer);
+        atom && atom->call == consumer && atom->argument == use &&
+        placement.kind == EvaluationKind::kRoot && build)
+      return {std::nullopt, producer, true};
     if (build && Eligible(producer, consumer, use)) return {std::nullopt, producer, true};
     return {};
   }
@@ -542,6 +581,8 @@ class Composition {
   std::vector<std::optional<OpId>> seed_, checked_source_, module_ends_;
   std::vector<std::optional<GuardedCallFailure>> failures_;
   std::vector<SelectionRegion> regions_;
+  std::vector<std::optional<LiteralReferenceView>> literal_atoms_;
+  std::vector<std::optional<OpId>> literal_members_;
   std::vector<std::optional<std::size_t>> region_of_, join_of_;
   std::vector<std::uint32_t> incoming_, outgoing_, visited_;
   std::vector<std::optional<EdgeId>> predecessor_;
@@ -625,6 +666,7 @@ std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, con
     Require(!i || plan.phase_compositions[i - 1] < root);
     for (const auto node : proof.Verify(root)) { budget.Step(); Require(!mask[node.value]); mask[node.value] = 1; }
   }
+  proof.MaskLiteralMembers(mask);
   proof.Account();
   if (!plan.checked_compositions.empty()) {
     Composition checked(graph, plan, budget, true);

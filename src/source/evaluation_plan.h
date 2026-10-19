@@ -168,6 +168,9 @@ struct EvaluationPlan {
   // re-proved before this certificate can replace corridor equations.
   std::vector<analysis::OpId> checked_compositions;
   std::vector<GuardedCallFailure> checked_failures; // Sorted by call; diagnostics only.
+  // Original phi inputs certified by a private literal arm view. Independently
+  // rederived before exempting these allocations from the phased root pin.
+  std::vector<std::optional<analysis::UseId>> literal_arm_inputs;
   // Buffered allocations own a chain of staged definitions across source operands.
   // Indexed by allocation, pointing to the last definition. Normal selected
   // objects and phased operand composition share the native forest/placement.
