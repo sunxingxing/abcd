@@ -1,7 +1,7 @@
 # ISA 覆盖实测台账：增量 0
 
 2026-10-19，基线 `c112ecae`。本轮只新增测试工具、测试及文档；生产代码和
-支持范围不变。详细字段见 [JSON](../../../build/isa-coverage/coverage.json (generated, untracked; regenerate with tests/isa/coverage_matrix.py)) 和
+支持范围不变。详细字段见 `build/isa-coverage/coverage.json`（生成物，不纳入版本控制，用 `tests/isa/coverage_matrix.py` 重新生成） 和
 [工具说明](../../../tests/isa/README.md)。
 
 ## 本轮范围与结果
