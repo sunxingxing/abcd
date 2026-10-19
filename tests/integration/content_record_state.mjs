@@ -275,12 +275,13 @@ export async function checkContentRecord(sources, reference, request) {
       ['CommonConstants.FULL_PERCENT', '"wrong"', {}],
       ['JSON.stringify(image) + index', 'JSON.stringify(image)', {}],
       ['if (!("finalizeConstruction" in ViewPU.prototype))', 'if (("finalizeConstruction" in ViewPU.prototype))', {fallback: true}],
-      ['(this.__mainWindowInfo = new SynchedPropertyNesedObjectPU(params.mainWindowInfo, this, "mainWindowInfo"));',
+      ['this.__mainWindowInfo = new SynchedPropertyNesedObjectPU(params.mainWindowInfo, this, "mainWindowInfo");',
         'Object.defineProperty(this, "__mainWindowInfo", {value: new SynchedPropertyNesedObjectPU(params.mainWindowInfo, this, "mainWindowInfo"), writable: true, enumerable: true, configurable: true});',
         {assignment: true, constructorOnly: true, lambda: true}],
     ];
     for (const [before, after, config] of mutations.slice(request.first, request.first + request.count)) {
       assert.ok(sources.Content.includes(before), before); const changed = sources.Content.replace(before, after);
+      assert.notEqual(changed, sources.Content, before);
       new vm.SourceTextModule(changed);
       await assert.rejects(async () => assert.deepEqual(await exercise({...sources, Content: changed}, config),
         await exercise(reference, config)), error => error instanceof assert.AssertionError); ++result.mutations;

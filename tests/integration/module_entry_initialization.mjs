@@ -25,15 +25,15 @@ for (const profile of ['1202', '1206', '1301']) {
     assert.equal((generated.match(/let answer =/g) ?? []).length, 1);
     assert.ok(generated.indexOf(`let answer = ${initial};`) < generated.indexOf('if ('));
     assert.match(generated, /if \(/);
-    assert.match(generated, /\(answer = 7\)/);
-    assert.match(generated, /\(answer = 9\)/);
+    assert.match(generated, /answer = 7;/);
+    assert.match(generated, /answer = 9;/);
     assert.ok(!generated.includes('INCOMPLETE'));
     await evaluate(generated, expected);
     ++executions;
 
     for (const mutation of [
-      generated.replace(`(answer = ${expected})`, `(answer = ${initial})`),
-      generated.replaceAll('(answer = 7)', '(void 0)').replaceAll('(answer = 9)', '(void 0)'),
+      generated.replace(`answer = ${expected};`, `answer = ${initial};`),
+      generated.replaceAll('answer = 7;', 'void 0;').replaceAll('answer = 9;', 'void 0;'),
     ]) {
       assert.notEqual(mutation, generated);
       await assert.rejects(evaluate(mutation, expected), {code: 'ERR_ASSERTION'});
@@ -57,7 +57,7 @@ for (const profile of ['1202', '1206', '1301']) {
         // Never enter the loop, in either printed loop form.
         const changed = loop ? (source.includes('while (true)') ? source.replace('while (true)', 'while (false)')
             : source.replace('for (; ', 'for (; false && ')) :
-          source.replace(`(answer = ${expected})`, `(answer = ${initial})`);
+          source.replace(`answer = ${expected};`, `answer = ${initial};`);
         assert.notEqual(changed, source); new vm.SourceTextModule(changed);
         await assert.rejects(evaluate(changed, loop ? 0 : expected), {code: 'ERR_ASSERTION'}); ++mutations;
       }

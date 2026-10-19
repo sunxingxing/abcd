@@ -98,9 +98,9 @@ export async function verifyBreakpointState(source, reference, options = {}) {
     }
   let mutations = 0;
   for (const changed of [
-    source.replace(`(this.${keys[1]} = ${keys[1]});`, `(this.${keys[1]} = ${keys[2]});`),
-    source.replace(`(this.${keys[0]} = ${keys[0]});`, `(this.${keys[0]} = ${keys[0]}); return ({});`),
-    source.replace(`(this.${keys[0]} = ${keys[0]});`, `Object.defineProperty(this, "${keys[0]}", {value: ${keys[0]}, writable: true, enumerable: true, configurable: true});`),
+    source.replace(`this.${keys[1]} = ${keys[1]};`, `(this.${keys[1]} = ${keys[2]});`),
+    source.replace(`this.${keys[0]} = ${keys[0]};`, `(this.${keys[0]} = ${keys[0]}); return ({});`),
+    source.replace(`this.${keys[0]} = ${keys[0]};`, `Object.defineProperty(this, "${keys[0]}", {value: ${keys[0]}, writable: true, enumerable: true, configurable: true});`),
   ]) {
     assert.notEqual(changed, source); new vm.SourceTextModule(changed);
     await assert.rejects(run(changed, PrototypeKind.foreign, true, argumentsList[2]), {name: 'AssertionError'});

@@ -183,12 +183,12 @@ int main(int argc, char** argv) {
     // A loop may print as `while` or as a `for` with its update clause.
     Check(joined_loop ? (source.find("while (") != std::string::npos || source.find("for (") != std::string::npos)
                       : source.find("if (") != std::string::npos);
-    if (!joined_loop) Check(source.find("(answer = 7)") != std::string::npos &&
-        source.find("(answer = 9)") != std::string::npos);
+    if (!joined_loop) Check(source.find("answer = 7;") != std::string::npos &&
+        source.find("answer = 9;") != std::string::npos);
   } else if (stored_branch) {
     Check(source.find(mode == "stored-branch-zero" ? "let answer = 0;" : "let answer = 1;") != std::string::npos);
     Check(source.find("if (") != std::string::npos);
-    Check(source.find("(answer = 7)") != std::string::npos && source.find("(answer = 9)") != std::string::npos);
+    Check(source.find("answer = 7;") != std::string::npos && source.find("answer = 9;") != std::string::npos);
   } else if (anonymous) {
     Check(source.find("*default*") == std::string::npos);
     if (repeated) {

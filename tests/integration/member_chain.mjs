@@ -62,7 +62,7 @@ for (let i = 0; i < recovered.length; ++i) {
   }
 }
 for (const mutated of [
-  source.replace('(0, value)()', '((0, value)(), (0, value)())'),
+  source.replace('value()', '(value(), value())'),
   source.replace('.probe()', '.probe.call(null)'),
   source.replace('.probe()', '.items()'),
 ]) {

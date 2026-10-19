@@ -257,7 +257,7 @@ export async function verifyCardArrayState(source, reference) {
       }
   }
   for (const changed of [
-    source.replace(/\(([\w$]+)\.cardArray = \[\]\);/,
+    source.replace(/([\w$]+)\.cardArray = \[\];/,
       'Object.defineProperty($1, "cardArray", {value: [], writable: true, enumerable: true, configurable: true});'),
     source.replace(/return ([\w$]+);/, 'return ({});'),
   ]) {

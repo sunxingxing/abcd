@@ -321,7 +321,7 @@ const mutations = [
    check: ss => boundary(ss[0], configs[0], configs[0].groups[1], 4, 2, 'ordinary')},
   {index: 0, name: 'acquired receiver replaced', change: s => s.replace('this.iconInfoModel.getWelfareList()', '(0, this.iconInfoModel.getWelfareList)()'),
    check: ss => boundary(ss[0], configs[0], configs[0].groups[1], 4, 2, 'ordinary')},
-  {index: 1, name: 'setter bypassed', change: s => s.replace('(this.model = new SectionModel())',
+  {index: 1, name: 'setter bypassed', change: s => s.replace('this.model = new SectionModel()',
     'Object.defineProperty(this, "model", {value: new SectionModel(), writable: true, enumerable: true, configurable: true})'),
    check: ss => assignment(ss[1], configs[1], false, false)},
   {index: 2, name: 'model initialization removed', change: s => s.replace('this.initData();', 'void 0;'),

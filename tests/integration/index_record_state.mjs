@@ -378,12 +378,12 @@ export async function verifyIndexRecordBatch(source, routes, reference, referenc
     ['this.__navPageInfos.aboutToBeDeleted();', 'this.__navPageInfos.get();'],
     ['this.updateDirtyElements();', 'return this.updateDirtyElements();'],
     // The receiver cell may print as an assignment or as its own initializer.
-    ...(source.includes('($local0 = this);') ? [['($local0 = this);', '($local0 = globalThis);']]
+    ...(source.includes('\n    $local0 = this;') ? [['$local0 = this;', '$local0 = globalThis;']]
         : [['let $local0 = this;', 'let $local0 = globalThis;']]),
     ['elmtId = (-1)', 'elmtId = 0'],
     ['new Shopping(', 'new ShoppingAvoid('],
     ['super(parent, __localStorage, elmtId, extraInfo)', 'super(parent, params, elmtId, extraInfo)'],
-    ['(this.__navPageInfos = new ObservedPropertyObjectPU(new NavPathStack(), this, "navPageInfos"));',
+    ['this.__navPageInfos = new ObservedPropertyObjectPU(new NavPathStack(), this, "navPageInfos");',
       'Object.defineProperty(this, "__navPageInfos", {value: new ObservedPropertyObjectPU(new NavPathStack(), this, "navPageInfos"), writable: true, enumerable: true, configurable: true});'],
   ]) {
     if (!selected('mutations')) continue;
@@ -403,10 +403,10 @@ export async function verifyIndexRecord(source, routes, reference, referenceRout
   // class binding, receiver snapshots, equivalent if polarity and callable-name
   // envelopes; require native source constructs instead of a register machine.
   assert.match(source, /class extends \(ViewPU\)/);
-  assert.match(source, /constructor\(parent, params, __localStorage, elmtId = \(-1\), paramsLambda = \(void 0\), extraInfo\)/);
+  assert.match(source, /constructor\(parent, params, __localStorage, elmtId = \(-1\), paramsLambda = void 0, extraInfo\)/);
   assert.match(source, /super\(parent, __localStorage, elmtId, extraInfo\)/);
   assert.match(source, /this\.__navPageInfos = new ObservedPropertyObjectPU\(new NavPathStack\(\), this, "navPageInfos"\)/);
-  assert.match(source, /this\.__windowUtil = this\.createStorageLink\("windowUtil", \(void 0\), "windowUtil"\)/);
+  assert.match(source, /this\.__windowUtil = this\.createStorageLink\("windowUtil", void 0, "windowUtil"\)/);
   assert.match(source, /NavPageMap\(name, parent = null\)/); assert.match(source, /initialRender\(\)/);
   assert.match(source, /get navPageInfos\(\)/); assert.match(source, /set windowUtil\(newValue\)/);
   assert.match(source, /route\.children \|\| \[\]/); assert.match(source, /routeItem\.to/);

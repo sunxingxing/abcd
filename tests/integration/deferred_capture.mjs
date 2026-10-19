@@ -31,9 +31,10 @@ for (const value of values) {
   ++scenarios;
 }
 if (selector !== '--deferred-source') {
-  const store = source.match(/\((\$local\d+|\$binding\d+) = restoredValue\);/);
+  const store = source.match(/(\$local\d+|\$binding\d+) = restoredValue;/);
   assert.ok(store);
   const changed = source.replace(store[0], `(${store[1]} = null);`);
+  assert.notEqual(changed, source);
   new vm.Script(changed);
   const mutated = vm.runInNewContext(changed), token = {};
   assert.notEqual(mutated(token)(), reference(token)()); ++mutationChecks;

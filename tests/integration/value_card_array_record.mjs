@@ -125,7 +125,7 @@ assert.match(peerText, /export class CardItem/);
 assert.match(peer.source, /class CardItem \{/);
 assert.match(peer.source, /constructor\(card, index\)/);
 assert.match(peer.source, /PICTURE_ARRAY_LIST\[index % PICTURE_ARRAY_LIST\.length\]/);
-assert.match(peer.source, /COMMENT_LIST\.forEach\(\(\(item\) =>/);
+assert.match(peer.source, /COMMENT_LIST\.forEach\(\(item\) =>/);
 assert.match(peer.source, /\.commentList\.push\(new CommentItem\(item\)\)/);
 assert.match(peer.source, /export \{ CardItem as "CardItem" \}/);
 assert.doesNotMatch(peer.source, /INCOMPLETE|UNRECOVERED|Reflect\.construct|\.call\(|\bswitch\s*\(/);

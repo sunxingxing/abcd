@@ -354,10 +354,11 @@ for (const [from, to, scenario] of [
     error => error instanceof assert.AssertionError);
   ++mutationChecks;
 }
-const fieldWrite = '(this.windowStatusType = window.WindowStatusType.UNDEFINED);';
+const fieldWrite = 'this.windowStatusType = window.WindowStatusType.UNDEFINED;';
 assert.ok(report.source.includes(fieldWrite));
 const ownDefinition = report.source.replace(fieldWrite,
   'Object.defineProperty(this, "windowStatusType", {value: window.WindowStatusType.UNDEFINED, writable: true, enumerable: true, configurable: true});');
+assert.notEqual(ownDefinition, report.source);
 new vm.SourceTextModule(ownDefinition);
 const fieldMutant = await load(ownDefinition, true);
 assert.throws(() => fieldMutant.assignments(), error => error instanceof assert.AssertionError);

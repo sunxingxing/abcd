@@ -252,9 +252,9 @@ export async function verifyCardItemState(source, reference) {
   for (const changed of [source.replace('card.icon', 'card.name'),
     source.replace('index % PICTURE_ARRAY_LIST.length', '0'),
     source.replace('new CommentItem(item)', 'new CommentItem(({}))'),
-    source.replace(/\(\(item\) => \{/, '(function(item) {'),
+    source.replace(/\(item\) => \{/, 'function(item) {'),
     source.replace('return $local2;', 'return {};'),
-    source.replace('($local2.pictureArray = []);', 'Object.defineProperty($local2, "pictureArray", {value: [], writable: true, configurable: true, enumerable: true});'),
+    source.replace('$local2.pictureArray = [];', 'Object.defineProperty($local2, "pictureArray", {value: [], writable: true, configurable: true, enumerable: true});'),
   ]) {
     assert.notEqual(changed, source); new vm.SourceTextModule(changed);
     await assert.rejects((async () => {

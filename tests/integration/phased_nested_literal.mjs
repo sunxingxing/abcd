@@ -16,7 +16,7 @@ for (const [flag, call, array, dead] of [
 let scenarios = 0;
 for (const {source, positions, call, array, dead} of reports) {
   assert.ok(!source.includes('INCOMPLETE'));
-  assert.match(source, /\(\{\n\s+run: \{run:/);
+  assert.match(source, /return \{\n\s+run: \{run:/);
   assert.doesNotMatch(source, /run: \(\{/);
   const pair = vm.runInNewContext(`(() => {
     Object.defineProperty(Object.prototype, 'run', {set() { throw new Error('inherited setter'); }});

@@ -183,8 +183,8 @@ export async function verifyTabBarRecords(view, model, referenceView, referenceM
   }
   for (const changed of [view.replace('this.tabList = TabBarsInfo', 'this.tabList = []'),
     view.replace('return this.tabList;', 'return TabBarsInfo;'),
-    view.replace('(this.tabList = TabBarsInfo);', 'return {tabList: TabBarsInfo};'),
-    view.replace('(this.tabList = TabBarsInfo);', 'Object.defineProperty(this, "tabList", {value: TabBarsInfo, configurable: true, enumerable: true, writable: true});'),
+    view.replace('this.tabList = TabBarsInfo;', 'return {tabList: TabBarsInfo};'),
+    view.replace('this.tabList = TabBarsInfo;', 'Object.defineProperty(this, "tabList", {value: TabBarsInfo, configurable: true, enumerable: true, writable: true});'),
   ]) {
     assert.notEqual(changed, view); new vm.SourceTextModule(changed);
     await assert.rejects((async () => {

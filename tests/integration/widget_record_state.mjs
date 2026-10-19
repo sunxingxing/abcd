@@ -313,11 +313,12 @@ export async function verifyWidgetRecordBatch(source, reference, request) {
     ['StopGetAccessRecording();', 'StartGetAccessRecordingFor(17);'],
     ['abilityName: "EntryAbility"', 'abilityName: "WrongAbility"'],
     ['elmtId = (-1)', 'elmtId = 0'],
-    ['paramsLambda = (void 0)', 'paramsLambda = (() => ({}))'],
+    ['paramsLambda = void 0', 'paramsLambda = (() => ({}))'],
     ['super(parent, __localStorage, elmtId, extraInfo)', 'super(parent, __localStorage, elmtId, params)'],
   ]) {
     if (!selected('mutations')) continue;
     assert.ok(source.includes(from), from); const changed = source.replace(from, to);
+    assert.notEqual(changed, source, from);
     new vm.SourceTextModule(changed);
     await assert.rejects(async () => assert.deepEqual(await exercise(changed, {finalize: 'own', image: 'payload'}), baseline),
       error => error instanceof assert.AssertionError, from); ++mutations;
@@ -336,9 +337,10 @@ export async function verifyWidgetRecordBatch(source, reference, request) {
     ++mutations;
   }
   if (selected('mutations')) {
-    const field = '(this.__formId = this.createLocalStorageProp("formId", "", "formId"));';
+    const field = 'this.__formId = this.createLocalStorageProp("formId", "", "formId");';
     assert.ok(source.includes(field));
     const changed = source.replace(field, 'Object.defineProperty(this, "__formId", {value: this.createLocalStorageProp("formId", "", "formId"), writable: true, enumerable: true, configurable: true});');
+    assert.notEqual(changed, source, field);
     new vm.SourceTextModule(changed);
     const mutant = await exercise(changed, {finalize: 'own', assignment: '__formId'});
     assert.throws(() => assert.equal(mutant.assignment.writes, 1), error => error instanceof assert.AssertionError);

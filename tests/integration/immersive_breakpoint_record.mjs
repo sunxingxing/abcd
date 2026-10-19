@@ -160,7 +160,7 @@ for (const [before, after, key, mode, swapAt = 0] of [
   assert.notDeepEqual(mutant.observe(key, mode, 'proxy', 0, undefined, swapAt),
     expected.observe(key, mode, 'proxy', 0, undefined, swapAt)); ++mutations;
 }
-const changedXl = report.source.replace('(this.xl = xl);', '(this.xl = lg);');
+const changedXl = report.source.replace('this.xl = xl;', 'this.xl = lg;');
 assert.notEqual(changedXl, report.source); new vm.SourceTextModule(changedXl);
 await assert.rejects(load(changedXl), {name: 'AssertionError'}); ++mutations;
 assert.equal(mutations, 8);

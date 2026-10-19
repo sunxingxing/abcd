@@ -100,8 +100,8 @@ for (const profile of ['1202', '1206', '1301']) {
     if (mode === '--class-binding') {
       assert.match(generated, /let snapshot = class \{/);
       assert.doesNotMatch(generated, /class snapshot/);
-    } else if (mode === '--class-binding-assignment') assert.match(generated, /\(snapshot = class \{/);
-    else assert.match(generated, /let snapshot = \(class Box \{/);
+    } else if (mode === '--class-binding-assignment') assert.match(generated, /^\s*snapshot = class \{/m);
+    else assert.match(generated, /let snapshot = class Box \{/);
     const expectedName = mode === '--class-binding-mismatch' ? 'Box' : 'snapshot';
     const paired = reference.replace('let snapshot = ns;', mode === '--class-binding-assignment' ? 'let snapshot = ns;' : '').replace(
       'export {answer, answer as answerAlias, snapshot};', `
