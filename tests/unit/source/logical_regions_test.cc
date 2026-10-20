@@ -1137,7 +1137,14 @@ int main(int argc, char** argv) {
               << Source(OptionalAccess(false, 1, false, false, false, false, true)) << "]\n";
     return 0;
   }
-  Check(Source(GuardedCopy()).find("else") != std::string::npos);
+  {
+    // The empty arm's copy is the identity on the joined binding; readable
+    // slice 3 may drop the empty else, but the effectful arm's copy and the
+    // joined result must both survive.
+    const auto source = Source(GuardedCopy());
+    Check(source.find("debugger;\n    $value2 = value.items;") != std::string::npos);
+    Check(source.find("return $value2;") != std::string::npos);
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--polarity-sources") {
     std::cout << "[" << Source(GuardedRead(false, false)) << "," << Source(GuardedRead(false, true))
               << "," << Source(GuardedRead(true, false)) << "," << Source(GuardedRead(true, true)) << "]\n";
