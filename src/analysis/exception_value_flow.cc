@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include "value_propagation.h"
+#include "abcd/analysis/exception_throw_domain.h"
 
 namespace abcd::analysis {
 std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
@@ -11,7 +12,7 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
     PendingExceptionValues pending_values,
     std::span<const ExceptionLoadFact> loads,
     std::span<const ExceptionPendingFact> pending_facts,
-    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
+    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic, ExceptionThrowRefinement throws) {
   using Error = ValueFlowError;
   using Kind = detail::ValueRuleKind;
   const auto invalid = [] { return ValueFlowFailure{Error::kInvalidSsa, {}, {}}; };
@@ -109,10 +110,18 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
         return ValueFlowFailure{Error::kDuplicatePendingFact, site, {}};
       pending_kinds[fact.before.value] = fact.kinds;
     }
-    const auto connect = [&](SsaValueId from, SsaValueId to) {
+    RawEventArena throw_arena{{memory.Available(), quota.Remaining()}};
+    std::pmr::vector<ExceptionThrowDomain> throw_domains{throw_arena.Resource()};
+    if (throws == ExceptionThrowRefinement::kGuardedNonHole) {
+      throw_domains = DeriveExceptionThrowDomains(flow, ssa, throw_arena);
+      VerifyExceptionThrowDomains(flow, ssa, throw_domains, throw_arena);
+      charge(throw_arena.Work()); memory.Observe(throw_arena.Peak());
+      memory.Retain(throw_domains.capacity() * sizeof(ExceptionThrowDomain));
+    }
+    const auto connect = [&](SsaValueId from, SsaValueId to, bool exclude_hole = false) {
       charge();
       if (from.value >= count || to.value >= count) throw invalid();
-      edges.push_back({{from.value}, {to.value}});
+      edges.push_back({{from.value}, {to.value}, exclude_hole});
     };
     for (std::size_t i = 0; i < count; ++i) {
       charge();
@@ -174,8 +183,10 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
         }
       }
     }
+    std::size_t throw_cursor = 0;
     for (std::size_t i = 0; i < flow.nodes.size(); ++i) {
       charge();
+      while (throw_cursor < throw_domains.size() && throw_domains[throw_cursor].site.value < i) ++throw_cursor;
       const auto& node = flow.nodes[i];
       if (!reached[i] || !node.exception) continue;
       for (std::size_t e = 0; e < node.successor_count; ++e) {
@@ -189,7 +200,8 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
           const auto reads = ssa.Reads({static_cast<std::uint32_t>(i)});
           if (!std::holds_alternative<Accumulator>(thrown->value) || reads.size() != 1)
             return invalid();
-          connect(reads.front().value, *target);
+          const bool filtered = throw_cursor < throw_domains.size() && throw_domains[throw_cursor].site.value == i;
+          connect(reads.front().value, *target, filtered);
         } else {
           // User callbacks can supply the pending value. Without an owner
           // premise, do not infer Language merely because the VM threw it.
@@ -224,6 +236,9 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
     result.work.units = quota.Consumed() - consumed;
     return result;
   } catch (const ValueFlowFailure& failure) { return failure;
+  } catch (const RawEventFailure& failure) {
+    return ValueFlowFailure{failure.kind == RawEventError::kWorkLimit ? ValueFlowError::kWorkLimit :
+        failure.kind == RawEventError::kResourceLimit ? ValueFlowError::kResourceLimit : ValueFlowError::kInvalidSsa, {}, {}};
   } catch (const detail::IdfWorkLimit&) { return ValueFlowFailure{Error::kWorkLimit, {}, {}};
   } catch (const std::bad_alloc&) { return ValueFlowFailure{Error::kResourceLimit, {}, {}};
   } catch (const std::length_error&) { return ValueFlowFailure{Error::kResourceLimit, {}, {}}; }

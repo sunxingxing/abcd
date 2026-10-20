@@ -52,20 +52,29 @@ VerifyClassSelfClassDraft(const ClassSelfInitializationInput&,
 // a fabricated FunctionTree/body/signature or source receipt.
 struct ClassMemberOmission {
   ClassTreeContext context;
-  std::variant<analysis::SemanticProofFailure, analysis::ExceptionInputFailure> failure;
+  std::variant<analysis::SemanticProofFailure, analysis::ExceptionInputFailure, PhasedControlFailure> failure;
   abc::EntityOffset root;
   abc::EntityOffset method;
   std::optional<abc::EntityOffset> parent;
   std::optional<abc::CodeOffset> creation_pc;
   std::optional<abc::CodeOffset> working_pc;
   [[nodiscard]] abc::CodeOffset Pc() const {
-    return std::visit([](const auto& proof) {return proof.pc;}, failure);
+    return std::visit([](const auto& proof) -> abc::CodeOffset {
+      if constexpr (std::is_same_v<std::decay_t<decltype(proof)>, PhasedControlFailure>) return proof.pc.value_or(proof.input_gap->cause.pc);
+      else return proof.pc;
+    }, failure);
   }
   [[nodiscard]] bool InputGap() const {
     if (root != context.Target() || parent.has_value() != creation_pc.has_value() ||
         (!parent && method != root)) return false;
     return std::visit([](const auto& proof) {
-      if constexpr (std::is_same_v<std::decay_t<decltype(proof)>, analysis::ExceptionInputFailure>)
+      if constexpr (std::is_same_v<std::decay_t<decltype(proof)>, PhasedControlFailure>) {
+        const auto* region = std::get_if<ExceptionControlRegionFailure>(&proof.cause);
+        return proof.kind == PhasedMethodError::kControl && region &&
+            region->kind == ExceptionControlError::kMultipleExits && region->exception_region &&
+            proof.input_gap && proof.input_gap->cause.kind == analysis::ExceptionInputError::kInternalValue &&
+            proof.input_gap->cause.node && proof.input_gap->cause.value;
+      } else if constexpr (std::is_same_v<std::decay_t<decltype(proof)>, analysis::ExceptionInputFailure>)
         return proof.kind == analysis::ExceptionInputError::kInternalValue && proof.node && proof.value;
       else return proof.kind == analysis::SemanticProofError::kInternalValue;
     }, failure);

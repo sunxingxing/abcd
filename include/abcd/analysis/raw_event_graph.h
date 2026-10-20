@@ -40,6 +40,7 @@ class RawEventArena {
   void LimitWork(std::uint64_t limit);
   void Step(std::uint64_t units = 1);
   std::uint64_t Work() const { return initial_ - left_; }
+  std::uint64_t RemainingWork() const { return left_; }
  private:
   detail::IdfScratch memory_;
   std::uint64_t left_, initial_;

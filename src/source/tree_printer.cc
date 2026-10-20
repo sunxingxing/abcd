@@ -2498,7 +2498,8 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
         append("; parent "); number(omitted.parent->value);
         append("; creation PC "); number(omitted.creation_pc->value);
       }
-      append("; input proof PC "); number(omitted.Pc().value);
+      append(std::holds_alternative<PhasedControlFailure>(omitted.failure) ? "; control proof PC " : "; input proof PC ");
+      number(omitted.Pc().value);
       append(" */\n"); result.incomplete = true;
     };
     std::size_t gap = 0;

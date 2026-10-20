@@ -269,7 +269,12 @@ std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
         const auto& failure = std::get<FamilyPrepareFailure>(body);
         const auto* family = std::get_if<FamilyFileFailure>(&failure.cause);
         const auto* phase = family ? std::get_if<PhasedFileFailure>(&family->cause) : nullptr;
-        const auto* input = phase ? std::get_if<PhasedInputFailure>(phase) : nullptr;
+        const auto* control_gap = phase ? std::get_if<PhasedControlFailure>(phase) : nullptr;
+      const auto* region_gap = control_gap ? std::get_if<ExceptionControlRegionFailure>(&control_gap->cause) : nullptr;
+        const bool progressed = control_gap && control_gap->kind == PhasedMethodError::kControl &&
+            control_gap->input_gap && region_gap && region_gap->kind == ExceptionControlError::kMultipleExits &&
+            region_gap->exception_region;
+        const auto* input = progressed ? &*control_gap->input_gap : phase ? std::get_if<PhasedInputFailure>(phase) : nullptr;
         const auto* normal = family ? std::get_if<FunctionFileFailure>(&family->cause) : nullptr;
         const auto* normal_input = normal ? std::get_if<FunctionInputFailure>(normal) : nullptr;
         const auto* proof = normal_input ? std::get_if<analysis::SemanticProofFailure>(&normal_input->cause) : nullptr;
@@ -382,7 +387,12 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       if (!family || !family->root || !family->method ||
           family->parent.has_value() != family->creation_pc.has_value()) return {};
       const auto* phase = std::get_if<PhasedFileFailure>(&family->cause);
-      const auto* input = phase ? std::get_if<PhasedInputFailure>(phase) : nullptr;
+      const auto* control_gap = phase ? std::get_if<PhasedControlFailure>(phase) : nullptr;
+      const auto* region_gap = control_gap ? std::get_if<ExceptionControlRegionFailure>(&control_gap->cause) : nullptr;
+      const bool progressed = control_gap && control_gap->kind == PhasedMethodError::kControl &&
+          control_gap->input_gap && region_gap && region_gap->kind == ExceptionControlError::kMultipleExits &&
+          region_gap->exception_region;
+      const auto* input = progressed ? &*control_gap->input_gap : phase ? std::get_if<PhasedInputFailure>(phase) : nullptr;
       const auto* normal = std::get_if<FunctionFileFailure>(&family->cause);
       const auto* normal_input = normal ? std::get_if<FunctionInputFailure>(normal) : nullptr;
       const auto* proof = normal_input ? std::get_if<analysis::SemanticProofFailure>(&normal_input->cause) : nullptr;
@@ -399,9 +409,9 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       }
       auto context = resolve();
       admit(context.AllocatedBytes(), 1); step(context.Work());
-      ClassMemberOmission gap{std::move(context), phased_gap ? decltype(ClassMemberOmission::failure){input->cause} :
+      ClassMemberOmission gap{std::move(context), progressed ? decltype(ClassMemberOmission::failure){*control_gap} : phased_gap ? decltype(ClassMemberOmission::failure){input->cause} :
           decltype(ClassMemberOmission::failure){*proof}, *family->root, *family->method, family->parent, family->creation_pc,
-          phased_gap ? input->working_site : normal_input->working_pc};
+          progressed ? control_gap->working_pc : phased_gap ? input->working_site : normal_input->working_pc};
       if (!gap.InputGap()) throw ClassTreeFailure{Error::kMember};
       return gap;
     };

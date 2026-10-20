@@ -1,0 +1,140 @@
+{
+  "compiler": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca"
+  },
+  "fixtures": [
+    {
+      "source": "loop.js",
+      "abc": "loop.abc",
+      "mode": "O0",
+      "source_sha256": "00b82ea8dd415a0356b20d873b4d7c02a546649c043de620a71d4f6a455b905e",
+      "abc_sha256": "70acd6ffa625a32b5a5960aed5c3ae364f37bf52f8317bf59d1bb375a9336d2f",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=exception_throw_loop",
+        "--source-file=loop.js",
+        "--output=tests/integration/fixtures/exception_throw_domain/loop.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/exception_throw_domain/loop.js"
+      ]
+    },
+    {
+      "source": "loop.js",
+      "abc": "loop.default.abc",
+      "mode": "default",
+      "source_sha256": "00b82ea8dd415a0356b20d873b4d7c02a546649c043de620a71d4f6a455b905e",
+      "abc_sha256": "488f8821d93c4dae3d33e50f2a165563ac4dcd297ceb11ac6da0bd5f1f408d77",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=exception_throw_loop",
+        "--source-file=loop.js",
+        "--output=tests/integration/fixtures/exception_throw_domain/loop.default.abc",
+        "tests/integration/fixtures/exception_throw_domain/loop.js"
+      ]
+    },
+    {
+      "source": "close.js",
+      "abc": "close.abc",
+      "mode": "O0",
+      "source_sha256": "819afc7ae7a0f607430629708259f8b92738d0a1c788ad5ba461609d161c71be",
+      "abc_sha256": "11a5b387cfdba178a125d096beb38c90a8dc48d53dc5c700e8475c222305dd7b",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=exception_throw_close",
+        "--source-file=close.js",
+        "--output=tests/integration/fixtures/exception_throw_domain/close.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/exception_throw_domain/close.js"
+      ]
+    },
+    {
+      "source": "close.js",
+      "abc": "close.default.abc",
+      "mode": "default",
+      "source_sha256": "819afc7ae7a0f607430629708259f8b92738d0a1c788ad5ba461609d161c71be",
+      "abc_sha256": "247eb84de9e236ea24ba58bc0f374730fec87292a8a6ad8779b82ac14023de9c",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=exception_throw_close",
+        "--source-file=close.js",
+        "--output=tests/integration/fixtures/exception_throw_domain/close.default.abc",
+        "tests/integration/fixtures/exception_throw_domain/close.js"
+      ]
+    },
+    {
+      "source": "handler.js",
+      "abc": "handler.abc",
+      "mode": "O0",
+      "source_sha256": "5e546613917ac6b7d2878d7b90469eeaefff41768373e44aa517b3eec891b00f",
+      "abc_sha256": "8f1b29d8d2407fb4d0d021903c453c979b82ca38bfd986dd714feb2422e3bdd1",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=exception_throw_handler",
+        "--source-file=handler.js",
+        "--output=tests/integration/fixtures/exception_throw_domain/handler.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/exception_throw_domain/handler.js"
+      ]
+    },
+    {
+      "source": "handler.js",
+      "abc": "handler.default.abc",
+      "mode": "default",
+      "source_sha256": "5e546613917ac6b7d2878d7b90469eeaefff41768373e44aa517b3eec891b00f",
+      "abc_sha256": "4a69bc226d1c586c926ac7edcf8a7eb54da921d01c38d3a0e657f4a9713e8556",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=exception_throw_handler",
+        "--source-file=handler.js",
+        "--output=tests/integration/fixtures/exception_throw_domain/handler.default.abc",
+        "tests/integration/fixtures/exception_throw_domain/handler.js"
+      ]
+    },
+    {
+      "source": "member.js",
+      "abc": "member.abc",
+      "mode": "O0",
+      "source_sha256": "16a659a3cd5d1096a461c516d73c108dcf79dad17d0f6c26fd776af07838687a",
+      "abc_sha256": "2c199bfd38e572e8e96e4918baff446e76c5563ba98279317913475715af2150",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=exception_throw_member",
+        "--source-file=member.js",
+        "--output=tests/integration/fixtures/exception_throw_domain/member.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/exception_throw_domain/member.js"
+      ]
+    },
+    {
+      "source": "member.js",
+      "abc": "member.default.abc",
+      "mode": "default",
+      "source_sha256": "16a659a3cd5d1096a461c516d73c108dcf79dad17d0f6c26fd776af07838687a",
+      "abc_sha256": "041b6476808c4f29e3796a9367b59d6227d1edb5528c8e4c1eda63aedc57e685",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=exception_throw_member",
+        "--source-file=member.js",
+        "--output=tests/integration/fixtures/exception_throw_domain/member.default.abc",
+        "tests/integration/fixtures/exception_throw_domain/member.js"
+      ]
+    }
+  ]
+}

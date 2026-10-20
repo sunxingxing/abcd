@@ -1,3 +1,4 @@
+#include "../src/source/phased_body.h"
 #include "../src/source/class_self_initialization_json.h"
 #include "../src/source/non_executable_json.h"
 #include "../src/source/cell_parameter_default_json.h"
@@ -46,10 +47,14 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
       omissions = nlohmann::json::array();
       for (const auto& member : failure.omitted_members) {
         source::FailureCauseChain chain;
-        std::visit([&](auto cause) { source::AppendFailureCause(chain, cause); }, member.cause);
+        if (member.control) {
+          source::AppendFailureCause(chain, source::PhasedMethodError::kControl);
+          source::AppendFailureCause(chain, *member.control);
+        } else std::visit([&](auto cause) { source::AppendFailureCause(chain, cause); }, member.cause);
         if (member.internal_value) source::AppendFailureCause(chain, member.internal_value->reason);
         nlohmann::json item{{"constructor", member.constructor.value}, {"member", member.member.value},
             {"method", member.method.value}, {"pc", member.pc.value}, {"causes", DescribeCauses(chain)}};
+        if (member.exception_region) item["exception_region"] = source::ExceptionRegionJson(*member.exception_region);
         if (member.internal_value) item["internal_value"] = source::InternalValueJson(*member.internal_value);
         if (member.working_pc) item["working_pc"] = member.working_pc->value;
         if (member.creation_method) item["creation_method"] = member.creation_method->value;

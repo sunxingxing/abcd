@@ -13,6 +13,7 @@ struct ValueNodeId {
 struct ValueDependency {
   ValueNodeId source;
   ValueNodeId target;
+  bool exclude_hole = false;
 };
 struct ValueNode {
   ValueRuleKind kind = detail::ValueRuleKind::kFixed;
@@ -42,10 +43,11 @@ void PropagateValues(std::span<const ValueNode> nodes,
     begin[i] += begin[i - 1];
     cursor[i - 1] = begin[i - 1];
   }
-  std::pmr::vector<ValueNodeId> targets(edges.size(), {}, &memory);
+  struct Target { ValueNodeId value; bool exclude_hole; };
+  std::pmr::vector<Target> targets(edges.size(), {}, &memory);
   for (const auto edge : edges) {
     charge();
-    targets[cursor[edge.source.value]++] = edge.target;
+    targets[cursor[edge.source.value]++] = {edge.target, edge.exclude_hole};
   }
   work.dependencies = edges.size();
   std::pmr::vector<ValueNodeId> pending{&memory};
@@ -74,9 +76,10 @@ void PropagateValues(std::span<const ValueNode> nodes,
          edge < begin[std::size_t(source) + 1]; ++edge) {
       charge();
       ++work.edge_visits;
-      const auto target = targets[edge].value;
+      const auto target = targets[edge].value.value;
+      const auto edge_incoming = targets[edge].exclude_hole ? incoming.WithoutHole() : incoming;
       ValueKinds propagated = nodes[target].kind == Kind::kArrayCursor
-          ? incoming.Join(ValueKinds::Number()) : incoming;
+          ? edge_incoming.Join(ValueKinds::Number()) : edge_incoming;
       if (nodes[target].kind == Kind::kLanguageOperation ||
           nodes[target].kind == Kind::kEquality ||
           nodes[target].kind == Kind::kAdd ||

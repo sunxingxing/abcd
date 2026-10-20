@@ -91,6 +91,12 @@ class ValueKinds {
     if (result.IsFiniteNumber()) result.integral_number_ = integral_number_ || other.integral_number_;
     return result;
   }
+  // Edge-local exclusion never promotes other internal categories to Language.
+  [[nodiscard]] constexpr ValueKinds WithoutHole() const {
+    auto result = *this;
+    result.bits_ &= static_cast<std::uint8_t>(~kHole);
+    return result;
+  }
   [[nodiscard]] constexpr bool IsEmpty() const { return bits_ == 0; }
   [[nodiscard]] constexpr bool IsLanguage() const { return bits_ == kLanguage; }
   // An initialized super guard excludes undefined as well as Hole. This is

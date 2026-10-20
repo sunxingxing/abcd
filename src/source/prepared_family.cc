@@ -172,6 +172,12 @@ std::variant<FamilyPreparation, FamilyPrepareFailure> FamilyPreparation::Read(
           input->work += allowance.work - budget.Left().work;
         }
     }
+    if (auto* failed = std::get_if<FamilyFileFailure>(&read))
+      if (auto* phase = std::get_if<PhasedFileFailure>(&failed->cause))
+        if (auto* control = std::get_if<PhasedControlFailure>(phase); control && control->input_gap) {
+          control->input_gap->allocated_bytes += allowance.bytes - budget.Left().bytes;
+          control->input_gap->work += allowance.work - budget.Left().work;
+        }
     if (auto* failed = std::get_if<FamilyFileFailure>(&read)) {
       if (auto* normal = std::get_if<FunctionFileFailure>(&failed->cause))
         if (auto* input = std::get_if<FunctionInputFailure>(normal))

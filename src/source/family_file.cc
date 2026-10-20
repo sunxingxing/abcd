@@ -414,6 +414,10 @@ class FamilyReader {
           failed->allocated_bytes += budget_.bytes - bytes_;
           failed->work += budget_.work - work_;
         }
+        if (auto* failed = std::get_if<PhasedControlFailure>(error); failed && failed->input_gap) {
+          failed->input_gap->allocated_bytes += budget_.bytes - bytes_;
+          failed->input_gap->work += budget_.work - work_;
+        }
         Fail(*error);
       }
       auto function = std::get<FilePhasedFunction>(std::move(read));

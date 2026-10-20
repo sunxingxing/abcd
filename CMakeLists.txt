@@ -72,7 +72,7 @@ target_sources(abcd_analysis PRIVATE
 target_sources(abcd_analysis PRIVATE src/analysis/exception_edge.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_flow.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_ssa.cc)
-target_sources(abcd_analysis PRIVATE src/analysis/exception_value_flow.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/exception_value_flow.cc src/analysis/exception_throw_domain.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_environment.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_inputs.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/exception_regions.cc)
@@ -1071,6 +1071,11 @@ if(BUILD_TESTING)
   add_test(NAME parameter_expression_test COMMAND parameter_expression_test)
   if(ABCD_BUILD_TOOLS AND Python3_Interpreter_FOUND AND
       EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+    add_test(NAME exception_throw_roundtrip_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/exception_throw_roundtrip.py"
+      $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/exception_throw_domain"
+      "${CMAKE_CURRENT_BINARY_DIR}/exception-throw-roundtrip" --temporary)
     add_test(NAME capture_scope_roundtrip_test COMMAND ${Python3_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/capture_scope_roundtrip.py"
       $<TARGET_FILE:abc_structure>
@@ -2829,6 +2834,16 @@ if(BUILD_TESTING)
   target_link_libraries(async_semantics_test PRIVATE abcd_analysis)
   target_include_directories(async_semantics_test PRIVATE tests/support)
   add_test(NAME async_semantics_test COMMAND async_semantics_test)
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME exception_throw_domain_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/exception_throw_domain.mjs $<TARGET_FILE:abc_structure>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/exception_throw_domain)
+  endif()
+  add_executable(exception_throw_domain_test tests/unit/analysis/exception_throw_domain_test.cc)
+  target_link_libraries(exception_throw_domain_test PRIVATE abcd_analysis abcd_corpus)
+  target_include_directories(exception_throw_domain_test PRIVATE tests/support)
+  add_test(NAME exception_throw_domain_test COMMAND exception_throw_domain_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/exception_throw_domain/close.abc)
   add_executable(exception_arguments_test tests/unit/analysis/exception_arguments_test.cc)
   target_link_libraries(exception_arguments_test PRIVATE abcd_analysis)
   target_include_directories(exception_arguments_test PRIVATE tests/support)

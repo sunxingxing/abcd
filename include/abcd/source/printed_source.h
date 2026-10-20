@@ -15,6 +15,7 @@
 #include "abcd/abc/metadata_index.h"
 #include "abcd/analysis/exception_ssa.h"
 #include "abcd/source/cleanup_origin.h"
+#include "abcd/source/exception_region_failure.h"
 #include "abcd/source/parameter_default.h"
 #include "abcd/source/source_contract.h"
 #include "abcd/source/source_text.h"
@@ -26,6 +27,7 @@ enum class SemanticProofError : std::uint8_t;
 enum class ExceptionInputError : std::uint8_t;
 }
 namespace abcd::source {
+enum class ExceptionControlError : std::uint8_t;
 enum class SourceError : std::uint8_t {
   kUnsupportedOperation,
   kMissingTarget,
@@ -102,6 +104,8 @@ struct OmittedClassMember {
   std::optional<analysis::ExceptionNodeId> node;
   std::optional<analysis::SsaValueId> value;
   std::optional<analysis::InternalValueEvidence> internal_value;
+  std::optional<ExceptionControlError> control;
+  std::optional<ExceptionRegionEvidence> exception_region;
 };
 struct PrintedSource {
   SourceText text;

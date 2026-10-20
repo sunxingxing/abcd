@@ -232,6 +232,10 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       failure->allocated_bytes += budget.bytes - left.bytes;
       failure->work += budget.work - left.work;
     }
+    if (auto* failure = std::get_if<PhasedControlFailure>(&analyzed); failure && failure->input_gap) {
+      failure->input_gap->allocated_bytes += budget.bytes - left.bytes;
+      failure->input_gap->work += budget.work - left.work;
+    }
     auto phases = Take<PhasedBody>(std::move(analyzed));
     admit(phases.AllocatedBytes()); step(phases.Work());
     const auto input = phases.TreeInput(body).input;

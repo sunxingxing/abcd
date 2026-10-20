@@ -4,6 +4,7 @@
 #include "abcd/analysis/register_value_flow.h"
 
 namespace abcd::analysis {
+enum class ExceptionThrowRefinement : std::uint8_t { kNone, kGuardedNonHole };
 enum class PendingExceptionValues : std::uint8_t { kUnknown, kLanguage };
 enum class ExceptionLoadProof : std::uint8_t {
   kLanguage, kCallerGuardedModule, kCatchGuardedModule
@@ -48,7 +49,10 @@ class ExceptionValueFlow {
       // Owner premise for frame.thisObj at every LDTHIS, not the ABI slot.
       // Receiver-changing super/resume protocols require separate ownership.
       FrameReceiver receiver = FrameReceiver::kUnknown,
-      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
+      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime,
+      // Optional fallback, only after ordinary input validation refused. Derive
+      // and independently recheck full-CFG edge constraints on explicit throws.
+      ExceptionThrowRefinement throws = ExceptionThrowRefinement::kNone);
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }

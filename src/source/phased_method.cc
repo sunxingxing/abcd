@@ -307,6 +307,24 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
     auto verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,
         arguments ? &*arguments : nullptr, ExceptionInputDomain::kHoleTransport, initialized);
+    std::optional<PhasedInputFailure> input_gap;
+    if (const auto* failure = std::get_if<ExceptionInputFailure>(&verified);
+        failure && failure->kind == ExceptionInputError::kInternalValue) {
+      // Preserve every successful plan. A caught explicit throw may carry a
+      // branch-proven subset of its unrefined SSA domain; never upgrade loads,
+      // pending external exceptions, or the value's other uses globally.
+      input_gap = PhasedInputFailure{*failure, quota.Bytes(), quota.Work() + failure->work_units, failure->pc};
+      quota.Step(failure->work_units);
+      IdfQuota refined_work{quota.Remaining().work};
+      auto refined = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
+          refined_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
+          NormalCallResults(context.Identity().contract), receiver, Arithmetic(context.Identity().contract),
+          ExceptionThrowRefinement::kGuardedNonHole), Error::kValues);
+      quota.Admit(refined.AllocatedBytes()); quota.Step(refined_work.Consumed());
+      values = std::move(refined);
+      verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,
+          arguments ? &*arguments : nullptr, ExceptionInputDomain::kHoleTransport, initialized);
+    }
     if (const auto* failure = std::get_if<ExceptionInputFailure>(&verified)) {
       auto original = *failure;
       if (original.node && original.node->value < flow.nodes.size()) {
@@ -429,10 +447,13 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       } else return PhaseError(std::get<IteratorScanFailure>(scanned),Error::kControl);
     }
     auto controlled = BuildExceptionControl(body, imported.graph, input, regions, quota.Remaining(),protocols?&*protocols:nullptr);
-    if (const auto* failure=std::get_if<ExceptionControlRegionFailure>(&controlled))
+    if (const auto* failure=std::get_if<ExceptionControlRegionFailure>(&controlled)) {
+      if (input_gap) { input_gap->allocated_bytes = quota.Bytes(); input_gap->work = quota.Work(); }
       return PhasedControlFailure{Error::kControl,*failure,context.Target(),
           failure->exception_region ? failure->exception_region->body_pc : std::nullopt,
-          failure->exception_region ? std::optional{failure->exception_region->working_body_pc} : std::nullopt};
+          failure->exception_region ? std::optional{failure->exception_region->working_body_pc} : std::nullopt,
+          input_gap};
+    }
     if (const auto* failure = std::get_if<ExceptionControlFailure>(&controlled))
       return PhasedControlFailure{PhaseError(*failure, Error::kControl), *failure, context.Target(),
           failure->cause.control.node.pc, failure->cause.control.node.working_pc};

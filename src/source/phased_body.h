@@ -44,6 +44,9 @@ struct PhasedControlFailure {
   std::variant<ExceptionControlError, ExceptionControlFailure, ExceptionPlanFailure, ExceptionControlRegionFailure, EvaluationFailure> cause;
   abc::EntityOffset method;
   std::optional<abc::CodeOffset> pc, working_pc;
+  // Progress past a pre-existing omitted-member input gap does not discard
+  // the surrounding partial class. Never grants a body or new omission kind.
+  std::optional<PhasedInputFailure> input_gap;
 };
 // Owns original exception analyses and the checked working body before child
 // evaluation. Family discovery must inspect actual creation operations here,

@@ -5,6 +5,61 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## RpcTool query: edge-qualified explicit-throw domains (2026-10-20)
+
+- Baseline **2186fbff** (wtbase verified at that commit). Diagnose both original
+  query ABCs; the failing value is the iterator-close **Hole/error sentinel
+  phi**, incorrectly propagated through a conditional explicit throw into the
+  user's catch parameter. It is not an await/capture lifetime or missing
+  source-binding problem. Exact SSA/PC traces, pinned equality semantics and
+  the proof are in [exception-throw-domain.md](exception-throw-domain.md).
+- Add a shared prepaid original exception-CFG edge-dominance/SCC and scalar-copy
+  index. Derive and independently rederive a non-Hole constraint only for an
+  explicit throw dominated by an unequal-to-Hole edge of the same dynamic SSA
+  identity. Filter that dispatch contribution, never the global SSA value or
+  another catch source. Keep local raw Hole throws, other internal kinds,
+  comparator exceptions, TDZ guards and original effect/Commit order. Cyclic
+  definitions keep the conservative refusal. Complexity O((N+E+V+U) log(N+V));
+  all buffers admitted before allocation. No new source/runtime premise.
+- Only failed ordinary input proofs invoke the fallback. Preserve an existing
+  omitted-member gap's provenance when it progresses to located kMultipleExits;
+  this does not admit unrelated omissions or supply executable unknown bodies.
+  Both RpcTool classes remain **partial status4**, with their recovered methods
+  unchanged. Query remains omitted: **m20512 TryId0 PC640/H665** and **m25655
+  TryId0 PC682/H707**, now **PhasedMethodError::kControl >
+  ExceptionControlError::kMultipleExits**. No native-for-of ownership loosening.
+  o36/11209 is not attempted because neither target completes.
+- Full build passed; serial source-regression **65/65**; focused new/omission
+  tests **4/4**. Width/depth 200/201/400/800 pass exact discovery/verifier
+  byte/work boundaries and mutations (payload/edge/branch/evidence, alternate
+  entry, dropped/inverted guard, raw Hole, other internals, stale activation).
+  At width800 discovery uses **4,758,692 bytes / 1,756,691 work**.
+- Pinned es2abc O0/default fixtures: Node compares **2 engine-output traces /
+  10 behavior scenarios**, detects **6 mutations**, and checks **2 partial
+  class good() methods** while asserting query is absent. Twelve distinct
+  contract/fixture/optimization cases retain exact typed refusals, not passes.
+  The raw close fixture verifies the new domain facts in the unit test. Both
+  strict SDK recompilations of the published handler fixture match the source:
+  **2/2 complete assemblies, 4/4 methods identical**, including handlers/module
+  metadata, with no normalization. SHA/commands and the identical AST export
+  alias adaptation are recorded by the reusable round-trip tool.
+- Both measured 40-input cohorts remain **537/620 previous**, **589/620 source**,
+  with **0 regressions, 0 new completions, 0 text changes** in complete records.
+  Only o37/20175 and o38/25106 manifests/omission-location comments change in
+  either contract; partial class bodies are otherwise byte-identical. CLI /
+  manifest evidence and text parity **4/4**, target partial `node --check`
+  **4/4**. Max measured engine RSS **45,006,848 bytes**; conservative four-worker
+  engine bound **180,027,392**, plus runner peak **20,103,168**, below 1GB.
+- Requested sweep **178/192**, with exactly the supplied **14 pre-existing**
+  failures: family_source_cli, tree_structure, try_tree, derived_cells,
+  class_tree_source, derived_cells_source, unguarded_derived_cells_source,
+  try_tree_source and the six captured_receiver variants. No new failure and
+  no assertion weakened. Source/SDK fixture metadata and both JSON paths are
+  checked by the new tests; no corpus source was supplied to the engine.
+  Evidence under `build/review/rpctool/`: full build, serial65/new-tests/sweep
+  logs, raw SSA probes, immutable OLD/verified cohort outputs, resource reports,
+  manifest-change census and SDK full diffs. No commit, push or stash.
+
 ## Exception-aware captured-cell scope (2026-10-20)
 
 - Baseline **adec8da6**, including the independently built wtbase engine.

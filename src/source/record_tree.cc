@@ -722,12 +722,19 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         const auto append = [&](const ClassMemberOmission& gap) {
           omission_step(); grow_omissions(omitted_members);
           OmittedClassMember item{definition.creation.target, gap.root, gap.method,
-              std::visit([](const auto& proof) -> decltype(OmittedClassMember::cause) { return proof.kind; }, gap.failure),
+              std::visit([](const auto& proof) -> decltype(OmittedClassMember::cause) {
+                if constexpr (std::is_same_v<std::decay_t<decltype(proof)>, PhasedControlFailure>) return proof.input_gap->cause.kind;
+                else return proof.kind;
+              }, gap.failure),
               gap.Pc(), gap.working_pc, gap.parent, gap.creation_pc, {}, {}};
           if (const auto* proof = std::get_if<analysis::SemanticProofFailure>(&gap.failure))
             item.internal_value = proof->internal_value;
           if (const auto* proof = std::get_if<analysis::ExceptionInputFailure>(&gap.failure)) {
             item.node = proof->node; item.value = proof->value;
+          }
+          if (const auto* proof = std::get_if<PhasedControlFailure>(&gap.failure)) {
+            const auto& region = std::get<ExceptionControlRegionFailure>(proof->cause);
+            item.control = region.kind; item.exception_region = region.exception_region;
           }
           omitted_members.push_back(item);
         };
