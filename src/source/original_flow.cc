@@ -69,7 +69,8 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
     result->enumeration_exits.reserve(flow.control_statements.size());
     budget.Admit(result->enumeration_exits.capacity()-flow.control_statements.size(),sizeof(OriginalEnumerationExit));
     for(std::size_t i=0;i<flow.control_statements.size();++i) {
-      budget.Step(); if(!flow.enumeration_controls.empty()&&flow.enumeration_controls[i])continue;
+      budget.Step(); if(!flow.forwarded_controls.empty()&&flow.forwarded_controls[i])continue;
+      if(!flow.enumeration_controls.empty()&&flow.enumeration_controls[i])continue;
       const auto statement=flow.control_statements[i]; const auto& node=tree.statements[statement.value];
       if(const auto* jump=std::get_if<ContinueStmt>(&node.statement);jump&&owners[jump->target.value])
         result->enumeration_exits.push_back({statement,*owners[jump->target.value],LoopTransferKind::kContinue,node.origin});

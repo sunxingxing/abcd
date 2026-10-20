@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "control_skeleton.h"
+#include "control_forwarding.h"
 
 namespace abcd::source {
 namespace {
@@ -711,10 +712,14 @@ ControlResult BuildControlPlan(
     ControlQuota quota{budget};
     const ControlId entry{0};
     auto plan = [&] {
-      try { return BuildControlSkeleton(graph, {&entry, 1}, quota); }
-      catch (Error error) {
-        if (error != Error::kCycle) throw;
-        return BuildLoopControl(graph, quota);
+      try {
+        try { return BuildControlSkeleton(graph, {&entry, 1}, quota); }
+        catch (Error error) {
+          if (error != Error::kCycle) throw;
+          return BuildLoopControl(graph, quota);
+        }
+      } catch (const ControlFailure& failure) {
+        return BuildForwardingControl(graph, failure, quota);
       }
     }();
     const auto checked = VerifyControlPlan(graph, plan, quota.Remaining());

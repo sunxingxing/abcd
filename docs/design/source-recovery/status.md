@@ -7,6 +7,60 @@
 
 
 
+## Switch ownership checkpoint: shared optional-break corridor (2026-10-20)
+
+- Baseline **ca4fc005** (HEAD and built wtbase). This is a **partial round**:
+  **o19/18254 completes under --language-source**; effectful native switch
+  fall-through in o18/57687 remains unimplemented, and o32/40109 m40670 retains
+  `DecisionPrefixError::kPrefixArms` at op183 PC476. The source tree currently
+  lacks `SwitchStmt` and case/fall-through recovery ports; no effectful body is
+  duplicated or ignored. See [switch-case-ownership.md](switch-case-ownership.md)
+  for the original-edge diagnosis and remaining integration boundary.
+- `ControlForward` records an original incoming edge into a verified epsilon
+  corridor: no live input/result/phi transfer/effect/exception and unchanged
+  natural-loop activation. An independent fresh derivation checks the view,
+  then the unchanged region verifier proves all original edges and unique
+  ownership. Memoized corridor closure handles block splits in linear work.
+  The normal plan exports only real EdgeIds. TreeFlow records epsilon ports
+  without invented expressions/statements; original and recovery flows keep
+  the original graph. Successful old plans take precisely their old path.
+- Cohorts vs wtbase: previous flags **538/620 unchanged**, source contract
+  **592→593/620**, zero regressions and zero prior-complete text drift. Only
+  o19/18254's manifest failure/status changes; previous flags retain its existing
+  m19967 capture-scope refusal. The whole newly published record passes Node
+  syntax. Repeat final cohort runs and OS RSS are under
+  `build/review/switch-ca4fc005/`.
+- New fixture: counted loop + multiple switch cases + optional calls, **800
+  independent Node observations per flag set**, four observed mutants. Actual
+  o19 callback: **960 original/emitted scenarios**, including changing reason
+  and enum-property getters, callback/log effects, devices and pause failures.
+  Paired source is never engine input. Mutation/unit tests retain the refusal
+  for effectful shared bodies, definitions, throwing operations and phi
+  transfers; owner/port/target forgeries reject. Exact 200/201/400/800 byte/work
+  limits, original-ID permutation and split corridors pass.
+- Full build and focused final tests **5/5** pass. Fixed source regression
+  **65/65** passes; requested sweep **194/200**. Its six failures are unchanged:
+  `family_source_cli_test`, `tree_structure_test`, `try_tree_test`,
+  `class_tree_source_test`, `try_tree_source_test`,
+  `file_generator_return_loop_source_test`. Four reproduce with wtbase CTest;
+  the two not registered there reproduce with current scripts and wtbase
+  executables. No assertion is weakened. The old empty-overlap unit graph now
+  asserts verified epsilon ownership, with an effectful version retaining its
+  original refusal (and an independent fixture differential).
+- Final 800-unit exact admission: **9,466,343 bytes / 3,750,042 work units**;
+  minimum-minus-one refuses. Both final cohort runs report all 40 exporters
+  successful. Conservative four-child-plus-coordinator OS RSS is at most
+  **169,738,240 bytes** (largest individual child 41,844,736), below 1 GB.
+- SDK `grouping_bytecode.py` default/O0: module entry exact, both fixture
+  functions differ by native-switch vs recovered-if layout, strict comparison
+  orientation, feedback slots, O0 register/copy allocation, and the numeric
+  counter's redundant conversion. **0 exact / 1 different record per mode**;
+  this is not claimed as bytecode equality. No allowance/normalization was
+  added. Node and independent original-edge flow supply the semantic evidence.
+  Compiler identity/commands/hashes and full differences are documented.
+- No commit, push or stash. The pre-existing untracked sample archive is untouched.
+
+
 ## Control ownership: shared abrupt tails (2026-10-20)
 
 - Baseline **aa545dd4** (HEAD and wtbase). Fresh diagnosis of all four duplicate

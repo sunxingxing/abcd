@@ -1,4 +1,5 @@
 #include "control_skeleton.h"
+#include "control_forwarding.h"
 
 #include <array>
 #include <limits>
@@ -362,7 +363,9 @@ std::variant<std::uint64_t, ControlError> VerifyControlPlan(
     Require(graph.phases.empty() && plan.view == ControlViewKind::kNormal, Error::kInvalidGraph);
     ControlQuota quota(budget);
     constexpr ControlNodeId root{0};
-    VerifyControlRegions(ControlGraphView{graph}, {&root, 1}, plan, quota);
+    if (plan.forwarding.empty())
+      VerifyControlRegions(ControlGraphView{graph}, {&root, 1}, plan, quota);
+    else VerifyForwardingControl(graph, plan, quota);
     return budget.work - quota.RemainingWork();
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;

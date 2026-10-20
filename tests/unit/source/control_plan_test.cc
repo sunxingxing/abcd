@@ -87,7 +87,21 @@ void Shapes() {
   changed = *plan; changed.nodes[3].decision = *changed.nodes[0].decision;
   Check(std::holds_alternative<ControlError>(VerifyControlPlan(Graph(cross_entry), changed)));
   const std::array<Targets, 6> overlapping{{{1, 2}, {3, 4}, {3, 4}, {5, {}}, {5, {}}, {}}};
-  Check(ControlResultError(BuildControlPlan(Graph(overlapping))) == ControlError::kCrossEntry);
+  // Empty test vertices have no observable semantics. Their shared epsilon
+  // corridors now have distinct verified ports, not duplicated operations.
+  // The real switch_optional fixture supplies the source differential.
+  auto epsilon = Graph(overlapping);
+  built = BuildControlPlan(epsilon); plan = std::get_if<ControlPlan>(&built);
+  Check(plan && !plan->forwarding.empty());
+  Check(std::holds_alternative<std::uint64_t>(VerifyControlPlan(epsilon, *plan)));
+  // The identical control edges with an observable operation cannot use this
+  // proof. Keep the old refusal for genuinely shared effectful bodies.
+  analysis::ValueOp observed{}; observed.block = {3};
+  observed.operation = analysis::ValueNop{}; observed.normal = analysis::LanguageEffect::kHeapRead;
+  epsilon.ops.insert(epsilon.ops.begin(), observed);
+  epsilon.blocks[3].op_count = 1;
+  epsilon.blocks[4].first_op = {1}; epsilon.blocks[5].first_op = {1};
+  Check(ControlResultError(BuildControlPlan(epsilon)) == ControlError::kCrossEntry);
   const std::array<Targets, 2> cycle{{{1, {}}, {0, {}}}};
   built = BuildControlPlan(Graph(cycle));
   plan = std::get_if<ControlPlan>(&built);

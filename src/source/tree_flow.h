@@ -103,6 +103,7 @@ struct TreeFlow {
   // Origins of independently checked synthetic loop/transfer statements.
   // Indexed by the synthetic ControlNode suffix, not inferred from text.
   std::vector<TreeOriginId> controls;
+  std::vector<std::optional<ControlForward>> forwarded_controls;
   std::vector<std::optional<EnumerationControl>> enumeration_controls;
   ControlId first_control;
   std::vector<StmtId> control_statements; // Same synthetic suffix as controls.

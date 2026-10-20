@@ -319,6 +319,7 @@ class TreeBuilder {
             continue;
           }
         }
+        if (std::holds_alternative<ControlForward>(region.synthetic)) { next = region.next; continue; }
         if (!std::holds_alternative<std::monostate>(region.synthetic)) EmitLoop(region, task.draft);
         else if (exceptions_) EmitExceptionUnit(*next, task.draft);
         else EmitBlock(region, task.draft);
@@ -1015,6 +1016,7 @@ class TreeBuilder {
         }
         Require(std::holds_alternative<PhaseControlUnit>(unit), Error::kOrigin);
       }
+      if (std::holds_alternative<ControlForward>(node.synthetic)) { cursor = node.next; continue; }
       if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
         cursor = control_.loops[loop->loop.value].body;
         continue;

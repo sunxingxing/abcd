@@ -47,6 +47,10 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
   for (std::size_t c=0;c<flow.controls.size();++c) {
     const auto origin=flow.controls[c];
     budget.Step();
+    // Fresh TreeFlow verified the original edge, no live phi/definition,
+    // no effect/exception and unchanged activation. Epsilon control has no
+    // fabricated source origin or statement to claim here.
+    if (!flow.forwarded_controls.empty() && flow.forwarded_controls[c]) continue;
     if(flow.for_of && flow.for_of->controls[c]) {
       if(*flow.for_of->controls[c]==EnumerationControl::kLoop)
         RequireMeaning(std::holds_alternative<ForOfStmt>(tree.statements[flow.control_statements[c].value].statement),Error::kOrigin);

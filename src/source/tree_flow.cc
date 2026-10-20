@@ -114,6 +114,7 @@ class FlowCheck {
         (exceptions ? exceptions->control.units.size() : graph.blocks.size()));
     flow_.first_control = {static_cast<std::uint32_t>(control.nodes.size() - flow_.controls.size())};
     budget.Array(flow_.control_statements, flow_.controls.size());
+    if (!control.forwarding.empty()) budget.Array(flow_.forwarded_controls, flow_.controls.size());
     if (evaluation.phis) {
       logicals_ = FindSelectionExpressions(graph, control, evaluation, budget,
           exceptions ? &exceptions->control : nullptr);
@@ -273,6 +274,11 @@ class FlowCheck {
           Require(SourceBlock(node) == original, Error::kControl);
           if (graph_.phases[original.value].phase == analysis::ExceptionPhase::kCatch)
             edges_->Catch(original, block, child);
+        }
+        if (const auto* port = std::get_if<ControlForward>(&node.synthetic)) {
+          Require(!exceptions_ && cursor->value >= flow_.first_control.value, Error::kControl);
+          flow_.forwarded_controls[cursor->value - flow_.first_control.value] = *port;
+          cursor = node.next; continue;
         }
         if (!std::holds_alternative<std::monostate>(node.synthetic)) {
           if(iteration_)if(const auto* wrapper=std::get_if<LoopControl>(&node.synthetic);wrapper && iteration_->wrappers[wrapper->loop.value]) {
@@ -1711,6 +1717,7 @@ class FlowCheck {
         }
         Require(std::holds_alternative<PhaseControlUnit>(unit), Error::kPlacement);
       }
+      if (std::holds_alternative<ControlForward>(node.synthetic)) { cursor = node.next; continue; }
       if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
         cursor = control_.loops[loop->loop.value].body;
         continue;

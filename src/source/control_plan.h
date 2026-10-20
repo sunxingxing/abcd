@@ -21,7 +21,15 @@ struct LoopTransfer {
   // A real CFG edge, or the normal exit of a nested loop wrapper.
   ControlTransferSource source;
 };
-using ControlSynthetic = std::variant<std::monostate, LoopControl, LoopTransfer>;
+// No operation/definition is emitted at this epsilon port. Its source edge
+// still enters the original inert block; verification proves the bypass has
+// no input, output, exceptional or lexical-activation observation.
+struct ControlForward {
+  analysis::WorkBlockId block;
+  analysis::EdgeId incoming;
+  auto operator<=>(const ControlForward&) const = default;
+};
+using ControlSynthetic = std::variant<std::monostate, LoopControl, LoopTransfer, ControlForward>;
 // An original single-entry evaluation path and its ending condition, entered
 // only when the current test misses the shared arm. Original arcs remain in
 // PlacedEdge; a final private fallback stays in the last condition's other arm.
@@ -68,6 +76,7 @@ struct ControlPlan {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   std::vector<ControlLoop> loops;
+  std::vector<ControlForward> forwarding;
 };
 enum class ControlError : std::uint8_t {
   kInvalidGraph, kRevision, kCycle, kCrossEntry, kUncoveredBlock, kWorkLimit, kResourceLimit,

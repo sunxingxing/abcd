@@ -12,6 +12,7 @@ const cases = [
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
   ['UI/CalendarViewSwitch', 28303, 28799, 620],
   ['DocsSample/DriverDevelopmentKit/ScsiPeripheralDemo', 13920, 14655],
+  ['DocsSample/Media/Audio/AudioRoutingAndVolumeSample', 18254, 18564],
   ['UI/CustomAnimationTab', 6952, 7171, 93],
   ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket', 28264, 29676, 114],
   ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo', 29268, 29450, 90],
@@ -27,7 +28,7 @@ try {
     const exported=run(structure,[abc,dest,'--value-source','--language-source']);
     assert.equal(exported.status,0,exported.stderr);
     const row=JSON.parse(readFileSync(join(dest,'manifest.json'),'utf8')).records.find(r=>r.entity===entity);
-    if(entity===29268 || entity===28264 || entity===24892 || entity===6952 || entity===8166 || entity===4660 || entity===13920) {
+    if(entity===29268 || entity===28264 || entity===24892 || entity===6952 || entity===8166 || entity===4660 || entity===13920 || entity===18254) {
       // For-in increment III completes 29268; Round 63 independently verifies
       // the retained phased selection prefix in 28264. Round 74 III/IV completes
       // shared LruCache 24892. All must publish exactly the CLI source.
