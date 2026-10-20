@@ -1,3 +1,4 @@
+#include "constructor_event_view.h"
 #include "literal_arm_view.h"
 #include "reference_arguments.h"
 #include "logical_regions.h"
@@ -223,6 +224,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   std::vector<SelectionRegion> result;
   const ReferenceArguments references(graph, evaluation, budget);
   std::optional<LiteralArmIndex> literal_arms;
+  std::optional<ConstructorEventView> constructors;
 
   const auto literal_ends = evaluation.literals ? IndexPhiLiteralEnds(graph, *evaluation.literals, budget) :
       std::vector<std::optional<OpId>>{};
@@ -288,12 +290,39 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
         evaluation.operations[producer->op.value].kind != EvaluationKind::kPhiInput) return false;
     const auto literal = literal_ends.empty() ? std::nullopt : literal_ends[producer->op.value];
     const auto& range = graph.blocks[block.value];
+    bool covered = true;
     for (std::uint32_t i = 0; i < range.op_count; ++i) {
       budget.Step(); const auto id = range.first_op.value + i; const auto& op = graph.ops[id];
       if (op.life != ValueLife::kLive || std::holds_alternative<ValueJump>(op.operation)) continue;
       if (literal && id >= producer->op.value && id <= literal->value) continue;
       if (id != producer->op.value && evaluation.operations[id].kind != EvaluationKind::kInline &&
-          !OwnedGuard(graph, evaluation, modules, id)) return false;
+          !OwnedGuard(graph, evaluation, modules, id)) covered = false;
+    }
+    if (covered) return true;
+    if (!std::holds_alternative<ValueConstruct>(graph.ops[producer->op.value].operation)) return false;
+    // Pay for the view only after old coverage fails. Fresh tree/evaluation
+    // verification reconstructs the same forest; no allocation exclusion is
+    // removed and no successful placement is changed.
+    if (!constructors) {
+      try {
+        constructors = BuildConstructorEventView(graph, evaluation, budget);
+        VerifyConstructorEventView(graph, evaluation, *constructors, budget);
+      } catch (ConstructorEventError) { throw EvaluationError::kOwnership; }
+    }
+    const auto output = constructors->outputs[producer->op.value];
+    const auto* merged = output ? std::get_if<ValueId>(&graph.uses[output->value].owner) : nullptr;
+    if (!merged) return false;
+    const auto& use = value_uses[merged->value];
+    if (use.multiple || !use.use || !references.Contains(graph.uses[use.use->value])) return false;
+    // COMPLETE coverage, not permission to ignore just the offending define.
+    // A foreign effect, early observation or a second arm's event cannot be
+    // absorbed by the constructor merely because it occurs in this block.
+    for (std::uint32_t i = 0; i < range.op_count; ++i) {
+      budget.Step(); const auto id = range.first_op.value + i; const auto& op = graph.ops[id];
+      const auto kind = evaluation.operations[id].kind;
+      if (op.life != ValueLife::kLive || kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure ||
+          std::holds_alternative<ValueJump>(op.operation) || std::holds_alternative<ValueNop>(op.operation)) continue;
+      if (!constructors->events[id] || constructors->events[id]->constructor != producer->op) return false;
     }
     return true;
   };

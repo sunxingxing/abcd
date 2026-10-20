@@ -254,7 +254,7 @@ target_sources(abcd_source PRIVATE src/source/cell_defaults.cc src/source/cell_p
 target_sources(abcd_source PRIVATE src/source/cell_default_proof.cc)
 target_sources(abcd_source PRIVATE src/source/module_reads.cc)
 target_sources(abcd_source PRIVATE src/source/module_guards.cc src/source/module_state_flow.cc src/source/module_phase_order.cc)
-target_sources(abcd_source PRIVATE src/source/phase_evaluation.cc src/source/phase_corridor.cc src/source/phase_composition.cc src/source/literal_event_view.cc src/source/literal_arm_view.cc)
+target_sources(abcd_source PRIVATE src/source/phase_evaluation.cc src/source/phase_corridor.cc src/source/phase_composition.cc src/source/literal_event_view.cc src/source/literal_arm_view.cc src/source/constructor_event_view.cc)
 target_sources(abcd_source PRIVATE src/source/phased_module_guards.cc)
 target_sources(abcd_source PRIVATE src/source/module_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/record_tree.cc)
@@ -869,6 +869,10 @@ if(BUILD_TESTING)
   add_executable(decision_literal_test tests/unit/source/decision_literal_test.cc)
   target_link_libraries(decision_literal_test PRIVATE abcd_source)
   add_test(NAME decision_literal_test COMMAND decision_literal_test)
+  add_executable(constructor_event_view_test tests/unit/source/constructor_event_view_test.cc)
+  target_include_directories(constructor_event_view_test PRIVATE tests/support)
+  target_link_libraries(constructor_event_view_test PRIVATE abcd_source)
+  add_test(NAME constructor_event_view_test COMMAND constructor_event_view_test)
   add_executable(nested_literal_arm_test tests/unit/source/nested_literal_arm_test.cc)
   target_include_directories(nested_literal_arm_test PRIVATE tests/support)
   target_link_libraries(nested_literal_arm_test PRIVATE abcd_source)
@@ -2243,6 +2247,9 @@ if(BUILD_TESTING)
     add_test(NAME logical_reference_routes_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_reference_routes.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/logical_reference_routes)
+    add_test(NAME member_constructor_values_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/member_constructor_values.mjs $<TARGET_FILE:abc_structure>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/member_constructor_values)
     add_test(NAME nested_literal_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nested_literal_arm.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/nested_literal_arm)

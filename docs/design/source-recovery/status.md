@@ -8,6 +8,50 @@
 
 
 
+## Constructor-arm events; member update remains open (2026-10-20)
+
+- Baseline/wtbase **2e33dc77**. **o7/28433 m28692 now completes under both
+  contracts**. The new constructor event view joins the existing private literal
+  forests to the constructor invocation/result and independently reconstructs
+  original inputs, unique observations, commits and exception/handler identities.
+  It is consumed only when old conditional coverage fails for an unmet member
+  Reference. Existing schedule, TreeFlow and recovery checks remain mandatory;
+  no printer change, allocation-exclusion change or new premise.
+- **Partial delivery:** o36/36985 m37638 originalPC378/working352 remains at
+  `kNotInline > kRoot > kCrossRegionValue`. Its base load127 is shared by
+  Get130/Set134. Native member updates require a joint retained Reference and
+  Get/conversion/RHS/Set/result ports, not an inline exemption. The current
+  symbol-only UpdateExpr and single-property-action recovery path are unchanged.
+  Exact IR, runtime citations and remaining integration:
+  [member-update-constructor-events.md](member-update-constructor-events.md).
+- Cohorts: previous flags **539 -> 540/620**, source **595 -> 596/620**;
+  **0 regressions; 0 previously-complete text drift**. Only o7/28433's manifest
+  row changes in each. Both newly emitted records pass node --check. RSS repeats
+  have identical manifests; conservative four-child+parent upper bounds are
+  **165,036,032 / 172,998,656 bytes**.
+- Full build; **65/65** serial source-regression; **13/13** final targeted.
+  Requested sweep **260/273**. All 13 failures reproduce with freshly built
+  2e33dc77 baseline targets: family_source_cli, tree_structure, try_tree,
+  literal_construct, mixed_literal, phased_literal, class_tree_source,
+  literal_closure_source(+unguarded), derived_literal_receiver_source(+unguarded),
+  phased_arm_selection_source and try_tree_source. No assertions weakened.
+- New real es2abc default/O0 fixtures: seven methods publish per input;
+  **4,688** positive Node scenarios and **10** observed mutations. Three
+  constructor methods have **12/12 exact** default/O0 recompile comparisons,
+  with no register/branch/handler/metadata normalization. The unchanged ordinary
+  update lowerings have **6 matches / 10 differences**, explicitly reported;
+  they are not counted as native member-update support. Grouping-only token
+  checks flag original/recovered parameter names and are not passes.
+- View/verifier mutations cover arm/owner, inputs, role, consumer, order, missing
+  or duplicated events, Commit and exception/handler changes; early escape
+  retains refusal. Exact byte/work boundaries at **200/201/400/800**; one less
+  refuses. Width800 costs **9,293,274 bytes / 1,143,257 work** for view+verifier.
+- Evidence: `build/review/member-updates/` (cohorts/comparisons, manifest changes,
+  RSS, full build, source-regression, targeted-final, sweep, baseline-failure
+  results, fixture compiler commands and bytecode reports). No commit/push/stash;
+  unrelated sample.tar.gz preserved.
+
+
 ## Shared-phi nullish call References (2026-10-20)
 
 - Baseline/wtbase **f1eb2418**. **o39/12680 m13322 completes under both

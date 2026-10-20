@@ -438,3 +438,13 @@ Each boundary succeeds; one less byte/work unit refuses. The independent
 verifier checks joint-certificate identity/ranges **before** any region view
 indexes them; out-of-range value/keep mutations now fail with typed ownership
 rather than relying on trusted builder output. No commit, push or stash.
+
+
+### Constructor-arm follow-up (2026-10-20)
+
+The constructor-result wrapper is now implemented and **o7/28433 completes**
+under both contracts. The member-update target o36 retains its exact refusal:
+its joint Reference/recovery ports remain unimplemented. See
+[member-update-constructor-events.md](member-update-constructor-events.md) for
+original IR, the implemented conditional event view, 12 exact constructor
+recompiles, explicit unchanged-update compiler differences and cohort evidence.

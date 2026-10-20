@@ -1,0 +1,40 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "commands": [
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=memberConstructorValues",
+      "--source-file=calls.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/member_constructor_values/calls-O0.abc",
+      "tests/integration/fixtures/member_constructor_values/calls.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=memberConstructorValues",
+      "--source-file=calls.js",
+      "--output=tests/integration/fixtures/member_constructor_values/calls-default.abc",
+      "tests/integration/fixtures/member_constructor_values/calls.js"
+    ]
+  ],
+  "fixtures": [
+    {
+      "mode": "O0",
+      "abc": "calls-O0.abc"
+    },
+    {
+      "mode": "default",
+      "abc": "calls-default.abc"
+    }
+  ],
+  "hashes": {
+    "calls-O0.abc": "841fb7e1c6af67547e33e3b1edc38c44b3d88b16827fa60455978dfb65fcffec",
+    "calls-default.abc": "8cb84e1be7a49e2eae542c9011ce4ebcf66e70abd39b9307e319d0572db40f8d",
+    "calls.js": "cb21b61c9a08b84ba25fb4c32597a8ca60afe42f288f791982defc4a03477bbd"
+  }
+}
