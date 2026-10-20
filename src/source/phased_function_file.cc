@@ -247,6 +247,45 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     }
     auto guarded = std::get<analysis::GuardedReads>(std::move(guarded_result));
     admit(guarded.allocated_bytes); step(guarded.work);
+    std::vector<std::optional<GuardedStore>> checked_stores;
+    bool covered_capture_store = false;
+    if (!body.tries.empty()) for (const auto& binding : input.environments.bindings) {
+      step(1);
+      const auto site = input.flow.nodes[binding.instruction].instruction;
+      covered_capture_store |= std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment) &&
+          std::holds_alternative<analysis::LexicalStore>(input.flow.instructions[site.value].operation);
+    }
+    if (covered_capture_store && CaptureReads(identity.contract) == CaptureReadSemantics::kSourceTdz && phases.CellEnvironments()) {
+      // Only raw, identity-bound guarded writes may add a TDZ exception under
+      // a user handler. All other captured stores retain Language admission.
+      // Dispatch checks both boundaries and sorts/sweeps region events. Prepay
+      // the shared index once, including handler-boundary binary searches.
+      step(body.instructions.size());
+      for (const auto& region : body.tries) {
+        (void)region;
+        step(2 * (std::bit_width(body.instructions.size()) + 1) +
+             8 * (std::bit_width(body.tries.size()) + 1));
+      }
+      for (const auto& handler : body.handlers) {
+        (void)handler;
+        step(2 * (std::bit_width(body.instructions.size()) + 1));
+      }
+      auto selected = analysis::BuildExceptionDispatch(body, identity.profile, {left.bytes});
+      if (const auto* failure = std::get_if<analysis::DispatchFailure>(&selected)) {
+        if (failure->kind == analysis::DispatchError::kResourceLimit) throw PhasedFileFailure{Error::kResourceLimit};
+        throw PhasedFileFailure{GuardedStoreError::kCatchState};
+      }
+      const auto& dispatch = std::get<analysis::ExceptionDispatch>(selected);
+      admit(dispatch.spans.capacity(), sizeof(analysis::DispatchSpan));
+      TreeCheckBudget checked(left);
+      const auto proof = BuildGuardedStores(phases.Graph(), *phases.CellEnvironments(), guarded, dispatch, checked);
+      VerifyGuardedStores(phases.Graph(), *phases.CellEnvironments(), guarded, dispatch, proof, checked);
+      if (!proof.stores.empty()) {
+        checked.Array(checked_stores, phases.Graph().ops.size());
+        for (const auto& store : proof.stores) { checked.Step(); checked_stores[store.store.value] = store; }
+      }
+      admit(checked.Bytes()); step(checked.Work());
+    }
     std::size_t next_guarded = 0;
     // Retain the conditional scope proof once per method. This does NOT
     // discharge descendants' writes or admit source publication on its own.
@@ -312,7 +351,9 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       }
       const bool checked = load && working && next_guarded < guarded.reads.size() &&
           guarded.reads[next_guarded].read == *working;
-      uses.push_back({{*depth, binding.binding.slot}, checked && domain == analysis::CaptureDomain::kLanguage ? analysis::CaptureDomain::kGuarded : domain,
+      const bool checked_store = !load && working && !checked_stores.empty() && checked_stores[working->value].has_value();
+      uses.push_back({{*depth, binding.binding.slot}, checked_store ? analysis::CaptureDomain::kSourceAccess :
+          checked && domain == analysis::CaptureDomain::kLanguage ? analysis::CaptureDomain::kGuarded : domain,
           CaptureOrigin{method.offset, instruction.origin.value_or(instruction.pc), instruction.pc}});
       accesses.push_back({before.instruction, load ? analysis::LocalAccessKind::kLoad : analysis::LocalAccessKind::kStore});
     }
@@ -320,6 +361,9 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(original), std::move(phases),
         std::move(locals), std::move(guarded), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), std::move(entry_modules), std::move(module_reads), method.owner_offset,
         budget.bytes - left.bytes, budget.work - left.work}));
+  } catch (GuardedStoreError error) { return PhasedFileFailure{error};
+  } catch (TreeStructureError error) {
+    return PhasedFileFailure{error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit};
   } catch (const PhasedFileFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return PhasedFileFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return PhasedFileFailure{Error::kResourceLimit}; }

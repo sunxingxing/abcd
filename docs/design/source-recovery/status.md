@@ -9,6 +9,72 @@
 
 
 
+## Guarded captured PutValue; o26/4515 complete (2026-10-21)
+
+- Baseline/OLD worktree **168ad183**. Added `guarded_stores` derivation and
+  independent verification: original incoming environment/slot, stored SSA
+  input, successful guard Commit dominance, an effect-free interval and the
+  original catch destination. The verifier rebuilds guard/environment/effect
+  facts from immutable inputs. Only certified stores carry SourceAccess under
+  the existing SourceTdz contract; uncovered writes still join as Language.
+  No new premise or initialized capture is assumed. The native `let` remains
+  at its original first-initialization point, with original TDZ reads retained.
+- **o26/4515 completes** under language-source. Its first refusal was m4696
+  PC254/working251, CaptureCellError::kInput > CaptureError::kScope >
+  ScopeError::kInitialization. Once those writes verify, m8331 exposes a
+  guarded shared-decision prefix; its tree consumer now schedules the native
+  read at the original guard, with independent TreeFlow correspondence.
+- **o5/28303 remains precisely at m28799 PC642**, call241/property102,
+  kNotInline > kRoot > kCrossRegionValue. The saved callee is op102 PC262/v526,
+  before staged allocation104 PC268. The missing argument proof covers all four
+  field forests: retained guarded receiver113/114, call130, constructor174 with
+  two selection arguments, and call231/selection233 -> definition237. An
+  incomplete last-selection-only experiment was removed. No production
+  allocation/reference restriction is loosened. This is still a premise-free
+  implementation gap, not a new user decision; the full ordered forest remains
+  future work. The exact IR and next obligations are recorded in
+  [guarded-call-references.md](guarded-call-references.md).
+- Both 40-input comparisons against OLD: **541/620 -> 541/620** previous flags,
+  **597/620 -> 598/620** language-source; **0 regressions / 0 already-complete
+  text changes**. Previous manifests are byte-equivalent as JSON objects; only
+  source o26/4515 changes (status/source/contract and entry/method position
+  maps). Four-child-plus-parent conservative RSS bounds are **168,017,920
+  bytes** previous / **174,899,200 bytes** source. New output passes Node syntax.
+- Full build passes; serial source-regression **65/65**; focused tests **6/6**.
+  Requested sweep **241/255**. All 14 failures reproduce against wtbase:
+  tree_structure, try_tree, try_tree_source, unguarded_derived_cells,
+  unguarded_literal_closure, unguarded_derived_literal_receiver,
+  captured_receiver, unguarded_captured_receiver, unguarded_forwarded_receiver,
+  reversed_initialization_captured_receiver, and the two unguarded reversed
+  initialization receiver tests; plus family_source_cli and class_tree_source
+  (not registered there, reproduced by their commands with baseline binaries).
+  The initial sweep also found two old refusal expectations, decision_guard
+  and phased_guarded_captures; they now assert verified completion with guard
+  mutations / a Node differential, retaining the previous-contract refusal.
+- New real es2abc fixture: early TDZ reader/writer, later initialized writes,
+  nested closures and a catch around the store. **4 Node scenarios / 3 observed
+  mutations**, plus an explicitly equivalent guard-removal control (native
+  PutValue itself still checks TDZ). The published `onAudioInterrupt` callback
+  separately matches its evaluation-only original source in **42 Node
+  scenarios**. The engine consumes ABC only. Copies/block splits, wrong slot,
+  depth/input/handler, missing/duplicate guard membership, an intervening effect
+  or store, and exact byte/work limits are tested at **200/201/400/800**.
+  The isolated 800-store builder plus fresh verifier costs **7,789,723 bytes /
+  3,112,454 work**; the method shares its prepaid indexes and stays O(N log N).
+- Recompiled fixture via grouping_bytecode.py: **0 exact / 2 differ / 0
+  unverified** at default/O0, all compilation and disassembly successful.
+  Differences are not normalized: retained TDZ reads add native assignment
+  guards; existing anonymous-function name preservation, decision temporaries,
+  register/IC allocation and literal/scope metadata also differ. See the
+  [fixture README](../../../tests/integration/fixtures/guarded_stores/README.md)
+  for the complete accounting and pinned compiler hashes. The full new o26
+  record also recompiles at both settings; its callback retains seven stores,
+  two catch regions and the async protocol counts, while the three isPlaying
+  guards become six (original guards plus native PutValue). This is semantic
+  evidence, **not strict bytecode/token equality**. Scratch commands, raw
+  disassemblies, diffs, budgets and logs: `build/review/guarded-finish/`.
+- No commit, push or stash. Unrelated `sample.tar.gz` left untouched.
+
 ## Guarded-call original-event composition (2026-10-21)
 
 - Baseline/wtbase **24b01ff0**. Fresh ABC-only evidence confirms that

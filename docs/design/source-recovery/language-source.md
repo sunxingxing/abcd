@@ -53,6 +53,15 @@ phased 子函数也可记录 `kSourceAccess`；仍有 handler 的方法保持 `k
 - 路由回执的契约名称表改为由 `SourceContractName` 按枚举生成，保证每个能写出的契约都能读回
   （Codex 第二十五轮 R3）；`source_route_test` 对全部枚举值做往返验证。
 
+**2026-10-21：有原始守卫的写入。** 上述“有 handler 则保持 Language”的实现限制有一项
+逐访问例外：`guarded_stores` 独立重建并验证同一 incoming environment/slot 的 Hole 守卫与
+store，绑定原始 RHS 的 UseId/ValueId、成功 Commit 支配关系、无可观察事件/重置的区间，以及
+相同的原始 catch 目的地。只有这些已验证的 store 可在现有 SourceTdz 契约下记录 SourceAccess；
+其他写入仍以 Language 加强整个家族需求。输出保留原始守卫的标识符读取，再执行原生赋值，声明
+仍在原始首次初始化点。原生 PutValue 增加的 TDZ 检查在该区间内不能新失败，故没有新增的
+handler 异常快照，也没有新的用户前提或契约版本。详见
+[guarded-call-references.md](guarded-call-references.md#guarded-captured-putvalue-2026-10-21)。
+
 **Round A：家族转发。** `JoinCaptureRequirement` 统一合并自身访问、后代和签名 entry 需求：
 Guarded < SourceAccess < Language。Defined 是附加的严格义务，不能降为 Language 或 TDZ；不能表达其
 加强关系的 owner 返回类型化拒绝。normal 与 phased 中间函数都使用已验证 working environment 的

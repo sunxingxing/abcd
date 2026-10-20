@@ -32,7 +32,8 @@ struct CapturedSlot {
 // TDZ premise (language-source.md; reads approved 2026-10-13, extended to
 // writes the same day). Its value is Language; the parent may defer the
 // binding's declaration to its first store, as for kGuarded. Handler-covered
-// accesses keep kLanguage.
+// accesses keep kLanguage unless an independent guarded-store/PutValue proof
+// retains the original TDZ guard and exception destination.
 enum class CaptureDomain : std::uint8_t { kLanguage, kDefined, kGuarded, kSourceAccess };
 enum class CaptureRebaseError { kSendableEnvironment };
 

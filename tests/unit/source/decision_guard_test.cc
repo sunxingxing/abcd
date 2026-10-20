@@ -93,16 +93,38 @@ auto Run(std::size_t count,bool copies=false,bool split=false,bool checked=false
   const auto build=[&](SemanticBudget budget=SemanticBudget{}){return BuildExceptionFunctionDraft(graph,exceptions,plan,syntax,resolved,budget);};
   const auto built=build();
   if(checked){
-    // A real throwing TDZ event is not an initialized anchor. In particular,
-    // shared decision ownership cannot erase or duplicate that checked read.
-    test::Check(std::holds_alternative<FunctionTreeFailure>(built));
-    const auto& failure=std::get<FunctionTreeFailure>(built);
-    test::Check(failure.kind==FunctionTreeError::kOwnership && failure.tree &&
-        failure.tree->placement==EvaluationKind::kGuardedCellRead &&
-        failure.tree->ownership==ExpressionOwnershipError::kPlacement);
+    // The guarded decision now has a real native read at the guard Commit.
+    // It remains an expression, never an initialized/textless anchor.
+    test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
+    const auto& draft = std::get<ExceptionFunctionDraft>(built);
+    test::Check(std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(graph, exceptions, plan, draft.tree, resolved)));
+    const auto reject = [&](const FunctionTree& changed) {
+      test::Check(!std::holds_alternative<TreeSemantics>(VerifyExceptionTreeSemantics(graph, exceptions, plan, changed, resolved)));
+    };
+    for (const auto& pair : pairs.reads) {
+      const auto placement = std::find_if(draft.tree.operations.begin(), draft.tree.operations.end(), [&](const auto& p) { return p.operation == pair.guard; });
+      const auto read = std::find_if(draft.tree.operations.begin(), draft.tree.operations.end(), [&](const auto& p) { return p.operation == pair.read; });
+      test::Check(placement != draft.tree.operations.end() && read != draft.tree.operations.end() &&
+          std::holds_alternative<ExprId>(placement->node) && placement->node == read->node);
+      if (count != 1) continue;
+      auto changed = draft.tree;
+      const auto index = placement - draft.tree.operations.begin();
+      changed.operations.erase(changed.operations.begin() + index); reject(changed);
+      changed = draft.tree; changed.operations.push_back(*placement); reject(changed);
+      changed = draft.tree;
+      const auto original = std::get<ExprId>(placement->node);
+      test::Check(draft.tree.expressions.size() > 1);
+      changed.operations[index].node = ExprId{original.value == 0 ? 1U : 0U}; reject(changed);
+    }
     auto forged=plan;for(const auto& pair:pairs.reads)forged.operations[pair.guard.value].kind=EvaluationKind::kCellGuard;
     test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,forged)));
-    return std::pair<std::uint64_t,std::size_t>{0,0};
+    test::Check(std::holds_alternative<ExceptionFunctionDraft>(build({SemanticBudget{}.bytes,draft.work})));
+    test::Check(std::get<FunctionTreeFailure>(build({SemanticBudget{}.bytes,draft.work-1})) == FunctionTreeError::kWorkLimit);
+    std::size_t low=0, high=SemanticBudget{}.bytes;
+    while(low+1<high){const auto mid=low+(high-low)/2;if(std::holds_alternative<ExceptionFunctionDraft>(build({mid,SemanticBudget{}.work})))high=mid;else low=mid;}
+    test::Check(std::holds_alternative<ExceptionFunctionDraft>(build({high,SemanticBudget{}.work})));
+    test::Check(std::get<FunctionTreeFailure>(build({high-1,SemanticBudget{}.work})) == FunctionTreeError::kResourceLimit);
+    return std::pair{draft.work,high};
   }
   if(const auto* failure=std::get_if<FunctionTreeFailure>(&built))std::cerr<<"tree "<<unsigned(failure->kind)<<" count "<<count<<'\n';
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
@@ -143,5 +165,8 @@ int main(){
   static_assert(Disposition(EvaluationKind::kGuardedCellRead)==EvaluationDisposition::kCheckedRead);
   std::pair<std::uint64_t,std::size_t> previous{};
   for(auto count:{1U,200U,201U,400U,800U}){const auto cost=Run(count);if(count>200)test::Check(cost.first<=3*previous.first&&cost.second<=3*previous.second);previous=cost;}
-  Run(1,true);Run(1,false,true);Run(1,true,true);Run(1,false,false,true);
+  Run(1,true);Run(1,false,true);Run(1,true,true);
+  Run(1,false,false,true);Run(1,true,false,true);Run(1,false,true,true);Run(1,true,true,true);
+  previous={};
+  for(auto count:{200U,201U,400U,800U}){const auto cost=Run(count,false,false,true);if(count>200)test::Check(cost.first<=3*previous.first&&cost.second<=3*previous.second);previous=cost;}
 }

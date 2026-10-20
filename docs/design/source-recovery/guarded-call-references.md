@@ -257,3 +257,141 @@ at PC618, with the real name and TDZ scope, and independently verify the store's
 recovery event/exception mapping (including H623). This crosses capture demand,
 ScopeFacts and lexical-store recovery; it is separate from the bounded expression
 composition implemented here. No production capture/module rule changed.
+
+## PC642 continuation: private definition execution (2026-10-21)
+
+PC642: op102 PC262 saves the receiver's member (v526) before allocation104
+PC268 (v528). op233 PC625 selects the Boolean value (phi39) derived from
+call231 PC620; own definition237 PC631 stores phi39 into v528. call241 PC642
+consumes v526 (callee Use275), the original receiver v524 (Use276), and the
+constructed object (Use277). The call's callee is the cross-region Root.
+LiteralPlan certifies four staged definitions, but logical_objects is empty:
+selection233's pure own-definition consumer has no throwing execution root.
+The other inner selections192/210 now execute under verified call231. The
+missing composition is a private literal execution root, not another TDZ guard.
+
+```text
+op102  WB204 PC262 NamedRead(base=v524) -> v526
+op104  WB208 PC268 ObjectAllocation -> v528
+op233  WB466 PC625 Boolean selection -> phi39 (call231's v631)
+op237  WB474 PC631 OwnWrite(base=v528, value=phi39)
+op241  WB482 PC642 Invoke(callee=Use275/v526,
+                         receiver=Use276/v524, argument=Use277/v528)
+```
+
+`evaluation_plan.cc` initially records the single callee use in another working
+block as Root/CrossRegionValue. The existing composition passes do not then
+cover this whole private-argument interval. `VerifyCalls` in `call_plan.cc`
+refuses at `MemberReferenceInline`: op102 is neither Inline with consumer
+Use275, nor a jointly nested literal call/property. The allocation is not
+mistakenly attributed to the outer invocation, and the APPLY result is not
+involved. It is the saved property result v526, retained over the field-selection
+regions, that lacks the complete Reference interval proof.
+
+The whole field forest is the remaining obligation, not just selection233.
+The four original definitions are op112, op131, op175 and op237. Their RHS
+forests include the retained guarded read113/guard114 (PC292/294), invocation130
+(PC335), constructor132/guard133 and selections142/157 feeding construct174
+(PC461), and the independently composed call231 feeding selection233. In the
+value IR, Use130/145 retain v536, Use195 retains constructor v553, Use196 retains
+v563/phi35, and Use266 retains call231's v631. These event owners must all be
+covered before moving the saved member op102 into call241. A trial covering
+only the last selection correctly failed the earlier field-order/ownership
+checks and was removed; no allocation exclusion or reference check is relaxed.
+
+A further premise-free implementation needs a joint per-definition forest with
+retained guarded snapshots and constructor-argument selection ports. Its
+verifier must reconstruct each event exactly once from the original graph and
+check saved-member -> allocation -> each RHS/own commit -> invocation, including
+every original exception destination. This round leaves the exact PC642 refusal
+unchanged rather than admitting an incomplete field forest.
+
+## Guarded captured PutValue (2026-10-21)
+
+`guarded_stores.{h,cc}` derives a storage-bound certificate for incoming lexical
+stores. `BuildEffectOrder` is built once: a store's previous observable event
+must be a verified Hole guard, the guard's normal Commit must dominate the
+store, and its next event must be that store. Pure copies and block splitting
+are allowed. The original environment identity and slot of the guarded load
+and store must agree. The stored SSA input must be a Language value, owned by
+that store. The original dispatch index must give the guard and store the same
+catch destination. An intervening call, reset, environment transition or other
+observable event leaves the store uncertified.
+
+The independent verifier rebuilds GuardedReads, phased environments and the
+effect relation from immutable graph inputs, then compares the complete store
+ledger. The file reader consumes only these verified entries under the existing
+`CaptureReads() == kSourceTdz` contract. Uncovered writes remain Language and
+dominate the existing requirement join. No scope, initialized-capture or
+module-store rule is relaxed, and no new premise is introduced.
+
+The printed form retains `binding; binding = rhs;` at the guard/store boundary.
+RHS events still precede the guard; native PutValue's extra TDZ check cannot
+newly fail after the original guard because the certified interval has no reset
+or observable effect. The creator's native `let` stays at its original
+initialization point. Calling an already-created closure before then still
+throws ReferenceError into the original handler. The pinned interpreter checks
+Hole in `interpreter-inl.cpp:4092-4121`; `STLEXVAR` writes the addressed lexical
+cell without that check (`:6118-6154`). These are the reason the guard must not
+be discarded by requirement forwarding.
+
+After m4696 verifies, m8331 exposes a second consumer gap: guarded read/guard
+op11/12 (original PC28/30, working PC25/27) occurs in a shared decision rooted
+at op10 PC26. The ordinary tree block already schedules native reads at the
+guard, but the decision-prefix consumer did not. It now follows the same
+verified peer identity and schedules the Root expression once at the guard.
+TreeFlow independently checks that boundary. This is a placement fix; the
+guard, evaluation proof, recovery exceptions and catch-state checks stay intact.
+
+Both passes use one prepaid index/effect graph per method. Construction plus
+fresh verification is O((V+E) log V) with linear retained storage; no per-cell CFG
+walks. Resource exhaustion remains a typed refusal. The unit tests cover exact
+byte/work limits at 200/201/400/800 accesses, storage/handler/guard mutations,
+copies/block splits, an intervening effect, a reset and a store outside the
+guard's catch range. The real es2abc fixture and ordinary-call Node oracle are
+in `tests/integration/fixtures/guarded_stores/`.
+
+### End-to-end checkpoint
+
+Baseline: `168ad183` (also the OLD worktree). `o26/4515` now completes under
+`--language-source`; previous flags retain their original refusal. No published
+source that was already complete changes under either flag set. The only
+manifest-row change is o26/4515, from incomplete to complete, with its source
+and position maps. The new record parses with Node.
+
+Evaluation-only comparison with `AudioSessionSampleJS/.../pages/Index.ets`:
+
+| Original callback source | Engine output at the same write |
+| --- | --- |
+| `isPlaying = false;` (PAUSE / STOP) | `isPlaying; isPlaying = false;` |
+| `started = true;` after `await audioRenderer.start()` | `started; started = true;` |
+| `started = false;` in catch | `started; started = false;` |
+| `if (started) { isPlaying = true; }` | `if (started) { isPlaying; isPlaying = true; }` |
+
+The source is never an engine input. An isolated callback oracle compares
+original-source vs engine-output over 42 Node scenarios: force/share events,
+pause/stop/duck/unduck/resume, calls before initialization, rejected `start`,
+an absent renderer, callback logging and receiver identity. Only TypeScript
+annotations are removed from the evaluation oracle. Full-record execution on
+Node is not claimed: its `@ohos` imports and UI runtime are not Node APIs.
+
+Recompiling the complete emitted record succeeds at both default optimization
+and O0, and both disassemblies are retained in
+`build/review/guarded-finish/record-roundtrip/`. For the changed async callback,
+the original and O0 recompilation each have seven captured stores, two catch
+regions, one await, two async resolves, one async reject and the same call-kind
+counts. The three `isPlaying` stores are preserved; their guard count grows
+from three to six because the original explicit guards and native PutValue
+guards are both present. `started` grows from three to five guards and
+`isDucked` from two to four for the same reason. Captured slots and compiler
+function ordinals change with the existing recovered declaration layout;
+language metadata changes from ArkTS to ECMAScript. These are **semantic
+comparisons, not strict bytecode-equality passes**. The original exception
+ports and value/target identities are checked by the production verifier.
+
+`grouping_bytecode.py` is also run on the independent fixture's original and
+engine-produced module at both optimization settings. Its strict comparison
+correctly reports differ (no normalizations or allowances): the detailed
+account is in the fixture README. It checks compilation/disassembly and emits
+the exact differences; Node provides the ordinary-call behavioral oracle.
+This is not the parentheses-only token-equivalence use of that script.

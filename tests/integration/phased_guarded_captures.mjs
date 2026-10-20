@@ -21,11 +21,11 @@ console.log(JSON.stringify({early:m.early,late:m.late,trace:globalThis.trace}));
       const records = JSON.parse(readFileSync(join(output, 'manifest.json'))).records.filter(r => r.source_status !== 2);
       assert.equal(records.length, 1);
       const record = records[0];
-      if (name === 'write') {
+      if (name === 'write' && label === 'old') {
         assert.equal(record.source_status, 3);
         assert.deepEqual(record.source_failure.causes.map(c => [c.domain, c.value]), [
           ['abcd::source::CaptureCellError', 3], ['abcd::source::CaptureError', 1], ['abcd::source::ScopeError', 3]]);
-        assert.equal(record.source_failure.capture.requested, 0); // Language, never Guarded/SourceAccess.
+        assert.equal(record.source_failure.capture.requested, 0); // Previous contract keeps Language.
         assert.ok(Number.isInteger(record.source_failure.capture.pc));
         continue;
       }
@@ -46,6 +46,11 @@ console.log(JSON.stringify({early:m.early,late:m.late,trace:globalThis.trace}));
         // Remove the native checked read, preserving the declaration/store.
         text.replaceAll(`= ${cell};`, '= void 0;').replaceAll(`return ${cell};`, 'return void 0;'),
       ];
+      if (name === 'write') {
+        const changed = text.replace(new RegExp(`${cell.replaceAll('$', '\\$')} = 7;`), `${cell} = 8;`);
+        assert.notEqual(changed, text, 'guarded store mutation must change the program');
+        mutations.push(changed);
+      }
       if (name === 'read') {
         assert.ok(/\$exception\d+ = 7;/.test(text), 'catch state staging is exercised');
         mutations.push(text.replace(/(\$exception\d+ = )7(;)/, '$19$2'));

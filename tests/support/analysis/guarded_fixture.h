@@ -6,8 +6,9 @@
 #include "analysis/ssa_fixture.h"
 namespace abcd::test {
 using namespace analysis;
+enum class GuardedStoreCase { kPlain, kEffect, kReset, kOutsideCatch };
 enum class GuardedCallCase { kPlain, kForeign, kCatchState, kOutsideCatch, kPureWrapper, kTwoReads, kExtraUse, kSatisfied };
-template<class F> auto WithGuardedGraph(std::size_t count, bool copies, bool split, bool escape, F&& inspect, bool reordered = false, bool calls = false, GuardedCallCase variant = GuardedCallCase::kPlain, bool pure_wrapper = false) {
+template<class F> auto WithGuardedGraph(std::size_t count, bool copies, bool split, bool escape, F&& inspect, bool reordered = false, bool calls = false, GuardedCallCase variant = GuardedCallCase::kPlain, bool pure_wrapper = false, bool stores = false, GuardedStoreCase store_case = GuardedStoreCase::kPlain) {
   std::vector<std::uint8_t> bytes;
   const auto opcode = [&](abc::Opcode op) {
     const auto encoded = static_cast<std::uint16_t>(op);
@@ -31,6 +32,7 @@ template<class F> auto WithGuardedGraph(std::size_t count, bool copies, bool spl
       opcode(abc::Opcode::kLDAI_IMM32); bytes.insert(bytes.end(), {2,0,0,0});
       opcode(abc::Opcode::kSTA_V8); bytes.push_back(0);
     }
+    if (stores) { opcode(abc::Opcode::kLDFALSE); opcode(abc::Opcode::kSTA_V8); bytes.push_back(1); }
     opcode(abc::Opcode::kLDLEXVAR_IMM4_IMM4); bytes.push_back(0);
     if (copies) {
       opcode(abc::Opcode::kSTA_V8); bytes.push_back(0);
@@ -38,6 +40,19 @@ template<class F> auto WithGuardedGraph(std::size_t count, bool copies, bool spl
     }
     if (split) { opcode(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
     opcode(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16); bytes.insert(bytes.end(), {0, 0});
+    if (stores) {
+      if (store_case == GuardedStoreCase::kEffect) {
+        opcode(abc::Opcode::kLDGLOBAL);
+        opcode(abc::Opcode::kLDOBJBYNAME_IMM8_ID16); bytes.insert(bytes.end(), {0, 0, 0});
+      }
+      if (store_case == GuardedStoreCase::kReset) {
+        opcode(abc::Opcode::kLDTRUE);
+        opcode(abc::Opcode::kSTLEXVAR_IMM4_IMM4); bytes.push_back(0);
+      }
+      if (store_case == GuardedStoreCase::kOutsideCatch) outside = static_cast<std::uint32_t>(bytes.size());
+      opcode(abc::Opcode::kLDA_V8); bytes.push_back(1);
+      opcode(abc::Opcode::kSTLEXVAR_IMM4_IMM4); bytes.push_back(0);
+    }
     if (calls) {
       if ((variant == GuardedCallCase::kPureWrapper || pure_wrapper)) { opcode(abc::Opcode::kTYPEOF_IMM8); bytes.push_back(0); }
       opcode(abc::Opcode::kSTA_V8); bytes.push_back(3);
@@ -82,7 +97,7 @@ template<class F> auto WithGuardedGraph(std::size_t count, bool copies, bool spl
   abc::TryRegion region; region.offset = {try_begin}; region.length = outside.value_or(end) - try_begin; region.handler_count = 1;
   abc::CatchHandler handler; handler.offset = {end + 1}; handler.length = static_cast<std::uint32_t>(bytes.size()) - end - 1;
   body.tries.push_back(region); body.handlers.push_back(handler);
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(calls ? 5 : 1, 0, {}));
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(calls ? 5 : stores ? 2 : 1, 0, {}));
   const auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, abc::ProfileId::kDynamic1301, frame.registers));
   IdfQuota quota{kDefaultSemanticWork};
   const auto ssa = std::get<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers, quota));

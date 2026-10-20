@@ -708,11 +708,19 @@ class FlowCheck {
           Error::kPlacement);
       return;
     }
+    // Reconstruct the load/guard boundary independently: the checked native
+    // read executes once at the original guard, not at the raw load or again
+    // when the enclosing shared decision is printed.
+    if (GuardedInput(evaluation_, op)) return;
+    const auto source = kind == EvaluationKind::kGuardedCellRead ? *GuardedPeer(evaluation_, op) : op;
+    const auto source_kind = evaluation_.operations[source.value].kind;
+    if (kind == EvaluationKind::kGuardedCellRead)
+      Require(flow_.expressions[source.value] == flow_.expressions[op.value], Error::kPlacement);
     // Actual expression ownership/operands are checked by the common consumers;
     // a shared decision does not give the operation another executable root.
-    if (kind != EvaluationKind::kRoot && std::holds_alternative<ExprId>(placement)) return;
-    if (kind == EvaluationKind::kRoot && !std::holds_alternative<analysis::ValueJump>(original.operation)) {
-      const auto shape = DescribeEvaluation(original.operation);
+    if (source_kind != EvaluationKind::kRoot && std::holds_alternative<ExprId>(placement)) return;
+    if (source_kind == EvaluationKind::kRoot && !std::holds_alternative<analysis::ValueJump>(original.operation)) {
+      const auto shape = DescribeEvaluation(graph_.ops[source.value].operation);
       Require(exceptions_ && condition && shape && shape->expression &&
           !std::holds_alternative<analysis::ValueBranch>(original.operation) &&
           !std::holds_alternative<analysis::ValueReturn>(original.operation) &&
@@ -720,7 +728,7 @@ class FlowCheck {
       const auto* sequence = std::get_if<SequenceExpr>(&tree_.expressions[condition->value].expression);
       Require(sequence && predicate && tree_.expressions[condition->value].origin.value ==
           graph_.ops[predicate->value].origin.value, Error::kSequence);
-      RootExpression(op, sequence->left); *condition = sequence->right;
+      RootExpression(source, sequence->left); *condition = sequence->right;
       return;
     }
     throw Error::kPlacement;

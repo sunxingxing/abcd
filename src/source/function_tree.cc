@@ -1324,6 +1324,20 @@ class TreeBuilder {
       witness_.ownership = ExpressionOwnershipError::kMissingExpression;
       Require(expression.has_value(), Error::kOwnership);
       witness_.ownership = ExpressionOwnershipError::kPlacement;
+      if (GuardedInput(evaluation_, id)) {
+        // The original load is internal until its guard commits. Schedule the
+        // native TDZ read at the guard, as in the ordinary block consumer.
+        tree_.operations.push_back({id, *expression}); continue;
+      }
+      if (placement.kind == EvaluationKind::kGuardedCellRead) {
+        const auto read = GuardedPeer(evaluation_, id);
+        Require(read && forest_.operations[read->value] == expression, Error::kOwnership);
+        const auto kind = evaluation_.operations[read->value].kind;
+        if (kind == EvaluationKind::kRoot)
+          decision_roots_.push_back(RootExpression(*read, *expression));
+        else Require(kind == EvaluationKind::kInline && !evaluation_.checked_compositions.empty(), Error::kOwnership);
+        tree_.operations.push_back({id, *expression}); continue;
+      }
       // Module read and TDZ guard share the verified read expression. Its
       // root is already scheduled in this RHS; recording the guard must not
       // evaluate the live binding twice. Scope/catch-copy checks above still
