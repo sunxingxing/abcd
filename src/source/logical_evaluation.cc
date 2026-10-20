@@ -4,6 +4,8 @@
 #include "logical_regions.h"
 #include "selection_consumer.h"
 #include "phase_evaluation.h"
+#include "call_plan.h"
+#include "module_evaluation.h"
 
 namespace abcd::source {
 namespace {
@@ -386,7 +388,8 @@ struct DomainIndex {
   std::vector<OpId> needed_ops;
   std::vector<WorkBlockId> order;
   std::vector<std::uint32_t> starts;
-  std::vector<std::optional<WorkBlockId>> previous;
+  std::vector<std::optional<WorkBlockId>> previous, corridor;
+  std::vector<std::size_t> position;
   std::vector<std::optional<OpId>> values;
   std::vector<std::optional<UseId>> branches;
   DomainIndex(const ValueProgram& graph, TreeCheckBudget& budget) {
@@ -395,6 +398,7 @@ struct DomainIndex {
     budget.Array(needed, graph.ops.size()); budget.Array(needed_ops, graph.ops.size()); needed_ops.clear();
     budget.Array(order, graph.blocks.size()); order.clear();
     budget.Array(starts, graph.blocks.size()); budget.Array(previous, graph.blocks.size());
+    budget.Array(corridor, graph.blocks.size()); budget.Array(position, graph.blocks.size());
     std::vector<std::size_t> incoming;
     std::vector<std::optional<WorkBlockId>> next;
     std::vector<std::uint8_t> predecessors, visited;
@@ -415,8 +419,10 @@ struct DomainIndex {
     for (std::size_t root = 0; root < graph.blocks.size(); ++root) {
       budget.Step(); if (predecessors[root]) continue;
       auto block = WorkBlockId{static_cast<std::uint32_t>(root)};
+      std::size_t rank = 0;
       for (;;) {
         budget.Step(); Require(!visited[block.value]); visited[block.value] = 1;
+        corridor[block.value] = WorkBlockId{static_cast<std::uint32_t>(root)}; position[block.value] = rank++;
         if (!next[block.value]) break;
         const auto following = *next[block.value];
         previous[following.value] = block; block = following;
@@ -466,14 +472,21 @@ class Domain {
  public:
   Domain(const ValueProgram& graph, const EvaluationPlan& plan, const SelectionIndex& selections,
       std::span<const SelectionRegion* const> route, std::vector<Interval>& intervals,
-      DomainIndex& index, const std::vector<SelectionBlock>& used, TreeCheckBudget& budget, std::optional<SelectedObject> object = {})
+      DomainIndex& index, const std::vector<SelectionBlock>& used, TreeCheckBudget& budget, std::optional<SelectedObject> object = {}, std::span<const OpId> reference_owners = {}, std::optional<OpId> reference = {})
       : graph_(graph), plan_(plan), selections_(selections), route_(route), intervals_(intervals), index_(index), budget_(budget), object_(object),
         last_owner_(LogicalOwner(graph, plan, object ? std::optional{object->consumer} :
             selections.consumers[route.back()->branch.value].InlineUse(), route.back()->branch)) {
     witness_ = EvaluationAt(graph_, plan_, last_owner_, EvaluationObligation::kLogicalJoin);
     Require(graph.ops[last_owner_.value].block == route.back()->join);
     // Object routes keep their literal consumer as the final consumer.
-    if (!object_) {
+    if (!reference_owners.empty()) {
+      budget.Step(reference_owners.size());
+      budget.Admit(reference_owners.size(), sizeof(OpId));
+      chain_.assign(reference_owners.begin(), reference_owners.end());
+      budget.Admit(chain_.capacity() - reference_owners.size(), sizeof(OpId));
+      Require(reference.has_value() && !object_);
+      last_owner_ = *reference;
+    } else if (!object_) {
       InlineAncestors(graph, plan, last_owner_, budget_, &chain_);
       if (!chain_.empty()) last_owner_ = chain_.back();
     }
@@ -494,9 +507,32 @@ class Domain {
     }
     std::reverse(index_.order.begin(), index_.order.end());
     for (std::size_t r = 1; r < route.size(); ++r) {
-      budget_.Step(); index_.order.push_back(route[r]->header); index_.starts[route[r]->header.value] = 0;
+      budget_.Step();
+      const auto first = index_.order.size();
+      auto at = route[r]->header;
+      index_.order.push_back(at); index_.starts[at.value] = 0;
+      if (!reference_owners.empty()) {
+        // Restore intervening sole-entry normal corridors. This proves split
+        // blocks by their edges, never by physical block/operation adjacency.
+        while (at != route[r-1]->join) {
+          budget_.Step();
+          const auto before = index_.previous[at.value];
+          Require(before.has_value()); at = *before;
+          Require(index_.order.size() < index_.blocks.size());
+          index_.order.push_back(at); index_.starts[at.value] = 0;
+        }
+        std::reverse(index_.order.begin() + first, index_.order.end());
+      }
     }
-    index_.order.push_back(route.back()->join); index_.starts[route.back()->join.value] = 0;
+    const auto suffix = index_.order.size();
+    auto tail = reference_owners.empty() ? route.back()->join : graph.ops[last_owner_.value].block;
+    for (;;) {
+      budget_.Step(); Require(index_.order.size() < index_.blocks.size());
+      index_.order.push_back(tail); index_.starts[tail.value] = 0;
+      if (tail == route.back()->join) break;
+      Require(index_.previous[tail.value].has_value()); tail = *index_.previous[tail.value];
+    }
+    std::reverse(index_.order.begin() + suffix, index_.order.end());
     // Prepay the nonthrowing cleanup as well as index construction.
     budget_.Step(2 * (index_.order.size() + route.size() + (object_ ? object_->definitions.size() : 0)));
     for (const auto id : index_.order) {
@@ -705,7 +741,7 @@ class Domain {
   bool Inside(OpId id) const {
     const auto& op = graph_.ops[id.value];
     return index_.blocks[op.block.value] && op.order >= index_.starts[op.block.value] &&
-        (op.block != route_.back()->join || op.order <= graph_.ops[last_owner_.value].order);
+        (op.block != graph_.ops[last_owner_.value].block || op.order <= graph_.ops[last_owner_.value].order);
   }
   bool Object(OpId id) const {
     return object_ && selections_.object_roots[id.value] == object_->allocation;
@@ -717,6 +753,116 @@ class Domain {
   // Inline ancestors of the selection consumer, outermost last (see ctor).
   std::vector<OpId> chain_;
 };
+// The one-consumer forest is a proposal, not movement permission. The
+// Domain's reverse construction and independent forward verification must both
+// cover its original event interval. Every value/operand is indexed once.
+struct ReferenceRouteIndex {
+  std::vector<std::optional<OpId>> roots;
+  std::vector<std::size_t> owner_starts, region_starts;
+  std::vector<OpId> owners;
+  std::vector<std::size_t> members;
+  ReferenceRouteIndex(const ValueProgram& graph, const EvaluationPlan& plan,
+      std::span<const SelectionRegion> regions, const SelectionIndex& index, TreeCheckBudget& budget) {
+    budget.Array(roots, graph.ops.size());
+    budget.Array(owner_starts, graph.ops.size()+1); budget.Array(region_starts, graph.ops.size()+1);
+    std::vector<std::uint8_t> allocations; budget.Array(allocations, graph.ops.size());
+    if (plan.literals) for (const auto& object: plan.literals->objects) {
+      budget.Step(); allocations[object.allocation.value] = 1;
+    }
+    const auto module_result = IndexModuleEvaluations(graph, plan.modules, budget.Remaining());
+    const auto* modules = std::get_if<ModuleEvaluationIndex>(&module_result);
+    if (!modules) throw std::get<EvaluationFailure>(module_result);
+    budget.Admit(modules->allocated_bytes, 1); budget.Step(modules->work);
+    const auto uses = IndexEvaluationUses(graph, plan, *modules, allocations, plan.class_projection.owners,
+        plan.cells ? &*plan.cells : nullptr, plan.receiver_guards, budget);
+    std::vector<std::optional<OpId>> parents;
+    enum class Visit : std::uint8_t { kUnseen, kActive, kDone };
+    std::vector<Visit> state;
+    std::vector<OpId> path;
+    budget.Array(parents, graph.ops.size()); budget.Array(state, graph.ops.size());
+    budget.Array(path, graph.ops.size());
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      budget.Step(); const OpId id{static_cast<std::uint32_t>(i)};
+      if (const auto property = MemberProperty(graph, plan, id)) {
+        const auto original = BeforeLogicalFusion(graph, plan, property->value);
+        if (original.kind == EvaluationKind::kRoot && original.temporary == TemporaryReason::kCrossRegionValue)
+          roots[i] = id;
+      }
+      const auto original = BeforeLogicalFusion(graph, plan, i);
+      const auto use = uses[i].first;
+      if (roots[i] || !use || uses[i].multiple ||
+          (original.kind != EvaluationKind::kInline &&
+           !(original.kind == EvaluationKind::kRoot && original.temporary == TemporaryReason::kCrossRegionValue))) continue;
+      const auto& occurrence = graph.uses[use->value];
+      const auto* owner = std::get_if<OpId>(&occurrence.owner);
+      const auto shape = owner ? DescribeEvaluation(graph.ops[owner->value].operation) : std::nullopt;
+      if (!owner || !shape || shape->NeedsSnapshot(occurrence.role) ||
+          occurrence.role == OperandRole::kReceiver || PredicateSnapshot(graph, graph.ops[owner->value], occurrence.operand)) continue;
+      parents[i] = *owner;
+    }
+    // Compress the actual one-consumer forest. Definition/consumer OpId order
+    // is not an availability proof or an admission prerequisite.
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      budget.Step(); if (state[i] == Visit::kDone) continue;
+      OpId cursor{static_cast<std::uint32_t>(i)}; std::size_t count = 0;
+      while (state[cursor.value] == Visit::kUnseen) {
+        budget.Step(); state[cursor.value] = Visit::kActive; path[count++] = cursor;
+        if (!parents[cursor.value]) break;
+        cursor = *parents[cursor.value];
+      }
+      Require(!parents[cursor.value] || state[cursor.value] == Visit::kDone);
+      const auto root = roots[cursor.value];
+      while (count) {
+        budget.Step(); const auto id = path[--count]; roots[id.value] = root; state[id.value] = Visit::kDone;
+      }
+    }
+    for (const auto root : roots) { budget.Step(); if (root) ++owner_starts[root->value+1]; }
+    const auto order = SelectionOrder(graph, regions, budget);
+    for (const auto r: order) {
+      budget.Step(); const auto& region = regions[r];
+      const auto use = index.consumers[region.branch.value].InlineUse();
+      if (region.parent || !region.complete_phi || !use || plan.logical_values.empty() ||
+          plan.logical_values[region.merged.value] != region.branch) continue;
+      const auto owner = std::get<OpId>(graph.uses[use->value].owner);
+      if (roots[owner.value]) ++region_starts[roots[owner.value]->value+1];
+    }
+    for (std::size_t i=1;i<owner_starts.size();++i) {
+      budget.Step(); owner_starts[i]+=owner_starts[i-1]; region_starts[i]+=region_starts[i-1];
+    }
+    budget.Array(owners,owner_starts.back()); budget.Array(members,region_starts.back());
+    std::vector<std::size_t> next_owner,next_region;
+    budget.Array(next_owner,owner_starts.size()); budget.Array(next_region,region_starts.size());
+    budget.Step(owner_starts.size()+region_starts.size());
+    std::copy(owner_starts.begin(),owner_starts.end(),next_owner.begin());
+    std::copy(region_starts.begin(),region_starts.end(),next_region.begin());
+    for(std::size_t i=0;i<roots.size();++i) { budget.Step(); if(roots[i]) owners[next_owner[roots[i]->value]++]={static_cast<std::uint32_t>(i)}; }
+    for(const auto r:order) {
+      budget.Step(); const auto& region=regions[r]; const auto use=index.consumers[region.branch.value].InlineUse();
+      if(region.parent || !region.complete_phi || !use || plan.logical_values.empty() || plan.logical_values[region.merged.value]!=region.branch) continue;
+      const auto owner=std::get<OpId>(graph.uses[use->value].owner);
+      if(roots[owner.value]) members[next_region[roots[owner.value]->value]++]=r;
+    }
+  }
+  std::span<const OpId> Owners(OpId call) const { return std::span{owners}.subspan(owner_starts[call.value],owner_starts[call.value+1]-owner_starts[call.value]); }
+  std::span<const std::size_t> Regions(OpId call) const { return std::span{members}.subspan(region_starts[call.value],region_starts[call.value+1]-region_starts[call.value]); }
+};
+bool ReferenceRoute(const ValueProgram& graph, std::span<const SelectionRegion> regions,
+    const ReferenceRouteIndex& references, const DomainIndex& index, OpId call,
+    std::vector<const SelectionRegion*>& route, TreeCheckBudget& budget) {
+  route.clear(); const auto members = references.Regions(call);
+  if (members.empty()) return false;
+  const auto linear = [&](WorkBlockId from, WorkBlockId to) {
+    return from == to || (index.corridor[from.value] &&
+        index.corridor[from.value] == index.corridor[to.value] &&
+        index.position[from.value] < index.position[to.value]);
+  };
+  for (const auto r : members) {
+    budget.Step(); const auto& region = regions[r];
+    if (!route.empty() && !linear(route.back()->join, region.header)) return false;
+    route.push_back(&region);
+  }
+  return linear(route.back()->join, graph.ops[call.value].block);
+}
 }  // namespace
 const PhaseSelectionOperand* FindPhaseSelectionOperand(const ValueProgram& graph, const EvaluationPlan& plan, OpId branch) {
   if (plan.flow != EvaluationFlow::kPhased || branch.value >= graph.ops.size()) return nullptr;
@@ -817,12 +963,40 @@ void BuildLogicalValues(const ValueProgram& graph, EvaluationPlan& plan, TreeChe
     plan.logical_values[region.merged.value] = region.branch;
     plan.operations[region.branch.value] = {EvaluationKind::kLogicalValue, region.forwarded, {}};
   }
+  std::size_t unmet = 0;
+  for (std::size_t i=0;i<graph.ops.size();++i) {
+    budget.Step(); const OpId call{static_cast<std::uint32_t>(i)};
+    if (const auto property=MemberProperty(graph,plan,call); property && !MemberReferenceInline(graph,plan,call,*property)) ++unmet;
+  }
+  if (!unmet) return; // Existing successful plans retain every old decision.
+  const ReferenceRouteIndex references(graph,plan,regions,index,budget);
+  std::vector<SelectionBlock> empty_used; budget.Array(empty_used,graph.blocks.size());
+  for (std::size_t i=0;i<graph.ops.size();++i) {
+    budget.Step(); const OpId call{static_cast<std::uint32_t>(i)};
+    const auto property=MemberProperty(graph,plan,call);
+    if(!property || MemberReferenceInline(graph,plan,call,*property) || references.roots[i]!=call ||
+        !ReferenceRoute(graph,regions,references,domain_index,call,route,budget)) continue;
+    selected.clear();
+    if(!Domain(graph,plan,index,route,intervals,domain_index,empty_used,budget,{},references.Owners(call),call).Build(selected)) continue;
+    if(std::none_of(selected.begin(),selected.end(),[&](const auto& item){return item.first==*property && item.second==graph.ops[i].first_use;})) continue;
+    LogicalReferenceRoute proof{call,{}};
+    budget.Admit(route.size(),sizeof(OpId)); proof.branches.reserve(route.size());
+    budget.Admit(proof.branches.capacity()-route.size(),sizeof(OpId));
+    for(const auto* region:route) {budget.Step();proof.branches.push_back(region->branch);}
+    if (plan.logical_reference_routes.empty()) {
+      budget.Admit(unmet,sizeof(LogicalReferenceRoute)); plan.logical_reference_routes.reserve(unmet);
+      budget.Admit(plan.logical_reference_routes.capacity()-unmet,sizeof(LogicalReferenceRoute));
+    }
+    plan.logical_reference_routes.push_back(std::move(proof));
+    for(const auto& [producer,use]:selected) {budget.Step();plan.operations[producer.value]={EvaluationKind::kInline,use,{}};}
+  }
 }
 void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
   EvaluationEvidence witness; witness.obligation = EvaluationObligation::kLogicalInput;
   const auto Require = [&](bool ok) { if (!ok) throw EvaluationFailure{EvaluationError::kOwnership, witness}; };
   VerifyPredicateSnapshots(graph, plan, budget);
   if (plan.flow == EvaluationFlow::kPhased) {
+    Require(plan.logical_reference_routes.empty());
     VerifyPhaseSelectionOperands(graph, plan, budget);
     VerifyPhasedObjectOperands(graph, plan, budget); return;
   }
@@ -830,7 +1004,7 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
   Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size());
   Require(plan.logical_values.empty() || (plan.flow == EvaluationFlow::kNormal && plan.logical_values.size() == graph.values.size()));
   if (plan.logical_values.empty()) {
-    Require(plan.logical_objects.empty());
+    Require(plan.logical_objects.empty() && plan.logical_reference_routes.empty());
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step(); witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kLogicalCoverage); Require(plan.operations[i].kind != EvaluationKind::kLogicalValue &&
           !(plan.operations[i].kind == EvaluationKind::kInitializer &&
@@ -849,8 +1023,30 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
   budget.Array(consumed, graph.ops.size()); budget.Array(values, graph.values.size()); budget.Array(objects, graph.ops.size());
   budget.Admit(regions.size(), sizeof(const SelectionRegion*)); route.reserve(regions.size());
   budget.Admit(route.capacity() - regions.size(), sizeof(const SelectionRegion*));
+  std::vector<std::uint8_t> reference_branches; budget.Array(reference_branches,graph.ops.size());
+  if(!plan.logical_reference_routes.empty()) {
+    const ReferenceRouteIndex references(graph,plan,regions,index,budget);
+    std::optional<OpId> previous;
+    for(const auto& proof:plan.logical_reference_routes) {
+      budget.Step(); Require(proof.call.value<graph.ops.size());
+      witness=EvaluationAt(graph,plan,proof.call,EvaluationObligation::kLogicalJoin);
+      Require(!previous || *previous<proof.call); previous=proof.call;
+      const auto property=MemberProperty(graph,plan,proof.call);
+      Require(property && references.roots[proof.call.value]==proof.call && MemberReferenceInline(graph,plan,proof.call,*property));
+      Require(ReferenceRoute(graph,regions,references,domain_index,proof.call,route,budget) && route.size()==proof.branches.size());
+      for(std::size_t j=0;j<route.size();++j) {
+        budget.Step();const auto& region=*route[j];
+        Require(proof.branches[j]==region.branch && !reference_branches[region.branch.value] && !values[region.merged.value]);
+        reference_branches[region.branch.value]=1;values[region.merged.value]=1;
+        const auto& placement=plan.operations[region.branch.value];
+        Require(placement.kind==EvaluationKind::kLogicalValue && placement.consumer==index.consumers[region.branch.value].InlineUse() && !placement.temporary);
+      }
+      Domain(graph,plan,index,route,intervals,domain_index,used,budget,{},references.Owners(proof.call),proof.call).Verify(consumed);
+    }
+  }
   for (const auto r : SelectionOrder(graph, regions, budget)) {
     budget.Step(); const auto& region = regions[r];
+    if(reference_branches[region.branch.value]) continue;
     witness = EvaluationAt(graph, plan, region.branch, EvaluationObligation::kLogicalInput);
     if (!index.consumers[region.branch.value].InlineUse()) {
       // Child/partial selections have their own phi or parent proof below;

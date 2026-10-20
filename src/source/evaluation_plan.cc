@@ -641,6 +641,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         plan.phase_selections.capacity() * sizeof(PhaseSelectionOperand) +
         plan.integer_nans.capacity() * sizeof(NaNProjection) +
         plan.operations.capacity() * sizeof(OpEvaluation) +
+        plan.logical_reference_routes.capacity() * sizeof(LogicalReferenceRoute) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.logical_objects.capacity() *
             sizeof(std::optional<analysis::OpId>) +
@@ -665,6 +666,9 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     if (plan.exceptions) plan.allocated_bytes += plan.exceptions->allocated_bytes;
     for (const auto& function : plan.functions) {
       step(); plan.allocated_bytes += function.captures.capacity() * sizeof(CellId);
+    }
+    for (const auto& route : plan.logical_reference_routes) {
+      step(); plan.allocated_bytes += route.branches.capacity() * sizeof(analysis::OpId);
     }
     plan.work = budget.work - work;
     return plan;

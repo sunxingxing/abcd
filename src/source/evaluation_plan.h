@@ -100,6 +100,13 @@ struct PhaseSelectionOperand {
 };
 enum class GuardedReadRole : std::uint8_t { kRead, kGuard };
 struct GuardedReadPeer { analysis::OpId operation; GuardedReadRole role; };
+// An unmet member reference composed over complete, already verified normal
+// selections. Branches retain their original phi/edge identities; no joint
+// predicate/keep-edge or new selection admission is implied.
+struct LogicalReferenceRoute {
+  analysis::OpId call;
+  std::vector<analysis::OpId> branches;
+};
 struct EvaluationPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
@@ -163,6 +170,7 @@ struct EvaluationPlan {
   // Ascending execution roots whose final-ownership trees were composed across
   // committed selections (phase_composition.h). Each is independently re-proved.
   std::vector<analysis::OpId> phase_compositions;
+  std::vector<LogicalReferenceRoute> logical_reference_routes;
   // Whole trees repairing unmet member references with checked capture events.
   // Separate from selection-only composition; every member is independently
   // re-proved before this certificate can replace corridor equations.

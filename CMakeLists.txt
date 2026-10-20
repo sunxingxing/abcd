@@ -925,6 +925,10 @@ if(BUILD_TESTING)
   add_executable(logical_coverage_test tests/unit/source/logical_coverage_test.cc)
   target_link_libraries(logical_coverage_test PRIVATE abcd_source abcd_json)
   add_test(NAME logical_coverage_test COMMAND logical_coverage_test)
+  add_executable(logical_reference_routes_test tests/unit/source/logical_reference_routes_test.cc)
+  target_include_directories(logical_reference_routes_test PRIVATE tests/support)
+  target_link_libraries(logical_reference_routes_test PRIVATE abcd_source)
+  add_test(NAME logical_reference_routes_test COMMAND logical_reference_routes_test)
   add_executable(retained_call_selection_test tests/unit/source/retained_call_selection_test.cc)
   target_link_libraries(retained_call_selection_test PRIVATE abcd_source)
   add_test(NAME retained_call_selection_test COMMAND retained_call_selection_test)
@@ -2158,6 +2162,9 @@ if(BUILD_TESTING)
     add_test(NAME decision_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_literal.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_literal)
+    add_test(NAME logical_reference_routes_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_reference_routes.mjs $<TARGET_FILE:abc_structure>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/logical_reference_routes)
     add_test(NAME nested_literal_arm_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nested_literal_arm.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/nested_literal_arm)

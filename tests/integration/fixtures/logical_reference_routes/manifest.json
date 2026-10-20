@@ -1,0 +1,42 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "commands": [
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=logical_reference_routes",
+      "--source-file=calls.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/logical_reference_routes/calls.abc",
+      "tests/integration/fixtures/logical_reference_routes/calls.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=logical_reference_routes",
+      "--source-file=calls.js",
+      "--output=tests/integration/fixtures/logical_reference_routes/default.abc",
+      "tests/integration/fixtures/logical_reference_routes/calls.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=retained_route",
+      "--source-file=retained.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/logical_reference_routes/retained.abc",
+      "tests/integration/fixtures/logical_reference_routes/retained.js"
+    ]
+  ],
+  "hashes": {
+    "calls.abc": "63b6238c87d1dd3ac35cae35b89db4917d4e1ba26f00418e1daddc7499952575",
+    "retained.abc": "7ab67e91ca1a969b4aae73394e4857fb3b651173b63e152a974695e746669e71",
+    "retained.js": "38f53de9ea160519e5e00c3f0f798e9504f4402dc9ba15f269f0cd137a437c69",
+    "default.abc": "8cfa73a9def64ba8bc68b72939530d0e3cee6ff7e5cc11bc0aa0e113816ca479",
+    "calls.js": "a24d7c2634fba73f2c822756c916f1157eaf25e5a9169db7e5d3d1b33ab5b02d"
+  }
+}

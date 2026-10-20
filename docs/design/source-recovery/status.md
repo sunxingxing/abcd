@@ -5,6 +5,69 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Cross-region call values: joint normal selection intervals (2026-10-20)
+
+- Baseline **041abdba**. Diagnosed all seven current member-reference refusals
+  from original decoding, Value IR and fresh evaluation placements; exact
+  IDs/regions, pool-resolved member names and remaining proof groups are in
+  [cross-region-call-values.md](cross-region-call-values.md). These are saved
+  member callees crossing argument-control regions, not one generic escaped
+  argument-value problem. No new source-language premise is used.
+- Add an unmet-reference-only fallback joining **already-verified normal
+  selections** and their eager operand forests into one ordered interval.
+  `LogicalReferenceRoute` preserves original phi/branch/use identities. Shared
+  canonical-use indexes, path-compressed consumer roots, CSR membership and
+  sole-entry corridor ranks avoid layout/OpId-order admission and repeated CFG
+  walks. All buffers and retained certificate storage are prepaid. The reverse
+  builder and independent forward verifier preserve single consumption,
+  saved callee/receiver, conditional execution and caller-visible exceptions;
+  existing CallPlan, TreeFlow, OriginalFlow and recovery checks remain required.
+- **o21/16320 m17082 PC171 completes** (`onKelvinMonitor`): the two `mon.value()`
+  calls stay distinct, each with its own retained snapshot, inside the original
+  `hilog.info` argument. The other six targets' chains/PCs are unchanged. Joint
+  predicate/keep-edge ownership (the o18 pair and the extra dependency in o39),
+  constructor-wrapped literal arms, numeric-update result composition and the
+  retained guarded-read case remain refused. No check was removed or retried.
+- Fresh 40-input/module cohorts against built wtbase at **041abdba**:
+  previous flags **534 -> 535 / 620**, V5 **586 -> 587 / 620**, **0 regressions,
+  0 text changes** to previously complete records. Only o21/16320 changes its
+  record manifest. All 40 engine runs exit 0 in each cohort; the export wrapper
+  also counts non-module entries (1007 total), independently censused down to
+  the 620 module records. Both new record outputs pass `node --check`.
+- Full build passed. Final `source-regression -j 1`: **65/65**. New unit/real-ABC
+  integration tests: **2/2**; existing logical/literal/snapshot foundations:
+  **6/6**. Requested call/reference/optional/guard/temporary/tree/flow/recovery/
+  CLI/receipt/manifest sweep: **181/195**, no newly introduced failures. Nine
+  selected failures match the supplied known list. The five additional selected
+  failures were reproduced after rebuilding baseline `derived_cells_test`:
+  `unguarded_literal_closure_source_test`,
+  `unguarded_derived_literal_receiver_source_test`,
+  `unguarded_forwarded_receiver_source_test`,
+  `unguarded_reversed_forwarded_receiver_source_test`, and
+  `unguarded_reversed_initialization_forwarded_receiver_source_test`.
+  Full names and baseline repros are retained in the scratch sweep logs;
+  no failing test was weakened. `tree_failure.mjs` passes unchanged.
+- Real DevEco O0/default ABC fixtures pass **3456 engine-output/original Node
+  scenarios**, including throwing arms, getters/coercions, receiver/callee
+  replacement, non-callable timing, ABI and optional nullish behavior. A wrong
+  value-call mutation is observed; the retained joint-use negative fixture
+  keeps `kNotInline`. Unit mutations cover route/call/consumer/arm identity,
+  omitted/duplicated consumption and unowned effects. Register/copy/block-split
+  variants pass. 200/201/400/800 width and call-count tests pass exact byte/work
+  boundaries (800 calls: **68,695,690 admitted bytes / 20,153,586 work**;
+  width800: **30,971,359 / 8,912,631**).
+- SDK comparison uses `grouping_bytecode.py`'s unmodified strict assembly helper,
+  pinned compiler SHA-256 `4d921b123d05...`. Default: **4/4 methods and whole
+  metadata disassembly identical**. O0: **2/4 identical**, two optional methods
+  have explained explicit private-snapshot initialization/stores and consequent
+  temporary-register shifts; raw diffs are preserved, not normalized to passes.
+  Source export-alias adaptation is documented and semantics-neutral.
+- Scratch evidence: `build/review/cross-region-calls/` (`accepted-*`, `cmp-accepted-*`,
+  `verification.json`, `new-tests-verified.log`, `sweep.log`, `baseline-extra-*`,
+  `bytecode-verified/`). Final cohort largest child RSS **42,991,616 bytes**;
+  four concurrent engine children conservatively bound at **171,966,464 bytes**.
+  No commit, push or stash.
+
 ## Member class-inner bindings: o0/4660 published (2026-10-20)
 
 - The real member-family pipeline now consumes the fresh sealed class-self
