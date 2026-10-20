@@ -1006,10 +1006,15 @@ if(BUILD_TESTING)
   target_link_libraries(class_self_initialization_test PRIVATE abcd_source abcd_json)
   add_test(NAME class_self_initialization_test COMMAND class_self_initialization_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/self.abc")
-  foreach(class_self_case outer throwing reentry branches copies accessors constructor_throw)
+  foreach(class_self_case outer throwing reentry branches copies accessors constructor_throw completed completed_throw)
     add_test(NAME class_self_initialization_${class_self_case}_test COMMAND class_self_initialization_test
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/${class_self_case}.abc")
   endforeach()
+  # Its full exporter gate is asserted by class_completed_source_test; the
+  # synthetic enclosure adapter intentionally has no module-load projection.
+  add_test(NAME class_self_initialization_completed_self_test COMMAND class_self_initialization_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/completed_self.abc"
+    --certificate-only)
   add_test(NAME class_self_outer_tdz_test COMMAND class_self_initialization_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/outer_tdz.abc" --tdz-gate)
   if(EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
@@ -1019,6 +1024,11 @@ if(BUILD_TESTING)
         $<TARGET_FILE:abc_structure>
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization"
         "${CMAKE_CURRENT_BINARY_DIR}/class-self-consumption")
+      add_test(NAME class_completed_source_test COMMAND ${Python3_EXECUTABLE}
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_completed.py"
+        $<TARGET_FILE:abc_structure>
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization"
+        "${CMAKE_CURRENT_BINARY_DIR}/class-completed")
       add_test(NAME class_self_ports_roundtrip_source_test COMMAND ${Python3_EXECUTABLE}
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/class_self_ports_roundtrip.py"
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:class_self_initialization_test>

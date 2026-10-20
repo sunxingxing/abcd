@@ -716,6 +716,7 @@ class FlowBuilder {
               break;
             case ClassInitializationPortKind::kStaticInitializeCommit:
             case ClassInitializationPortKind::kPublicPublish:
+            case ClassInitializationPortKind::kCompletedClass:
               break;
           }
         }

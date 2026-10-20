@@ -22,6 +22,8 @@ ClassInitializationPortKind Kind(ClassSelfPortKind kind) {
       return ClassInitializationPortKind::kStaticInitializeCommit;
     case ClassSelfPortKind::kPublicCommit:
       return ClassInitializationPortKind::kPublicPublish;
+    case ClassSelfPortKind::kCompletedClass:
+      return ClassInitializationPortKind::kCompletedClass;
     case ClassSelfPortKind::kClassAvailable:
       break;
   }
@@ -154,7 +156,7 @@ void RetainClassInitializationPorts(const analysis::ValueProgram& graph,
     record.expression = {e};
     record.certificate = init.certificate;
     q.Array(record.ports, scope.ports.size());
-    std::size_t size = 0, inner = 0, before = 0, commit = 0, publish = 0;
+    std::size_t size = 0, inner = 0, before = 0, commit = 0, publish = 0, completed = 0;
     std::optional<OpId> internal, call;
     for (const auto& port : scope.ports) {
       q.Step();
@@ -206,12 +208,23 @@ void RetainClassInitializationPorts(const analysis::ValueProgram& graph,
               {definition->binding, scope.binding.creation, port.operation});
           break;
         }
+        case ClassSelfPortKind::kCompletedClass: {
+          ++completed;
+          Need(port.use && port.value && port.use->value < graph.uses.size());
+          const auto& use = graph.uses[port.use->value];
+          Need(use.life == ValueLife::kLive &&
+               std::get_if<OpId>(&use.owner) &&
+               std::get<OpId>(use.owner) == port.operation &&
+               std::get_if<ValueId>(&use.operand) &&
+               std::get<ValueId>(use.operand) == *port.value);
+          break;
+        }
         case ClassSelfPortKind::kClassAvailable:
           break;
       }
     }
     record.ports.resize(size);
-    Need(inner == 1 && before == 1 && commit == 1 && publish && internal &&
+    Need(inner == 1 && before == 1 && commit == 1 && (publish || completed) && internal &&
          call);
     Need(fields.call.creation == scope.binding.creation &&
          fields.call.call == *call);
@@ -226,7 +239,8 @@ void RetainClassInitializationPorts(const analysis::ValueProgram& graph,
       Need(cleanup);
     }
     for (const auto& p : record.ports)
-      if (p.kind == ClassInitializationPortKind::kPublicPublish) {
+      if (p.kind == ClassInitializationPortKind::kPublicPublish ||
+          p.kind == ClassInitializationPortKind::kCompletedClass) {
         q.Step();
         const auto& op = graph.ops[p.operation.value];
         Need(order.Before(graph, *call, op.block, op.order));
@@ -298,6 +312,39 @@ void VerifyClassInitializationRecovery(const FunctionTree& tree,
   };
   std::vector<std::optional<CacheOwner>> cache_owners;
   q.Array(cache_owners, flow.original->operations.size());
+  // One occurrence index across all classes/projections. Operand verification
+  // supplies original SSA identity; the current flow supplies the actual read
+  // position. Dominating the invocation alone would miss an early saved read.
+  struct CompletedInput {
+    bool requested = false;
+    std::optional<ExprId> expression;
+  };
+  bool continuation = false;
+  for (const auto& raw : flow.original->class_initializations)
+    for (const auto& port : raw.ports) {
+      q.Step();
+      continuation |= port.kind == ClassInitializationPortKind::kCompletedClass;
+    }
+  std::vector<CompletedInput> inputs;
+  if (continuation) {
+    q.Array(inputs, flow.original->uses.size());
+    for (const auto& raw : flow.original->class_initializations)
+      for (const auto& port : raw.ports) {
+        q.Step();
+        if (port.kind != ClassInitializationPortKind::kCompletedClass) continue;
+        Need(port.use && port.use->value < inputs.size());
+        inputs[port.use->value].requested = true;
+      }
+    for (const auto& input : flow.original->inputs) {
+      q.Step();
+      if (!input.occurrence) continue;
+      Need(input.occurrence->value < inputs.size());
+      auto& at = inputs[input.occurrence->value];
+      if (!at.requested) continue;
+      Need(!at.expression || *at.expression == input.expression);
+      at.expression = input.expression;
+    }
+  }
   for (const auto& raw : flow.original->class_initializations) {
     q.Step();
     Need(raw.expression.value < source.size() && source[raw.expression.value]);
@@ -330,7 +377,7 @@ void VerifyClassInitializationRecovery(const FunctionTree& tree,
     Arc(flow, c.inner, c.before, FlowCompletion::kNormal, q);
     Arc(flow, c.before, c.commit, FlowCompletion::kNormal, q);
     Arc(flow, c.before, c.exceptions.thrown, FlowCompletion::kThrow, q);
-    std::size_t inner = 0, before = 0, commit = 0, published = 0;
+    std::size_t inner = 0, before = 0, commit = 0, published = 0, completed = 0;
     for (const auto& port : raw.ports) {
       q.Step();
       Need(port.operation.value < flow.original->operations.size());
@@ -357,6 +404,30 @@ void VerifyClassInitializationRecovery(const FunctionTree& tree,
         case ClassInitializationPortKind::kStaticInitializeCommit:
           ++commit;
           break;
+        case ClassInitializationPortKind::kCompletedClass: {
+          ++completed;
+          Need(port.use && port.value &&
+               port.use->value < flow.original->uses.size());
+          const auto& use = flow.original->uses[port.use->value];
+          Need(use.life == analysis::ValueLife::kLive &&
+               std::get_if<analysis::OpId>(&use.owner) &&
+               std::get<analysis::OpId>(use.owner) == port.operation &&
+               std::get_if<analysis::ValueId>(&use.operand) &&
+               std::get<analysis::ValueId>(use.operand) == *port.value);
+          Need(flow.original_actions[port.operation.value].has_value());
+          const auto& action = *flow.original_actions[port.operation.value];
+          Need(order.Dominates(c.commit, action.before));
+          Need(inputs[port.use->value].expression.has_value());
+          const auto expression = *inputs[port.use->value].expression;
+          Need(expression.value < flow.expressions.size() &&
+               expression.value < flow.value_uses.size() &&
+               flow.value_uses[expression.value] != FlowValueUse::kUnmodeled &&
+               order.Dominates(c.commit, flow.expressions[expression.value]));
+          if (op.exceptional == analysis::ExceptionalCompletion::kMayThrow)
+            Arc(flow, action.before, action.exceptions.thrown,
+                FlowCompletion::kThrow, q);
+          break;
+        }
         case ClassInitializationPortKind::kPublicPublish: {
           ++published;
           Need(port.operation.value < flow.original_actions.size() &&
@@ -386,7 +457,7 @@ void VerifyClassInitializationRecovery(const FunctionTree& tree,
         }
       }
     }
-    Need(inner == 1 && before == 1 && commit == 1 && published);
+    Need(inner == 1 && before == 1 && commit == 1 && (published || completed));
   }
   // Source caches are materializations of the same verified result, not the
   // internal initialization port. Check all retained aliases in one shared

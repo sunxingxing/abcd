@@ -1003,6 +1003,11 @@ class OperandCheck {
     // its base once at the property occurrence; its suppressed receiver is that
     // same identity, including a retained assignment at this exact occurrence.
     Input(receiver, member.base, property.first_use);
+    // A member Reference retains this single evaluated base as its receiver.
+    // Preserve the suppressed raw receiver occurrence too; it is not a second
+    // source read and must not borrow the invocation's later Before point.
+    RecordOriginalInput(original_, receiver, resolved_receiver, member.base,
+                        analysis::UseId{op.first_use.value + 1}, budget_);
     origin_ = saved_origin;
     current_ = saved_current;
   }

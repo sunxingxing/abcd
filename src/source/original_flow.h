@@ -15,7 +15,8 @@ enum class ClassInitializationPortKind : std::uint8_t {
   kClassInnerInitialize,
   kStaticInitializeBefore,
   kStaticInitializeCommit,
-  kPublicPublish
+  kPublicPublish,
+  kCompletedClass
 };
 struct OriginalClassInitializationPort {
   ClassInitializationPortKind kind;

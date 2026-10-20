@@ -270,6 +270,22 @@ void ScopeMutations(const ClassSelfInitializationInput& input,
     changed.installations.pop_back();
     reject(changed, E::kOrder);
   }
+  for (std::size_t p = 0; p < proof.Evidence().ports.size(); ++p) {
+    if (proof.Evidence().ports[p].kind != ClassSelfPortKind::kCompletedClass)
+      continue;
+    changed = proof.Evidence();
+    changed.ports.erase(changed.ports.begin() + p);
+    reject(changed, E::kOrder);
+    changed = proof.Evidence();
+    ++changed.ports[p].value->value;
+    reject(changed, E::kOrder);
+    changed = proof.Evidence();
+    ++changed.ports[p].use->value;
+    reject(changed, E::kOrder);
+    changed = proof.Evidence();
+    changed.ports[p].operation = raw.Evidence().store;
+    reject(changed, E::kOrder);  // Before successful static completion.
+  }
   changed = proof.Evidence();
   changed.cleanup.clear();
   reject(changed, E::kCatchState);
@@ -422,7 +438,7 @@ void DraftMutations(const ClassSelfInitializationInput& input,
   std::cout << "draft exact bytes " << low << " work " << full.work << '\n';
 }
 void Run(const char* path, std::optional<abc::EntityOffset> requested,
-         bool expect_tdz_gate = false) {
+         bool expect_tdz_gate, bool certificate_only) {
   auto file =
       Take<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
   const auto fingerprint = Take<corpus::FileFingerprint>(file->Fingerprint());
@@ -713,8 +729,9 @@ void Run(const char* path, std::optional<abc::EntityOffset> requested,
                 << static_cast<unsigned>(*gate.recovery->projection)
                 << " tree references " << gate.tree_references << " owners "
                 << gate.syntax_owners << '\n';
-      test::CheckClassSelfEnclosure(*file, header, index, lookup, roles,
-                                    sites, classes, *parent, expect_tdz_gate);
+      if (!certificate_only)
+        test::CheckClassSelfEnclosure(*file, header, index, lookup, roles,
+                                      sites, classes, *parent, expect_tdz_gate);
       seen = true;
     }
   }
@@ -725,9 +742,11 @@ int main(int argc, char** argv) {
   static_assert(!std::is_default_constructible_v<ClassSelfInitializationProof>);
   test::Check(argc == 2 || argc == 3);
   const bool tdz = argc == 3 && std::string_view{argv[2]} == "--tdz-gate";
+  const bool certificate_only =
+      argc == 3 && std::string_view{argv[2]} == "--certificate-only";
   Run(argv[1],
-      argc == 3 && !tdz ? std::optional{abc::EntityOffset{
+      argc == 3 && !tdz && !certificate_only ? std::optional{abc::EntityOffset{
                               static_cast<std::uint32_t>(std::stoul(argv[2]))}}
                         : std::nullopt,
-      tdz);
+      tdz, certificate_only);
 }

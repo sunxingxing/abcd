@@ -22,7 +22,7 @@ spec = importlib.util.spec_from_file_location("grouping_bytecode", Path(__file__
 grouping = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(grouping)
 result = {"compiler":grouping.ES2ABC,"sha256":grouping.sha(grouping.ES2ABC),"comparisons":[]}
-for name in ("self", "outer", "branches", "constructor_throw"):
+for name in ("self", "outer", "branches", "constructor_throw", "completed", "completed_throw"):
     directory = output/name
     directory.mkdir(exist_ok=True)
     exported = directory/"export"

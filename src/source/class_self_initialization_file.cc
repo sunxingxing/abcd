@@ -252,11 +252,16 @@ static ClassSelfInitializationDiagnostic PrepareClassSelfInitialization(
                       : ClassSelfInitializationFailure::Projection::
                             kCaptureEnclosure;
               result.recovery = recovery;
-              // A public-commit port is already known for these occurrences.
-              // The no-public-port case needs completed-class availability,
-              // so retain its current gate rather than invent that port.
+              // A retained class is available after StaticInitialize even
+              // when a different value (e.g. a method result) is exported. The
+              // creator's joint recovery must still consume every such port.
+              bool completed = false;
+              for (const auto& port : prepared.ports) {
+                step(1);
+                completed |= port.kind == ClassSelfPortKind::kCompletedClass;
+              }
               result.scope_view = scope;
-              if (scope.public_commits && !consumer->class_self) {
+              if ((scope.public_commits || completed) && !consumer->class_self) {
                 consumer->class_self = std::allocate_shared<ClassSelfDeferred>(
                     DeferredAllocator<ClassSelfDeferred>{budget},
                     std::move(std::get<FunctionContext>(loaded)),

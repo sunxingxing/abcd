@@ -372,6 +372,38 @@ void CheckClassSelfEnclosure(const corpus::AbcFile& file,
     action = saved_action;
     break;
   }
+  std::size_t completed_mutations = 0;
+  for (auto& port : raw_ports) {
+    if (port.kind != ClassInitializationPortKind::kCompletedClass) continue;
+    ++completed_mutations;
+    const auto saved = port;
+    ++port.value->value;
+    reject_ports();
+    port = saved;
+    ++port.use->value;
+    reject_ports();
+    port = saved;
+    auto& action = flow.original_actions[port.operation.value];
+    Check(action.has_value());
+    const auto actual = *action;
+    action->before = ports.before;
+    reject_ports();  // No completed-class use before StaticInitialize Commit.
+    action = actual;
+    action->exceptions.thrown = ports.inner;
+    reject_ports();  // Consumer exceptions cannot become initializer cleanup.
+    action = actual;
+    std::optional<ExprId> input;
+    for (const auto& candidate : original->inputs)
+      if (candidate.occurrence == port.use) input = candidate.expression;
+    Check(input.has_value());
+    const auto point = flow.expressions[input->value];
+    flow.expressions[input->value] = ports.before;
+    reject_ports();  // A late call must not hide an early saved class read.
+    flow.expressions[input->value] = point;
+  }
+  if (completed_mutations)
+    std::cout << "completed-class operand mutations " << completed_mutations
+              << '\n';
   std::size_t cache_mutations = 0;
   for (auto& definition : flow.definitions) {
     if (!definition.original) continue;

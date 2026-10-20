@@ -391,6 +391,36 @@ ClassSelfScope Derive(const ClassSelfInitializationInput& input,
               Error::kOrder);
     port(ClassSelfPortKind::kPublicCommit, *op, UseId{u}, *value);
   }
+  // A creator need not publish the class itself (it may export a method's
+  // result). Preserve each use of the retained class, rather than inventing a
+  // class-valued publication from that different result. Existing public-store
+  // certificates keep their original port inventory.
+  bool published = false;
+  for (const auto& p : scope.ports) {
+    q.Step();
+    published |= p.kind == ClassSelfPortKind::kPublicCommit;
+  }
+  if (!published) for (std::uint32_t u = 0; u < graph.uses.size(); ++u) {
+    q.Step();
+    const auto& use = graph.uses[u];
+    if (use.life != ValueLife::kLive) continue;
+    const auto* value = std::get_if<ValueId>(&use.operand);
+    if (!value || !values[value->value]) continue;
+    const auto* owner = std::get_if<OpId>(&use.owner);
+    q.Require(owner, Error::kCorrespondence);
+    const auto& op = graph.ops[owner->value];
+    // Installation and the initializer's own receiver are already certified
+    // before/at StaticInitialize. Only successful continuation uses belong to
+    // CompletedClass; a use on neither side of the call remains unproved.
+    if (*owner == raw.call.call ||
+        order.Before(graph, *owner, graph.ops[raw.call.call.value].block,
+                     graph.ops[raw.call.call.value].order)) continue;
+    q.failure.location = OperationLocation(graph, *owner, raw.creator);
+    q.failure.use = UseId{u};
+    q.Require(order.Before(graph, raw.call.call, op.block, op.order),
+              Error::kOrder);
+    port(ClassSelfPortKind::kCompletedClass, *owner, UseId{u}, *value);
+  }
   for (const auto& cleanup : raw.cleanup) {
     q.Step();
     scope.cleanup.push_back(cleanup);

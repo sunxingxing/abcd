@@ -794,3 +794,91 @@ provisional owner. This does not initialize or copy an outer binding.
 
 o0/4660 is unchanged at the completed-class availability/publication-port gate.
 The getInstance result remains distinct from the class identity.
+
+### Completed-class continuation (2026-10-20)
+
+Fresh decoded/value IR for creator m4850 distinguishes the retained class
+`v19` (op6, DEFINECLASS PC13) from the later exported result:
+
+```
+op10 PC28: self-slot store Use8(StoredValue)=v19
+op19 PC51: static initializer invoke, Use17(Callee)=v27,
+           Use18(Receiver)=v19 -> v31; failure goes to cleanup H58
+op25 PC62: private register copy v19 -> v33 (canonical operand v19)
+op29 PC70: property read Use24(Base)=v19 -> v37 (getInstance)
+op32 PC78: invoke Use27(Callee)=v37, Use28(Receiver)=v19 -> v40
+op33 PC81: module export store Use29(StoredValue)=v40
+```
+
+Copies at PC54/64/66/68 retain the same canonical `v19`; they are not another
+class allocation or a public class binding. PC70 and PC78 each have their own
+caller-visible exception exit. The export is **v40**, never a PublicPublish of
+v19. The earlier preparation explicitly declined to retain a deferred class
+without a class-valued PublicPublish, and the joint port verifier required such
+a store. Neither restriction proves completed-class availability.
+
+The narrower extension adds `CompletedClass` operand ports only for this
+previously gated category. They enumerate original live uses of the retained
+class (including verified self-cell loads), derived by value identity and
+successful-Commit dominance. Installation/initializer receiver uses keep their
+existing earlier ports. The normal source cache materializes the class only
+after StaticInitialize Commit; later source reads must be dominated by that
+Commit too, independently of the consuming invocation. An exception terminates
+initialization without producing the class. Export/call-result correspondence
+remains the ordinary operand/result proof. Existing public-store certificates
+retain their port inventory; no PublicPublish is fabricated.
+
+Recovery rebuilds an occurrence-to-source-input index once, checks each current
+read and consuming action against the native static Commit, and preserves the
+consumer's own exception edge. The fresh scope verifier re-derives the complete
+port inventory from original SSA/environment/effect order, rejecting missing,
+extra, stale or changed values/uses. Work/storage are O(V+U+E) plus the shared
+O((V+E) log V) dominance/effect-order analyses; buffers are prepaid. There is no
+method/key/PC-based admission and no per-use CFG traversal.
+
+
+#### Production checkpoint and remaining member projection
+
+The production continuation is consumed, not merely reported: the private
+`completed` and `completed_throw` fixtures publish and pass engine-output Node
+differentials, including the getInstance exception. The existing native member
+Reference proof now retains the suppressed receiver's original UseId at its
+single base-read occurrence; no second read or fabricated expression is added.
+The ordinary joint operand/result and exception-route verifiers remain required
+for each consumer and export.
+
+o0/4660 advances to `kRecoveryGate / kFamilyEnclosure`, **m4878 op4 PC8**
+(read op3 PC6). This is getInstance's guarded read of the captured class-self
+slot, not m4850's completed-class use. Its four self reads are listed by the
+occurrence/storage certificate, but ClassInnerScopeProof currently seals only
+the initializer owner. BindDeferredClassSelf deliberately refuses a member
+owner rather than resolving that capture through the creator's later cache.
+Doing that would be wrong for re-entrant calls during static initialization.
+The remaining work is a per-member class-inner scope/capture projection, with
+owner, name-resolution, immutable-write and re-entrant-read verification. No
+member gate is removed in this round. The requested `completed_self` fixture
+(`export class S ... return S.inst`) asserts exactly this gate; an actual early
+exposure fixture (`completed_early`) retains its distinct syntax/name gate.
+There is no published o0 text and no target recompilation is claimed.
+
+For the two supported continuation fixtures, default-optimized recompilation
+has **8/8 identical method bodies**. O0 has **6/8 identical bodies**: each
+creator retains an extra private class materialization and uses different
+register numbers; class allocation, internal store, initializer call, cleanup,
+method lookup/call and export order remain unchanged. Full assemblies also
+retain physical pool/string offset changes. None of these differences is
+normalized or labelled bytecode equality. Default optimized raw scope probes
+remain unverified (`CleanupError::kHandler`); all four O0 original/emitted
+scope/port probes pass. SDK SHA-256 and commands/diffs are retained under
+`build/review/completed-class/roundtrip/` using grouping_bytecode.py helpers.
+
+
+Validation for this checkpoint: full build passed; serial source-regression
+65/65; class-focused 16/16; call-reference/spread/guarded-call 7/7; the
+tree/scope/capture/class/static/initializer/family/
+receipt/manifest/CLI/binding/cell/parameter/default sweep 225/239, with exactly the
+14 user-documented pre-existing failures. Scope and recovery exact limits and
+one-below refusals pass at 200/201/400/800. Fresh cohorts against wtbase 5a1dbcaf
+remain 533/620 and 585/620; no regressions or complete-text changes. Only o0's
+manifest row changes in both flag sets. See `build/review/completed-class/` for
+build/test logs, before/after manifests, compiler commands/identity and diffs.

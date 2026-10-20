@@ -451,6 +451,8 @@ ClassSelfInitializationDiagnostic BindDeferredClassSelf(
         const auto& family = input.families[reference.owner.family]
                                  .family.members[reference.owner.member]
                                  .function;
+        q.failure.read = reference.read;
+        q.failure.guard = reference.guard;
         q.failure.location =
             OperationLocation(family.Graph(), reference.guard, family.Method());
         q.Require(false, Error::kScope);

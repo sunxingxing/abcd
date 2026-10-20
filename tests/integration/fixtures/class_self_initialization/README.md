@@ -92,3 +92,24 @@ proofs are retained rather than normalized or counted as equality.
 
 New fixture SHA-256 (`constructor_throw.abc`):
 `309a479096b06988f6ff06d511e9612b8095cdc56307a86269a4de13308cb377`.
+
+
+Completed-class continuation fixtures (2026-10-20): `completed` keeps a private
+class and exports only its method result; `completed_throw` traces a failure of
+that method after static initialization. Both publish and have engine-output
+Node differentials. `completed_self` is the requested exported `S.inst` variant;
+it retains the precise member-enclosure gate, not a claim that member capture
+resolution is finished. `completed_early` exposes the class during initialization
+and retains the typed syntax/name-resolution gate. The two later class operand
+ports keep the property base and the call receiver as the same evaluated
+Reference, with their real uses and exception exits. All four use the compiler
+command above with `--record-name=NAME` and `--opt-level=0`.
+
+New ABC SHA-256:
+
+```
+713ba294f9827206dde68f3f27b81d5e8b8e74ff51cbd2f4233bb70149da7c0b  completed.abc
+dcacfcbc4b5ab54f734e70f378a3e1455fdd4f89d805c920be61a1e2f8465abc  completed_throw.abc
+57903f0093944600c9e85c26ea77c114e49cc6e8a3beaba6099097c49285af5b  completed_self.abc
+a54ac83e79e2b587f8a8b809aa0da96bcda71e4800d9c1a433438aedc678bd1c  completed_early.abc
+```

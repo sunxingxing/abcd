@@ -44,7 +44,9 @@ enum class ClassSelfPortKind : std::uint8_t {
   kInternalCommit,
   kInitializerBefore,
   kInitializerCommit,
-  kPublicCommit
+  kPublicCommit,
+  // A use of the retained class after successful static initialization.
+  kCompletedClass
 };
 struct ClassSelfPort {
   ClassSelfPortKind kind;

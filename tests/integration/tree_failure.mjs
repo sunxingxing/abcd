@@ -7,7 +7,7 @@ const [semantic, structure, root] = process.argv.slice(2);
 const artifact = 'artifacts/entry/default/default/modules/modules.abc';
 // Read bytecode only. Paired source never participates in diagnostic identity.
 const cases = [
-  ['DocsSample/DistributedAppDev/DistributedAuthentication', 4660, 5040, 12],
+  ['DocsSample/DistributedAppDev/DistributedAuthentication', 4660, 4878, 8],
   ['UI/CustomAnimationTab', 8166, 8638],
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
   ['UI/CalendarViewSwitch', 28303, 28799, 620],
@@ -77,9 +77,9 @@ try {
         {domain:'abcd::source::ClassSelfError',value:5}]);
       const recovery=report.source_failure.class_self_initialization.recovery;
       assert.equal(recovery.kind,13);
-      assert.equal(recovery.projection,1);
-      assert.equal(recovery.read,5);
-      assert.equal(recovery.guard,6);
+      assert.equal(recovery.projection,3);
+      assert.equal(recovery.read,3);
+      assert.equal(recovery.guard,4);
     }
 
     if(entity===28303) {

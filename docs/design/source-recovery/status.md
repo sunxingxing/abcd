@@ -5,6 +5,55 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Completed-class availability: consumed continuation, member gate retained (2026-10-20)
+
+- Added typed `CompletedClass` operand ports for verified classes without a
+  class-valued public store. Fresh scope derivation and its independent verifier
+  retain original class/UseId/operation identities and successful static-Commit
+  dominance. Recovery rechecks the current source read, consuming action and
+  exception edge. The saved member Reference supplies its evaluated base once
+  for both the property input and the suppressed original call receiver.
+  Public-store certificates keep their prior inventory; no export of a method
+  result is passed off as a class publication. New indexes are shared/prepaid,
+  with typed work/resource failures and O((V+E) log V) admitted analysis.
+- o0/4660 advances from `kRecoveryGate / kClassInitializationPorts`
+  (m5040 PC12) to **`kRecoveryGate / kFamilyEnclosure` (m4878 op4 PC8)**.
+  This is getInstance's guarded self-cell read (op3 PC6). Its owner is in the
+  certificate, but the emitted member has no class-inner scope projection yet.
+  Resolving it through the creator's later cache would break re-entrant reads
+  during static initialization, so it remains refused. **No o0 text is
+  published; target SDK recompilation/Node acceptance is not claimed.**
+- Two private completed-class fixtures publish and pass Node syntax plus
+  original-vs-engine-output differentials (identity/receiver and throwing call).
+  The requested `export class S ... return S.inst` fixture asserts the member
+  gate; the early-exposure fixture asserts a typed syntax/name gate. Scope and
+  recovery mutations cover lost/wrong ports/value/use, early cache/read/action,
+  and changed exception routing. 200/201/400/800 widths pass exact work/byte
+  limits and one-below resource refusal. The negative exported-self fixture's
+  unit mode checks certificates; its complete production gate is asserted by
+  the exporter test, since the synthetic enclosure adapter has no module loads.
+- Full build passed. Serial source-regression **65/65**; focused class tests
+  **16/16**; call-reference/spread/guarded-call checks **7/7**;
+  requested broader sweep **225/239**, with exactly the 14 documented
+  pre-existing failures and no new failure. The initial new test-adapter failure
+  and the corrected final runs are both retained under
+  `build/review/completed-class/`.
+- Fresh OLD/NEW 40-input cohorts against wtbase **5a1dbcaf**: **533/620**
+  previous flags and **585/620** source, unchanged complete sets, zero process
+  failures, zero text drift. The only changed file in either export is
+  `o0/manifest.json` (only row 4660). Final measured engine RSS peaks are below
+  44 MB; the conservative sum of the four largest per-input peaks stays below
+  160 MB for each flag set.
+- SDK comparisons reuse grouping_bytecode.py's pinned compiler hash/options
+  and retain unnormalized disassembly diffs. New fixtures: default **8/8**
+  method bodies identical; O0 **6/8**, with the two creator differences being
+  private materialization copies/register placement. Physical table/string
+  offsets differ. All four O0 original/emitted raw port probes pass; the four
+  default optimized cleanup probes remain explicitly unverified (kHandler),
+  not counted as proof. No commit, push or stash.
+- Diagnosis, obligations and remaining per-member projection:
+  [class-self-initialization-scope.md](class-self-initialization-scope.md#completed-class-continuation-2026-10-20).
+
 ## Generic parameter-initializer expressions: o20 publishes (2026-10-20)
 
 - Added a sealed conditional expression-default proof and independent raw,
