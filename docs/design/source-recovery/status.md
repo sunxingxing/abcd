@@ -5,6 +5,70 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Exception-aware captured-cell scope (2026-10-20)
+
+- Baseline **adec8da6**, including the independently built wtbase engine.
+  Diagnose all four ScopeError::kInitialization records from original ABC.
+  The largest common group is **o37/20175 + o38/25106**: an async callback
+  captures the pending result of `let data = await bindDeviceDriver(...)`
+  before its first store. o26 is a late Language **write** requirement;
+  o36 is an already initialized receiver cell after an unrelated loop. Those
+  two distinct proofs are unchanged. Exact PCs, slots, environment/capture
+  chains and independent source lines are in [capture-scope.md](capture-scope.md).
+- Add a prepaid original exception-CFG unique-store/allocation-Commit index,
+  freshly rederived by the verifier once per phased owner. Working dominance
+  independently requires the real Commit and retains exceptional paths.
+  A native deferred declaration uses the store's private descendant scope only
+  when it contains every access/demand and introduces no additional loop entry
+  relative to the original environment activation. Builder and TreeFlow both
+  reconstruct this scope; common name, capture, exception and recovery proofs
+  still run. No synthesized initialized capture, unguarded Language exemption,
+  new source premise, printer change or plan-local cross-owner CellId join.
+- Both RpcTool **bind methods now recover** and preserve the callback's native
+  TDZ before success and after rejection. Neither whole record completes:
+  o37 now has an omitted **query m20512 PC804**, and o38 **query m25655 PC846**, both
+  **ExceptionInputError::kInternalValue**. Do not chase those distinct member
+  obligations in this slice. Only these two manifests change under either
+  flag set: refusal status3 becomes partial-class status4, with method/entry
+  spans and the exact omitted-member causes. CLI/manifest parity **8/8**.
+- Full build passed. Serial source-regression **65/65**; targeted tests **7/7**
+  including all three new unit/CLI/SDK tests. Mutations cover wrong slot,
+  environment/allocation, store, certificate interval, capture family/scope,
+  reset, catch route, an old allocation crossing a loop and native TDZ/reader
+  behavior. Width and split/copy scale 200/201/400/800 pass exact byte/work
+  boundaries for original discovery, capture plans, working deferral and native
+  scope proof. At800 the native scope admission boundary is **716,914 bytes /
+  342,575 work**, or **2,131,314 / 1,048,195** with added copy blocks.
+- Real pinned es2abc fixtures: three O0 source-contract outputs and two O0
+  previous-contract outputs publish. Node compares **5 full traces / 25 call
+  scenarios** plus retained readers, with **13 detected behavioral mutations**;
+  `node --check` also passes the two new partial record outputs under both
+  contracts. Seven fixture/contract cases assert precise remaining refusals
+  (default-optimized catch-store/catch-region limitations, and the previous
+  contract's async callback array-return EvaluationError::kOwnership).
+- SDK round trip: **6/6** emitted compilations succeed at O0/default;
+  **18 methods compared**, with **6 identical entry methods / 12 differing
+  function-callback methods**, and no register/branch/handler normalization.
+  The differences are parameter-to-private-cell body initialization, redundant
+  proven-nonthrowing guards, alpha-renamed guard strings, and equivalent
+  inverted branch layout/cache operands. They are retained and explained in
+  the design note, not counted as bytecode equality. Existing Acorn AST export
+  alias adaptation is applied to both sides; compiler SHA-256 and commands are
+  recorded. No Ark runtime execution is claimed.
+- Both complete 40-input cohorts have **zero regressions / zero text drift**:
+  previous flags **537/620**, source contract **589/620**, unchanged complete
+  sets. Largest final child RSS **41,762,816 bytes**; the four-worker bound is
+  **167,051,264 bytes**. Evidence, all changed manifest fields, recovered bind
+  methods, raw instructions, source comparisons and exact budgets are under
+  `build/review/capture-scope/`.
+- Required broad sweep: **178/194**, with the **16 supplied pre-existing
+  failures**: family_source_cli, tree_structure, try_tree, derived_cells,
+  class_tree_source, derived_cells_source, literal_closure_source,
+  unguarded_derived_cells_source, unguarded_literal_closure_source, the six
+  captured-receiver variants, and try_tree_source. No existing expectation
+  changes were necessary; tree_failure does not pin the two RpcTool records.
+  No commit, push or stash was performed.
+
 ## Joint selection ownership for member-call arguments (2026-10-20)
 
 - Baseline **1f4999b8** (wtbase binary verified at that commit). Add an

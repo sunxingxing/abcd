@@ -50,7 +50,8 @@ InputBindingResult BindPhasedFunctionInputs(
   if (const auto* error = std::get_if<InputBindingError>(&checked)) return *error;
   const auto site = std::get<CheckedSite>(checked); budget.work -= site.work;
   const auto input = parent.TreeInput(body);
-  const ScopeFacts scopes(ExceptionScopeFacts{input.input.flow, input.input.environments, locals, site.before});
+  const ScopeFacts scopes(ExceptionScopeFacts{input.input.flow, input.input.environments, locals, site.before,
+      CaptureReads(parent.Identity().contract) == CaptureReadSemantics::kSourceTdz});
   auto built = BuildCapturePlan(scopes, creation.instruction, creation.binding, child.Captures(), budget);
   if (const auto* error = std::get_if<CaptureFailure>(&built)) return *error;
   auto result = std::get<CapturePlan>(std::move(built));
@@ -68,7 +69,8 @@ std::variant<std::uint64_t, CaptureFailure, InputBindingError> VerifyPhasedFunct
   if (const auto* error = std::get_if<InputBindingError>(&checked)) return *error;
   const auto site = std::get<CheckedSite>(checked); budget.work -= site.work;
   const auto input = parent.TreeInput(body);
-  const ScopeFacts scopes(ExceptionScopeFacts{input.input.flow, input.input.environments, locals, site.before});
+  const ScopeFacts scopes(ExceptionScopeFacts{input.input.flow, input.input.environments, locals, site.before,
+      CaptureReads(parent.Identity().contract) == CaptureReadSemantics::kSourceTdz});
   const auto verified = VerifyCapturePlan(scopes, creation.instruction, creation.binding, child.Captures(), plan, budget);
   if (const auto* error = std::get_if<CaptureFailure>(&verified)) return *error;
   return site.work + std::get<std::uint64_t>(verified);

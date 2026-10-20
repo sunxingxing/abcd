@@ -26,8 +26,9 @@ struct CellLifetimes {
   // No source scope for inactive, forwarded-handler or implicit-close phases.
   // Every allocation/access must have an explicit visited source scope.
   std::vector<std::optional<CellScopeId>> blocks;
-  // Indexed by CellId. Local declarations stay at allocation in this exact
-  // scope; incoming bindings still need the creation owner, not body locals.
+  // Indexed by CellId. Ordinary declarations stay at allocation. Certified
+  // deferred declarations may use a private, nonrepeating descendant scope;
+  // incoming bindings still need the creation owner, not body locals.
   std::vector<std::variant<CellScopeId, IncomingLifetime>> cells;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
@@ -49,11 +50,14 @@ struct ForOfEmissionView;
 // For a protocol-owned control projection, both owner-held iteration plan and
 // emission view are required. The seal and view are reverified from original
 // input; none of these borrowed inputs survives this call.
+// Deferred cells additionally require every access/demand inside the unique
+// store scope, with no extra loop entry relative to the original allocation.
 [[nodiscard]] std::variant<CellLifetimes, CellLifetimeError> BuildPhasedCellLifetimes(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& cells, const ExceptionTreeInput& exceptions,
     analysis::SemanticBudget budget = {},
     const ForOfEvaluationPlan* iteration = nullptr,
-    const ForOfEmissionView* view = nullptr);
+    const ForOfEmissionView* view = nullptr,
+    std::span<const std::optional<analysis::OpId>> deferred = {});
 }  // namespace abcd::source
 #endif

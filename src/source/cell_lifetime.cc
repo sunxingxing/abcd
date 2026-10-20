@@ -3,6 +3,7 @@
 #include "for_of_emission.h"
 
 #include <limits>
+#include <bit>
 #include <new>
 #include <stdexcept>
 
@@ -26,7 +27,8 @@ class Planner {
     Admit(n, sizeof(T)); items.reserve(n); Admit(items.capacity() - n, sizeof(T));
   }
   template <class T> void Size(std::vector<T>& items, std::size_t n) { Reserve(items, n); Step(n); items.resize(n); }
-  CellLifetimes Build(const analysis::ValueEnvironments& environments) {
+  CellLifetimes Build(const analysis::ValueEnvironments& environments,
+      std::span<const std::optional<analysis::OpId>> deferred = {}) {
     const auto verify_cells = exceptions_ ? VerifyPhasedCellPlan : VerifyCellPlan;
     const auto checked_cells = verify_cells(graph_, environments, cells_, left_);
     if (const auto* error = std::get_if<CellError>(&checked_cells)) {
@@ -225,13 +227,38 @@ class Planner {
       Step(); Require(result.blocks[graph_.ops[access.operation.value].block.value].has_value(),
                       Error::kScopeEscape);
     }
+    std::vector<std::uint32_t> loop_depth;
+    if (!deferred.empty()) {
+      Size(loop_depth, result.scopes.size());
+      for (std::size_t i = 0; i < result.scopes.size(); ++i) {
+        Step(); const auto& scope = result.scopes[i];
+        loop_depth[i] = (scope.parent ? loop_depth[scope.parent->value] : 0) +
+            std::holds_alternative<CellLoopScope>(scope.origin);
+      }
+    }
     for (std::size_t c = 0; c < cells_.cells.size(); ++c) {
       Step(); const auto& cell = cells_.cells[c];
       const auto* allocation = std::get_if<AllocatedCell>(&cell.storage);
       if (!allocation) { result.cells[c] = IncomingLifetime{}; continue; }
       const auto scope = result.blocks[graph_.ops[allocation->allocation.value].block.value];
       Require(scope.has_value(), Error::kScopeEscape);
-      result.cells[c] = *scope; const auto owner = intervals[scope->value];
+      auto declared = *scope;
+      if (!deferred.empty()) {
+        Require(deferred.size() == cells_.cells.size(), Error::kCells);
+        if (const auto store = deferred[c]) {
+          Require(store->value < graph_.ops.size() && cells_.operations[store->value] == CellId{static_cast<std::uint32_t>(c)}, Error::kCells);
+          const auto at = result.blocks[graph_.ops[store->value].block.value];
+          Require(at.has_value(), Error::kScopeEscape);
+          const auto interval = intervals[at->value];
+          Require(intervals[scope->value].begin <= interval.begin && interval.end <= intervals[scope->value].end, Error::kScopeEscape);
+          // A smaller source scope may start later only once per original
+          // environment activation. Crossing a loop would create fresh cells
+          // for an old allocation and is never admitted by containment alone.
+          Require(loop_depth[at->value] == loop_depth[scope->value], Error::kScopeEscape);
+          declared = *at;
+        }
+      }
+      result.cells[c] = declared; const auto owner = intervals[declared.value];
       for (std::uint32_t i = 0; i < cell.count; ++i) {
         Step(); const auto op = cells_.accesses[cell.first + i].operation;
         const auto scope = result.blocks[graph_.ops[op.value].block.value];
@@ -239,6 +266,17 @@ class Planner {
         const auto use = intervals[scope->value].begin;
         Require(owner.begin <= use && use < owner.end, Error::kScopeEscape);
       }
+    }
+    if (!deferred.empty()) for (const auto& demand : cells_.demands) {
+      Step(2 * std::numeric_limits<std::uint32_t>::digits + std::bit_width(cells_.cells.size()) + 1);
+      const auto cell = FindDemandCell(graph_, environments, cells_, demand);
+      Require(cell.has_value(), Error::kCells);
+      if (!deferred[cell->value]) continue;
+      const auto& declared = std::get<CellScopeId>(result.cells[cell->value]);
+      const auto at = result.blocks[graph_.ops[demand.creation.value].block.value];
+      Require(at.has_value(), Error::kScopeEscape);
+      const auto owner = intervals[declared.value], use = intervals[at->value];
+      Require(owner.begin <= use.begin && use.end <= owner.end, Error::kScopeEscape);
     }
     result.allocated_bytes = sizeof(result) + result.scopes.capacity() * sizeof(CellScope) +
         result.blocks.capacity() * sizeof(decltype(result.blocks)::value_type) + result.cells.capacity() * sizeof(decltype(result.cells)::value_type);
@@ -280,9 +318,10 @@ std::variant<CellLifetimes, CellLifetimeError> BuildCellLifetimes(
 std::variant<CellLifetimes, CellLifetimeError> BuildPhasedCellLifetimes(
     const analysis::ValueProgram& graph, const analysis::ValueEnvironments& environments,
     const CellPlan& cells, const ExceptionTreeInput& exceptions, analysis::SemanticBudget budget,
-    const ForOfEvaluationPlan* iteration, const ForOfEmissionView* view) {
+    const ForOfEvaluationPlan* iteration, const ForOfEmissionView* view,
+    std::span<const std::optional<analysis::OpId>> deferred) {
   try { return Planner(graph, cells, exceptions.control.skeleton, budget, &exceptions,
-                       iteration, view).Build(environments);
+                       iteration, view).Build(environments, deferred);
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

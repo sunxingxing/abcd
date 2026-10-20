@@ -16,7 +16,8 @@ CaptureParent Parent(const PhasedBody& parent, const abc::MethodBody& body,
   const auto before = graph.phases[graph.ops[creation.operation.value].block.value].input;
   return {parent.Identity(), parent.Target(), graph, parent.CellEnvironments(), cells ? cells : parent.Cells(),
       input.flow.instructions, locals.plan.allocations,
-      ScopeFacts(ExceptionScopeFacts{input.flow, input.environments, locals, before})};
+      ScopeFacts(ExceptionScopeFacts{input.flow, input.environments, locals, before,
+          CaptureReads(parent.Identity().contract) == CaptureReadSemantics::kSourceTdz})};
 }
 }  // namespace
 std::variant<CaptureCells, CaptureCellFailure> BindPhasedCaptureCells(

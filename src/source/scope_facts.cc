@@ -223,8 +223,6 @@ std::variant<CaptureCell, ScopeError> ScopeFacts::Rebase(analysis::InstructionId
     std::optional<analysis::InstructionId>* deferred) const {
   if (const auto* normal = std::get_if<NormalScopeFacts>(&input_))
     return normal->Rebase(site, capture, domain, deferred);
-  // Exception owners keep the strict initialization proof for every domain.
-  if (deferred) deferred->reset();
-  return std::get<ExceptionScopeFacts>(input_).Rebase(site, capture, domain);
+  return std::get<ExceptionScopeFacts>(input_).Rebase(site, capture, domain, deferred);
 }
 }  // namespace abcd::source

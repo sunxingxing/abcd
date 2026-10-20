@@ -69,13 +69,17 @@ class NormalScopeFacts {
 // original node IDs are never normal instruction indexes. All stores must pass
 // VerifyExceptionInputs after applying locals.loads. Neither this borrowed view
 // nor a successful CapturePlan closes locals.writes or child/source obligations.
+// An indexed unique store may defer a Guarded/approved SourceTdz requirement,
+// but native scope, activation and exception Commit need independent checks.
 struct ExceptionScopeFacts {
   const analysis::ExceptionFlow& flow;
   const analysis::EnvironmentFlow& environments;
   const analysis::ExceptionLocals& locals;
   analysis::ExceptionNodeId before;
+  bool source_tdz = false;
   [[nodiscard]] std::variant<CaptureCell, ScopeError> Rebase(
-      analysis::InstructionId site, analysis::CapturedSlot capture, analysis::CaptureDomain domain) const;
+      analysis::InstructionId site, analysis::CapturedSlot capture, analysis::CaptureDomain domain,
+      std::optional<analysis::InstructionId>* deferred = nullptr) const;
   [[nodiscard]] bool Matches(analysis::InstructionId site, const analysis::CreationBinding& creation) const;
   [[nodiscard]] bool Matches(analysis::InstructionId site, const ClassCaptureSite& creation) const;
   [[nodiscard]] std::uint64_t QueryWork() const;

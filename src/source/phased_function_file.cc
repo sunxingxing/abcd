@@ -249,6 +249,9 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     auto locals = Take<analysis::ExceptionLocals>(analysis::ProveExceptionLocals(input.flow,
         input.environments, left, {}, analysis::ClosureWrites::kLanguage));
     admit(locals.AllocatedBytes()); step(locals.plan.work_units);
+    if (!locals.deferred_initializations.empty())
+      step(Take<std::uint64_t>(analysis::VerifyExceptionDeferredInitializations(input.flow,
+          input.environments, locals, left, {}, analysis::ClosureWrites::kLanguage)));
     const auto captures = [](const analysis::SemanticOperation& op) {
       return std::holds_alternative<analysis::FunctionCreation>(op) ||
           std::holds_alternative<analysis::ClassCreation>(op) ||

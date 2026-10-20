@@ -27,10 +27,11 @@ struct CellEvaluation {
 
 // O(1) after fresh CellEvaluation verification. Incoming witnesses retain the
 // existing enclosing-owner obligation; they never authorize standalone output.
-// Check and record deferred TDZ initializations on a fresh normal-flow plan:
+// Check and record deferred TDZ initializations on a fresh working plan:
 // each names an allocated cell and its live first store: ordered in the same
 // block without an intervening access, or a unique store dominated by the
-// allocation in independently verified working flow. Tree scope/activation
+// allocation in independently verified normal or phased working flow.
+// Exception edges bypass the allocation Commit. Tree scope/activation
 // and original capture requirements remain separate obligations.
 // Returns the work spent, or nothing when any entry fails these checks.
 [[nodiscard]] std::optional<std::uint64_t> MarkDeferredCells(const analysis::ValueProgram& graph,

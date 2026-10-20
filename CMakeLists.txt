@@ -1071,6 +1071,11 @@ if(BUILD_TESTING)
   add_test(NAME parameter_expression_test COMMAND parameter_expression_test)
   if(ABCD_BUILD_TOOLS AND Python3_Interpreter_FOUND AND
       EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+    add_test(NAME capture_scope_roundtrip_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/capture_scope_roundtrip.py"
+      $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/capture_scope"
+      "${CMAKE_CURRENT_BINARY_DIR}/capture-scope-roundtrip" --temporary)
     add_test(NAME parameter_expression_source_test COMMAND ${Python3_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/parameter_expressions.py"
       $<TARGET_FILE:abc_structure>
@@ -1360,6 +1365,10 @@ if(BUILD_TESTING)
   target_include_directories(family_cells_test PRIVATE tests/support)
   target_link_libraries(family_cells_test PRIVATE abcd_source)
   add_test(NAME family_cells_test COMMAND family_cells_test)
+  add_executable(exception_capture_activation_test tests/unit/source/exception_capture_activation_test.cc)
+  target_include_directories(exception_capture_activation_test PRIVATE tests/support)
+  target_link_libraries(exception_capture_activation_test PRIVATE abcd_source)
+  add_test(NAME exception_capture_activation_test COMMAND exception_capture_activation_test)
   add_executable(phased_capture_plan_test tests/unit/source/phased_capture_plan_test.cc)
   target_include_directories(phased_capture_plan_test PRIVATE tests/support)
   target_link_libraries(phased_capture_plan_test PRIVATE abcd_source)
@@ -3024,6 +3033,10 @@ if(BUILD_TESTING)
       add_test(NAME guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_captures.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_captures)
+      add_test(NAME capture_scope_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/capture_scope.mjs
+        $<TARGET_FILE:abc_structure>
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/capture_scope)
       add_test(NAME capture_activation_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/capture_activation.mjs
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>

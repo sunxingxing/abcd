@@ -382,8 +382,8 @@ class FamilyTrees {
       auto evaluation = Take<EvaluationPlan, EvaluationFailure>(std::move(evaluated));
       Account(evaluation);
       if (!deferred[i].empty()) {
-        if (phase || !evaluation.cells)
-          DeferredFailure(family, i, phase ? DeferredCellError::kPhasedParent : DeferredCellError::kBinding, &deferred[i].front());
+        if (!evaluation.cells)
+          DeferredFailure(family, i, DeferredCellError::kBinding, &deferred[i].front());
         std::optional<std::size_t> rejected;
         const auto marked = MarkDeferredCells(graph, *evaluation.cells, deferred[i], left_, &rejected);
         if (!marked) DeferredFailure(family, i, DeferredCellError::kPlacement,

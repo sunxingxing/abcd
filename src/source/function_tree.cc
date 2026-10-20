@@ -534,7 +534,7 @@ class TreeBuilder {
     const auto& states = *evaluation_.cells->environments;
     const auto lifetimes = BuildPhasedCellLifetimes(graph_, states, evaluation_.cells->cells,
         *exceptions_, {bytes_, work_}, evaluation_.for_of ? &*evaluation_.for_of : nullptr,
-        iteration_ ? &*iteration_ : nullptr);
+        iteration_ ? &*iteration_ : nullptr, evaluation_.cells->deferred);
     if (const auto* error = std::get_if<CellLifetimeError>(&lifetimes)) {
       if (*error == CellLifetimeError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == CellLifetimeError::kWorkLimit) throw Error::kWorkLimit;
@@ -1185,12 +1185,17 @@ class TreeBuilder {
       }
       Require(expression.has_value(), Error::kOwnership);
       if (forest_.initializations[id.value]) {
-        // A deferred cell is declared by its first store, at the top level of
-        // the allocation's own block scope; never nested or re-scoped.
+        // A deferred cell is declared by its first store. Normal plans keep
+        // the allocation scope; phased narrowing needs the private scope proof.
         if (std::holds_alternative<analysis::ValueLexicalStore>(op.operation)) {
           const auto cell = evaluation_.cells->cells.operations[id.value];
-          Require(evaluation.kind == EvaluationKind::kRoot && cell && cell->value < deferred_drafts_.size() &&
-              deferred_drafts_[cell->value] == draft &&
+          Require(evaluation.kind == EvaluationKind::kRoot && cell && cell->value < deferred_drafts_.size(), Error::kBinding);
+          if (exceptions_) {
+            // The original allocation stays at its original event. The native
+            // declaration enters only the independently checked private scope.
+            Require(deferred_drafts_[cell->value].has_value(), Error::kBinding);
+            tree_.symbols[forest_.initializations[id.value]->value].scope = drafts_[draft].scope;
+          } else Require(deferred_drafts_[cell->value] == draft &&
               tree_.symbols[forest_.initializations[id.value]->value].scope == drafts_[draft].scope, Error::kBinding);
         }
         const auto statement = Statement(DeclarationStmt{*forest_.initializations[id.value], expression}, origin);

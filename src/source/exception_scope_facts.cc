@@ -19,7 +19,7 @@ bool Before(const ExceptionScopeFacts& facts, analysis::InstructionId site) {
 std::uint64_t ExceptionScopeFacts::QueryWork() const {
   constexpr auto kChecks = std::numeric_limits<std::uint32_t>::digits;
   return 2 * kChecks + std::bit_width(locals.plan.cells.size()) +
-      std::bit_width(locals.capture_scopes.size());
+      std::bit_width(locals.capture_scopes.size()) + std::bit_width(locals.deferred_initializations.size());
 }
 bool ExceptionScopeFacts::Matches(analysis::InstructionId site,
     const analysis::CreationBinding& creation) const {
@@ -43,7 +43,9 @@ bool ExceptionScopeFacts::Matches(analysis::InstructionId site, const ClassCaptu
       *environments.before[before.value] == creation.environment;
 }
 std::variant<CaptureCell, ScopeError> ExceptionScopeFacts::Rebase(
-    analysis::InstructionId site, analysis::CapturedSlot capture, analysis::CaptureDomain domain) const {
+    analysis::InstructionId site, analysis::CapturedSlot capture, analysis::CaptureDomain domain,
+    std::optional<analysis::InstructionId>* deferred) const {
+  if (deferred) deferred->reset();
   using Error = ScopeError;
   switch (domain) {
     case analysis::CaptureDomain::kLanguage:
@@ -78,7 +80,19 @@ std::variant<CaptureCell, ScopeError> ExceptionScopeFacts::Rebase(
         return target < std::tuple(value.cell.value, value.begin);
       });
   if (!entry || scope == locals.capture_scopes.begin() || (scope - 1)->cell.value != id ||
-      entry >= (scope - 1)->end) return Error::kInitialization;
+      entry >= (scope - 1)->end) {
+    // Guarded reads preserve their Hole throw; SourceAccess uses only the
+    // existing approved SourceTdz contract. Language/Defined stay strict.
+    const bool guarded = domain == analysis::CaptureDomain::kGuarded ||
+        (domain == analysis::CaptureDomain::kSourceAccess && source_tdz);
+    if (!deferred || !guarded) return Error::kInitialization;
+    const auto& facts = locals.deferred_initializations;
+    const auto found = std::lower_bound(facts.begin(), facts.end(), id,
+        [](const auto& fact, auto cell) { return fact.cell.value < cell; });
+    if (found == facts.end() || found->cell.value != id || !entry ||
+        entry < found->begin || entry >= found->end) return Error::kInitialization;
+    *deferred = found->store;
+  }
   // Completed Language stores do not imply a TDZ guard, immutability or a
   // frozen value. Keep Defined obligations closed until phase guard evidence.
   if (domain == analysis::CaptureDomain::kDefined) return Error::kDomain;

@@ -1,0 +1,99 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "fixtures": [
+    {
+      "source": "async.js",
+      "sha256": "76093550f912e90b5eda87ee02c6943bc51d9a26786ad82a8f29269774decbe5",
+      "abc": "async.abc",
+      "abc_sha256": "6d95ce5b54538ff34460f920106538fdf29bba6ebc3b7ee8151469b2c9354c69",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=capture_scope_async",
+        "--source-file=input.js",
+        "--output=tests/integration/fixtures/capture_scope/async.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/capture_scope/async.js"
+      ]
+    },
+    {
+      "source": "async.js",
+      "sha256": "76093550f912e90b5eda87ee02c6943bc51d9a26786ad82a8f29269774decbe5",
+      "abc": "async.default.abc",
+      "abc_sha256": "11603de5756c7a14dfc007e09f9f7a6088dc638fdbbba665c9d8366e9739fcbe",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=capture_scope_async",
+        "--source-file=input.js",
+        "--output=tests/integration/fixtures/capture_scope/async.default.abc",
+        "tests/integration/fixtures/capture_scope/async.js"
+      ]
+    },
+    {
+      "source": "nested.js",
+      "sha256": "b8eaef5b8f9013128adb424ba06093529e0fa80170b1a71d9140f1b5fff8be11",
+      "abc": "nested.abc",
+      "abc_sha256": "163a4de16bb79bc8b7df7dea1e4358605a1dbbd6c1c681835e7bf6cc4d81a395",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=capture_scope_nested",
+        "--source-file=input.js",
+        "--output=tests/integration/fixtures/capture_scope/nested.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/capture_scope/nested.js"
+      ]
+    },
+    {
+      "source": "nested.js",
+      "sha256": "b8eaef5b8f9013128adb424ba06093529e0fa80170b1a71d9140f1b5fff8be11",
+      "abc": "nested.default.abc",
+      "abc_sha256": "5838a37cd0d8e7848e5ff3a95c811b528374a19b88d6f86a72f5dbac3a78529f",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=capture_scope_nested",
+        "--source-file=input.js",
+        "--output=tests/integration/fixtures/capture_scope/nested.default.abc",
+        "tests/integration/fixtures/capture_scope/nested.js"
+      ]
+    },
+    {
+      "source": "sync.js",
+      "sha256": "be998abe74ea0301a1c37f474f43cfba3445443f6942a8ee5620bc14c220b898",
+      "abc": "sync.abc",
+      "abc_sha256": "23f8116cfa1ef1be145cc61fabe29bd89994d779de7ef5700d856e9f023c0f6b",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=capture_scope_sync",
+        "--source-file=input.js",
+        "--output=tests/integration/fixtures/capture_scope/sync.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/capture_scope/sync.js"
+      ]
+    },
+    {
+      "source": "sync.js",
+      "sha256": "be998abe74ea0301a1c37f474f43cfba3445443f6942a8ee5620bc14c220b898",
+      "abc": "sync.default.abc",
+      "abc_sha256": "d610ac0f2291cde31ddc9ce73bbf1e5b14c58f0f9915fb4ab208ebb19a1ba746",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=capture_scope_sync",
+        "--source-file=input.js",
+        "--output=tests/integration/fixtures/capture_scope/sync.default.abc",
+        "tests/integration/fixtures/capture_scope/sync.js"
+      ]
+    }
+  ]
+}

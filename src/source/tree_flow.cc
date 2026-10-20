@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "class_inner_scope.h"
+#include "cell_lifetime.h"
 #include "completion_tree.h"
 #include "concurrent_tree.h"
 #include "exception_tree.h"
@@ -141,9 +142,8 @@ class FlowCheck {
   }
   TreeFlow Run() {
     if (evaluation_.cells && !evaluation_.cells->deferred.empty()) {
-      // Deferred TDZ initializations are a normal-flow fact only. Recheck each
-      // entry on this graph; the placement below then demands its declaration.
-      Require(!exceptions_, Error::kEvaluation);
+      // Recheck successful Commit dominance on the actual normal/exception
+      // graph. Native declaration scope is an additional independent proof.
       const auto checked = VerifyDeferredCells(graph_, *evaluation_.cells, budget_.Remaining());
       Require(checked.has_value(), Error::kEvaluation);
       budget_.Step(*checked);
@@ -170,6 +170,21 @@ class FlowCheck {
             flow_.for_of->controls[n-flow_.first_control.value]=EnumerationControl::kExhausted;
         }
       }
+    }
+    if (exceptions_ && evaluation_.cells && !evaluation_.cells->deferred.empty()) {
+      Require(evaluation_.cells->environments != nullptr, Error::kEvaluation);
+      auto scopes = BuildPhasedCellLifetimes(graph_, *evaluation_.cells->environments,
+          evaluation_.cells->cells, *exceptions_, budget_.Remaining(), evaluation_.for_of ? &*evaluation_.for_of : nullptr,
+          iteration_ ? &*iteration_ : nullptr,
+          evaluation_.cells->deferred);
+      if (const auto* error = std::get_if<CellLifetimeError>(&scopes)) {
+        if (*error == CellLifetimeError::kResourceLimit) throw Error::kResourceLimit;
+        if (*error == CellLifetimeError::kWorkLimit) throw Error::kWorkLimit;
+        throw Error::kPlacement;
+      }
+      deferred_scopes_.emplace(std::get<CellLifetimes>(std::move(scopes)));
+      budget_.Admit(deferred_scopes_->allocated_bytes, 1); budget_.Step(deferred_scopes_->work);
+      budget_.Array(deferred_scope_blocks_, deferred_scopes_->scopes.size());
     }
     if (evaluation_.for_in) {
       Require(exceptions_, Error::kControl);
@@ -1262,10 +1277,19 @@ class FlowCheck {
     if (!cell || cell->value >= deferred.size() || deferred[cell->value] != id) return {};
     return cell;
   }
-  // `let x = value` at the original first store, directly in the allocation's
-  // block scope: before it the binding is in its TDZ, as the Hole was.
+  // `let x = value` at the original first store. A smaller phased source
+  // scope needs the independent private activation/enclosure proof.
   void DeferredDeclaration(analysis::OpId id, CellId cell, StmtId site, const BlockStmt& block, StmtId owner) {
-    Require(cell.value < deferred_blocks_.size() && deferred_blocks_[cell.value] == owner, Error::kPlacement);
+    Require(cell.value < deferred_blocks_.size() && deferred_blocks_[cell.value].has_value(), Error::kPlacement);
+    if (!exceptions_) Require(deferred_blocks_[cell.value] == owner, Error::kPlacement);
+    else {
+      Require(deferred_scopes_ && id.value < graph_.ops.size(), Error::kPlacement);
+      const auto expected = std::get<CellScopeId>(deferred_scopes_->cells[cell.value]);
+      const auto at = deferred_scopes_->blocks[graph_.ops[id.value].block.value];
+      Require(at == expected, Error::kPlacement);
+      if (!deferred_scope_blocks_[expected.value]) deferred_scope_blocks_[expected.value] = owner;
+      Require(deferred_scope_blocks_[expected.value] == owner, Error::kPlacement);
+    }
     LocationScope witness(*this, At(id)); location_.statement = site;
     const auto& statement = tree_.statements[site.value];
     const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
@@ -2044,9 +2068,11 @@ class FlowCheck {
   std::optional<ForInEmissionView> enumeration_;
   std::vector<std::optional<StmtId>> enumeration_statements_;
   std::vector<std::optional<ScopeId>> enumeration_scopes_;
-  // Per deferred cell: the block statement of its allocation, which must
-  // directly contain its declaring first store.
+  // Per deferred cell: original allocation block. Normal deferral keeps it;
+  // phased narrowing additionally checks the independently derived scope.
   std::vector<std::optional<StmtId>> deferred_blocks_;
+  std::optional<CellLifetimes> deferred_scopes_;
+  std::vector<std::optional<StmtId>> deferred_scope_blocks_;
   const CompletionTreeView& sequences_;
   std::span<const ScopeId> expression_scopes_;
   TreeFlow flow_;

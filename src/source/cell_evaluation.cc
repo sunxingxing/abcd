@@ -82,19 +82,42 @@ std::optional<analysis::ValueId> InitializedCellGuardInput(const analysis::Value
 namespace {
 struct DeferredActivation {
   analysis::SemanticBudget budget;
-  std::optional<analysis::ValueFlowProof> flow;
+  std::optional<analysis::DominatorTree> flow;
+  std::vector<std::optional<analysis::WorkBlockId>> commits;
   bool Before(const analysis::ValueProgram& graph, analysis::OpId allocation,
       analysis::OpId store, std::uint64_t& work) {
     if (!flow) {
       if (work > budget.work) return false;
-      auto checked = analysis::VerifyValueFlow(graph, {budget.bytes, budget.work - work});
-      auto* proof = std::get_if<analysis::ValueFlowProof>(&checked);
-      if (!proof) return false;
-      work += proof->work; flow.emplace(std::move(*proof));
+      if (graph.phases.empty()) {
+        auto checked = analysis::VerifyValueFlow(graph, {budget.bytes, budget.work - work});
+        auto* proof = std::get_if<analysis::ValueFlowProof>(&checked);
+        if (!proof) return false;
+        work += proof->work; flow.emplace(std::move(proof->dominators));
+      } else {
+        if (graph.ops.size() > budget.bytes / sizeof(decltype(commits)::value_type)) return false;
+        commits.resize(graph.ops.size());
+        const auto bytes = commits.capacity() * sizeof(decltype(commits)::value_type);
+        if (bytes > budget.bytes) return false;
+        auto checked = analysis::VerifyPhasedValueFlow(graph, {budget.bytes - bytes, budget.work - work});
+        auto* proof = std::get_if<analysis::PhasedValueFlowProof>(&checked);
+        if (!proof) return false;
+        work += proof->work;
+        for (std::size_t b = 0; b < graph.phases.size(); ++b) {
+          if (work == budget.work) return false;
+          ++work;
+          const auto& phase = graph.phases[b];
+          if (phase.phase != analysis::ExceptionPhase::kCommit) continue;
+          if (!phase.operation || commits[phase.operation->value]) return false;
+          commits[phase.operation->value] = analysis::WorkBlockId{static_cast<std::uint32_t>(b)};
+        }
+        flow.emplace(std::move(proof->dominators));
+      }
     }
     const auto& a = graph.ops[allocation.value]; const auto& s = graph.ops[store.value];
+    if (!commits.empty()) return commits[allocation.value] &&
+        flow->Dominates({commits[allocation.value]->value}, {s.block.value});
     return a.block == s.block ? a.order < s.order :
-        flow->dominators.Dominates({a.block.value}, {s.block.value});
+        flow->Dominates({a.block.value}, {s.block.value});
   }
 };
 // One deferred entry: allocated storage and a live first store that is either

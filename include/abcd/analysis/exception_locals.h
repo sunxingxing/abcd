@@ -12,6 +12,15 @@ struct ExceptionCaptureScope {
   std::uint32_t begin;
   std::uint32_t end;
 };
+// A unique local initialization store, with the original allocation's complete
+// exception-CFG dominance interval. This is an activation fact, not a source
+// declaration/initialization premise at a preceding closure creation.
+struct ExceptionDeferredInitialization {
+  LocalCellId cell;
+  InstructionId store;
+  std::uint32_t begin;
+  std::uint32_t end;
+};
 struct ExceptionLocals {
   LocalAccessPlan plan;  // Original instruction coordinates for the AST.
   std::vector<ExceptionLoadFact> loads;  // Normal Commit value premises.
@@ -21,13 +30,15 @@ struct ExceptionLocals {
   // site. Shared cell-lifetime/AST scope checks preserve dynamic loop instances.
   std::vector<ExceptionCaptureScope> capture_scopes;
   std::vector<std::uint32_t> capture_entries;  // Indexed by phase node.
+  std::vector<ExceptionDeferredInitialization> deferred_initializations;
   // Conditional family premise, NOT preservation or an immutable-cell claim.
   // A publisher must discharge every transitive child's store-domain obligation.
   ClosureWrites writes = ClosureWrites::kUnknown;
   std::size_t AllocatedBytes() const {
     return plan.AllocatedBytes() + loads.capacity() * sizeof(ExceptionLoadFact) +
            capture_scopes.capacity() * sizeof(ExceptionCaptureScope) +
-           capture_entries.capacity() * sizeof(std::uint32_t);
+           capture_entries.capacity() * sizeof(std::uint32_t) +
+           deferred_initializations.capacity() * sizeof(ExceptionDeferredInitialization);
   }
 };
 enum class ExceptionLocalError : std::uint8_t {
@@ -59,5 +70,13 @@ ProveExceptionLocals(const ExceptionFlow& flow, const EnvironmentFlow& environme
                      SemanticBudget budget = {},
                      std::span<const CapturePreservation> preserved = {},
                      ClosureWrites writes = ClosureWrites::kUnknown);
+// Re-derive the deferred activation index from immutable flow/environment
+// inputs. No supplied interval, store, CellId or write premise is authority.
+[[nodiscard]] std::variant<std::uint64_t, ExceptionLocalFailure>
+VerifyExceptionDeferredInitializations(const ExceptionFlow& flow,
+    const EnvironmentFlow& environments, const ExceptionLocals& locals,
+    SemanticBudget budget = {},
+    std::span<const CapturePreservation> preserved = {},
+    ClosureWrites writes = ClosureWrites::kUnknown);
 }  // namespace abcd::analysis
 #endif

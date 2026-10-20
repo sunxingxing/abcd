@@ -152,6 +152,11 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
         ? Error::kResourceLimit : Error::kInvalidEnvironment);
     charge(dominance->work.edge_visits);
     charge(dominance->work.eval_steps);
+    // The tree remains live through deferred/capture-index construction.
+    // Admit it before allocating either output; a later failure is too late.
+    if (dominance->work.allocated_bytes > budget.bytes - spent)
+      return fail(Error::kResourceLimit);
+    spent += dominance->work.allocated_bytes;
     const auto cell_id = [&](const BoundLexicalSite& binding) {
       const auto owner = std::get<EnvironmentId>(binding.binding.environment);
       const LocalCell key{owner, binding.binding.slot};
@@ -219,6 +224,24 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       charge();
       return std::tie(a.cell.value, a.instruction.value) < std::tie(b.cell.value, b.instruction.value);
     });
+    // A deferred capture does not read the cell at creation. Keep a unique
+    // store only when it belongs to the same allocated activation on every
+    // original exceptional path. The source owner must separately prove its
+    // lexical declaration scope and TDZ lifetime; no initialized load is added.
+    reserve(result.deferred_initializations, plan.cells.size());
+    for (std::size_t i = 0; i < plan.stores.size();) {
+      charge(); const auto first = i++;
+      while (i < plan.stores.size() && plan.stores[i].cell.value == plan.stores[first].cell.value) { charge(); ++i; }
+      if (i - first != 1 || writes != ClosureWrites::kLanguage) continue;
+      const auto& store = plan.stores[first];
+      const auto owner = plan.cells[store.cell.value].environment.value;
+      if (!allocations[owner] || !commits[store.instruction.value]) continue;
+      const auto a = allocations[owner]->value, c = commits[store.instruction.value]->value;
+      if (!dominance->Dominates({a}, {c})) continue;
+      const auto& scope = dominance->nodes[a];
+      if (scope.begin) result.deferred_initializations.push_back(
+          {store.cell, store.instruction, scope.begin, scope.end});
+    }
     {
       // Dominance is valid on cyclic phase graphs too: allocation dominates
       // the completed store, which dominates creation. Re-entering allocation
@@ -227,9 +250,6 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       // cell-lifetime/AST scope consumer's responsibility, never a hoist permit.
       // The tree is still live: include its result in admission for the
       // retained phase-entry index. Move scopes rather than copy their buffer.
-      if (dominance->work.allocated_bytes > budget.bytes - spent)
-        return fail(Error::kResourceLimit);
-      spent += dominance->work.allocated_bytes;
       reserve(result.capture_entries, flow.nodes.size());
       for (const auto& node : dominance->nodes) {
         charge();
@@ -248,5 +268,35 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
   } catch (const ExceptionLocalFailure& failure) { return failure;
   } catch (const std::bad_alloc&) { return fail(Error::kResourceLimit);
   } catch (const std::length_error&) { return fail(Error::kResourceLimit); }
+}
+std::variant<std::uint64_t, ExceptionLocalFailure> VerifyExceptionDeferredInitializations(
+    const ExceptionFlow& flow, const EnvironmentFlow& environments,
+    const ExceptionLocals& locals, SemanticBudget budget,
+    std::span<const CapturePreservation> preserved, ClosureWrites writes) {
+  auto rebuilt = ProveExceptionLocals(flow, environments, budget, preserved, writes);
+  if (const auto* failure = std::get_if<ExceptionLocalFailure>(&rebuilt)) return *failure;
+  const auto& expected = std::get<ExceptionLocals>(rebuilt);
+  const auto invalid = ExceptionLocalFailure{ExceptionLocalError::kInvalidEnvironment, {}};
+  if (locals.writes != writes || locals.plan.cells.size() != expected.plan.cells.size() ||
+      locals.deferred_initializations.size() != expected.deferred_initializations.size() ||
+      locals.plan.allocations.size() != expected.plan.allocations.size() ||
+      locals.capture_entries.size() != expected.capture_entries.size()) return invalid;
+  auto work = expected.plan.work_units;
+  const auto comparisons = locals.plan.cells.size() + locals.deferred_initializations.size() +
+      locals.plan.allocations.size() + locals.capture_entries.size();
+  if (comparisons > budget.work - work) return ExceptionLocalFailure{ExceptionLocalError::kResourceLimit, {}};
+  if (locals.plan.allocations != expected.plan.allocations ||
+      locals.capture_entries != expected.capture_entries) return invalid;
+  for (std::size_t i = 0; i < locals.plan.cells.size(); ++i) {
+    const auto a = locals.plan.cells[i], b = expected.plan.cells[i];
+    if (Key(a) != Key(b)) return invalid;
+  }
+  for (std::size_t i = 0; i < locals.deferred_initializations.size(); ++i) {
+    const auto& a = locals.deferred_initializations[i];
+    const auto& b = expected.deferred_initializations[i];
+    if (std::tie(a.cell.value, a.store.value, a.begin, a.end) !=
+        std::tie(b.cell.value, b.store.value, b.begin, b.end)) return invalid;
+  }
+  return work + comparisons;
 }
 }  // namespace abcd::analysis
