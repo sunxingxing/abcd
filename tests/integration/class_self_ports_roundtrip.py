@@ -22,7 +22,7 @@ spec = importlib.util.spec_from_file_location("grouping_bytecode", Path(__file__
 grouping = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(grouping)
 result = {"compiler":grouping.ES2ABC,"sha256":grouping.sha(grouping.ES2ABC),"comparisons":[]}
-for name in ("self", "outer", "branches", "constructor_throw", "completed", "completed_throw"):
+for name in ("self", "outer", "branches", "constructor_throw", "completed", "completed_throw", "completed_self", "reentry", "accessors", "member_nested", "member_throwing"):
     directory = output/name
     directory.mkdir(exist_ok=True)
     exported = directory/"export"
@@ -49,9 +49,13 @@ for name in ("self", "outer", "branches", "constructor_throw", "completed", "com
             assert grouping.run([grouping.DISASM,str(abc),str(pa)],abc.with_suffix(".disasm.log"))==0
             # Fresh decoding, raw SSA, independent scope/guard/cleanup and port
             # verification, including mutation and exact-budget checks.
-            p = subprocess.run([probe,str(abc)],capture_output=True,text=True)
+            # This fixture exports the class and then reads the module binding. The
+            # isolated unit creator adapter has no module-load resolution;
+            # the production exporter above verifies its complete ports.
+            arguments = ["--certificate-only"] if name == "completed_self" else []
+            p = subprocess.run([probe,str(abc),*arguments],capture_output=True,text=True)
             abc.with_suffix(".proof.log").write_text(p.stdout+p.stderr)
-            proofs[side] = {"status":"pass" if p.returncode==0 else "unverified", "returncode":p.returncode}
+            proofs[side] = {"layer":"raw_scope" if arguments else "raw_scope_and_ports", "status":"pass" if p.returncode==0 else "unverified", "returncode":p.returncode}
             if mode=="O0" and side=="original": assert p.returncode==0,(name,p.stdout,p.stderr)
             texts.append(grouping.assembly(pa))
         methods = [dict(re.findall(r"^(\.function [^\n]+)\n(.*?^})", text, re.M|re.S)) for text in texts]

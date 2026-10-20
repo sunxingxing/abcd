@@ -791,6 +791,11 @@ class StructureCheck {
       const auto& root = built.members[built.root.value].tree;
       for (const auto& alias : root.captures) {
         budget_.Step(); RequireTree(alias.target.owner == tree_.owner, Error::kBinding);
+        if (root.symbols[alias.symbol.value].kind == BindingKind::kClassInner) {
+          RequireTree(root.class_scope && definition.class_self && definition.class_self->certificate &&
+              root.class_scope->SameClass(*definition.class_self->certificate), Error::kBinding);
+          continue; // Original transport is checked by CaptureTree, not a source cache reference.
+        }
         scopes_.Reference(alias.target.symbol);
       }
       // A prepared member's internal enclosure is closed; this checks only

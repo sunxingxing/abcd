@@ -9,8 +9,8 @@ import tempfile
 engine, fixtures, output = sys.argv[1:]
 fixtures, output = Path(fixtures).resolve(), Path(output).resolve()
 output.mkdir(parents=True, exist_ok=True)
-published = ("self", "outer", "branches", "constructor_throw")
-refused = {"reentry": 3, "accessors": 3, "copies": 3, "throwing": 3, "outer_tdz": 0}
+published = ("self", "outer", "branches", "constructor_throw", "reentry", "accessors", "member_nested", "member_throwing")
+refused = {"copies": 10, "throwing": 10, "outer_tdz": 0}
 runner = r'''
 import {pathToFileURL} from 'node:url';
 globalThis.select = process.argv[2] === 'true';
@@ -23,9 +23,13 @@ let value;
 try {
   const {C} = await import(pathToFileURL(process.argv[1]));
   const descriptor = Object.getOwnPropertyDescriptor(C, 'x');
-  value = {name:C.name, length:C.length, value:typeof C.x === 'number' ? C.x : C.x instanceof C,
+  value = {self:C.x === C, name:C.name, length:C.length, value:typeof C.x === 'number' ? C.x : C.x instanceof C,
            own:!!descriptor, writable:descriptor?.writable, configurable:descriptor?.configurable,
            enumerable:descriptor?.enumerable};
+  if ('value' in C.prototype) {
+    const instance = new C(); instance.value = 4;
+    value.accessor = [instance.value === C, instance.stored, C.current === C];
+  }
 } catch(e) { value = {error:e.constructor.name}; }
 console.log(JSON.stringify({value,log:globalThis.log}));
 '''
@@ -52,11 +56,13 @@ with tempfile.TemporaryDirectory(prefix="run-", dir=output) as scratch:
                             for source in (original, printed)]
                 assert outcomes[0] == outcomes[1], (name, outcomes)
                 result = json.loads(outcomes[0])
-                if name == "constructor_throw":
-                    assert result == {"value":{"error":"RangeError"},"log":["constructor"]}
+                if name in ("constructor_throw", "member_throwing"):
+                    assert result == {"value":{"error":"RangeError"},"log":["constructor" if name == "constructor_throw" else "member-throw"]}
                 elif prototype == "plain":
                     assert result["value"]["name"] == "C"
-                    assert result["value"]["value"] == (7 if name == "outer" else True)
+                    assert result["value"]["value"] == (7 if name == "outer" else name not in ("reentry", "member_nested"))
+                    if name in ("reentry", "member_nested"):
+                        assert result["value"]["self"] is True
                 elif name == "outer":
                     assert result["log"] == ["prototype-set:C"] and not result["value"]["own"]
                 else:
@@ -69,4 +75,18 @@ with tempfile.TemporaryDirectory(prefix="run-", dir=output) as scratch:
         assert evidence["recovery"]["kind"] == 13
         assert evidence["recovery"]["projection"] == refused[name]
         assert not record["source_complete"] and not record["executable"]
+        if name in ("copies", "throwing"):
+            assert evidence["recovery"]["location"]["method"] == failure["method"]
+            assert "expression" in evidence["recovery"]["location"]
+            # Refused engine output has no executable class. Record the source
+            # oracle without labelling it an engine-output differential.
+            original = Path(scratch) / f"{name}.mjs"
+            original.write_text((fixtures / f"{name}.js").read_text())
+            observed = subprocess.run(["node", "--input-type=module", "-e", runner,
+                                       str(original), "false", "plain"], check=True,
+                                      capture_output=True,text=True)
+            value = json.loads(observed.stdout)
+            assert value == ({"value":{"error":"RangeError"},"log":[]} if name=="throwing" else
+                             {"value":{"self":True,"name":"C","length":0,"value":False,
+                                       "own":True,"writable":True,"configurable":True,"enumerable":True},"log":[]})
         print(name, "kRecoveryGate", refused[name], flush=True)

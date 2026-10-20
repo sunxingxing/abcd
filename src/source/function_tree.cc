@@ -1,4 +1,5 @@
 #include "function_tree.h"
+#include "class_inner_scope.h"
 
 #include <algorithm>
 #include <array>
@@ -1968,8 +1969,37 @@ class TreeBuilder {
     constants_.name_count = syntax_.names.size();
   }
 
-  void CheckCaptures(const TreeFlow& flow) {
+  void CheckCaptures(TreeFlow& flow) {
     if (!incoming_) return;
+    if (incoming_->class_inner && !tree_.class_scope) {
+      try {
+        Require(evaluation_.cells.has_value(), Error::kCapture);
+        TreeCheckBudget q({bytes_,work_});
+        incoming_->class_inner->Project(tree_,graph_,evaluation_.cells->cells,
+                                       flow,incoming_->class_name,q);
+        if (tree_.class_inner) {
+          tree_.class_scope=incoming_->class_inner;
+          VerifyClassInnerScope(tree_,q);
+          TreeSemanticFailure detail;
+          auto checked = exceptions_
+              ? VerifyExceptionTreeSemantics(graph_,*exceptions_,evaluation_,tree_,constants_,q.Remaining(),TreeControlCheck::kFresh,&detail)
+              : VerifyTreeSemantics(graph_,control_,evaluation_,tree_,constants_,q.Remaining(),&detail);
+          if (const auto* error=std::get_if<TreeSemanticError>(&checked)) {
+            if (*error==TreeSemanticError::kResourceLimit) throw Error::kResourceLimit;
+            if (*error==TreeSemanticError::kWorkLimit) throw Error::kWorkLimit;
+            Fail(Error::kSemantics,detail,TreeObligation::kSemantics);
+          }
+          auto verified=std::get<TreeSemantics>(std::move(checked));
+          q.Admit(verified.allocated_bytes,1);q.Step(verified.work);
+          flow=std::move(verified.flow);
+        }
+        Admit(q.Bytes(),1);Step(q.Work());
+      } catch (TreeStructureError error) {
+        if (error==TreeStructureError::kResourceLimit) throw Error::kResourceLimit;
+        if (error==TreeStructureError::kWorkLimit) throw Error::kWorkLimit;
+        Fail(Error::kCapture,error,TreeObligation::kCapture);
+      }
+    }
     // Consume the same correspondence just checked for operands and origins.
     // Neither the tree nor evaluation input changes between these consumers.
     const auto verified = VerifyCaptureTree(incoming_->cells, incoming_->parent, {tree_, flow}, {bytes_, work_},

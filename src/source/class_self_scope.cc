@@ -224,6 +224,16 @@ ClassSelfScope Derive(const ClassSelfInitializationInput& input,
   const auto& order = std::get<EffectOrder>(ordered);
   q.Admit(order.allocated_bytes);
   q.Step(order.work);
+  // DEFINECLASSWITHBUFFER clones/installs bodies; it never invokes them
+  // (interpreter-inl.cpp:5178; runtime_stubs-inl.h:1004). No observable
+  // escape/invocation may precede the inner Commit. Must-reach effect order
+  // permits copies and pure block splits, not an opcode adjacency template.
+  const bool member_reads = std::any_of(scope.references.begin(), scope.references.end(),
+      [&](const auto& ref) { q.Step(); return ref.owner.family || ref.owner.member; });
+  if (member_reads) {
+    q.Require(raw.call.creation.value < order.after.size() &&
+              order.after[raw.call.creation.value] == raw.store, Error::kOrder);
+  }
   auto defined = FindClassDefinitions(graph, q.left);
   const auto* definitions = std::get_if<ClassDefinitionSites>(&defined);
   q.Require(definitions,

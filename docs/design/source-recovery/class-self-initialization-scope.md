@@ -882,3 +882,172 @@ one-below refusals pass at 200/201/400/800. Fresh cohorts against wtbase 5a1dbca
 remain 533/620 and 585/620; no regressions or complete-text changes. Only o0's
 manifest row changes in both flag sets. See `build/review/completed-class/` for
 build/test logs, before/after manifests, compiler commands/identity and diffs.
+
+## Member class-inner consumption (2026-10-20)
+
+The previous `kFamilyEnclosure` gate in o0/4660 was m4878's read op3 at PC6,
+with its HoleGuard op4 at PC8. The same method has guarded self reads at
+PC28/30, PC36/38 and PC53/55. These are the original private class environment,
+not the creator's cache/public binding. The completed-class ports in m4850
+remain unchanged: successful static initialization precedes the retained class
+copy, `getInstance` lookup/call and export of the call result.
+
+`ClassInnerScopeProof::Select` now selects a certificate-listed **occurrence**
+(family/member plus input revisions). It shares the one fresh root seal rather
+than copying/re-verifying the complete family for every member. It indexes the
+current graph's exception exits and independently checks each owner-local
+read/guard/value/exception correspondence. `Project` resolves the current
+plan's symbol through its original incoming environment/depth/slot; CellIds are
+used only inside that same plan's already-checked flow. A forwarding owner gets
+the binding even when its only use is a nested closure capture. Unlisted
+occurrences and missing/stale evidence refuse.
+
+The projection is consumed in `FunctionTree::CheckCaptures`, before the actual
+parent/child capture check. Structure, TreeFlow, operands, guards and semantics
+are rechecked on the changed tree. ABI treats the sealed immutable class-inner
+binding as an enclosing binding, never an argument or function-self ABI input.
+The original capture targets remain available for raw storage/creation and
+write verification, but name/cell-visibility planning does not misinterpret
+that physical transport as a source capture of the creator cache. Every native
+reference and forwarding capture still passes lexical resolution. The class
+header and each member's spelling must agree; parameters/locals/self scopes
+that shadow that binding refuse. Nested views always point straight to the
+root seal, so ownership depth does not cause recursive lookup or quadratic
+certificate copies.
+
+### Initialization and re-entrancy
+
+Member bodies cannot execute just because their function objects are created.
+Pinned `interpreter-inl.cpp:5178-5198` calls `CreateClassWithBuffer`, which
+clones/installs functions and returns the constructor. See
+`ecmascript/stubs/runtime_stubs-inl.h:1004-1070` and
+`ecmascript/jspandafile/class_info_extractor.cpp:392-477`: function templates
+become functions with their home object and environment; their bodies are not
+invoked. A shared `EffectOrder` must-reach edge proves that the next ordered
+effect after class creation is the original internal self store, before any
+escape, invocation or other observable effect. This is normal-flow/effect
+correspondence, not PC adjacency or a same-block requirement. The existing
+certificate separately checks the installation corridor from that store to the
+static initializer, every immutable-slot access, and pop/rethrow cleanup.
+Nested closures become available through their already-initialized parent.
+Thus re-entry from a static initializer reads the native initialized inner
+binding. No creator cache is consulted and no guard is deleted.
+
+Accessor installation remains covered by that corridor. Pinned
+`RuntimeDefineGetterSetterByValue` (`runtime_stubs-inl.h:2708-2776`) converts
+its key and installs a descriptor; it does not call the getter/setter. Only
+proven constant keys/fresh class homes and complete installation effects are
+admitted. Source class methods/accessors are installed before static elements,
+so the certified order has the same observable reads and calls. Computed/user
+effects without that correspondence retain their refusal.
+
+### Remaining initializer-family gap
+
+The existing `copies` and closure-bearing `throwing` fixtures create a function
+**inside the static initializer**, rather than inside a member. Static-field
+emission still has no full initializer-family owner. They retain a located
+`kRecoveryGate / kInitializerFamily` (appended projection value10), identifying
+the FunctionExpr rather than blaming a member self read. No output or
+engine-output differential is claimed for these refused fixtures. The new
+`member_nested` and `member_throwing` fixtures exercise forwarding closures and
+throwing/re-entrant closures inside member families through published output.
+
+### Validation boundary
+
+Scratch evidence lives in `build/review/class-inner-members/`. Target SDK
+comparison uses `tests/tools/grouping_bytecode.py`'s compiler/disassembler,
+assembly reader and command runner. Both default and O0 recompile the exported
+record (the original ABC is disassembled directly; paired source is not an
+engine input). All24 methods are matched by their unambiguous member/callback
+roles. This is semantic recovery, not grouping-only bytecode equality: default
+has0/24 identical bodies and O0 has3/24. Full diffs are retained, with no
+register/branch/handler normalization. In particular getInstance at O0 differs
+only by the dead `ldai 0` introduced by spelling undefined as `void 0`; the
+four guarded class-inner reads, construction, property accesses and return
+remain identical. The creator preserves allocation, internal store,
+initializer call, cleanup and final getInstance/export order, with named-env
+metadata replaced by an unnamed environment, regenerated method/literal
+identifiers and an extra retained cache copy. Other member differences are
+existing source recovery choices: Boolean/predicate reconstruction and branch
+layout, register/copy placement, `void 0` loads, loop/update reconstruction,
+async/catch lowering and regenerated callback identifiers. These are not
+counted as exact equality; their source flow/recovery checks remain mandatory.
+The SDK identity is SHA-256
+`4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`,
+with `--module --merge-abc --extension=js`, the original record name, and
+separate default/`--opt-level=0` invocations.
+
+Exact target method comparison index (default/O0; `=` means an unchanged body):
+
+| Method/role | Default | O0 | Meaning of retained differences |
+|---|---|---|---|
+| getInstance | different | different | O0: only dead zero load for void 0; default: register/copy optimization |
+| RemoteDeviceModel | different | different | O0: dead zero loads for void 0; default: register/copy optimization |
+| authenticateDevice | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| createDeviceManager | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| deviceFound | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| deviceStateChangeActionOffline | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| deviceStateChangeActionOnline | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| getFilterOptions | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| getLocalDeviceInfo | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| getTrustedDeviceList | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| registerDeviceStateListener | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| setUIContext | different | = | O0: identical; default: register/copy optimization |
+| showErrMsg | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| startDeviceDiscovery | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| static_initializer | different | different | O0: regenerated constructor identity only; default: register/copy optimization |
+| stopDeviceDiscovery | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| unAuthenticateDevice | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| unregisterDeviceListCallback | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| callback 19 | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| callback 20 | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| callback 21 | different | = | O0: identical; default: register/copy optimization |
+| callback 22 | different | = | O0: identical; default: register/copy optimization |
+| callback 23 | different | different | predicate/branch reconstruction, register/copy/IC positions, void 0 loads, regenerated function identifiers (exact diff retained) |
+| func_main_0 | different | different | private environment/name/literal references and retained cache copy; ports/order preserved |
+
+This table identifies the changed methods; it does not promote register or
+control-layout equivalence into an exact-bytecode pass. Full instruction,
+operand, handler and literal/module metadata text is retained in the SDK
+artifacts. Field/constructor [[Set]] vs own static definition, receiver, guards,
+raw class operand ports, exception routing and source scopes are checked by
+the independent engine proofs and the discriminating fixture differentials.
+
+Final acceptance: full build passed; serial source-regression65/65; class-focused
+18/18; broad tree/scope/capture/class/static/initializer/family/receipt/manifest/
+CLI/binding/cell/parameter/default sweep227/241, with exactly the14 user-listed
+pre-existing failures. An earlier overlapping source/sweep invocation had one
+extra ENOENT on the generated binding-interference fixture while its producer
+removed/replaced it. The final invocations are sequential; that test passes.
+No expectation or behavior was weakened for that race. Raw-owner/slot/guard/
+exception mutations, missing seals, inner writes, parameter shadowing and exact
+byte/work boundaries pass, including200/201/400/800 member width and nested
+forwarding depth.
+
+Fresh verified cohorts versus wtbase c5397500 have533→534/620 and585→586/620
+complete; no regressions and no complete-record text changes. Exactly o0's
+manifest file/record changes in each flag set. Final per-engine peak RSS is
+42,483,712 bytes; the sum of the four largest engine-child peaks is151,764,992
+bytes. Both newly published cohort outputs pass Node syntax checks. The11
+published fixture cases have35 engine-output Node differentials. SDK fixture
+comparisons have41/45 default and30/45 O0 identical method bodies. All44 raw
+probes are retained:20 pass,22 default optimized cleanup probes are unverified
+(kHandler), and2 emitted O0 isolated-adapter probes are unverified
+(EvaluationError::kOwnership). The completed_self pair uses the deliberately
+limited raw-scope probe because the unit adapter has no module-load projection;
+the actual production exporter independently checks its full recovery.
+
+| Case | Before | After |
+|---|---|---|
+| o0/4660 | kFamilyEnclosure, m4878 op4 PC8 | complete |
+| reentry | kFamilyEnclosure, m437 PC8 | complete,4 Node differentials |
+| accessors | kFamilyEnclosure, m459 PC8 | complete,4 Node differentials |
+| completed_self | kFamilyEnclosure, m461 PC8 | complete,1 Node differential |
+| member_nested | kFamilyEnclosure, m467 PC8 | complete,4 Node differentials |
+| member_throwing | kFamilyEnclosure, m513 PC8 | complete,4 Node differentials |
+| copies | kFamilyEnclosure, m492 PC19 | kInitializerFamily, m492 PC10 expression0 |
+| throwing | kFamilyEnclosure, m502 PC12 | kInitializerFamily, m502 PC22 expression2 |
+
+The two refused initializer-family cases have Node source-oracle observations,
+not fabricated engine-output differentials. Fixing their family-aware static
+emitter is separate from this member-binding projection.

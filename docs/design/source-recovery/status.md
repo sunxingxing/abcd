@@ -5,6 +5,59 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Member class-inner bindings: o0/4660 published (2026-10-20)
+
+- The real member-family pipeline now consumes the fresh sealed class-self
+  occurrence/storage proof before child capture verification. Methods,
+  accessors, static methods and nested/forwarding member closures get a typed
+  `kClassInner` binding in a real class-inner scope. Original capture transport
+  remains checked separately; source name/cell analysis no longer aliases it
+  through the creator's post-initialization cache. Per-owner views share one
+  root seal, use prepaid owner/exception indexes and have O((V+E) log V) total
+  admitted work. Independent structure/flow/operand/guard/ABI/capture/recovery
+  checks remain required.
+- Fresh scope derivation and its independent verifier prove class creation's
+  next must-reach ordered effect is the internal self Commit, before escape or
+  invocation. Pinned runtime class creation installs function templates without
+  invoking their bodies. Existing installation/cleanup/publication ports and
+  immutable-storage checks remain intact. Native spelling is checked against
+  the real class header and lexical scopes, including forwarding captures.
+- **o0/4660 completes**, previously `kRecoveryGate / kFamilyEnclosure` in
+  m4878 (read op3 PC6, guard op4 PC8). `reentry`, `accessors`, `completed_self`,
+  and new nested/throwing member-closure fixtures publish. Two initializer-owned
+  closure fixtures (`copies`, `throwing`) retain the more precise located
+  `kRecoveryGate / kInitializerFamily` (projection10, m492 PC10 / m502 PC22).
+  Their static-element emitter gap is not claimed as resolved; no engine-output
+  differential exists for refused output. Published fixtures have35 ordinary
+  Node differentials, including inherited setters, receiver/inner identity,
+  re-entry and throws; all published outputs pass `node --check`.
+- SDK target recompilation passes at default and O0 (24/24 methods matched in
+  each). Exact bodies are0/24 and3/24 respectively; getInstance at O0 differs
+  only by the dead zero load for `void 0`. Creator environment/debug names,
+  regenerated function/literal identifiers, retained private materialization,
+  prior predicate/control/register/async recovery account for the other exact
+  differences. Full diffs and method-role explanations are retained, without
+  normalization or an equality claim. Eleven fixture pairs compile in each
+  mode: default41/45 and O0 30/45 method bodies identical. All22 O0 original/
+  emitted raw scope probes run:20 pass and2 emitted probes retain the isolated
+  unit adapter's `EvaluationError::kOwnership` gap. The default optimized
+  cleanup probes remain unverified (`CleanupError::kHandler`). Production
+  exporter + Node checks, raw scope/port checks and exact-bytecode comparisons
+  are separate evidence layers.
+- Full build passed; final serial source-regression **65/65**, focused class
+  suite **18/18**, and broad sweep **227/241**, with exactly the14 documented
+  pre-existing failures. Member scope/guard/owner/write/name/seal mutations,
+  200/201/400/800 width and nested depth and exact/one-below budgets pass.
+  Final logs are under `build/review/class-inner-members/`. Complete
+  comparisons against wtbase **c5397500**: previous flags
+  **533→534/620**, source **585→586/620**, no regressions, no complete-text
+  changes. Only o0's manifest changes in each flag set. Peak measured engine
+  RSS42,483,712 bytes on the final runs; the sum of the four largest child
+  peaks is151,764,992 bytes (40-input harness has four workers). No commit,
+  push or stash performed.
+- Design and exact comparison index:
+  [class-self-initialization-scope.md](class-self-initialization-scope.md#member-class-inner-consumption-2026-10-20).
+
 ## Completed-class availability: consumed continuation, member gate retained (2026-10-20)
 
 - Added typed `CompletedClass` operand ports for verified classes without a

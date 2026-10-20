@@ -240,7 +240,8 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Finish(
     std::optional<ExternalFamilyCapture> external;
     if (destination.captures) {
       Require(creator != nullptr, Error::kPlacement);
-      external.emplace(ExternalFamilyCapture{*creator, *destination.captures, creator_storage});
+      external.emplace(ExternalFamilyCapture{*creator, *destination.captures, creator_storage,
+          destination.class_inner, destination.class_family});
     }
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(std::move(preparation.input_).Build(
         file, header, index, root, budget.Left(), modules, module_owner, &lookup, recovery,

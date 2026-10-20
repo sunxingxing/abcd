@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix="run-", dir=output) as scratch:
                        capture_output=True, text=True)
         rows = json.loads((destination / "manifest.json").read_text())["records"]
         record, = [r for r in rows if r.get("source_status") in (0, 3)]
-        if name in ("completed_self", "completed_early"):
+        if name == "completed_early":
             failure = record["source_failure"]
             assert not record["source_complete"] and not record["executable"]
             assert failure["causes"] == [{"domain":"abcd::source::ClassSelfError", "value":5}]
@@ -47,6 +47,6 @@ with tempfile.TemporaryDirectory(prefix="run-", dir=output) as scratch:
                                    text=True).stdout for source in (original, printed)]
         assert observed[0] == observed[1], (name, observed)
         assert json.loads(observed[0]) == (
-            {"name":"S", "same":True, "log":[]} if name == "completed" else
+            {"name":"S", "same":True, "log":[]} if name in ("completed", "completed_self") else
             {"error":"RangeError", "log":["get"]})
         print(name, "published; node --check and engine-output differential", flush=True)

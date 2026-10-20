@@ -36,7 +36,10 @@ struct ClassSelfInitializationFailure {
     kGuard,
     kWrite,
     kCleanup,
-    kMemberAbi
+    kMemberAbi,
+    // A closure created inside the static initializer needs family-aware
+    // static-element emission; member families use the class-inner seal.
+    kInitializerFamily
   };
   std::optional<Projection> projection;
   struct AbiLengths {

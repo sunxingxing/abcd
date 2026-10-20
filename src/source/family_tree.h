@@ -20,6 +20,8 @@ struct ExternalFamilyCapture {
   const FileFunction& creator;
   ClassCaptureParent source;
   const CaptureStorage* storage = nullptr;
+  std::shared_ptr<const ClassInnerScopeProof> class_inner;
+  std::uint32_t class_family = 0;
 };
 enum class FamilyTreeError : std::uint8_t {
   kContext, kParent, kModules, kResourceLimit, kWorkLimit, kDeferredCell

@@ -71,13 +71,24 @@ SourceCells AnalyzeSourceCells(const FunctionTree& tree,TreeCheckBudget& budget)
   // Count/fill the same typed edges. Missing class bodies/control supply an
   // explicit capability gap; do not infer closure access from names or layout.
   const auto visit=[&](const auto& capture){
-    const auto family=[&](const std::optional<PreparedFamily>& prepared,ExprId creation){
+    const auto family=[&](const std::optional<PreparedFamily>& prepared,ExprId creation,
+                          const ClassTree& definition){
       budget.Step();if(!prepared)return;
       const auto& members=prepared->Family();
       RequireTree(members.root.value<members.members.size(),TreeStructureError::kOwnership);
       const auto& child=members.members[members.root.value].tree;
       complete&=child.recovery_issues.empty();
-      for(const auto& alias:child.captures){budget.Step();if(alias.target.owner==tree.owner)capture(creation,alias.target.symbol);}
+      for(const auto& alias:child.captures){
+        budget.Step();
+        RequireTree(alias.symbol.value < child.symbols.size(),TreeStructureError::kBinding);
+        if(child.symbols[alias.symbol.value].kind==BindingKind::kClassInner) {
+          RequireTree(child.class_scope && definition.class_self && definition.class_self->certificate &&
+              child.class_scope->SameClass(*definition.class_self->certificate) &&
+              child.class_scope->Creator()==tree.method,TreeStructureError::kBinding);
+          continue; // Original transport is not a native capture of the cache.
+        }
+        if(alias.target.owner==tree.owner)capture(creation,alias.target.symbol);
+      }
     };
     for(std::size_t i=0;i<tree.expressions.size();++i){
       budget.Step();const ExprId id{static_cast<std::uint32_t>(i)};
@@ -91,9 +102,9 @@ SourceCells AnalyzeSourceCells(const FunctionTree& tree,TreeCheckBudget& budget)
       if(const auto* created=std::get_if<ClassExpr>(&node)){
         RequireTree(bool(created->definition),TreeStructureError::kOwnership);
         const auto& definition=*created->definition;
-        complete&=definition.BodiesPrepared();family(definition.constructor,id);
-        for(const auto& member:definition.members)family(member,id);
-        for(const auto& site:definition.definitions)for(const auto& body:site.bodies)family(body,id);
+        complete&=definition.BodiesPrepared();family(definition.constructor,id,definition);
+        for(const auto& member:definition.members)family(member,id,definition);
+        for(const auto& site:definition.definitions)for(const auto& body:site.bodies)family(body,id,definition);
         if(definition.initializer){
           complete&=definition.initializer->tree.recovery_issues.empty();
           for(const auto& alias:definition.initializer->tree.captures){budget.Step();if(alias.target.owner==tree.owner)capture(id,alias.target.symbol);}

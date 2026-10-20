@@ -442,27 +442,21 @@ ClassSelfInitializationDiagnostic BindDeferredClassSelf(
     // All raw self reads must resolve to the inner binding, including methods
     // invoked re-entrantly during static initialization. An ordinary creator
     // cache is initialized only after native ClassDefinitionEvaluation ends.
-    // This initializer-only projection cannot certify those member references.
-    for (const auto& reference : p.scope.Evidence().references) {
+    // Member owners are projected individually by FamilyTrees from this seal;
+    // initializer FunctionExprs still need a complete initializer-family owner.
+    for (std::uint32_t e = 0; e < tree.expressions.size(); ++e) {
       q.Step();
-      if (reference.owner.family || reference.owner.member) {
-        q.failure.projection =
-            ClassSelfInitializationFailure::Projection::kFamilyEnclosure;
-        const auto& family = input.families[reference.owner.family]
-                                 .family.members[reference.owner.member]
-                                 .function;
-        q.failure.read = reference.read;
-        q.failure.guard = reference.guard;
-        q.failure.location =
-            OperationLocation(family.Graph(), reference.guard, family.Method());
-        q.Require(false, Error::kScope);
-      }
-    }
-    for (const auto& expression : tree.expressions) {
-      q.Step();
+      const auto& expression = tree.expressions[e];
       if (std::holds_alternative<FunctionExpr>(expression.expression)) {
-        q.failure.projection =
-            ClassSelfInitializationFailure::Projection::kFamilyEnclosure;
+        q.failure.projection = ClassSelfInitializationFailure::Projection::kInitializerFamily;
+        q.failure.location = {};
+        q.failure.location.method = tree.method;
+        q.failure.location.expression = ExprId{e};
+        q.failure.read.reset(); q.failure.guard.reset();
+        if (const auto* site = std::get_if<OriginalSite>(&tree.origins[expression.origin.value])) {
+          q.failure.location.pc = site->original.value_or(site->pc);
+          q.failure.location.working_pc = site->pc;
+        }
         q.Require(false, Error::kScope);
       }
     }

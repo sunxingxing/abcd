@@ -38,3 +38,21 @@ for count in (200, 201, 400, 800):
                     f"--record-name=completed_{count}", "--output", str(abc), str(source)], check=True)
     result = subprocess.run([probe, str(abc)], check=True, capture_output=True, text=True)
     print("completed", count, result.stdout, end="", flush=True)
+
+    # Many member owners and a parent-linked forwarding chain. Each selected
+    # view borrows one root seal and scans only its own graph/references.
+    for shape in ("members", "nested_members"):
+        source = root / f"{shape}_{count}.js"
+        abc = source.with_suffix(".abc")
+        if shape == "members":
+            body = "\n".join(f"static m{i}() {{ return C; }}" for i in range(count))
+            body += "\nstatic x = C.m0();"
+        else:
+            body = "static get() { " + "".join(f"function f{i}() {{ " for i in range(count))
+            body += "return C; " + "".join(f"}} return f{i}(); " for i in reversed(range(count)))
+            body += "}\nstatic x = C.get();"
+        source.write_text("export class C {\n" + body + "\n}\n")
+        subprocess.run([compiler, "--module", "--merge-abc", "--opt-level=0",
+                        f"--record-name={shape}_{count}", "--output", str(abc), str(source)], check=True)
+        result = subprocess.run([probe, str(abc)], check=True, capture_output=True, text=True)
+        print(shape, count, result.stdout, end="", flush=True)

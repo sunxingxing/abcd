@@ -1006,7 +1006,7 @@ if(BUILD_TESTING)
   target_link_libraries(class_self_initialization_test PRIVATE abcd_source abcd_json)
   add_test(NAME class_self_initialization_test COMMAND class_self_initialization_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/self.abc")
-  foreach(class_self_case outer throwing reentry branches copies accessors constructor_throw completed completed_throw)
+  foreach(class_self_case outer throwing reentry branches copies accessors constructor_throw completed completed_throw member_nested member_throwing)
     add_test(NAME class_self_initialization_${class_self_case}_test COMMAND class_self_initialization_test
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/class_self_initialization/${class_self_case}.abc")
   endforeach()

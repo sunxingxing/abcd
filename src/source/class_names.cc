@@ -1,5 +1,6 @@
 #include "source_variables.h"
 #include "class_names.h"
+#include "class_inner_scope.h"
 #include "statement_expressions.h"
 #include "expression_children.h"
 #include "tree_checks.h"
@@ -104,7 +105,8 @@ class NamePlan {
       const auto& tree = *view.tree;
       for (const auto& capture : tree.captures) {
         budget_.Step(); RequireTree(capture.symbol.value < tree.symbols.size(), Error::kRange);
-        symbols_[view.symbols + capture.symbol.value].capture = capture.target;
+        if (tree.symbols[capture.symbol.value].kind != BindingKind::kClassInner)
+          symbols_[view.symbols + capture.symbol.value].capture = capture.target;
       }
       for (const auto& alias : tree.modules) {
         budget_.Step(); RequireTree(alias.symbol.value < tree.symbols.size(), Error::kRange);
@@ -180,16 +182,27 @@ class NamePlan {
     }
     values.push_back(value);
   }
-  void AddFamily(const ConstructedFamily& family) {
+  void AddFamily(const ConstructedFamily& family, const ClassTree* enclosing = nullptr) {
     RequireTree(family.root.value < family.members.size(), Error::kBinding);
-    for (const auto& member : family.members) { budget_.Step(); Grow(trees_, TreeView{&member.tree,member.flow.original.get()}); }
+    for (const auto& member : family.members) {
+      budget_.Step();
+      if (enclosing && member.tree.class_inner) {
+        const auto& tree = member.tree;
+        RequireTree(enclosing->class_self && enclosing->class_self->certificate && tree.class_scope &&
+            tree.class_scope->SameClass(*enclosing->class_self->certificate) &&
+            tree.class_inner->name.value < tree.names.size(), Error::kBinding);
+        budget_.Step(enclosing->name.size());
+        RequireTree(tree.names[tree.class_inner->name.value] == enclosing->name, Error::kName);
+      }
+      Grow(trees_, TreeView{&member.tree,member.flow.original.get()});
+    }
   }
   void AddClass(const ClassTree& tree) {
     Grow(candidates_, Candidate{&tree});
-    if (tree.constructor) AddFamily(tree.constructor->Family());
-    for (const auto& member : tree.members) { budget_.Step(); if (member) AddFamily(member->Family()); }
+    if (tree.constructor) AddFamily(tree.constructor->Family(), &tree);
+    for (const auto& member : tree.members) { budget_.Step(); if (member) AddFamily(member->Family(), &tree); }
     for (const auto& definition : tree.definitions)
-      for (const auto& member : definition.bodies) { budget_.Step(); if (member) AddFamily(member->Family()); }
+      for (const auto& member : definition.bodies) { budget_.Step(); if (member) AddFamily(member->Family(), &tree); }
     if (tree.initializer) Grow(trees_, TreeView{&tree.initializer->tree,tree.initializer->flow.original.get()});
   }
   bool Less(std::u16string_view a, std::u16string_view b) {

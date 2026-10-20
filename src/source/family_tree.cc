@@ -4,6 +4,8 @@
 #include "concurrent_boundary.h"
 #include "descendant_classes.h"
 #include "family_cells.h"
+#include "class_inner_scope.h"
+#include "class_self_deferred.h"
 #include "deferred_failure.h"
 #include "derived_projection.h"
 #include "abcd/analysis/dominators.h"
@@ -399,6 +401,19 @@ class FamilyTrees {
       } else if (i == 0 && family.root_capture) {
         incoming.emplace(IncomingCaptureTree{*family.root_capture, external->source.tree,
             ClassCaptureAnchor{external->source.creation, *root}});
+      }
+      if (incoming && external && external->class_inner && function.Cells()) {
+        TreeCheckBudget q(left_);
+        auto selected = ClassInnerScopeProof::Select(external->class_inner,
+            external->class_family, static_cast<std::uint32_t>(i), graph, q);
+        if (const auto* error = std::get_if<TreeStructureError>(&selected)) {
+          if (*error == TreeStructureError::kResourceLimit) Fail(FamilyTreeError::kResourceLimit);
+          if (*error == TreeStructureError::kWorkLimit) Fail(FamilyTreeError::kWorkLimit);
+          Fail(FamilyTreeError::kContext);
+        }
+        incoming->class_inner = std::get<std::shared_ptr<const ClassInnerScopeProof>>(std::move(selected));
+        incoming->class_name = external->creator.class_self->members.layout.name;
+        Admit(q.Bytes(), 1); Step(q.Work());
       }
       auto constants = syntax.View();
       const NameReservations reserved{references_, family.Owner(member_), subtree_end_[i] - i};

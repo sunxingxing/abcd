@@ -4,6 +4,7 @@
 #include "tree_checks.h"
 
 namespace abcd::source {
+struct TreeFlow;
 // A sealed lexical scope, not permission to publish a class. Creation/cleanup
 // and public publication still require the creator's joint port relation.
 class ClassInnerScopeProof {
@@ -13,7 +14,20 @@ class ClassInnerScopeProof {
                       ClassSelfInitializationFailure>
   Build(const ClassSelfInitializationInput&, const ClassSelfInitialization&,
         analysis::SemanticBudget = {});
-  const ClassSelfScope& Scope() const { return scope_.Evidence(); }
+  const ClassSelfScope& Scope() const {
+    if (const auto* own = std::get_if<ClassSelfScopeProof>(&scope_))
+      return own->Evidence();
+    return std::get<ClassSelfScopeProof>(
+        std::get<std::shared_ptr<const ClassInnerScopeProof>>(scope_)->scope_).Evidence();
+  }
+  static std::variant<std::shared_ptr<const ClassInnerScopeProof>, TreeStructureError>
+  Select(std::shared_ptr<const ClassInnerScopeProof>, std::uint32_t family,
+         std::uint32_t member, const analysis::ValueProgram&, TreeCheckBudget&);
+  bool SelfStorage(IncomingCell) const;
+  bool SameClass(const ClassInnerScopeProof&) const;
+  void Project(FunctionTree&, const analysis::ValueProgram&, const CellPlan&,
+               const TreeFlow&, std::u16string_view, TreeCheckBudget&) const;
+  const ClassSelfFamilyStamp& Owner() const { return owner_; }
   ClassSelfInitializationCost Cost() const { return cost_; }
   RouteInputIdentity Identity() const { return identity_; }
   abc::EntityOffset Creator() const { return creator_; }
@@ -30,7 +44,9 @@ class ClassInnerScopeProof {
   };
   explicit ClassInnerScopeProof(ClassSelfScopeProof proof)
       : scope_(std::move(proof)) {}
-  ClassSelfScopeProof scope_;
+  explicit ClassInnerScopeProof(std::shared_ptr<const ClassInnerScopeProof> root)
+      : scope_(std::move(root)) {}
+  std::variant<ClassSelfScopeProof, std::shared_ptr<const ClassInnerScopeProof>> scope_;
   RouteInputIdentity identity_;
   ClassSelfFamilyStamp owner_;
   abc::EntityOffset creator_;

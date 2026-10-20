@@ -150,6 +150,11 @@ TreeScopeCheck::TreeScopeCheck(const FunctionTree& tree, TreeCheckBudget& budget
   }
   for (const auto& capture : tree.captures) {
     budget.Step();
+    if (capture.symbol.value < count &&
+        tree.symbols[capture.symbol.value].kind == BindingKind::kClassInner) {
+      RequireTree(bool(tree.class_scope) && declared_[capture.symbol.value], Error::kBinding);
+      continue;  // Original capture transport, native class-inner reference.
+    }
     RequireTree(capture.symbol.value < count && capture.target.owner != tree.owner &&
         tree.symbols[capture.symbol.value].kind == BindingKind::kCapture &&
         !declared_[capture.symbol.value], Error::kBinding);

@@ -22,6 +22,8 @@ struct FamilyDestination {
   // Final enclosing structure must have checked this ClassExpr and its actual
   // member roots; this borrowed view never survives synchronous printing.
   const ClassCaptureDestination* enclosure = nullptr;
+  std::shared_ptr<const ClassInnerScopeProof> class_inner;
+  std::uint32_t class_family = 0;
 };
 enum class FamilyPrepareError : std::uint8_t {
   kStrictness, kCallable, kModules, kAbi, kFileChanged, kResourceLimit, kWorkLimit,

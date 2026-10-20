@@ -113,3 +113,22 @@ dcacfcbc4b5ab54f734e70f378a3e1455fdd4f89d805c920be61a1e2f8465abc  completed_thro
 57903f0093944600c9e85c26ea77c114e49cc6e8a3beaba6099097c49285af5b  completed_self.abc
 a54ac83e79e2b587f8a8b809aa0da96bcda71e4800d9c1a433438aedc678bd1c  completed_early.abc
 ```
+
+
+Member class-inner consumption checkpoint (2026-10-20): `reentry`, `accessors`,
+and `completed_self` now publish. `member_nested` includes a forwarding function
+and an arrow resolving the same inner class; `member_throwing` invokes a
+closure-bearing member from static initialization and throws. Both publish and
+have engine-output Node differentials. `copies` and `throwing` still create
+closures directly inside the static initializer and assert the precise
+`kInitializerFamily` gate (projection10). `outer_tdz` and `completed_early`
+retain their existing gates. The earlier chronological checkpoints above are
+historical. The new fixtures use the compiler and options above, with record
+names `member_nested` / `member_throwing` (without the class_self prefix).
+
+New fixture SHA-256:
+
+```
+927accde72dc8d60463b9d3f66829348ba44d185dae277e0e68eddc075e72a78  member_nested.abc
+51b8dcdab61b9e0abc2e4cadcae296bf62aedabcf2a26acfc26f857a5690b872  member_throwing.abc
+```

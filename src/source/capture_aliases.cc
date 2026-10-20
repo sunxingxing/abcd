@@ -1,4 +1,5 @@
 #include "capture_aliases.h"
+#include "class_inner_scope.h"
 
 #include <limits>
 #include <new>
@@ -60,7 +61,13 @@ std::variant<CaptureAliases, CaptureTreeError> BindCaptureAliases(
       Require(symbol.value < tree.symbols.size() &&
           (class_anchor || tree.closure_captures[range.first + i] == symbol), Error::kTarget);
       const auto& source = tree.symbols[symbol.value];
-      Require(source.kind == BindingKind::kLocal || source.kind == BindingKind::kCapture, Error::kCell);
+      if (source.kind == BindingKind::kClassInner) {
+        Require(tree.class_scope && tree.class_inner &&
+            tree.class_inner->binding == tree.class_scope->Scope().binding &&
+            source.scope == tree.class_inner->scope &&
+            source.name == tree.class_inner->name &&
+            source.declaration == DeclarationKind::kConst, Error::kCell);
+      } else Require(source.kind == BindingKind::kLocal || source.kind == BindingKind::kCapture, Error::kCell);
       Require(source.name.value < tree.names.size(), Error::kName);
       const auto& name = tree.names[source.name.value];
       step(name.size()); admit(name.size(), sizeof(char16_t)); admit(1, sizeof(char16_t));

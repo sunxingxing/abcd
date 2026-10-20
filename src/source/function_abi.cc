@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include "evaluation_plan.h"
+#include "class_inner_scope.h"
 #include "parameter_expression_tree.h"
 #include "tree_checks.h"
 
@@ -29,6 +30,11 @@ class AbiBuilder {
         throw Error::kEvaluation;
       }
       Step(std::get<std::uint64_t>(verified));
+    }
+    if (tree_.class_scope) {
+      TreeCheckBudget q(remaining_);
+      VerifyClassInnerScope(tree_, q);
+      remaining_ = q.Remaining();
     }
     if (tree_.parameter_expressions) {
       TreeCheckBudget q(remaining_);
@@ -247,6 +253,10 @@ class AbiBuilder {
       // Self needs an explicit immutable-binding census. No implicit arguments
       // binding may appear under an ordinary local spelling.
       const auto kind = tree_.symbols[id.value].kind;
+      if (kind == BindingKind::kClassInner) {
+        Require(tree_.class_scope && tree_.class_inner && !write, Error::kSyntax);
+        return; // Enclosing immutable lexical binding, not a callable ABI input.
+      }
       if (kind == BindingKind::kFunctionSelf) {
         Require(tree_.self == id && !write, Error::kSyntax);
         Increment(result_.self_references);

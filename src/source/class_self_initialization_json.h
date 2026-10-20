@@ -78,7 +78,7 @@ inline std::optional<ClassSelfInitializationFailure> ParseClassSelfFailure(
     std::uint32_t p;
     if (!FailureNumber(e, "projection", p) ||
         p > static_cast<unsigned>(
-                ClassSelfInitializationFailure::Projection::kMemberAbi))
+                ClassSelfInitializationFailure::Projection::kInitializerFamily))
       return {};
     f.projection = static_cast<ClassSelfInitializationFailure::Projection>(p);
   }

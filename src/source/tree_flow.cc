@@ -1177,7 +1177,9 @@ class FlowCheck {
         if (inner) {
           const auto& requirements = tree_.class_scope->Scope().requirements;
           const auto key =
-              std::tuple{0U, 0U, incoming.depth.value, incoming.slot.value};
+              std::tuple{tree_.class_scope->Owner().family,
+                         tree_.class_scope->Owner().member,
+                         incoming.depth.value, incoming.slot.value};
           const auto found = std::lower_bound(
               requirements.begin(), requirements.end(), key,
               [&](const auto& r, auto k) {
@@ -1193,6 +1195,11 @@ class FlowCheck {
                   Error::kPlacement);
           if (found->kind == ClassSelfRequirementKind::kClassInner) {
             const auto symbol = *inner;
+            // Member trees retain their checked physical capture transport;
+            // initializer trees have no such entry. Neither is a source read
+            // of the creator's later public/cache binding.
+            if (next < tree_.captures.size() && tree_.captures[next].symbol == symbol)
+              ++next;
             Require(!declared_[symbol.value], Error::kPlacement);
             declared_[symbol.value] = 1;
             flow_.cells[i] = symbol;

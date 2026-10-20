@@ -44,6 +44,10 @@ struct IncomingCaptureTree {
   const CaptureCells& cells;
   CaptureTree parent;
   std::optional<ClassCaptureAnchor> class_anchor;
+  // Sealed occurrence, borrowed spelling: consume before the child/parent
+  // capture check, so nested closures never alias a projected source cache.
+  std::shared_ptr<const ClassInnerScopeProof> class_inner;
+  std::u16string_view class_name;
 };
 // A checked creator flow, not an allow flag: each requested store must own the
 // real lexical declaration. Does not grant an activation proof to recovery.

@@ -26,7 +26,7 @@ try {
     const exported=run(structure,[abc,dest,'--value-source','--language-source']);
     assert.equal(exported.status,0,exported.stderr);
     const row=JSON.parse(readFileSync(join(dest,'manifest.json'),'utf8')).records.find(r=>r.entity===entity);
-    if(entity===29268 || entity===28264 || entity===24892 || entity===6952 || entity===8166) {
+    if(entity===29268 || entity===28264 || entity===24892 || entity===6952 || entity===8166 || entity===4660) {
       // For-in increment III completes 29268; Round 63 independently verifies
       // the retained phased selection prefix in 28264. Round 74 III/IV completes
       // shared LruCache 24892. All must publish exactly the CLI source.
@@ -71,15 +71,6 @@ try {
       // --instructions is streaming JSONL; check the original decoded boundary.
       const lines=instructions.stdout.trim().split('\n').map(line=>JSON.parse(line));
       assert.ok(lines.some(line=>line.pc===pc || line.offset===pc),`${entity}: real instruction boundary ${pc}`);
-    }
-    if(entity===4660) {
-      assert.deepEqual(report.source_failure.causes,[
-        {domain:'abcd::source::ClassSelfError',value:5}]);
-      const recovery=report.source_failure.class_self_initialization.recovery;
-      assert.equal(recovery.kind,13);
-      assert.equal(recovery.projection,3);
-      assert.equal(recovery.read,3);
-      assert.equal(recovery.guard,4);
     }
 
     if(entity===28303) {

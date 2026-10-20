@@ -359,8 +359,15 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
         return FamilyPrepareFailure{FamilyPrepareError::kPlacement};
       auto& input = preparation->bodies[prepared_body++];
       if (auto* failure = std::get_if<FamilyPrepareFailure>(&input)) return *failure;
+      auto target = destination();
+      if (tree.class_self && tree.class_self->certificate) {
+        target.class_inner = tree.class_self->certificate;
+        // The certificate's family zero is the initializer; preparation owns
+        // constructor/literal/accessor occurrences in this same verified order.
+        target.class_family = static_cast<std::uint32_t>(prepared_body);
+      }
       return PreparedFamily::Finish(file, header, index, lookup,
-          std::get<FamilyPreparation>(std::move(input)), destination(), budget, &creator, creator_storage);
+          std::get<FamilyPreparation>(std::move(input)), target, budget, &creator, creator_storage);
     };
     const ParentModuleInput modules{creator.input,
         {creator.values.graph.origins[creator.values.graph.ops[operation.value].origin.value].site.value}};

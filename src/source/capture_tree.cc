@@ -1,5 +1,7 @@
 #include "capture_tree.h"
 #include "class_tree.h"
+#include "class_inner_scope.h"
+#include <bit>
 #include "function_context.h"
 #include <algorithm>
 #include <bit>
@@ -119,6 +121,23 @@ std::variant<std::uint64_t, CaptureTreeError> VerifyCaptureTree(
           alias.target == CapturedSymbol{outer.owner, parent_symbol}, Error::kTarget);
       const auto& source = outer.symbols[parent_symbol.value];
       const auto& destination = inner.symbols[child_symbol.value];
+      if (destination.kind == BindingKind::kClassInner) {
+        Require(inner.class_scope && inner.class_inner && child.flow.original &&
+            child.flow.original->cells && binding.child.value < child.flow.original->cells->bindings.size(), Error::kCell);
+        const auto& storage = child.flow.original->cells->bindings[binding.child.value].storage;
+        const auto* depth = std::get_if<analysis::CapturedDepth>(&storage.environment);
+        step(std::bit_width(inner.class_scope->Scope().requirements.size()) + 1);
+        Require(depth && inner.class_scope->SelfStorage({*depth, storage.slot}), Error::kCell);
+        if (class_anchor)
+          Require(inner.class_scope->Creator() == outer.method &&
+              inner.class_scope->Scope().binding.creation == class_anchor->creation,
+              Error::kCreation);
+        else Require(source.kind == BindingKind::kClassInner && outer.class_scope &&
+            outer.class_scope->SameClass(*inner.class_scope), Error::kCell);
+        // The alias above accounts for ORIGINAL environment transport. The
+        // certified inner symbol is a native class binding, not this cache.
+        continue;
+      }
       Require((source.kind == BindingKind::kLocal || source.kind == BindingKind::kCapture) &&
           destination.kind == BindingKind::kCapture, Error::kCell);
       Require(source.name.value < outer.names.size() && destination.name.value < inner.names.size(), Error::kName);
@@ -204,6 +223,19 @@ std::variant<std::uint64_t, CaptureTreeError> VerifyClassCaptureDestination(
           alias.symbol.value < child.symbols.size(), Error::kTarget);
       const auto& source = parent.tree.symbols[alias.target.symbol.value];
       const auto& target = child.symbols[alias.symbol.value];
+      if (target.kind == BindingKind::kClassInner) {
+        Require(child.class_scope && child.class_inner &&
+            child.class_scope->Creator() == parent.tree.method &&
+            parent.expression.value < parent.tree.expressions.size() &&
+            std::get<ClassExpr>(parent.tree.expressions[parent.expression.value].expression).definition->class_self &&
+            std::get<ClassExpr>(parent.tree.expressions[parent.expression.value].expression).definition->class_self->certificate &&
+            child.class_scope->SameClass(*std::get<ClassExpr>(parent.tree.expressions[parent.expression.value].expression).definition->class_self->certificate), Error::kCell);
+        const auto& spelling = std::get<ClassExpr>(parent.tree.expressions[parent.expression.value].expression).definition->name;
+        Require(target.name.value < child.names.size(), Error::kName);
+        step(spelling.size());
+        Require(child.names[target.name.value] == spelling, Error::kName);
+        continue;
+      }
       Require((source.kind == BindingKind::kLocal || source.kind == BindingKind::kCapture) &&
           target.kind == BindingKind::kCapture, Error::kCell);
       Require(source.name.value < parent.tree.names.size() && target.name.value < child.names.size(), Error::kName);

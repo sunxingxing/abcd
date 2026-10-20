@@ -114,14 +114,18 @@ void CheckClassSelfEnclosure(const corpus::AbcFile& file,
   }
   if (result.recovery &&
       result.recovery->projection ==
-          ClassSelfInitializationFailure::Projection::kFamilyEnclosure) {
+          ClassSelfInitializationFailure::Projection::kInitializerFamily) {
     bool missing = false;
     for (const auto& r : p.scope.Evidence().references)
       missing |= bool(r.owner.family || r.owner.member);
     for (const auto& e : p.initializer.tree.expressions)
       missing |= std::holds_alternative<FunctionExpr>(e.expression);
     Check(missing && !p.flow && !p.initializer.tree.class_scope);
-    std::cout << "member/child inner binding requires family enclosure\n";
+    const auto json=ClassSelfInitializationJson(result);
+    const auto restored=ParseClassSelfInitialization(json);
+    Check(restored && ClassSelfInitializationJson(*restored)==json);
+    Check(result.recovery->location.method && result.recovery->location.expression);
+    std::cout << "initializer child requires kInitializerFamily\n";
     return;
   }
   if (p.diagnostic.scope_view->outer && !result.bound_outer)
@@ -303,6 +307,105 @@ void CheckClassSelfEnclosure(const corpus::AbcFile& file,
       raw.call.creation, creator.input.Identity(), &globals, {}, &raw.call,
       definitions, RecoveryMode::kCompleteOnly, first_owner, &parent,
       &preparation, nullptr, &fields));
+  std::size_t member_scopes = 0;
+  const auto check_family = [&](const PreparedFamily& prepared) {
+    for (const auto& member : prepared.Family().members) {
+      auto& tree = const_cast<FunctionTree&>(member.tree); // Mutation oracle only; restored below.
+      if (!tree.class_scope) continue;
+      ++member_scopes;
+      TreeCheckBudget q({});
+      VerifyClassInnerScope(tree, q);
+      TreeCheckBudget exact({q.Bytes(), q.Work()});
+      VerifyClassInnerScope(tree, exact);
+      for (const auto limit : {analysis::SemanticBudget{q.Bytes()-1,q.Work()},
+                               analysis::SemanticBudget{q.Bytes(),q.Work()-1}}) {
+        bool refused = false;
+        try { TreeCheckBudget low(limit); VerifyClassInnerScope(tree,low); }
+        catch (TreeStructureError e) { refused = e==TreeStructureError::kResourceLimit || e==TreeStructureError::kWorkLimit; }
+        Check(refused);
+      }
+      const auto reject = [&] { Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(tree))); };
+      const auto method = tree.method;
+      ++tree.method.value; reject(); tree.method = method;
+      const auto binding = tree.class_inner->binding;
+      ++tree.class_inner->binding.slot.value; reject(); tree.class_inner->binding = binding;
+      const auto inner = tree.class_inner->name;
+      for (auto& symbol : tree.symbols) {
+        if (symbol.kind == BindingKind::kClassInner) {
+          symbol.declaration = DeclarationKind::kLet; reject();
+          symbol.declaration = DeclarationKind::kConst;
+          const auto name=symbol.name;
+          symbol.name={UINT32_MAX}; reject(); symbol.name=name;
+        } else if (symbol.kind == BindingKind::kParameter) {
+          const auto name = symbol.name; symbol.name = inner;
+          // Parameter scopes must not shadow a retained inner reference.
+          if (!tree.class_scope->Scope().references.empty()) reject();
+          symbol.name = name;
+        }
+      }
+      for (std::uint32_t symbol=0;symbol<tree.symbols.size();++symbol) {
+        if (tree.symbols[symbol].kind!=BindingKind::kClassInner) continue;
+        const auto origin=tree.expressions.front().origin;
+        tree.expressions.push_back({AssignmentExpr{SymbolTarget{SymbolId{symbol}},ExprId{0}},origin});
+        bool refused=false;
+        try { TreeCheckBudget write({}); VerifyClassInnerScope(tree,write); }
+        catch(TreeStructureError e) { refused=e==TreeStructureError::kBinding; }
+        Check(refused); tree.expressions.pop_back();
+        break;
+      }
+      const auto stamp = tree.class_scope->Owner();
+      const auto& original = stamp.family ? std::get<FamilyPreparation>(p.members.bodies[stamp.family-1]).Input()
+                                          : p.initializer_family;
+      const auto& g = original.members[stamp.member].function.Graph();
+      TreeCheckBudget selected({});
+      auto view = Take<std::shared_ptr<const ClassInnerScopeProof>>(ClassInnerScopeProof::Select(
+          tree.class_scope,stamp.family,stamp.member,g,selected));
+      Check(view->SameClass(*tree.class_scope));
+      TreeCheckBudget selected_exact({selected.Bytes(),selected.Work()});
+      Take<std::shared_ptr<const ClassInnerScopeProof>>(ClassInnerScopeProof::Select(
+          tree.class_scope,stamp.family,stamp.member,g,selected_exact));
+      TreeCheckBudget low_bytes({selected.Bytes()-1,selected.Work()});
+      Check(std::get<TreeStructureError>(ClassInnerScopeProof::Select(
+          tree.class_scope,stamp.family,stamp.member,g,low_bytes))==TreeStructureError::kResourceLimit);
+      TreeCheckBudget low({selected.Bytes(),selected.Work()-1});
+      Check(std::get<TreeStructureError>(ClassInnerScopeProof::Select(
+          tree.class_scope,stamp.family,stamp.member,g,low))==TreeStructureError::kWorkLimit);
+      TreeCheckBudget unlisted({});
+      Check(std::holds_alternative<TreeStructureError>(ClassInnerScopeProof::Select(
+          tree.class_scope,UINT32_MAX,stamp.member,g,unlisted)));
+      if (member_scopes == 1) {
+        auto changed = g;
+        for (const auto& ref : tree.class_scope->Scope().references) {
+          if (ref.owner != stamp) continue;
+          auto& use = changed.uses[changed.ops[ref.guard.value].first_use.value];
+          const auto operand=use.operand; use.operand=analysis::ValueId{UINT32_MAX};
+          TreeCheckBudget wrong_guard({});
+          Check(std::holds_alternative<TreeStructureError>(ClassInnerScopeProof::Select(
+              tree.class_scope,stamp.family,stamp.member,changed,wrong_guard)));
+          use.operand=operand;
+          for (auto& exit : changed.exceptional_exits) if (exit.op==ref.guard) {
+            const auto op=exit.op; exit.op={UINT32_MAX};
+            TreeCheckBudget wrong_exit({});
+            Check(std::holds_alternative<TreeStructureError>(ClassInnerScopeProof::Select(
+                tree.class_scope,stamp.family,stamp.member,changed,wrong_exit)));
+            exit.op=op; break;
+          }
+          break;
+        }
+      }
+    }
+  };
+  check_family(*layout->constructor);
+  for (const auto& member : layout->members) if (member) check_family(*member);
+  for (const auto& definition : layout->definitions)
+    for (const auto& member : definition.bodies) if (member) check_family(*member);
+  if (member_scopes) {
+    const auto certificate=layout->class_self->certificate;
+    layout->class_self->certificate.reset();
+    Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(built.tree)));
+    layout->class_self->certificate=certificate;
+    std::cout << "member inner scopes verified/mutated " << member_scopes << '\n';
+  }
   if (!layout->initializer->tree.captures.empty()) {
     std::ostringstream detached;
     const auto printed=PrintClassTree(*layout,detached,{}, {},&globals);
