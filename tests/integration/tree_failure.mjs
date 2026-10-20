@@ -29,7 +29,7 @@ try {
     const exported=run(structure,[abc,dest,'--value-source','--language-source']);
     assert.equal(exported.status,0,exported.stderr);
     const row=JSON.parse(readFileSync(join(dest,'manifest.json'),'utf8')).records.find(r=>r.entity===entity);
-    if(entity===4515 || entity===29268 || entity===28264 || entity===24892 || entity===6952 || entity===8166 || entity===4660 || entity===13920 || entity===18254) {
+    if(entity===28303 || entity===4515 || entity===29268 || entity===28264 || entity===24892 || entity===6952 || entity===8166 || entity===4660 || entity===13920 || entity===18254) {
       // For-in increment III completes 29268; Round 63 independently verifies
       // the retained phased selection prefix in 28264. Round 74 III/IV completes
       // shared LruCache 24892. All must publish exactly the CLI source.
@@ -76,21 +76,7 @@ try {
       assert.ok(lines.some(line=>line.pc===pc || line.offset===pc),`${entity}: real instruction boundary ${pc}`);
     }
 
-    if(entity===28303) {
-      // Staged activation and for-of cell-lifetime checks now succeed. Keep
-      // the exact next saved-reference refusal; PC620 now verifies.
-      assert.equal(report.source_failure.working_pc,642);
-      assert.deepEqual(report.source_failure.causes,[
-        {domain:'abcd::source::FunctionTreeError',value:1},
-        {domain:'abcd::source::ExpressionError',value:4},
-        {domain:'abcd::source::CallPlanError',value:4},
-        {domain:'abcd::source::CallReferenceError',value:1},
-        {domain:'abcd::source::EvaluationKind',value:1},
-        {domain:'abcd::source::TemporaryReason',value:4}]);
-      assert.deepEqual(report.source_failure.call_reference,{
-        kind:1,call:241,property:102,placement:1,temporary:4});
-      assert.equal(report.source_failure.tree,undefined);
-    }
+
 
 
   }

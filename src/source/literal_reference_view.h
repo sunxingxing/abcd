@@ -10,6 +10,7 @@ struct LiteralReferenceView {
   analysis::UseId argument;
   std::size_t events = 0;
   bool may_throw = false;
+  std::optional<analysis::OpId> thrower;
   bool operator==(const LiteralReferenceView&) const = default;
 };
 // Requires independent LiteralPlan/selection/object verification. Reconstructs

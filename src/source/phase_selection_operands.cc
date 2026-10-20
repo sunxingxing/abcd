@@ -644,6 +644,27 @@ void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan
   }
   plan.phase_selections = std::move(operands);
 }
+// A composition can expose another valid, still-uncommitted selection (for
+// example after a checked member base becomes one expression). Discovery is
+// not an obligation to migrate every candidate. Recheck exactly the sealed
+// choices; the independent placement census below still rejects every owned
+// logical branch, prefix or phi without its certificate.
+static bool RetainSealedSelections(const EvaluationPlan& plan,
+    std::vector<PhaseSelectionOperand>& candidates, TreeCheckBudget& budget) {
+  std::size_t next = 0;
+  for (std::size_t i = 0; i < candidates.size(); ++i) {
+    budget.Step();
+    if (next == plan.phase_selections.size()) break;
+    const auto wanted = plan.phase_selections[next].branch;
+    if (candidates[i].branch < wanted) continue;
+    if (candidates[i].branch != wanted) return false;
+    if (i != next) candidates[next] = std::move(candidates[i]);
+    ++next;
+  }
+  if (next != plan.phase_selections.size()) return false;
+  candidates.resize(next);
+  return true;
+}
 // After phase composition: rerun the same proof on the composed plan. Accept
 // only an identical result up to each selection's execution owner, which
 // legitimately moves to the composed root; then adopt those owners.
@@ -652,7 +673,7 @@ bool RefreshPhaseSelectionExecutions(const ValueProgram& graph, EvaluationPlan& 
   OperandSelections proof(graph, plan, budget);
   auto operands = proof.CheckAll(regions);
   proof.Account();
-  if (operands.size() != plan.phase_selections.size()) return false;
+  if (!RetainSealedSelections(plan, operands, budget)) return false;
   for (std::size_t i = 0; i < operands.size(); ++i) {
     // Field-wise, without copying the prefix/ancestor containers.
     const auto& a = operands[i]; const auto& b = plan.phase_selections[i];
@@ -674,8 +695,8 @@ void VerifyPhaseSelectionOperands(const ValueProgram& graph, const EvaluationPla
       plan.phase_prefixes.size() == graph.ops.size() && plan.phase_references.size() == graph.ops.size() && plan.phase_children.size() == graph.ops.size());
   const auto regions = FindPhasedPhiSelections(graph, plan, budget);
   OperandSelections proof(graph, plan, budget);
-  const auto expected_operands = proof.CheckAll(regions);
-  Require(plan.phase_selections.size() == expected_operands.size());
+  auto expected_operands = proof.CheckAll(regions);
+  Require(RetainSealedSelections(plan, expected_operands, budget));
   enum class BranchPlacement : std::uint8_t { kNone, kValue, kArm };
   std::vector<BranchPlacement> branches;
   std::vector<std::uint8_t> values, transports, prefixes;

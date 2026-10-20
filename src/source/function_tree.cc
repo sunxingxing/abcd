@@ -15,6 +15,7 @@
 #include "cell_lifetime.h"
 #include "completion_tree.h"
 #include "evaluation_disposition.h"
+#include "literal_field_forest.h"
 #include "exception_tree.h"
 #include "family_file.h"
 #include "for_in_emission.h"
@@ -1188,6 +1189,7 @@ class TreeBuilder {
         Require(expression.has_value() && GuardedPeer(evaluation_, id), Error::kOwnership);
         tree_.operations.push_back({id, *expression});
         const auto read = *GuardedPeer(evaluation_, id);
+        if (LiteralFieldPrefix(evaluation_, read)) continue;
         if (evaluation_.operations[read.value].kind == EvaluationKind::kRoot)
           Append(draft, Statement(ExpressionStmt{RootExpression(read, *expression)}, origin));
         else Require(evaluation_.operations[read.value].kind == EvaluationKind::kInline &&
@@ -1242,7 +1244,8 @@ class TreeBuilder {
         tree_.operations.push_back({id, statement});
       } else {
         tree_.operations.push_back({id, *expression});
-        if ((!original_prefixes_.empty() && original_prefixes_[id.value]) ||
+        if (LiteralFieldPrefix(evaluation_, id) ||
+            (!original_prefixes_.empty() && original_prefixes_[id.value]) ||
             (id.value < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[id.value]) ||
             evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kPredicateSnapshot || evaluation.kind == EvaluationKind::kNestedLiteral ||
             evaluation.kind == EvaluationKind::kPhiInput || evaluation.kind == EvaluationKind::kLogicalLeft) continue;
@@ -1741,7 +1744,7 @@ class TreeBuilder {
           }
         } else if (part.next) selection_paths_.push_back({part.next, path.terminal});
       }
-      if (evaluation_.operations[op.value].kind == EvaluationKind::kLogicalValue) {
+      if (evaluation_.operations[op.value].kind == EvaluationKind::kLogicalValue || LiteralFieldPrefix(evaluation_,op)) {
         tree_.operations.push_back({op, *expression});
       } else if (decision_prefix) {
         decision_roots_.push_back(*expression);

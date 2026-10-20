@@ -13,6 +13,7 @@
 #include "for_of_evaluation.h"
 #include "logical_evaluation.h"
 #include "logical_regions.h"
+#include "literal_field_forest.h"
 #include "tree_checks.h"
 #include "switch_region.h"
 #include "switch_syntax.h"
@@ -367,6 +368,7 @@ class FlowCheck {
           if (exceptions_ && op.life == analysis::ValueLife::kLive)
             edges_->Stage(id, block, child);
           if (op.life != analysis::ValueLife::kLive ||
+              (LiteralFieldPrefix(evaluation_, id) && !std::holds_alternative<analysis::ValueBranch>(op.operation)) ||
               (!original_prefixes_.empty() && original_prefixes_[id.value]) ||
               (id.value < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[id.value]) ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInline ||
@@ -395,6 +397,10 @@ class FlowCheck {
             Require(!logical_branches_.empty() && logical_branches_[id.value], Error::kPlacement);
             LogicalValue(logicals_[*logical_branches_[id.value]], region.block, child);
             continue;
+          }
+          if (LiteralFieldPrefix(evaluation_,id) && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
+            Require(!logical_branches_.empty()&&logical_branches_[id.value]&&flow_.expressions[id.value],Error::kPlacement);
+            LogicalAssignment(logicals_[*logical_branches_[id.value]],*flow_.expressions[id.value],region.block,child);continue;
           }
           if(control_.switches && cursor->value<switch_entries_.size() && switch_entries_[cursor->value] && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
             const auto r=*switch_entries_[cursor->value];Switch(r,region.block,child,pending);
@@ -1268,7 +1274,7 @@ class FlowCheck {
       if (!path) { anchors(terminal); return; }
       while (path) {
         budget_.Step(); const auto& part = control_.nodes[path->value];
-        anchors(part.block); path = part.next;
+        anchors(SourceBlock(part)); path = part.next;
       }
     };
     if (region.keep) path_anchors(region.keep_path, *region.keep);
@@ -1664,6 +1670,24 @@ class FlowCheck {
             actual->value < syntax->properties.first + syntax->properties.count, Error::kPlacement);
         next = actual->value + 1;
         Require(tree_.properties[actual->value].origin.value == graph_.ops[id.value].origin.value, Error::kPlacement);
+        if(id.value<evaluation_.literal_fields.fields.size()) {
+          const auto range=evaluation_.literal_fields.fields[id.value];
+          auto value=tree_.properties[actual->value].value;
+          for(std::size_t p=0;p<range.count;++p){
+            budget_.Step();const auto root=evaluation_.literal_fields.prefixes[range.first+p];
+            const auto& node=tree_.expressions[value.value];const auto* sequence=std::get_if<SequenceExpr>(&node.expression);
+            Require(sequence&&node.origin.value==graph_.ops[id.value].origin.value,Error::kSequence);
+            if(std::holds_alternative<analysis::ValueBranch>(graph_.ops[root.value].operation)) {
+              const auto* assignment=std::get_if<AssignmentExpr>(&tree_.expressions[sequence->left.value].expression);
+              Require(assignment&&flow_.expressions[root.value]==assignment->value,Error::kPlacement);
+              const auto* target=std::get_if<SymbolTarget>(&assignment->target);
+              const auto index=logical_branches_[root.value];Require(target&&index,Error::kPlacement);
+              const auto merged=logicals_[*index].merged;
+              Require(flow_.phis[merged.value]==target->symbol,Error::kSnapshot);
+            } else RootExpression(root,sequence->left);
+            value=sequence->right;
+          }
+        }
       }
       for (std::uint32_t p = syntax->buffered; p < syntax->properties.count; ++p) {
         budget_.Step();

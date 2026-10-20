@@ -24,6 +24,11 @@ std::vector<OpId> IndexPhaseInlineRoots(const ValueProgram& graph,
   for (const auto& module : plan.modules) {
     budget.Step(); if (module.pair.guard) parents[module.pair.guard->value] = module.pair.read;
   }
+  for (const auto& pair : plan.guarded_reads) {
+    budget.Step();
+    if (plan.operations[pair.read.value].kind == EvaluationKind::kInline)
+      parents[pair.guard.value] = pair.read;
+  }
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); if (color[i] != Visit::kUnseen) continue;
     std::size_t depth = 0, at = i;

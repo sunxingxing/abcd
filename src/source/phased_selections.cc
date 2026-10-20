@@ -85,7 +85,11 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
             continue;
           }
         }
-        if (kind != EvaluationKind::kPhiInput && kind != EvaluationKind::kInline && kind != EvaluationKind::kModuleGuard) return {};
+        const bool guarded = kind == EvaluationKind::kGuardedCellRead &&
+            !GuardedInput(evaluation,id) && GuardedPeer(evaluation,id) &&
+            evaluation.operations[GuardedPeer(evaluation,id)->value].kind == EvaluationKind::kInline;
+        if (kind != EvaluationKind::kPhiInput && kind != EvaluationKind::kInline &&
+            kind != EvaluationKind::kModuleGuard && !guarded) return {};
         const auto root = roots[id.value];
         if (evaluation.operations[root.value].kind != EvaluationKind::kPhiInput ||
             !graph.ops[root.value].result || (producer && *producer != root)) return {};

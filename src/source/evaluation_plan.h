@@ -3,6 +3,7 @@
 #define ABCD_SOURCE_EVALUATION_PLAN_H_
 #include "for_of_evaluation_plan.h"
 #include "joint_selection_use.h"
+#include "literal_field_types.h"
 
 #include <span>
 #include <algorithm>
@@ -188,6 +189,7 @@ struct EvaluationPlan {
   // objects and phased operand composition share the native forest/placement.
   // Original snapshots, external leaves, effects and catches remain checked.
   std::vector<std::optional<analysis::OpId>> logical_objects;
+  LiteralFields literal_fields;
   std::vector<NaNProjection> integer_nans;
   std::optional<ClassSelfOrder> self_order;
 };

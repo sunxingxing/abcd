@@ -7,6 +7,7 @@
 #include "expression_copies.h"
 #include "class_tree.h"
 #include "logical_evaluation.h"
+#include "literal_field_forest.h"
 
 #include <array>
 #include <algorithm>
@@ -78,7 +79,8 @@ class ForestBuilder {
           Require(incoming->value < selected_edges.size() && !selected_edges[incoming->value], Error::kOwnership);
           selected_edges[incoming->value] = 1;
         }
-        if (evaluation_.operations[region.branch.value].kind == EvaluationKind::kLogicalValue) {
+        if (evaluation_.operations[region.branch.value].kind == EvaluationKind::kLogicalValue ||
+            LiteralFieldPrefix(evaluation_,region.branch)) {
           const auto join = graph_.blocks[region.join.value].first_op.value;
           Require(join < graph_.ops.size() && !logical_joins[join], Error::kOwnership);
           logical_joins[join] = static_cast<std::size_t>(&region - logicals_.data());
@@ -220,6 +222,8 @@ class ForestBuilder {
       Step(); Require(region.original_prefix->size() <= kMaxId - prefixes, Error::kResourceLimit);
       prefixes += region.original_prefix->size();
     }
+    Require(evaluation_.literal_fields.prefixes.size() <= kMaxId-prefixes, Error::kResourceLimit);
+    prefixes += evaluation_.literal_fields.prefixes.size();
     constexpr std::size_t kNodesPerPrefix = 2; // Optional snapshot assignment, then sequence.
     Require(prefixes <= (kMaxId - operation_nodes - copies * kNodesPerCopy) / kNodesPerPrefix, Error::kResourceLimit);
     const auto close_nodes=iteration_view_?iteration_view_->closes.size():0;
@@ -846,7 +850,21 @@ class ForestBuilder {
       const auto id = *writes[i]; const auto& op = graph_.ops[id.value];
       const auto name = std::get<NameId>(constants_.operations[id.value]);
       const TreeOriginId field_origin{op.origin.value};
-      const auto value = Operand(graph_.uses[op.first_use.value + 1].operand, field_origin);
+      auto value = Operand(graph_.uses[op.first_use.value + 1].operand, field_origin);
+      if(id.value<evaluation_.literal_fields.fields.size()) {
+        const auto range=evaluation_.literal_fields.fields[id.value];
+        for(std::size_t p=range.count;p;--p){
+          Step();const auto root=evaluation_.literal_fields.prefixes[range.first+p-1];
+          Require(forest_.operations[root.value].has_value(),Error::kOwnership);
+          auto prefix=*forest_.operations[root.value];const auto& operation=graph_.ops[root.value];
+          if(evaluation_.operations[root.value].temporary){
+            Require(operation.result.has_value(),Error::kBinding);
+            const auto* symbol=std::get_if<SymbolId>(&forest_.bindings.values[operation.result->value]);Require(symbol,Error::kBinding);
+            prefix=Add(AssignmentExpr{SymbolTarget{*symbol},prefix},TreeOriginId{operation.origin.value});
+          }
+          value=Add(SequenceExpr{prefix,value},field_origin);
+        }
+      }
       Require(forest_.properties.size() < forest_.properties.capacity(), Error::kResourceLimit);
       const PropertyId property{static_cast<std::uint32_t>(forest_.properties.size())};
       const auto* own = std::get_if<analysis::ValueOwnWrite>(&op.operation);

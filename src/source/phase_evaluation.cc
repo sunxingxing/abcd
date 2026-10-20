@@ -8,6 +8,7 @@
 #include "checked_read_event.h"
 #include "logical_evaluation.h"
 #include "phase_composition.h"
+#include "literal_field_forest.h"
 
 namespace abcd::source {
 namespace {
@@ -154,6 +155,7 @@ std::variant<PhaseEvaluationCost, EvaluationFailure> VerifyPhaseExpressions(
     TreeCheckBudget selected_budget(allowance);
     if (!plan.phase_children.empty() || !plan.phase_selections.empty() || !plan.phase_transports.empty() || !plan.phase_prefixes.empty() || !plan.phase_references.empty() || !plan.logical_values.empty() || !plan.phase_compositions.empty())
       VerifyPhaseSelectionOperands(graph, plan, selected_budget);
+    VerifyLiteralFieldForests(graph, plan, selected_budget);
     // Composed trees are proved whole by their own ordered-event equations;
     // ordinary corridor coordinates are never mixed into the same equation.
     const auto composed = VerifyPhaseCompositions(graph, plan, selected_budget);

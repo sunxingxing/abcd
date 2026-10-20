@@ -601,7 +601,14 @@ class OperandCheck {
           // appears in syntax, always as a pre-allocation snapshot or leaf.
           const auto previous = edge_input_;
           edge_input_ = !IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_);
-          InputAt(1, property.value);
+          auto value=property.value;
+          if(i<evaluation_.literal_fields.fields.size()) {
+            const auto range=evaluation_.literal_fields.fields[i];
+            for(std::size_t p=0;p<range.count;++p){
+              budget_.Step();const auto& sequence=Node<SequenceExpr>(value);value=sequence.right;
+            }
+          }
+          InputAt(1, value);
           edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueString>) {
           const auto* text = std::get_if<TextId>(&constants_.operations[i]);

@@ -187,7 +187,7 @@ class Composition {
           selection_[consumer.value] = 1;
       begin_[consumer.value] = {op.block, op.order};
       last_[consumer.value] = atom->last;
-      if (transitive_ && atom->may_throw) thrower_[consumer.value] = consumer;
+      if (transitive_ && atom->may_throw) { Require(atom->thrower.has_value()); thrower_[consumer.value] = atom->thrower; }
       return true;
     }
     if (op.life != ValueLife::kLive || excluded_[consumer.value] ||
@@ -210,7 +210,7 @@ class Composition {
     auto cursor = Cursor{op.block, consumer.value - graph_.blocks[op.block.value].first_op.value};
     auto stop = Next(cursor);
     std::optional<OpId> last;
-    bool events = false, selection = false, fresh = false, checked = false, repaired = false, checked_argument = false;
+    bool events = false, selection = false, fresh = false, checked = false, repaired = false;
     for (std::uint32_t ordinal = op.use_count; ordinal != 0; --ordinal) {
       budget_.Step(); const UseId use{op.first_use.value + ordinal - 1};
       const auto link = Edge(consumer, use, mode == Mode::kBuild);
@@ -276,8 +276,8 @@ class Composition {
           fits |= stop.kind == Stop::Kind::kJoin && stop.region == *region_of_[end->value];
       }
       const auto child_thrower = transitive_ ? thrower_[producer.value] :
-          ((LiteralAtom(producer) ? LiteralAtom(producer)->may_throw :
-             EvaluationMayThrow(graph_, plan_, producer)) ? std::optional<OpId>{producer} : std::nullopt);
+          (LiteralAtom(producer) ? LiteralAtom(producer)->thrower :
+             EvaluationMayThrow(graph_, plan_, producer) ? std::optional<OpId>{producer} : std::nullopt);
       if (fits && child_thrower) {
         fits = fits_catch(*child_thrower);
         if (!fits && checked_mode_ && failures_[consumer.value]) failures_[consumer.value]->kind = GuardedCallError::kCatchState;
@@ -289,7 +289,6 @@ class Composition {
       if (checked_mode_) {
         checked |= checked_tree_[producer.value] != 0;
         repaired |= repaired_[producer.value] != 0;
-        if (graph_.uses[use.value].role == OperandRole::kArgument) checked_argument |= checked_tree_[producer.value] != 0;
       }
       if (link.added) { overlay_[producer.value] = use; added_[producer.value] = 1; fresh = true; }
       fresh |= fresh_[producer.value] != 0; selection |= selection_[producer.value] != 0;
@@ -300,8 +299,12 @@ class Composition {
     }
     if (Event(consumer)) { last = consumer; events = true; }
     if (checked_mode_) {
-      const auto property = mode == Mode::kBuild ? seed_[consumer.value] : MemberProperty(graph_, plan_, consumer);
-      if (property && checked_argument) {
+      const auto property = MemberProperty(graph_, plan_, consumer);
+      // A guarded read may be the retained base of an already saved member
+      // Reference, not only an argument of that Reference. Canonical use
+      // identity (including the explicit receiver) and the same ordered/catch
+      // equations above prove the native base read is evaluated once.
+      if (property && checked) {
         const auto placement = Placement(*property);
         repaired |= placement.kind == EvaluationKind::kInline && placement.consumer == op.first_use;
       }
@@ -403,7 +406,8 @@ class Composition {
       budget_.Step();
       const auto owner = literal_members_[i];
       if (!owner || !mask[owner->value]) continue;
-      Require(!mask[i] || i == owner->value);
+      Require(!mask[i] || i == owner->value ||
+          (i<plan_.literal_fields.members.size() && plan_.literal_fields.members[i]==owner));
       mask[i] = 1;
     }
   }
@@ -468,7 +472,9 @@ class Composition {
     const auto& op = graph_.ops[id.value];
     const auto& placement = plan_.operations[id.value];
     return op.life == ValueLife::kLive &&
-        (placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kPhiInput) &&
+        (placement.kind == EvaluationKind::kRoot || placement.kind == EvaluationKind::kPhiInput ||
+         (placement.kind == EvaluationKind::kInitializer && id.value < plan_.literal_fields.members.size() &&
+          plan_.literal_fields.members[id.value] && IsStagedLiteral(plan_.literals ? &*plan_.literals : nullptr,id))) &&
         (PhaseCorridors::Expression(op.operation) || PhaseCorridors::ConsumesOperands(op.operation));
   }
   OpEvaluation Placement(OpId op) const {
@@ -504,8 +510,11 @@ class Composition {
     // statement/decision is a separate obligation; do not extend this repair
     // into it or change unrelated selections' ownership.
     if (transitive_ && seed_[producer.value]) return false;
-    return placement.kind == EvaluationKind::kRoot && placement.temporary != TemporaryReason::kMultipleUses &&
+    return placement.kind == EvaluationKind::kRoot &&
+        (placement.temporary != TemporaryReason::kMultipleUses ||
+         (checked_mode_ && GuardedInput(plan_,producer))) &&
         placement.temporary != TemporaryReason::kPredicateSnapshot && !excluded_[producer.value] &&
+        !(producer.value < plan_.literal_fields.prefix_fields.size() && plan_.literal_fields.prefix_fields[producer.value]) &&
         !region_of_[producer.value] && !Owned(producer) && !Transport(producer) && Fusable(producer, consumer, use);
   }
   // One operand occurrence of a node: a committed selection, an owned
@@ -656,7 +665,7 @@ class Composition {
 };
 }  // namespace
 static void ComposePhasePass(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget, bool transitive) {
-  if (plan.flow != EvaluationFlow::kPhased || (plan.phase_selections.empty() && plan.member_updates.updates.empty())) return;
+  if (plan.flow != EvaluationFlow::kPhased || (plan.phase_selections.empty() && plan.member_updates.updates.empty() && plan.literal_fields.objects.empty())) return;
   std::vector<std::pair<OpId, UseId>> edges;
   budget.Admit(graph.ops.size(), sizeof(std::pair<OpId, UseId>)); edges.reserve(graph.ops.size());
   budget.Admit(edges.capacity() - graph.ops.size(), sizeof(std::pair<OpId, UseId>));
@@ -704,7 +713,7 @@ void ComposePhaseExpressions(const ValueProgram& graph, EvaluationPlan& plan, Tr
   ComposePhasePass(graph, plan, budget, false);
   // Zero drift: the old proof has first refusal. Only an unmet Reference may
   // request transport of already-verified throwing events through pure nodes.
-  if (plan.flow == EvaluationFlow::kPhased && !plan.phase_selections.empty() &&
+  if (plan.flow == EvaluationFlow::kPhased && (!plan.phase_selections.empty() || !plan.literal_fields.objects.empty()) &&
       HasUnmetReference(graph, plan, budget)) ComposePhasePass(graph, plan, budget, true);
 }
 static void ComposeCheckedPass(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget, bool transitive) {
@@ -753,7 +762,7 @@ std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, con
   std::vector<std::uint8_t> mask;
   if (plan.phase_compositions.empty() && plan.checked_compositions.empty()) return mask;
   Require(plan.flow == EvaluationFlow::kPhased);
-  Require(plan.phase_compositions.empty() || !plan.phase_selections.empty() || !plan.member_updates.updates.empty());
+  Require(plan.phase_compositions.empty() || !plan.phase_selections.empty() || !plan.member_updates.updates.empty() || !plan.literal_fields.objects.empty());
   budget.Array(mask, graph.ops.size());
   Composition proof(graph, plan, budget, false, true);
   for (std::size_t i = 0; i < plan.phase_compositions.size(); ++i) {
@@ -769,10 +778,12 @@ std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, con
       budget.Step(); const auto root = plan.checked_compositions[i];
       Require(!i || plan.checked_compositions[i - 1] < root);
       for (const auto node : checked.Verify(root)) {
-        budget.Step(); Require(!mask[node.value]); mask[node.value] = 1;
+        budget.Step();
+        const auto enclosing = node.value < plan.literal_fields.members.size() ? plan.literal_fields.members[node.value] : std::nullopt;
+        Require(!mask[node.value] || (enclosing && mask[enclosing->value])); mask[node.value] = 1;
         if (GuardedInput(plan, node)) {
           const auto guard = *GuardedPeer(plan, node);
-          Require(!mask[guard.value]); mask[guard.value] = 1;
+          Require(!mask[guard.value] || (enclosing && guard.value < plan.literal_fields.members.size() && plan.literal_fields.members[guard.value] == enclosing)); mask[guard.value] = 1;
         }
       }
     }

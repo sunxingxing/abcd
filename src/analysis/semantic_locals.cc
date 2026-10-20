@@ -303,9 +303,11 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       if (const auto* failure = std::get_if<SemanticProofFailure>(&checked)) return *failure;
       remaining_work -= std::get<std::uint64_t>(checked);
     } else if (!acyclic && !plan.cells.empty()) {
-      // A loop with no unclosed local read still needs activation evidence for
-      // guarded child requirements. Retain only dominance: do not change the
-      // existing initialized-read facts or infer a value from a loop backedge.
+      // A loop with no unclosed local read still has capture queries. Index
+      // completed stores as well as activation dominance: a child can capture
+      // an initialized cell even when the creator never loads that cell.
+      // No value is inferred from the backedge; allocation/store dominance and
+      // the family-wide write contract remain separate obligations.
       auto built = BuildNormalDominators(method.flow, {}, {remaining, remaining_work});
       const auto* tree = std::get_if<DominatorTree>(&built);
       if (!tree || tree->work.allocated_bytes > remaining || tree->work.steps > remaining_work) return resource();
@@ -319,8 +321,27 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
       for (std::size_t i = 0; i < tree->nodes.size(); ++i) {
         charge(); plan.block_entries[i] = tree->nodes[i].begin; plan.block_exits[i] = tree->nodes[i].end;
       }
+      if (plan.stores.size() > remaining / sizeof(LocalInitialization)) return resource();
+      plan.initializations.reserve(plan.stores.size());
+      const auto initialization_bytes = plan.initializations.capacity() * sizeof(LocalInitialization);
+      if (initialization_bytes > remaining) return resource();
+      remaining -= initialization_bytes;
+      const auto block_of = [&](InstructionId site) {
+        const auto after = std::upper_bound(method.flow.blocks.begin(), method.flow.blocks.end(), site.value,
+            [&](auto instruction, const FlowBlock& block) { charge(); return instruction < block.first_instruction; });
+        if (after == method.flow.blocks.begin()) throw resource();
+        return BlockId{static_cast<std::uint32_t>(after - method.flow.blocks.begin() - 1)};
+      };
+      for (const auto& store : plan.stores) {
+        charge(); const auto allocation = allocations[plan.cells[store.cell.value].environment.value];
+        if (!allocation) continue;
+        const auto a = block_of(*allocation), b = block_of(store.instruction);
+        const auto& scope = tree->nodes[b.value];
+        if (scope.begin && tree->Dominates(a, b) && (a != b || *allocation < store.instruction))
+          plan.initializations.push_back({store.cell, store.instruction, b, scope.begin, scope.end});
+      }
     }
-    if (acyclic) {
+    if (acyclic || !plan.initializations.empty()) {
       std::sort(plan.initializations.begin(), plan.initializations.end(), [&](const auto& a, const auto& b) {
         charge(); return std::tuple(a.cell.value, a.begin, a.store.value) < std::tuple(b.cell.value, b.begin, b.store.value);
       });
@@ -334,6 +355,8 @@ std::variant<LocalAccessPlan, SemanticProofFailure> ProveLocalAccesses(
         plan.initializations[kept++] = fact;
       }
       plan.initializations.resize(kept);
+    }
+    if (acyclic) {
       const auto size = [&](auto& vector, std::size_t n) {
         using T = typename std::decay_t<decltype(vector)>::value_type;
         if (n > remaining / sizeof(T)) throw resource();

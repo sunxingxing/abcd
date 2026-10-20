@@ -15,6 +15,7 @@
 #include "for_of_evaluation.h"
 #include "integer_nan.h"
 #include "literal_arm_view.h"
+#include "literal_field_forest.h"
 #include "logical_evaluation.h"
 #include "logical_regions.h"
 #include "module_evaluation.h"
@@ -617,6 +618,11 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       ComposeCheckedCalls(graph, plan, selection_budget);
       BuildMemberUpdates(graph, plan, selection_budget);
       if (!plan.member_updates.updates.empty()) ComposePhaseExpressions(graph, plan, selection_budget);
+      BuildLiteralFieldForests(graph, plan, selection_budget);
+      if (!plan.literal_fields.objects.empty()) {
+        BuildPhasedObjectOperands(graph, plan, selection_budget);
+        ComposePhaseExpressions(graph, plan, selection_budget);
+      }
       admit(selection_budget.Bytes(), 1); step(selection_budget.Work());
     }
     if(flow==EvaluationFlow::kNormal){TreeCheckBudget members({bytes,work});BuildMemberUpdates(graph,plan,members);admit(members.Bytes(),1);step(members.Work());}
@@ -632,6 +638,10 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         plan.member_updates.moves.capacity()*sizeof(std::optional<analysis::UseId>)+plan.member_updates.wires.capacity();
     for(const auto& update:plan.member_updates.updates){step();member_bytes+=update.inputs.capacity()*sizeof(MemberUpdateInput)+update.ports.capacity()*sizeof(MemberUpdatePort);}
     plan.allocated_bytes = member_bytes +
+        plan.literal_fields.objects.capacity()*sizeof(LiteralFieldObject) +
+        plan.literal_fields.fields.capacity()*sizeof(LiteralFieldRange) +
+        plan.literal_fields.prefixes.capacity()*sizeof(analysis::OpId) +
+        (plan.literal_fields.prefix_fields.capacity()+plan.literal_fields.members.capacity())*sizeof(std::optional<analysis::OpId>) +
         plan.literal_arm_inputs.capacity() *
             sizeof(std::optional<analysis::UseId>) +
         plan.checked_failures.capacity() * sizeof(GuardedCallFailure) +

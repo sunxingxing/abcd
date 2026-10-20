@@ -3,6 +3,7 @@
 #include "effect_order.h"
 #include "evaluation_aliases.h"
 #include "literal_reference_view.h"
+#include "literal_field_forest.h"
 #include "logical_evaluation.h"
 #include "phase_corridor.h"
 
@@ -153,17 +154,16 @@ std::vector<std::optional<OpId>> Objects(const ValueProgram& graph, const Evalua
   }
   budget.Admit(phase_budget.Cost().bytes, 1); budget.Step(phase_budget.Cost().work);
   for (std::size_t i = 0; i < selected.size(); ++i) { budget.Step(); if (rejected[i]) selected[i].reset(); }
+  for(const auto& object:plan.literal_fields.objects){budget.Step();selected[object.allocation.value]=object.last;}
   return selected;
 }
 }  // namespace
 
-std::vector<std::optional<LiteralReferenceView>> IndexLiteralReferences(
+static std::vector<std::optional<LiteralReferenceView>> IndexLegacyLiteralReferences(
     const ValueProgram& graph, const EvaluationPlan& plan,
     TreeCheckBudget& budget, std::vector<std::optional<OpId>>* members) {
   std::vector<std::optional<LiteralReferenceView>> result;
-  if (plan.literal_arm_inputs.empty() || plan.logical_objects.empty() ||
-      !plan.literals)
-    return result;
+  if (plan.literal_arm_inputs.empty() || plan.logical_objects.empty() || !plan.literals) return result;
   const auto roots = Owners(graph, plan, budget, true);
   auto checked = BuildEffectOrder(graph, budget.Remaining(), roots);
   if (const auto* e = std::get_if<ValueAvailabilityError>(&checked)) {
@@ -289,6 +289,7 @@ std::vector<std::optional<LiteralReferenceView>> IndexLiteralReferences(
     proof.may_throw |=
         graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow;
     const OpId id{static_cast<std::uint32_t>(i)};
+    if(graph.ops[i].exceptional==ExceptionalCompletion::kMayThrow)proof.thrower=id;
     if (phases.HasCatchCopies(id) ||
         (graph.ops[i].exceptional == ExceptionalCompletion::kMayThrow &&
          !phases.SameCatch(id, proof.call)))
@@ -376,6 +377,29 @@ std::vector<std::optional<LiteralReferenceView>> IndexLiteralReferences(
   return result;
 }
 
+std::vector<std::optional<LiteralReferenceView>> IndexLiteralReferences(
+    const ValueProgram& graph, const EvaluationPlan& plan,
+    TreeCheckBudget& budget, std::vector<std::optional<OpId>>* members) {
+  std::vector<std::optional<OpId>> local;
+  auto& owned=members?*members:local;
+  auto result=IndexLegacyLiteralReferences(graph,plan,budget,&owned);
+  if(plan.literal_fields.objects.empty())return result;
+  if(result.empty())budget.Array(result,graph.ops.size());
+  if(owned.empty())budget.Array(owned,graph.ops.size());
+  for(const auto& object:plan.literal_fields.objects){
+    budget.Step();
+    result[object.allocation.value]=LiteralReferenceView{object.allocation,object.last,object.call,object.callee,object.argument};
+  }
+  for(std::size_t i=0;i<plan.literal_fields.members.size();++i){
+    budget.Step();const auto owner=plan.literal_fields.members[i];if(!owner)continue;
+    Require(!owned[i]||owned[i]==owner);owned[i]=owner;
+    if(!HasOrderedEffect(graph.ops[i]))continue;
+    auto& view=*result[owner->value];++view.events;
+    if(graph.ops[i].exceptional==ExceptionalCompletion::kMayThrow){view.may_throw=true;view.thrower=OpId{static_cast<std::uint32_t>(i)};}
+  }
+  return result;
+}
+
 void BuildPhasedObjectOperands(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
   auto selected = Objects(graph, plan, budget);
   bool any = false;
@@ -391,6 +415,9 @@ void BuildPhasedObjectOperands(const ValueProgram& graph, EvaluationPlan& plan, 
   plan.logical_objects = std::move(selected);
 }
 void VerifyPhasedObjectOperands(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
+  // Validate the new certificate before any of its IDs can index the object
+  // projection. This is also the early common-evaluation verification path.
+  VerifyLiteralFieldForests(graph,plan,budget);
   const auto expected = Objects(graph, plan, budget);
   Require(!expected.empty() || plan.logical_objects.empty());
   Require(plan.logical_objects.empty() || plan.logical_objects.size() == graph.ops.size());

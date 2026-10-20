@@ -217,7 +217,7 @@ target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
   src/source/array_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/phased_selections.cc
-    src/source/phased_selection_paths.cc src/source/phase_selection_operands.cc src/source/phase_predicate_prefix.cc src/source/phased_object_operands.cc src/source/selection_truth.cc)
+    src/source/phased_selection_paths.cc src/source/phase_selection_operands.cc src/source/phase_predicate_prefix.cc src/source/phased_object_operands.cc src/source/literal_field_forest.cc src/source/selection_truth.cc)
 target_sources(abcd_source PRIVATE src/source/scope_facts.cc src/source/exception_scope_facts.cc src/source/capture_plan.cc src/source/phased_capture_input.cc)
 target_sources(abcd_source PRIVATE src/source/cell_plan.cc)
 target_sources(abcd_source PRIVATE src/source/cell_lifetime.cc src/source/phased_capture_cells.cc)
@@ -877,6 +877,14 @@ if(BUILD_TESTING)
   target_include_directories(constructor_event_view_test PRIVATE tests/support)
   target_link_libraries(constructor_event_view_test PRIVATE abcd_source)
   add_test(NAME constructor_event_view_test COMMAND constructor_event_view_test)
+  add_executable(capture_completed_store_cycle_test tests/unit/source/capture_completed_store_cycle_test.cc)
+  target_link_libraries(capture_completed_store_cycle_test PRIVATE abcd_source)
+  target_include_directories(capture_completed_store_cycle_test PRIVATE tests/support)
+  add_test(NAME capture_completed_store_cycle_test COMMAND capture_completed_store_cycle_test)
+  add_executable(literal_field_forest_test tests/unit/source/literal_field_forest_test.cc)
+  target_link_libraries(literal_field_forest_test PRIVATE abcd_source)
+  target_include_directories(literal_field_forest_test PRIVATE tests/support)
+  add_test(NAME literal_field_forest_test COMMAND literal_field_forest_test)
   add_executable(nested_literal_arm_test tests/unit/source/nested_literal_arm_test.cc)
   target_include_directories(nested_literal_arm_test PRIVATE tests/support)
   target_link_libraries(nested_literal_arm_test PRIVATE abcd_source)
@@ -1122,6 +1130,11 @@ if(BUILD_TESTING)
   add_test(NAME parameter_expression_test COMMAND parameter_expression_test)
   if(ABCD_BUILD_TOOLS AND Python3_Interpreter_FOUND AND
       EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+    add_test(NAME staged_field_roundtrip_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/staged_field_roundtrip.py"
+      $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures"
+      "${CMAKE_CURRENT_BINARY_DIR}/staged-field-roundtrip" --temporary)
     add_test(NAME for_of_user_try_roundtrip_test COMMAND ${Python3_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/for_of_multiple_roundtrip.py"
       $<TARGET_FILE:abc_structure>
@@ -3144,6 +3157,12 @@ if(BUILD_TESTING)
       add_test(NAME guarded_captures_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_captures.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_captures)
+      add_test(NAME literal_field_forests_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/literal_field_forests.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/literal_field_forests)
+      add_test(NAME captured_this_loop_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/captured_this_loop.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/captured_this_loop)
       add_test(NAME capture_scope_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/capture_scope.mjs
         $<TARGET_FILE:abc_structure>

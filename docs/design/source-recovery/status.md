@@ -9,6 +9,54 @@
 
 
 
+## Staged call-field forests; TimeUtils complete (2026-10-21)
+
+- Baseline/OLD **2a0ca2a8**. Added `LiteralFields` derivation and independent
+  verification over the existing private LiteralPlan, selected-arm/constructor
+  forests and checked binding reads. Prefix snapshots and native conditional
+  assignments execute inside their original field, after the saved member
+  callee and before its single invocation. Allocation exclusion, non-escape,
+  original phi/Commit identity and catch-copy/order checks remain mandatory.
+  No new premise or sample-specific admission.
+- **o5/28303 m28799 completes**. PC642's object was only the first of three
+  staged arguments; all three now verify through tree/operand/recovery. Fixed
+  selected-arm anchor mapping through `SourceBlock` for projected for-of
+  control, and construct retained conditional assignments at their proven join
+  before lowering the containing object. `tree_failure_cli_test` now checks
+  actual CLI/manifest completion and exact published-source identity.
+- **o36/11209** passes the captured-this activation gap in getVideoProfile
+  m12561 (store PC12, closure creation PC187, m11413 read PC29). The shared
+  cyclic dominance index now includes completed stores even when the creator
+  itself has no local load. Its next refusal is m12194 `initCamera`,
+  `PhasedMethodError::kControl > ExceptionControlError::kCrossEntry` (3), at
+  the independent compound-decision shared-arm/continuation check. This
+  remains typed; no control ownership check is relaxed.
+- Final 40-input cohorts: previous flags **541/620**, source **599/620**
+  (**+1**, TimeUtils). Zero regressions and zero text changes to all previously
+  complete records. Only o5 and o36 manifest rows change. New output passes
+  `node --check`.
+- Full build passes; **65/65** source-regression; **5/5** new tests; touched
+  sweep **285/305**, with the same 20 pre-existing failures reproduced on OLD
+  (18 via CTest, two by their OLD-binary commands). Node differentials cover
+  **440** field/for-of scenarios and **24** captured-loop scenarios, with eight
+  behavioral mutations. A separate early-TDZ closure fixture remains refused
+  at the existing expression-ownership boundary, not counted as published.
+- Real SDK round-trips: three fixtures, default/O0, **18 method pairs**;
+  six identical entry methods and twelve unnormalized source-normal-form
+  differences (private snapshot/phi storage, binding names, Boolean branch and
+  protocol register/label layout). Calls/receivers, field definitions, guards
+  and catch/close traces are independently checked; no normalization is counted
+  as bytecode equality. Compiler/disassembler hashes and all differences are
+  retained in `build/review/staged-fields/roundtrip-verified/`.
+  Strict `grouping_bytecode.py` also ran: 3 differing records per optimization
+  level, no unverified compilation, 3/3 Node syntax checks. This is a documented
+  non-equality result for original/recovered normal forms, not a grouping pass.
+- Exact 200/201/400/800 budgets and mutations pass. Actual unit RSS 50.2 MB;
+  four-child-plus-parent cohort upper bounds 175.3 MB / 164.5 MB. Evidence,
+  original/recovered excerpts and the o36 follow-up design:
+  [staged-call-field-forests.md](staged-call-field-forests.md).
+
+
 ## Guarded captured PutValue; o26/4515 complete (2026-10-21)
 
 - Baseline/OLD worktree **168ad183**. Added `guarded_stores` derivation and
