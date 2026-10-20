@@ -28,7 +28,7 @@ DevEco Studio's bundled es2abc (`--bc-version` 24.0.0.0), command
 | `phassign` | `r = 'a' + S1 + 'b' + S2` (no call root) | complete, Node-equal trace |
 | `phthrowarm` | The selected arm's getter throws inside a concatenation | complete, Node-equal trace |
 | `phnested` | A selection nested in another selection's arm inside a concatenation | refused, same chain as `optarg` |
-| `phorphan` | One call fails at a pure `typeof` wrapper over a selection Binary while a sibling call composes | refused, same chain as `optarg` (an orphaned new edge would instead give `EvaluationError::kOrder`) |
+| `phorphan` | A pure `typeof` wrapper over a selection Binary beside another composed call | completes with the transitive original-throw summary; receiver/getter mutations and the Node oracle remain mandatory |
 | `phcomma` | `obj.f('a' + (G(0), H ? x.g.h : 1) + 'b')`: a comma side effect is a root event inside the span | refused, same chain as `optarg` |
 | `optarg` | `o.f(G(x.g?.h))`: the member callee is read before an argument whose optional chain splits the call's region | refused (its nested `??` selection has no single consumer) with `FunctionTreeError::kExpression → ExpressionError::kUnsupportedOperation → CallPlanError::kReference` |
 

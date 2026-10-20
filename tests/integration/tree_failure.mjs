@@ -10,7 +10,7 @@ const cases = [
   ['DocsSample/DistributedAppDev/DistributedAuthentication', 4660, 4878, 8],
   ['UI/CustomAnimationTab', 8166, 8638],
   ['DocsSample/ArkTS/ArkTsConcurrent/ApplicationMultithreadingDevelopment/PracticalCasesSecond', 24892, 25024],
-  ['UI/CalendarViewSwitch', 28303, 28799, 620],
+  ['UI/CalendarViewSwitch', 28303, 28799, 642],
   ['DocsSample/DriverDevelopmentKit/ScsiPeripheralDemo', 13920, 14655],
   ['DocsSample/Media/Audio/AudioRoutingAndVolumeSample', 18254, 18564],
   ['UI/CustomAnimationTab', 6952, 7171, 93],
@@ -77,20 +77,17 @@ try {
 
     if(entity===28303) {
       // Staged activation and for-of cell-lifetime checks now succeed. Keep
-      // the exact downstream guarded-reference refusal and original sites.
-      assert.equal(report.source_failure.working_pc,620);
+      // the exact next saved-reference refusal; PC620 now verifies.
+      assert.equal(report.source_failure.working_pc,642);
       assert.deepEqual(report.source_failure.causes,[
         {domain:'abcd::source::FunctionTreeError',value:1},
         {domain:'abcd::source::ExpressionError',value:4},
         {domain:'abcd::source::CallPlanError',value:4},
         {domain:'abcd::source::CallReferenceError',value:1},
         {domain:'abcd::source::EvaluationKind',value:1},
-        {domain:'abcd::source::TemporaryReason',value:4},
-        {domain:'abcd::source::GuardedCallError',value:1}]);
+        {domain:'abcd::source::TemporaryReason',value:4}]);
       assert.deepEqual(report.source_failure.call_reference,{
-        kind:1,call:231,property:183,placement:1,temporary:4,
-        checked:{kind:1,call:231,read:20,guard:21,use:257,
-          read_pc:56,read_working_pc:56,guard_pc:58,guard_working_pc:58}});
+        kind:1,call:241,property:102,placement:1,temporary:4});
       assert.equal(report.source_failure.tree,undefined);
     }
 

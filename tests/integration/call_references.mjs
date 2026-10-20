@@ -18,7 +18,7 @@ const [structure, fixtures] = process.argv.slice(2);
 const complete = ['single', 'twoargs', 'computed', 'rewrite', 'throwing', 'noncallable',
   'phplain', 'phtrue', 'phfalse', 'phthrow', 'phrewrite', 'phnoncall', 'realmlit',
   // Composed across committed selections (call-references.md §5.4).
-  'phconcat', 'phtwo', 'phsiblings', 'phprim', 'phprimthrow', 'phrewritearm', 'phassign', 'phthrowarm'];
+  'phconcat', 'phtwo', 'phsiblings', 'phprim', 'phprimthrow', 'phrewritearm', 'phassign', 'phthrowarm', 'phorphan'];
 const throwsBeforeCall = new Set(['throwing', 'phthrow', 'phprimthrow', 'phthrowarm']);
 const directory = mkdtempSync(join(tmpdir(), 'abcd-call-references-'));
 try {
@@ -64,9 +64,9 @@ try {
   // Still refused with the same typed chain: a selection nested inside another
   // selection's arm of a concatenation, and a comma side effect inside the
   // argument (a root event outside the call tree breaks the order proof).
-  // phorphan: one call fails at a pure typeof wrapper while a sibling composes;
-  // the failed tree's new edge must be withdrawn (else EvaluationError=6).
-  for (const name of ['optarg', 'phnested', 'phcomma', 'phorphan']) {
+  // phorphan now completes: original throwing events are retained through its
+  // pure typeof wrapper. It is checked by the differential/mutations above.
+  for (const name of ['optarg', 'phnested', 'phcomma']) {
     const {record} = exportRecord(name);
     assert.equal(record.source_status, 3, name);
     const causes = record.source_failure?.causes ?? record.source_causes;

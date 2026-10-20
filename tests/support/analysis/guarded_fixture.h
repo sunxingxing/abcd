@@ -7,7 +7,7 @@
 namespace abcd::test {
 using namespace analysis;
 enum class GuardedCallCase { kPlain, kForeign, kCatchState, kOutsideCatch, kPureWrapper, kTwoReads, kExtraUse, kSatisfied };
-template<class F> auto WithGuardedGraph(std::size_t count, bool copies, bool split, bool escape, F&& inspect, bool reordered = false, bool calls = false, GuardedCallCase variant = GuardedCallCase::kPlain) {
+template<class F> auto WithGuardedGraph(std::size_t count, bool copies, bool split, bool escape, F&& inspect, bool reordered = false, bool calls = false, GuardedCallCase variant = GuardedCallCase::kPlain, bool pure_wrapper = false) {
   std::vector<std::uint8_t> bytes;
   const auto opcode = [&](abc::Opcode op) {
     const auto encoded = static_cast<std::uint16_t>(op);
@@ -39,7 +39,7 @@ template<class F> auto WithGuardedGraph(std::size_t count, bool copies, bool spl
     if (split) { opcode(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
     opcode(abc::Opcode::kTHROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16); bytes.insert(bytes.end(), {0, 0});
     if (calls) {
-      if (variant == GuardedCallCase::kPureWrapper) { opcode(abc::Opcode::kTYPEOF_IMM8); bytes.push_back(0); }
+      if ((variant == GuardedCallCase::kPureWrapper || pure_wrapper)) { opcode(abc::Opcode::kTYPEOF_IMM8); bytes.push_back(0); }
       opcode(abc::Opcode::kSTA_V8); bytes.push_back(3);
       if (variant == GuardedCallCase::kSatisfied) {
         opcode(abc::Opcode::kLDGLOBAL); opcode(abc::Opcode::kSTA_V8); bytes.push_back(1);

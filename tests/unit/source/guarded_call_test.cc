@@ -10,7 +10,8 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 namespace {
-auto Run(std::size_t count, bool copies = false, bool split = false) {
+auto Run(std::size_t count, bool copies = false, bool split = false,
+         test::GuardedCallCase variant = test::GuardedCallCase::kPlain) {
   return test::WithGuardedGraph(count, copies, split, false, [&](auto& graph, const auto& body, const auto& input) {
     const auto reads = std::get<GuardedReads>(ProveGuardedReads(graph));
     test::Check(reads.reads.size() == count);
@@ -77,9 +78,9 @@ auto Run(std::size_t count, bool copies = false, bool split = false) {
     }
     test::Check(std::get<EvaluationFailure>(build({high - 1, SemanticBudget{}.work})) == EvaluationError::kResourceLimit);
     return std::pair{plan.work, high};
-  }, false, true);
+  }, false, true, variant);
 }
-void Negative(test::GuardedCallCase variant) {
+void Negative(test::GuardedCallCase variant, bool pure_wrapper = false) {
   test::WithGuardedGraph(1, false, false, false, [&](auto& graph, const auto&, const auto&) {
     const auto reads = std::get<GuardedReads>(ProveGuardedReads(graph));
     const auto built = BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kConditional,
@@ -100,8 +101,8 @@ void Negative(test::GuardedCallCase variant) {
       }
       return;
     }
-    if (variant == test::GuardedCallCase::kTwoReads) {
-      test::Check(reads.reads.size() == 2);
+    if (variant == test::GuardedCallCase::kTwoReads || variant == test::GuardedCallCase::kPureWrapper) {
+      test::Check(reads.reads.size() == (variant == test::GuardedCallCase::kTwoReads ? 2U : 1U));
       test::Check(std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, plan)));
       return;
     }
@@ -123,7 +124,7 @@ void Negative(test::GuardedCallCase variant) {
       }
     }
     test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, changed)));
-  }, false, true, variant);
+  }, false, true, variant, pure_wrapper);
 }
 
 }
@@ -135,9 +136,19 @@ int main() {
     previous = cost;
   }
   Run(1, true); Run(1, true, true);
+  previous = {};
+  for (const auto count : {200U, 201U, 400U, 800U}) {
+    const auto cost = Run(count, false, false, test::GuardedCallCase::kPureWrapper);
+    if (count > 200) test::Check(cost.first <= 3 * previous.first && cost.second <= 3 * previous.second);
+    previous = cost;
+    std::cout << "guarded-pure " << count << " work=" << cost.first << " bytes=" << cost.second << '\n';
+  }
+  Run(1, true, true, test::GuardedCallCase::kPureWrapper);
   for (const auto variant : {test::GuardedCallCase::kForeign, test::GuardedCallCase::kCatchState,
       test::GuardedCallCase::kOutsideCatch, test::GuardedCallCase::kPureWrapper,
       test::GuardedCallCase::kTwoReads, test::GuardedCallCase::kExtraUse, test::GuardedCallCase::kSatisfied}) Negative(variant);
+  for (const auto variant : {test::GuardedCallCase::kForeign,
+      test::GuardedCallCase::kExtraUse}) Negative(variant, true);
   GuardedCallFailure failure{GuardedCallError::kCatchState, {0}, {1}, {2}, {3}};
   failure.read_pc = abc::CodeOffset{0}; failure.guard_pc = abc::CodeOffset{9}; failure.guard_working_pc = abc::CodeOffset{6};
   test::Check(ParseGuardedCall(nlohmann::json::parse(GuardedCallJson(failure).dump())) == failure);

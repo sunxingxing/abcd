@@ -133,3 +133,127 @@ that a copy opcode itself may throw. It must also reuse already-inline verified
 module read/guard atoms in regular composition. Each event keeps its dispatch,
 payload, pre-throw state and catch-copy obligations; the retained array is never
 reloaded/recomputed. Neither change is made here.
+
+## Original-event summaries through pure transports (2026-10-21)
+
+Baseline/wtbase **24b01ff0**. Fresh decoding confirms the earlier m28799
+classification. It is **not optional chaining**. LDLEXVAR at PC56 loads incoming
+`depth0/slot0`; the named Hole guard at PC58 throws ReferenceError to the caller.
+The native capture/SourceTdz contract still owns that binding. No new premise.
+
+```
+op20 PC56 -> v70; op21 PC58 guards v70 (Use23)
+op24 PC66 getPreviousMonthLastDays(base=v70) -> v73
+op33 PC86 invoke(callee=v73, receiver=v70, ...) -> v82
+op183 PC488 includes(base=v589) -> v592               // saved reference
+op192 PC516 selection -> phi v37
+op199 PC534 copy(v37, Use226) -> v602                // nonthrowing transport
+op200 PC536 module read -> v603
+op201 PC539 binary(v602, v603) -> v604
+op210 PC566 selection -> phi v38
+op227 PC610 get(base=v82 through copies, Use257, key=..., Use258) -> v627
+op228 PC613 binary(..., v627) -> v628
+op231 PC620 invoke(callee=v592 through copies, receiver=v589, arg=v628)
+```
+
+Use257 is the **base of the indexed read**, not a call callee/receiver and not
+the TimeUtils binding. Its actual producer is the retained, multiply observed
+PC86 call. Checked-call diagnostics carried that guard ancestor through the
+retained result and reported kUse. Replaying that call/read at PC610 would be
+incorrect. This change **does not absorb it**. The local failure was the later
+argument expression: a selection carries original throwing events, but its
+nonthrowing copy could neither supply a catch dispatch nor describe its final
+selection-join boundary. The old composition consequently could not reach the
+saved member read at PC488.
+
+The old composition runs first. Only an unmet member Reference requests the
+new pass. A prepaid, OpId-indexed throw summary carries either no throw or a
+representative of the subtree's original, catch-equivalent throwing events.
+Each child insertion independently checks the original dispatch and absence of
+catch-copy staging. A pure parent retains that summary; it does not acquire a
+fabricated exception exit. If the parent has its own throw, its dispatch must
+match too. Root staging remains at the original root; moving such a root as a
+child still refuses. A pure selection transport retains its **join** as its end
+boundary, rather than pretending that its copy was an ordered event. The
+single-entry/copy-free path, original selection arms/edges, unique consumption,
+receiver identity and event order checks are unchanged.
+
+Already-inline module read/guard atoms may participate with their original two
+events; module-read admission is unchanged. Guarded capture atoms still require
+the existing guarded-read proof and real capture binding. Allocation exclusions
+and LiteralPlan proofs are unchanged. The repair ends at the unmet invocation;
+it does not fuse that call into a later decision/store or admit newly discovered
+selections. The unchanged selection verifier must reproduce the original
+owners, prefixes and inputs, changing only the verified execution root. Failure
+keeps the old materialized plan and its located refusal.
+
+VerifyPhaseCompositions reconstructs the event summaries and boundaries from the
+original graph and the proposed ownership tree with an explicit post-order
+stack. TreeFlow and every recovery projection then verify the original individual
+action regions; a representative is only a catch-equivalence summary, never a
+replacement action/ExprId. Original guard, load, invocation and exception events
+stay separate. Work is O((V+E) log V) at most: constant-many shared indexes/passes,
+linear ownership traversals, and disjoint committed top-level selection regions.
+All new summary/seed vectors and stacks are admitted before allocation.
+
+**Result:** PC620 now verifies. The record remains incomplete at **PC642**,
+call241 / property102, without a GuardedCallError leaf:
+
+```
+op102 PC262 saved member read -> v526, Use115/base=v525
+op104 PC268 outer buffered object allocation -> v528
+... inner selections and PC620 includes call ...
+op237 PC631 own definition(base=v528 through copies, Use270, value=phi v39, Use271)
+op241 PC642 invoke(callee=v526 through copies, Use275,
+                   receiver=v524, Use276, argument=outer object, Use277)
+```
+
+That is a separate saved outer member / staged object-definition composition.
+It is not admitted by relaxing an allocation exclusion or by duplicating the
+retained array. tree_failure.mjs now pins this exact next Reference refusal.
+The guard's pinned runtime citations above remain the semantic authority.
+
+Tests extend guarded_call_test and phase_composition_test: pure transports,
+copy/block splits, wrong receiver/success/guard membership, every original throw
+remapped to a different handler, foreign observations, multiple uses, and exact
+200/201/400/800 work/byte boundaries (including one-less typed refusals).
+The real compiler fixture and detailed round-trip limits are in
+[guarded_reference_transports/README.md](../../../tests/integration/fixtures/guarded_reference_transports/README.md).
+`phorphan` now joins the existing call-reference differential/mutation corpus.
+
+## o26/4515: guarded late lexical writes, separate remaining proof
+
+The label “late module write” is not STMODULEVAR/export ordering in the current
+refusal. Fresh source-contract manifest evidence is
+`CaptureCellError::kInput > CaptureError::kScope > ScopeError::kInitialization`,
+m4696 originalPC254/working251, capture ordinal3 depth0/slot2, requested Language.
+The storage belongs to the module entry's **lexical environment**, `isPlaying`:
+
+- m5540 allocates a named 30-slot environment at PC0; creates m7782
+  `onAudioInterrupt` at PC60; first slot2 initializer commits at PC618.
+- m7782 creates async descendant m4696 at PC49 inside its implicit async handler;
+  the callback is passed to the external member invocation at PC58.
+- m4696 loads slot2 at PC242, checks Hole at PC244, then writes slot2 at PC254.
+  The RHS false is already materialized at PC239/240; the intervening operations
+  are copies. The guard dispatches to H623, not a synthetic caller exit.
+- The other writes to the same incoming storage are PC273 (read261/guard263)
+  and PC611 (read599/guard601). These fresh decoded pairs are evidence to
+  investigate, not an opcode-template admission.
+
+STLEXVAR itself does not check TDZ (`interpreter-inl.cpp:6118-6133`); the guard
+before each write is essential. It would be wrong to describe this particular
+write as unguarded, or to assume an external callback is invoked after PC618.
+The existing requirement lattice forwards the write as Language, so Rebase
+correctly refuses to invent an initialized capture at creation time.
+
+A premise-free next slice needs a **guarded-store correspondence**, not a
+module-write reorder: derive per-write original environment/slot identity,
+RHS evaluation, the same-activation Hole test dominating successful Commit,
+no bypass/reset, and original catch pre-state; prove that native lexical
+PutValue throws at that same point. Only when *every* descendant write has this
+proof may requirement forwarding carry SourceAccess with that certificate;
+an unguarded write must still dominate as Language. Keep the native declaration
+at PC618, with the real name and TDZ scope, and independently verify the store's
+recovery event/exception mapping (including H623). This crosses capture demand,
+ScopeFacts and lexical-store recovery; it is separate from the bounded expression
+composition implemented here. No production capture/module rule changed.

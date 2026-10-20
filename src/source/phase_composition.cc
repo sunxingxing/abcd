@@ -38,10 +38,10 @@ struct Frame {
 enum class Mode : std::uint8_t { kBuild, kVerify };
 class Composition {
  public:
-  Composition(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget, bool checked = false)
+  Composition(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget, bool checked = false, bool transitive = false)
       : graph_(graph), plan_(plan), budget_(budget), phase_budget_(budget.Remaining()),
         corridors_(graph, plan, phase_budget_, PhaseLiteralIntervals::kInclude,
-            checked ? CheckedReadFusion::kCompose : CheckedReadFusion::kStandalone), checked_mode_(checked) {
+            checked ? CheckedReadFusion::kCompose : CheckedReadFusion::kStandalone), checked_mode_(checked), transitive_(transitive) {
     budget.Admit(phase_budget_.Cost().bytes, 1);
     accounted_work_ = phase_budget_.Cost().work; budget.Step(accounted_work_);
     regions_ = FindPhasedPhiSelections(graph, plan, budget);
@@ -72,17 +72,17 @@ class Composition {
       budget.Step(); if (const auto* edge = std::get_if<EdgeId>(&bundle.incoming)) copied_[edge->value] |= !bundle.schedule.steps.empty();
     }
     // Literal intervals and phased object operands retain their own proofs.
-    // Checked-call composition can consume an already-inline module read's
-    // verified pair as an atom; it never changes module-read admission.
+    // A checked/event-summary repair may consume an already-inline module
+    // read's verified pair as an atom; module-read admission is unchanged.
     budget.Array(excluded_, graph.ops.size());
     if (plan.literals) for (const auto& literal : plan.literals->objects) {
       budget.Step(); if (literal.allocation.value < excluded_.size()) excluded_[literal.allocation.value] = 1;
     }
     for (const auto& pair : plan.guarded_reads) { budget.Step(); excluded_[pair.read.value] = !checked_mode_; excluded_[pair.guard.value] = 1; }
-    budget.Array(module_ends_, checked_mode_ && !plan.modules.empty() ? graph.ops.size() : 0);
+    budget.Array(module_ends_, (checked_mode_ || transitive_) && !plan.modules.empty() ? graph.ops.size() : 0);
     for (const auto& module : plan.modules) {
       budget.Step();
-      const bool retained = checked_mode_ && plan.operations[module.pair.read.value].kind == EvaluationKind::kInline;
+      const bool retained = (checked_mode_ || transitive_) && plan.operations[module.pair.read.value].kind == EvaluationKind::kInline;
       excluded_[module.pair.read.value] = !retained;
       if (retained) module_ends_[module.pair.read.value] = module.pair.guard;
       if (module.pair.guard) excluded_[module.pair.guard->value] = 1;
@@ -117,14 +117,15 @@ class Composition {
     budget.Array(selection_, graph.ops.size()); budget.Array(fresh_, graph.ops.size());
     budget.Array(checked_tree_, checked_mode_ ? graph.ops.size() : 0);
     budget.Array(repaired_, checked_mode_ ? graph.ops.size() : 0);
-    budget.Array(seed_, checked_mode_ ? graph.ops.size() : 0);
+    budget.Array(seed_, (checked_mode_ || transitive_) ? graph.ops.size() : 0);
     budget.Array(checked_source_, checked_mode_ ? graph.ops.size() : 0);
     budget.Array(failures_, checked_mode_ ? graph.ops.size() : 0);
-    if (checked_mode_) for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    if (checked_mode_ || transitive_) for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step(); const OpId call{static_cast<std::uint32_t>(i)};
       if (const auto property = MemberProperty(graph, plan, call);
           property && !MemberReferenceInline(graph, plan, call, *property)) seed_[i] = property;
     }
+    budget.Array(thrower_, transitive_ ? graph.ops.size() : 0);
     budget.Array(begin_, graph.ops.size()); budget.Array(last_, graph.ops.size());
     budget.Array(region_state_, regions_.size()); budget.Array(region_throw_, regions_.size());
     budget.Admit(graph.ops.size(), sizeof(Frame)); stack_.reserve(graph.ops.size());
@@ -152,7 +153,7 @@ class Composition {
       return false;
     };
     const auto module_end = module_ends_.empty() ? std::optional<OpId>{} : module_ends_[consumer.value];
-    if (checked_mode_ && (GuardedInput(plan_, consumer) || module_end)) {
+    if ((checked_mode_ && GuardedInput(plan_, consumer)) || module_end) {
       // Consume BOTH original events. Next proves execution count and no
       // intervening events/copies, independently of numeric OpId/PC adjacency.
       if (!module_end) checked_source_[consumer.value] = consumer;
@@ -161,14 +162,21 @@ class Composition {
       const auto& end = graph_.ops[guard.value];
       const auto preceding = Next({end.block, end.order});
       if (preceding.kind != Stop::Kind::kEvent || preceding.op != consumer) return fail();
-      valid_[consumer.value] = events_[consumer.value] = 1; checked_tree_[consumer.value] = !module_end;
+      valid_[consumer.value] = events_[consumer.value] = 1;
+      if (checked_mode_) checked_tree_[consumer.value] = !module_end;
+      if (transitive_) {
+        if (corridors_.HasCatchCopies(guard) || !corridors_.SameCatch(consumer, guard)) return fail();
+        thrower_[consumer.value] = guard;
+      }
       last_[consumer.value] = guard; begin_[consumer.value] = preceding.after;
       return true;
     }
     if (const auto* mutation=MemberUpdateAt(plan_,consumer)) {
       valid_[consumer.value]=events_[consumer.value]=selection_[consumer.value]=1;
       begin_[consumer.value]={graph_.ops[mutation->first.value].block,graph_.ops[mutation->first.value].order};
-      last_[consumer.value]=consumer;return true;
+      last_[consumer.value]=consumer;
+      if(transitive_)thrower_[consumer.value]=consumer;
+      return true;
     }
     if(MemberUpdateIntrinsic(plan_,consumer))return fail();
     if (const auto* atom = LiteralAtom(consumer)) {
@@ -179,13 +187,25 @@ class Composition {
           selection_[consumer.value] = 1;
       begin_[consumer.value] = {op.block, op.order};
       last_[consumer.value] = atom->last;
+      if (transitive_ && atom->may_throw) thrower_[consumer.value] = consumer;
       return true;
     }
     if (op.life != ValueLife::kLive || excluded_[consumer.value] ||
         (!PhaseCorridors::Expression(op.operation) && !PhaseCorridors::ConsumesOperands(op.operation))) return fail();
     // A moved throw point keeps this consumer's handler and needs no staging.
+    // A pure transport is not a throw site. Retain a representative of the
+    // original subtree's catch-equivalent events until its execution root is
+    // known; never invent an exception exit on the copy/binary operation.
+    // Each insertion checks its real dispatch and pre-throw copy state.
+    std::optional<OpId> subtree_thrower;
     const auto fits_catch = [&](OpId thrower) {
-      return may_throw && corridors_.SameCatch(thrower, consumer) && !corridors_.HasCatchCopies(thrower);
+      if (!transitive_)
+        return may_throw && corridors_.SameCatch(thrower, consumer) && !corridors_.HasCatchCopies(thrower);
+      if (corridors_.HasCatchCopies(thrower) ||
+          (subtree_thrower && !corridors_.SameCatch(thrower, *subtree_thrower)) ||
+          (may_throw && !corridors_.SameCatch(thrower, consumer))) return false;
+      subtree_thrower = thrower;
+      return true;
     };
     auto cursor = Cursor{op.block, consumer.value - graph_.blocks[op.block.value].first_op.value};
     auto stop = Next(cursor);
@@ -244,15 +264,22 @@ class Composition {
         if (link.added) continue;  // An eligible root keeps its snapshot.
         return fail();
       }
-      // Invariant of a composed node: each absorbed throw point has no catch
-      // copies and the node's handler, and a node that cannot throw absorbed
-      // none. Checking the child itself therefore covers its whole subtree.
-      bool fits = !events_[producer.value] ||
-          (stop.kind == Stop::Kind::kEvent && last_[producer.value] && stop.op == *last_[producer.value]);
-      if (fits && (LiteralAtom(producer)
-                       ? LiteralAtom(producer)->may_throw
-                       : EvaluationMayThrow(graph_, plan_, producer))) {
-        fits = fits_catch(producer);
+      // Old spans use the child opcode's dispatch. Event summaries instead
+      // retain its original throwing representative through pure transports;
+      // every other throw was checked against that same dispatch/state.
+      bool fits = !events_[producer.value];
+      if (const auto end = last_[producer.value]) {
+        fits |= stop.kind == Stop::Kind::kEvent && stop.op == *end;
+        // A pure copy of a selection still ends at that selection's join,
+        // not at an invented event on the copy. Keep the original boundary.
+        if (transitive_ && region_of_[end->value] && Committed(*end))
+          fits |= stop.kind == Stop::Kind::kJoin && stop.region == *region_of_[end->value];
+      }
+      const auto child_thrower = transitive_ ? thrower_[producer.value] :
+          ((LiteralAtom(producer) ? LiteralAtom(producer)->may_throw :
+             EvaluationMayThrow(graph_, plan_, producer)) ? std::optional<OpId>{producer} : std::nullopt);
+      if (fits && child_thrower) {
+        fits = fits_catch(*child_thrower);
         if (!fits && checked_mode_ && failures_[consumer.value]) failures_[consumer.value]->kind = GuardedCallError::kCatchState;
       }
       if (!fits) {
@@ -280,6 +307,15 @@ class Composition {
       }
       checked_tree_[consumer.value] = checked; repaired_[consumer.value] = repaired;
     }
+    if (transitive_) {
+      if (may_throw) {
+        if (subtree_thrower && !corridors_.SameCatch(*subtree_thrower, consumer)) return fail();
+        // The root itself has not moved: its own staging is allowed. Any
+        // parent that tries to absorb it must reject HasCatchCopies below.
+        subtree_thrower = consumer;
+      }
+      thrower_[consumer.value] = subtree_thrower;
+    }
     valid_[consumer.value] = 1; events_[consumer.value] = events; selection_[consumer.value] = selection;
     fresh_[consumer.value] = fresh; begin_[consumer.value] = cursor; last_[consumer.value] = last;
     return true;
@@ -298,7 +334,8 @@ class Composition {
       // Every final root decides, valid or not: a failed root may still hold
       // new edges below existing inline edges of its tree.
       if (Placement(id).kind == EvaluationKind::kInline) continue;
-      if (valid_[i] && fresh_[i] && (checked_mode_ ? checked_tree_[i] && repaired_[i] : selection_[i]) && StatementRoot(id)) { roots.push_back(id); continue; }
+      if (valid_[i] && fresh_[i] && (!transitive_ || seed_[i]) &&
+          (checked_mode_ ? checked_tree_[i] && repaired_[i] : selection_[i]) && StatementRoot(id)) { roots.push_back(id); continue; }
       Withdraw(id);
     }
     // Closure: every surviving new edge is reachable from a registered root.
@@ -344,6 +381,7 @@ class Composition {
           Placement(*seed_[i]).consumer == graph_.ops[i].first_use);
     };
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) { budget_.Step(); count += failed(i); }
+    output.clear();
     budget_.Admit(count, sizeof(GuardedCallFailure)); output.reserve(count);
     budget_.Admit(output.capacity() - count, sizeof(GuardedCallFailure));
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
@@ -462,6 +500,10 @@ class Composition {
   }
   bool Eligible(OpId producer, OpId consumer, UseId use) const {
     const auto& placement = plan_.operations[producer.value];
+    // Keep the repaired invocation at its original execution root. A later
+    // statement/decision is a separate obligation; do not extend this repair
+    // into it or change unrelated selections' ownership.
+    if (transitive_ && seed_[producer.value]) return false;
     return placement.kind == EvaluationKind::kRoot && placement.temporary != TemporaryReason::kMultipleUses &&
         placement.temporary != TemporaryReason::kPredicateSnapshot && !excluded_[producer.value] &&
         !region_of_[producer.value] && !Owned(producer) && !Transport(producer) && Fusable(producer, consumer, use);
@@ -587,6 +629,8 @@ class Composition {
   PhaseCorridors corridors_;
   std::uint64_t accounted_work_ = 0;
   bool checked_mode_;
+  bool transitive_;
+  std::vector<std::optional<OpId>> thrower_;
   std::vector<std::uint8_t> checked_tree_, repaired_;
   std::vector<std::optional<OpId>> seed_, checked_source_, module_ends_;
   std::vector<std::optional<GuardedCallFailure>> failures_;
@@ -611,14 +655,14 @@ class Composition {
   std::uint32_t stamp_ = 0;
 };
 }  // namespace
-void ComposePhaseExpressions(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+static void ComposePhasePass(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget, bool transitive) {
   if (plan.flow != EvaluationFlow::kPhased || (plan.phase_selections.empty() && plan.member_updates.updates.empty())) return;
   std::vector<std::pair<OpId, UseId>> edges;
   budget.Admit(graph.ops.size(), sizeof(std::pair<OpId, UseId>)); edges.reserve(graph.ops.size());
   budget.Admit(edges.capacity() - graph.ops.size(), sizeof(std::pair<OpId, UseId>));
   std::vector<OpId> roots;
   {
-    Composition proof(graph, plan, budget);
+    Composition proof(graph, plan, budget, false, transitive);
     roots = proof.Build(edges);
     proof.Account();
   }
@@ -647,7 +691,23 @@ void ComposePhaseExpressions(const ValueProgram& graph, EvaluationPlan& plan, Tr
   if(previous.empty())plan.phase_compositions.clear();
   else plan.phase_compositions=std::move(previous);
 }
-void ComposeCheckedCalls(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+static bool HasUnmetReference(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget) {
+  bool unmet = false;
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    budget.Step(); const OpId call{static_cast<std::uint32_t>(i)};
+    if (const auto property = MemberProperty(graph, plan, call))
+      unmet |= !MemberReferenceInline(graph, plan, call, *property);
+  }
+  return unmet;
+}
+void ComposePhaseExpressions(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+  ComposePhasePass(graph, plan, budget, false);
+  // Zero drift: the old proof has first refusal. Only an unmet Reference may
+  // request transport of already-verified throwing events through pure nodes.
+  if (plan.flow == EvaluationFlow::kPhased && !plan.phase_selections.empty() &&
+      HasUnmetReference(graph, plan, budget)) ComposePhasePass(graph, plan, budget, true);
+}
+static void ComposeCheckedPass(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget, bool transitive) {
   if (plan.flow != EvaluationFlow::kPhased || plan.guarded_reads.empty()) return;
   bool needed = false;
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -658,8 +718,13 @@ void ComposeCheckedCalls(const ValueProgram& graph, EvaluationPlan& plan, TreeCh
   std::vector<std::pair<OpId, UseId>> edges;
   budget.Admit(graph.ops.size(), sizeof(std::pair<OpId, UseId>)); edges.reserve(graph.ops.size());
   budget.Admit(edges.capacity() - graph.ops.size(), sizeof(std::pair<OpId, UseId>));
-  Composition proof(graph, plan, budget, true);
-  auto roots = proof.Build(edges); proof.Failures(plan.checked_failures); proof.Account();
+  Composition proof(graph, plan, budget, true, transitive);
+  auto roots = proof.Build(edges);
+  // Keep the old located refusal for an unsuccessful fallback. The summary
+  // pass proves placements; it must not replace an existing diagnostic with
+  // an incidental ancestor of a retained value.
+  if (!transitive) proof.Failures(plan.checked_failures);
+  proof.Account();
   if (roots.empty()) return;
   std::vector<OpEvaluation> original;
   budget.Admit(edges.size(), sizeof(OpEvaluation)); original.reserve(edges.size());
@@ -668,10 +733,20 @@ void ComposeCheckedCalls(const ValueProgram& graph, EvaluationPlan& plan, TreeCh
     budget.Step(); original.push_back(plan.operations[producer.value]);
     plan.operations[producer.value] = {EvaluationKind::kInline, use, {}};
   }
-  plan.checked_compositions = std::move(roots);
+  auto previous = std::move(plan.checked_compositions);
+  Require(roots.size() <= std::numeric_limits<std::size_t>::max() - previous.size());
+  budget.Admit(previous.size() + roots.size(), sizeof(OpId));
+  plan.checked_compositions.reserve(previous.size() + roots.size());
+  budget.Admit(plan.checked_compositions.capacity() - previous.size() - roots.size(), sizeof(OpId));
+  std::set_union(previous.begin(), previous.end(), roots.begin(), roots.end(), std::back_inserter(plan.checked_compositions));
   if (RefreshPhaseSelectionExecutions(graph, plan, budget)) return;
   for (std::size_t i = 0; i < edges.size(); ++i) { budget.Step(); plan.operations[edges[i].first.value] = original[i]; }
-  plan.checked_compositions.clear();
+  plan.checked_compositions = std::move(previous);
+}
+void ComposeCheckedCalls(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
+  ComposeCheckedPass(graph, plan, budget, false);
+  if (plan.flow == EvaluationFlow::kPhased && !plan.guarded_reads.empty() &&
+      HasUnmetReference(graph, plan, budget)) ComposeCheckedPass(graph, plan, budget, true);
 }
 std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, const EvaluationPlan& plan,
     TreeCheckBudget& budget) {
@@ -680,7 +755,7 @@ std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, con
   Require(plan.flow == EvaluationFlow::kPhased);
   Require(plan.phase_compositions.empty() || !plan.phase_selections.empty() || !plan.member_updates.updates.empty());
   budget.Array(mask, graph.ops.size());
-  Composition proof(graph, plan, budget);
+  Composition proof(graph, plan, budget, false, true);
   for (std::size_t i = 0; i < plan.phase_compositions.size(); ++i) {
     budget.Step(); const auto root = plan.phase_compositions[i];
     Require(!i || plan.phase_compositions[i - 1] < root);
@@ -689,7 +764,7 @@ std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, con
   proof.MaskLiteralMembers(mask);
   proof.Account();
   if (!plan.checked_compositions.empty()) {
-    Composition checked(graph, plan, budget, true);
+    Composition checked(graph, plan, budget, true, true);
     for (std::size_t i = 0; i < plan.checked_compositions.size(); ++i) {
       budget.Step(); const auto root = plan.checked_compositions[i];
       Require(!i || plan.checked_compositions[i - 1] < root);

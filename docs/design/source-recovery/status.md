@@ -8,6 +8,68 @@
 
 
 
+
+## Guarded-call original-event composition (2026-10-21)
+
+- Baseline/wtbase **24b01ff0**. Fresh ABC-only evidence confirms that
+  o5/28303 m28799's PC56/58 pair is the captured TimeUtils **TDZ/Hole guard**;
+  Use257 actually observes the retained PC86 call result as the PC610 indexed
+  read's base. It is not optional chaining and that call is not replayed.
+- Implemented the local composition gap: original throwing-event summaries and
+  selection-join boundaries survive nonthrowing transports. Old composition
+  runs first; only unmet member References seed the new pass. Every original
+  throw keeps its dispatch/pre-throw state; catch staging, unique-use, order,
+  saved callee/receiver, allocation exclusions and selection ownership remain
+  independently checked in evaluation/TreeFlow/recovery. No new premise.
+- **PC620 now verifies**. The exact next refusal is **m28799 PC642**, call241 /
+  property102: FunctionTreeError::kExpression > ExpressionError::kUnsupportedOperation
+  > CallPlanError::kReference > CallReferenceError::kNotInline >
+  EvaluationKind::kRoot > TemporaryReason::kCrossRegionValue. The outer saved
+  member consumes a staged object containing the earlier result; no
+  GuardedCallError leaf remains. tree_failure.mjs pins this next obligation.
+- **o26/4515 remains unchanged**: m4696 originalPC254/working251,
+  CaptureCellError::kInput > CaptureError::kScope > ScopeError::kInitialization.
+  This is incoming lexical slot2 (`isPlaying`), not a STMODULEVAR/export reorder.
+  The store has an original Hole guard (read242/guard244; other stores273/611
+  also have guarded reads). Forwarding still requires Language initialization
+  at closure creation, before module-entry store618. A separate all-writes
+  guarded-store/PutValue correspondence is needed; no callback timing or
+  initialized capture is assumed. Design and exact source/storage evidence:
+  [guarded-call-references.md](guarded-call-references.md).
+- Both 40-input comparisons: **541/620 -> 541/620** previous flags and
+  **597/620 -> 597/620** language-source; **0 regressions, 0 complete-text drift**.
+  Only o5/28303's source-contract manifest changes; previous manifests are all
+  identical. No newly complete exploration record. Conservative four-child +
+  parent RSS bounds: **178,257,920 bytes** source / **166,805,504 bytes** previous.
+- Full build passes. Targeted tests **6/6**. Requested sweep **235/247**;
+  remaining 12 are the documented family_source_cli, tree_structure, try_tree,
+  class_tree_source, try_tree_source, unguarded_derived_cells,
+  unguarded_literal_closure, unguarded_derived_literal_receiver and four
+  unguarded captured/forwarded/reversed receiver tests. Ten reproduce in wtbase;
+  the other two corpus-dependent tests are not registered in that worktree and
+  are documented pre-existing failures. Serial source-regression **65/65**. An earlier run overlapped a rebuild and hit 10 stale producer-hash
+  checks; that run was discarded. The final stable build was rerun without
+  rebuilding, and all 65 checks passed.
+- Unit tests: copies/block splits, original throw destination mutations,
+  foreign effects, guard/success/receiver/ownership mutations; 200/201/400/800
+  exact byte/work and one-less refusals. New pure-guard 800 cost:
+  **26,830,042 bytes / 13,799,480 work** (whole planner including verifier).
+  `phorphan` now completes with the existing Node/mutation oracle, rather than
+  weakening a refusal assertion. The new O0 fixture gives **26 Node scenario
+  comparisons / 8 observed mutations**, syntax checks, plus **2 explicitly
+  refused default-optimizer handler layouts** (CatchRegionError::kHandlerShape).
+- grouping_bytecode.py was run at default and O0. Strict adapted full-record
+  comparison: **0 exact / 2 differ / 0 unverified**; all methods compile. The
+  changed expression method `run` is instruction/handler-identical in both
+  modes. `pure` differs only in the Hole diagnostic name; entry adds a guard
+  on its already-initialized recovered `pure` binding (plus default register
+  transports). Literal/string byte offsets/emission order also change, with
+  identical resolved literal/module identities. No normalization or false
+  token-equivalence claim: the grouping token check rejects renamed/reordered
+  declarations, as expected. Details and compiler hashes are in the fixture
+  README. Scratch: `build/review/guarded-late/`. No commit/push/stash.
+
+
 ## Native member-update Reference consumed (2026-10-21)
 
 - Baseline/wtbase **78278c38**. **o36/36985 m37638 originalPC378/working352

@@ -3125,6 +3125,9 @@ if(BUILD_TESTING)
       add_test(NAME guarded_reference_arms_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_reference_arms.mjs
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_reference_arms)
+      add_test(NAME guarded_reference_transports_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_reference_transports.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_reference_transports)
       add_test(NAME guarded_calls_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/guarded_calls.mjs
         $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/guarded_calls)

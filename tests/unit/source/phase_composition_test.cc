@@ -95,7 +95,7 @@ std::uint64_t Run(abc::ProfileId profile, Variant variant, std::uint32_t chain =
   }
   test::Check(callee && call);
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject));
-  const bool composed = variant == Variant::kBase;
+  const bool composed = variant == Variant::kBase || variant == Variant::kPureChain;
   // A foreign event after the join, or catch staging of a span event, may
   // already keep the selection itself uncommitted; nothing is crossed then.
   test::Check(!evaluation.phase_selections.empty() || variant == Variant::kForeignAfterJoin ||
@@ -121,6 +121,14 @@ std::uint64_t Run(abc::ProfileId profile, Variant variant, std::uint32_t chain =
     forged.phase_compositions.push_back(*call);
     rejected(forged);
     return evaluation.work;
+  }
+  // The representative is a summary, not permission to discard any original
+  // exception source. Move each original throw to a different destination.
+  for (std::size_t e = 0; e < graph.exceptional_exits.size(); ++e) {
+    if (!graph.exceptional_exits[e].handler || graph.exceptional_exits[e].op.value > call->value) continue;
+    auto changed_graph = graph;
+    changed_graph.exceptional_exits[e].handler.reset();
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(changed_graph, evaluation)));
   }
   test::Check(evaluation.phase_compositions.size() == 1 && evaluation.phase_compositions[0] == *call);
   for (const auto& selection : evaluation.phase_selections) test::Check(selection.execution == *call);
