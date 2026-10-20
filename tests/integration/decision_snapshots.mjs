@@ -75,21 +75,24 @@ for (let profile = 0; profile < 3; ++profile) for (const kind of ['call', 'less'
     }
 // Mutate complete source while retaining legal syntax: duplicate a RHS call,
 // suppress it, or invert the outer short-circuit decision.
-const call = /\(0, \$arg0\)\(\)/;
+const call = /\$arg0\(\)/;
 const mutants = [
-  source.replace(call, '(0, $arg0)(), (0, $arg0)()'),
+  source.replace(call, '($arg0(), $arg0())'),
   source.replace(call, 'false'),
   source.replace(
-    /if \((\$value4 === true \|\| typeof \(0, \$value4\) === "number" && \$value4 !== 0) \|\| \(\(\$value5 =/,
-    'if (($1) && (($value5 ='),
+    /if \((\$value4 === true \|\| typeof \$value4 === "number" && \$value4 !== 0) \|\| \(\$value5 =/,
+    'if (($1) && ($value5 ='),
 ];
 let mutations = 0;
 for (const mutant of mutants) {
   assert.notEqual(mutant, source);
   const result = await import(`data:text/javascript;base64,${Buffer.from(mutant).toString('base64')}`);
+  // True exposes a duplicated call; late-true exposes a suppressed call.
+  // Each mutation must remain observable, not just change printed spelling.
   const failure = Symbol('mutation'), payload = {};
-  const expected = run((...args) => reference(2, false, false, 'call', ...args), 'call', 'late', 2, false, 0, failure, payload);
-  const actual = run(result.functions[0], 'call', 'late', 2, false, 0, failure, payload);
-  assert.throws(() => compare(actual, expected)); ++mutations;
+  const sample = mutations === 1 ? 'late' : true;
+  const expected = run((...args) => reference(2, false, false, 'call', ...args), 'call', sample, 2, false, 0, failure, payload);
+  const actual = run(result.functions[0], 'call', sample, 2, false, 0, failure, payload);
+  assert.throws(() => compare(actual, expected), `undetected mutation ${mutations}`); ++mutations;
 }
 console.log(`conditional snapshots: ${scenarios} independent scenarios; ${mutations} valid-syntax mutations refused`);

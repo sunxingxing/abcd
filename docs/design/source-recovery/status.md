@@ -5,6 +5,58 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+
+## Readable output: await/class/optional envelopes and negated equality (2026-10-20)
+
+- HEAD **3b93b16c**, OLD/wtbase **92e4bfcb** as authorized. Both 40-input
+  cohorts retain their complete sets: **537/620** previous flags,
+  **591/620** source contract; all 1,240 statuses and first causes are unchanged.
+- [readable-grouping.md](readable-grouping.md): real print contexts now decide
+  await, certified named-class and optional/nullish projection grouping.
+  Required assignment/member, await/member, postfix chain termination, unknown
+  contexts, indirect-call wrappers and braces are preserved. Under ReadableV1,
+  proven initializer replacements carry NOT only to `!=`/`!==`, emitting their
+  exact equality complement; relational operators are excluded. Shared index
+  work is linear, prepaid and covered at 200/201/400/800 exact byte/work limits.
+- Source contract: **115 changed emitted files** (114 complete +1 partial),
+  **413** removed pairs, **16** equality rewrites. Previous flags: **98** files
+  (95 complete +3 partial), **299** pairs, **12** rewrites. Acorn/token and Node
+  syntax checks pass every changed file. One ArkTS file uses a type-only Node
+  shadow with annotations checked identical; the compiler receives real types.
+- SDK default and O0 each: source **108 exact +7 witnessed /0 differ/0 unverified**;
+  previous **94 exact +4 witnessed /0 differ/0 unverified**. Strict is the
+  default. The new opt-in `--negated-equality` acceptance recompiles OLD with
+  only the independently AST-proven operator rewrites and requires NEW to match
+  that entire disassembly exactly. No register/branch/handler normalization.
+- Grammar census: source await-assignment grouping **70->0**, statement-await
+  **268->0**, class envelopes **2->0**, optional `+` envelopes **20->0**,
+  negated inequalities **16->0**. Raw `= (await` **72->2**: the two survivors
+  are required member bases. All 6 required await/member and 164 assignment/member
+  groups remain. Detailed previous-flags counts and examples are in the design.
+- Full build passed; final fixed suite **65/65**; focused checks **18/18**;
+  bytecode-tool unit checks **3/3**; receiver-spelling refresh **4/4**.
+  Broad sweep: **483 selected**, raw **450 pass/33 fail**. After the explicit
+  spelling and isolated timing reruns: **456 pass/27 baseline-reproduced failures**. All
+  application graph shards pass; no new semantic failure remains.
+  The concurrent exploratory run's fixture ENOENT is superseded by the clean
+  fixed rerun. Definition-elision's loaded VM-timeout mismatch passes its
+  isolated fixture+Node rerun **2/2**. The community-ability graph also passes its final isolated full matrix
+  (**104 cases/330 faults/66 swaps/22 mutations/2 equivalents**), after two
+  worker-timeout attempts retained in the logs. Paired OLD/NEW checks add
+  **80/80 unchanged complete records**, 7 changed files and 30 removed pairs;
+  token/Node **7/7**, SDK default/O0 **7 exact/0 differ/0 unverified** each.
+  No timeout, case inventory, mutation or oracle was weakened.
+- Existing stale spelling checks were updated for await/generator/backup,
+  capture scope, precedence/Boolean contexts, conditional snapshots, VoIP,
+  card-item, navigation and reversed receivers. Every mutation still changes
+  valid source and is behaviorally detected. Snapshot-position failure also
+  reproduces on wtbase at `snapshot_syntax_test.cc:109`.
+- Evidence: `build/review/readable2-3b93/` (fresh cohorts, changed-file SDK/token
+  reports, grammar census, exact commands/hashes, build/CTest logs). Fresh 80-job,
+  four-worker resource run: max engine RSS **44,023,808 bytes**, conservative
+  engine+runner bound **197,705,728 bytes**. No commit/push/stash; unrelated
+  `sample.tar.gz` is untouched.
+
 ## Remaining o32 closes: nested entry boundary — partial (2026-10-20)
 
 - Baseline/wtbase **92e4bfcb**. This round is **not complete**: no new method or

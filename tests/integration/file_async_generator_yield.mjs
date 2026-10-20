@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {sourceAwaitSites} from '../tools/grouping_tokens.mjs';
 import {execFileSync} from 'node:child_process';
 
 const preservation=process.argv[3]==='--preserved';
@@ -19,7 +20,7 @@ for (const fixture of fixtures.filter(f => !f.rejected)) {
   assert.ok(!fixture.source.includes('INCOMPLETE'));
   assert.ok(fixture.source.includes('async function*'));
   assert.equal((fixture.source.match(/\(yield /g) ?? []).length, fixture.count);
-  assert.equal((fixture.source.match(/\(await /g) ?? []).length, fixture.awaited ? fixture.count : 0);
+  assert.equal(sourceAwaitSites(fixture.source).length, fixture.awaited ? fixture.count : 0);
   const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);
   let entered = false, get, set;
   capture(() => !entered && (entered = true), () => { if (fixture.catch_parent) throw {}; return {}; },

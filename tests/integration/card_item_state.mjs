@@ -372,7 +372,7 @@ export async function verifyCardItemPeers(source, comment, reference, commentRef
   }
   const baseline = await peers(reference, commentReference, PeerMode.normal, 2, true, true);
   for (const changed of [comment.replace('this.icon = item.icon', 'this.icon = item.name'),
-    comment.replace('if ((item?.reviewCnt))', 'if (false)'),
+    comment.replace('if (item?.reviewCnt)', 'if (false)'),
     comment.replace('this.subContent = item.subContent', 'this.subContent = item?.subContent ? true : false'),
   ]) {
     assert.notEqual(changed, comment); new vm.SourceTextModule(changed);

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {sourceAwaitSites} from '../tools/grouping_tokens.mjs';
 import vm from 'node:vm';
 
 // Run whole generated modules. Paired bodies stay independent; controlled imports
@@ -224,9 +225,16 @@ export async function verifyBackupRecords(records) {
       ['async onBackup() {','async onBackup() { this.spurious;'],
     ];
     if (source.includes('super(...args)')) variants.push(['super(...args)','super()']);
-    if (source.includes('(await $value0)')) variants.push(['(await $value0)','($value0)'],['(await $value0)','return (await $value0)']);
+    const backupAwaits=sourceAwaitSites(source).filter(site=>site.method==='onBackup');
+    if(backupAwaits.length) {
+      const backupAwait=backupAwaits.find(site=>site.statement);
+      assert.ok(backupAwait,'onBackup await mutation site');
+      variants.push([source.slice(backupAwait.start,backupAwait.end),source.slice(backupAwait.operand,backupAwait.end)],
+        [source.slice(...backupAwait.statement),'return '+source.slice(backupAwait.start,backupAwait.end)+';']);
+    }
     for (const [from,to] of variants) {
       assert.ok(source.includes(from)); const altered = source.replace(from,to);
+      assert.notEqual(altered,source,'mutation must alter the program');
       new vm.SourceTextModule(altered); // Mutation must remain valid JavaScript.
       let detected = false;
       try {

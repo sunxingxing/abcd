@@ -54,6 +54,13 @@ void Grammar() {
 void Operators() {
   using B=analysis::BinaryOperator; using P=ExpressionPrecedence;
   const ExprId a{0},b{1};
+  for(const auto context:{TreeOperatorContext{ExpressionGrammar::kAssignmentValue},TreeOperatorContext{ExpressionGrammar::kExpression}})
+    Check(!ReadableGrouping(AwaitExpr{a},{context}).Parenthesized());
+  Check(ReadableGrouping(AwaitExpr{a},{{PostfixContext::kMemberBase}}).Parenthesized());
+  Check(ReadableGrouping(AwaitExpr{a},{{B::kExponent,OperandSide::kLeft}}).Parenthesized());
+  Check(ReadableGrouping(AwaitExpr{a},{}).Parenthesized());
+  Check(!ReadableGrouping(MemberExpr{a,NameId{0}},{{B::kAdd,OperandSide::kRight}}).Parenthesized());
+  Check(ReadableGrouping(MemberExpr{a,NameId{0}},{{PostfixContext::kMemberBase},false,false,true,false,true}).Parenthesized());
   Check(ReadableOperandGrouping(BinaryExpr{B::kSubtract,a,b},{B::kSubtract,OperandSide::kRight}));
   Check(!ReadableOperandGrouping(BinaryExpr{B::kSubtract,a,b},{B::kSubtract,OperandSide::kLeft}));
   Check(ReadableOperandGrouping(BinaryExpr{B::kExponent,a,b},{B::kExponent,OperandSide::kLeft}));
@@ -78,6 +85,13 @@ void Operators() {
   Check(!StatementIdentifierGrouping(u"let",{{PostfixContext::kMemberBase},false}));
   Check(!StatementIdentifierGrouping(u"other",{{PostfixContext::kMemberBase},true}));
   Check(!StatementIdentifierGrouping(u"let",{{ExpressionGrammar::kAssignmentValue},true}));
+  Check(!ReadableNegatedEquality(B::kLess,PrinterPolicy::kReadableV1));
+  Check(!ReadableNegatedEquality(B::kGreater,PrinterPolicy::kReadableV1));
+  Check(!ReadableNegatedEquality(B::kLessEqual,PrinterPolicy::kReadableV1));
+  Check(!ReadableNegatedEquality(B::kGreaterEqual,PrinterPolicy::kReadableV1));
+  Check(!ReadableNegatedEquality(B::kEqual,PrinterPolicy::kReadableV1));
+  Check(ReadableNegatedEquality(B::kNotEqual,PrinterPolicy::kReadableV1)==B::kEqual);
+  Check(ReadableNegatedEquality(B::kStrictNotEqual,PrinterPolicy::kReadableV1)==B::kStrictEqual);
   Check(TreeExpressionPrecedence(SequenceExpr{a,b})==P::kSequence);
   for (const auto child : {TreeExpression{FunctionExpr{{0},{0,0}}},TreeExpression{ClassExpr{}}}) {
     const auto facts=ExpressionHeadFacts(child); Check(facts.statement_hazard);
@@ -101,6 +115,21 @@ void Scale(std::uint32_t count,bool deep) {
   }
   TreeCheckBudget budget({});auto plan=BuildGroupingPlan(tree,uses,budget);
   TreeCheckBudget verify({});Check(VerifyGroupingPlan(tree,uses,plan,verify));
+  std::vector<std::optional<ExprId>> replacements(tree.expressions.size());
+  const auto end=Add(tree,BinaryExpr{analysis::BinaryOperator::kNotEqual,{0},{1}});
+  replacements.resize(tree.expressions.size());
+  for(std::uint32_t i=0;i<end.value;++i)replacements[i]=ExprId{i+1};
+  TreeCheckBudget projected({});const auto targets=BuildReadableEqualityTargets(tree,replacements,projected);
+  for(const auto target:targets)Check(target==end);
+  {TreeCheckBudget b({projected.Bytes(),projected.Work()});Check(BuildReadableEqualityTargets(tree,replacements,b)==targets);}
+  for(bool bytes:{false,true})try {
+    analysis::SemanticBudget limit{projected.Bytes(),projected.Work()};if(bytes)--limit.bytes;else --limit.work;
+    TreeCheckBudget b(limit);(void)BuildReadableEqualityTargets(tree,replacements,b);Check(false);
+  }catch(TreeStructureError e){Check(e==(bytes?TreeStructureError::kResourceLimit:TreeStructureError::kWorkLimit));}
+  replacements.back()=ExprId{0};
+  try{TreeCheckBudget b({});(void)BuildReadableEqualityTargets(tree,replacements,b);Check(false);}
+  catch(TreeStructureError e){Check(e==TreeStructureError::kOwnership);}
+  tree.expressions.pop_back();
   analysis::SemanticBudget exact{budget.Bytes(),budget.Work()};
   {TreeCheckBudget b(exact);Check(BuildGroupingPlan(tree,uses,b).occurrences==plan.occurrences);}
   try {auto b=exact;--b.bytes;TreeCheckBudget short_budget(b);(void)BuildGroupingPlan(tree,uses,short_budget);Check(false);}

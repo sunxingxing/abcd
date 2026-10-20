@@ -16,6 +16,7 @@ struct SourceVariables {
   LoopSyntax loops;
   BindingInitializers bindings;
   BracePlan braces;
+  std::vector<std::optional<ExprId>> readable_equalities;
   // Peak preparation admission and conservative returned storage are distinct.
   // Callers admit the peak before releasing destroyed preparation scratch.
   std::size_t allocated_bytes = 0, retained_bytes = 0;

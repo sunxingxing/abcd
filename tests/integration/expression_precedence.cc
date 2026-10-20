@@ -397,10 +397,10 @@ int main(int argc, char** argv) {
   constexpr std::array<std::string_view, 14> boolean_contexts{
       "return !!a.value;", "return !!a.value;", "return !!(a.value || b.value);",
       "return !!a.value || !!b.value;", "return !!(a.value && b.value);",
-      "return !!(!!a.value ?? !!b.value);", "return !a.value;", "return !!(a.value || b.value);",
+      "return !!a.value;", "return !a.value;", "return !!(a.value || b.value);",
       "return !!(a.value < b.value);", "return ~!!a.value;",
       "return !!((a.value || b.value) && c.value);", "return !(a.value ?? b.value);",
-      "return (a.value ? !!b.value : !!c.value);", "(a.value ? b.value : c.value)"};
+      "return a.value ? !!b.value : !!c.value;", "(a.value ? b.value : c.value)"};
   for (unsigned i = 0; i < boolean_contexts.size(); ++i)
     test::Check(BooleanContext(i).find(boolean_contexts[i]) != std::string::npos);
   for (const unsigned observation : {0U, 1U}) {
@@ -431,20 +431,20 @@ int main(int argc, char** argv) {
     "a ** -b", "typeof (a + b)", "a & (b | c)", "a & b | c",
     "a ?? (b && c)", "(a ?? b) && c", "a || b && c", "(a || b) ?? c",
     "a && (b || c)", "a ?? (b ?? c)", "a ?? b ?? c", "a && b || c",
-    "(await (a + b * c))", "(0, a || b)(c)"};
+    "await (a + b * c)", "(0, a || b)(c)"};
   for (unsigned i = 0; i < expected.size(); ++i)
     test::Check(Case(i).find(std::string("return ") + std::string(expected[i]) + ";") != std::string::npos);
   constexpr std::array<std::string_view, 14> postfix{
-    "return new a(b);", "return new ((0, a)(b))(c);", "return new a.ctor(b);",
-    "return new ((0, a)(b)).ctor(c);", ".fn(c);", "return (0, a)(b).value;",
+    "return new a(b);", "return new (a(b))(c);", "return new a.ctor(b);",
+    "return new (a(b)).ctor(c);", ".fn(c);", "return a(b).value;",
     "return new a(b).value;", "return new new a(b)(c);", "return new a(b) + c;",
     "return (0, a.fn)(b);", "return (1).value;", "return (-a).value;",
-    "return new (a || b)(c);", "return new ((0, a)(b)).ctor.ctor(c);"};
+    "return new (a || b)(c);", "return new (a(b)).ctor.ctor(c);"};
   for (unsigned i = 0; i < postfix.size(); ++i) test::Check(Case(i + 30).find(postfix[i]) != std::string::npos);
   std::uint64_t previous_postfix = 0;
   for (const auto count : {1U, 2U, 200U, 201U, 402U, 804U}) {
     std::uint64_t work = 0;
-    test::Check(PostfixChain(count, &work).find("return new ((0, a)(b)).ctor") != std::string::npos);
+    test::Check(PostfixChain(count, &work).find("return new (a(b)).ctor") != std::string::npos);
     if (count > 201) test::Check(work < 3 * previous_postfix);
     previous_postfix = work;
   }

@@ -14,15 +14,16 @@ def sha(path):
         for b in iter(lambda:f.read(1024*1024),b''):h.update(b)
     return h.hexdigest()
 
-def records(root):
+def records(root, include_incomplete=False):
     result={}
     for manifest in sorted(root.rglob('manifest.json')):
         data=json.loads(manifest.read_text())
         if not isinstance(data,dict) or 'records' not in data:continue
         for record in data['records']:
-            if record.get('source_status')==0:
+            source=record.get('source') or (record.get('incomplete_source') if include_incomplete else None)
+            if source and (record.get('source_status')==0 or include_incomplete) and (manifest.parent/source).exists():
                 key=str(manifest.parent.relative_to(root))+'/'+str(record['entity'])
-                result[key]=(manifest.parent/record['source'],record)
+                result[key]=(manifest.parent/source,record)
     return result
 
 def run(command,log):
@@ -61,26 +62,34 @@ def wrapper_load_difference(old, new, wrapper_count):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--old',type=pathlib.Path,required=True);p.add_argument('--new',type=pathlib.Path,required=True);p.add_argument('--out',type=pathlib.Path,required=True)
-    p.add_argument('--braces',action='store_true');p.add_argument('--value-calls',action='store_true');p.add_argument('--es2abc',default=ES2ABC);p.add_argument('--disasm',default=DISASM);a=p.parse_args()
+    p.add_argument('--negated-equality',action='store_true');p.add_argument('--changed-only',action='store_true');p.add_argument('--include-incomplete',action='store_true');p.add_argument('--braces',action='store_true');p.add_argument('--value-calls',action='store_true');p.add_argument('--es2abc',default=ES2ABC);p.add_argument('--disasm',default=DISASM);a=p.parse_args()
     a.out.mkdir(parents=True,exist_ok=False)
-    old,new=records(a.old),records(a.new)
-    result={'old_complete':len(old),'new_complete':len(new),'lost':sorted(old.keys()-new.keys()),'added':sorted(new.keys()-old.keys()),
+    old,new=records(a.old,a.include_incomplete),records(a.new,a.include_incomplete)
+    result={'old_complete':sum(v[1]['source_status']==0 for v in old.values()),'new_complete':sum(v[1]['source_status']==0 for v in new.values()),'lost':sorted(old.keys()-new.keys()),'added':sorted(new.keys()-old.keys()),
             'compiler':{'path':a.es2abc,'sha256':sha(a.es2abc)},'disassembler':{'path':a.disasm,'sha256':sha(a.disasm)},'records':[]}
     pairs=[]
+    result['status_changes']=[key for key in old.keys()&new.keys() if old[key][1]['source_status']!=new[key][1]['source_status']]
     for index,key in enumerate(sorted(old.keys()&new.keys())):
         before,after=old[key][0].resolve(),new[key][0].resolve()
-        dest=a.out/str(index);dest.mkdir(exist_ok=False)
+        if a.changed_only and before.read_bytes()==after.read_bytes():continue
+        dest=a.out/str(len(pairs));dest.mkdir(exist_ok=False)
         for side in ('old','new'):(dest/side).mkdir(exist_ok=False)
         extension='.ts' if before.suffix=='.ets' else '.js'
         pair={'id':key,'old':str(before),'new':str(after),'adapted_old':str((dest/'old'/('input'+extension)).resolve()),'adapted_new':str((dest/'new'/('input'+extension)).resolve())}
+        if before.suffix=='.ets':pair['adapted_node']=str((dest/'node-shadow.mjs').resolve())
+        if a.negated_equality:
+            (dest/'witness').mkdir();pair['adapted_negated']=str((dest/'witness'/('input'+extension)).resolve())
         pairs.append(pair)
     pairfile=a.out/'pairs.json';pairfile.write_text(json.dumps(pairs,indent=2))
     tokens=a.out/'tokens.json'
     command=['node','--expose-internals',str(pathlib.Path(__file__).with_name('grouping_pairs.mjs')),str(pairfile),str(tokens)]
+    if a.negated_equality:command+=['--negated-equality']
     if a.value_calls:command+=['--value-calls']
     if a.braces:command+=['--braces']
     if run(command,a.out/'tokens.log'):raise RuntimeError('token/adaptation tooling failed')
     token_results=json.loads(tokens.read_text());result['tokens']={s:sum(x['status']==s for x in token_results) for s in ('pass','fail','unverified')}
+    result['negated_equalities']=sum(x.get('negated',0) for x in token_results)
+    result['changed_files']=len(pairs) if a.changed_only else sum(pathlib.Path(x['old']).read_bytes()!=pathlib.Path(x['new']).read_bytes() for x in pairs)
     result['removed_pairs']=sum(x['removed'] for x in token_results)
     if a.braces:result['brace_counts']={k:sum(x.get(k,0) for x in token_results) for k in ('elseIf','flattened')}
     result['text_counts']={k:sum(x[k] for x in token_results) for k in ('oldDouble','newDouble','oldObject','newObject')}
@@ -89,8 +98,8 @@ def main():
     examples=[]
     for index,pair in enumerate(pairs):
         dest=a.out/str(index);row={'id':pair['id'],'token':token_results[index],'bytecode':{}}
-        if pathlib.Path(pair['new']).suffix=='.ets': row['node']='unverified'
-        else:row['node']='pass' if run(['node','--check',pair['new']],dest/'node.log')==0 else 'fail'
+        row['node']='pass' if run(['node','--check',pair.get('adapted_node',pair['new'])],dest/'node.log')==0 else 'fail'
+        if 'adapted_node' in pair:row['node_type_shadow']=True
         result['node'][row['node']]+=1
         before=pathlib.Path(pair['old']).read_text();after=pathlib.Path(pair['new']).read_text()
         if len(examples)<10:
@@ -112,6 +121,16 @@ def main():
             else:
                 x=assembly(dest/'old'/(mode+'.pa'));y=assembly(dest/'new'/(mode+'.pa'))
                 status='pass' if x==y else 'differ'
+                if status=='differ' and a.negated_equality and token_results[index]['status']=='pass' and token_results[index].get('negated',0):
+                    # Compile ONLY the independently AST-derived approved rewrite
+                    # on OLD. No register/branch/handler normalization: NEW must
+                    # exactly match this third compilation, including metadata.
+                    source=pathlib.Path(pair['adapted_negated']);abc=dest/'witness'/(mode+'.abc');pa=dest/'witness'/(mode+'.pa')
+                    cmd=list(cmds['old']);cmd[cmd.index(next(c for c in cmd if c.startswith('--output=')))]= '--output='+str(abc);cmd[-1]=str(source)
+                    witness_rc=run(cmd,dest/'witness'/(mode+'.compile.log'))
+                    if witness_rc==0:witness_rc=run([a.disasm,str(abc),str(pa)],dest/'witness'/(mode+'.disasm.log'))
+                    if witness_rc==0 and assembly(pa)==y:
+                        status='allowed';row.setdefault('negated_equality_witness',{})[mode]={'count':token_results[index]['negated'],'command':cmd,'exact_assembly_match':True}
                 if status=='differ' and a.value_calls and token_results[index]['status']=='pass':
                     proof=wrapper_load_difference(x,y,token_results[index]['removed'])
                     if proof:
@@ -119,6 +138,7 @@ def main():
                 if status=='differ' and a.value_calls and token_results[index]['status']=='unverified':
                     # No grammar witness for ArkTS: never count this as allowed.
                     if wrapper_load_difference(x,y,len(x.splitlines())):status='unverified'
+                if status=='allowed' and 'negated_equality_witness' in row:(dest/(mode+'.negated-equality.diff')).write_text(''.join(difflib.unified_diff(x.splitlines(True),y.splitlines(True),fromfile='old',tofile='new')))
                 if status=='differ':(dest/(mode+'.diff')).write_text(''.join(difflib.unified_diff(x.splitlines(True),y.splitlines(True),fromfile='old',tofile='new')))
             result['bytecode'][mode][status]+=1
             row['bytecode'][mode]={'status':status,'exit':rc,'commands':cmds}
@@ -127,5 +147,5 @@ def main():
         if index%50==0:print(index+1,len(pairs),result['bytecode'],flush=True)
     result['examples']=examples;(a.out/'report.json').write_text(json.dumps(result,indent=2))
     print(json.dumps({k:v for k,v in result.items() if k not in ('records','examples')},indent=2))
-    return int(bool(result['lost'] or result['added'] or result['tokens']['fail'] or result['node']['fail'] or any(v['differ'] for v in result['bytecode'].values())))
+    return int(bool(result['status_changes'] or result['lost'] or result['added'] or result['tokens']['fail'] or result['node']['fail'] or any(v['differ'] for v in result['bytecode'].values())))
 if __name__=='__main__':sys.exit(main())

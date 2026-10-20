@@ -539,6 +539,8 @@ if(BUILD_TESTING)
   target_link_libraries(print_memory_test PRIVATE abcd_source)
   add_test(NAME print_memory_test COMMAND print_memory_test)
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME readable_census_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/readable_census.mjs" --self-test)
     add_test(NAME grouping_census_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/grouping_census.mjs --self-test)
     add_test(NAME grouping_tokens_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
@@ -2052,7 +2054,7 @@ if(BUILD_TESTING)
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/Immersive/Immersive_src/default/src/main/ets/entrybackupability/EntryBackupAbility.ts" AND
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/modules.abc" AND
          EXISTS "${ABCD_PAIRED_CORPUS_ROOT}/pasteboard/pasteboard_src/src/main/ets/entrybackupability/EntryBackupAbility.ts")
-        add_test(NAME backup_records_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+        add_test(NAME backup_records_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --experimental-vm-modules
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/backup_record_test.mjs $<TARGET_FILE:abc_semantic>
           ${ABCD_PAIRED_CORPUS_ROOT})
       endif()
@@ -2563,7 +2565,7 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_delegate.mjs $<TARGET_FILE:loop_closure_file_test> --preserved)
     add_test(NAME preserved_constructor_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/preserved_constructors.mjs $<TARGET_FILE:preserved_constructor_test>)
-    add_test(NAME preserved_async_generator_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+    add_test(NAME preserved_async_generator_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_yield.mjs $<TARGET_FILE:loop_closure_file_test> --preserved)
     add_test(NAME file_generator_branches_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_branches.mjs $<TARGET_FILE:loop_closure_file_test>)
@@ -2573,9 +2575,9 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_delegate.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_async_generator_prefix_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_prefix.mjs $<TARGET_FILE:loop_closure_file_test>)
-    add_test(NAME file_async_generator_await_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+    add_test(NAME file_async_generator_await_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_await.mjs $<TARGET_FILE:loop_closure_file_test>)
-    add_test(NAME file_async_generator_yield_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+    add_test(NAME file_async_generator_yield_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_async_generator_yield.mjs $<TARGET_FILE:loop_closure_file_test>)
     add_test(NAME file_generator_return_suspend_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/file_generator_return_suspend.mjs $<TARGET_FILE:loop_closure_file_test>)

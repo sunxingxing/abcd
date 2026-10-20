@@ -62,7 +62,7 @@ try {
    const output=join(out,record.source);run(process.execPath,['--check',output]);
    const expected=evaluate(oracle);assert.equal(evaluate(output),expected,name);++comparisons;
    const text=readFileSync(output,'utf8');
-   const declaration=/let ([$\w]+) = (?:\(await|globalThis\.__initialize)/.exec(text);
+   const declaration=/let ([$\w]+) = (?:await |globalThis\.__initialize)/.exec(text);
    assert.ok(declaration,name+' initialized declaration');const symbol=declaration[1];
    const replace=(label,changed)=>{
     assert.notEqual(changed,text,label+' must mutate');const path=join(out,label+'.mjs');writeFileSync(path,changed);

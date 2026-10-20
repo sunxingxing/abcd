@@ -2,6 +2,7 @@
 #include "binding_storage.h"
 #include "original_flow.h"
 #include "tree_checks.h"
+#include "grouping_plan.h"
 #include <new>
 #include <stdexcept>
 namespace abcd::source {
@@ -28,6 +29,7 @@ std::variant<SourceVariables,TreeStructureError> PrepareSourceVariables(
     RequireTree(binding_storage<=result.bindings.allocated_bytes,TreeStructureError::kOwnership);
     budget.Release(result.bindings.allocated_bytes-binding_storage);
     result.braces=BuildBracePlan(tree,result.bindings,result.nullish,result.loops,budget);
+    result.readable_equalities=BuildReadableEqualityTargets(tree,result.bindings.replacements,budget);
     result.retained_bytes=budget.ActiveBytes();
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;
   }catch(TreeStructureError error){trace.failure.cause=error;trace.Propagate();return error;}

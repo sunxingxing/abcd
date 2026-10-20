@@ -25,7 +25,7 @@ const sources = references.map((_, i) => execFileSync(process.argv[2],
 const generated = sources.map(text => vm.runInNewContext(text));
 assert.match(sources[0], /return !!a\.value;/);
 assert.match(sources[1], /return !!a\.value;/);
-assert.match(sources[5], /!!a\.value \?\? !!b\.value/);
+assert.match(sources[5], /return !!a\.value;/);
 assert.match(sources[10], /\(a\.value \|\| b\.value\) && c\.value/);
 assert.match(sources[11], /!\(a\.value \?\? b\.value\)/);
 

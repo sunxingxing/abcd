@@ -44,6 +44,22 @@ FunctionTree Head(std::string_view form) {
  auto t=Make("value");
  t.expressions.clear();t.properties.clear();t.arguments.clear();
  auto add=[&](TreeExpression e){ExprId id{static_cast<std::uint32_t>(t.expressions.size())};t.expressions.push_back({std::move(e),{0}});return id;};
+ if(form.starts_with("await")) {
+   t.callable=CallableKind::kAsyncFunction;
+   auto value=add(AwaitExpr{add(SymbolExpr{{1}})});
+   if(form=="awaitmember")value=add(MemberExpr{value,NameId{3}});
+   if(form=="awaitarg"){t.arguments={value};value=add(CallExpr{add(SymbolExpr{{0}}),{0,1},CallReference::kValue});}
+   if(form=="awaitassign")value=add(AssignmentExpr{SymbolTarget{{2}},value});
+   t.statements[1].statement=ReturnStmt{value};return t;
+ }
+ if(form=="negated"||form=="strictnegated"||form=="negatedless") {
+   t.names.push_back(u"saved");t.symbols.push_back({{1},{5},BindingKind::kCompilerTemporary,DeclarationKind::kLet,NameEvidence::kSynthesized,TemporaryReason::kMultipleUses});
+   const auto op=form=="negatedless"?analysis::BinaryOperator::kLess:form=="strictnegated"?analysis::BinaryOperator::kStrictNotEqual:analysis::BinaryOperator::kNotEqual;
+   const auto value=add(BinaryExpr{op,add(SymbolExpr{{1}}),add(SymbolExpr{{2}})});
+   t.statements[1].statement=DeclarationStmt{{3},value};
+   t.statements.push_back({ReturnStmt{add(UnaryExpr{TreeUnary::kNot,add(SymbolExpr{{3}})})},{0}});
+   t.children={{1},{2}};std::get<BlockStmt>(t.statements[0].statement).child_count=2;return t;
+ }
  if(form=="voidconstruct") {
    const auto constructor=add(SymbolExpr{{0}});
    t.arguments={add(TreeLiteral{UndefinedLiteral{}}),add(EmptyObjectExpr{})};
@@ -78,7 +94,7 @@ std::string Print(const FunctionTree& t){
 }
 }
 int main(int argc,char** argv){
- if(argc==2){std::string_view form=argv[1];std::cout<<Print((form.starts_with("object")||form=="lethead"||form=="voidconstruct")?Head(form):Make(form));return 0;}
+ if(argc==2){std::string_view form=argv[1];std::cout<<Print((form.starts_with("object")||form=="lethead"||form=="voidconstruct"||form.starts_with("await")||form.starts_with("negated")||form=="strictnegated")?Head(form):Make(form));return 0;}
  for(auto form:{"value","member","base","sign","updatebase"}){
    auto text=Print(Make(form));
    if(std::string_view(form)=="sign") Check(text.find("+(++x)")!=std::string::npos);
@@ -108,5 +124,12 @@ int main(int argc,char** argv){
  Check(Print(Head("voidconstruct")).find("new f(void 0, {})")!=std::string::npos);
  Check(Print(Head("objectstatement")).find("({p: x}).p;")!=std::string::npos);
  Check(Print(Head("objectvalue")).find("return {p: x}.p;")!=std::string::npos);
+ Check(Print(Head("awaitreturn")).find("return await flag;")!=std::string::npos);
+ Check(Print(Head("awaitmember")).find("return (await flag).p;")!=std::string::npos);
+ Check(Print(Head("awaitarg")).find("f(await flag)")!=std::string::npos);
+ Check(Print(Head("awaitassign")).find("= await flag")!=std::string::npos);
+ Check(Print(Head("negated")).find("return flag == x;")!=std::string::npos);
+ Check(Print(Head("strictnegated")).find("return flag === x;")!=std::string::npos);
+ Check(Print(Head("negatedless")).find("!(flag < x)")!=std::string::npos);
  for(auto n:{200u,201u,400u,800u}){auto text=Print(Make("value",n));Check(!text.empty());auto literals=Print(Make("void",n));Check(literals.find("(void 0)")==std::string::npos);}
 }

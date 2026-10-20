@@ -183,3 +183,71 @@ export function checkBraceRemovals(oldSource,newSource,counts) {
   if(counts){counts.elseIf=[...alternates].filter(x=>removed.has(x)).length;counts.flattened=removed.size/2-counts.elseIf;}
   return removed.size/2;
 }
+
+// The only non-grouping rewrite in readable-v1: != and !== are the exact
+// Boolean negations of == and ===. Preserve both operands, comments and order.
+export function rewriteNegatedEqualities(source, newSource) {
+  let selected;
+  if(newSource!==undefined) {
+    const parse=s=>acorn.parse(s,{ecmaVersion:'latest',sourceType:'module',preserveParens:true});
+    selected=new Set();const work=[[parse(source),parse(newSource)]];
+    while(work.length) {
+      let [a,b]=work.pop();
+      while(a?.type==='ParenthesizedExpression')a=a.expression;
+      while(b?.type==='ParenthesizedExpression')b=b.expression;
+      if(a?.type==='UnaryExpression'&&a.operator==='!') {
+        let inner=a.argument;while(inner.type==='ParenthesizedExpression')inner=inner.expression;
+        if(inner.type==='BinaryExpression'&&(inner.operator==='!='||inner.operator==='!==')&&
+            b?.type==='BinaryExpression'&&b.operator===(inner.operator==='!='?'==':'===')) {
+          selected.add(a.start);work.push([inner.left,b.left],[inner.right,b.right]);continue;
+        }
+      }
+      if(a===null||b===null||typeof a!=='object'||typeof b!=='object') {assert.deepEqual(a,b,'unapproved AST change');continue;}
+      if(Array.isArray(a)||Array.isArray(b)) {assert(Array.isArray(a)&&Array.isArray(b));assert.equal(a.length,b.length);for(let i=0;i<a.length;++i)work.push([a[i],b[i]]);continue;}
+      const keys=x=>Object.keys(x).filter(k=>!['start','end','loc','range','raw'].includes(k)).sort();
+      assert.deepEqual(keys(a),keys(b),'AST fields');for(const k of keys(a))work.push([a[k],b[k]]);
+    }
+  }
+  const {tokens}=scan(source);
+  const ast=acorn.parse(source,{ecmaVersion:'latest',sourceType:'module',preserveParens:true});
+  const edits=[],pending=[ast];
+  while(pending.length) {
+    const n=pending.pop();let child=n.argument;
+    if(n.type==='UnaryExpression'&&n.operator==='!'&&(!selected||selected.has(n.start))) {
+      while(child.type==='ParenthesizedExpression')child=child.expression;
+      if(child.type==='BinaryExpression'&&(child.operator==='!='||child.operator==='!==')) {
+        let lo=0,hi=tokens.length;
+        while(lo<hi){const mid=lo+((hi-lo)>>1);if(tokens[mid].start<child.left.end)lo=mid+1;else hi=mid;}
+        const op=tokens[lo];assert(op&&op.start<child.right.start&&op.value===child.operator);
+        edits.push([n.start,n.start+1,''],[op.start,op.end,child.operator==='!='?'==':'===']);
+      }
+    }
+    for(const v of Object.values(n))if(Array.isArray(v)){for(const c of v)if(c?.type)pending.push(c);}else if(v?.type)pending.push(v);
+  }
+  let rewritten=source;
+  for(const [a,b,text]of edits.sort((a,b)=>b[0]-a[0]))rewritten=rewritten.slice(0,a)+text+rewritten.slice(b);
+  return {source:rewritten,count:edits.length/2,edits};
+}
+export function checkNegatedEqualityRemovals(oldSource,newSource) {
+  const witness=rewriteNegatedEqualities(oldSource,newSource);
+  return {removed:inferGroupingRemovals(witness.source,newSource).length,negated:witness.count,witness:witness.source};
+}
+
+export function sourceAwaitSites(source) {
+ const ast=acorn.parse(source,{ecmaVersion:'latest',sourceType:'module',preserveParens:true});
+ const sites=[],work=[[ast,undefined,undefined]];
+ while(work.length) {
+  const [n,owner,statement]=work.pop();
+  const method=n.type==='MethodDefinition'?(n.key.name??n.key.value):owner;
+  if(n.type==='AwaitExpression')sites.push({start:n.start,end:n.end,operand:n.argument.start,method,
+    statement:statement?[statement.start,statement.end]:undefined});
+  for(const v of Object.values(n)) {
+   const add=child=>{if(!child?.type)return;
+    const parent=n.type==='ExpressionStatement'&&child===n.expression?n:
+      n.type==='ParenthesizedExpression'&&child===n.expression?statement:undefined;
+    work.push([child,method,parent]);};
+   if(Array.isArray(v))for(const child of v)add(child);else add(v);
+  }
+ }
+ return sites.sort((a,b)=>a.start-b.start);
+}

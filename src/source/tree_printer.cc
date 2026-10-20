@@ -848,7 +848,7 @@ class TreePrinter {
     Append("(delete "); Push(std::string_view(")")); Member(node.base, node.key);
   }
   void Expression(AwaitExpr node) {
-    Append("(await "); Push(std::string_view(")"));
+    Append("await ");
     Push(ExpressionOperand{node.operand, {ExpressionPrecedence::kUnary}});
   }
   void Expression(YieldExpr node) {
@@ -1059,7 +1059,8 @@ class TreePrinter {
       // capture/global reference in any constructor/member/initializer family.
       if (!name.named) throw Error::kUnsupportedContext;
       if (form != ClassPrintForm::kDeclaration &&
-          form != ClassPrintForm::kDerivedBody)
+          form != ClassPrintForm::kDerivedBody &&
+          form != ClassPrintForm::kBareNamedExpression)
         form = ClassPrintForm::kNamedExpression;
     }
     // Final preparation and the family's original-barrier verification own
@@ -1397,6 +1398,18 @@ class TreePrinter {
   void Run(BooleanOperand operand) {
     const auto id = operand.expression.id;
     const auto& expression = Tree().expressions[id.value].expression;
+    if(operand.inverted && operand.expression.observation!=ExpressionObservation::kDiscarded &&
+        Variables().readable_equalities[id.value] &&
+        *Variables().readable_equalities[id.value]!=id) {
+      // Preserve the snapshot's occurrence/position ownership, but carry NOT
+      // polarity to the final printed inequality before emitting any tokens.
+      BeginExpression(id);
+      const auto next=Initializers().replacements[id.value];
+      if(!next)throw Error::kUnsupportedContext;
+      Push(ProjectElidedOperands{id,*next});
+      operand.expression.id=*next;operand.expression.inferred_name={};
+      operand.expression.value_result=true;Push(operand);return;
+    }
     if (const auto* unary = std::get_if<UnaryExpr>(&expression);
         unary && unary->operation == TreeUnary::kNot) {
       BeginExpression(id);
@@ -1459,10 +1472,23 @@ class TreePrinter {
     const auto id = operand.id;
     BeginExpression(id);
     if (!Nullish().projections.empty() && Nullish().projections[id.value]) {
-      // Parentheses end this chain: a following call/member must still execute
-      // on undefined. Value calls keep their existing indirect-call projection.
-      Append("("); Push(std::string_view(")"));
-      PrintNullish(*Nullish().projections[id.value],operand.observation);
+      const auto& projection=*Nullish().projections[id.value];
+      // Optional syntax is a LeftHandSideExpression. A following postfix use
+      // must still terminate the chain; binary/argument/value contexts do not.
+      const auto syntax=std::visit([&](const auto& part)->TreeExpression {
+        using T=std::decay_t<decltype(part)>;
+        if constexpr(std::is_same_v<T,NullishFallbackSyntax>)
+          return LogicalExpr{TreeLogical::kNullish,part.value,part.fallback};
+        else if constexpr(std::is_same_v<T,OptionalMemberSyntax>)
+          return Tree().expressions[part.member.value].expression;
+        else return Tree().expressions[part.call.value].expression;
+      },projection);
+      const bool boundary=operand.statement_start ||
+          std::holds_alternative<PostfixContext>(operand.context.parent);
+      if(ReadableGrouping(syntax,{operand.context,false,false,true,false,boundary}).Parenthesized()) {
+        Append("("); Push(std::string_view(")"));
+      }
+      PrintNullish(projection,operand.observation);
       return;
     }
     PrintOriginalExpression(operand);
@@ -1537,7 +1563,8 @@ class TreePrinter {
         conditional && BooleanChoice(*conditional, operand, false)) return;
     // Group only after all value/name/Boolean projections above. Uncovered
     // contexts retain the node's old grouping. No reference wrapper is removed.
-    const bool readable = std::holds_alternative<SequenceExpr>(expression) ||
+    const bool readable = std::holds_alternative<AwaitExpr>(expression) ||
+        std::holds_alternative<SequenceExpr>(expression) ||
         std::holds_alternative<UpdateExpr>(expression) ||
         std::holds_alternative<ConditionalExpr>(expression) ||
         std::holds_alternative<AssignmentExpr>(expression) ||

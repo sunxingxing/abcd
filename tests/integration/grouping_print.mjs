@@ -33,3 +33,17 @@ console.log('grouping print differential: seven forms, both branches passed');
 {const text=execFileSync(process.argv[2],['voidconstruct'],{encoding:'utf8'});
  const call=Function('return '+text)();function C(...args){return args;}
  assert.deepEqual(call(C),[undefined,{}]);assert(text.includes('new f(void 0, {})'));}
+for(const form of ['awaitreturn','awaitmember','awaitarg','awaitassign']) {
+ const text=execFileSync(process.argv[2],[form],{encoding:'utf8'}),f=Function('return '+text)();
+ const log=[];const promise={then(resolve){log.push('await');resolve(form==='awaitmember'?{p:23}:23);}};
+ assert.equal(await f(x=>{log.push('call');return x;},promise,0),23);
+ assert.deepEqual(log,form==='awaitarg'?['await','call']:['await']);
+}
+for(const [form,oracle]of [['negated',(a,b)=>a==b],['strictnegated',(a,b)=>a===b],['negatedless',(a,b)=>!(a<b)]]) {
+ const text=execFileSync(process.argv[2],[form],{encoding:'utf8'}),f=Function('return '+text)();
+ for(const a of [null,undefined,0,-0,NaN,1,1n,'1',false,{},[]])for(const b of [null,undefined,0,NaN,1,1n,'1',false,{}])assert.equal(f(null,a,b),oracle(a,b));
+ const run=fn=>{const log=[];try{const a={valueOf(){log.push('left');return 1;}};log.push(fn(a,2));}catch(e){log.push(e.constructor.name);}return log;};
+ assert.deepEqual(run((a,b)=>f(null,a,b)),run(oracle));
+ const thrown=()=>{throw new RangeError('valueOf');};assert.deepEqual(run((a,b)=>f(null,{valueOf:thrown},b)),run((a,b)=>oracle({valueOf:thrown},b)));
+}
+console.log('await contexts and equality complements: coercions, NaN, BigInt and effects passed');

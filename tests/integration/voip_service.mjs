@@ -30,7 +30,7 @@ assert.match(recovered.source, /static callId;/);
 // or a detached phi do not meet this representation assertion.
 // A declaration initializer needs no parenthesis around its object literal.
 // Keep the native property/conditional requirement independent of that spelling.
-assert.match(recovered.source, /\{callId: [^,]+, voipCallType: \([^;]*\?\.scene\) === "video" \? voipCall\.VoipCallType\.VOIP_CALL_VIDEO : voipCall\.VoipCallType\.VOIP_CALL_VOICE,/);
+assert.match(recovered.source, /\{callId: [^,]+, voipCallType: [^;]*\?\.scene === "video" \? voipCall\.VoipCallType\.VOIP_CALL_VIDEO : voipCall\.VoipCallType\.VOIP_CALL_VOICE,/);
 assert.match(recovered.source, /userName: "push", userProfile: [^,]+, abilityName: "VoIPUIAbility", voipCallState: voipCall\.VoipCallState\.VOIP_CALL_STATE_RINGING/);
 assert.doesNotMatch(recovered.source, /\.voipCallType =|\.voipCallState =/);
 const paired = stripTypeScriptTypes(readFileSync(join(root,

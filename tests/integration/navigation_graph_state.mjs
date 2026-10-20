@@ -481,7 +481,7 @@ export async function verifyNavigationBatch(sources, reference, request) {
   assert.ok(capturedClassSite);
   const mutants = [
     ['Shopping', 'super(parent, __localStorage, elmtId, extraInfo)', 'super(parent, params, elmtId, extraInfo)'],
-    ['Shopping', '($local0 = this);', '($local0 = globalThis);'],
+    ['Shopping', '$local0 = this;', '$local0 = globalThis;'],
     ['ShoppingAvoid', '?.topRect.height', '?.topRect.height + 1'],
     ['ShoppingAvoid', 'this.__windowUtil.aboutToBeDeleted();', 'this.__windowUtil.get();'],
     ['MiniGame', '?.setSystemBarEnabled(false);', '?.setSystemBarEnabled(true);'],
@@ -491,17 +491,17 @@ export async function verifyNavigationBatch(sources, reference, request) {
     ['ShoppingFullScreen', '?.setImmersiveType(ImmersiveType.IMMERSIVE);', '?.setImmersiveType(ImmersiveType.NORMAL);'],
     ['ShoppingFullScreen', '?.release();', '?.startWindowStatusListener();'],
     ['ShoppingFullScreen', 'this.updateDirtyElements();', 'return this.updateDirtyElements();'],
-    ['ShoppingAvoid', '(this.__windowUtil = this.createStorageLink("windowUtil", (void 0), "windowUtil"));',
-      'Object.defineProperty(this, "__windowUtil", {value: this.createStorageLink("windowUtil", (void 0), "windowUtil"), writable: true, enumerable: true, configurable: true});',
+    ['ShoppingAvoid', 'this.__windowUtil = this.createStorageLink("windowUtil", void 0, "windowUtil");',
+      'Object.defineProperty(this, "__windowUtil", {value: this.createStorageLink("windowUtil", void 0, "windowUtil"), writable: true, enumerable: true, configurable: true});',
       {direct: 'ShoppingAvoid', assignment: '__windowUtil'}],
   ];
   if (connected) mutants.push(
     ['MiniGame', 'new Content($local0,', 'new Footer($local0,'],
-    ['MiniGame', 'return ({mainWindowInfo: (($value0 = $local0.windowUtil)?.mainWindowInfo)});',
-      'return ({mainWindowInfo: $local0.mainWindowInfo});'],
+    ['MiniGame', 'return {mainWindowInfo: ($value0 = $local0.windowUtil)?.mainWindowInfo};',
+      'return {mainWindowInfo: $local0.mainWindowInfo};'],
     ['Content', 'params.mainWindowInfo, this, "mainWindowInfo"', 'params.windowUtil, this, "mainWindowInfo"'],
     ['Content', 'this.__mainWindowInfo.set(params.mainWindowInfo);', 'this.__mainWindowInfo.set(params.windowUtil);'],
-    ['Content', '($local0 = this);', '($local0 = globalThis);'],
+    ['Content', '$local0 = this;', '$local0 = globalThis;'],
     ['Content', 'Image.create(image);', 'Image.create({...image});'],
     ['Content', 'JSON.stringify(image) + index', 'JSON.stringify(image) + 0'],
     ['Content', 'getValue($local0.mainWindowInfo.widthBp)', 'getValue($local0.mainWindowInfo.heightBp)'],
@@ -513,7 +513,7 @@ export async function verifyNavigationBatch(sources, reference, request) {
   if (allViews) mutants.push(
     ['shopping/src/main/ets/view/Home', 'this.__activeTabIndex.set(newValue);', 'this.__windowUtil.set(newValue);'],
     ['shopping/src/main/ets/view/Home', 'this.activeTabIndex === index', 'this.activeTabIndex !== index'],
-    ['shopping/src/main/ets/view/Home', '($local0 = this);', '($local0 = globalThis);'],
+    ['shopping/src/main/ets/view/Home', '$local0 = this;', '$local0 = globalThis;'],
     ['shopping/src/main/ets/view/Home', 'TabBarBuilder.call($local0, tabBar, $local2)', 'TabBarBuilder.call(globalThis, tabBar, $local2)'],
     ['shopping/src/main/ets/view/Home', '$local4.activeIcon : $local4.icon', '$local4.icon : $local4.activeIcon'],
     ['shopping/src/main/ets/view/HomeContent', 'this.__mainWindowInfo.set(params.mainWindowInfo);', 'this.__mainWindowInfo.set(params.windowUtil);'],
@@ -525,8 +525,8 @@ export async function verifyNavigationBatch(sources, reference, request) {
   );
   for (let [page, before, after, config = {}] of mutants) if (selected('mutations')) {
     const name = Object.hasOwn(sources, page) ? page : recordFor(page);
-    // A cell's first store may print as `(x = v);` or as its own `let x = v;`.
-    const statement = /^\((\$\w+) = (.*)\);$/;
+    // A cell's first store may be an assignment or its own declaration.
+    const statement = /^(\$\w+) = (.*);$/;
     if (!sources[name].includes(before) && statement.test(before) && statement.test(after)) {
       before = before.replace(statement, 'let $1 = $2;'); after = after.replace(statement, 'let $1 = $2;');
     }

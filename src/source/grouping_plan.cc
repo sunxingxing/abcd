@@ -78,6 +78,43 @@ GroupingDecision Decide(const TreeExpression& expression, ExpressionSyntaxFacts 
   return {ReadableOperandGrouping(expression,context.operand) ? GroupingReason::kPrecedence : GroupingReason::kNone};
 }
 }
+std::optional<analysis::BinaryOperator> ReadableNegatedEquality(
+    analysis::BinaryOperator operation, PrinterPolicy policy) {
+  switch(policy) { case PrinterPolicy::kReadableV1: break; }
+  using B=analysis::BinaryOperator;
+  if(operation==B::kNotEqual)return B::kEqual;
+  if(operation==B::kStrictNotEqual)return B::kStrictEqual;
+  return {};
+}
+std::vector<std::optional<ExprId>> BuildReadableEqualityTargets(
+    const FunctionTree& tree,std::span<const std::optional<ExprId>> replacements,
+    TreeCheckBudget& budget,PrinterPolicy policy) {
+  RequireTree(replacements.size()==tree.expressions.size(),TreeStructureError::kOwnership);
+  std::vector<std::optional<ExprId>> result;
+  std::vector<std::uint8_t> state;
+  std::vector<ExprId> path;
+  budget.Array(result,replacements.size());budget.Array(state,replacements.size());
+  budget.Array(path,replacements.size());
+  // Memoize the final printed operand after the already-proven replacement
+  // projection. Shared tails are visited once; no per-occurrence subtree scan.
+  for(std::uint32_t root=0;root<replacements.size();++root) {
+    budget.Step();if(state[root]==2)continue;
+    std::size_t depth=0;ExprId id{root};std::optional<ExprId> target;
+    for(;;) {
+      budget.Step();RequireTree(id.value<state.size(),TreeStructureError::kOwnership);
+      if(state[id.value]==2){target=result[id.value];break;}
+      RequireTree(state[id.value]==0,TreeStructureError::kOwnership);
+      state[id.value]=1;path[depth++]=id;
+      if(replacements[id.value]){id=*replacements[id.value];continue;}
+      if(const auto* binary=std::get_if<BinaryExpr>(&tree.expressions[id.value].expression);
+          binary && ReadableNegatedEquality(binary->operation,policy))target=id;
+      break;
+    }
+    while(depth){budget.Step();const auto at=path[--depth];result[at.value]=target;state[at.value]=2;}
+  }
+  budget.Release(state.capacity()*sizeof(state[0])+path.capacity()*sizeof(path[0]));
+  return result;
+}
 GroupingDecision ReadableLiteralEnvelope(const TreeLiteral& literal,const TreeOperatorContext& context) {
   const auto* grammar=std::get_if<ExpressionGrammar>(&context.parent);
   if(std::holds_alternative<UndefinedLiteral>(literal) && grammar &&

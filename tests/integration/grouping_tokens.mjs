@@ -44,3 +44,26 @@ for(const [a,b] of [
  ['try{x();}catch(e){y();}','try{x();}catch(e)y();'],
  ['function f(){{/*keep*/x();}}','function f(){/*keep*/x();}']])assert.throws(()=>braces(a,b));
 console.log('brace token checker: pair, scope, directive, dangling-else and required-body checks passed');
+const {checkNegatedEqualityRemovals: negated,rewriteNegatedEqualities}=await import('../tools/grouping_tokens.mjs');
+assert.equal(negated('if (!(a != b)) f((x));','if (a == b) f(x);').negated,1);
+assert.equal(negated('if (!(f() !== g())) {}','if (f() === g()) {}').negated,1);
+assert.equal(negated('if (!(a != b)) {}; if (!(x != y)) {}','if (a == b) {}; if (!(x != y)) {}').negated,1);
+assert.equal(negated('f((await x));','f(await x);').negated,0);
+for(const [a,b]of [
+ ['if (!(a < b)) {}','if (a >= b) {}'], ['if (!(a > b)) {}','if (a <= b) {}'],
+ ['if (!(a <= b)) {}','if (a > b) {}'], ['if (!(a >= b)) {}','if (a < b) {}'],
+ ['if (!(a != b)) {}','if (a === b) {}'], ['if (!(a !== b)) {}','if (b === a) {}'],
+ ['if (!(f() != g())) {}','if (f() == f()) {}'],
+ ['f((a,b));','f(a,b);'],['(await x).m();','await x.m();'],
+ ['(a?.b).c;','a?.b.c;']])assert.throws(()=>negated(a,b));
+const withComment='if (! /*keep*/ (a /*same*/ != b)) {}';
+assert.equal(negated(withComment,'if ( /*keep*/ a /*same*/ == b) {}').negated,1);
+assert.throws(()=>negated(withComment,'if (a == b) {}'));
+assert(rewriteNegatedEqualities('if (!(a < b)) {}').source.includes('!(a < b)'));
+console.log('negated equality checker: exact operator pairs, order, comments and negative contexts passed');
+const {fieldTypeShadow}=await import('../tools/grouping_types.mjs');
+const typed='class C { item: Imported.Type; async f(x) { return (await x); } }';
+const shadow=fieldTypeShadow(typed,true);assert.equal(shadow.source.length,typed.length);
+assert.deepEqual(shadow.types,[['item',': Imported.Type']]);
+assert.notDeepEqual(shadow.types,fieldTypeShadow(typed.replace('Imported.Type','Other.Type'),true).types);
+assert.equal(negated(shadow.source,fieldTypeShadow(typed.replace('(await x)','await x'),true).source).removed,1);

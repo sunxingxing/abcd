@@ -966,3 +966,285 @@ On the JS-only population matching the review's baseline counts:
 `(` **56,512 -> 54,713**, `((` **4,928 -> 4,744**, `({` **3,246 -> 2,685**,
 `(0, ` **623 -> 623**. All-file counts (including ArkTS) are recorded separately
 in `text-counts.json`. No commit, push or stash.
+
+
+## Readable residual grouping and exact negated equality (2026-10-20)
+
+Baseline: `build/review/wtbase/b/abc_structure` at `92e4bfcb`; working HEAD
+`3b93b16c`. This changes only readable printing. The source trees, recovery
+proofs, status and first typed refusal remain unchanged.
+
+`AwaitExpr` now delegates its envelope to `ReadableGrouping` at its final
+operand context. Assignment, return, argument and expression-statement uses
+need no envelope; member bases, exponentiation-left operands and unknown
+contexts keep it. Certified class-self expressions honor the already-selected
+bare named class form. Optional member/call projections use their actual
+projected syntax and real operands when deciding precedence; nullish fallback
+uses nullish precedence. Postfix chain-termination boundaries remain grouped.
+Thus `a + (($v = f())?.x)` becomes `a + ($v = f())?.x`, while
+`(a?.b).c` and `(await x).m()` stay grouped.
+
+ReadableV1 also carries an inverted Boolean observation through existing
+verified binding-initializer replacements only when the final expression is
+`!=` or `!==`. The existing exact equality complement then emits `==` or
+`===`. ECMA-262 Equality Operators defines `!=` as the negation of `==`, and
+`!==` as the negation of `===`; both operands retain the same order and single
+evaluation. Relational complements are explicitly excluded (NaN). A prepaid
+memoized replacement index is O(n), rejects cycles, and has exact byte/work
+boundary tests at 200/201/400/800. Counting and real sinks use the same path;
+occurrence/span ownership follows the existing elided-expression machinery.
+
+### Acceptance method
+
+`grouping_bytecode.py` remains strict by default. Its opt-in
+`--negated-equality` mode does not normalize instructions, registers, branches,
+handlers, literals or metadata. Acorn first proves the OLD/NEW ASTs differ only
+by grouping removals and the exact two approved operator rewrites, with
+identical operands and comments. If OLD and NEW assembly differs, a third
+source witness applies **only those operator rewrites to OLD**. NEW must match
+that independent recompilation exactly. This accounts for the compiler's
+`noteq`/`not` or conditional-branch lowering, associated IC annotations and
+label offsets, while rejecting any additional difference. Strict comparison
+remains the test for every grouping-only record.
+
+All changed complete **and partial-class** outputs are included via
+`--changed-only --include-incomplete`. Existing string-export spelling
+adaptations apply identically to both sides. For the changed Sendable `.ets`
+record, Acorn and Node use a field-type-only shadow, with identical annotation
+texts checked on both sides; es2abc still compiles the real typed source using
+`--extension=ts`. This is syntax checking, not Node verification of ArkTS heap
+or type enforcement. No source is fed back into the decompiler.
+
+Compiler SHA-256:
+`4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`.
+Disassembler SHA-256:
+`a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676`.
+Options: `--module --merge-abc --record-name=grouping_acceptance
+--source-file=input.js --extension=js` (typed source uses `ts`), once at default
+optimization and once with `--opt-level=0`; identical OLD/NEW record names and
+options. Full commands and witnesses are in
+`build/review/readable2-3b93/final-check-{source,previous}/report.json`.
+
+### Measured results
+
+| Population | Previous flags | Source contract |
+|---|---:|---:|
+| Complete OLD / NEW | 537 / 537 | 591 / 591 |
+| Changed emitted files (complete + partial) | 98 (95 + 3) | 115 (114 + 1) |
+| Removed grouping pairs | 299 | 413 |
+| Negated inequalities rewritten | 12 | 16 |
+| Token check pass / fail | 98 / 0 | 115 / 0 |
+| Node syntax pass / fail | 98 / 0 | 115 / 0 |
+| Default exact / witnessed / differ / unverified | 94 / 4 / 0 / 0 | 108 / 7 / 0 / 0 |
+| O0 exact / witnessed / differ / unverified | 94 / 4 / 0 / 0 | 108 / 7 / 0 / 0 |
+
+Every one of the 1,240 manifest entries has identical status and first refusal.
+The grammar census includes 540 emitted previous-flags files and 592 emitted
+source-contract files, including partial-class output:
+
+| Grammar pattern | Previous OLD -> NEW | Source OLD -> NEW |
+|---|---:|---:|
+| Assignment initializer `(await ...)` | 54 -> 0 | 70 -> 0 |
+| Expression statement `(await ...);` | 179 -> 0 | 268 -> 0 |
+| Other removable await value contexts | 3 -> 0 | 3 -> 0 |
+| All await grouping (6 required member bases remain) | 242 -> 6 | 347 -> 6 |
+| Return `(await ...)` | 0 -> 0 | 0 -> 0 |
+| Class assignment envelope | 2 -> 0 | 2 -> 0 |
+| Grouped optional chain as `+` operand | 20 -> 0 | 20 -> 0 |
+| All grouped optional projections | 47 -> 0 | 52 -> 0 |
+| Grouped nullish fallback | 4 -> 2 | 4 -> 2 |
+| `!(... !=/!== ...)` | 12 -> 0 | 16 -> 0 |
+| Required `(await ...).member` | 6 -> 6 | 6 -> 6 |
+| Required assignment as member base | 146 -> 146 | 164 -> 164 |
+| Grouped conditional assignment / comma argument | 0 / 0 -> 0 / 0 | 0 / 0 -> 0 / 0 |
+| All grammar grouping pairs | 3,617 -> 3,318 | 4,260 -> 3,847 |
+
+Return-await, comma-argument, conditional assignment and optional-chain
+termination positive/negative cases are covered by constructed source trees
+and Acorn tests even where the cohort has no occurrence. Census uses an AST,
+not substring counts that also match literals or parameter-list delimiters.
+
+Representative engine-output changes (unchanged operands elided here):
+
+`o14/10719`:
+
+```js
+// OLD
+this.books = (await lruCache.keys());
+// NEW
+this.books = await lruCache.keys();
+```
+
+`o0/4660`:
+
+```js
+// OLD
+const $value0 = (class RemoteDeviceModel {
+// NEW
+const $value0 = class RemoteDeviceModel {
+```
+
+`o21/16320`:
+
+```js
+// OLD
+hilog.info(DOMAIN, TAG, BUNDLE + "kelvin changed from" + (($value1 = mon.value())?.before) + " to " + (($value2 = mon.value())?.now));
+// NEW
+hilog.info(DOMAIN, TAG, BUNDLE + "kelvin changed from" + ($value1 = mon.value())?.before + " to " + ($value2 = mon.value())?.now);
+```
+
+`o0/4660`:
+
+```js
+// OLD
+if (!(typeof this.deviceManager != "undefined")) {
+// NEW
+if (typeof this.deviceManager == "undefined") {
+```
+
+`o17/4729`:
+
+```js
+// OLD
+if (!($value7 !== SPEED_ZERO)) {
+// NEW
+if ($value7 === SPEED_ZERO) {
+```
+
+`o0/4660`:
+
+```js
+// OLD
+if (!(this.discoverList[$phi1].deviceId != device.deviceId)) {
+// NEW
+if (this.discoverList[$phi1].deviceId == device.deviceId) {
+```
+
+`o11/3729`:
+
+```js
+// OLD
+(await Promise.resolve());
+// NEW
+await Promise.resolve();
+```
+
+`o12/11760`:
+
+```js
+// OLD
+(await sleep(500));
+// NEW
+await sleep(500);
+```
+
+`o0/3730`:
+
+```js
+// OLD
+hilog.info(0, "testTag", "%{public}s", (($value2 = "want param:" + JSON.stringify(want)) ?? ""));
+// NEW
+hilog.info(0, "testTag", "%{public}s", ($value2 = "want param:" + JSON.stringify(want)) ?? "");
+```
+
+`o20/8166`:
+
+```js
+// OLD
+const $value0 = (class IndicatorBarAttribute {
+// NEW
+const $value0 = class IndicatorBarAttribute {
+```
+
+Raw-text counts explain the original 72 `= (await` matches: **72 -> 2**
+(source), **56 -> 2** (previous). The two survivors are required member bases
+in `PermissionModel`, e.g. `(await ...).authResults[0]`; neither is a redundant
+await initializer. Across all emitted source-contract files, `((` is
+**5,171 -> 5,147**, `({` is **2,974 -> 2,974**, and `(0, ` is **775 -> 775**.
+Previous flags: **4,341 -> 4,322**, **2,643 -> 2,643**, **687 -> 687**.
+These raw counts include literals/comments and are secondary to the AST census.
+No brace or indirect-call-wrapper rule changes in this round.
+
+### Test expectation refresh
+
+Printed-spelling assertions/mutations were refreshed in generator await/yield,
+backup records, capture scope, precedence/Boolean contexts, decision snapshots,
+VoIP optional-member values, card-item optional tests, navigation-graph setters
+and receiver cells. Await mutations now use Acorn source ranges, not a literal
+`(await` prefix; they still assert a changed program and a detected behavioral
+mismatch. Snapshot mutations use distinct inputs to expose duplication and
+suppression (a late-true input alone can mask duplication). Four reversed
+captured/forwarded receiver variants now mutate the actual bare cell store and
+pre-super `void 0` declaration; valid-syntax checks and behavioral rejection
+remain. Known engine/correspondence failures in other receiver variants are
+not converted into passes.
+
+The old precedence context-5/context-12 expectation failures were reproduced
+on the baseline executable before refresh; their independent JS oracles are
+unchanged. A first concurrent CTest attempt collided on the shared generated
+`binding_interference_test.json` fixture (ENOENT); that run is not used as the
+final fixed-suite result. A separate definition-elision VM timeout under load
+is rerun without its fixture producer overlapping another CTest run.
+
+All **27** remaining non-spelling failures were re-executed with wtbase
+executables and reproduce there, including the separately rebuilt
+`abc_semantic` family CLI check (`node escaped its owner or origin arena`).
+Commands/logs: `build/review/readable2-3b93/baseline-failures/report.json` and
+`baseline-family.log`. The four reversed receiver mutation cases fixed above
+are excluded from that pre-existing set and pass **4/4** after refresh.
+
+### Baseline-reproduced failure inventory
+
+- `family_source_cli_test`
+- `tree_structure_test`
+- `try_tree_test`
+- `literal_construct_test`
+- `mixed_literal_test`
+- `phased_literal_test`
+- `class_tree_source_test`
+- `derived_cells_source_test`
+- `literal_closure_source_test`
+- `unguarded_derived_cells_source_test`
+- `unguarded_literal_closure_source_test`
+- `derived_literal_receiver_source_test`
+- `unguarded_derived_literal_receiver_source_test`
+- `captured_receiver_source_test`
+- `forwarded_receiver_source_test`
+- `unguarded_captured_receiver_source_test`
+- `unguarded_forwarded_receiver_source_test`
+- `reversed_initialization_captured_receiver_source_test`
+- `reversed_initialization_forwarded_receiver_source_test`
+- `unguarded_reversed_initialization_captured_receiver_source_test`
+- `unguarded_reversed_initialization_forwarded_receiver_source_test`
+- `snapshot_syntax_source_test`
+- `phased_arm_selection_source_test`
+- `try_tree_source_test`
+- `file_generator_return_source_test`
+- `file_generator_return_loop_source_test`
+- `async_semantics_test`
+
+Final verification: full build passed; `source-regression -j 1` **65/65**;
+focused tests **18/18**; bytecode-tool tests **3/3**; refreshed reversed-receiver
+mutations **4/4**; final census self-test **1/1**. Requested broad sweep selected
+**483** tests: raw **450 pass /33 fail**; four stale receiver-mutation spellings
+and two timeout-sensitive cases pass their explicit reruns, leaving **456 pass
+/27 failures**, all reproduced on wtbase. The full navigation/window/shopping,
+community, immersive-ability and push graph differentials pass. No timeout or
+case inventory was reduced. Logs and the reconciled counts are in
+`build/review/readable2-3b93/summary.json`. The initial overlapping exploratory
+sweep was interrupted to avoid duplicate serial graph work and is not counted
+as acceptance. `git diff --check` passes; no commit, push or stash.
+
+Paired samples were checked additionally: **80/80 unchanged complete records**,
+**7 changed files /30 removed pairs**, token and Node **7/7**, SDK default and O0
+each **7 exact /0 differ/0 unverified**. The community sample's only changes
+are three optional-member envelopes; both files compile identically in both
+modes. `community_ability_graph_source_test` timed out in the loaded sweep and
+at a different fault-injection case on the first isolated rerun. The baseline
+full matrix passes, and the final isolated NEW matrix passes in **208.26s**,
+with the original sixty-second worker limit and complete case inventory.
+These timing failures are retained in the logs, not counted as semantic passes.
+Final current-run counts match baseline: **104 cases, 330 fault injections, 66
+live swaps, 22 mutations, 2 equivalents**. No program or timeout was changed
+to obtain that result. Paired SDK/token evidence is in `paired-check/report.json`;
+full final graph output is in `community-ability-final-detail.log`.

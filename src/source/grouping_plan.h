@@ -7,6 +7,13 @@
 
 namespace abcd::source {
 enum class PrinterPolicy : std::uint8_t { kReadableV1 = 1 };
+inline constexpr PrinterPolicy kReadablePrinterPolicy = PrinterPolicy::kReadableV1;
+// Only the two inequality complements authorized by the readable policy.
+[[nodiscard]] std::optional<analysis::BinaryOperator> ReadableNegatedEquality(
+    analysis::BinaryOperator, PrinterPolicy);
+[[nodiscard]] std::vector<std::optional<ExprId>> BuildReadableEqualityTargets(
+    const FunctionTree&, std::span<const std::optional<ExprId>>, TreeCheckBudget&,
+    PrinterPolicy = kReadablePrinterPolicy);
 enum class GroupingReason : std::uint8_t {
   kNone, kPrecedence, kStatementStart, kDirective, kNoIn,
   kArrowBody, kChainBoundary, kUnknown

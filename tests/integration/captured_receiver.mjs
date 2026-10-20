@@ -126,12 +126,12 @@ for (const {source} of reports) {
   // Corrupt the receiver cell while preserving the real super invocation and
   // its saved result, whether saving is nested or occurs in an earlier statement.
   const changed = source.replace(
-    /(\(\$local\d+ = )(\(\$value\d+ = super\([^)]*\)\)|\$value\d+)(\);)/,
+    /(\$local\d+ = )(this|\(\$value\d+ = super\([^)]*\)\)|\$value\d+)(;)/,
     '$1($2, null)$3');
   assert.notEqual(changed, source);
   assert.doesNotThrow(() => new vm.Script(`(class Type extends Parent { ${changed} })`));
   assert.throws(() => exercise(changed, 'ordinary', 'return', 'own', false, {}));
-  const earlyThis = source.replace(' = (void 0));', ' = this);');
+  const earlyThis = source.replace(/(let \$local\d+ = )void 0;/, '$1this;');
   assert.notEqual(earlyThis, source);
   assert.doesNotThrow(() => new vm.Script(`(class Type extends Parent { ${earlyThis} })`));
   assert.throws(() => exercise(earlyThis, 'ordinary', 'return', 'own', false, {}));
