@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, writeFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join, resolve} from 'node:path';
+import {join, resolve, dirname} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
 const [engine, fixtures] = process.argv.slice(2);
@@ -40,6 +40,14 @@ for(const mode of ['return','error','getter','primitive','null']){
    const output=join(out,r.incomplete_source);run(process.execPath,['--check',output]);
    const check=run(process.execPath,['--input-type=module','-e',`const m=await import(${JSON.stringify(pathToFileURL(resolve(output)).href)});console.log(new m.Tool().good(), typeof new m.Tool().query);`]);
    assert.equal(check.trim(),'7 undefined');++partial;continue;
+  }
+  if(name==='loop' && contract==='source') {
+   assert.equal(r.source_status,3,JSON.stringify(r));
+   assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::FunctionTreeError',value:0},{domain:'abcd::source::EvaluationError',value:3},{domain:'abcd::source::EvaluationObligation',value:0},{domain:'abcd::source::TreeObligation',value:16}]);
+   assert.equal(r.source_failure.pc,25);
+   assert.match(run(join(dirname(engine),'close_completion_probe'),
+     [join(fixtures,'loop.abc'),String(r.source_failure.method),'--control']), /protocol-control units=/);
+   ++refused;continue;
   }
   if(name==='close'||name==='loop'){
    assert.equal(r.source_status,3,JSON.stringify(r));

@@ -3,6 +3,7 @@
 #include "analysis/ssa_fixture.h"
 #include <algorithm>
 #include <iostream>
+#include <source_location>
 
 using namespace abcd;
 using namespace abcd::analysis;
@@ -126,15 +127,19 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
         <<" outcome-gap="<<unsigned(*missing->outcome_gap)<<" pc="
         <<flow.instructions[flow.nodes[missing->node->value].instruction.value].pc.value<<'\n';
     }
-    if(method.offset.value==451)
+    if(method.offset.value==451 || ExternalExceptionNoHole(contract)==ExternalExceptionPolicy::kNoHoleV1)
       Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state==CloseProofState::kVerified);
     else Check(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state==CloseProofState::kMissing);
     if(const auto& missing=e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].missing)Check(missing->kind!=CloseCompletionError::kExternalEntry);
     if(!padding && mutation==Mutation::kNone)std::cout<<"entry-pc="<<flow.instructions[flow.nodes[e.source.source.value].instruction.value].pc.value
       <<" contract="<<SourceContractName(contract)<<" kind="<<unsigned(e.pending.kind)<<" priority="<<unsigned(priority)<<" ownership="<<unsigned(e.obligations[static_cast<unsigned>(CloseObligation::kOwnership)].state)<<'\n';
   }
-  const auto reject=[&](const CloseCompletionSummary& bad) {
-    Check(std::holds_alternative<CloseCompletionFailure>(verify(bad)));
+  const auto reject=[&](const CloseCompletionSummary& bad,
+      std::source_location site=std::source_location::current()) {
+    const auto checked=verify(bad);
+    if(!std::holds_alternative<CloseCompletionFailure>(checked))
+      std::cerr<<"accepted mutation at "<<site.line()<<'\n';
+    Check(std::holds_alternative<CloseCompletionFailure>(checked));
   };
   if(ExternalExceptionNoHole(contract)==ExternalExceptionPolicy::kNoHoleV1) {
     Check(std::holds_alternative<CloseCompletionFailure>(VerifyCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,summary,{},SourceContract::kLanguageSourceV3)));
@@ -145,6 +150,8 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
     reject(forged);
   }
   auto bad=summary;bad.method.value+=1;reject(bad);
+  bad=summary;bad.regions[0].iteration.exit=ExceptionNodeId{UINT32_MAX};reject(bad);
+  bad=summary;bad.regions[0].iteration.exhausted.successor^=1;reject(bad);
   bad=summary;bad.entries[0].pending.payload=CompletionEntryPayload{99};reject(bad);
   bad=summary;bad.entries[0].pending.target=ExceptionNodeId{0};reject(bad);
   bad=summary;bad.entries.erase(bad.entries.begin());reject(bad);
@@ -166,6 +173,10 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
       bad=summary;bad.regions[r].boundary->protected_ranges[t].role=ProtectedRangeRole::kCloseCode;reject(bad);
       bad=summary;bad.regions[r].boundary->protected_ranges[t].ordinary.push_back({0});reject(bad);
       bad=summary;bad.regions[r].boundary->protected_ranges[t].transport.push_back({0});reject(bad);
+      bad=summary;bad.regions[r].boundary->protected_ranges[t].protocol.push_back({0});reject(bad);
+      if(!ranges[t].protocol.empty()) {
+        bad=summary;bad.regions[r].boundary->protected_ranges[t].protocol.clear();reject(bad);
+      }
       bad=summary;bad.regions[r].boundary->protected_ranges[t].dispatch.push_back({{0},0});reject(bad);
       bad=summary;bad.regions[r].boundary->protected_ranges[t].exits.push_back({{0},0});reject(bad);
     }
@@ -224,7 +235,8 @@ int main(int argc,char** argv) {
     Method({*file,header,index},method,0,Mutation::kRegisters);
     Method({*file,header,index},method,0,Mutation::kSplitDone);
     for(auto mutation:{Mutation::kInitiallyClosed,Mutation::kReset,Mutation::kReceiver,Mutation::kInvertedDone,Mutation::kCycleExit})Method({*file,header,index},method,0,mutation);
-    if(method.offset.value==451) for(unsigned n:{200,201,400,800}) Method({*file,header,index},method,n);
+    for(unsigned n:{200,201,400,800}) Method({*file,header,index},method,n,
+        Mutation::kNone,SourceContract::kLanguageSourceV4);
   }
   Check(tested==2);
 }

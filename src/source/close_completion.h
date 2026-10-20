@@ -81,6 +81,9 @@ struct CloseProtectedRange {
   // Loop-body nodes and links are ORDINARY original control, never close members.
   std::vector<analysis::ExceptionNodeId> ordinary;
   std::vector<analysis::ExceptionNodeId> transport;
+  // Protected inline close copies belong to their own certificates, not the
+  // user body. The final ownership seal must verify every such certificate.
+  std::vector<analysis::ExceptionNodeId> protocol;
   std::vector<analysis::CompletionEdge> dispatch;
   std::vector<analysis::CompletionEdge> exits;
   std::optional<CloseCompletionFailure> missing;
@@ -111,6 +114,9 @@ struct CloseCompletionRegion {
   std::vector<analysis::CompletionEdge> edges; // Every original member edge, cuts included.
   std::optional<analysis::CloseOutcomeRelation> outcomes;
   std::optional<CloseBoundaryProof> boundary;
+  // Original exhaustion edge and its canonical completion boundary. The
+  // register/effect-free corridor between them remains ordinary control.
+  CloseIterationBoundary iteration;
 };
 struct CloseCompletionSummary {
   abc::EntityOffset method;

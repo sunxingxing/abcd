@@ -3,7 +3,7 @@ import {spawnSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, writeFileSync, rmSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join, dirname} from 'node:path';
 import {pathToFileURL} from 'node:url';
 const [structure, fixture] = process.argv.slice(2);
 const temp = mkdtempSync(join(tmpdir(), 'abcd-for-of-cells-'));
@@ -83,8 +83,8 @@ try {
   const expected = {
     cells: [['FunctionTreeError', 9], ['TreeStructureError', 1], ['TreeObligation', 17]],
     skip: [['FunctionTreeError', 9], ['TreeStructureError', 1], ['TreeObligation', 17]],
-    stop: [['PhasedMethodError', 6], ['ExceptionControlError', 4]],
-    finish: [['PhasedMethodError', 6], ['ExceptionControlError', 4]],
+    stop: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['TreeObligation', 16]],
+    finish: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['TreeObligation', 16]],
     throwing: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['TreeObligation', 16]],
   };
   for (const [name, causes] of Object.entries(expected)) {
@@ -92,6 +92,13 @@ try {
     assert.deepEqual(record.source_failure.causes.map(c => [c.domain, c.value]),
       causes.map(([domain, value]) => ['abcd::source::' + domain, value]));
     assert.ok(record.source_failure.pc !== undefined);
+    if (name === 'stop' || name === 'finish') {
+      // Multiple-close ownership/control now verifies. An always-abrupt loop
+      // has no bytecode backedge/LoopId, so native emission remains gated.
+      assert.equal(record.source_failure.pc, 45);
+      assert.match(run(join(dirname(structure),'close_completion_probe'),
+          [join(fixture,name+'.abc'),String(record.source_failure.method),'--control']), /protocol-control units=/);
+    }
   }
   console.log(`${cases} engine/original for-of cell scenarios; close failures, iterator getters, helper identity/isolation and mutation; stronger forms keep typed refusals`);
 } finally {rmSync(temp, {recursive: true, force: true});}

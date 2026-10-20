@@ -2,8 +2,9 @@
 
 `main.js` is independent test source; the engine/test analysis reads only
 `main.abc`. It exercises a non-captured assignment binding, zero-iteration and
-last/break live-out values. It is currently an explicit **ownership gap test**,
-not evidence that native for-of or live-out publication works.
+last/break live-out values. The close seal and independent iteration proof now
+verify, including their mutations and exact budgets. This is not evidence of
+live-out source publication.
 
 Compiler:
 
@@ -25,11 +26,12 @@ acquisition, cached next, object check, done/value reads, and expanded close
 handlers (the return reads are at PCs 106 and 180). The original loop body
 remains ordinary code.
 
-At this checkpoint B cannot seal this method: the first close has
-`CloseOwnershipGap::kLiveOut` at original ExceptionNodeId 162; the other has
-`kBodyDispatch` at original ExceptionNodeId 106. The gap test strictly requires
-`CloseCompletionError::kOwnership`; it never fabricates ownership to run the
-iteration proof. Extending that earlier proof is outside this standalone slice.
+The multiple-close split and shared-state proof discharge the former
+`kLiveOut`/`kBodyDispatch` ownership witnesses. `for_of_iteration_liveout_test`
+now runs the full identity/iteration/event proof. Production still refuses at
+`TreeObligation::kDecisionEdgeCopies` (edge47): exhaustion and break live-out
+copies need their own source correspondence. No ownership or source check is
+removed to publish this fixture.
 There is no generated-source Node differential yet. Proxy, prototype mutation,
 and cross-runtime iterator effects are not certified by this test.
 

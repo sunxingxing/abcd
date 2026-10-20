@@ -21,14 +21,17 @@ void Index(const ValueProgram& g,const ForOfEvaluationInput& source,ForOfEvaluat
   std::pmr::vector<std::uint8_t> ordinary(g.values.size(),0,&q.memory);
   std::pmr::deque<ValueId> pending(&q.memory);
   std::pmr::vector<std::uint8_t> body_nodes(source.input.flow.nodes.size(),0,&q.memory);
-  for(const auto& region:source.ownership.Summary().regions)for(const auto& range:region.boundary->protected_ranges){q.Step();if(range.role==ProtectedRangeRole::kLoopBody)for(const auto node:range.ordinary){q.Step();q.Require(node.value<body_nodes.size());body_nodes[node.value]=1;}}
+  bool inline_closes=false;
+  for(const auto& region:source.ownership.Summary().regions)for(const auto& range:region.boundary->protected_ranges){q.Step();if(range.role==ProtectedRangeRole::kLoopBody){inline_closes|=!range.protocol.empty();for(const auto node:range.ordinary){q.Step();q.Require(node.value<body_nodes.size());body_nodes[node.value]=1;}}}
 
   const auto keep=[&](ValueId v){q.Step();if(!ordinary[v.value]){ordinary[v.value]=1;pending.push_back(v);}};
-  // Ordinary uses are roots. The success value is an explicit protocol output,
+  // Observable ordinary uses are roots; pure transport is followed backwards,
+  // not promoted to an observation of dead VM state. The success value is an explicit protocol output,
   // not an internal iterator value, including its real body copies/phis.
   for(const auto& d:p.iteration.definitions){q.Step();keep(d.value);}
   for(const auto& use:g.uses){q.Step();if(use.life!=ValueLife::kLive)continue;const auto* v=std::get_if<ValueId>(&use.operand);if(!v)continue;
     if(const auto* o=std::get_if<OpId>(&use.owner);o && !p.identity.operations[o->value] &&
+        (!inline_closes || !CanErasePureOp(g.ops[o->value])) &&
         (source.ownership.Forwarding().operations.empty() || !source.ownership.Forwarding().operations[o->value]))keep(*v);
   }
   // Backwards ordinary liveness stops at protocol events. These boundaries
@@ -61,6 +64,14 @@ void Index(const ValueProgram& g,const ForOfEvaluationInput& source,ForOfEvaluat
     if(p.operations[o]->role!=ForOfRole::kAcquisition)inputs({o},p.operations[o]->protocol);
   }}
   while(!queue.empty()){q.Step();const auto [v,protocol]=queue.front();queue.pop_front();const auto& origin=g.values[v.value].origin;
+    // Close state can join after an abrupt copy without being read again.
+    // Such a phi is private only when the shared backwards liveness proved
+    // no ordinary observation. Claim the correlated phi and ALL its inputs;
+    // never leave an edge copy from an internal guard into a source symbol.
+    for(auto u=inline_closes?g.values[v.value].first_use:std::nullopt;u;u=g.uses[u->value].next) {
+      q.Step();const auto& use=g.uses[u->value];
+      if(use.life==ValueLife::kLive)if(const auto* phi=std::get_if<ValueId>(&use.owner))claim(*phi,protocol);
+    }
     if(const auto* def=std::get_if<OpResult>(&origin)){
       const auto& op=g.ops[def->op.value];if(!p.operations[def->op.value]){q.Require(CanErasePureOp(op));p.operations[def->op.value]=ForOfMember{protocol,ForOfRole::kTransport};inputs(def->op,protocol);}
     }else if(std::holds_alternative<PhiDefinition>(origin)){for(auto u=first[v.value];u;u=next[u->value]){q.Step();if(const auto* value=std::get_if<ValueId>(&g.uses[u->value].operand))claim(*value,protocol);}}

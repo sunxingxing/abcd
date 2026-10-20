@@ -111,7 +111,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     Require(plan.holes.has_value() == has_holes, Error::kOwnership);
     if (plan.holes) {
       EvaluationInputSite failure;
-      const auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work}, &failure);
+      const auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work}, &failure, plan.for_of ? &*plan.for_of : nullptr);
       const auto* protocol = std::get_if<HoleProtocol>(&analyzed);
       if (!protocol) {
         witness.plan_cause = std::get<HoleProtocolError>(analyzed);
@@ -321,7 +321,12 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       step(std::get<std::uint64_t>(checked));
     }
     if (plan.exceptions) {
-      const auto checked = VerifyExceptionCopies(graph, *plan.phis, *plan.exceptions, {bytes, work},plan.for_of ? std::span<const ForOfUseDisposition>(plan.for_of->uses) : std::span<const ForOfUseDisposition>{});
+      auto projection=ExceptionCopyProjection::kOriginal;
+      if(for_of)for(const auto& region:for_of->ownership.Summary().regions)
+        for(const auto& range:region.boundary->protected_ranges) {
+          step();if(!range.protocol.empty())projection=ExceptionCopyProjection::kForOfClose;
+        }
+      const auto checked = VerifyExceptionCopies(graph, *plan.phis, *plan.exceptions, {bytes, work},plan.for_of ? std::span<const ForOfUseDisposition>(plan.for_of->uses) : std::span<const ForOfUseDisposition>{},projection);
       if (const auto* error = std::get_if<ExceptionCopyError>(&checked)) {
         if (*error == ExceptionCopyError::kResourceLimit) return Error::kResourceLimit;
         if (*error == ExceptionCopyError::kWorkLimit) return Error::kWorkLimit;
@@ -459,7 +464,10 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
                use = graph.uses[use->value].next) {
             step();
             const auto* owner = std::get_if<analysis::OpId>(&graph.uses[use->value].owner);
-            Require(owner && BeforeLogicalFusion(graph, plan, owner->value).kind == EvaluationKind::kElidedPure,
+            witness.use = *use;
+            const bool protocol_use = owner && ForOfOperation(plan, *owner);
+            Require(protocol_use || (owner &&
+                BeforeLogicalFusion(graph, plan, owner->value).kind == EvaluationKind::kElidedPure),
                 Error::kOwnership);
           }
         }

@@ -1,4 +1,5 @@
 #include "evaluation_liveness.h"
+#include "for_of_evaluation.h"
 
 #include <new>
 #include <stdexcept>
@@ -61,7 +62,8 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyElidedPureEvaluations(
       const auto* result = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
       if (!result || plan.operations[result->op.value].kind != EvaluationKind::kElidedPure) continue;
       const auto* owner = std::get_if<OpId>(&use.owner);
-      if (!owner || plan.operations[owner->value].kind != EvaluationKind::kElidedPure)
+      if (!owner || (plan.operations[owner->value].kind != EvaluationKind::kElidedPure &&
+          !ForOfOperation(plan,*owner)))
         return Error::kOwnership;
     }
     return budget.work - work;

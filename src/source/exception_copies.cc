@@ -24,7 +24,27 @@ void CheckCopies(const ValueProgram& graph, const PhiCopies& copies, CopyBudget&
   }
   budget.Step(std::get<std::uint64_t>(checked));
 }
-std::optional<WorkBlockId> CatchPhi(const ValueProgram& graph, const ValueDefinition& value) {
+std::vector<std::uint8_t> ProtocolPhis(const ValueProgram& graph,
+    std::span<const ForOfUseDisposition> for_of, CopyBudget& budget) {
+  std::vector<std::uint8_t> owned;
+  if(for_of.empty())return owned;
+  Require(for_of.size()==graph.uses.size(),Error::kPhi);
+  budget.Array(owned,graph.values.size());
+  for(std::size_t u=0;u<graph.uses.size();++u) {
+    budget.Step();const auto& use=graph.uses[u];
+    if(use.life==ValueLife::kLive && for_of[u].protocol)
+      if(const auto* phi=std::get_if<ValueId>(&use.owner))owned[phi->value]=1;
+  }
+  for(std::size_t u=0;u<graph.uses.size();++u) {
+    budget.Step();const auto& use=graph.uses[u];
+    if(use.life==ValueLife::kLive)if(const auto* phi=std::get_if<ValueId>(&use.owner))
+      Require(!owned[phi->value] || for_of[u].protocol.has_value(),Error::kPhi);
+  }
+  return owned;
+}
+std::optional<WorkBlockId> CatchPhi(const ValueProgram& graph, const ValueDefinition& value,
+    bool protocol = false) {
+  if(protocol)return {};
   const auto* phi = std::get_if<PhiDefinition>(&value.origin);
   if (value.life != ValueLife::kLive || !phi) return {};
   Require(phi->block.value < graph.phases.size(), Error::kPhi);
@@ -48,21 +68,25 @@ CopyPlacement Placement(const ValueProgram& graph, const PhiBundle& bundle) {
 }  // namespace
 
 std::variant<ExceptionCopies, ExceptionCopyError> BuildExceptionCopies(
-    const ValueProgram& graph, const PhiCopies& copies, SemanticBudget allowance, std::span<const ForOfUseDisposition> for_of) {
+    const ValueProgram& graph, const PhiCopies& copies, SemanticBudget allowance, std::span<const ForOfUseDisposition> for_of,
+    ExceptionCopyProjection projection) {
   try {
     CopyBudget budget(allowance);
     CheckCopies(graph, copies, budget,for_of);
+    const auto protocol=projection==ExceptionCopyProjection::kForOfClose
+        ? ProtocolPhis(graph,for_of,budget) : std::vector<std::uint8_t>{};
     ExceptionCopies plan{graph.revision, graph.cfg_revision};
+    plan.projection=projection;
     budget.Admit(1, sizeof(plan));
     budget.Array(plan.placements, copies.bundles.size());
     budget.Array(plan.staging, copies.copies.size());
     std::size_t count = 0;
-    for (const auto& value : graph.values) { budget.Step(); count += CatchPhi(graph, value).has_value(); }
+    for (std::size_t v=0;v<graph.values.size();++v) { budget.Step(); count += CatchPhi(graph, graph.values[v], !protocol.empty() && protocol[v]).has_value(); }
     budget.Reserve(plan.slots, count);
     budget.Reserve(plan.commits, count);
     for (std::size_t v = 0; v < graph.values.size(); ++v) {
       budget.Step();
-      if (const auto block = CatchPhi(graph, graph.values[v]))
+      if (const auto block = CatchPhi(graph, graph.values[v], !protocol.empty() && protocol[v]))
         plan.slots.push_back({*block, ValueId{static_cast<std::uint32_t>(v)}});
     }
     std::sort(plan.slots.begin(), plan.slots.end(), [&](const auto& a, const auto& b) {
@@ -86,12 +110,13 @@ std::variant<ExceptionCopies, ExceptionCopyError> BuildExceptionCopies(
       if (!std::holds_alternative<ThrowCopies>(plan.placements[b])) continue;
       for (std::size_t i = bundle.first; i < std::size_t(bundle.first) + bundle.count; ++i) {
         budget.Step();
+        if(projection==ExceptionCopyProjection::kForOfClose && copies.projection[i]==PhiCopyUse::kForOfProtocol)continue;
         const auto slot = slots[copies.copies[i].destination.value];
         Require(slot.has_value(), Error::kSlot);
         plan.staging[i] = slot;
       }
     }
-    const auto checked = VerifyExceptionCopies(graph, copies, plan, budget.Remaining(),for_of);
+    const auto checked = VerifyExceptionCopies(graph, copies, plan, budget.Remaining(),for_of,projection);
     if (const auto* error = std::get_if<Error>(&checked)) return *error;
     budget.Step(std::get<std::uint64_t>(checked));
     plan.allocated_bytes = sizeof(plan) + plan.placements.capacity() * sizeof(CopyPlacement) +
@@ -106,11 +131,15 @@ std::variant<ExceptionCopies, ExceptionCopyError> BuildExceptionCopies(
 }
 std::variant<std::uint64_t, ExceptionCopyError> VerifyExceptionCopies(
     const ValueProgram& graph, const PhiCopies& copies, const ExceptionCopies& plan,
-    SemanticBudget allowance, std::span<const ForOfUseDisposition> for_of) {
+    SemanticBudget allowance, std::span<const ForOfUseDisposition> for_of,
+    ExceptionCopyProjection projection) {
   try {
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
+    Require(plan.projection==projection,Error::kPlacement);
     CopyBudget budget(allowance);
     CheckCopies(graph, copies, budget,for_of);
+    const auto protocol=projection==ExceptionCopyProjection::kForOfClose
+        ? ProtocolPhis(graph,for_of,budget) : std::vector<std::uint8_t>{};
     Require(plan.placements.size() == copies.bundles.size(), Error::kPlacement);
     Require(plan.staging.size() == copies.copies.size(), Error::kSlot);
     std::vector<std::optional<CatchSlotId>> slots;
@@ -120,13 +149,13 @@ std::variant<std::uint64_t, ExceptionCopyError> VerifyExceptionCopies(
       budget.Step();
       const auto& slot = plan.slots[s];
       Require(slot.destination.value < graph.values.size() &&
-          CatchPhi(graph, graph.values[slot.destination.value]) == slot.block &&
+          CatchPhi(graph, graph.values[slot.destination.value], !protocol.empty() && protocol[slot.destination.value]) == slot.block &&
           !slots[slot.destination.value] && (!s || SlotLess(plan.slots[s - 1], slot)), Error::kSlot);
       slots[slot.destination.value] = CatchSlotId{static_cast<std::uint32_t>(s)};
     }
     for (std::size_t v = 0; v < graph.values.size(); ++v) {
       budget.Step();
-      Require(slots[v].has_value() == CatchPhi(graph, graph.values[v]).has_value(), Error::kSlot);
+      Require(slots[v].has_value() == CatchPhi(graph, graph.values[v], !protocol.empty() && protocol[v]).has_value(), Error::kSlot);
     }
     std::size_t first = 0;
     std::optional<WorkBlockId> previous;
@@ -148,7 +177,7 @@ std::variant<std::uint64_t, ExceptionCopyError> VerifyExceptionCopies(
       const auto* raised = std::get_if<ThrowCopies>(&plan.placements[b]);
       for (std::size_t i = bundle.first; i < std::size_t(bundle.first) + bundle.count; ++i) {
         budget.Step();
-        if (!raised) { Require(!plan.staging[i], Error::kSlot); continue; }
+        if (!raised || (projection==ExceptionCopyProjection::kForOfClose && copies.projection[i]==PhiCopyUse::kForOfProtocol)) { Require(!plan.staging[i], Error::kSlot); continue; }
         const auto slot = slots[copies.copies[i].destination.value];
         Require(slot && plan.staging[i] == slot && plan.slots[slot->value].block == raised->handler, Error::kSlot);
       }

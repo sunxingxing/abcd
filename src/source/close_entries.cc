@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <bit>
 #include <map>
+#include <set>
 #include <stdexcept>
 
 namespace abcd::source {
@@ -681,6 +682,20 @@ class Derivation {
     // reachable edge is visited once in this sparse close query.
     std::pmr::vector<CompletionExit> cuts(&q_.memory);
     const auto target=close.entries.front().entry.pending.target;
+    std::pmr::set<ExceptionNodeId> shared(&q_.memory);
+    if(target==CompletionTarget{close.iteration.exit}) {
+      auto n=Node(close.iteration.exhausted.source).successors[close.iteration.exhausted.successor].target;
+      // Only the actual exhaustion corridor is shared. A private jump after
+      // a close is still a member of that close, even if it reaches the same
+      // final target. Boundary proves this corridor has no reads/writes/effects.
+      while(n!=close.iteration.exit) {
+        q_.Step();q_.Require(Boundary(n)==close.iteration.exit && Node(n).successor_count==1,
+            CloseEntryError::kContinuation,n);
+        q_.Step(1+std::bit_width(shared.size()));
+        q_.Require(shared.insert(n).second,CloseEntryError::kContinuation,n);
+        n=Node(n).successors[0].target;
+      }
+    }
     for(std::size_t i=0;i<queue.size();++i) {
       q_.Step();const auto n=queue[i];const auto& node=Node(n);const auto& instruction=Instruction(n);
       if((node.exception && !node.exception->target) ||
@@ -690,8 +705,13 @@ class Derivation {
         q_.Step();const auto& edge=node.successors[e];
         const bool external=edge.kind==ExceptionArcKind::kException &&
           (!node.exception || !node.exception->target || node.exception->target->region!=internal);
+        // A shared continuation may start with pure, register-free jumps or
+        // no-ops (including split blocks). Cut BEFORE that corridor: it is
+        // ordinary control also reachable from exhaustion, never close code.
+        // Boundary memoizes only nonthrowing, effect/read/write-free transport.
         const bool completion=edge.kind!=ExceptionArcKind::kException && std::holds_alternative<ExceptionNodeId>(target) &&
-          edge.target==std::get<ExceptionNodeId>(target);
+          (edge.target==std::get<ExceptionNodeId>(target) ||
+           (q_.Step(1+std::bit_width(shared.size())),shared.contains(edge.target)));
         if(external || completion)cuts.push_back(CompletionEdge{n,e});
         else if(stamps_[edge.target.value]!=stamp){stamps_[edge.target.value]=stamp;queue.push_back(edge.target);}
       }

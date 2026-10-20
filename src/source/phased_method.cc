@@ -92,7 +92,7 @@ void RetainCloseSummary(PhaseBudget& quota,const CloseCompletionSummary& summary
     if(region.boundary) {
       const auto& b=*region.boundary;retain(b.ports);retain(b.unreachable_entries);retain(b.private_slots);retain(b.regions);retain(b.protected_ranges);
       for(const auto& range:b.protected_ranges) {
-        quota.Step();retain(range.ordinary);retain(range.transport);retain(range.dispatch);retain(range.exits);
+        quota.Step();retain(range.ordinary);retain(range.transport);retain(range.protocol);retain(range.dispatch);retain(range.exits);
       }
     }
   }

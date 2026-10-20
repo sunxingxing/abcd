@@ -637,9 +637,9 @@ if(BUILD_TESTING)
   set_tests_properties(for_of_pipeline_probe_test PROPERTIES
     PASS_REGULAR_EXPRESSION "evaluation-verified")
   add_test(NAME close_completion_probe_test COMMAND close_completion_probe
-    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 423)
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 423 --control)
   set_tests_properties(close_completion_probe_test PROPERTIES
-    PASS_REGULAR_EXPRESSION "obligation2=1 obligation3=0:6.*ownership-gap=9.*@105")
+    PASS_REGULAR_EXPRESSION "protocol-control units=")
   add_test(NAME close_loop_body_probe_test COMMAND close_completion_probe
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 451 --boundary)
   set_tests_properties(close_loop_body_probe_test PROPERTIES
@@ -740,10 +740,23 @@ if(BUILD_TESTING)
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/main.js"
       "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
   endif()
-  add_test(NAME for_of_draft_exits_gap_test COMMAND close_completion_probe
-    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/exits.abc" 408 --boundary)
-  set_tests_properties(for_of_draft_exits_gap_test PROPERTIES
-    PASS_REGULAR_EXPRESSION "obligation2=1 obligation3=0:6.*ownership-gap=9.*@133")
+  if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME for_of_multiple_source_test COMMAND "${ABCD_NODE_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_multiple.mjs"
+      $<TARGET_FILE:abc_structure> "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_multiple")
+  endif()
+  add_test(NAME for_of_multiple_draft_test COMMAND for_of_draft_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_multiple/multi.abc" 420)
+  add_test(NAME for_of_multiple_test COMMAND for_of_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_multiple/multi.abc" 420)
+  add_test(NAME for_of_multiple_scale_test COMMAND for_of_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_multiple/multi.abc" 420 --scale)
+  add_test(NAME for_of_multiple_variants_test COMMAND for_of_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_multiple/multi.abc" 420 --variants)
+  add_test(NAME for_of_draft_exits_close_test COMMAND close_completion_probe
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_draft/exits.abc" 408 --control)
+  set_tests_properties(for_of_draft_exits_close_test PROPERTIES
+    PASS_REGULAR_EXPRESSION "protocol-control units=")
   if(ABCD_NODE_EXECUTABLE)
     add_test(NAME for_of_draft_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_draft.mjs" $<TARGET_FILE:for_of_draft_test>
@@ -761,8 +774,8 @@ if(BUILD_TESTING)
   target_include_directories(for_of_iteration_test PRIVATE tests/support)
   add_test(NAME for_of_iteration_test COMMAND for_of_iteration_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
-  add_test(NAME for_of_iteration_liveout_gap_test COMMAND for_of_iteration_test
-    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_iteration/main.abc" 391 --expect-ownership-gap)
+  add_test(NAME for_of_iteration_liveout_test COMMAND for_of_iteration_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_iteration/main.abc" 391)
   add_executable(for_of_identity_test tests/unit/source/for_of_identity_test.cc)
   target_link_libraries(for_of_identity_test PRIVATE abcd_source abcd_json)
   target_include_directories(for_of_identity_test PRIVATE tests/support)
@@ -1071,6 +1084,11 @@ if(BUILD_TESTING)
   add_test(NAME parameter_expression_test COMMAND parameter_expression_test)
   if(ABCD_BUILD_TOOLS AND Python3_Interpreter_FOUND AND
       EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+    add_test(NAME for_of_multiple_roundtrip_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/for_of_multiple_roundtrip.py"
+      $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_multiple"
+      "${CMAKE_CURRENT_BINARY_DIR}/for-of-multiple-roundtrip" --temporary)
     add_test(NAME exception_throw_roundtrip_test COMMAND ${Python3_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/exception_throw_roundtrip.py"
       $<TARGET_FILE:abc_structure>

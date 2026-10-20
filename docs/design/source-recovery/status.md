@@ -5,6 +5,72 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Multiple for-of abrupt-close copies (2026-10-20, partial delivery)
+
+- Baseline **1ea8d4e6**, also the independently built wtbase. Diagnosis and
+  pinned spec/frontend references: [for-of-multiple-exits.md](for-of-multiple-exits.md).
+  `kMultipleExits` is **4**; o15/37098 is unrelated `kCrossEntry` **3** and
+  has no synchronous iterator acquisition in 273 decoded instructions.
+- Compose complete guard/reference/outcome/priority close forests before the
+  body-wrapper split. Shared protocol/original-edge/member indexes keep abrupt
+  close copies separate from ordinary body operations. Follow private state
+  only through certified copies; ordinary observations, user tries and missing
+  exits still refuse. The independent verifier rederives all sets and the
+  original exhaustion/canonical-boundary identities. Topology keeps the empty
+  exhaustion corridor for native break, so register/block splits preserve one
+  lexical loop exit. Every buffer is charged; sparse work remains bounded by
+  the existing input-sized N log N grant. No new premise (V2 acquisition and
+  the approved V4 external-exception-no-Hole predicate remain required).
+- Extend the common evaluation, exceptional phi staging, operand/TreeFlow and
+  recovery handoffs. Protocol catch/Hole/guard/phi state gets no source symbol.
+  The new catch projection is derived from the verified inline-close split;
+  old successful plans retain their original staging/root view. No generic
+  internal-value, ownership, catch-state, scope or source check is relaxed.
+- Real es2abc `multi` fixture moves from **kMultipleExits -> complete native
+  for-of**. It exercises break/Return/Throw/same-loop continue; engine-output
+  Node differential **270/270 traces**, including missing/null/primitive return,
+  getter/call failures, original Throw identity/priority, receiver and zero
+  iterations. Six fixtures have O0/default ABCs with hashes and compiler
+  identity/options. Labelled/async/nested/user-catch/live-out forms remain
+  explicit negative gates, not source-semantic passes. Unit tests include
+  recovery/port/staging/split mutations, 200/201/400/800 graph padding,
+  register/block-split equivalents and exact byte/work boundaries.
+- SDK comparison uses grouping_bytecode.py's strict reader, no register/branch/
+  handler normalization: **4 compiler runs / 2 pairs / 4 methods compared**;
+  the module entry is identical in both modes (**2/4 methods**). The scan method
+  differs by continue predicate inversion/redundant jump; O0 also exposes the
+  recovered assignment binding's outside-loop initialization and temporary
+  allocation. Both retain matching real acquisition, return-read, object-check
+  and receiver-call counts. Recompiled O0 verifies the full standalone
+  protocol; default remains **ExceptionPlanError::kLayout > CatchRegionError
+  at PC112**. This is a reported round-trip analysis gap, not an equality/seal
+  pass. Full diffs and exact options are retained in the SDK report.
+- **No corpus target completes.** RpcTool m20512/m25655 now pass entries/ports/
+  private state; their remaining ownership failure is the effectful outer
+  ordinary try (Try4 PC236/H759 and PC246/H801). configService m47128 still
+  needs cleanup forwarding at717 plus captured per-iteration binding and
+  independent multi-acquisition composition. DataDriver m42717 still needs
+  inner CURRENT-completion -> outer input at692. Async m23306 still needs the
+  raw await/rejection adapter at original99/working96. All five retain their
+  original first kMultipleExits refusals, including the RpcTool omissions.
+- Full build passed; serial source-regression **65/65**; new tests **6/6**;
+  focused close/body/ownership tests **5/5** plus those new tests (**11/11** together). Requested
+  sweep **192/198**: supplied pre-existing family_source_cli, tree_structure,
+  try_tree, class_tree_source and try_tree_source; additionally
+  file_generator_return_loop_source fails at loop_closure_file_test.cc:1311
+  identically on a freshly built **1ea8d4e6** wtbase. No new failure remains.
+  Three former component-gap assertions now require the complete independent
+  earlier proof and the exact later gate; source rejection and all existing
+  behavioral/mutation assertions remain checked. tree_failure.mjs is unchanged.
+- Both 40-input cohorts: **537/620 previous, 589/620 source**, **0 regressions,
+  0 new completions, 0 text changes**. All manifests and all emitted source,
+  including partial source, are byte-identical to baseline. Resource rerun
+  max engine RSS **41,910,272 bytes**; conservative four-worker + runner bound
+  **186,400,768 bytes**, below 1GB. Evidence under `build/review/for-of-multiple/`:
+  acceptance build, source-regression/new-tests/sweep-verified logs, old/verified
+  cohorts and comparisons, per-method verified probes, resource/report.json,
+  sdk-verified/report.json and strict per-method diffs. No commit/push/stash.
+
 ## RpcTool query: edge-qualified explicit-throw domains (2026-10-20)
 
 - Baseline **2186fbff** (wtbase verified at that commit). Diagnose both original

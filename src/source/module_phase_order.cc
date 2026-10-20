@@ -129,10 +129,14 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyModuleCatchCopies(
       const auto& load = plan.phis->bundles[*load_bundle];
       const auto& check = plan.phis->bundles[*guard_bundle];
       for (std::size_t i = load.first; i < std::size_t(load.first) + load.count; ++i) {
-        budget.Step(); staged[plan.exceptions->staging[i]->value] = i;
+        budget.Step();
+        if(plan.exceptions->projection==ExceptionCopyProjection::kForOfClose && plan.phis->projection[i]==PhiCopyUse::kForOfProtocol)continue;
+        staged[plan.exceptions->staging[i]->value] = i;
       }
       for (std::size_t i = check.first; i < std::size_t(check.first) + check.count; ++i) {
-        budget.Step(); const auto prior = staged[plan.exceptions->staging[i]->value];
+        budget.Step();
+        if(plan.exceptions->projection==ExceptionCopyProjection::kForOfClose && plan.phis->projection[i]==PhiCopyUse::kForOfProtocol)continue;
+        const auto prior = staged[plan.exceptions->staging[i]->value];
         Require(prior && *prior >= load.first && *prior < std::size_t(load.first) + load.count &&
             SameOperand(plan.phis->copies[*prior].source, plan.phis->copies[i].source), Error::kOrder);
       }

@@ -129,8 +129,19 @@ class Boundary {
     for(const auto& m:r_.members){arena_.Step();prefix[flow_.nodes[m.node.value].instruction.value+1]=1;}
     for(std::size_t i=1;i<prefix.size();++i){arena_.Step();prefix[i]+=prefix[i-1];}
     std::pmr::vector<bool> associated(plan_.regions.size(),false,arena_.Resource());
+    std::pmr::vector<bool> body_wrapper(plan_.regions.size(),false,arena_.Resource());
+    std::optional<InstructionId> live_begin,live_end;
+    for(const auto& member:r_.members) {
+      arena_.Step();if(!reachable_[flow_raw_[member.node.value]])continue;
+      const auto site=flow_.nodes[member.node.value].instruction;
+      if(!live_begin || site<*live_begin)live_begin=site;
+      if(!live_end || *live_end<site)live_end=site;
+    }
     for(const auto& region:scan_.regions) {
-      arena_.Step();if(region.protocol==c_.protocol && region.read.operation==c_.read) {
+      arena_.Step();Require(region.region.value<associated.size());
+      if(region.protocol==c_.protocol && region.role==IteratorRegionRole::kEnclosingHandler)
+        body_wrapper[region.region.value]=true;
+      if(region.protocol==c_.protocol && region.read.operation==c_.read) {
         Require(region.region.value<associated.size());associated[region.region.value]=true;
       }
     }
@@ -165,6 +176,12 @@ class Boundary {
         }
       }
       if(!associated[t] || !role) {
+        // Another close copy may own THIS acquisition's body wrapper. A
+        // break/return copy inside its protected body is not a user try and
+        // must not claim the wrapper/handler. Complete coverage is checked by
+        // the wrapper owner's independently recomputed split certificate.
+        if(body_wrapper[t] && entry_dominators_ && live_begin && live_end &&
+            region.body.begin<=*live_begin && *live_end<region.body.end)continue;
         region_ok=false;
         Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kUserTry);
         if(out_.missing && out_.missing->ownership_gap==CloseOwnershipGap::kUserTry && !out_.missing->region)out_.missing->region=TryId{t};
@@ -176,7 +193,7 @@ class Boundary {
         if(const auto* f=std::get_if<CloseCompletionFailure>(&body))throw *f;
         auto proof=std::get<CloseProtectedRange>(std::move(body));
         arena_.Observe(proof.peak_bytes);arena_.Step(proof.work);
-        arena_.Retain(proof.ordinary.capacity()*sizeof(ExceptionNodeId)+proof.transport.capacity()*sizeof(ExceptionNodeId)+
+        arena_.Retain(proof.ordinary.capacity()*sizeof(ExceptionNodeId)+proof.transport.capacity()*sizeof(ExceptionNodeId)+proof.protocol.capacity()*sizeof(ExceptionNodeId)+
             proof.dispatch.capacity()*sizeof(CompletionEdge)+proof.exits.capacity()*sizeof(CompletionEdge));
         if(proof.missing) {
           covered=false;Missing(proof.missing->kind,*proof.missing->ownership_gap,proof.missing->node,proof.missing->edge);
@@ -184,17 +201,6 @@ class Boundary {
         }
         for(const auto n:proof.ordinary) {
           arena_.Step();if(member_[n.value]){covered=false;Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kBodyRange,n);}
-        }
-        // An expanded close copy is not ordinary user body. Composing such
-        // completion ports requires its own proof; do not silently relabel it.
-        for(const auto& other:scan_.regions) {
-          arena_.Step();if(other.protocol!=c_.protocol || other.role!=IteratorRegionRole::kReturnProtection || other.read.operation==c_.read)continue;
-          const bool inside=std::binary_search(proof.ordinary.begin(),proof.ordinary.end(),other.read.before,
-              [&](ExceptionNodeId a,ExceptionNodeId b){arena_.Step();return a<b;});
-          if(inside) {
-            covered=false;Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kBodyExit,other.read.before);
-            if(!proof.missing)proof.missing=CloseCompletionFailure{CloseCompletionError::kOwnership,c_.protocol,c_.read,{},other.read.before,{}, {}, {}, {},CloseOwnershipGap::kBodyExit,TryId{t}};
-          }
         }
         out_.protected_ranges.push_back(std::move(proof));
       } else out_.protected_ranges.push_back(CloseProtectedRange{TryId{t},ProtectedRangeRole::kCloseCode});
@@ -249,10 +255,16 @@ class Boundary {
     for(std::size_t i=0;i<todo.size();++i) {
       arena_.Step();const auto [id,slot]=todo[i];const auto& node=raw_.Nodes()[id];
       if(node.unknown) {private_ok=false;Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kRawFlow);continue;}
-      if(Reads(node.registers,slot)) {
+      const auto witness=raw_flow_[id];
+      bool protocol_read=false;
+      if(witness && entry_dominators_) {
+        const auto& members=entry_dominators_->members;
+        protocol_read=std::binary_search(members.begin(),members.end(),CloseBodyMember{c_.protocol,*witness},
+            [&](const auto& a,const auto& b){arena_.Step();return a<b;});
+      }
+      if(Reads(node.registers,slot) && !protocol_read) {
         private_ok=false;
         // Map a raw event to its real immutable flow identity; no made-up PC.
-        const auto witness=raw_flow_[id];
         Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kLiveOut,witness);continue;
       }
       if(node.registers.write) {

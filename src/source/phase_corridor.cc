@@ -247,10 +247,14 @@ bool PhaseCorridors::SameCatch(OpId producer, OpId consumer) {
   const auto& a = plan_.phis->bundles[*left];
   const auto& b = plan_.phis->bundles[*right];
   for (std::size_t c = a.first; c < std::size_t(a.first) + a.count; ++c) {
-    budget_.Step(); staged_[plan_.exceptions->staging[c]->value] = c;
+    budget_.Step();
+    if(plan_.exceptions->projection==ExceptionCopyProjection::kForOfClose && plan_.phis->projection[c]==PhiCopyUse::kForOfProtocol)continue;
+    staged_[plan_.exceptions->staging[c]->value] = c;
   }
   for (std::size_t c = b.first; c < std::size_t(b.first) + b.count; ++c) {
-    budget_.Step(); const auto prior = staged_[plan_.exceptions->staging[c]->value];
+    budget_.Step();
+    if(plan_.exceptions->projection==ExceptionCopyProjection::kForOfClose && plan_.phis->projection[c]==PhiCopyUse::kForOfProtocol)continue;
+    const auto prior = staged_[plan_.exceptions->staging[c]->value];
     if (!prior || *prior < a.first || *prior >= std::size_t(a.first) + a.count ||
         !SameOperand(ResolveEvaluationOperand(plan_, plan_.phis->copies[*prior].source),
                      ResolveEvaluationOperand(plan_, plan_.phis->copies[c].source))) return false;

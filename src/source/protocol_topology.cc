@@ -19,6 +19,8 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
   std::vector<bool> members;
   std::vector<std::optional<ControlId>> raw, phase;
   std::vector<EntryIndex> entries;
+  std::vector<std::optional<CloseIterationBoundary>> iterations;
+  q.Size(iterations,ownership.Scan().candidates.size());
   q.Size(members,input.flow.nodes.size()); q.Size(raw,input.flow.nodes.size());
   q.Size(phase,g.blocks.size());q.Size(entries,summary.entries.size());
   q.Size(t.mapping.regions,plan.regions.size());q.Size(t.mapping.region_roles,plan.regions.size());
@@ -28,7 +30,9 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
   }
   std::size_t ports=0;
   for(const auto& region:summary.regions) {
-    q.Work();Require(region.boundary && region.outcomes);
+    q.Work();Require(region.boundary && region.outcomes && region.protocol.value<iterations.size());
+    auto& iteration=iterations[region.protocol.value];
+    if(iteration)Require(*iteration==region.iteration);else iteration=region.iteration;
     Require(region.boundary->ports.size()<=UINT32_MAX-ports);
     ports+=region.boundary->ports.size();
     for(const auto& member:region.members) {q.Work();Require(member.node.value<members.size());members[member.node.value]=true;}
@@ -131,7 +135,22 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
         case PendingCompletionKind::kNormal:case PendingCompletionKind::kBreak:case PendingCompletionKind::kContinue: {
           const auto* target=std::get_if<ExceptionNodeId>(&unit.pending.target);
           Require(target && target->value<raw.size() && raw[target->value]);
-          add({n},*raw[target->value],FlowEdgeKind::kFallthrough,{});break;
+          auto destination=*target;
+          if(unit.pending.kind==PendingCompletionKind::kBreak) {
+            // Native break and exhaustion share the SAME source continuation.
+            // Keep its original empty corridor rather than jumping past it
+            // and creating two lexical loop exits after block splitting.
+            Require(unit.protocol.value<iterations.size() && iterations[unit.protocol.value]);
+            const auto& iteration=*iterations[unit.protocol.value];
+            if(destination==iteration.exit) {
+              const auto exhausted=iteration.exhausted;
+              Require(exhausted.source.value<input.flow.nodes.size() &&
+                  exhausted.successor<input.flow.nodes[exhausted.source.value].successor_count);
+              destination=input.flow.nodes[exhausted.source.value].successors[exhausted.successor].target;
+            }
+          }
+          Require(destination.value<raw.size() && raw[destination.value]);
+          add({n},*raw[destination.value],FlowEdgeKind::kFallthrough,{});break;
         }
       }
     }

@@ -1,4 +1,5 @@
 #include "hole_protocol.h"
+#include "for_of_evaluation_plan.h"
 #include "evaluation_input_scope.h"
 
 #include <algorithm>
@@ -29,7 +30,8 @@ bool Transport(ValueKinds kinds) {
 }  // namespace
 
 std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, EvaluationInputSite* failure) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, EvaluationInputSite* failure,
+    const ForOfEvaluationPlan* for_of) {
   const auto initial = budget;
   if (failure) *failure = {};
   try {
@@ -55,6 +57,14 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
     step(graph.ops.size());
     step(graph.uses.size());
     Require(!VerifyValueUses(graph, graph.uses.size()));
+    // The caller has independently verified these dispositions against the
+    // original close ownership seal. Protocol catch/phi payloads never become
+    // source Hole transport. All non-protocol observations still go through
+    // the ordinary guard proof below; domains are never upgraded.
+    Require(!for_of || (for_of->values.size()==graph.values.size() &&
+        for_of->operations.size()==graph.ops.size() && for_of->uses.size()==graph.uses.size()));
+    const auto owned_value=[&](std::size_t v){return for_of && for_of->values[v].has_value();};
+    const auto owned_op=[&](std::size_t o){return for_of && for_of->operations[o].has_value();};
     std::vector<ValueId> roots;
     std::vector<Visit> visits;
     std::vector<std::uint32_t> pending;
@@ -68,7 +78,7 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
       EvaluationInputScope site(failure, {EvaluationInputCheck::kHoleTransport,
           std::get_if<OpResult>(&value.origin) ? std::optional{std::get<OpResult>(value.origin).op} : std::nullopt,
           {}, ValueId{v}});
-      if (value.first_use && value.domain.Contains(VmValueKind::kHole)) {
+      if (!owned_value(v) && value.first_use && value.domain.Contains(VmValueKind::kHole)) {
         Require(Transport(value.domain), Error::kEscape);
         if (const auto* produced = std::get_if<OpResult>(&value.origin)) {
           Require(produced->op.value < graph.ops.size());
@@ -144,6 +154,7 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
       const auto& op = graph.ops[i];
       Require(op.first_use.value <= graph.uses.size() &&
               op.use_count <= graph.uses.size() - op.first_use.value);
+      if(owned_op(i)) continue;
       const auto* binary = std::get_if<ValueBinary>(&op.operation);
       if (!binary || op.use_count != 2) continue;
       const bool equal = binary->op == BinaryOperator::kEqual ||
@@ -239,6 +250,10 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
       const auto* value = std::get_if<ValueId>(&use.operand);
       if (!value) continue;
       Require(value->value < graph.values.size());
+      if (owned_value(value->value)) {
+        Require(for_of->uses[static_cast<std::size_t>(&use-graph.uses.data())].protocol.has_value());
+        continue;
+      }
       const auto kinds = graph.values[value->value].domain;
       if (!kinds.Contains(VmValueKind::kHole)) continue;
       Require(Transport(kinds), Error::kEscape);

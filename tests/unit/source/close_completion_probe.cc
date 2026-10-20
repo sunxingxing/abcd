@@ -12,6 +12,7 @@
 #include "analysis/ssa_fixture.h"
 #include <iostream>
 #include <algorithm>
+#include <type_traits>
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
@@ -20,6 +21,7 @@ template<class T,class...U>T Take(std::variant<U...> value,const char* stage) {
   if(auto* p=std::get_if<T>(&value))return std::move(*p);
   std::cout<<"stage="<<stage<<" alternative="<<value.index();
   std::visit([](const auto& f){
+    if constexpr(std::is_enum_v<std::decay_t<decltype(f)>>)std::cout<<" enum="<<unsigned(f);
     if constexpr(requires{f.kind;})std::cout<<" kind="<<unsigned(f.kind);
     if constexpr(requires{f.region.has_value();})if(f.region)std::cout<<" region="<<f.region->value;
     if constexpr(requires{f.operation.has_value();})if(f.operation)std::cout<<" op="<<f.operation->value;
@@ -85,6 +87,10 @@ int main(int argc,char**argv) {
     loads.insert(loads.end(),modules.loads.begin(),modules.loads.end());
     auto values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,Arithmetic(SourceContract::kLanguageSourceV4)),"values");
     auto checked=VerifyExceptionInputs(flow,ssa,env,values,kDefaultSemanticWork,nullptr,ExceptionInputDomain::kHoleTransport);
+    if(const auto* failed=std::get_if<ExceptionInputFailure>(&checked);failed && failed->kind==ExceptionInputError::kInternalValue) {
+      values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,Arithmetic(SourceContract::kLanguageSourceV4),ExceptionThrowRefinement::kGuardedNonHole),"refined-values");
+      checked=VerifyExceptionInputs(flow,ssa,env,values,kDefaultSemanticWork,nullptr,ExceptionInputDomain::kHoleTransport);
+    }
     if(const auto* f=std::get_if<ExceptionInputFailure>(&checked)) {
       std::cout<<"input-failure kind="<<unsigned(f->kind)<<" working-pc="<<f->pc.value;
       if(f->node) {
@@ -204,6 +210,8 @@ int main(int argc,char**argv) {
     Take<std::uint64_t>(VerifyCloseCompletion(body,header.profile,graph,input,plan,keys,scan,summary,{},SourceContract::kLanguageSourceV4),"verify");
     for(const auto& e:summary.entries) {
       std::cout<<"protocol="<<e.protocol.value<<" read="<<flow.instructions[flow.nodes[graph.phases[graph.ops[e.read.value].block.value].input.value].instruction.value].pc.value<<" entry="<<flow.instructions[flow.nodes[e.source.source.value].instruction.value].pc.value<<" completion="<<unsigned(e.pending.kind);
+      if(const auto* value=std::get_if<SsaValueId>(&e.pending.payload))std::cout<<" payload=V"<<value->value;
+      if(const auto* target=std::get_if<ExceptionNodeId>(&e.pending.target))std::cout<<" target="<<flow.instructions[flow.nodes[target->value].instruction.value].pc.value;
       for(std::size_t o=0;o<e.obligations.size();++o) {
         const auto& x=e.obligations[o];std::cout<<" obligation"<<o<<'='<<unsigned(x.state);
         if(x.missing) {std::cout<<':'<<unsigned(x.missing->kind);if(x.missing->region)std::cout<<"[try="<<x.missing->region->value<<"]";if(x.missing->ownership_gap)std::cout<<"[ownership-gap="<<unsigned(*x.missing->ownership_gap)<<']';if(x.missing->node)std::cout<<'@'<<flow.instructions[flow.nodes[x.missing->node->value].instruction.value].pc.value;if(x.missing->edge){const auto edge=*x.missing->edge;const auto& a=flow.nodes[edge.source.value];const auto& b=flow.nodes[a.successors[edge.successor].target.value];std::cout<<" edge="<<flow.instructions[a.instruction.value].pc.value<<":"<<unsigned(a.phase)<<":"<<unsigned(edge.successor)<<"->"<<flow.instructions[b.instruction.value].pc.value<<":"<<unsigned(b.phase);}}

@@ -127,7 +127,16 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     test::Check(std::holds_alternative<CloseCompletionFailure>(seal(std::move(bad))));
     bad=summary;bad.regions[0].boundary->regions.push_back({999});
     test::Check(std::holds_alternative<CloseCompletionFailure>(seal(std::move(bad))));
-    auto sealed=seal(std::move(summary));
+    auto sealed=seal(summary);
+    if(std::holds_alternative<CloseCompletionFailure>(sealed))
+      for(const auto& entry:summary.entries)for(const auto& obligation:entry.obligations)
+        if(obligation.missing) {
+          const auto& f=*obligation.missing;std::cerr<<"seal-gap="<<unsigned(f.kind);
+          if(f.ownership_gap)std::cerr<<" ownership="<<unsigned(*f.ownership_gap);
+          if(f.node)std::cerr<<" pc="<<flow.instructions[flow.nodes[f.node->value].instruction.value].pc.value;
+          if(f.edge)std::cerr<<" edge-node="<<f.edge->source.value<<"/"<<unsigned(f.edge->successor);
+          std::cerr<<'\n';
+        }
     if(expected_gap){test::Check(std::holds_alternative<CloseCompletionFailure>(sealed));const auto& f=std::get<CloseCompletionFailure>(sealed);test::Check(f.kind==CloseCompletionError::kOwnership);std::cout<<"live-out fixture retains CloseCompletionError::kOwnership\n";return;}
     auto owner=Take<VerifiedProtocolRegionOwnership>(std::move(sealed),"seal");
     if(!owner.Forwarding().regions.empty()) {
@@ -256,6 +265,19 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     if(const auto* f=std::get_if<EvaluationFailure>(&full)){std::cerr<<"evaluation kind="<<unsigned(f->kind)<<" obligation="<<unsigned(f->evaluation.obligation);if(f->evaluation.location.operation)std::cerr<<" op="<<f->evaluation.location.operation->value;if(f->evaluation.location.pc)std::cerr<<" pc="<<f->evaluation.location.pc->value;std::cerr<<'\n';}
     auto evaluation=Take<EvaluationPlan>(std::move(full),"evaluation");
     Take<std::uint64_t>(VerifyPhasedEvaluationPlan(graph,evaluation,{},&source),"verify-evaluation");
+    if(evaluation.phis && evaluation.exceptions &&
+        evaluation.exceptions->projection==ExceptionCopyProjection::kForOfClose) {
+      for(std::size_t c=0;c<evaluation.phis->copies.size();++c) {
+        if(evaluation.phis->projection[c]!=PhiCopyUse::kForOfProtocol)continue;
+        test::Check(!evaluation.exceptions->staging[c]);
+        auto forged=*evaluation.exceptions;
+        forged.staging[c]=CatchSlotId{UINT32_MAX};
+        test::Check(std::holds_alternative<ExceptionCopyError>(VerifyExceptionCopies(
+            graph,*evaluation.phis,forged,{},evaluation_protocol.uses,ExceptionCopyProjection::kForOfClose)));
+      }
+      for(const auto& slot:evaluation.exceptions->slots)
+        test::Check(!evaluation_protocol.values[slot.destination.value]);
+    }
 #ifdef ABCD_TEST_FOR_OF_SELECTION
     TreeCheckBudget selection_budget({});
     const auto selections=FindSelectionExpressions(graph,control.skeleton,evaluation,selection_budget,&control);
@@ -369,10 +391,16 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,bad_tree)));
     bad_tree=draft.tree;bool missing_continue=false;
     const auto native_body=std::get<ForOfStmt>(native.statement).body;
-    const auto parent_scope=std::get<BlockStmt>(bad_tree.statements[native_body.value].statement).scope;
-    for(auto& st:bad_tree.statements)if(std::holds_alternative<ContinueStmt>(st.statement)) {
-      const ScopeId scope{static_cast<std::uint32_t>(bad_tree.scopes.size())};bad_tree.scopes.push_back({ScopeKind::kBlock,parent_scope});
-      st.statement=BlockStmt{scope,0,0,{}};missing_continue=true;break;
+    (void)native_body;
+    for(std::uint32_t s=0;s<bad_tree.statements.size();++s)if(std::holds_alternative<ContinueStmt>(bad_tree.statements[s].statement)) {
+      std::optional<ScopeId> parent_scope;
+      for(const auto& statement:bad_tree.statements)if(const auto* block=std::get_if<BlockStmt>(&statement.statement))
+        for(std::uint32_t c=0;c<block->child_count;++c)if(bad_tree.children[block->first_child+c]==StmtId{s}) {
+          test::Check(!parent_scope);parent_scope=block->scope;
+        }
+      test::Check(parent_scope.has_value());
+      const ScopeId scope{static_cast<std::uint32_t>(bad_tree.scopes.size())};bad_tree.scopes.push_back({ScopeKind::kBlock,*parent_scope});
+      bad_tree.statements[s].statement=BlockStmt{scope,0,0,{}};missing_continue=true;break;
     }
     test::Check(missing_continue && std::holds_alternative<TreeStructure>(VerifyTreeStructure(bad_tree)));
     test::Check(std::holds_alternative<TreeFlowError>(VerifyExceptionTreeFlow(graph,exceptions,evaluation,bad_tree)));
@@ -434,6 +462,12 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     const auto& call=wrong_raw.operations[wrong_raw.iterations->loops[0].advance.value];
     for(std::uint32_t u=call.first_use.value;u<call.first_use.value+call.use_count;++u)if(wrong_raw.uses[u].role==OperandRole::kReceiver)wrong_raw.uses[u].operand=wrong_raw.iterations->loops[0].cached_next;
     test::Check(std::holds_alternative<TreeStructureError>(recover(wrong_raw)));
+    for(std::size_t p=0;p<sem.flow.original->iterations->events.ports.size();++p)
+      if(sem.flow.original->iterations->events.ports[p].pending.kind==PendingCompletionKind::kReturn) {
+        wrong_raw=*sem.flow.original;
+        wrong_raw.iterations->events.ports[p].pending.payload=CompletionEntryPayload{UINT32_MAX};
+        test::Check(std::holds_alternative<TreeStructureError>(recover(wrong_raw)));break;
+      }
     wrong_raw=*sem.flow.original;wrong_raw.iterations->events.events[0].exception_exit.reset();
     test::Check(std::holds_alternative<TreeStructureError>(recover(wrong_raw)));
     const auto exact=Take<TreeStorage>(VerifyInitialForOfRecovery(draft.tree,*sem.flow.original,{SemanticBudget{}.bytes,recovery_storage.work}),"recovery-exact-work");
@@ -550,10 +584,8 @@ int main(int argc,char**argv) {
 #ifdef ABCD_TEST_FOR_OF_DRAFT
   if(argc==4 && std::string_view(argv[3]).starts_with("--output="))draft_output=std::string_view(argv[3]).substr(std::string_view("--output=").size());
 #endif
-#if defined(ABCD_TEST_FOR_OF_DRAFT) || defined(ABCD_TEST_ITERATION_CONTEXT)
   if(argc==4 && std::string_view(argv[3])=="--variants") {Case(argv[1],0,std::stoul(argv[2]),1);Case(argv[1],0,std::stoul(argv[2]),0,true);return 0;}
   if(argc==4 && std::string_view(argv[3])=="--scale") {for(unsigned padding:{200U,201U,400U,800U})Case(argv[1],padding,std::stoul(argv[2]));return 0;}
-#endif
   if(argc>=3)Case(argv[1],0,std::stoul(argv[2]),0,false,argc==4 && std::string_view(argv[3])=="--expect-ownership-gap",argc==4 && std::string_view(argv[3])=="--protocol-only");
   else {for(unsigned padding:{0,200,201,400,800})Case(argv[1],padding);Case(argv[1],0,451,1);Case(argv[1],0,451,0,true);}
 }

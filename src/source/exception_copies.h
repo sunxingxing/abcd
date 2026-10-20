@@ -26,9 +26,11 @@ struct CatchCommit {
   CatchSlotId first;
   std::uint32_t count;
 };
+enum class ExceptionCopyProjection : std::uint8_t { kOriginal, kForOfClose };
 struct ExceptionCopies {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
+  ExceptionCopyProjection projection = ExceptionCopyProjection::kOriginal;
   std::vector<CopyPlacement> placements;  // PhiBundle indexed.
   // ParallelCopy indexed. Only exceptional bundles have staging destinations.
   std::vector<std::optional<CatchSlotId>> staging;
@@ -51,9 +53,11 @@ enum class ExceptionCopyError : std::uint8_t {
 // Input graph/copy storage is caller-admitted; results and scratch share budget.
 [[nodiscard]] std::variant<ExceptionCopies, ExceptionCopyError> BuildExceptionCopies(
     const analysis::ValueProgram& graph, const PhiCopies& copies,
-    analysis::SemanticBudget budget = {}, std::span<const ForOfUseDisposition> for_of = {});
+    analysis::SemanticBudget budget = {}, std::span<const ForOfUseDisposition> for_of = {},
+    ExceptionCopyProjection projection = ExceptionCopyProjection::kOriginal);
 [[nodiscard]] std::variant<std::uint64_t, ExceptionCopyError> VerifyExceptionCopies(
     const analysis::ValueProgram& graph, const PhiCopies& copies,
-    const ExceptionCopies& plan, analysis::SemanticBudget budget = {}, std::span<const ForOfUseDisposition> for_of = {});
+    const ExceptionCopies& plan, analysis::SemanticBudget budget = {}, std::span<const ForOfUseDisposition> for_of = {},
+    ExceptionCopyProjection projection = ExceptionCopyProjection::kOriginal);
 }  // namespace abcd::source
 #endif

@@ -98,6 +98,14 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
     while(!stack.empty()){q.Step();const auto v=stack.back();stack.pop_back();if(v.leave){end[v.loop.value]=stamp;continue;}begin[v.loop.value]=stamp++;stack.push_back({v.loop,true});for(auto l=first[v.loop.value];l;l=next[l->value]){q.Step();stack.push_back({*l,false});}}
     const auto inside=[&](std::optional<LoopId> outer,ControlNodeId n){const auto inner=loops.owners[n.value];return outer && inner && begin[outer->value]<=begin[inner->value] && begin[inner->value]<end[outer->value];};
     for(const auto& p:out.iterations){q.Step();q.Require(!p.loop || !inside(p.loop,topology.edges[p.exhausted.value].target),ForOfIterationError::kDone);}
+    // Natural-loop membership excludes terminal break/return arms. The
+    // independently derived body split supplies their exact original extent;
+    // count through those arms up to their certified close-entry unit.
+    std::pmr::set<Query> body_nodes(&q.memory);
+    for(const auto& region:owner.Summary().regions)for(const auto& range:region.boundary->protected_ranges) {
+      q.Step();if(range.role!=ProtectedRangeRole::kLoopBody)continue;
+      for(const auto n:range.ordinary){q.Step();if(raw[n.value])body_nodes.insert({region.protocol.value,raw[n.value]->value});}
+    }
     while(!queue.empty()){
       q.Step();const auto key=reverse?queue.back():queue.front();if(reverse)queue.pop_back();else queue.pop_front();
       const auto& proof=out.iterations[key.first];const ControlNodeId n{key.second};q.witness={ForOfIterationError::kCorrespondence,proof.protocol,{},n};
@@ -107,6 +115,11 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
       if(n==proof.value){q.Require(bits==kAdvanced,ForOfIterationError::kAdvance);bits=kValueRead;}
       if(n==proof.decision)q.Require(bits==kAdvanced,ForOfIterationError::kAdvance);
       const auto& b=topology.blocks[n.value];
+      if(const auto* close=std::get_if<ProtocolCloseUnit>(&topology.mapping.units[n.value]);
+          close && close->protocol==proof.protocol) {
+        q.Require(bits==kValueRead,ForOfIterationError::kAdvance);
+        continue; // Completion-specific native exit, never another iteration.
+      }
       // Every continuation must actually reach next. A normal abrupt exit,
       // or a possible exception before it, is not a completed iteration.
       if(bits&kUnadvanced){
@@ -121,7 +134,11 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
         // cycles are not evidence permitting removal of that control.
         if((bits&kUnadvanced) && loops.backedges[e])q.Fail(ForOfIterationError::kAdvance);
         if(proof.loop && loops.backedges[e]==proof.loop){q.Require(bits==kValueRead && to==proof.header,ForOfIterationError::kAdvance);continue;}
-        if(proof.loop && !inside(proof.loop,to)){q.Require(!(bits&kUnadvanced),ForOfIterationError::kAdvance);continue;}
+        if(proof.loop && !inside(proof.loop,to)){
+          q.Require(!(bits&kUnadvanced),ForOfIterationError::kAdvance);
+          const auto* close=std::get_if<ProtocolCloseUnit>(&topology.mapping.units[to.value]);
+          if(!body_nodes.contains({key.first,to.value}) && !(close && close->protocol==proof.protocol))continue;
+        }
         add({key.first,to.value},bits);
       }
     }

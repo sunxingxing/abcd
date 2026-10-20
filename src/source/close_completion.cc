@@ -40,7 +40,7 @@ class Proof {
       const ExceptionPlan& plan,const IteratorKeys& keys,const IteratorProtocolScan& scan,
       SemanticBudget budget,bool verify,SourceContract contract):body_(body),profile_(profile),g_(g),in_(in),plan_(plan),keys_(keys),scan_(scan),q_(budget),
       before_(&q_.memory),commit_(&q_.memory),op_(&q_.memory),calls_(&q_.memory),
-      pred_offsets_(&q_.memory),preds_(&q_.memory),marks_(&q_.memory),verify_(verify),contract_(contract) {
+      pred_offsets_(&q_.memory),preds_(&q_.memory),marks_(&q_.memory),body_ports_(&q_.memory),body_members_(&q_.memory),verify_(verify),contract_(contract) {
     constexpr std::uint64_t kWorkPerInput=4096;
     const auto n=std::uint64_t(in.flow.nodes.size())+g.uses.size()+g.values.size()+scan.regions.size()+1;
     q_.Require(n<=UINT32_MAX,CloseCompletionError::kResourceLimit);
@@ -68,24 +68,41 @@ class Proof {
     CloseCompletionSummary out{keys_.method,g_.revision,g_.cfg_revision};
     std::size_t count=0;for(const auto& c:entries_.closes){q_.Step();count+=c.entries.size();}
     q_.Reserve(out.entries,count);q_.Reserve(out.regions,entries_.closes.size());
+    // Close semantics first, body boundaries second. Every inline copy must
+    // have complete guard/reference/priority/event evidence before it can be
+    // treated as a protocol boundary by another copy's body-wrapper proof.
+    std::pmr::vector<CloseObligationResult> references(&q_.memory);
     for(const auto& c:entries_.closes) {
       auto region=Members(c);
-      const auto reference=Reference(c,region);
+      auto reference=Reference(c,region);
       if(reference.state==CloseProofState::kVerified){Outcomes(c,region);RefineMembers(region);}
+      references.push_back(reference);out.regions.push_back(std::move(region));
+    }
+    for(std::size_t r=0;r<entries_.closes.size();++r) {
+      q_.Step();const auto& c=entries_.closes[r];const auto& region=out.regions[r];
+      bool valid=references[r].state==CloseProofState::kVerified && region.outcomes.has_value();
+      for(std::uint32_t i=0;i<c.entries.size();++i){q_.Step();valid&=Priority(c,i,region).state==CloseProofState::kVerified;}
+      for(const auto& member:region.members){q_.Step();valid&=member.role!=CloseMemberRole::kUnproved;}
+      if(!valid)continue;
+      for(const auto& entry:c.entries){q_.Step();body_ports_.push_back({c.protocol,entry.entry.edge});}
+      for(const auto& member:region.members){q_.Step();body_members_.push_back({c.protocol,member.node});}
+    }
+    Sort(body_ports_);Sort(body_members_);
+    body_ports_.erase(std::unique(body_ports_.begin(),body_ports_.end()),body_ports_.end());
+    body_members_.erase(std::unique(body_members_.begin(),body_members_.end()),body_members_.end());
+    for(std::size_t r=0;r<entries_.closes.size();++r) {
+      const auto& c=entries_.closes[r];auto& region=out.regions[r];
       const auto ownership=Ownership(c,region);
       for(std::uint32_t i=0;i<c.entries.size();++i) {
         q_.Step();CloseCompletionEntry e{c.protocol,c.read,c.entries[i].entry.edge,c.entries[i].entry.pending};
         At(e,CloseObligation::kGuard)={CloseProofState::kVerified,{}};
-        At(e,CloseObligation::kReference)=reference;
+        At(e,CloseObligation::kReference)=references[r];
         At(e,CloseObligation::kPriority)=Priority(c,i,region);
         At(e,CloseObligation::kOwnership)=ownership;
-        // A nested protocol requires a correlated bridge across its boundary.
-        // Never turn an unanalysed nesting into an empty (vacuously true) proof.
         if(scan_.candidates.size()==1)At(e,CloseObligation::kNested)={CloseProofState::kVerified,{}};
         else At(e,CloseObligation::kNested)=Missing(c,CloseCompletionError::kNested,{},i);
         out.entries.push_back(std::move(e));
       }
-      out.regions.push_back(std::move(region));
     }
     out.peak_bytes=q_.memory.Peak();out.work=q_.initial-q_.left;return out;
   }
@@ -158,7 +175,7 @@ class Proof {
     q_.Step(1+std::bit_width(cuts.size()));return std::binary_search(cuts.begin(),cuts.end(),e);
   }
   CloseCompletionRegion Members(const DerivedClose& c) {
-    CloseCompletionRegion r{c.protocol,c.read};
+    CloseCompletionRegion r{c.protocol,c.read};r.iteration=c.iteration;
     // Per-close sparse regions are admitted by a shared N log N work grant;
     // dense overlaps refuse resources instead of becoming quadratic admitted work.
     std::pmr::vector<CompletionEdge> cuts(&q_.memory);
@@ -318,7 +335,7 @@ class Proof {
   }
   CloseObligationResult Ownership(const DerivedClose& c,CloseCompletionRegion& r) {
     if(!r.outcomes)return Missing(c,CloseCompletionError::kOwnership);
-    const CloseBodyIndex body_index{&in_.flow,before_,commit_,&body_dom_};
+    const CloseBodyIndex body_index{&in_.flow,before_,commit_,&body_dom_,body_ports_,body_members_};
     auto proof=ProveCloseBoundary(body_,profile_,in_.flow,in_.frame.registers,plan_,scan_,c,r,q_.Remaining(),verify_,&body_index);
     if(const auto* f=std::get_if<CloseCompletionFailure>(&proof))throw *f;
     r.boundary=std::get<CloseBoundaryProof>(std::move(proof));
@@ -328,7 +345,7 @@ class Proof {
         r.boundary->private_slots.capacity()*sizeof(ClosePrivateSlot)+
         r.boundary->regions.capacity()*sizeof(TryId)+r.boundary->protected_ranges.capacity()*sizeof(CloseProtectedRange));
     for(const auto& p:r.boundary->protected_ranges) {
-      q_.Step();q_.memory.Retain(p.ordinary.capacity()*sizeof(ExceptionNodeId)+p.transport.capacity()*sizeof(ExceptionNodeId)+
+      q_.Step();q_.memory.Retain(p.ordinary.capacity()*sizeof(ExceptionNodeId)+p.transport.capacity()*sizeof(ExceptionNodeId)+p.protocol.capacity()*sizeof(ExceptionNodeId)+
           p.dispatch.capacity()*sizeof(CompletionEdge)+p.exits.capacity()*sizeof(CompletionEdge));
     }
     if(r.boundary->missing)return {CloseProofState::kMissing,r.boundary->missing};
@@ -351,6 +368,8 @@ class Proof {
   std::pmr::vector<std::uint32_t> pred_offsets_;
   std::pmr::vector<CompletionEdge> preds_;
   std::pmr::vector<std::uint32_t> marks_;
+  std::pmr::vector<CloseBodyPort> body_ports_;
+  std::pmr::vector<CloseBodyMember> body_members_;
   std::uint32_t generation_=0;
   bool verify_;
   SourceContract contract_;
@@ -410,7 +429,7 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
   for(std::size_t i=0;i<expected.regions.size();++i) {
     const auto& a=expected.regions[i];const auto& b=supplied.regions[i];
     if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
-    if(a.protocol!=b.protocol || a.read!=b.read || a.call!=b.call || a.members.size()!=b.members.size() || a.edges.size()!=b.edges.size())
+    if(a.protocol!=b.protocol || a.read!=b.read || a.call!=b.call || a.iteration!=b.iteration || a.members.size()!=b.members.size() || a.edges.size()!=b.edges.size())
       return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
     if(a.boundary.has_value()!=b.boundary.has_value())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
     if(a.boundary) {
@@ -435,9 +454,10 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
         if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
         const auto& x=a.boundary->protected_ranges[r];const auto& y=b.boundary->protected_ranges[r];
         if(x.region!=y.region || x.role!=y.role || x.missing!=y.missing || x.ordinary.size()!=y.ordinary.size() ||
-            x.transport.size()!=y.transport.size() || x.dispatch.size()!=y.dispatch.size() || x.exits.size()!=y.exits.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+            x.transport.size()!=y.transport.size() || x.protocol.size()!=y.protocol.size() || x.dispatch.size()!=y.dispatch.size() || x.exits.size()!=y.exits.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
         if(const auto f=equal(x.ordinary,y.ordinary))return *f;
         if(const auto f=equal(x.transport,y.transport))return *f;
+        if(const auto f=equal(x.protocol,y.protocol))return *f;
         if(const auto f=equal(x.dispatch,y.dispatch))return *f;
         if(const auto f=equal(x.exits,y.exits))return *f;
       }

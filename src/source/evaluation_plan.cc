@@ -211,7 +211,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     for (const auto& op : graph.ops) { step(); has_holes |= std::holds_alternative<analysis::ValueHole>(op.operation); }
     if (has_holes) {
       EvaluationInputSite failure;
-      auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work}, &failure);
+      auto analyzed = AnalyzeHoleProtocol(graph, {bytes, work}, &failure, plan.for_of ? &*plan.for_of : nullptr);
       const auto* protocol = std::get_if<HoleProtocol>(&analyzed);
       if (!protocol) {
         witness.plan_cause = std::get<HoleProtocolError>(analyzed);
@@ -258,7 +258,12 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       admit(phis->allocated_bytes, 1); step(phis->work);
       plan.phis = std::move(*phis);
       if (flow == EvaluationFlow::kPhased) {
-        auto staged = BuildExceptionCopies(graph, *plan.phis, {bytes, work}, plan.for_of ? std::span<const ForOfUseDisposition>(plan.for_of->uses) : std::span<const ForOfUseDisposition>{});
+        auto projection=ExceptionCopyProjection::kOriginal;
+        if(for_of)for(const auto& region:for_of->ownership.Summary().regions)
+          for(const auto& range:region.boundary->protected_ranges) {
+            step();if(!range.protocol.empty())projection=ExceptionCopyProjection::kForOfClose;
+          }
+        auto staged = BuildExceptionCopies(graph, *plan.phis, {bytes, work}, plan.for_of ? std::span<const ForOfUseDisposition>(plan.for_of->uses) : std::span<const ForOfUseDisposition>{},projection);
         if (const auto* error = std::get_if<ExceptionCopyError>(&staged)) {
           if (*error == ExceptionCopyError::kResourceLimit) return Error::kResourceLimit;
           if (*error == ExceptionCopyError::kWorkLimit) return Error::kWorkLimit;

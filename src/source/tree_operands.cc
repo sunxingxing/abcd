@@ -880,8 +880,13 @@ class OperandCheck {
       if (evaluation_.exceptions &&
           std::holds_alternative<ThrowCopies>(evaluation_.exceptions->placements[i])) {
         const auto& bundle = evaluation_.phis->bundles[i];
-        RequireMeaning(copies.expressions.size() == bundle.count && copies.temporaries.empty(), Error::kOperand);
+        bool ordinary=false;
+        for(std::uint32_t j=0;j<bundle.count;++j) {
+          budget_.Step();ordinary|=evaluation_.exceptions->projection!=ExceptionCopyProjection::kForOfClose || evaluation_.phis->projection[bundle.first+j]!=PhiCopyUse::kForOfProtocol;
+        }
+        RequireMeaning(copies.expressions.size() == (ordinary?bundle.count:0) && copies.temporaries.empty(), Error::kOperand);
         for (std::uint32_t j = 0; j < bundle.count; ++j) {
+          if(evaluation_.exceptions->projection==ExceptionCopyProjection::kForOfClose && evaluation_.phis->projection[bundle.first+j]==PhiCopyUse::kForOfProtocol)continue;
           budget_.Step();
           const auto root = copies.expressions[j];
           origin_ = tree_.expressions[root.value].origin;

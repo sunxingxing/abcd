@@ -22,8 +22,15 @@ class CopyExpressions {
       if (edge && !selected_edges_.empty() && selected_edges_[edge->value]) continue;
       if (evaluation_.exceptions) {
         if (const auto* placement = std::get_if<ThrowCopies>(&evaluation_.exceptions->placements[b])) {
-          const auto origin = Origin(edge ? TreeOrigin{EdgeOrigin{*edge}} : TreeOrigin{EntryOrigin{}});
-          Stage(bundle, *placement, origin);
+          bool ordinary=false;
+          for(std::size_t i=bundle.first;i<std::size_t(bundle.first)+bundle.count;++i) {
+            Step();ordinary|=evaluation_.exceptions->projection!=ExceptionCopyProjection::kForOfClose || evaluation_.phis->projection[i]!=PhiCopyUse::kForOfProtocol;
+          }
+          if(ordinary) {
+            const auto origin = Origin(edge ? TreeOrigin{EdgeOrigin{*edge}} : TreeOrigin{EntryOrigin{}});
+            Stage(bundle, *placement, origin);
+          } else Push(forest_.throws,ThrowExpressions{*placement,
+              static_cast<std::uint32_t>(forest_.throw_assignments.size()),0});
           continue;
         }
       }
@@ -140,12 +147,14 @@ class CopyExpressions {
     const auto first = static_cast<std::uint32_t>(forest_.throw_assignments.size());
     for (std::size_t i = bundle.first; i < std::size_t(bundle.first) + bundle.count; ++i) {
       Step();
+      if(evaluation_.exceptions->projection==ExceptionCopyProjection::kForOfClose && evaluation_.phis->projection[i]==PhiCopyUse::kForOfProtocol)continue;
       const auto slot = evaluation_.exceptions->staging[i];
       Require(slot.has_value(), Error::kBinding);
       const auto source = Operand(evaluation_.phis->copies[i].source, origin);
       Push(forest_.throw_assignments, Add(AssignmentExpr{SymbolTarget{SlotSymbol(*slot)}, source}, origin));
     }
-    Push(forest_.throws, ThrowExpressions{placement, first, bundle.count});
+    Push(forest_.throws, ThrowExpressions{placement, first,
+        static_cast<std::uint32_t>(forest_.throw_assignments.size())-first});
   }
   void Commit(const CatchCommit& commit) {
     Step();

@@ -53,4 +53,6 @@ For this pinned parser only identifier-valued string export aliases are unquoted
 (`as "scan"` -> `as scan`), following the existing captured-default round-trip
 adapter; function text is exact. The resulting ABC is independently imported and
 re-proved through the original-flow identity/iteration/events/close analyses.
-The explicit-exits predecessor gap remains unchanged.
+The multiple-close ownership predecessor gap is now discharged by the shared
+entry/member split and exhaustion-corridor proof. This live-out fixture still
+refuses ordinary edge-copy placement; it is not a native-source completion.

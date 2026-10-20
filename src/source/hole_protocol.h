@@ -6,6 +6,7 @@
 #include "abcd/analysis/value_ir.h"
 
 namespace abcd::source {
+struct ForOfEvaluationPlan;
 struct HoleComparison {
   analysis::OpId operation;
   analysis::ValueId payload;
@@ -39,6 +40,7 @@ inline analysis::BinaryOperator HoleSourceOperator(const HoleProtocol* protocol,
 // upgrade any value domain. Other consumers, joins losing the guard, and
 // environment/unknown VM values reject. O(V+O+U+B+E), iterative throughout.
 [[nodiscard]] std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {}, EvaluationInputSite* failure = nullptr);
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {}, EvaluationInputSite* failure = nullptr,
+    const ForOfEvaluationPlan* for_of = nullptr);
 }  // namespace abcd::source
 #endif

@@ -24,7 +24,7 @@ class Body {
     Require(region.value<plan.layout.regions.size());
     if(shared) {
       Require(shared->flow==&flow && shared->before.size()==flow.instructions.size() && shared->commit.size()==flow.instructions.size());
-      before_=shared->before;commit_=shared->commit;
+      before_=shared->before;commit_=shared->commit;ports_=shared->ports;members_=shared->members;
     } else {
       owned_before_.resize(flow.instructions.size());owned_commit_.resize(flow.instructions.size());
       for(std::uint32_t n=0;n<flow.nodes.size();++n) {
@@ -65,6 +65,7 @@ class Body {
           else dispatch.push_back(edge);
           continue;
         }
+        if(Port(edge)) {exits.push_back(edge);continue;}
         if(c_.iteration.loop_header && arc.target==*c_.iteration.loop_header){exits.push_back(edge);continue;}
         if(arc.target==c_.iteration.exit || arc.target==c_.iteration.success || arc.target==value ||
             arc.target==c_.iteration.advance || (node.phase==ExceptionPhase::kCommit && std::holds_alternative<ReturnOperation>(Instruction(id).operation))) {
@@ -92,6 +93,11 @@ class Body {
     }
     for(auto i=range.begin.value;i<range.end.value;++i) {
       Step();Require(before_[i].has_value());const auto id=*before_[i];
+      if(dom_->nodes[id.value].begin!=0 && Member(id)) {
+        // This is a different verified close copy reached by an abrupt body
+        // port. Its operations/dispatch remain in that close certificate.
+        continue;
+      }
       if(dom_->nodes[id.value].begin!=0 && !body_.contains(id))Missing(CloseOwnershipGap::kBodyRange,id);
       if(dom_->nodes[id.value].begin!=0 && Node(id).exception) {
         bool found=false;
@@ -105,6 +111,18 @@ class Body {
     Sort(todo);Sort(dispatch);Sort(exits);
     Reserve(out.ordinary,todo.size());Reserve(out.transport,todo.size());
     for(const auto id:todo){Step();out.ordinary.push_back(id);if(prefix_.contains(id) || suffix_.contains(id))out.transport.push_back(id);}
+    auto begin=std::lower_bound(members_.begin(),members_.end(),CloseBodyMember{c_.protocol,{}},
+        [&](const auto& a,const auto& b){Step();return a<b;});
+    for(auto it=begin;it!=members_.end() && it->protocol==c_.protocol;++it) {
+      Step();const auto instruction=Node(it->node).instruction.value;
+      if(range.begin.value<=instruction && instruction<range.end.value && !body_.contains(it->node)) {
+        if(out.protocol.size()==out.protocol.capacity()) {
+          const auto capacity=out.protocol.empty()?1:out.protocol.size()*2;
+          Reserve(out.protocol,capacity);
+        }
+        out.protocol.push_back(it->node);
+      }
+    }
     Reserve(out.dispatch,dispatch.size());out.dispatch.assign(dispatch.begin(),dispatch.end());
     Reserve(out.exits,exits.size());out.exits.assign(exits.begin(),exits.end());
     return Finish(std::move(out));
@@ -130,6 +148,14 @@ class Body {
         op.effects.exceptional!=ExceptionalCompletion::kImpossible || op.effects.normal!=LanguageEffect::kNone || op.effects.before_throw!=LanguageEffect::kNone ||
         std::holds_alternative<ReturnOperation>(op.operation) || std::holds_alternative<ThrowOperation>(op.operation))return false;
     return true;
+  }
+  bool Port(CompletionEdge edge) {
+    Step(1+std::bit_width(ports_.size()));
+    return std::binary_search(ports_.begin(),ports_.end(),CloseBodyPort{c_.protocol,edge});
+  }
+  bool Member(ExceptionNodeId n) {
+    Step(1+std::bit_width(members_.size()));
+    return std::binary_search(members_.begin(),members_.end(),CloseBodyMember{c_.protocol,n});
   }
   bool ThrowEntry(CompletionEdge edge) {
     // Sorted once; no entry-count x body-size scan. The Catch identity must
@@ -169,6 +195,8 @@ class Body {
   detail::IdfScratch memory_;std::uint64_t left_,initial_;
   std::pmr::vector<std::optional<ExceptionNodeId>> owned_before_,owned_commit_;
   std::span<const std::optional<ExceptionNodeId>> before_,commit_;
+  std::span<const CloseBodyPort> ports_;
+  std::span<const CloseBodyMember> members_;
   std::pmr::set<ExceptionNodeId,NodeLess> body_,prefix_,suffix_;
   std::pmr::vector<CompletionEdge> entries_{&memory_};
   DominatorTree owned_dom_;const DominatorTree* dom_=nullptr;bool reverse_;CloseProtectedRange* out_=nullptr;
