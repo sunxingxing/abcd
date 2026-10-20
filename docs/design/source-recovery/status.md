@@ -6,6 +6,53 @@
 更早的证据见 [progress.md](progress.md)。
 
 
+
+## Control ownership: shared abrupt tails (2026-10-20)
+
+- Baseline **aa545dd4** (HEAD and wtbase). Fresh diagnosis of all four duplicate
+  ownership records is in [control-shared-terminals.md](control-shared-terminals.md).
+  `ControlOwnershipError(0)` is duplicate traversal, not duplicated bytecode.
+- `control_plan.cc` retains every successful existing layout. On an incomplete
+  ownership census, dominator/ReachMeet and real-postdominator facts can prove a
+  shared single-completion abrupt suffix and refine follows once. The disputed
+  continuation stays ordinary; decision prefixes still require all-path entry.
+  No block/edge/effect is duplicated, no verifier is loosened, no new premise.
+  Independent control verification, TreeFlow and recovery stay mandatory.
+- **o38/13920 SendCommandComponent completes in both flag sets.** m14655's
+  shared early returns no longer absorb the final continuation. o32/40109 m40670
+  passes control and next refuses at `DecisionPrefixError::kPrefixArms`, op183
+  PC476. o18/57687 (real switch fall-through) and o19/18254 (shared switch / optional
+  normal join) retain their exact original refusal. Those are separate work.
+- Both 40-input cohorts vs wtbase: **537→538/620** previous flags,
+  **591→592/620** source contract, **0 regressions, 0 prior-complete text changes**.
+  All new outputs pass Node syntax. No printer change. `tree_failure_cli_test`
+  additionally asserts the new completion and CLI/manifest correspondence.
+- Real es2abc fixture: three functions (including protected dispatch), **1,440
+  Node scenarios per flag set**, five observed mutants. The real application's
+  recovered callback is independently compared with its original source in
+  **4,176 scenarios per flag set**, including changing getters, receiver identity,
+  throws and early returns. Source never enters the engine. Unit tests cover
+  normal/projected graphs, internal diamonds, linear splitting, ID permutation,
+  ownership/entry/port mutations and exact 200/201/400/800 work+byte boundaries.
+  At 800: 3,209 vertices, 731,872 work units, 2,025,543 prepaid bytes.
+- Full build passed; fixed source-regression **65/65**; focused final tests **4/4**.
+  Final requested sweep **156/162**. Six baseline failures remain:
+  `family_source_cli_test`, `tree_structure_test`, `try_tree_test`,
+  `class_tree_source_test`, `try_tree_source_test`,
+  `file_generator_return_loop_source_test`. Four were reproduced by wtbase CTest;
+  the two not registered in that build were reproduced with the same current
+  scripts and wtbase executables. No expectations were weakened.
+- SDK default/O0 recompile comparisons: `classify` and module entry are exact;
+  dispatch and protected dispatch differ by source if-ladder inversion/layout
+  and consequent registers, labels, feedback slots and addresses. Strict
+  `grouping_bytecode.py` therefore reports **1 differing record per mode**, not a
+  bytecode-identity pass. No normalization/allowance was added. The full diff,
+  unchanged handler coverage and semantic validation boundary are documented.
+  Repeat full-cohort OS RSS measurements bound four concurrent child peaks plus
+  the coordinator at **164,216,832 bytes** (largest child 40,321,024), below 1 GB.
+  Evidence is under `build/review/control-ownership/`; nothing committed/pushed.
+
+
 ## Readable output: await/class/optional envelopes and negated equality (2026-10-20)
 
 - HEAD **3b93b16c**, OLD/wtbase **92e4bfcb** as authorized. Both 40-input

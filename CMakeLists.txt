@@ -595,6 +595,9 @@ if(BUILD_TESTING)
   add_executable(control_terminal_test tests/unit/source/control_terminal_test.cc)
   target_link_libraries(control_terminal_test PRIVATE abcd_source abcd_json)
   add_test(NAME control_terminal_test COMMAND control_terminal_test)
+  add_executable(control_shared_terminal_test tests/unit/source/control_shared_terminal_test.cc)
+  target_link_libraries(control_shared_terminal_test PRIVATE abcd_source)
+  add_test(NAME control_shared_terminal_test COMMAND control_shared_terminal_test)
   add_executable(control_decision_test tests/unit/source/control_decision_test.cc)
   target_link_libraries(control_decision_test PRIVATE abcd_source abcd_json)
   add_test(NAME control_decision_test COMMAND control_decision_test)
@@ -3074,6 +3077,9 @@ if(BUILD_TESTING)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_source_corpus.mjs
           $<TARGET_FILE:abc_structure> ${ABCD_LANGUAGE_SOURCE_SAMPLE})
       endif()
+      add_test(NAME shared_terminal_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_terminal.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/shared_terminal)
       add_test(NAME terminal_regions_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/terminal_regions.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/terminal_regions)
@@ -3301,6 +3307,9 @@ if(BUILD_TESTING)
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_guards/guards.abc
         ${CMAKE_CURRENT_SOURCE_DIR}/samples/applications_app_samples/harmonysample/projects/SystemFeature/Security/CertificateFramework/artifacts/entry/default/default/modules/modules.abc)
+      add_test(NAME shared_terminal_record_cli_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_terminal_record.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR})
       add_test(NAME tree_failure_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tree_failure.mjs
         $<TARGET_FILE:abc_semantic> $<TARGET_FILE:abc_structure>

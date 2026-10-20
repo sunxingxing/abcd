@@ -37,6 +37,8 @@ class ControlBuilder {
     quota_.Size(straight_terminal_, exit_);
     quota_.Size(all_abrupt_, exit_);
     quota_.Size(shared_continuations_, exit_);
+    quota_.Size(shared_terminal_, exit_);
+    quota_.Size(closed_suffix_, exit_);
     quota_.Size(decisions_, exit_);
     quota_.Size(decision_tails_, exit_);
     quota_.Size(tasks_, exit_);
@@ -48,12 +50,24 @@ class ControlBuilder {
     quota_.Size(plan_.nodes, exit_);
     quota_.Size(plan_.edges, graph_.ArcCount());
     Order();
+    NormalPostdominators();
     TerminalRegions();
     Postdominators();
     CompleteFollows();
-    NormalPostdominators();
     Decisions();
-    Regions();
+    // Preserve every successful layout. A duplicate in the deterministic
+    // region census may expose a shared abrupt tail hidden by the old
+    // single-predecessor summary. Refine follows before final verification;
+    // never retry a failed verifier or delete/duplicate an original vertex.
+    if (const auto conflict = Regions()) {
+      if (!RefineSharedTerminals(conflict->control.node.node)) throw *conflict;
+      for (std::size_t i = 0; i < exit_; ++i) {
+        quota_.Work(); owned_[i] = 0; decisions_[i].reset();
+        plan_.nodes[i] = ControlNode{{static_cast<std::uint32_t>(i)}, {}, {}, {}, {}};
+      }
+      Postdominators(); CompleteFollows(); Decisions();
+      if (const auto refined = Regions()) throw *refined;
+    }
     plan_.allocated_bytes = plan_.nodes.capacity() * sizeof(ControlNode) +
                             plan_.edges.capacity() * sizeof(PlacedEdge);
     return std::move(plan_);
@@ -174,13 +188,42 @@ class ControlBuilder {
         quota_.Work(); dom_up_[id * levels_ + level] = ancestor(ancestor(id, level - 1), level - 1);
       }
     }
+    std::vector<std::optional<ControlNodeId>> terminal;
+    quota_.Size(terminal, exit_);
     for (std::size_t i = exit_; i-- > 0;) {
       quota_.Work(); const auto id = order_[i]; const auto block = graph_.Node({id});
+      if (block.arc_count == 0 && block.termination == ControlTermination::kAbrupt)
+        terminal[id] = ControlNodeId{id};
+      else if (block.arc_count) {
+        terminal[id] = terminal[graph_.Arc(block.first_arc).target.value];
+        for (std::uint8_t e = 1; e < block.arc_count; ++e) {
+          quota_.Work();
+          if (terminal[id] != terminal[graph_.Arc({block.first_arc.value + e}).target.value])
+            terminal[id].reset();
+        }
+      }
       meet[id] = id;
       all_abrupt_[id] = block.arc_count != 0 || block.termination == ControlTermination::kAbrupt;
       for (std::uint8_t e = 0; e < block.arc_count; ++e) {
         quota_.Work(); const auto target = graph_.Arc({block.first_arc.value + e}).target.value;
         all_abrupt_[id] = all_abrupt_[id] && all_abrupt_[target]; meet[id] = common(meet[id], meet[target]);
+      }
+      closed_suffix_[id] = meet[id] == id;
+      // A multi-entry tail may still belong to one enclosing decision.
+      // ReachMeet proves that every descendant is dominated by this tail;
+      // the single terminal is a real abrupt port, never a normal try exit.
+      // Its immediate dominator supplies the common decision boundary; one
+      // arm reaches it on every path (also through split/conditional prefixes). All
+      // incoming arcs remain in the layout and are checked independently.
+      if (!roots[id] && indegree_[id] > 1 && terminal[id] && meet[id] == id &&
+          dom_parent[id] < exit_) {
+        const auto owner = graph_.Node({dom_parent[id]});
+        for (std::uint8_t e = 0; e < owner.arc_count; ++e) {
+          quota_.Work();
+          const auto arm = graph_.Arc({owner.first_arc.value + e}).target.value;
+          if (TreeCommon(id, arm, post_depth_, post_up_) == id)
+            shared_terminal_[id] = 1;
+        }
       }
       straight_terminal_[id] = indegree_[id] == 1 &&
           ((block.arc_count == 0 && block.termination == ControlTermination::kAbrupt) ||
@@ -197,6 +240,21 @@ class ControlBuilder {
         else if (private_terminal_[b] && common(id, meet[a]) != id) shared_continuations_[id] = ControlId{a};
       }
     }
+  }
+  bool RefineSharedTerminals(std::uint32_t continuation) {
+    bool found = false;
+    for (std::uint32_t id = 0; id < exit_; ++id) {
+      quota_.Work();
+      // The disputed continuation must remain ordinary control. A terminal
+      // suffix containing it cannot be reclassified as an early abrupt arm.
+      // ReachMeet already proves suffix closure under dominance, so one LCA
+      // query suffices; no per-candidate graph walks or effect duplication.
+      if (shared_terminal_[id] && TreeCommon(id, continuation, dom_depth_, dom_up_) == id)
+        shared_terminal_[id] = 0;
+      found = found || shared_terminal_[id];
+    }
+    refined_ = found;
+    return found;
   }
   void Postdominators() {
     // A DAG permits the follow-tree recurrence in one reverse topological
@@ -220,7 +278,8 @@ class ControlBuilder {
       for (std::uint8_t e = 0; e < block.arc_count; ++e) {
         quota_.Work();
         const auto target = graph_.Arc({block.first_arc.value + e}).target.value;
-        if (block.arc_count == analysis::kMaxNormalSuccessors && straight_terminal_[target]) continue;
+        if (block.arc_count == analysis::kMaxNormalSuccessors &&
+            (straight_terminal_[target] || (refined_ && shared_terminal_[target]))) continue;
         join = continuing++ == 0 ? target : Common(join, target);
       }
       // When both arms are abrupt, retain their real common ancestry. They
@@ -402,6 +461,10 @@ class ControlBuilder {
         const auto candidate = regional[node.first_arc.value + e];
         if (indegree_[evaluate] != 1 || roots[evaluate] || !candidate) continue;
         const auto predicate = *candidate;
+        // A refined lexical follow may skip an abrupt arm. It does not prove
+        // that a regional decision prefix reaches its final predicate.
+        if (refined_ && TreeCommon(predicate.value, evaluate, post_depth_, post_up_) != predicate.value)
+          continue;
         const auto& child = graph_.Node({predicate.value});
         for (std::uint8_t c = 0; c < child.arc_count; ++c) {
           quota_.Work();
@@ -412,6 +475,11 @@ class ControlBuilder {
           // Both arms participate here: the lexical early-exit choice may be
           // the shared arm itself when the other arm terminates privately.
           // Retain the actual arm LCA, or the private other entry at virtual exit.
+          // A private abrupt fallback cannot become the follow of a shared
+          // continuing arm with an outside entry. Keep this outer guard as
+          // ordinary if/else; the inner shared terminal decision remains one
+          // region. This changes factoring, never the original arcs.
+          if (refined_ && private_terminal_[other] && !closed_suffix_[shared]) continue;
           const auto common = Common(shared, other);
           const auto join = tail && tail->evaluate.value == other &&
               tail->evaluate_on_taken == (c != 0) ? tail->join :
@@ -476,13 +544,14 @@ class ControlBuilder {
     return {Location(task.first), task.stop == exit_ ? std::nullopt :
         std::optional<ControlLocation>{Location(task.stop)}};
   }
-  void Own(std::uint32_t node, const RegionTask& task, std::optional<ControlArcId> arc) {
-    if (owned_[node]) throw ControlFailure{Error::kCrossEntry, ControlOwnershipError::kDuplicate,
+  std::optional<ControlFailure> Own(std::uint32_t node, const RegionTask& task, std::optional<ControlArcId> arc) {
+    if (owned_[node]) return ControlFailure{Error::kCrossEntry, ControlOwnershipError::kDuplicate,
         {Location(node), arc ? std::optional<std::uint32_t>{arc->value} : std::nullopt,
          Bounds(task), Bounds(owners_[node])}};
     owned_[node] = 1; owners_[node] = task;
+    return {};
   }
-  void Regions() {
+  std::optional<ControlFailure> Regions() {
     std::size_t pending = 0;
     for (const auto entry : entries_) {
       quota_.Work();
@@ -498,7 +567,7 @@ class ControlBuilder {
       while (cursor != task.stop && cursor != exit_) {
         quota_.Work();
         const auto decision_join = decisions_[cursor] ? DecisionJoin(cursor, task) : 0;
-        Own(cursor, task, incoming);
+        if (const auto failure = Own(cursor, task, incoming)) return failure;
         ++covered;
         auto& node = plan_.nodes[cursor];
         const auto& block = graph_.Node({cursor});
@@ -546,7 +615,8 @@ class ControlBuilder {
                   Require(indegree_[next] == 1, Error::kCrossEntry);
                   const auto& linear = graph_.Node({next});
                   Require(linear.arc_count == 1, Error::kInvalidGraph);
-                  Own(next, task, incoming); ++covered;
+                  if (const auto failure = Own(next, task, incoming)) return failure;
+                  ++covered;
                   const auto target = graph_.Arc(linear.first_arc).target;
                   plan_.nodes[next].next = ControlId{target.value};
                   plan_.edges[linear.first_arc.value] = {{linear.first_arc.value}, {next}, EdgePlacement::kNext};
@@ -554,7 +624,8 @@ class ControlBuilder {
                 }
                 Require(indegree_[next] == 1, Error::kCrossEntry);
               }
-              Own(next, task, incoming); ++covered;
+              if (const auto failure = Own(next, task, incoming)) return failure;
+              ++covered;
               const bool next_taken = planned.decision->shared_on_taken;
               plan_.nodes[next].arms = ControlArms{next_taken ? std::optional<ControlId>{{shared}} : std::nullopt,
                   next_taken ? std::nullopt : std::optional<ControlId>{{shared}}};
@@ -605,7 +676,9 @@ class ControlBuilder {
       }
     }
     Require(covered == exit_, Error::kUncoveredBlock);
+    return {};
   }
+  bool refined_ = false;
   ControlGraphView graph_;
   std::span<const ControlId> entries_;
   ControlQuota& quota_;
@@ -614,7 +687,7 @@ class ControlBuilder {
   ControlPlan plan_;
   std::vector<std::uint32_t> indegree_, order_, parent_, depth_, up_;
   std::vector<std::uint32_t> dom_depth_, dom_up_, post_depth_, post_up_;
-  std::vector<std::uint8_t> owned_, private_terminal_, straight_terminal_, all_abrupt_;
+  std::vector<std::uint8_t> owned_, shared_terminal_, closed_suffix_, private_terminal_, straight_terminal_, all_abrupt_;
   std::vector<RegionTask> tasks_, owners_;
   std::vector<std::optional<ControlDecision>> decisions_;
   std::vector<DecisionTail> decision_tails_;
