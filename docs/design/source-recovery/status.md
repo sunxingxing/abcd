@@ -5,6 +5,59 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Joint selection ownership for member-call arguments (2026-10-20)
+
+- Baseline **1f4999b8** (wtbase binary verified at that commit). Add an
+  unmet-reference-only `JointSelectionUse` certificate for an original phi's
+  pure predicate occurrences and unchanged keep edge. Fresh truth equations,
+  original edge identities and independent forward event intervals must all
+  verify; no new source-language premise, opcode-sequence admission, printer
+  change or blanket phi-use exemption. Shared prepaid indexes, explicit stacks
+  and path compression preserve O((V+E) log V). The exact IR and remaining
+  nullish obligation are in [cross-region-call-values.md](cross-region-call-values.md).
+- **o18/22901 m24302 PC212** and **o18/38531 m39900 PC212** now complete.
+  Their callback prints
+  `Button.enabled(!!$local0.ca && !!$local0.cert && !!$local0.privateKey)`.
+  Paired source line186 in each file independently agrees. Source was never an
+  engine input. **o39/12680 m13322 PC415 remains refused**: its nullish root
+  owns a partial child sharing phi20, so there is no complete retained-value
+  truth-event projection. This requires shared-phi fallback/keep-edge
+  correspondence, not a premise. o7 constructor arms were not attempted.
+- Full build passed; source-regression **65/65** serial; new unit/Node tests
+  **2/2**. Unit tests cover copied/renumbered/split variants, extra consumers,
+  changed keeps/owners, missing/duplicated records, observable barriers and
+  independent tree/recovery operand mutations. Many-call and one-call width
+  scales 200/201/400/800 pass exact byte/work boundaries; at800 the admitted
+  boundaries are 47,145,912 bytes / 11,878,221 work (calls) and
+  18,869,302 bytes / 4,581,544 work (width).
+- Node differential **21,000 scenarios**, preserving undefined/NaN/-0/object
+  identity, function ABI, getter/throw order, receiver and saved-callee identity;
+  receiver/operator mutations are observed. Three O0 fixtures publish; eleven
+  other input/compiler cases assert their precise remaining reference refusal
+  and are not counted as successful recovery. Recompiling the three published
+  fixtures with the pinned es2abc at O0 and default gives **6/6 identical full
+  disassemblies, 12/12 identical methods**, using grouping_bytecode.py helpers,
+  without register/branch/handler/metadata normalization. New record outputs
+  pass `node --check`.
+- Both complete 40-input cohorts have **zero regressions and zero text drift**:
+  previous flags **535 -> 537/620**, source contract **587 -> 589/620**. Only
+  the two o18 records change status/diagnostics. HardKeyUtils remains complete
+  and byte-identical. Largest child RSS is 43,204,608 bytes; the conservative
+  four-worker bound is 172,818,432 bytes. Evidence is under
+  `build/review/joint-selection/` (verified cohorts, comparison logs, exact
+  budgets, SDK commands/hashes/disassembly, test logs).
+- Required broad sweep: **248/268**, with 20 documented pre-existing failures.
+  `phased_arm_selection_source_test` was independently reproduced on wtbase
+  **1f4999b8** (`0 !== 2` at its existing assertion). The initial sweep also
+  exposed one intentionally stale `selection_consumers_cli_test` expectation:
+  its member fixture is exactly the newly supported Boolean conjunction. It
+  now requires completion under both contracts, 22 additional differential
+  scenarios and four detected receiver/operator mutations, preserving all
+  earlier 42 differential executions and eight mutations. The final full
+  sweep passes that test; `evaluation_failure_cli_test` likewise requires both
+  new records complete and identical across manifest/CLI publication.
+  No commit, push or stash was performed.
+
 ## Cross-region call values: joint normal selection intervals (2026-10-20)
 
 - Baseline **041abdba**. Diagnosed all seven current member-reference refusals

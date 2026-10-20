@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_LOGICAL_REGIONS_H_
 
 #include "control_plan.h"
+#include "joint_selection_use.h"
 #include "abcd/source/source_tree.h"
 #include "truth_domains.h"
 
@@ -106,7 +107,8 @@ inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::O
 [[nodiscard]] std::vector<SelectionRegion> FindSelectionExpressions(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, TreeCheckBudget& budget,
-    const ExceptionControl* projection = nullptr);
+    const ExceptionControl* projection = nullptr,
+    std::span<const JointSelectionUse> joints = {});
 // Project only branch-owned pure truth equations testing the exact retained
 // SSA value. Copies/aliases, unary composition and predicate polarity share
 // one indexed proof; VM numeric predicates require a Boolean input.

@@ -187,7 +187,8 @@ target_sources(abcd_source PRIVATE
 )
 target_sources(abcd_source PRIVATE src/source/source_route.cc)
 target_sources(abcd_source PRIVATE src/source/value_stage.cc)
-target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_verify.cc src/source/logical_regions.cc src/source/logical_evaluation.cc src/source/selection_consumer.cc src/source/predicate_snapshots.cc)
+target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_verify.cc src/source/logical_regions.cc src/source/logical_evaluation.cc src/source/joint_selection_use.cc
+  src/source/selection_consumer.cc src/source/predicate_snapshots.cc)
 target_sources(abcd_source PRIVATE src/source/control_skeleton_verify.cc)
 target_sources(abcd_source PRIVATE src/source/exception_plan.cc)
 target_sources(abcd_source PRIVATE src/source/phased_method.cc)
@@ -925,6 +926,9 @@ if(BUILD_TESTING)
   add_executable(logical_coverage_test tests/unit/source/logical_coverage_test.cc)
   target_link_libraries(logical_coverage_test PRIVATE abcd_source abcd_json)
   add_test(NAME logical_coverage_test COMMAND logical_coverage_test)
+  add_executable(joint_selection_use_test tests/unit/source/joint_selection_use_test.cc)
+  target_link_libraries(joint_selection_use_test PRIVATE abcd_source)
+  add_test(NAME joint_selection_use_test COMMAND joint_selection_use_test)
   add_executable(logical_reference_routes_test tests/unit/source/logical_reference_routes_test.cc)
   target_include_directories(logical_reference_routes_test PRIVATE tests/support)
   target_link_libraries(logical_reference_routes_test PRIVATE abcd_source)
@@ -2162,6 +2166,9 @@ if(BUILD_TESTING)
     add_test(NAME decision_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_literal.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_literal)
+    add_test(NAME joint_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/joint_selection.mjs $<TARGET_FILE:abc_structure>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/joint_selection)
     add_test(NAME logical_reference_routes_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/logical_reference_routes.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/logical_reference_routes)

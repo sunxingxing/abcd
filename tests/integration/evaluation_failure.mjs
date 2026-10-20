@@ -8,8 +8,8 @@ const [semantic,structure,root]=process.argv.slice(2);
 const cases=[
  ['UI/CalendarViewSwitch',27642,27869,276,113,4,'complete'],
  ['DocsSample/ArkUISample/DynamicLayout',13863,14290,508,201,17,'complete'],
- ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket',22901,24302,212,93,4,'reference'],
- ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket',38531,39900,212,93,4,'reference'],
+ ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket',22901,24302,212,93,4,'complete'],
+ ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket',38531,39900,212,93,4,'complete'],
  ['DocsSample/Media/AVPlayer/AVPlayerArkTSSubtitle',4775,5424,58,28,4,'complete'],
  ['DocsSample/InputMethod/KikaInputMethod',10284,11969,null,null,3,'partial'],
  ['Solutions/InputMethod/KikaInputMethod',10155,11285,null,null,3,'complete'],
@@ -53,5 +53,5 @@ try{
   const instructions=run(semantic,[abc,String(method),'--instructions']);assert.equal(instructions.status,0);
   assert.ok(instructions.stdout.trim().split('\n').map(JSON.parse).some(i=>i.pc===pc));
  }
- console.log('evaluation_failure_cli_test: 6 complete records, 1 explicit partial class and 2 next-stage refusals agree across publication paths');
+ console.log('evaluation_failure_cli_test: 8 complete records and 1 explicit partial class agree across publication paths');
 }finally{rmSync(dir,{recursive:true,force:true});}

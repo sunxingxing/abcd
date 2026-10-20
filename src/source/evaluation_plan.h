@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_EVALUATION_PLAN_H_
 #define ABCD_SOURCE_EVALUATION_PLAN_H_
 #include "for_of_evaluation_plan.h"
+#include "joint_selection_use.h"
 
 #include <span>
 #include <algorithm>
@@ -171,6 +172,7 @@ struct EvaluationPlan {
   // committed selections (phase_composition.h). Each is independently re-proved.
   std::vector<analysis::OpId> phase_compositions;
   std::vector<LogicalReferenceRoute> logical_reference_routes;
+  std::vector<JointSelectionUse> joint_selection_uses;
   // Whole trees repairing unmet member references with checked capture events.
   // Separate from selection-only composition; every member is independently
   // re-proved before this certificate can replace corridor equations.

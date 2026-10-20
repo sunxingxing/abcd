@@ -1,0 +1,248 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "commands": [
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=booleanJoin",
+      "--source-file=booleanJoin.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/joint_selection/booleanJoin-O0.abc",
+      "tests/integration/fixtures/joint_selection/booleanJoin.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=booleanJoin",
+      "--source-file=booleanJoin.js",
+      "--output=tests/integration/fixtures/joint_selection/booleanJoin-default.abc",
+      "tests/integration/fixtures/joint_selection/booleanJoin.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=booleanNot",
+      "--source-file=booleanNot.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/joint_selection/booleanNot-O0.abc",
+      "tests/integration/fixtures/joint_selection/booleanNot.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=booleanNot",
+      "--source-file=booleanNot.js",
+      "--output=tests/integration/fixtures/joint_selection/booleanNot-default.abc",
+      "tests/integration/fixtures/joint_selection/booleanNot.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=booleanNormalized",
+      "--source-file=booleanNormalized.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/joint_selection/booleanNormalized-O0.abc",
+      "tests/integration/fixtures/joint_selection/booleanNormalized.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=booleanNormalized",
+      "--source-file=booleanNormalized.js",
+      "--output=tests/integration/fixtures/joint_selection/booleanNormalized-default.abc",
+      "tests/integration/fixtures/joint_selection/booleanNormalized.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=optionalMethod",
+      "--source-file=optionalMethod.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/joint_selection/optionalMethod-O0.abc",
+      "tests/integration/fixtures/joint_selection/optionalMethod.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=optionalMethod",
+      "--source-file=optionalMethod.js",
+      "--output=tests/integration/fixtures/joint_selection/optionalMethod-default.abc",
+      "tests/integration/fixtures/joint_selection/optionalMethod.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=optionalProperty",
+      "--source-file=optionalProperty.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/joint_selection/optionalProperty-O0.abc",
+      "tests/integration/fixtures/joint_selection/optionalProperty.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=optionalProperty",
+      "--source-file=optionalProperty.js",
+      "--output=tests/integration/fixtures/joint_selection/optionalProperty-default.abc",
+      "tests/integration/fixtures/joint_selection/optionalProperty.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=nullishChain",
+      "--source-file=nullishChain.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/joint_selection/nullishChain-O0.abc",
+      "tests/integration/fixtures/joint_selection/nullishChain.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=nullishChain",
+      "--source-file=nullishChain.js",
+      "--output=tests/integration/fixtures/joint_selection/nullishChain-default.abc",
+      "tests/integration/fixtures/joint_selection/nullishChain.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=booleanConjunction",
+      "--source-file=booleanConjunction.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/joint_selection/booleanConjunction-O0.abc",
+      "tests/integration/fixtures/joint_selection/booleanConjunction.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=booleanConjunction",
+      "--source-file=booleanConjunction.js",
+      "--output=tests/integration/fixtures/joint_selection/booleanConjunction-default.abc",
+      "tests/integration/fixtures/joint_selection/booleanConjunction.js"
+    ]
+  ],
+  "fixtures": [
+    {
+      "name": "booleanJoin",
+      "mode": "O0",
+      "source": "booleanJoin.js",
+      "abc": "booleanJoin-O0.abc"
+    },
+    {
+      "name": "booleanJoin",
+      "mode": "default",
+      "source": "booleanJoin.js",
+      "abc": "booleanJoin-default.abc"
+    },
+    {
+      "name": "booleanNot",
+      "mode": "O0",
+      "source": "booleanNot.js",
+      "abc": "booleanNot-O0.abc"
+    },
+    {
+      "name": "booleanNot",
+      "mode": "default",
+      "source": "booleanNot.js",
+      "abc": "booleanNot-default.abc"
+    },
+    {
+      "name": "booleanNormalized",
+      "mode": "O0",
+      "source": "booleanNormalized.js",
+      "abc": "booleanNormalized-O0.abc"
+    },
+    {
+      "name": "booleanNormalized",
+      "mode": "default",
+      "source": "booleanNormalized.js",
+      "abc": "booleanNormalized-default.abc"
+    },
+    {
+      "name": "optionalMethod",
+      "mode": "O0",
+      "source": "optionalMethod.js",
+      "abc": "optionalMethod-O0.abc"
+    },
+    {
+      "name": "optionalMethod",
+      "mode": "default",
+      "source": "optionalMethod.js",
+      "abc": "optionalMethod-default.abc"
+    },
+    {
+      "name": "optionalProperty",
+      "mode": "O0",
+      "source": "optionalProperty.js",
+      "abc": "optionalProperty-O0.abc"
+    },
+    {
+      "name": "optionalProperty",
+      "mode": "default",
+      "source": "optionalProperty.js",
+      "abc": "optionalProperty-default.abc"
+    },
+    {
+      "name": "nullishChain",
+      "mode": "O0",
+      "source": "nullishChain.js",
+      "abc": "nullishChain-O0.abc"
+    },
+    {
+      "name": "nullishChain",
+      "mode": "default",
+      "source": "nullishChain.js",
+      "abc": "nullishChain-default.abc"
+    },
+    {
+      "name": "booleanConjunction",
+      "mode": "O0",
+      "source": "booleanConjunction.js",
+      "abc": "booleanConjunction-O0.abc"
+    },
+    {
+      "name": "booleanConjunction",
+      "mode": "default",
+      "source": "booleanConjunction.js",
+      "abc": "booleanConjunction-default.abc"
+    }
+  ],
+  "hashes": {
+    "optionalProperty-default.abc": "821953ddde04328d4104cb74cb86c8a37bca6d2f8d050ac578d6a4323a6c708f",
+    "booleanNot-default.abc": "510e0ee7a05840c2f12d6e3277bb90d918441c9fb298df3293587f6f1e61c554",
+    "booleanJoin.js": "cef7507f63a663e505751ed83b76b9dfbf35ef400a22df068c414f809e905447",
+    "booleanNot-O0.abc": "39f7f80264912644fe7043de4e2bcb11a24e15e539885eed6a5b53c2a30f81f0",
+    "optionalMethod-default.abc": "592ac11becb30712e96d7e7de6a2bce584e2ec32f8b21426a977e4f4224e596d",
+    "booleanNot.js": "7087f1411b823a2b0fda16a57f89886ac783b560c044eae2f20b116262997ac4",
+    "booleanConjunction-O0.abc": "3feddd9924c0f2667fb6b3627923ada03d72ac774eaffa6a1d896a8188efef2c",
+    "nullishChain-default.abc": "2b95916ad01495462cf54a6d5f103589c3da77c5314d0dadd9137dfea22ae308",
+    "booleanConjunction-default.abc": "147d5d4bd46075dcca9cede5131f1ab35f8e56286a511e1cba39e3c9486f0179",
+    "nullishChain-O0.abc": "dfce5fa108dfcb6809627f0751e153ba23eddf421b070172a1d6815c69b04d23",
+    "booleanJoin-default.abc": "3f7fe99a90491e6e4fbc808088d1c0fdcd4d5c7a5acddeb1324f5c11405b922e",
+    "optionalMethod-O0.abc": "20ea085bf470ff78fe868c5c59fb67f02bdc5f98241e90012214d0aead16ef7b",
+    "booleanConjunction.js": "f10d01b49b376839d02daf0204f918419c761d5250d5b31def72b285f50c5c9d",
+    "booleanNormalized-default.abc": "f79c6789e3bdf0a26232c9f114c50f1d7a39f71bb3cd6fa44d1adc94adb82837",
+    "optionalProperty-O0.abc": "1077d1cf2e011bcee4d6ff4ebb93b799d2503a5ff33dd8ba67ad679fd3560caa",
+    "nullishChain.js": "e7a4c8ed7d186e9a47a82742f41fd2d6f58f7cdb5d9b7b8511c871deff4d031f",
+    "booleanJoin-O0.abc": "3d35ef6e89a689495978d3a46a4ae7a466169e64bf8f63793b3ef0a280f9b880",
+    "optionalProperty.js": "c7c1132634319960a6a904876db4cc5d4c44bce0f5dc4564c9e02881a3571aeb",
+    "booleanNormalized-O0.abc": "1a16ab75398a28d475d91096777a50611a0b449b3c5130e03005b065f40676d3",
+    "optionalMethod.js": "7454013f141602820d3eecd06b41f6715858e9c38c6eb6889b527ae230f782bd",
+    "booleanNormalized.js": "e357b0a9222640cf399472334505370068e29b1d4766631eff0092f7876ecb52"
+  }
+}

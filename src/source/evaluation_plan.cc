@@ -642,6 +642,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         plan.integer_nans.capacity() * sizeof(NaNProjection) +
         plan.operations.capacity() * sizeof(OpEvaluation) +
         plan.logical_reference_routes.capacity() * sizeof(LogicalReferenceRoute) +
+        plan.joint_selection_uses.capacity() * sizeof(JointSelectionUse) +
         plan.logical_values.capacity() * sizeof(std::optional<analysis::OpId>) +
         plan.logical_objects.capacity() *
             sizeof(std::optional<analysis::OpId>) +
@@ -667,6 +668,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     for (const auto& function : plan.functions) {
       step(); plan.allocated_bytes += function.captures.capacity() * sizeof(CellId);
     }
+    for (const auto& proof : plan.joint_selection_uses) plan.allocated_bytes += proof.predicates.capacity()*sizeof(analysis::UseId);
     for (const auto& route : plan.logical_reference_routes) {
       step(); plan.allocated_bytes += route.branches.capacity() * sizeof(analysis::OpId);
     }

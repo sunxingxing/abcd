@@ -988,6 +988,17 @@ class FlowCheck {
         if (const auto* snapshot = std::get_if<SelectionSnapshot>(&input)) {
           if (current.logical && actual == selected_condition &&
               ResolveEvaluationValue(evaluation_, snapshot->value) == current.logical->value) {
+            if (!evaluation_.joint_selection_uses.empty() && !evaluation_.logical_values.empty() &&
+                evaluation_.logical_values[current.logical->value.value]) {
+              const auto found=std::lower_bound(evaluation_.joint_selection_uses.begin(),evaluation_.joint_selection_uses.end(),current.logical->value,
+                  [](const auto& proof,auto value){return proof.value<value;});
+              if(found!=evaluation_.joint_selection_uses.end() && found->value==current.logical->value) {
+                const auto inner=*evaluation_.logical_values[found->value.value];
+                Require(flow_.expressions[inner.value]==actual && current.logical->input==evaluation_.operations[inner.value].consumer,
+                    Error::kPlacement);
+                return; // The original keep edge retains this evaluated subtree.
+              }
+            }
             const auto* result = std::get_if<analysis::OpResult>(&graph_.values[current.logical->value.value].origin);
             if (result && evaluation_.operations[result->op.value].kind == EvaluationKind::kPredicateSnapshot &&
                 evaluation_.operations[result->op.value].consumer == current.logical->input) {

@@ -118,3 +118,148 @@ baseline-confirmed sweep failures are listed in status.md.
 Every reported exact boundary succeeds; one fewer byte or work unit refuses
 with the corresponding typed resource/work cause. The large test budget is
 explicitly test-only; production budgets are unchanged.
+
+## Joint selection ownership (2026-10-20, baseline 1f4999b8)
+
+Fresh original-value census: o18 m24302/m39900 `member31@84 -> v54`
+feeds `call93@212 callee Use81=v54, receiver Use82=v51, argument Use83=v23`.
+`phi17` is read by `ToBoolean50@124 Use46` and kept unchanged by
+`phi20 Use115/edge19`; `phi20` is itself tested and kept by the next selection.
+The two methods have identical def/use identities. The existing discovery stops
+at a multiple-observation phi before building the outer Boolean selections.
+For o39 m13322, `member120@330 -> v75` feeds `call157@415 Use161`;
+`phi19` feeds pure strict null test145@387 Use148, strict undefined test150@397
+Use154, and kept `phi20 Use183/edge15`. `phi20` is argument Use163.
+The saved member is the cross-region value in every case; moving/re-reading it
+without joining these exact argument events would change receiver/getter order.
+
+### Implemented joint-use boundary
+
+`JointSelectionUse` records the original phi, exact kept UseId, ordered pure
+predicate UseIds and unmet member-call owner. A canonical occurrence census and
+path-compressed value-use forest discover candidates once per method. The
+builder does not turn this census into general inline permission: fresh
+`SelectionLogical` truth equations must cover **every** predicate occurrence,
+identify the same retained value and match its original incoming edge. The
+ordinary reverse interval builder then proves callee -> argument events ->
+invocation; forward verification recomputes that interval independently.
+Records are committed only with a successful reference route, and verification
+requires every record to belong to that route. Extra observations, changed
+kept values, effects, wrong owners and missing records remain refusals.
+
+The o18 RHS contains consecutive Boolean selections (the two Boolean-value
+normalizations of `!!field`). Their prior selected phi is exclusively consumed
+by the next branch's pure evaluation ancestry. The conditional arm view now
+retains those selections as typed arm prefixes/forwarded children. Every
+intermediate header must contain only that predicate's pure evaluation forest;
+an unrelated effect cannot be hidden in the contracted arm. Child forwarding
+commits atomically with the enclosing route. This reuses the existing prefix,
+phi-edge and truth-event correspondence; it does not alias distinct phis or
+restore the withdrawn global Round-46 consumer admission.
+
+Empty jump corridors use a shared, prepaid index and sole-entry/sole-successor
+edges, not block adjacency or a same-block requirement. Every new traversal is
+iterative. Occurrence/owner tables and work stacks are charged before allocation;
+path compression, disjoint membership and sorted certificate lookup keep the
+bound O((V+E) log V), including copied and split variants. No printer or source
+contract changes are involved. The original kNotInline, effect/order, snapshot,
+catch, escape and ownership refusals remain in force outside the sealed route.
+
+### Remaining nullish projection
+
+For o39, the raw joint census is valid but not sufficient: region146 contains
+partial child151 with the **same merged phi20** and a shared constant fallback.
+The root has no direct retained-snapshot arm, so `ProjectSelectionLogicals`
+correctly does not publish `SelectionLogical`; phi19 still has `kPhiUse`.
+The first published refusal remains saved property120/call157 PC415.
+
+The next proof needs a shared-phi decision summary: partition the tested value
+by the existing four truth domains, map **every** original fallback/keep edge
+(including split shared arms) to its original value and event, and bind every
+scalar test to one native nullish-left evaluation. TreeFlow/OriginalFlow and
+recovery must retain those individual incoming edges rather than confuse a
+Boolean control root with the selected value. No new language premise is
+needed; this round deliberately keeps that representation gap refused.
+The optional/nullish fixtures and their optimized inputs assert the actual
+CallReferenceError::kNotInline rather than being counted as recovery passes.
+
+### Published code versus source oracle
+
+Paired ArkTS was inspected only after recovery and was never supplied to the
+engine. Tcp2TwoWayTls.ets:186 and TwoWayTls.ets:186 both contain
+`.enabled(!!this.ca && !!this.cert && !!this.privateKey)`.
+The recovered m24302/m39900 callback in both records is:
+
+```js
+(elmtId, isInitialRender) => {
+  Button.createWithLabel({id: 16777226, type: 10003, params: [], bundleName: "com.samples.Socket", moduleName: "entry"});
+  Button.onClick(() => {
+    $local0.connect2Server();
+  });
+  Button.enabled(!!$local0.ca && !!$local0.cert && !!$local0.privateKey);
+  Button.width(70);
+  Button.fontSize(14);
+}
+```
+
+`joint_selection_use_test` checks canonical copies, register permutations,
+empty split corridors, predicate/keep/call and missing/duplicated certificate
+mutations, an extra observation, changed kept payload, an intervening effect,
+logical operand swaps through independent tree/recovery checking, and exact
+byte/work boundaries. Both many-call and one-call wide chains are exercised at
+200/201/400/800. The real fixtures pin SDK commands/hashes in their manifest.
+Published fixture output is compared against Node on values, getter/call order,
+exception constructors, noncallable timing, receiver identity and argument-side
+callee replacement. Strict recompilation uses grouping_bytecode.py's compiler,
+hash and disassembly helpers without register/control/exception normalization.
+
+Final cohort comparison against wtbase **1f4999b8**: previous flags
+535 -> 537/620; V5 587 -> 589/620. Both have zero regressions, zero changes to
+previously-complete text, and exactly the two o18 status/diagnostic changes.
+HardKeyUtils (the withdrawn Round-46 regression) remains complete and identical.
+All 40 inputs finish. Measured largest child RSS: 43,204,608 bytes; conservative
+four-worker bound: 172,818,432 bytes. Both new records pass node --check.
+
+Full build and serial source-regression passed (65/65); new tests pass 2/2.
+The independent Node matrix has 21,000 scenarios, explicitly encoding undefined,
+NaN, -0 and object identity and rejecting accidental valueOf evaluation. The
+three published fixture outputs recompile with the pinned es2abc SHA-256
+`4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`:
+O0/default, 6/6 full disassemblies and 12/12 methods identical, with no
+normalization besides the informational source-binary comment. String-named
+export aliases are adapted to identical identifier spellings for SDK parsing;
+there are no instruction, register, branch, handler or metadata differences.
+Exact commands and disassemblies are in `build/review/joint-selection/bytecode-verified/`.
+
+
+Requested final sweep: **248/268**. Remaining failures are pre-existing:
+`family_source_cli_test`, `tree_structure_test`, `try_tree_test`,
+`literal_construct_test`, `mixed_literal_test`, `phased_literal_test`,
+`class_tree_source_test`, `literal_closure_source_test`,
+`unguarded_derived_cells_source_test`, `unguarded_literal_closure_source_test`,
+`derived_literal_receiver_source_test`,
+`unguarded_derived_literal_receiver_source_test`,
+`unguarded_captured_receiver_source_test`, `unguarded_forwarded_receiver_source_test`,
+`unguarded_reversed_captured_receiver_source_test`,
+`unguarded_reversed_forwarded_receiver_source_test`,
+`unguarded_reversed_initialization_captured_receiver_source_test`,
+`unguarded_reversed_initialization_forwarded_receiver_source_test`,
+`phased_arm_selection_source_test`, `try_tree_source_test`.
+The phased-arm case was additionally reproduced on wtbase 1f4999b8 with the
+same original line20 assertion (`0 !== 2`). Its older evidence is also retained
+in status.md; no existing failure assertion was loosened.
+
+The only stale refusal expectation found in the first sweep was
+`selection_consumers_cli_test`'s `target.send(!!x.a && !!x.b && !!x.c)`.
+The refreshed test requires full recovery under both contracts and compares
+22 additional receiver/getter/short-circuit/throw scenarios to the original
+source. Four receiver/operator mutants are observed in addition to the eight
+existing mutants and 42 existing differential executions. The exact two
+cohort completion expectations in `evaluation_failure_cli_test` were refreshed
+to require full manifest/CLI source equality. The final sweep passes both.
+
+Evidence directory: `build/review/joint-selection/`; final cohorts are
+`verified-source` and `verified-previous`, SDK comparison is
+`bytecode-verified/summary.json`, exact budgets are in
+`new-tests-detail.log`, regression and sweep outcomes in
+`source-regression.log` and `sweep-final.log`. No commit/push/stash was made.

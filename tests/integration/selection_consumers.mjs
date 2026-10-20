@@ -25,6 +25,23 @@ try {
  const run=(file,mode)=>spawnSync(process.execPath,[runner,file,mode],{encoding:'utf8',timeout:10000});
  const oracle=join(dir,'oracle.mjs');copyFileSync(join(fixtures,'consumers.js'),oracle);
  const expected=new Map(modes.map(mode=>{const r=run(oracle,mode);assert.equal(r.status,0,r.stderr);assert.ok(!r.stdout.includes('valueOf'));return [mode,r.stdout];}));
+ const memberRunner=join(dir,'member-run.mjs'),memberOracle=join(dir,'member-oracle.mjs');
+ copyFileSync(join(fixtures,'member.js'),memberOracle);
+ writeFileSync(memberRunner,`
+ const m=await import(process.argv[2]);const trace=[];
+ for(const mode of ['ok','null','a0','b0','c0','a','b','c','replace','callee-throw','noncallable']) {
+  const target={};Object.defineProperty(target,'send',{configurable:true,get(){trace.push('callee');if(mode==='callee-throw')throw new RangeError();if(mode==='noncallable')return 0;
+   return function(value){trace.push(['send',this===target,value]);return value;};}});
+  const input=mode==='null'?null:{};
+  if(input)for(const key of ['a','b','c'])Object.defineProperty(input,key,{get(){trace.push(key);if(mode===key)throw new SyntaxError();
+   if(mode==='replace')Object.defineProperty(target,'send',{value(){trace.push('wrong-callee');},configurable:true});
+   return mode===key+'0'?0:{valueOf(){trace.push('wrong-valueOf');throw new TypeError();}};}});
+  try{trace.push(['result',m.argumentsTo(target,input)]);}catch(e){trace.push(['error',e.constructor.name]);}
+ }
+ console.log(JSON.stringify(trace));`);
+ const memberRun=file=>{const r=spawnSync(process.execPath,[memberRunner,file],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout;};
+ const memberExpected=memberRun(memberOracle);
+
  for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
   const output=join(dir,label),abc=join(fixtures,'consumers.abc');
   const r=spawnSync(structure,[abc,output,'--value-source',...flags],{encoding:'utf8',timeout:30000});assert.equal(r.status,0,r.stderr);
@@ -44,9 +61,12 @@ try {
   for(const mode of modes){const actual=run(file,mode);assert.equal(actual.status,0,actual.stderr);assert.equal(actual.stdout,expected.get(mode),label+'/'+mode);}
   const mutations=[text.replaceAll('.p','.wrong'),text.replaceAll('"default"','"wrong"'),text.replaceAll(' && ',' || '),text.replace(/(\$\w+\.p)/g,'($1, $1)')];
   for(const [i,mutant] of mutations.entries()) {assert.notEqual(mutant,text);const file=join(dir,label+'-mutant'+i+'.mjs');writeFileSync(file,mutant);assert.ok(modes.some(mode=>{const actual=run(file,mode);return actual.status!==0||actual.stdout!==expected.get(mode);}));}
-  const blocked=join(dir,label+'-member');const b=spawnSync(structure,[join(fixtures,'member.abc'),blocked,'--value-source',...flags],{encoding:'utf8'});assert.equal(b.status,0,b.stderr);
-  const member=JSON.parse(readFileSync(join(blocked,'manifest.json'))).records.find(r=>r.source_status!==2);assert.equal(member.source_status,3);
-  assert.ok(member.source_failure.causes.some(c=>c.domain==='abcd::source::CallReferenceError'&&c.value===1),JSON.stringify(member));
+  const memberOutput=join(dir,label+'-member');const b=spawnSync(structure,[join(fixtures,'member.abc'),memberOutput,'--value-source',...flags],{encoding:'utf8'});assert.equal(b.status,0,b.stderr);
+  const member=JSON.parse(readFileSync(join(memberOutput,'manifest.json'))).records.find(r=>r.source_status!==2);assert.equal(member.source_status,0,JSON.stringify(member));
+  const memberFile=join(memberOutput,member.source);assert.equal(memberRun(memberFile),memberExpected);
+  const memberText=readFileSync(memberFile,'utf8');assert.match(memberText,/\$arg0\.send\(/);assert.ok(memberText.includes(' && '));
+  const wrong=join(dir,label+'-member-wrong.mjs');writeFileSync(wrong,memberText.replaceAll('$arg0.send(','(0, $arg0.send)('));assert.notEqual(memberRun(wrong),memberExpected);
+  writeFileSync(wrong,memberText.replace(' && ',' || '));assert.notEqual(memberRun(wrong),memberExpected);
  }
- console.log('selection_consumers_cli_test: 42 differential executions, 8 detected mutants, 2 typed member refusals');
+ console.log('selection_consumers_cli_test: 42 original differential executions, 22 new member scenarios, 12 detected mutants; joint member calls complete under both contracts');
 }finally{rmSync(dir,{recursive:true,force:true});}

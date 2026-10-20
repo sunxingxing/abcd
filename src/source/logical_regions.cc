@@ -218,7 +218,8 @@ namespace {
 // after the interval proof has moved the callee. No names/owners are allocated.
 
 std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& graph, const ControlPlan& control,
-    const EvaluationPlan& evaluation, const ModuleEvaluationIndex& modules, TreeCheckBudget& budget) {
+    const EvaluationPlan& evaluation, const ModuleEvaluationIndex& modules, TreeCheckBudget& budget,
+    std::span<const JointSelectionUse> joints) {
   std::vector<SelectionRegion> result;
   const ReferenceArguments references(graph, evaluation, budget);
   std::optional<LiteralArmIndex> literal_arms;
@@ -256,6 +257,10 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       const auto* edge = use.incoming ? std::get_if<EdgeId>(&*use.incoming) : nullptr;
       if (phi && edge && !multiple[phi->block.value]) edge_inputs[edge->value] = UseId{static_cast<std::uint32_t>(i)};
     }
+  }
+  std::vector<std::uint8_t> joint_values; if(!joints.empty())budget.Array(joint_values, graph.values.size());
+  for (const auto& joint : joints) {
+    budget.Step(); value_uses[joint.value.value]={joint.keep,false}; joint_values[joint.value.value]=1;
   }
   const auto retained = [&](WorkBlockId block, const ValueOperand& input) {
     const auto* value = std::get_if<ValueId>(&input);
@@ -332,7 +337,30 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       }
     }
   }
-  struct Path { WorkBlockId block; WorkBlockId join; std::optional<EdgeId> incoming; std::optional<std::size_t> child; bool suffix = false; EdgeId entry; };
+  // Branch-owned pure evaluation ancestry, computed once from actual
+  // consumer identities. A suffix may compose arbitrary pure conversions;
+  // its register spelling and direct producer are not admission conditions.
+  std::vector<std::optional<OpId>> predicate_roots;
+  if(!joints.empty()) {
+    std::vector<OpId> path;std::vector<std::uint8_t> state;
+    budget.Array(predicate_roots,graph.ops.size());budget.Array(path,graph.ops.size());budget.Array(state,graph.ops.size());
+    for(std::size_t i=0;i<graph.ops.size();++i) {
+      budget.Step();if(state[i]==2)continue;OpId at{static_cast<std::uint32_t>(i)};std::size_t count=0;
+      while(!state[at.value]) {
+        budget.Step();state[at.value]=1;path[count++]=at;
+        const auto original=BeforeLogicalFusion(graph,evaluation,at.value);
+        if(original.kind!=EvaluationKind::kInline || !original.consumer || !Pure(graph.ops[at.value]))break;
+        const auto* owner=std::get_if<OpId>(&graph.uses[original.consumer->value].owner);if(!owner)break;at=*owner;
+      }
+      std::optional<OpId> root=state[at.value]==2?predicate_roots[at.value]:
+          std::holds_alternative<ValueBranch>(graph.ops[at.value].operation)?std::optional{at}:std::nullopt;
+      while(count){budget.Step();const auto id=path[--count];predicate_roots[id.value]=root;state[id.value]=2;}
+    }
+  }
+  std::vector<std::optional<std::size_t>> predicate_prefixes;
+  std::vector<std::size_t> chained_prefixes;
+  if(!joints.empty()){budget.Array(chained_prefixes,control.nodes.size());budget.Array(predicate_prefixes,control.nodes.size());}
+  struct Path { WorkBlockId block; WorkBlockId join; std::optional<EdgeId> incoming; std::optional<std::size_t> child; bool suffix = false; EdgeId entry; std::optional<std::size_t> prefixes; };
   const auto path = [&](std::optional<ControlId> at, EdgeId entry) -> std::optional<Path> {
     const auto original_entry = entry;
     while (at) {
@@ -342,20 +370,40 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       if (graph.edges[entry.value].target != node.block || phis[node.block.value]) return {};
       if (node.arms) {
         if (!selected[at->value]) return {};
-        const auto child = *selected[at->value]; const auto& region = result[child];
+        auto child = *selected[at->value]; const auto* current = &result[child];
+        std::optional<std::size_t> prefixes;
+        auto following=node.next;
+        while(!joints.empty() && following && control.nodes[following->value].arms) {
+          budget.Step();const auto& bridge=control.nodes[following->value];
+          if(!selected[following->value] || bridge.block!=current->join || !current->complete_phi || current->parent || current->prefix_parent) return {};
+          const auto next=*selected[following->value];const auto& later=result[next];
+          const auto& header=graph.blocks[bridge.block.value];
+          for(std::uint32_t j=0;j<header.op_count;++j) {
+            budget.Step();const OpId id{header.first_op.value+j};const auto& op=graph.ops[id.value];
+            const auto kind=evaluation.operations[id.value].kind;
+            if(op.life!=ValueLife::kLive || id==later.branch || kind==EvaluationKind::kAlias || kind==EvaluationKind::kElidedPure)continue;
+            if(!Pure(op) || predicate_roots[id.value]!=later.branch)return {};
+          }
+          const auto use=value_uses[current->merged.value];
+          const auto* owner=use.use?std::get_if<OpId>(&graph.uses[use.use->value].owner):nullptr;
+          if(!owner || use.multiple || predicate_roots[owner->value]!=later.branch) return {};
+          if(predicate_prefixes[next] && predicate_prefixes[next]!=child)return {};
+          predicate_prefixes[next]=child;prefixes=child;child=next;current=&later;following=bridge.next;
+        }
+        const auto& region=*current;
         if (region.parent || region.prefix_parent) return {};
         for (std::uint32_t i = 0; i < block.op_count; ++i) {
           budget.Step(); const auto id = block.first_op.value + i; const auto& op = graph.ops[id];
-          if (op.life != ValueLife::kLive || id == region.branch.value) continue;
+          if (op.life != ValueLife::kLive || id == result[*selected[at->value]].branch.value) continue;
           if (evaluation.operations[id].kind != EvaluationKind::kInline &&
               evaluation.operations[id].kind != EvaluationKind::kPredicateSnapshot &&
               !OwnedGuard(graph, evaluation, modules, id)) return {};
         }
-        if (!node.next) return Path{node.block, region.join, {}, child, false, original_entry};
+        if (!following) return Path{node.block, region.join, {}, child, false, original_entry,prefixes};
         // Distinct joins remain distinct in the CFG/SSA. Only an exclusively
         // consumed child phi and either pure forwarding or one independently
         // closed suffix can enter the parent expression. Each child is examined once.
-        const auto& bridge = control.nodes[node.next->value];
+        const auto& bridge = control.nodes[following->value];
         const auto& tail = graph.blocks[bridge.block.value];
         if (!region.complete_phi || bridge.block != region.join || bridge.next || bridge.arms ||
             !std::holds_alternative<std::monostate>(bridge.synthetic) || tail.edge_count != 1 ||
@@ -365,7 +413,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
           budget.Step(); const auto& op = graph.ops[tail.first_op.value + i];
           if (op.life == ValueLife::kLive && (!std::holds_alternative<ValueJump>(op.operation) || !Pure(op))) suffix = true;
         }
-        return Path{bridge.block, graph.edges[tail.first_edge.value].target, tail.first_edge, child, suffix, original_entry};
+        return Path{bridge.block, graph.edges[tail.first_edge.value].target, tail.first_edge, child, suffix, original_entry,prefixes};
       }
       if (block.edge_count != 1) return {};
       if (!node.next) return Path{node.block, graph.edges[block.first_edge.value].target, block.first_edge, {}, false, original_entry};
@@ -523,7 +571,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
       if (kept && boolean.use_count == 1 &&
           SameValue(graph.uses[boolean.first_use.value].operand, kept->value)) {
         const auto& used = value_uses[merged.value];
-        if (used.multiple || !used.use || !references.Contains(graph.uses[used.use->value])) continue;
+        if (used.multiple || !used.use || ((joint_values.empty() || !joint_values[merged.value]) && !references.Contains(graph.uses[used.use->value]))) continue;
         if (!std::holds_alternative<SelectionSnapshot>(*consequent) ||
             !std::holds_alternative<SelectionSnapshot>(*alternate)) {
           // The saved member read, not the argument allocation, is the unmet
@@ -575,11 +623,21 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
         node.decision ? (node.arms->taken ? node.arms->taken : node.arms->fallthrough) : positive ? node.arms->taken : node.arms->fallthrough,
         node.decision ? (shared_taken ? tail->arms->fallthrough : tail->arms->taken) : positive ? node.arms->fallthrough : node.arms->taken,
         leaves == inputs[merged.value] && node.next.has_value(), {}, dependency});
-    const auto arm_prefix_count = static_cast<std::size_t>(yes.suffix) + static_cast<std::size_t>(no.suffix);
+    std::size_t chained_count=0;
+    for(const auto& arm:{yes,no}) for(auto prefix=arm.prefixes;prefix;prefix=predicate_prefixes[*prefix]) {
+      budget.Step();RequireTree(chained_count<chained_prefixes.size(),TreeStructureError::kOwnership);
+      chained_prefixes[chained_count++]=*prefix;
+    }
+    const auto arm_prefix_count = static_cast<std::size_t>(yes.suffix) + static_cast<std::size_t>(no.suffix)+chained_count;
     if (arm_prefix_count) {
       auto& prefixes = result.back().arm_prefixes; budget.Array(prefixes, arm_prefix_count);
       std::size_t at = 0;
       for (const auto& arm : {yes, no}) if (arm.suffix) prefixes[at++] = result[*arm.child].branch;
+      for(std::size_t i=0;i<chained_count;++i) {
+        budget.Step();auto& prefix=result[chained_prefixes[i]];
+        RequireTree(!prefix.parent && !prefix.prefix_parent,TreeStructureError::kOwnership);
+        prefix.prefix_parent=branch_id;prefixes[at++]=prefix.branch;
+      }
     }
     if (node.decision) {
       auto& region = result.back();
@@ -599,7 +657,8 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
 }
 }  // namespace
 std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph, const ControlPlan& control,
-    const EvaluationPlan& evaluation, TreeCheckBudget& budget, const ExceptionControl* projection) {
+    const EvaluationPlan& evaluation, TreeCheckBudget& budget, const ExceptionControl* projection,
+    std::span<const JointSelectionUse> joints) {
   if (!graph.phases.empty() && control.view == ControlViewKind::kProjection &&
       evaluation.flow == EvaluationFlow::kPhased && control.revision == graph.revision &&
       control.cfg_revision == graph.cfg_revision && evaluation.revision == graph.revision &&
@@ -623,7 +682,8 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
     return {};
   }
   budget.Admit(modules->allocated_bytes, 1); budget.Step(modules->work);
-  auto conditional = FindConditionalExpressions(graph, control, evaluation, *modules, budget);
+  if (joints.empty()) joints = evaluation.joint_selection_uses;
+  auto conditional = FindConditionalExpressions(graph, control, evaluation, *modules, budget, joints);
   std::vector<std::optional<std::size_t>> selected;
   std::vector<OpId> prefix_branches;
   budget.Array(selected, graph.ops.size()); budget.Array(prefix_branches, control.nodes.size());
