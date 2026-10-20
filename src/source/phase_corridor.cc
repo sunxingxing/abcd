@@ -183,7 +183,7 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
           (std::holds_alternative<ValueOwnWrite>(graph.ops[owner->value].operation) ||
            std::holds_alternative<ValueIndexedWrite>(graph.ops[owner->value].operation))) continue;
     }
-    if (AssignmentProducer(plan, {static_cast<std::uint32_t>(i)})) continue;
+    if (MemberUpdateWire(plan,{static_cast<std::uint32_t>(i)}) || AssignmentProducer(plan, {static_cast<std::uint32_t>(i)})) continue;
     const auto operand = ResolveEvaluationOperand(plan, use.operand);
     const auto* value = std::get_if<ValueId>(&operand);
     if (!value) continue;
@@ -290,8 +290,9 @@ std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, 
       !EvaluationMayThrow(graph_, plan_, producer) && child.result &&
       graph_.values[child.result->value].domain.IsLanguage();
   const bool closed = pure && child.use_count == 0 && shape->Count() == 0;
-  const bool assignment = AssignmentProducer(plan_, use) == producer && shape && shape->assignment_result &&
-      producer.value < plan_.assignment_consumers.size() && plan_.assignment_consumers[producer.value] == use;
+  const bool assignment = AssignmentProducer(plan_, use) == producer &&
+      (MemberUpdateAt(plan_,producer) || (shape && shape->assignment_result &&
+      producer.value < plan_.assignment_consumers.size() && plan_.assignment_consumers[producer.value] == use));
   if (producer.value >= consumer.value || child.life != ValueLife::kLive ||
       (!child.result && !assignment) || (!Expression(child.operation) && !closed && !assignment) ||
       (!Expression(parent.operation) && !ConsumesOperands(parent.operation))) return std::nullopt;

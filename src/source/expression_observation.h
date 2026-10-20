@@ -77,7 +77,7 @@ inline LexicalDependency IntrinsicLexicalDependency(const TreeExpression& expres
           std::is_same_v<T,AwaitExpr> || std::is_same_v<T,YieldExpr> ||
           std::is_same_v<T,BinaryExpr> || std::is_same_v<T,LogicalExpr> ||
           std::is_same_v<T,ConditionalExpr> || std::is_same_v<T,AssignmentExpr> ||
-          std::is_same_v<T,UpdateExpr> || std::is_same_v<T,SequenceExpr> ||
+          std::is_same_v<T,MemberMutationExpr> || std::is_same_v<T,UpdateExpr> || std::is_same_v<T,SequenceExpr> ||
           std::is_same_v<T,CallExpr> || std::is_same_v<T,ConstructExpr> ||
           std::is_same_v<T,EmptyArrayExpr> || std::is_same_v<T,EmptyObjectExpr> ||
           std::is_same_v<T,ObjectExpr>||std::is_same_v<T,ArrayExpr>||std::is_same_v<T,ArrayElement>);
@@ -158,7 +158,7 @@ inline analysis::ValueKinds NormalValueKinds(const TreeExpression& expression,
       static_assert(std::is_same_v<T,SymbolExpr>||std::is_same_v<T,GlobalNameExpr>||
           std::is_same_v<T,RealmObjectExpr>||std::is_same_v<T,SymbolConstructorExpr>||
           std::is_same_v<T,ThisExpr>||std::is_same_v<T,MemberExpr>||std::is_same_v<T,DeleteExpr>||std::is_same_v<T,AwaitExpr>||
-          std::is_same_v<T,YieldExpr>||std::is_same_v<T,UpdateExpr>||std::is_same_v<T,CallExpr>||
+          std::is_same_v<T,YieldExpr>||std::is_same_v<T,MemberMutationExpr>||std::is_same_v<T,UpdateExpr>||std::is_same_v<T,CallExpr>||
           std::is_same_v<T,ConstructExpr>||std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,EmptyObjectExpr>||
           std::is_same_v<T,ObjectExpr>||std::is_same_v<T,ArrayExpr>||std::is_same_v<T,ArrayElement>||std::is_same_v<T,FunctionExpr>||std::is_same_v<T,ArgumentSnapshotExpr>||
           std::is_same_v<T,ClassExpr>||std::is_same_v<T,FieldDefinitionExpr>||std::is_same_v<T,SuperCallExpr>);
@@ -244,6 +244,7 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
         case analysis::BinaryOperator::kBitXor:return primitive?SourceEffects{}:CallbackEffects();
         case analysis::BinaryOperator::kIn:case analysis::BinaryOperator::kInstanceOf:return CallbackEffects();
       }
+    } else if constexpr(std::is_same_v<T,MemberMutationExpr>) {return CallbackEffects();
     } else if constexpr(std::is_same_v<T,UpdateExpr>) {
       // ECMA-262 13.4: GetValue and success-only PutValue belong to separate
       // flow phases. Only this captured operand proves conversion inert.

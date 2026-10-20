@@ -1,0 +1,74 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "commands": [
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=nativeMemberUpdates",
+      "--source-file=updates.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/native_member_updates/updates-O0.abc",
+      "tests/integration/fixtures/native_member_updates/updates.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=nativeMemberUpdates",
+      "--source-file=updates.js",
+      "--output=tests/integration/fixtures/native_member_updates/updates-default.abc",
+      "tests/integration/fixtures/native_member_updates/updates.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=nativeMemberCatch",
+      "--source-file=catches.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/native_member_updates/catches-O0.abc",
+      "tests/integration/fixtures/native_member_updates/catches.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=nativeMemberCatch",
+      "--source-file=catches.js",
+      "--output=tests/integration/fixtures/native_member_updates/catches-default.abc",
+      "tests/integration/fixtures/native_member_updates/catches.js"
+    ]
+  ],
+  "fixtures": [
+    {
+      "mode": "O0",
+      "abc": "updates-O0.abc"
+    },
+    {
+      "mode": "default",
+      "abc": "updates-default.abc"
+    }
+  ],
+  "hashes": {
+    "updates.js": "f83ad514015b80d459ba8ecdd70ee2e84a747130da71cde8887fa9692c00c70c",
+    "updates-O0.abc": "2b592c1e386c107b2a15b8bf01e692a72640491b59684437032023c23ef44a4a",
+    "catches.js": "2090fab46110778c87ec32d66b3f0610fe616af93bcbc748820bcfbad2b99b65",
+    "catches-default.abc": "3e38661f4a9c31d00f656508ff888cbfe1ac546c7e6d2626903f8e626e86c905",
+    "catches-O0.abc": "8fc4eaaa7aa0d2883edd3dde16a47574f1752cce850a1e51676fcb97535b5edc",
+    "updates-default.abc": "fe8f95363038e914b1fb74b5e5916384bc3754720bcee44927a06229e45af02b"
+  },
+  "catch_fixtures": [
+    {
+      "mode": "O0",
+      "abc": "catches-O0.abc",
+      "publishes": true
+    },
+    {
+      "mode": "default",
+      "abc": "catches-default.abc",
+      "publishes": false
+    }
+  ]
+}

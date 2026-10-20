@@ -1,3 +1,4 @@
+#include "member_update.h"
 #include "tree_structure.h"
 
 #include <algorithm>
@@ -425,6 +426,12 @@ class StructureCheck {
         // Child ownership and scope are checked by the shared iterative walk.
       } else if constexpr (std::is_same_v<T, SequenceExpr>) {
         // Native comma expression evaluates each owned child once, in order.
+      } else if constexpr (std::is_same_v<T, MemberMutationExpr>) {
+        RequireTree(tree_.strictness==Strictness::kStrict,Error::kUnsupportedSyntax);
+        Key(expression.target.key);
+        if(const auto* update=std::get_if<MemberIncrement>(&expression.operation))
+          RequireTree(!expression.rhs && (update->direction==UpdateDirection::kIncrement || update->direction==UpdateDirection::kDecrement) && (update->result==UpdateResult::kPrefix || update->result==UpdateResult::kPostfix),Error::kUnsupportedSyntax);
+        else RequireTree(expression.rhs.has_value() && MemberCompoundOperator(std::get<analysis::BinaryOperator>(expression.operation)),Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, UpdateExpr>) {
         RequireTree((expression.direction == UpdateDirection::kIncrement || expression.direction == UpdateDirection::kDecrement) &&
             (expression.result == UpdateResult::kPrefix || expression.result == UpdateResult::kPostfix), Error::kUnsupportedSyntax);
@@ -722,6 +729,8 @@ class StructureCheck {
           if (node.heritage) add(*node.heritage);
         } else if constexpr (std::is_same_v<T, FieldDefinitionExpr>) {
           add(node.receiver); add(node.value);
+        } else if constexpr (std::is_same_v<T, MemberMutationExpr>) {
+          add(node.target.base);key(node.target.key);if(node.rhs)add(*node.rhs);
         } else if constexpr (std::is_same_v<T, AssignmentExpr>) {
           if (const auto* member = std::get_if<MemberTarget>(&node.target)) { add(member->base); key(member->key); }
           add(node.value);

@@ -1,5 +1,9 @@
 # Member-update References and constructor-arm events
 
+The current retained-member round (baseline **78278c38**) is recorded below in
+[Native retained member References](#native-retained-member-references-2026-10-21-baseline-78278c38).
+The following first checkpoint is historical.
+
 Baseline: **2e33dc77** (2026-10-20). This round publishes the constructor-arm
 case. The member-update case remains refused; no multi-use or catch check was
 relaxed to make its shared base inline. No new language-source premise.
@@ -200,3 +204,194 @@ and **172,998,656 bytes** (source), below 1GB.
 Raw commands/results, target before/after IR, all disassembly differences and
 baseline-failure reproductions: `build/review/member-updates/`. No commit,
 push or stash. The unrelated `sample.tar.gz` is unchanged.
+
+## Native retained member References (2026-10-21, baseline 78278c38)
+
+The later member-update round consumes the missing Reference evidence.
+**o36/36985 completes under both flag sets.** The original evidence above is
+unchanged: load127/v126 has Get130/Use128 and Set134/Use132 as its two real
+observations. Its source occurrence now belongs to one `MemberMutationExpr`;
+Set's base/key inputs are retained-reference wires, not additional source reads.
+The new value v132 reaches Invoke137/Use139 only after Set succeeds.
+
+`member_update.{h,cc}` discovers only from an **unmet member-call Reference**.
+Normal SSA uses the shared must-reach effect equations to join saved callee,
+mutation and invocation. Phased SSA composes a separately verified native atom
+into the existing expression composition. Existing successful calls, numeric
+scratch lowering, literal allocation exclusions and conditional admission stay
+unchanged. A second composition preserves earlier registered roots rather than
+replacing them; the original empty-registration path retains its old storage.
+No sample names, PC/register layout, same-block rule or opcode sequence chooses
+admission.
+
+The certificate retains canonical base/key ValueIds via their original UseIds,
+Get, optional explicit ToNumeric, arithmetic, Set, original result ValueId and
+its sole argument occurrence. One prepaid use census and functional-parent
+index collect existing input expression forests. One shared EffectOrder proves
+that the required events concatenate on every normal path; unrelated effects,
+divergence or unfinished activation re-entry cannot disappear. Scalar aliases,
+register permutations and pure block splits do not alter these equations.
+Every intrinsic's operand roles, purpose and original owner are checked as
+well. Foreign observations, a different receiver/key, extra result consumer,
+intervening effects and catch staging keep the existing refusal.
+
+Each port keeps its original successful Commit and exceptional-exit/handler
+identity. All throwing events in a moved input forest must retain the original
+catch context and have no unrepresented catch copies. `VerifyMemberUpdates`
+re-derives the certificate and all membership/input/result/wire tables from the
+unchanged graph; supplied placements and certificate fields are compared, not
+trusted. Removing the certificate cannot leave active wire/ownership tables.
+
+`MemberMutationExpr` has a MemberTarget, a typed increment/decrement or compound
+binary operator, and an optional RHS. Its owned children are base, computed key
+and RHS, each evaluated once. Prefix returns the new value; postfix returns the
+**converted numeric old value**, never the old object. Compound assignment gets
+before evaluating its RHS and returns the stored value after successful Set.
+The syntax/printer handles dot/computed targets and assignment precedence;
+symbol-only UpdateExpr and all previously successful statement/parameter forms
+keep their old lowering. Logical assignments are not admitted by this proof.
+The production seed is the unmet call Reference; this is not an unconditional
+replacement of every successful numeric lowering.
+
+TreeFlow freshly re-verifies the certificate, actual source target/key/operator,
+RHS and strictness, then publishes individual OriginalFlow actions.
+RecoveryFlow reconstructs one source Reference with separate Get/Set access
+views, an explicit ToNumeric action for updates, arithmetic and successful Set.
+An original INC/DEC that includes conversion maps to conversion Before through
+arithmetic Commit; an explicit TONUMERIC gets its own port. Arithmetic after
+ToNumeric cannot execute user code; allocation-failure observability remains
+controlled by the existing resource policy. Original result/call correspondence
+keeps the returned old/new value separate from Set's success. Every recovery
+projection must retain the same source target/operator and individual physical
+ports; replacing the node withdraws them. No internal numeric value receives a
+fabricated ExprId or source variable.
+
+### Runtime, strictness and premise boundary
+
+The source action order follows ECMA-262 2025 [Update Expressions, 13.4](https://tc39.es/ecma262/2025/multipage/ecmascript-language-expressions.html#sec-update-expressions)
+and [Assignment Operators, 13.15.2](https://tc39.es/ecma262/2025/multipage/ecmascript-language-expressions.html#sec-assignment-operators-runtime-semantics-evaluation).
+Base/key **expressions** evaluate once. Under the repository's existing 2025
+Reference adapter, an unresolved object key converts separately at Get and Set;
+that is not a second key-expression evaluation. See
+[source-property-references.md](../../reference/source-property-references.md).
+Node v25.7 confirms both key conversions, including a key that changes on the
+second conversion or throws there.
+
+Pinned `ets_runtime/ecmascript/interpreter/interpreter-inl.cpp:3037,6442,4979,4860`
+implements named Set/Get, INC and TONUMERIC. The name/value slow store adapters
+at `ecmascript/interpreter/slow_runtime_stub.cpp:816,838` delegate to
+`ecmascript/stubs/runtime_stubs-inl.h:664,773`, whose SetProperty calls pass
+**true** for strict mode. The native tree must independently be strict.
+Own-definition stores and super/private References are not ordinary member
+updates. No new premise is introduced: the selected existing arithmetic/source
+numeric and resource policies still apply; no numeric `+ 1` approximation or
+new initialized-capture claim is made.
+
+### Publication and source oracle
+
+| Target | Before | After |
+|---|---|---|
+| o36/36985 m37638, original378 / working352 | kNotInline > kRoot > kCrossRegionValue | complete |
+
+Paired source is evaluation-only. The relevant original callback in
+`PhotoSameSource/entry/src/main/ets/views/ModeComponent.ets:157` is:
+
+```js
+async () => {
+  if (this.sceneMode === camera.SceneMode.NORMAL_PHOTO) {
+    Logger.info('capture onClick');
+    AppStorage.setOrCreate('captureClick', ++this.captureClickFlag);
+    CameraService.capture();
+  } else {
+    await CameraService.startVideo();
+    this.isRecording = true;
+  }
+}
+```
+
+Engine output, with the already-verified condition snapshot/inversion retained:
+
+```js
+async () => {
+  const $value0 = $local0.sceneMode;
+  const $value1 = camera.SceneMode.NORMAL_PHOTO;
+  if ($value0 !== $value1) {
+    await CameraService.startVideo();
+    $local0.isRecording = true;
+  } else {
+    Logger.info("capture onClick");
+    AppStorage.setOrCreate("captureClick", ++$local0.captureClickFlag);
+    CameraService.capture();
+  }
+}
+```
+
+Both emitted records pass node --check. An independent extraction/execution of
+this actual engine callback against the original callback passes **140** async
+value/exception/effect/microtask scenarios. Original source is never an engine
+input.
+
+### Tests, recompile differences and remaining limits
+
+`member_update_test` checks derivation, re-verification and fresh TreeFlow/
+RecoveryFlow ports. Mutants alter the target, input role, arithmetic, old/new
+result, consumption wire, placement, port, exception/handler or retained source
+Reference. Copies, block splits, register permutation, named/computed prefix and
+postfix cases pass. Exact prepaid verifier budgets and one-less-byte/work
+refusals at 200/201/400/800 are recorded in
+`build/review/member-native/unit-result.log`.
+
+| Width | Verifier bytes | Verifier work |
+|---:|---:|---:|
+| 200 | 2,284,927 | 439,989 |
+| 201 | 2,296,346 | 442,188 |
+| 400 | 4,568,727 | 879,789 |
+| 800 | 9,136,327 | 1,759,389 |
+
+Real es2abc fixtures and commands/hashes are in
+`tests/integration/fixtures/native_member_updates/manifest.json`.
+Default and O0 publish thirteen ordinary functions each; O0 also publishes two
+catch-bearing factories. The optimized catch fixture retains
+`PhasedMethodError::kRegion > ExceptionPlanError::kLayout >
+CatchRegionError::kHandlerShape`; 78278c38 independently has that same refusal.
+This round does not expand catch-region admission.
+
+Node differential: **5,852** cases and **8** observed source mutants. Coverage
+includes prefix/postfix, decrement, +=/-=/*=, statement/assignment results,
+captured and nested bases, mutable capture replacement during Get, callee
+replacement/noncallability, key/getter/setter/valueOf/ToPrimitive order, second
+key conversion and failures, strict write failures, Number/BigInt/Symbol.
+
+The unmodified `grouping_bytecode.py` compares 28 symmetric function wrappers
+at default and O0: **8 exact / 48 differences / 0 unverified**. No allowance,
+register normalization or hidden mismatch removal is used. The grouping-only
+token checker correctly rejects all 28 parameter-renamed/recovered pairs; these
+are source-recovery comparisons, not grouping-only passes. All 28 Node syntax
+checks pass. Every difference belongs to the following inspected categories:
+
+| Methods | Difference and semantic correspondence |
+|---|---|
+| makePrefix, makePostfix, makeDecrement, makeCompound, makeSubtract, makeMultiply, makeMutable, makeCaught, makeCaughtCompound | Recovered captured formal is initialized into a source `let` before closures can escape. Recompile adds unreachable Hole guards and their name strings/constant offsets; O0 also materializes the parameter/local through extra register copies. Native Get/ToNumeric/arithmetic/Set/call order and receiver remain unchanged. Mutable writer additionally has a dead pre-store guard and return-value copies. Catch protection remains around the same live source actions, including the dead guard. |
+| prefix, compound, multiply, statement | Default matches exactly. O0 retains existing private scratch/assignment/key snapshots and their register copies; the body effects and successful result remain the same. These already-complete lowerings are intentionally unchanged. |
+| postfix, makeCaptured | Existing lowering retains extra private numeric scratch operations for old-number conversion and value publication, plus inert binding reads/copies/initializers (and dead captured-let guards). Extra arithmetic has no user callback; resource differences remain under the existing exclusion. Numeric result, user Get/Set count, order and receiver match; these are not claimed as new native-form support. |
+
+Compiler SHA-256: `4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`.
+Disassembler SHA-256: `a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676`.
+Detailed raw diffs are under `build/review/member-native/roundtrip-accepted/`.
+No claim of full bytecode identity or Ark runtime execution is made.
+
+A full baseline syntax census finds **9** retained numeric scratch member
+lowerings in **7/596** complete source-contract records, and **8** in **6/540**
+previous-contract records. Typed/lazy syntax is shadowed only in the test census
+and identifier-valued string export aliases are adapted; every complete record
+is counted. These potential native spellings are intentionally untouched, not
+additional admissions. A broader syntactic count also finds 249/248 direct
+member/binary-store spellings (source/previous); together these touch 26/24
+complete records. Those spellings are not proofs that base/key evaluations may
+be merged; they are explicitly potential cleanup candidates. All stay
+byte-identical. The registries are `build/review/member-native/census-*.json`.
+
+Additional work/storage is one shared use/owner/effect index per method plus
+linear certificate/event/input tables: **O((V+E) log V)** admitted work, no
+per-mutation whole-CFG scans and no recursive proof walks. Every buffer is
+charged before allocation. Complete-record text stays byte-identical.

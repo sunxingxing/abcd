@@ -116,6 +116,7 @@ class FlowBuilder {
       decltype(result_.original_exceptions){}.swap(result_.original_exceptions);
       decltype(result_.original_handlers){}.swap(result_.original_handlers);
     }
+    result_.member_updates.clear();
     Resize(result_.actions,projection_.original?tree_.expressions.size():0);
     Resize(result_.original_actions,projection_.original?projection_.original->operations.size():0);
     for(auto& action:result_.original_actions){budget_.Step();action.reset();}
@@ -441,7 +442,7 @@ class FlowBuilder {
     // Ownership census, not semantic dispatch. Add any new owned flow buffer
     // here; original evidence is borrowed and scopes are charged separately.
     add(flow.enumerations);add(flow.iterations);add(flow.iteration_closes);add(flow.parameter_defaults);add(flow.parameter_expression_events);add(flow.parameter_guards);
-    add(flow.class_initializations);
+    add(flow.class_initializations);add(flow.member_updates);
     add(flow.normal_kinds);add(flow.normal_truths);add(flow.normal_exits);
     add(flow.actions);add(flow.aggregates);add(flow.argument_carriers);
     add(flow.snapshot_slots);add(flow.property_initializers);add(flow.original_actions);
@@ -604,6 +605,34 @@ class FlowBuilder {
       budget_.Step();RequireTree(port.notification.value<result.original_actions.size()&&port.statement.value<statement_notifications_.size()&&statement_notifications_[port.statement.value],Error::kOwnership);
       RequireTree(!result.original_actions[port.notification.value],Error::kOwnership);
       result.original_actions[port.notification.value]=statement_notifications_[port.statement.value];
+    }
+    if(result.original && !result.original->member_updates.empty()) {
+      std::vector<std::optional<std::size_t>> native;
+      budget_.Array(native,tree_.expressions.size());
+      for(std::size_t i=0;i<result.member_updates.size();++i) {
+        budget_.Step();RequireTree(!native[result.member_updates[i].expression.value],Error::kOwnership);
+        native[result.member_updates[i].expression.value]=i;
+      }
+      for(const auto& original:result.original->member_updates) {
+        budget_.Step();const auto at=native[original.expression.value];
+        if(!at)continue; // A recovery replacement withdraws its physical ports.
+        const auto& current=result.member_updates[*at];
+        RequireTree(current.syntax==original.syntax,Error::kOwnership);
+        for(const auto& port:original.proof.ports) {
+          budget_.Step();std::optional<FlowAction> action;
+          switch(port.phase) {
+            case MemberUpdatePhase::kGet:action=current.get;break;
+            case MemberUpdatePhase::kToNumeric:action=current.conversion;break;
+            case MemberUpdatePhase::kOperation:
+              action=current.calculation;
+              if(current.conversion && !original.proof.conversion)action->before=current.conversion->before;
+              break;
+            case MemberUpdatePhase::kSet:action=current.set;break;
+          }
+          RequireTree(action && !result.original_actions[port.operation.value],Error::kOwnership);
+          result.original_actions[port.operation.value]=FlowOriginalAction{action->before,action->normal,action->exceptions};
+        }
+      }
     }
     // Publish each native action once. Phase and exception consumers use this
     // same index; they must not independently guess an action from an anchor.
@@ -1313,6 +1342,50 @@ class FlowBuilder {
     // References retain input values once. GetValue precedes call arguments;
     // PutValue follows RHS writes. Receiver/key failures cannot publish access.
     // All motion/liveness/trial consumers see these same phase edges.
+    if(const auto* mutation=std::get_if<MemberMutationExpr>(&node)) {
+      RequireTree(tree_.strictness==Strictness::kStrict,Error::kOwnership);
+      const FlowExceptionContext exceptions{context.thrown,context.finalizer};
+      const auto action=[&](SourceEffects effects) {
+        const auto before=New({FlowEventKind::kEvaluation,{},{},at.id}),commit=New();
+        events_[before.value].effects=effects;events_[before.value].effect=effects.Evaluation();
+        events_[before.value].discarded=context.discarded;
+        Link(before,commit);
+        if(effects.exceptional==analysis::ExceptionalCompletion::kMayThrow)Link(before,context.thrown,FlowCompletion::kThrow);
+        return FlowAction{before,commit,exceptions};
+      };
+      const auto get=action(CallbackEffects());
+      const bool increment=std::holds_alternative<MemberIncrement>(mutation->operation);
+      SourceEffects arithmetic=CallbackEffects();
+      if(increment) {
+        // After ToNumeric only a Number/BigInt remains. Adding/subtracting one
+        // cannot invoke user code; the source contract independently controls
+        // allocation-failure observability, as for ordinary numeric updates.
+        arithmetic={};
+        if(ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kObservable)
+          arithmetic={analysis::LanguageEffect::kAllocation,analysis::LanguageEffect::kAllocation,analysis::ExceptionalCompletion::kMayThrow};
+      }
+      const auto calculation=action(arithmetic);
+      std::optional<FlowAction> conversion;
+      if(increment)conversion=action(CallbackEffects());
+      auto put=Property(at.id,mutation->target.base,mutation->target.key,FlowReferenceKind::kWrite,effect,context);
+      Link(put,result_.properties.back().receiver);
+      Link(calculation.normal,put);
+      auto next=calculation.before;
+      if(mutation->rhs)next=Expr(*mutation->rhs,context.Operand(next));
+      if(conversion){Link(conversion->normal,next);next=conversion->before;}
+      Link(get.normal,next);
+      auto get_context=context.Operand(get.normal);
+      auto reference=Property(at.id,mutation->target.base,mutation->target.key,FlowReferenceKind::kRead,get.before,get_context);
+      const auto receiver=result_.properties.back().receiver;
+      Link(reference,receiver);
+      auto first=reference;
+      if(const auto* key=std::get_if<ComputedKey>(&mutation->target.key))first=Expr(key->expression,context.Operand(first));
+      Link(start,Expr(mutation->target.base,context.Operand(first)));
+      Append(result_.member_updates,FlowMemberUpdate{at.id,*mutation,
+          FlowAction{receiver,get.normal,exceptions},calculation,
+          FlowAction{result_.properties[result_.properties.size()-2].receiver,normal,exceptions},conversion});
+      return;
+    }
     if(const auto* deleted=std::get_if<DeleteExpr>(&node)) {
       auto next=Property(at.id,deleted->base,deleted->key,FlowReferenceKind::kWrite,effect,context);
       Link(next,result_.properties.back().receiver);

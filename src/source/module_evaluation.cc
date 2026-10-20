@@ -19,6 +19,7 @@ std::vector<EvaluationUses> IndexEvaluationUses(const analysis::ValueProgram& gr
   std::vector<EvaluationUses> result; budget.Array(result,graph.ops.size());
   for (std::size_t i=0;i<graph.uses.size();++i) {
     budget.Step(); const auto& use = graph.uses[i];
+    if (MemberUpdateWire(plan,{static_cast<std::uint32_t>(i)})) continue;
     if ((plan.concurrent && plan.concurrent->uses[i]) || use.life != ValueLife::kLive || IsIdentityPhiInput(plan,use) || (plan.for_in && plan.for_in->uses[i])) continue;
     const auto producer = EvaluationProducer(graph, plan, UseId{static_cast<std::uint32_t>(i)});
     if (!producer) continue;

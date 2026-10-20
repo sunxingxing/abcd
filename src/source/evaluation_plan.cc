@@ -615,8 +615,11 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       ComposePhaseExpressions(graph, plan, selection_budget);
       witness = {}; witness.obligation = EvaluationObligation::kProjection;
       ComposeCheckedCalls(graph, plan, selection_budget);
+      BuildMemberUpdates(graph, plan, selection_budget);
+      if (!plan.member_updates.updates.empty()) ComposePhaseExpressions(graph, plan, selection_budget);
       admit(selection_budget.Bytes(), 1); step(selection_budget.Work());
     }
+    if(flow==EvaluationFlow::kNormal){TreeCheckBudget members({bytes,work});BuildMemberUpdates(graph,plan,members);admit(members.Bytes(),1);step(members.Work());}
     const auto normalized = BuildIntegerNaNs(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<EvaluationFailure>(&normalized)) return *error;
     const auto normalization_cost = std::get<IntegerNaNCost>(normalized);
@@ -624,7 +627,11 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow,for_of);
     if (const auto* error = std::get_if<EvaluationFailure>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    plan.allocated_bytes =
+    std::size_t member_bytes=plan.member_updates.updates.capacity()*sizeof(MemberUpdate) +
+        (plan.member_updates.events.capacity()+plan.member_updates.owned.capacity()+plan.member_updates.results.capacity())*sizeof(std::optional<analysis::OpId>)+
+        plan.member_updates.moves.capacity()*sizeof(std::optional<analysis::UseId>)+plan.member_updates.wires.capacity();
+    for(const auto& update:plan.member_updates.updates){step();member_bytes+=update.inputs.capacity()*sizeof(MemberUpdateInput)+update.ports.capacity()*sizeof(MemberUpdatePort);}
+    plan.allocated_bytes = member_bytes +
         plan.literal_arm_inputs.capacity() *
             sizeof(std::optional<analysis::UseId>) +
         plan.checked_failures.capacity() * sizeof(GuardedCallFailure) +
@@ -683,6 +690,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (const EvaluationFailure& error) { return error;
   } catch (Error error) { return EvaluationFailure{error, witness};
+  } catch (MemberUpdateError) { return Error::kOwnership;
   } catch (LiteralEventError) {
     return Error::kOwnership;
   } catch (const std::bad_alloc&) {

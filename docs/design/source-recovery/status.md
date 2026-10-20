@@ -1,11 +1,62 @@
 # 当前状态
 
-更新时间：2026-10-20。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-21。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
 
+
+
+## Native member-update Reference consumed (2026-10-21)
+
+- Baseline/wtbase **78278c38**. **o36/36985 m37638 originalPC378/working352
+  completes under both contracts**. Get130 and Set134 consume the same retained
+  load127 value through a verified member Reference. Native prefix/postfix and
+  compound forms retain independent Get/ToNumeric/RHS/arithmetic/Set/result
+  ports; no copied capture, extra member lookup or fabricated ExprId. The source
+  target and operator are freshly checked in TreeFlow and on recovery projections.
+- Only unmet member-call References seed this projection. Successful old plans,
+  symbol updates, ordinary statement forms, literal exclusions and logical
+  assignment admission stay unchanged. Strict store semantics are rechecked;
+  no new premise. Original operand-role validation remains mandatory inside
+  the certified intrinsic event set. Shared use/owner/effect indexes are prepaid,
+  iterative, **O((V+E) log V)**; 200/201/400/800 exact byte/work boundaries and
+  one-less refusals pass (800: **9,136,327 bytes / 1,759,389 work** for verification).
+- Cohorts: **540 -> 541/620** previous flags, **596 -> 597/620** source;
+  **0 regressions and 0 previously-complete text drift**. Only o36/36985's
+  manifest row changes. Both new records pass node --check. Latest conservative
+  four-child+parent RSS bounds: **166,363,136 bytes** source,
+  **160,284,672 bytes** previous (below 1,000,000,000).
+- Full build; serial source-regression **65/65**; targeted update/property/call
+  tests **7/7**. Requested sweep **180/185**: only the documented pre-existing
+  family_source_cli, tree_structure, try_tree, class_tree_source and
+  try_tree_source failures. No assertions weakened. An initial overlapped-build
+  archive-link failure was discarded; the complete build and suites were rerun
+  without overlapping build commands.
+- New es2abc default/O0 fixtures publish thirteen ordinary functions per mode
+  plus two O0 catch factories. **5,852 Node differential cases**, **8 observed
+  mutants**; the actual o36 callback separately matches its paired evaluation
+  source on **140 async value/exception/effect/microtask cases**. Mutants cover
+  target/result/role/order/consumption/ports/catch correspondence; copies,
+  register permutations, block splits and exact resource exhaustion pass.
+- The optimized catch fixture keeps **kRegion > kLayout > kHandlerShape**,
+  independently reproduced on 78278c38. Catch-region admission is not widened.
+  Recompile comparisons use the unmodified grouping_bytecode.py: **8 exact /
+  48 differences / 0 unverified** across 28 wrappers and two compiler modes;
+  all 28 Node syntax checks pass. Captured-let initialization/guards, extra O0
+  copies and unchanged old scratch lowerings explain the inspected differences;
+  these are not counted as bytecode-equality or grouping-token passes.
+- Baseline census: **9 scratch update sites in 7 complete source records**;
+  **8 in 6 previous-contract records**. Another 249/248 direct binary-store
+  spellings are potential, unproved native candidates. Combined syntax census
+  touches 26/24 records; all remain unchanged.
+- Design/runtime citations, target source comparison and detailed bytecode
+  categories: [member-update-constructor-events.md](member-update-constructor-events.md#native-retained-member-references-2026-10-21-baseline-78278c38).
+  Evidence: `build/review/member-native/` (`build-final`, `regression`,
+  `sweep-accepted`, `unit-result`, `cohort-*-diff`, `target-differential`,
+  `roundtrip-accepted` and `census-*`). No commit, push or stash; unrelated
+  sample.tar.gz preserved.
 
 
 ## Constructor-arm events; member update remains open (2026-10-20)

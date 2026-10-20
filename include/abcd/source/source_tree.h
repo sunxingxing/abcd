@@ -134,7 +134,7 @@ struct GlobalNameExpr { NameId name; };
 struct RealmObjectExpr {};
 struct SymbolConstructorExpr {};
 struct ThisExpr { FunctionOwnerId owner; };
-struct ComputedKey { ExprId expression; };
+struct ComputedKey { ExprId expression; bool operator==(const ComputedKey&) const = default; };
 using MemberKey = std::variant<NameId, ComputedKey>;
 struct MemberExpr { ExprId base; MemberKey key; analysis::PropertyLookup lookup = analysis::PropertyLookup::kObject; };
 enum class TreeUnary : std::uint8_t { kNot, kNegate, kBitNot, kPlus, kTypeof };
@@ -153,7 +153,7 @@ struct LogicalExpr { TreeLogical operation; ExprId left; ExprId right; };
 // authorize CFG contraction; source recovery must prove ownership and order.
 struct ConditionalExpr { ExprId condition; ExprId consequent; ExprId alternate; };
 struct SymbolTarget { SymbolId symbol; };
-struct MemberTarget { ExprId base; MemberKey key; };
+struct MemberTarget { ExprId base; MemberKey key; bool operator==(const MemberTarget&) const = default; };
 using AssignmentTarget = std::variant<SymbolTarget, MemberTarget>;
 struct AssignmentExpr { AssignmentTarget target; ExprId value; };
 // Native syntax. Value-IR updates compute a new value without overwriting the
@@ -161,6 +161,20 @@ struct AssignmentExpr { AssignmentTarget target; ExprId value; };
 enum class UpdateDirection : std::uint8_t { kIncrement, kDecrement };
 enum class UpdateResult : std::uint8_t { kPrefix, kPostfix };
 struct UpdateExpr { SymbolId symbol; UpdateDirection direction; UpdateResult result; };
+struct MemberIncrement {
+  UpdateDirection direction;
+  UpdateResult result;
+  bool operator==(const MemberIncrement&)const=default;
+};
+using NativeMemberOperation = std::variant<MemberIncrement, analysis::BinaryOperator>;
+// One retained Reference: base/key are evaluated once. The implicit Get,
+// conversion/RHS, calculation and strict Set have individually verified ports.
+struct MemberMutationExpr {
+  MemberTarget target;
+  NativeMemberOperation operation;
+  std::optional<ExprId> rhs;
+  bool operator==(const MemberMutationExpr&) const = default;
+};
 struct DeleteExpr { ExprId base; MemberKey key; };
 struct SequenceExpr { ExprId left; ExprId right; };
 // Each argument slot and expression occurrence has exactly one syntax owner.
@@ -244,7 +258,7 @@ using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, Rea
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr, UpdateExpr, SequenceExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
 struct BlockStmt {

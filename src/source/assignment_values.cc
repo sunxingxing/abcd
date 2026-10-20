@@ -33,6 +33,7 @@ std::vector<Observations> Census(const ValueProgram& graph, const EvaluationPlan
 }
 }
 std::optional<analysis::OpId> AssignmentProducer(const EvaluationPlan& plan, analysis::UseId use) {
+  if(use.value<plan.member_updates.results.size() && plan.member_updates.results[use.value])return plan.member_updates.results[use.value];
   return use.value < plan.assignment_values.size() ? plan.assignment_values[use.value] : std::nullopt;
 }
 std::optional<analysis::OpId> EvaluationProducer(const analysis::ValueProgram& graph,

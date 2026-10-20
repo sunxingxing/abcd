@@ -55,7 +55,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
          std::holds_alternative<ValueArgumentSnapshot>(op.operation))) return Error::kParameter;
     needs_self |= op.life == ValueLife::kLive && std::holds_alternative<ValueFrameFunction>(op.operation);
     const auto kind = evaluation.operations[static_cast<std::size_t>(&op - graph.ops.data())].kind;
-    update_count += op.life == ValueLife::kLive && kind != EvaluationKind::kElidedPure && kind != EvaluationKind::kArrayCursor && NeedsNumericScratch(graph, op);
+    update_count += op.life == ValueLife::kLive && kind != EvaluationKind::kElidedPure && kind != EvaluationKind::kArrayCursor && !MemberUpdateIntrinsic(evaluation,{static_cast<std::uint32_t>(&op-graph.ops.data())}) && NeedsNumericScratch(graph, op);
   }
   const std::size_t self_count = needs_self ? 1 : 0;
   const std::size_t hole_count = NeedsHoleToken(evaluation) ? 1 : 0;
@@ -271,7 +271,7 @@ std::variant<BindingPlan, BindingError> BuildBindings(
       --work;
       const auto& op = graph.ops[i];
       if (op.life != ValueLife::kLive || evaluation.operations[i].kind == EvaluationKind::kElidedPure || evaluation.operations[i].kind == EvaluationKind::kArrayCursor ||
-          !NeedsNumericScratch(graph, op)) continue;
+          (MemberUpdateIntrinsic(evaluation,{static_cast<std::uint32_t>(i)}) || !NeedsNumericScratch(graph, op))) continue;
       // The producer's private result is unavailable until its Commit. Its
       // own snapshot can stage conversion without exposing input/phi/cell
       // storage; the outer publication still stores the exact returned value

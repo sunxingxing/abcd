@@ -54,6 +54,9 @@ std::vector<ExpressionSyntaxFacts> Facts(const FunctionTree& tree, TreeCheckBudg
         if constexpr (std::is_same_v<T,BinaryExpr> || std::is_same_v<T,LogicalExpr> || std::is_same_v<T,SequenceExpr>) left=n.left;
         else if constexpr (std::is_same_v<T,ConditionalExpr>) left=n.condition;
         else if constexpr (std::is_same_v<T,MemberExpr>) left=n.base;
+        else if constexpr (std::is_same_v<T,MemberMutationExpr>) {
+          if(std::holds_alternative<analysis::BinaryOperator>(n.operation) || std::get<MemberIncrement>(n.operation).result==UpdateResult::kPostfix)left=n.target.base;
+        }
         else if constexpr (std::is_same_v<T,CallExpr>) { if(n.reference!=CallReference::kValue) left=n.callee; }
         else if constexpr (std::is_same_v<T,AssignmentExpr>) {
           if(const auto* member=std::get_if<MemberTarget>(&n.target)) left=member->base;

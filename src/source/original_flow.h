@@ -4,6 +4,7 @@
 #include "abcd/analysis/value_ir.h"
 #include "truth_domains.h"
 #include "cell_plan.h"
+#include "member_update.h"
 #include "cell_parameter_default.h"
 #include "for_in_emission.h"
 #include "for_of_emission.h"
@@ -210,7 +211,9 @@ struct OriginalIterations {
   std::vector<OriginalIterationInput> inputs;
   std::vector<OriginalEnumerationExit> exits;
 };
+struct OriginalMemberUpdate { ExprId expression; MemberUpdate proof; MemberMutationExpr syntax; };
 struct OriginalFlow {
+  std::vector<OriginalMemberUpdate> member_updates;
   std::vector<OriginalClassInitialization> class_initializations;
   std::optional<OriginalIterations> iterations;
   std::optional<OriginalParameterDefaults> parameter_defaults;

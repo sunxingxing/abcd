@@ -123,6 +123,10 @@ ExpressionPrecedence TreeExpressionPrecedence(const TreeExpression& node) {
     else if constexpr (std::is_same_v<T, ConditionalExpr>) return P::kConditional;
     else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> ||
                        std::is_same_v<T, DeleteExpr>) return P::kUnary;
+    else if constexpr (std::is_same_v<T, MemberMutationExpr>) {
+      const auto* update=std::get_if<MemberIncrement>(&value.operation);
+      return !update?P::kAssignment:update->result==UpdateResult::kPostfix?P::kPostfix:P::kUnary;
+    }
     else if constexpr (std::is_same_v<T, UpdateExpr>) return value.result == UpdateResult::kPostfix ? P::kPostfix : P::kUnary;
     else if constexpr (std::is_same_v<T, MemberExpr> || std::is_same_v<T, CallExpr> ||
                        std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr>) return P::kPostfix;
@@ -170,11 +174,13 @@ bool ReadableOperandGrouping(const TreeExpression& child, const TreeOperatorCont
       // A prefix update must not join a unary sign into +++ or --- tokens.
       if (const auto* update = std::get_if<UpdateExpr>(&child);
           update && update->result == UpdateResult::kPrefix && Sign(parent)) return true;
+      if(const auto* member=std::get_if<MemberMutationExpr>(&child); member && Sign(parent))
+        if(const auto* update=std::get_if<MemberIncrement>(&member->operation);update && update->result==UpdateResult::kPrefix)return true;
       return precedence<ExpressionPrecedence::kUnary;
     } else {
       static_assert(std::is_same_v<T, PostfixContext>);
       // UpdateExpression is not a MemberExpression/CallExpression base.
-      if (std::holds_alternative<UpdateExpr>(child)) return true;
+      if (std::holds_alternative<UpdateExpr>(child)||std::holds_alternative<MemberMutationExpr>(child)) return true;
       if(parent==PostfixContext::kConstructor &&
           (std::holds_alternative<CallExpr>(child)||std::holds_alternative<SuperCallExpr>(child))) return true;
       if(parent!=PostfixContext::kCallCallee) if(const auto* literal=std::get_if<TreeLiteral>(&child);literal &&

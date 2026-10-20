@@ -272,6 +272,7 @@ struct FlowSnapshotSlot {ExprId snapshot;std::uint32_t ordinal;FlowPoint branch,
 // come from the action; normal denotes raw Commit, following the separately
 // checked result projection when present or the physical write otherwise.
 // A throwing endpoint has no normal completion; this is not a result domain.
+struct FlowMemberUpdate { ExprId expression; MemberMutationExpr syntax; FlowAction get, calculation, set; std::optional<FlowAction> conversion; };
 struct FlowOriginalAction {FlowPoint before;std::optional<FlowPoint> normal;FlowExceptionContext exceptions;};
 // Statement actions share the same Before/Commit/exception contract as
 // expression actions. Payload evaluation precedes return/throw endpoints;
@@ -609,6 +610,7 @@ struct RecoveryFlow {
   std::vector<std::optional<FlowPoint>> normal_exits;
   // ExprId-indexed raw-phase bridge. Ordinary/source-only graphs consume their
   // existing native events, properties and completion edges without this copy.
+  std::vector<FlowMemberUpdate> member_updates;
   std::vector<std::optional<FlowAction>> actions;
   std::vector<FlowAggregate> aggregates;
   std::vector<FlowArgumentCarrier> argument_carriers;

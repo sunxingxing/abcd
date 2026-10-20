@@ -212,9 +212,14 @@ class OperandCheck {
     RequireMeaning(tree_.receiver_guards == evaluation_.receiver_guards, Error::kOperand);
     RequireMeaning(tree_.receiver_guards.size() == constants_.receiver_guards.size() &&
         std::equal(tree_.receiver_guards.begin(), tree_.receiver_guards.end(), constants_.receiver_guards.begin()), Error::kOperand);
+    VerifyMemberUpdates(graph_, evaluation_, budget_);
+    budget_.Admit(evaluation_.member_updates.updates.size(), sizeof(OriginalMemberUpdate));
+    original_.member_updates.reserve(evaluation_.member_updates.updates.size());
+    budget_.Admit(original_.member_updates.capacity()-evaluation_.member_updates.updates.size(), sizeof(OriginalMemberUpdate));
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
+      if (MemberUpdateIntrinsic(evaluation_, {static_cast<std::uint32_t>(i)})) continue;
       if (original_.iterations && original_.iterations->operations[i]) continue;
       if ((!original_.enumeration_operations.empty() && original_.enumeration_operations[i]) ||
           (!original_.forwarded_operations.empty() && original_.forwarded_operations[i])) continue;
@@ -252,6 +257,34 @@ class OperandCheck {
       RequireMeaning(flow_.expressions[i].has_value(), Error::kOperand);
       const auto predicate = !flow_.branch_predicates.empty() ? flow_.branch_predicates[i] : std::nullopt;
       const auto expression = predicate.value_or(*flow_.expressions[i]);
+      if (const auto* proof=MemberUpdateAt(evaluation_, current_)) {
+        const auto& native=Node<MemberMutationExpr>(expression);
+        RequireMeaning(tree_.strictness==Strictness::kStrict && native.operation==proof->operation &&
+            bool(native.rhs)==bool(proof->rhs), Error::kOperator);
+        current_=proof->read; origin_={graph_.ops[current_.value].origin.value};
+        InputAt(0,native.target.base);
+        if (proof->key) {
+          const auto* key=std::get_if<ComputedKey>(&native.target.key);
+          RequireMeaning(key,Error::kOperand);InputAt(1,key->expression);
+        } else {
+          Named(native.target.key,constants_.operations[proof->read.value]);
+          Named(native.target.key,constants_.operations[proof->write.value]);
+        }
+        if (proof->rhs) {
+          current_=proof->calculation;origin_={graph_.ops[current_.value].origin.value};
+          InputAt(1,*native.rhs);
+        }
+        for(const auto& port:proof->ports) {
+          budget_.Step();RequireMeaning(flow_.expressions[port.operation.value]==expression,Error::kOperand);
+          original_.operations[port.operation.value].completion=OriginalCompletionBoundary::kIntrinsicAction;
+          if(graph_.ops[port.operation.value].result==proof->value)
+            original_.operations[port.operation.value].result_expression=expression;
+        }
+        budget_.Admit(proof->inputs.size(),sizeof(MemberUpdateInput));
+        budget_.Admit(proof->ports.size(),sizeof(MemberUpdatePort));
+        original_.member_updates.push_back({expression,*proof,native});
+        continue;
+      }
       if (!flow_.selection_truths.empty() && flow_.selection_truths[i]) {
         const auto& truth = *flow_.selection_truths[i];
         const auto& logical = Node<LogicalExpr>(expression);

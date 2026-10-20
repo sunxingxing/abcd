@@ -894,6 +894,18 @@ class TreePrinter {
     Push(std::string_view(", "));
     Push(ExpressionOperand{node.left, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kDiscarded, false, statement_start});
   }
+  void Expression(MemberMutationExpr node) {
+    const auto target=[&]{ Member(node.target.base,node.target.key); };
+    if(const auto* update=std::get_if<MemberIncrement>(&node.operation)) {
+      const std::string_view token=update->direction==UpdateDirection::kIncrement?"++":"--";
+      if(update->result==UpdateResult::kPostfix)Push(token);
+      target();if(update->result==UpdateResult::kPrefix)Push(token);
+    } else {
+      Push(ExpressionOperand{*node.rhs,{ExpressionGrammar::kAssignmentValue}});
+      auto token=TreeBinaryToken(std::get<analysis::BinaryOperator>(node.operation));
+      Push(std::string_view("= "));Push(token.substr(1,token.size()-2));Push(std::string_view(" "));target();
+    }
+  }
   void Expression(UpdateExpr node) {
     const auto token = node.direction == UpdateDirection::kIncrement ? "++" : "--";
     if (node.result == UpdateResult::kPostfix) Push(std::string_view(token));

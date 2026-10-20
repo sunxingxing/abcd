@@ -378,6 +378,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const auto module_copies = VerifyModuleCatchCopies(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<EvaluationFailure>(&module_copies)) return *error;
     step(std::get<std::uint64_t>(module_copies));
+    { TreeCheckBudget members({bytes,work});VerifyMemberUpdates(graph,plan,members);admit(members.Bytes(),1);step(members.Work()); }
     const auto expressions = VerifyPhaseExpressions(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<EvaluationFailure>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);
@@ -386,7 +387,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     // proves ordered intervals and final throw owners. The forest below must
     // still visit every operation exactly once.
     const auto cross = [&](std::size_t i) {
-      return CrossEvaluationInline(graph, plan, analysis::OpId{static_cast<std::uint32_t>(i)});
+      return (i<plan.member_updates.owned.size() && plan.member_updates.owned[i]) || CrossEvaluationInline(graph, plan, analysis::OpId{static_cast<std::uint32_t>(i)});
     };
     admit(graph.ops.size(), sizeof(EvaluationFrame));
     admit(graph.ops.size(), sizeof(EvaluationVisit));
@@ -399,6 +400,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       const auto& op = graph.ops[i];
       witness = EvaluationAt(graph, plan, {static_cast<std::uint32_t>(i)}, EvaluationObligation::kPlan);
       const auto placement = BeforeLogicalFusion(graph, plan, i);
+      if(MemberUpdateIntrinsic(plan,{static_cast<std::uint32_t>(i)})){visits[i]=EvaluationVisit::kDone;continue;}
       if (!plan.closed_expressions.empty() && plan.closed_expressions[i]) {
         Require(IsClosedPureValue(graph, {static_cast<std::uint32_t>(i)}) &&
             placement.kind == EvaluationKind::kInline && placement.consumer == plan.closed_expressions[i] &&
@@ -527,7 +529,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       } else if (placement.kind == EvaluationKind::kInline) {
         witness.obligation = EvaluationObligation::kInlineConsumer;
         Require(!pinned[i] || (cross(i) && PhaseCorridors::Aggregate(op.operation)), Error::kOwnership);
-        Require((op.result || (i < plan.assignment_consumers.size() && plan.assignment_consumers[i])) && placement.consumer && !placement.temporary, Error::kOwnership);
+        Require((op.result || MemberUpdateAt(plan,{static_cast<std::uint32_t>(i)}) || (i < plan.assignment_consumers.size() && plan.assignment_consumers[i])) && placement.consumer && !placement.temporary, Error::kOwnership);
         Require(placement.consumer->value < graph.uses.size(), Error::kOwnership);
         const auto& use = graph.uses[placement.consumer->value];
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);
@@ -601,7 +603,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
                                    (cross(module_index.peers[expected]->value) ||
                                     BeforeLogicalFusion(graph, plan, module_index.peers[expected]->value).kind == EvaluationKind::kNestedLiteral)) ||
                                   cross(expected) ||
-                                  !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }
+                                  MemberUpdateIntrinsic(plan,{static_cast<std::uint32_t>(expected)}) || !OrderedEvaluation(graph.ops[expected]))) { step(); ++expected; }
       };
       for (auto i = next_op; i < end; ++i) {
         step();
@@ -619,12 +621,15 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
           step();
           auto& frame = stack[depth - 1];
           const auto& op = graph.ops[frame.op.value];
-          if (frame.next_operand < op.use_count) {
-            const analysis::UseId use_id{op.first_use.value + frame.next_operand++};
-            if (IsMemberReceiver(graph, plan, graph.uses[use_id.value]))
+          const auto* native=MemberUpdateAt(plan,frame.op);
+          const auto operands=native?1u+unsigned(native->key.has_value())+unsigned(native->rhs.has_value()):op.use_count;
+          if (frame.next_operand < operands) {
+            const auto ordinal=frame.next_operand++;
+            const analysis::UseId use_id=native?(ordinal==0?native->base:ordinal==1&&native->key?*native->key:*native->rhs):analysis::UseId{op.first_use.value+ordinal};
+            if (MemberUpdateWire(plan,use_id) || IsMemberReceiver(graph, plan, graph.uses[use_id.value]))
               continue;
             const auto result = EvaluationProducer(graph, plan, use_id);
-            if (!result) continue;
+            if (!result || MemberUpdateIntrinsic(plan,*result)) continue;
             witness = EvaluationAt(graph, plan, *result, EvaluationObligation::kOperandOwnership);
             witness.use = witness.expected_consumer = use_id;
             witness.expected_owner = OperationLocation(graph, frame.op);
@@ -708,6 +713,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
   } catch (const EvaluationFailure& error) { return error;
   } catch (Error error) { return EvaluationFailure{error, witness};
+  } catch (MemberUpdateError) { return Error::kOwnership;
   } catch (LiteralEventError) {
     return Error::kOwnership;
   } catch (const std::bad_alloc&) {

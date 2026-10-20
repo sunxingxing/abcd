@@ -165,6 +165,12 @@ class Composition {
       last_[consumer.value] = guard; begin_[consumer.value] = preceding.after;
       return true;
     }
+    if (const auto* mutation=MemberUpdateAt(plan_,consumer)) {
+      valid_[consumer.value]=events_[consumer.value]=selection_[consumer.value]=1;
+      begin_[consumer.value]={graph_.ops[mutation->first.value].block,graph_.ops[mutation->first.value].order};
+      last_[consumer.value]=consumer;return true;
+    }
+    if(MemberUpdateIntrinsic(plan_,consumer))return fail();
     if (const auto* atom = LiteralAtom(consumer)) {
       // Separate verified forest boundary. The ordinary allocation exclusion
       // below is unchanged: this span includes every conditional arm, Commit
@@ -231,9 +237,9 @@ class Composition {
               *GuardedPeer(plan_, read), use};
         }
       }
-      if ((!LiteralAtom(producer) && excluded_[producer.value]) ||
+      if ((!MemberUpdateAt(plan_,producer) && !LiteralAtom(producer) && excluded_[producer.value]) ||
           Owned(producer) || !valid_[producer.value] ||
-          (!LiteralAtom(producer) && !Transport(producer) &&
+          (!MemberUpdateAt(plan_,producer) && !LiteralAtom(producer) && !Transport(producer) &&
            !Fusable(producer, consumer, use))) {
         if (link.added) continue;  // An eligible root keeps its snapshot.
         return fail();
@@ -315,6 +321,7 @@ class Composition {
       budget_.Step();
       auto& frame = stack_.back();
       const auto& op = graph_.ops[frame.op.value];
+      if (MemberUpdateAt(plan_,frame.op)) frame.ordinal=op.use_count;
       if (frame.ordinal == op.use_count) {
         Require(nodes_.size() < nodes_.capacity()); nodes_.push_back(frame.op); stack_.pop_back();
         continue;
@@ -353,6 +360,7 @@ class Composition {
     // Only forests reached from independently verified composition roots may
     // replace interval equations. Include their full original event membership,
     // especially implicit definition-base uses, not just the allocation token.
+    for(std::size_t i=0;i<plan_.member_updates.owned.size();++i){budget_.Step();if(plan_.member_updates.owned[i]&&mask[plan_.member_updates.owned[i]->value])mask[i]=1;}
     for (std::size_t i = 0; i < literal_members_.size(); ++i) {
       budget_.Step();
       const auto owner = literal_members_[i];
@@ -383,6 +391,7 @@ class Composition {
     while (!stack_.empty()) {
       budget_.Step(); const auto node = stack_.back().op; stack_.pop_back();
       const auto& op = graph_.ops[node.value];
+      if(MemberUpdateAt(plan_,node))continue;
       for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
         budget_.Step(); const UseId use{op.first_use.value + ordinal};
         const auto link = Edge(node, use, false);
@@ -400,6 +409,7 @@ class Composition {
       budget_.Step(); const auto node = stack_.back().op; stack_.pop_back();
       reached_[node.value] = 1;
       const auto& op = graph_.ops[node.value];
+      if(MemberUpdateAt(plan_,node))continue;
       for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
         budget_.Step(); const auto link = Edge(node, UseId{op.first_use.value + ordinal}, false);
         if (!link.producer) continue;
@@ -602,7 +612,7 @@ class Composition {
 };
 }  // namespace
 void ComposePhaseExpressions(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
-  if (plan.flow != EvaluationFlow::kPhased || plan.phase_selections.empty()) return;
+  if (plan.flow != EvaluationFlow::kPhased || (plan.phase_selections.empty() && plan.member_updates.updates.empty())) return;
   std::vector<std::pair<OpId, UseId>> edges;
   budget.Admit(graph.ops.size(), sizeof(std::pair<OpId, UseId>)); edges.reserve(graph.ops.size());
   budget.Admit(edges.capacity() - graph.ops.size(), sizeof(std::pair<OpId, UseId>));
@@ -620,12 +630,22 @@ void ComposePhaseExpressions(const ValueProgram& graph, EvaluationPlan& plan, Tr
     budget.Step(); original.push_back(plan.operations[producer.value]);
     plan.operations[producer.value] = {EvaluationKind::kInline, use, {}};
   }
-  plan.phase_compositions = std::move(roots);
+  auto previous = std::move(plan.phase_compositions);
+  if(previous.empty())plan.phase_compositions=std::move(roots);
+  else {
+    Require(roots.size()<=std::numeric_limits<std::size_t>::max()-previous.size());
+    const auto capacity=previous.size()+roots.size();
+    budget.Admit(capacity,sizeof(OpId));
+    plan.phase_compositions.reserve(capacity);
+    budget.Admit(plan.phase_compositions.capacity()-capacity,sizeof(OpId));
+    std::set_union(previous.begin(),previous.end(),roots.begin(),roots.end(),std::back_inserter(plan.phase_compositions));
+  }
   // Conservative gate: the selection proof must accept exactly the same
   // regions, owners, prefixes and references; only execution may change.
   if (RefreshPhaseSelectionExecutions(graph, plan, budget)) return;
   for (std::size_t i = 0; i < edges.size(); ++i) { budget.Step(); plan.operations[edges[i].first.value] = original[i]; }
-  plan.phase_compositions.clear();
+  if(previous.empty())plan.phase_compositions.clear();
+  else plan.phase_compositions=std::move(previous);
 }
 void ComposeCheckedCalls(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
   if (plan.flow != EvaluationFlow::kPhased || plan.guarded_reads.empty()) return;
@@ -658,7 +678,7 @@ std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, con
   std::vector<std::uint8_t> mask;
   if (plan.phase_compositions.empty() && plan.checked_compositions.empty()) return mask;
   Require(plan.flow == EvaluationFlow::kPhased);
-  Require(plan.phase_compositions.empty() || !plan.phase_selections.empty());
+  Require(plan.phase_compositions.empty() || !plan.phase_selections.empty() || !plan.member_updates.updates.empty());
   budget.Array(mask, graph.ops.size());
   Composition proof(graph, plan, budget);
   for (std::size_t i = 0; i < plan.phase_compositions.size(); ++i) {

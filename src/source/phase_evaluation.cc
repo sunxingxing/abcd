@@ -169,7 +169,7 @@ std::variant<PhaseEvaluationCost, EvaluationFailure> VerifyPhaseExpressions(
       const auto& op = graph.ops[i];
       const auto end = corridors.EffectsBefore(id);
       intervals[i] = corridors.Interval(id);
-      if (in_composition(i) || IsArrayInitialization(plan, {static_cast<std::uint32_t>(i)}) ||
+      if (in_composition(i) || MemberUpdateIntrinsic(plan,{static_cast<std::uint32_t>(i)}) || IsArrayInitialization(plan, {static_cast<std::uint32_t>(i)}) ||
           IsArrayOperand(plan, {static_cast<std::uint32_t>(i)}) || !Inputs(op, BeforeLogicalFusion(graph, plan, i))) continue;
       const auto shape = DescribeEvaluation(op.operation);
       Require(shape && shape->Count() == op.use_count, Error::kInvalidGraph);

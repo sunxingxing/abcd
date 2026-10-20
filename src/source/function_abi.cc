@@ -291,7 +291,7 @@ class AbiBuilder {
     Symbol(node.symbol, false); Symbol(node.symbol, true);
   }
   template <class T> void Expression(const T&) {
-    static_assert(std::is_same_v<T, TreeLiteral> || std::is_same_v<T, MemberExpr> || std::is_same_v<T, DeleteExpr> ||
+    static_assert(std::is_same_v<T, MemberMutationExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, MemberExpr> || std::is_same_v<T, DeleteExpr> ||
         std::is_same_v<T, GlobalNameExpr> ||
         std::is_same_v<T, RealmObjectExpr> ||
         std::is_same_v<T, SymbolConstructorExpr> ||

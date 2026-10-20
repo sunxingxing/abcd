@@ -1,3 +1,4 @@
+#include "member_update.h"
 #ifndef ABCD_SOURCE_EVALUATION_PLAN_H_
 #define ABCD_SOURCE_EVALUATION_PLAN_H_
 #include "for_of_evaluation_plan.h"
@@ -112,6 +113,7 @@ struct EvaluationPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<OpEvaluation> operations;
+  MemberUpdatePlan member_updates;
   // Ordinary phi copies execute at incoming boundaries. Selected logical_values
   // consume both inputs in one expression instead; this table still proves
   // original values/schedules, not their eventual AST edge placement.

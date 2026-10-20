@@ -348,6 +348,18 @@ class ForestBuilder {
               TreeOriginId{graph_.ops[allocation.value].origin.value});
           continue;
         }
+        if(MemberUpdateIntrinsic(evaluation_,{static_cast<std::uint32_t>(i)}))continue;
+        if(const auto* update=MemberUpdateAt(evaluation_,{static_cast<std::uint32_t>(i)})) {
+          const TreeOriginId get_origin{graph_.ops[update->read.value].origin.value};
+          const auto base=Use(update->base,get_origin);
+          MemberKey key;
+          if(update->key)key=ComputedKey{Use(*update->key,get_origin)};
+          else {const auto* name=std::get_if<NameId>(&constants_.operations[i]);Require(name,Error::kConstant);key=*name;}
+          const auto rhs=update->rhs?std::optional{Use(*update->rhs,{graph_.ops[update->calculation.value].origin.value})}:std::nullopt;
+          const auto node=Add(MemberMutationExpr{{base,key},update->operation,rhs},origin);
+          for(const auto& port:update->ports){Step();forest_.operations[port.operation.value]=node;if(port.operation.value!=i)Combine(node,{graph_.ops[port.operation.value].origin.value});}
+          continue;
+        }
         if (evaluation_.operations[i].kind == EvaluationKind::kInitializer ||
             evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kConcurrentNotification || evaluation_.operations[i].kind == EvaluationKind::kEnvironment ||
