@@ -10,11 +10,13 @@ struct PhysicalCatch {
   bool operator==(const PhysicalCatch&) const = default;
 };
 // Per original throwing entry, not a permission to erase a shared handler.
+enum class ForwardingOwner : std::uint8_t { kEnumeration, kProtocolProjection };
 struct ForwardedExceptionRoute {
   ForInExceptionExitId exit;
   analysis::WorkBlockId handler;
   analysis::ValueId payload;
   std::optional<analysis::ValueHandler> destination;
+  ForwardingOwner owner = ForwardingOwner::kEnumeration;
   bool operator==(const ForwardedExceptionRoute&) const = default;
 };
 using EnumerationException = std::variant<PhysicalCatch, ForwardedExceptionRoute>;
@@ -44,13 +46,14 @@ struct ForInEmissionView {
 };
 std::variant<ForInEmissionView, ForInFailure> BuildForInEmissionView(
     const analysis::ValueProgram&, const ExceptionPlan&, const ExceptionControl&,
-    const ForInPlan&, const ForInEvents&, analysis::SemanticBudget = {});
+    const ForInPlan&, const ForInEvents&, analysis::SemanticBudget = {},
+    const ProtocolForwarding* projected = nullptr);
 std::variant<std::uint64_t, ForInFailure> VerifyForInCopyState(
     const analysis::ValueProgram&, const EvaluationPlan&, const ForInEmissionView&,
     analysis::SemanticBudget = {});
 std::variant<std::uint64_t, ForInFailure> VerifyForInEmissionView(
     const analysis::ValueProgram&, const ExceptionPlan&, const ExceptionControl&,
     const ForInPlan&, const ForInEvents&, const ForInEmissionView&,
-    analysis::SemanticBudget = {});
+    analysis::SemanticBudget = {}, const ProtocolForwarding* projected = nullptr);
 }
 #endif

@@ -104,6 +104,9 @@ struct OriginalControlInput {ExprId expression;OriginalControlKind kind;std::opt
 // The verified initialization proof excludes Hole in this captured load value.
 // This guard has no native action; later reads of the same cell are not its input.
 struct OriginalInitializedGuard {analysis::OpId load;analysis::ValueId value;};
+// ToNumeric is an identity on an already-proven Number. No physical source
+// conversion is invented; every recovery retains the exact input occurrence.
+struct OriginalNumberIdentity { analysis::UseId input; ExprId expression; };
 struct OriginalActionRegionId {
   std::uint32_t value;
   auto operator<=>(const OriginalActionRegionId&)const=default;
@@ -159,6 +162,7 @@ struct OriginalOperation {
   std::optional<OriginalStatementKind> statement_kind;
   std::optional<OriginalControlInput> control;
   std::optional<OriginalInitializedGuard> initialized_guard;
+  std::optional<OriginalNumberIdentity> number_identity;
   // Physical binding write verified at this source commit. A numeric staging
   // save has a definition correspondence but is not the conversion's write.
   std::optional<OriginalWriteSite> write;
@@ -292,5 +296,6 @@ struct OriginalResult {
 // which also requires current success/catch/control correspondence and shares
 // that obligation with inline consumers. This query cannot certify a trial.
 [[nodiscard]] analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow&,const OriginalSourceDefinition&);
+[[nodiscard]] analysis::ValueKinds OriginalOperandKinds(const OriginalFlow&,const analysis::ValueOperand&);
 }  // namespace abcd::source
 #endif

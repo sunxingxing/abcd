@@ -18,7 +18,7 @@ template<class T, class V> T Take(V v, std::source_location at = std::source_loc
   }
   return std::get<T>(std::move(v));
 }
-abc::MethodBody Body(unsigned count, bool copies, bool split, bool reverse, unsigned saved, bool statement) {
+abc::MethodBody Body(unsigned count, bool copies, bool split, bool reverse, unsigned saved, bool statement, bool retained) {
   std::vector<std::uint8_t> bytes;
   const auto emit = [&](abc::Opcode op) { bytes.push_back(static_cast<std::uint8_t>(op)); };
   const auto load = [&](unsigned r) { emit(abc::Opcode::kLDA_V8); bytes.push_back(r); };
@@ -38,7 +38,9 @@ abc::MethodBody Body(unsigned count, bool copies, bool split, bool reverse, unsi
     if (copies) { emit(abc::Opcode::kMOV_V8_V8); bytes.insert(bytes.end(), {2, static_cast<std::uint8_t>(saved)}); load(2); emit(abc::Opcode::kSTA_V8); bytes.push_back(saved); }
     read(4); emit(abc::Opcode::kSTRICTEQ_IMM8_V8); bytes.insert(bytes.end(), {0, static_cast<std::uint8_t>(saved)});
     const auto yes = jump(abc::Opcode::kJNEZ_IMM8);
-    read(6); emit(abc::Opcode::kCALLTHIS0_IMM8_V8); bytes.insert(bytes.end(), {0, 3});
+    read(6);
+    if (retained) { emit(abc::Opcode::kCALLTHIS1_IMM8_V8_V8); bytes.insert(bytes.end(), {0, 3, static_cast<std::uint8_t>(saved)}); }
+    else { emit(abc::Opcode::kCALLTHIS0_IMM8_V8); bytes.insert(bytes.end(), {0, 3}); }
     const auto end = jump(abc::Opcode::kJMP_IMM8);
     patch(shared); patch(yes); read(5); emit(abc::Opcode::kCALLTHIS0_IMM8_V8); bytes.insert(bytes.end(), {0, 3});
     patch(end); read(7);
@@ -46,7 +48,12 @@ abc::MethodBody Body(unsigned count, bool copies, bool split, bool reverse, unsi
   emit(abc::Opcode::kRETURN); return test::Body(bytes);
 }
 std::pair<std::uint64_t, std::size_t> Run(unsigned count, bool copies = false, bool split = false, bool reverse = false, unsigned saved = 0, bool statement = false) {
-  const auto body = Body(count, copies, split, reverse, saved, statement);
+#ifdef ABCD_TEST_RETAINED_DECISION_PREFIX
+  constexpr bool retained = true;
+#else
+  constexpr bool retained = false;
+#endif
+  const auto body = Body(count, copies, split, reverse, saved, statement, retained);
   const auto frame = Take<abc::FrameLayout>(abc::BuildFrameLayout(3, 1, {}));
   RouteInputIdentity identity; identity.profile = abc::ProfileId::kDynamic1206;
   const auto input = Take<FunctionInput>(FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed));

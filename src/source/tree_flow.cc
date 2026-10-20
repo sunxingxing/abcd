@@ -202,7 +202,8 @@ class FlowCheck {
     if (evaluation_.for_in) {
       Require(exceptions_, Error::kControl);
       auto view = BuildForInEmissionView(graph_, exceptions_->regions, exceptions_->control,
-          *evaluation_.for_in, *evaluation_.for_in_events, budget_.Remaining());
+          *evaluation_.for_in, *evaluation_.for_in_events, budget_.Remaining(),
+          iteration_ ? &iteration_->forwarding : nullptr);
       if (const auto* failure = std::get_if<ForInFailure>(&view)) {
         if (failure->kind == ForInError::kResourceLimit) throw Error::kResourceLimit;
         if (failure->kind == ForInError::kWorkLimit) throw Error::kWorkLimit;
@@ -655,7 +656,7 @@ class FlowCheck {
     const auto branch = DecisionPredicate(node);
     if (logical_branches_.empty() || !logical_branches_[branch.value] ||
         (evaluation_.operations[branch.value].kind != EvaluationKind::kLogicalValue &&
-         !(exceptions_ && evaluation_.operations[branch.value].kind == EvaluationKind::kRoot))) return nullptr;
+         evaluation_.operations[branch.value].kind != EvaluationKind::kRoot)) return nullptr;
     const auto& selection = logicals_[*logical_branches_[branch.value]];
     if (selection.parent || selection.prefix_parent ||
         SourceBlock(control_.nodes[node.next->value]) != selection.join) return nullptr;
@@ -803,7 +804,10 @@ class FlowCheck {
       } else {
         const auto* expression = std::get_if<ExpressionStmt>(&syntax);
         Require(expression, Error::kSequence);
-        RootExpression(id, expression->expression);
+        if (const auto* selection = DecisionSelection(node); selection && selection->branch == id) {
+          Require(kind == EvaluationKind::kRoot, Error::kPlacement);
+          LogicalAssignment(*selection, expression->expression, parent, child - 1);
+        } else RootExpression(id, expression->expression);
       }
     }
     if (!predicate && !DecisionSelection(node)) for (std::uint8_t e = 0; e < source.edge_count; ++e) {

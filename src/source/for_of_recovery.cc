@@ -172,7 +172,10 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
     Need(owner);const auto statement=native.statements[owner->value];const auto& p=*f.iterations[statement.value];const auto& close=f.iteration_closes[p.throw_close];
     const auto member=native.operations[exit.op.value];
     if(!member) {
-      if(raw.operations[exit.op.value].initialized_guard) {
+      if(raw.operations[exit.op.value].number_identity) {
+        const auto input=FindFlowOriginalNumberIdentity(f,exit.op);Need(input);
+        f.original_exceptions[e]=FlowExcludedNumberFailure{input->expression,input->input,close.entry};
+      } else if(raw.operations[exit.op.value].initialized_guard) {
         // The common guarded-read solver owns conditional TDZ exclusion.
         // Keep its value/provenance dependency; do not fabricate an action
         // for the erased VM guard or weaken the loop's exception context.

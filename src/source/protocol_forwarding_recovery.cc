@@ -15,6 +15,15 @@ void VerifyProtocolForwardingRecovery(const FunctionTree&,RecoveryFlow& flow,Tre
   Need(f.blocks.size()==raw.blocks.size() && f.operations.size()==raw.operations.size() && f.exits.size()==raw.exceptional_exits.size());
   RecoveryScratch memory(budget);
   std::pmr::vector<std::optional<std::uint32_t>> exits(raw.operations.size(),{},&memory);
+  std::pmr::vector<std::optional<std::uint32_t>> enumerations(raw.operations.size(),{},&memory);
+  for (std::uint32_t i = 0; i < raw.enumerations.size(); ++i) {
+    budget.Step(); const auto& loop = raw.enumerations[i];
+    const auto* route = std::get_if<ForwardedExceptionRoute>(&loop.acquisition);
+    if (!route || route->owner != ForwardingOwner::kProtocolProjection) continue;
+    const auto operation = loop.original.acquisition.operation;
+    Need(operation.value < enumerations.size() && !enumerations[operation.value]);
+    enumerations[operation.value] = i;
+  }
   std::pmr::vector<std::uint32_t> pending(raw.blocks.size(),0,&memory),offset(raw.blocks.size()+1,0,&memory);
   std::pmr::vector<WorkBlockId> pred(raw.edges.size(),{},&memory),queue(&memory);queue.reserve(raw.blocks.size());
   std::pmr::vector<std::uint8_t> terminal(raw.blocks.size(),0,&memory),good(raw.blocks.size(),0,&memory);
@@ -77,8 +86,27 @@ void VerifyProtocolForwardingRecovery(const FunctionTree&,RecoveryFlow& flow,Tre
   for(std::uint32_t b=0;b<raw.blocks.size();++b){budget.Step();if(!f.blocks[b])continue;Need(good[b]);flow.original_phases[b]=FlowForwardedTryPhase{*f.blocks[b],WorkBlockId{b}};if(raw.phases[b].phase==ExceptionPhase::kCatch)flow.original_handlers[b]=FlowOriginalRouteCoverage::kComplete;}
   for(std::uint32_t e=0;e<raw.exceptional_exits.size();++e){budget.Step();const auto& exit=raw.exceptional_exits[e];
     if(f.operations[exit.op.value]){const auto r=*f.operations[exit.op.value];Need(raw.operations[exit.op.value].forwarding_throw);flow.original_exceptions[e]=FlowForwardedTryDispatch{e,r};}
-    else if(f.exits[e]){const auto r=*f.exits[e];Need(exit.handler && flow.original_actions[exit.op.value]);const auto& a=*flow.original_actions[exit.op.value];Need(targets[r.value] && a.exceptions.thrown==*targets[r.value] && !a.exceptions.finalizer);
-      flow.original_exceptions[e]=FlowForwardedException{a.before,*targets[r.value],ForInExceptionExitId{e},exit.handler->entry,f.regions[r.value]->payload};}
+    else if(f.exits[e]) {
+      const auto r=*f.exits[e];Need(exit.handler && targets[r.value]);
+      FlowPoint before;
+      if (flow.original_actions[exit.op.value]) {
+        const auto& a=*flow.original_actions[exit.op.value];
+        Need(a.exceptions.thrown==*targets[r.value] && !a.exceptions.finalizer);before=a.before;
+      } else {
+        // A native for-in acquisition has an event port, not a fabricated
+        // ExprId/action. Its shared route was checked by ForInRecovery above;
+        // this proof still rechecks every original handler edge and payload.
+        Need(enumerations[exit.op.value]);
+        const auto& loop=raw.enumerations[*enumerations[exit.op.value]];
+        const auto& route=std::get<ForwardedExceptionRoute>(loop.acquisition);
+        Need(route.exit.value==e && route.handler==exit.handler->entry &&
+            route.payload==f.regions[r.value]->payload && route.destination==f.regions[r.value]->destination &&
+            loop.statement.value<flow.enumerations.size() && flow.enumerations[loop.statement.value]);
+        const auto& ports=*flow.enumerations[loop.statement.value];
+        Need(ports.thrown==*targets[r.value]);before=ports.acquire_before;
+      }
+      flow.original_exceptions[e]=FlowForwardedException{before,*targets[r.value],ForInExceptionExitId{e},exit.handler->entry,f.regions[r.value]->payload};
+    }
   }
 }
 }

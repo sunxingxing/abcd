@@ -269,4 +269,7 @@ analysis::ValueKinds OriginalDefinitionKinds(const OriginalFlow& original,const 
     }
   },definition.origin);
 }
+analysis::ValueKinds OriginalOperandKinds(const OriginalFlow& original,const analysis::ValueOperand& value) {
+  return Kinds(original,value);
+}
 }  // namespace abcd::source

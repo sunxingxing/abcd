@@ -113,7 +113,8 @@ class TreeBuilder {
       iteration_=std::get<ForOfEmissionView>(std::move(view));Admit(iteration_->allocated_bytes,1);Step(iteration_->work);
     }
     if (evaluation_.for_in) {
-      const auto checked = exceptions_ ? VerifyPhasedEvaluationPlan(graph_, evaluation_, {bytes_, work_}) :
+      const auto checked = exceptions_ ? VerifyPhasedEvaluationPlan(graph_, evaluation_, {bytes_, work_},
+          exceptions_->for_of ? &*exceptions_->for_of : nullptr) :
           VerifyEvaluationPlan(graph_, evaluation_, {bytes_, work_});
       if (const auto* error = std::get_if<EvaluationFailure>(&checked)) {
         if (error->kind == EvaluationError::kResourceLimit) throw Error::kResourceLimit;
@@ -123,7 +124,8 @@ class TreeBuilder {
       Step(std::get<std::uint64_t>(checked));
       Require(exceptions_, Error::kControl);
       auto projected = BuildForInEmissionView(graph_, exceptions_->regions, exceptions_->control,
-          *evaluation_.for_in, *evaluation_.for_in_events, {bytes_, work_});
+          *evaluation_.for_in, *evaluation_.for_in_events, {bytes_, work_},
+          iteration_ ? &iteration_->forwarding : nullptr);
       if (const auto* error = std::get_if<ForInFailure>(&projected)) {
         if (error->kind == ForInError::kResourceLimit) throw Error::kResourceLimit;
         if (error->kind == ForInError::kWorkLimit) throw Error::kWorkLimit;
@@ -1372,13 +1374,13 @@ class TreeBuilder {
   const SelectionRegion* DecisionSelection(const ControlNode& node) const {
     // A checked selected value already owns both arms and their phi edges.
     // Its join is the continuation; it is not a second statement branch.
-    // A phased retained selection keeps its phi assignment, consumed as one
+    // A retained selection keeps its phi assignment, consumed as one
     // conditional prefix expression at Commit; it never becomes a fused value.
     if (!node.arms || !node.next) return nullptr;
     const auto branch = DecisionPredicate(node);
     if (logical_branches_.empty() || !logical_branches_[branch.value] ||
         (evaluation_.operations[branch.value].kind != EvaluationKind::kLogicalValue &&
-         !(exceptions_ && evaluation_.operations[branch.value].kind == EvaluationKind::kRoot))) return nullptr;
+         evaluation_.operations[branch.value].kind != EvaluationKind::kRoot)) return nullptr;
     const auto& selection = logicals_[*logical_branches_[branch.value]];
     if (selection.parent || selection.prefix_parent ||
         SourceBlock(control_.nodes[node.next->value]) != selection.join) return nullptr;
@@ -1492,6 +1494,12 @@ class TreeBuilder {
       while (true) {
         const auto& node = control_.nodes[next.value];
         const auto& block = DecisionBlock(node);
+        // A retained selection owns a real phi assignment. Keep that complete
+        // event at its conditional statement point, just as other prefix roots;
+        // do not fuse its multiple observations or replay its selected arm.
+        if (const auto* selected = DecisionSelection(node);
+            selected && evaluation_.operations[selected->branch.value].kind == EvaluationKind::kRoot)
+          return true;
         for (std::uint32_t i = 0; i < block.op_count; ++i) {
           Step(); const auto id = block.first_op.value + i;
           if (graph_.ops[id].life == analysis::ValueLife::kLive &&

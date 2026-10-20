@@ -2006,6 +2006,13 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
     const auto invalid_guard=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(t,guarded,live,f.Input()));
     Check(invalid_guard.expressions[caught_read.value].IsNumber());
     Check(!invalid_guard.expressions[caught_read.value].IsFiniteNumber());
+    // An erased Number-only conversion has the SAME conditional input duty:
+    // a changed held read must withdraw the old catch payload bound even when
+    // it is not on the printed exception path and the value domain is stable.
+    guarded.original_exceptions.back()=FlowExcludedNumberFailure{held,input_point,*handler_point};
+    const auto invalid_number=std::get<FlowNormalKinds>(CheckedFlowNormalKinds(t,guarded,live,f.Input()));
+    Check(invalid_number.expressions[caught_read.value].IsNumber());
+    Check(!invalid_number.expressions[caught_read.value].IsFiniteNumber());
   }
   return {model.work,model.allocated_bytes};
 }

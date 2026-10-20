@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 namespace abcd::source {
 namespace {
 struct ValueStateView {
@@ -176,11 +177,16 @@ std::variant<FlowNormalKinds,TreeStructureError> SolveFlowNormalKinds(
       // sparse provenance edges once, not a per-handler/per-guard graph walk.
       if(provenance_required)for(const auto& route:flow.original_exceptions) {
         budget.Step();if(!route)continue;
-        if(const auto* excluded=std::get_if<FlowExcludedGuardFailure>(&*route)) {
+        const auto excluded_input=[&](const auto* excluded) {
+          if(!excluded)return;
           RequireTree(excluded->value.value<expressions,Error::kOwnership);
           dependency(NodeId{excluded->value.value},event_node(excluded->target),DependencyKind::kProvenance,nullptr);
-          dependency(event_node(excluded->input),event_node(excluded->target),DependencyKind::kProvenance,nullptr);
-        }
+          if constexpr(std::is_same_v<std::decay_t<decltype(*excluded)>,FlowExcludedNumberFailure>) {
+            if(excluded->input)dependency(event_node(*excluded->input),event_node(excluded->target),DependencyKind::kProvenance,nullptr);
+          } else dependency(event_node(excluded->input),event_node(excluded->target),DependencyKind::kProvenance,nullptr);
+        };
+        excluded_input(std::get_if<FlowExcludedGuardFailure>(&*route));
+        excluded_input(std::get_if<FlowExcludedNumberFailure>(&*route));
       }
       // Captured operands can widen without changing a numeric result kind.
       // Wake the SAME effect equation directly; result dependencies alone

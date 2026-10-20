@@ -53,13 +53,14 @@ struct Context {
 };
 struct Statement {StmtId id;Context context;};
 struct Expression {ExprId id;Context context;};
+struct IterationEnclosure { std::optional<StmtId> loop; };
 using Task=std::variant<Statement,Expression>;
 enum class ReadState : std::uint8_t {kUnseen,kPending,kDone};
 class FlowBuilder {
  public:
   FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget,RecoveryFlow storage)
       : tree_(tree), projection_(projection), budget_(budget), memory_(budget_),
-        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), statement_scopes_(&memory_), loop_entries_(&memory_), native_bindings_(&memory_), loop_members_(&memory_), member_next_(&memory_), loop_bodies_(&memory_), repeats_(&memory_), result_(std::move(storage)) {
+        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), statement_scopes_(&memory_), loop_entries_(&memory_), native_bindings_(&memory_), loop_members_(&memory_), member_next_(&memory_), loop_bodies_(&memory_), repeats_(&memory_), iteration_scopes_(&memory_), result_(std::move(storage)) {
     events_=std::move(result_.events);events_.clear();edges_=std::move(result_.edges);edges_.clear();
     definitions_=std::move(result_.definitions);definitions_.clear();references_=std::move(result_.references);references_.clear();
     names_=std::move(result_.names);names_.clear();
@@ -105,6 +106,7 @@ class FlowBuilder {
     Resize(result_.enumerations,has_enumerations?tree_.statements.size():0);
     for(auto& e:result_.enumerations)e.reset();
     Resize(result_.iterations,projection_.original&&projection_.original->iterations?tree_.statements.size():0);
+    iteration_scopes_.resize(result_.iterations.size());
     for(auto& e:result_.iterations)e.reset();result_.iteration_closes.clear();
     const bool phased=projection_.original&&!projection_.original->phases.empty();
     if(!projection_.original) {
@@ -1074,7 +1076,13 @@ class FlowBuilder {
     }
     Append(result_.properties,std::move(reference));return acquisition;
   }
-  Point Stmt(StmtId id,Context context){tasks_.push_back(Statement{id,context});return statements_[id.value];}
+  Point Stmt(StmtId id,Context context){
+    if (!iteration_scopes_.empty()) {
+      RequireTree(id.value < iteration_scopes_.size() && !iteration_scopes_[id.value], Error::kOwnership);
+      iteration_scopes_[id.value] = IterationEnclosure{context.iteration};
+    }
+    tasks_.push_back(Statement{id,context});return statements_[id.value];
+  }
   Point Sequence(StmtId block_id,std::uint32_t first,std::uint32_t end,const Context& context,StmtId parent) {
     const auto& block=std::get<BlockStmt>(tree_.statements[block_id.value].statement);
     RequireTree(first<=end && end<=block.child_count,Error::kOwnership);
@@ -1103,10 +1111,22 @@ class FlowBuilder {
     }
     Append(result_.iteration_closes,std::move(close));return id;
   }
-  void Abrupt(Point point,Point target,const Context& context,FlowCompletion completion,std::optional<analysis::PendingCompletionKind> transfer={}) {
+  void Abrupt(Point point,Point target,const Context& context,FlowCompletion completion,std::optional<analysis::PendingCompletionKind> transfer={},std::optional<StmtId> destination={}) {
     if(context.iteration && completion!=FlowCompletion::kResumeReturn) {
       const auto loop=*context.iteration;
-      if(completion!=FlowCompletion::kJump || target!=repeats_[loop.value]) {
+      bool leaves = true;
+      if (completion == FlowCompletion::kJump) {
+        RequireTree(destination && destination->value < iteration_scopes_.size() &&
+            iteration_scopes_[destination->value], Error::kOwnership);
+        // Break/continue inside a nested ordinary loop or labelled block
+        // does not leave this iterator's body. The target's native enclosing
+        // iterator is indexed when its statement is scheduled, not inferred
+        // from a flow-point number or a bytecode jump layout.
+        leaves = iteration_scopes_[destination->value]->loop != loop;
+        if (*destination == loop && transfer == analysis::PendingCompletionKind::kContinue)
+          leaves = false;
+      }
+      if(leaves) {
         RequireTree(!context.finalizer,Error::kUnsupportedSyntax);
         RequireTree(loop.value<result_.iterations.size()&&result_.iterations[loop.value].has_value(),Error::kOwnership);
         const auto pending=transfer.value_or(analysis::PendingCompletionKind::kReturn);
@@ -1743,15 +1763,15 @@ class FlowBuilder {
         semantics.completion=FlowStatementCompletion::kJump;
         if(context.header) {
           RequireTree(context.header->loop==node.target && context.header->transfer==LoopCompletionTransfer::kBreak,Error::kOwnership);
-          Abrupt(start,context.header->exit,context,FlowCompletion::kJump,analysis::PendingCompletionKind::kBreak);
-        } else Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump,analysis::PendingCompletionKind::kBreak);
+          Abrupt(start,context.header->exit,context,FlowCompletion::kJump,analysis::PendingCompletionKind::kBreak,node.target);
+        } else Abrupt(start,exits_[node.target.value],context,FlowCompletion::kJump,analysis::PendingCompletionKind::kBreak,node.target);
       }
       else if constexpr(std::is_same_v<T,ContinueStmt>) {
         semantics.completion=FlowStatementCompletion::kJump;
         if(context.header) {
           RequireTree(context.header->loop==node.target && context.header->transfer==LoopCompletionTransfer::kContinue,Error::kOwnership);
-          Abrupt(start,context.header->exit,context,FlowCompletion::kJump,analysis::PendingCompletionKind::kContinue);
-        } else Abrupt(start,repeats_[node.target.value],context,FlowCompletion::kJump,analysis::PendingCompletionKind::kContinue);
+          Abrupt(start,context.header->exit,context,FlowCompletion::kJump,analysis::PendingCompletionKind::kContinue,node.target);
+        } else Abrupt(start,repeats_[node.target.value],context,FlowCompletion::kJump,analysis::PendingCompletionKind::kContinue,node.target);
       }
       else if constexpr(std::is_same_v<T,ReturnStmt>) {
         semantics.completion=FlowStatementCompletion::kAbrupt;
@@ -1837,6 +1857,7 @@ class FlowBuilder {
   std::pmr::vector<std::optional<SymbolId>> loop_members_,member_next_;
   std::pmr::vector<std::optional<LoopBodyProgram>> loop_bodies_;
   std::pmr::vector<Point> repeats_;
+  std::pmr::vector<std::optional<IterationEnclosure>> iteration_scopes_;
   std::vector<DiscardedEvaluation> discarded_;
   std::vector<FlowReference> references_;
   std::vector<FlowNameReference> names_;
@@ -1950,6 +1971,26 @@ std::optional<FlowOriginalResult> FindFlowOriginalGuard(const RecoveryFlow& flow
   const auto& action=flow.original_actions[guard.load.value];
   if(!action||!action->normal)return {};
   return FlowOriginalResult{result->expression,action->before,*action->normal};
+}
+std::optional<FlowNumberIdentity> FindFlowOriginalNumberIdentity(const RecoveryFlow& flow,analysis::OpId id) {
+  if(!flow.original || id.value>=flow.original->operations.size())return {};
+  const auto& raw=*flow.original;const auto& operation=raw.operations[id.value];
+  if(operation.life!=analysis::ValueLife::kLive || !operation.number_identity || operation.use_count!=1 ||
+      operation.number_identity->input!=operation.first_use || operation.first_use.value>=raw.uses.size())return {};
+  const auto& identity=*operation.number_identity;const auto& use=raw.uses[identity.input.value];
+  const auto* owner=std::get_if<analysis::OpId>(&use.owner);
+  if(use.life!=analysis::ValueLife::kLive || !owner || *owner!=id ||
+      !OriginalOperandKinds(raw,use.operand).IsNumber() || operation.intrinsic_expression ||
+      operation.result_expression!=identity.expression || identity.expression.value>=flow.expressions.size() ||
+      identity.expression.value>=flow.normal_exits.size())return {};
+  // A literal/read replacement can have no intrinsic action. Its actual
+  // value-entry/normal ports still exist, and the shared provenance dependency
+  // withdraws the exclusion if that replacement changes the held input.
+  // The value can also have been dead and omitted altogether. A Number
+  // identity has no physical conversion to preserve in that case. Keep the
+  // expression dependency, with no invented execution point or normal commit.
+  return FlowNumberIdentity{identity.expression,flow.normal_exits[identity.expression.value] ?
+      std::optional{flow.expressions[identity.expression.value]} : std::nullopt};
 }
 std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow& flow,analysis::OpId id) {
   if(!flow.original||id.value>=flow.original->operations.size()||id.value>=flow.original_controls.size())return {};

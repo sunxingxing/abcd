@@ -1305,7 +1305,11 @@ class OperandCheck {
         }
         Predicate(operation, operand, expression); return {};
       case U::kToNumeric:
-        if (NumberEvaluation(graph_, operand)) { Input(operand, expression, occurrence); return {}; }
+        if (NumberEvaluation(graph_, operand)) {
+          Input(operand, expression, occurrence);
+          original_.operations[current_.value].number_identity=OriginalNumberIdentity{occurrence,expression};
+          return {};
+        }
         RequireMeaning(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kOperator);
         [[fallthrough]];
       case U::kIncrement: case U::kDecrement: {

@@ -9,6 +9,49 @@
 
 
 
+## o32 cluster: enumeration / retained-selection composition (2026-10-21)
+
+- OLD/wtbase **f497690f**. Fresh bytecode-only census covers the eleven listed
+  records (the prompt's count of ten omits one). Completed **38853 DeepTypeUtils**
+  and **40109 assertDeepEquals**; the other nine first refusals are unchanged.
+  Full census, risk/yield ranking, original/recovered method comparison and
+  remaining obligations: [o32-cluster.md](o32-cluster.md).
+- Compose the existing for-in and sealed for-of proofs: supply the immutable
+  protocol input to every independent check and borrow a transparent forwarding
+  route only when its original dispatch/payload/destination and topology agree.
+  A typed owner prevents duplicate ownership of the already-projected handler.
+  TreeFlow and both recovery routes recheck the original entries.
+- Consume already-proven normal retained selections in conditional decision
+  prefixes. To finish the same record's later `isEqualSet`, index actual native
+  loop enclosures for inner break/continue and retain a typed Number-only
+  ToNumeric identity with conditional exception/provenance correspondence.
+  No fabricated source action/ExprId, no new premise, no printer changes.
+  Prepaid indexes and existing sparse propagation retain O((V+E) log V) work.
+- Cohorts: previous **541 → 541/620**, source **599 → 601/620**, **zero**
+  regressions and **zero** changes to previously complete text. Both new files
+  pass `node --check`. Four real SDK fixtures plus the existing context fixture
+  pass **338** Node differential cases (values, exceptions, receivers, effect
+  order and close priority). Negative mutations, copy/register/block-split
+  variants and 200/201/400/800 exact byte/work boundaries pass.
+- SDK source/recovered fixture comparison at default and O0: all **16** compiler
+  and disassembler invocations succeed after the same identifier-export-alias
+  adaptation is applied independently to each side. Strict record comparison
+  reports **0 equal /4 different /0 unverified per mode**, not equality passes;
+  per-method census is **4 equal /6 different per mode**. Raw differences in
+  private locals/phi copies, scope names/guards, loop form and inert branch
+  routing are explained in the design note. No bytecode normalization or
+  acceptance allowance was added; no Ark-runtime execution is claimed.
+- Full build passes. Serial source-regression **65/65**; new/extended targets
+  **11/11**; touched-area/tree/flow/recovery/CLI/receipt/manifest sweep **208/216**.
+  All eight failures reproduce against OLD: family_source_cli, logical_regions
+  (+source), tree_structure, try_tree, class_tree_source,
+  phased_arm_selection_source and try_tree_source. Only the now-complete
+  iteration-context refusal expectation changes, replaced by a differential.
+  OS peak RSS per CLI stays below **42.7 MB** across both 40-input runs; the
+  conservative sum of four largest CLI peaks is below **156 MB**, plus below
+  **70 MB** for the four measurement wrappers. Evidence:
+  `build/review/o32-cluster/`. No commit/push/stash.
+
 ## Readable output slice 3: certified statement cleanup (2026-10-21)
 
 - OLD **40ed813b**. Added a printer-only `ReadableStatements` certificate and

@@ -288,10 +288,13 @@ struct FlowExcludedResourceFailure {};
 // solver carries both its value and completion dependencies into the handler;
 // changing initialization, occurrence or cell identity withdraws raw catch caps.
 struct FlowExcludedGuardFailure {ExprId value;FlowPoint input,target;};
+// Conditional on the original Number input's value AND completion provenance,
+// not an unconditional nonthrowing flag for a changed recovery projection.
+struct FlowExcludedNumberFailure {ExprId value;std::optional<FlowPoint> input;FlowPoint target;};
 enum class FlowIterationFailureKind : std::uint8_t { kStep, kCloseRead, kCloseCall, kCloseCheck, kPrivate };
 struct FlowIterationException {IteratorProtocolId protocol;std::uint32_t original_exit;std::optional<FlowPoint> before;FlowPoint thrown;FlowIterationFailureKind kind=FlowIterationFailureKind::kStep;};
 struct FlowForwardedTryDispatch {std::uint32_t exit;analysis::TryId region;};
-using FlowOriginalFailure=std::variant<FlowOriginalException,FlowForwardedException,FlowForwardedTryDispatch,FlowExcludedResourceFailure,FlowExcludedGuardFailure,FlowIterationException>;
+using FlowOriginalFailure=std::variant<FlowOriginalException,FlowForwardedException,FlowForwardedTryDispatch,FlowExcludedResourceFailure,FlowExcludedGuardFailure,FlowIterationException,FlowExcludedNumberFailure>;
 enum class FlowOriginalRouteCoverage : std::uint8_t {kUnmodeled,kComplete};
 struct FlowReference {
   FlowPoint point;
@@ -713,6 +716,8 @@ void VerifyForInRecovery(const FunctionTree&, RecoveryFlow&, TreeCheckBudget&);
 [[nodiscard]] std::optional<FlowOriginalControl> FindFlowOriginalControl(const RecoveryFlow&,analysis::OpId);
 [[nodiscard]] const FlowReference* FindFlowOriginalCellReference(const RecoveryFlow&,analysis::OpId);
 [[nodiscard]] std::optional<FlowOriginalResult> FindFlowOriginalGuard(const RecoveryFlow&,analysis::OpId);
+struct FlowNumberIdentity { ExprId expression; std::optional<FlowPoint> input; };
+[[nodiscard]] std::optional<FlowNumberIdentity> FindFlowOriginalNumberIdentity(const RecoveryFlow&,analysis::OpId);
 // Qualified virtual facts for pure raw components. Input completion belongs
 // to the captured source occurrence; domains carry each component's path.
 // Boolean results remain distinct from the native selection result/action.

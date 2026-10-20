@@ -8,7 +8,7 @@ using namespace analysis;
 namespace {
 ForInEmissionView Build(const ValueProgram& g, const ExceptionPlan& regions,
     const ExceptionControl& control, const ForInPlan& plan, const ForInEvents& events,
-    detail::ForInQuota& q) {
+    detail::ForInQuota& q, const ProtocolForwarding* projected) {
   const auto verified = VerifyForInEvents(g, plan, events, q.Remaining());
   if (const auto* error = std::get_if<ForInFailure>(&verified)) throw *error;
   q.Step(std::get<std::uint64_t>(verified));
@@ -102,7 +102,20 @@ ForInEmissionView Build(const ValueProgram& g, const ExceptionPlan& regions,
   std::pmr::vector<std::uint8_t> chains(control.skeleton.nodes.size(), 0, &q.memory);
   for (std::uint32_t r = 0; r < result.forwarded_regions.size(); ++r) {
     q.Step(); if (!result.forwarded_regions[r]) continue;
-    const auto i = *result.forwarded_regions[r]; const auto& route = std::get<ForwardedExceptionRoute>(result.loops[i].acquisition);
+    const auto i = *result.forwarded_regions[r]; auto& route = std::get<ForwardedExceptionRoute>(result.loops[i].acquisition);
+    q.Require(r < control.regions.size(), ForInError::kExceptionCorrespondence);
+    if (!control.regions[r]) {
+      // A sealed topology already removed this transparent handler. Borrow
+      // its same-payload route; the protocol projection remains its sole owner.
+      // Ordinary missing wrappers and unproved dispatch still refuse.
+      q.Require(r < control.region_roles.size() && control.region_roles[r] == ExceptionRegionRole::kForwardedTry && projected &&
+          r < projected->regions.size() && projected->regions[r] == forwarding.blocks[route.handler.value] &&
+          route.exit.value < projected->exits.size() && projected->exits[route.exit.value] == TryId{r} &&
+          route.handler.value < projected->blocks.size() && projected->blocks[route.handler.value] == TryId{r},
+          ForInError::kExceptionCorrespondence);
+      route.owner = ForwardingOwner::kProtocolProjection;
+      continue;
+    }
     const auto& region = *control.regions[r];
     result.continuations[region.wrapper.value] = EnumerationContinuation{region.body};
     std::optional<ControlId> at = region.body;
@@ -140,9 +153,9 @@ ForInEmissionView Build(const ValueProgram& g, const ExceptionPlan& regions,
 }
 std::variant<ForInEmissionView, ForInFailure> BuildForInEmissionView(const ValueProgram& g,
     const ExceptionPlan& regions, const ExceptionControl& control, const ForInPlan& plan,
-    const ForInEvents& events, SemanticBudget budget) {
+    const ForInEvents& events, SemanticBudget budget, const ProtocolForwarding* projected) {
   detail::ForInQuota q(budget);
-  try { return Build(g, regions, control, plan, events, q); }
+  try { return Build(g, regions, control, plan, events, q, projected); }
   catch (ForInFailure error) { return error; }
   catch (const std::bad_alloc&) { q.witness.kind = ForInError::kResourceLimit; return q.witness; }
   catch (const std::length_error&) { q.witness.kind = ForInError::kResourceLimit; return q.witness; }
@@ -183,8 +196,9 @@ std::variant<std::uint64_t, ForInFailure> VerifyForInCopyState(const ValueProgra
 }
 std::variant<std::uint64_t, ForInFailure> VerifyForInEmissionView(const ValueProgram& g,
     const ExceptionPlan& regions, const ExceptionControl& control, const ForInPlan& plan,
-    const ForInEvents& events, const ForInEmissionView& view, SemanticBudget budget) {
-  auto built = BuildForInEmissionView(g, regions, control, plan, events, budget);
+    const ForInEvents& events, const ForInEmissionView& view, SemanticBudget budget,
+    const ProtocolForwarding* projected) {
+  auto built = BuildForInEmissionView(g, regions, control, plan, events, budget, projected);
   if (const auto* error = std::get_if<ForInFailure>(&built)) return *error;
   const auto& actual = std::get<ForInEmissionView>(built);
   auto remaining = budget.work - actual.work;

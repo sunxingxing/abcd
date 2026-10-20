@@ -116,8 +116,25 @@ void VerifyForInRecovery(const FunctionTree& tree, RecoveryFlow& flow, TreeCheck
     const auto& raised=raw.exceptional_exits[events.acquisition.exceptional_exit.value];
     if(const auto* forwarded=std::get_if<ForwardedExceptionRoute>(&original.acquisition)) {
       Need(forwarded->exit==events.acquisition.exceptional_exit && raised.handler && raised.handler->entry==forwarded->handler &&
-          forwarded->handler.value<raw.forwarded_blocks.size() && raw.forwarded_blocks[forwarded->handler.value] &&
           !forwarded->destination && p.thrown==flow.terminal);
+      switch (forwarded->owner) {
+        case ForwardingOwner::kEnumeration:
+          Need(forwarded->handler.value < raw.forwarded_blocks.size() && raw.forwarded_blocks[forwarded->handler.value]);
+          break;
+        case ForwardingOwner::kProtocolProjection: {
+          Need(raw.iterations.has_value());
+          const auto& projection = raw.iterations->view.forwarding;
+          Need(forwarded->handler.value < projection.blocks.size() && projection.blocks[forwarded->handler.value]);
+          const auto region = *projection.blocks[forwarded->handler.value];
+          Need(region.value < projection.regions.size() && projection.regions[region.value] &&
+              projection.regions[region.value]->payload == forwarded->payload &&
+              projection.regions[region.value]->destination == forwarded->destination &&
+              forwarded->exit.value < projection.exits.size() && projection.exits[forwarded->exit.value] == region &&
+              !raw.forwarded_blocks[forwarded->handler.value]);
+          break;
+        }
+        default: Need(false);
+      }
       Need(forwarded->payload.value < raw.values.size());
       const auto& payload=raw.values[forwarded->payload.value];
       const auto* caught=std::get_if<CatchDefinition>(&payload.origin);

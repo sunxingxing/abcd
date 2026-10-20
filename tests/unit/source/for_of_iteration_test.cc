@@ -5,6 +5,7 @@
 #include "../../../src/source/for_of_events.h"
 #ifdef ABCD_TEST_FOR_OF_DRAFT
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/tree_labels.h"
 #include "../../../src/source/recovery_flow.h"
 #include "../../../src/source/for_of_emission.h"
 #include "../../../src/source/exception_tree.h"
@@ -32,6 +33,9 @@
 using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
+#ifdef ABCD_TEST_ENUMERATION_COMPOSITION
+#include "enumeration_composition_checks.h"
+#endif
 struct Refused {};
 #ifdef ABCD_TEST_FOR_OF_DRAFT
 std::string draft_output;
@@ -268,6 +272,9 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     auto full=BuildPhasedEvaluationPlan(graph,{},IncomingCells::kConditional,{},{},{},{},ClosureWrites::kLanguage,{},{},&source);
     if(const auto* f=std::get_if<EvaluationFailure>(&full)){std::cerr<<"evaluation kind="<<unsigned(f->kind)<<" obligation="<<unsigned(f->evaluation.obligation);if(f->evaluation.location.operation)std::cerr<<" op="<<f->evaluation.location.operation->value;if(f->evaluation.location.pc)std::cerr<<" pc="<<f->evaluation.location.pc->value;std::cerr<<'\n';}
     auto evaluation=Take<EvaluationPlan>(std::move(full),"evaluation");
+#ifdef ABCD_TEST_ENUMERATION_COMPOSITION
+    CheckEnumerationComposition(graph,source,evaluation);
+#endif
     Take<std::uint64_t>(VerifyPhasedEvaluationPlan(graph,evaluation,{},&source),"verify-evaluation");
     if(evaluation.phis && evaluation.exceptions &&
         evaluation.exceptions->projection==ExceptionCopyProjection::kForOfClose) {
@@ -424,6 +431,18 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     auto semantic=VerifyExceptionTreeSemantics(graph,exceptions,evaluation,draft.tree,resolved);
     if(const auto* error=std::get_if<TreeSemanticError>(&semantic))std::cerr<<"for-of semantics error="<<unsigned(*error)<<'\n';
     auto sem=Take<TreeSemantics>(std::move(semantic),"for-of-original-flow");
+#ifdef ABCD_TEST_LOCAL_TRANSFER
+    {
+      auto changed=draft.tree;bool retargeted=false;
+      for(auto& node:changed.statements)if(auto* jump=std::get_if<BreakStmt>(&node.statement)) {
+        if(!std::holds_alternative<LoopStmt>(changed.statements[jump->target.value].statement))continue;
+        jump->target=sem.flow.original->iterations->statements.front();retargeted=true;break;
+      }
+      test::Check(retargeted);
+      Take<TreeStorage>(AssignTreeLabels(changed),"retarget-labels");
+      test::Check(std::holds_alternative<TreeSemanticError>(VerifyExceptionTreeSemantics(graph,exceptions,evaluation,changed,resolved)));
+    }
+#endif
     auto recovery=VerifyInitialForOfRecovery(draft.tree,*sem.flow.original);
     if(const auto* error=std::get_if<TreeStructureError>(&recovery))std::cerr<<"for-of recovery error="<<unsigned(*error)<<'\n';
     const auto recovery_storage=Take<TreeStorage>(std::move(recovery),"for-of-recovery");
