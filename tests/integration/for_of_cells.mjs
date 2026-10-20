@@ -78,11 +78,33 @@ try {
   assert.notEqual(mutant, text); const changed = join(temp, 'mutant.mjs'); writeFileSync(changed, mutant);
   const bad = (await import(pathToFileURL(changed))).scan;
   assert.notDeepEqual(trace(bad, () => [1, 2]), trace(original, () => [1, 2]));
+  // The certified guarded-read/action-region correspondence now permits
+  // these function-local captures. Test engine output, not source-only oracles.
+  let localCases=0;
+  for(const name of ['cells','skip']) {
+    const {record,out}=exportRecord(name);assert.equal(record.source_complete,true,JSON.stringify(record.source_failure));
+    const output=join(out,record.source);run(process.execPath,['--check',output]);
+    const actualModule=await import(pathToFileURL(output));
+    const expectedModule=await import('data:text/javascript;base64,'+readFileSync(join(fixture,name+'.js')).toString('base64'));
+    const fn=name==='cells'?'scan':'skip';
+    const observe=(f,values,close,throwAt)=>{
+      const log=[];let calls=0;
+      const input={[Symbol.iterator](){let i=0;log.push('acquire');const it={next(){log.push('next');return i<values.length?{done:false,value:values[i++]}:{done:true};}};
+        if(close!=='missing')Object.defineProperty(it,'return',{get(){log.push('return-get');if(close==='getter-throw')throw new SyntaxError('close');if(close==='null')return null;return function(){log.push(['return',this===it]);if(close==='call-throw')throw new URIError('close');return close==='primitive'?1:{};};}});return it;}};
+      try{log.push(['result',f(input,(key,sum)=>{log.push(['body',key,sum]);if(++calls===throwAt)throw new RangeError('body');})]);}catch(e){log.push(['throw',e.constructor.name]);}
+      return log;
+    };
+    for(const values of [[],[1],[1,2,3]])for(const close of ['object','missing','null','getter-throw','call-throw','primitive'])for(const at of [0,1,2]) {
+      assert.deepEqual(observe(actualModule[fn],values,close,at),observe(expectedModule[fn],values,close,at));++localCases;
+    }
+    assert.equal(actualModule[fn]([1,2],()=>{}),3);assert.equal(actualModule[fn]([7],()=>{}),7);
+    const content=readFileSync(output,'utf8'),changed=content.replace(/(\$\w+) \+ (\$\w+)/,'$1 - $2');
+    assert.notEqual(changed,content,name+' mutation must change text');const badFile=join(out,'bad-local.mjs');writeFileSync(badFile,changed);run(process.execPath,['--check',badFile]);
+    const mutant=(await import(pathToFileURL(badFile)))[fn];assert.notDeepEqual(observe(mutant,[1,2],'object',0),observe(expectedModule[fn],[1,2],'object',0));
+  }
   // These stronger forms reach independent downstream gates. Do not count
   // their refusal or source-only oracle as an engine-output differential.
   const expected = {
-    cells: [['FunctionTreeError', 9], ['TreeStructureError', 1], ['TreeObligation', 17]],
-    skip: [['FunctionTreeError', 9], ['TreeStructureError', 1], ['TreeObligation', 17]],
     stop: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['TreeObligation', 16]],
     finish: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['TreeObligation', 16]],
     throwing: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['TreeObligation', 16]],
@@ -100,5 +122,5 @@ try {
           [join(fixture,name+'.abc'),String(record.source_failure.method),'--control']), /protocol-control units=/);
     }
   }
-  console.log(`${cases} engine/original for-of cell scenarios; close failures, iterator getters, helper identity/isolation and mutation; stronger forms keep typed refusals`);
+  console.log(`${cases+localCases} engine/original for-of cell scenarios; close failures, iterator getters, helper identity/isolation and mutation; stronger forms keep typed refusals`);
 } finally {rmSync(temp, {recursive: true, force: true});}

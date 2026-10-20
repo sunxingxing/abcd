@@ -1,0 +1,140 @@
+{
+  "compiler": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca"
+  },
+  "fixtures": [
+    {
+      "source": "main.js",
+      "abc": "main.abc",
+      "mode": "O0",
+      "source_sha256": "46c1b1ae89dd30a067bc54883583c8154c689096dc4fb747e00acec5a884044d",
+      "abc_sha256": "3cb6ad8618823dc2d079248900f0b5cbef729290923296af3b52a13624e6fc64",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_user_try_main",
+        "--source-file=main.js",
+        "--output=tests/integration/fixtures/for_of_user_try/main.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/for_of_user_try/main.js"
+      ]
+    },
+    {
+      "source": "main.js",
+      "abc": "main.default.abc",
+      "mode": "default",
+      "source_sha256": "46c1b1ae89dd30a067bc54883583c8154c689096dc4fb747e00acec5a884044d",
+      "abc_sha256": "62909129a3f06e50e0119c75ae341529202cc34deceb5b8709bd28621bc9a747",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_user_try_main",
+        "--source-file=main.js",
+        "--output=tests/integration/fixtures/for_of_user_try/main.default.abc",
+        "tests/integration/fixtures/for_of_user_try/main.js"
+      ]
+    },
+    {
+      "source": "async.js",
+      "abc": "async.abc",
+      "mode": "O0",
+      "source_sha256": "a98c8a42ad61eb7ff39026f1f685a94ace8064e3fdef5574b6bc9e4856acc0b2",
+      "abc_sha256": "33dd1e774800846a48b8c17643cfe7cf87f2bbceda01c3fb3bfc9eb2fe6aaad9",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_user_try_async",
+        "--source-file=async.js",
+        "--output=tests/integration/fixtures/for_of_user_try/async.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/for_of_user_try/async.js"
+      ]
+    },
+    {
+      "source": "async.js",
+      "abc": "async.default.abc",
+      "mode": "default",
+      "source_sha256": "a98c8a42ad61eb7ff39026f1f685a94ace8064e3fdef5574b6bc9e4856acc0b2",
+      "abc_sha256": "3b69ae5329055255f0474d4d49a5f708a2a4b3f0a734c204c3e538695f3bb97f",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_user_try_async",
+        "--source-file=async.js",
+        "--output=tests/integration/fixtures/for_of_user_try/async.default.abc",
+        "tests/integration/fixtures/for_of_user_try/async.js"
+      ]
+    },
+    {
+      "source": "finally.js",
+      "abc": "finally.abc",
+      "mode": "O0",
+      "source_sha256": "4cda8e875ecf83d0eea95fb5d139253818b15ec7816b36d1aead5d5ad9184412",
+      "abc_sha256": "88da54e3c4b82e40f3fbe386decc24f376b7d90051fb35997cc507e6a0cf6d7d",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_user_try_finally",
+        "--source-file=finally.js",
+        "--output=tests/integration/fixtures/for_of_user_try/finally.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/for_of_user_try/finally.js"
+      ]
+    },
+    {
+      "source": "finally.js",
+      "abc": "finally.default.abc",
+      "mode": "default",
+      "source_sha256": "4cda8e875ecf83d0eea95fb5d139253818b15ec7816b36d1aead5d5ad9184412",
+      "abc_sha256": "3d558780d2df87b70e84b0fa515a6275f68e46e9e6719e6ef081da94c348c8b8",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_user_try_finally",
+        "--source-file=finally.js",
+        "--output=tests/integration/fixtures/for_of_user_try/finally.default.abc",
+        "tests/integration/fixtures/for_of_user_try/finally.js"
+      ]
+    },
+    {
+      "source": "member.js",
+      "abc": "member.abc",
+      "mode": "O0",
+      "source_sha256": "7844301b1a0f6119d0f37c1e21eb8f90817db34b27e4ac22d121680c00707879",
+      "abc_sha256": "a2d38a1a146b05033d00944660341f8bdf654553a9080e6583e717e97ba8ca03",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_user_try_member",
+        "--source-file=member.js",
+        "--output=tests/integration/fixtures/for_of_user_try/member.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/for_of_user_try/member.js"
+      ]
+    },
+    {
+      "source": "member.js",
+      "abc": "member.default.abc",
+      "mode": "default",
+      "source_sha256": "7844301b1a0f6119d0f37c1e21eb8f90817db34b27e4ac22d121680c00707879",
+      "abc_sha256": "44e29ac5ea23d47906d5b7d7b4ee7064cf04dc0cb44a224eb9cc736608bb9b13",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_user_try_member",
+        "--source-file=member.js",
+        "--output=tests/integration/fixtures/for_of_user_try/member.default.abc",
+        "tests/integration/fixtures/for_of_user_try/member.js"
+      ]
+    }
+  ]
+}

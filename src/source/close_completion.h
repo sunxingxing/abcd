@@ -101,6 +101,9 @@ struct CloseBoundaryProof {
   // Verified wrappers/handlers. Never use this as a full-op ownership mask:
   // the matching protected_ranges role determines close code vs ordinary body.
   std::vector<analysis::TryId> regions;
+  // Ordinary user enclosures retain their wrapper and handler. This is
+  // containment evidence, never permission to absorb their protected code.
+  std::vector<analysis::TryId> enclosures;
   std::vector<CloseProtectedRange> protected_ranges;
   std::optional<CloseCompletionFailure> missing;
   std::size_t peak_bytes = 0;

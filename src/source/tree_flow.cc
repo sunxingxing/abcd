@@ -1401,11 +1401,22 @@ class FlowCheck {
         scopes[scope.value] = parent; resolved[scope.value] = 1;
       }
     }
+    std::vector<std::optional<analysis::CatchScope>> retained_parents;
+    if(iteration_) {
+      budget_.Array(retained_parents,exceptions_->regions.layout.regions.size());
+      for(const auto r:exceptions_->regions.layout.source_order) {
+        budget_.Step();auto parent=exceptions_->regions.layout.regions[r.value].parent;
+        if(parent && exceptions_->control.region_roles[parent->region.value]!=ExceptionRegionRole::kOrdinaryTry)
+          parent=retained_parents[parent->region.value];
+        retained_parents[r.value]=parent;
+      }
+    }
     const auto check = [&](analysis::OpId operation, ExprId expression) {
       budget_.Step();
       const auto site = graph_.phases[graph_.ops[operation.value].block.value].instruction.value;
       auto expected = exceptions_->regions.layout.scopes[site];
-      if(expected && iteration_ && exceptions_->control.region_roles[expected->region.value]==ExceptionRegionRole::kForwardedTry)expected.reset();
+      if(expected && iteration_ && exceptions_->control.region_roles[expected->region.value]!=ExceptionRegionRole::kOrdinaryTry)
+        expected=retained_parents[expected->region.value];
       const auto& actual = scopes[expression_scopes_[expression.value].value];
       Require(expected.has_value() == actual.has_value() &&
           (!expected || (expected->region == actual->region && expected->part == actual->part)), Error::kPlacement);

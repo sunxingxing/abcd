@@ -74,9 +74,20 @@ try {
           run(expected, values, mode, outcome, at), `${values}/${mode}/${outcome}/${at}`);
       ++cases;
     }
+  const caughtOut=join(root,'catch');
+  execFileSync(engine,[join(fixtures,'catch.abc'),caughtOut,'--value-source','--language-source']);
+  const caughtRecord=JSON.parse(readFileSync(join(caughtOut,'manifest.json'))).records.find(r=>r.source_status!==2);
+  assert.equal(caughtRecord.source_status,0,JSON.stringify(caughtRecord.source_failure));
+  const caughtFile=join(caughtOut,caughtRecord.source);
+  execFileSync(process.execPath,['--check',caughtFile]);
+  const caughtActual=(await import(pathToFileURL(caughtFile))).scan;
+  const caughtExpected=(await import('data:text/javascript;base64,'+Buffer.from(readFileSync(join(fixtures,'catch.js'))).toString('base64'))).scan;
+  for(const values of [[],[3],[3,8]])for(const mode of ['normal','break','return'])for(const outcome of outcomes)for(const at of [0,1,2]) {
+    assert.deepEqual(run(caughtActual,values,mode,outcome,at),run(caughtExpected,values,mode,outcome,at),`catch/${values}/${mode}/${outcome}/${at}`);++cases;
+  }
   // The remaining admission limits are asserted, not counted as semantic passes.
   const gaps = {};
-  for (const name of ['liveout', 'labelled', 'async', 'nested', 'catch']) {
+  for (const name of ['liveout', 'labelled', 'async', 'nested']) {
     const dest = join(root, name);
     execFileSync(engine, [join(fixtures, name + '.abc'), dest, '--value-source', '--language-source']);
     const record = JSON.parse(readFileSync(join(dest, 'manifest.json'))).records.find(r => r.source_status !== 2);
@@ -88,5 +99,5 @@ try {
         c.domain === 'abcd::source::ExceptionControlError' && c.value === 4), name);
     gaps[name] = record.source_failure.causes;
   }
-  console.log(JSON.stringify({published: 1, differential_cases: cases, refused: gaps}));
+  console.log(JSON.stringify({published: 2, differential_cases: cases, refused: gaps}));
 } finally { rmSync(root, {recursive: true, force: true}); }

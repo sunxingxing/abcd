@@ -5,6 +5,56 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## For-of close under an enclosing user try (2026-10-20)
+
+- Baseline/wtbase **3e475a3b**. **o37/20175 m20512** and **o38/25106 m25655**
+  now complete; their inner `kMultipleExits` refusals are gone. Source contract
+  cohort **589→591/620**; previous flags **537/620 unchanged**. Both40-input
+  comparisons have zero regressions and zero text changes to previously complete
+  records; only the two source-contract RpcTool manifests change. No new premise.
+- [for-of-user-try.md](for-of-user-try.md): separate verified ordinary enclosure
+  identities from owned close members. Build a sealed close statement first,
+  then install ordinary try/catch wrappers with the shared scope/corridor and
+  try/loop composer. Completion ports are region/arm/target keyed; every original
+  incoming edge remains. No fabricated graph, ExceptionPlan or ExprId. Independent
+  control, TreeFlow and recovery checks rebuild ownership, scopes, catch targets,
+  payloads, unique binding commits and exception routes.
+- Transparent getter rethrows can terminate at the retained user catch after
+  independent same-payload route verification. Guarded-read action regions and
+  conditional TDZ exclusions keep their original dependencies and catch context.
+  Private state, unverified activation/enclosure, ownership, scope, catch-state
+  and incomplete nested/finalizer/async obligations still refuse. Buffers are
+  admitted first; sparse port propagation bounds admitted N log N work.
+- Real SDK fixtures have source/ABC/command/hash registries at default/O0.
+  Engine-output Node: **865** main/member/multiple-close/catch traces; real
+  RpcTool queries **648** paired-source evaluation cases; refreshed throw-domain
+  fixtures add **36** cases, captured-local cells/skip add **108** plus effective
+  mutations and call isolation. Paired source never enters the engine. Published
+  full records pass `node --check`; full methods next to originals are retained
+  in `build/review/for-of-enclosing/query-o{37,38}/comparison.md`.
+- SDK comparisons use grouping_bytecode.py's strict assembly reader, with all
+  register/branch/handler/metadata diffs preserved. The synchronous fixtures have
+  **8 method comparisons:4 identical entries,4 differing scan bodies**; both O0
+  recompilations verify the full protocol/evaluation proof. Default recompiles
+  retain the existing handler-shape/layout gaps (331/129). All four real-query
+  default/O0 recompilations succeed but differ from original bytecode; control
+  restructuring, key binding, materialized reads, registers/IC slots and dead
+  Throw-result checks are documented. Scsi's eight named calls are reproduced
+  with matching API24/callable-name options; no error-message erasure is assumed.
+  Compilation and Node are not claimed as Ark execution or bytecode equality.
+- Full build passed; serial source-regression **65/65**; focused new/refreshed
+  tests **21/21**, including mutations, register/block variants,
+  200/201/400/800 and exact byte/work budgets. Sweep **219/226**: only supplied
+  pre-existing family_source_cli, tree_structure, try_tree, class_tree_source,
+  try_tree_source and the two file_generator_return source failures remain.
+  Maximum measured engine RSS **42,713,088 bytes**; four-worker runner/child
+  aggregate upper bound **189,759,488 bytes**. Logs and full diffs:
+  `build/review/for-of-enclosing/acceptance-*`, `accepted-*-comparison.txt`,
+  `resource-parallel/report.json`, `sdk-*` and `query-o*`.
+- Async raw resume/rejection and finally completion derivation stay typed
+  refusals. Re-probed DataDriver m42717 still needs CURRENT inner→outer completion
+  propagation at692; it was not widened by this enclosure composition.
+
 ## Multiple for-of abrupt-close copies (2026-10-20, partial delivery)
 
 - Baseline **1ea8d4e6**, also the independently built wtbase. Diagnosis and

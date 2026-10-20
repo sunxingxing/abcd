@@ -32,6 +32,7 @@ def main():
     parser.add_argument("fixtures", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--temporary", action="store_true")
+    parser.add_argument("--fixture", default="multi")
     args = parser.parse_args()
     if args.temporary:
         args.output.mkdir(parents=True, exist_ok=True)
@@ -42,7 +43,7 @@ def main():
     report = {"compiler": {"path": grouping.ES2ABC, "sha256": grouping.sha(grouping.ES2ABC)},
               "disassembler": {"path": grouping.DISASM, "sha256": grouping.sha(grouping.DISASM)},
               "records": []}
-    for name in ("multi",):
+    for name in (args.fixture,):
         folder = args.output / name
         folder.mkdir()
         exported = folder / "export"

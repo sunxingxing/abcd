@@ -97,6 +97,10 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     loads.insert(loads.end(),modules.loads.begin(),modules.loads.end());
     auto values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,Arithmetic(SourceContract::kLanguageSourceV4)),"values");
     auto checked=VerifyExceptionInputs(flow,ssa,env,values,kDefaultSemanticWork,nullptr,ExceptionInputDomain::kHoleTransport);
+    if(const auto* f=std::get_if<ExceptionInputFailure>(&checked);f && f->kind==ExceptionInputError::kInternalValue) {
+      values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,Arithmetic(SourceContract::kLanguageSourceV4),ExceptionThrowRefinement::kGuardedNonHole),"refined-values");
+      checked=VerifyExceptionInputs(flow,ssa,env,values,kDefaultSemanticWork,nullptr,ExceptionInputDomain::kHoleTransport);
+    }
     if(const auto* f=std::get_if<ExceptionInputFailure>(&checked)) {
       std::cout<<"input-failure kind="<<unsigned(f->kind)<<" working-pc="<<f->pc.value;
       if(f->node)std::cout<<" node="<<f->node->value;
@@ -141,11 +145,11 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     auto owner=Take<VerifiedProtocolRegionOwnership>(std::move(sealed),"seal");
     if(!owner.Forwarding().regions.empty()) {
       const auto& f=owner.Forwarding();
-      std::vector<std::uint8_t> owned(plan.regions.size()),close(graph.blocks.size());
+      std::vector<std::uint8_t> owned(plan.regions.size()),retained(plan.regions.size()),close(graph.blocks.size());
       std::vector<std::uint8_t> raw(input.flow.nodes.size());
-      for(const auto& region:owner.Summary().regions){for(const auto r:region.boundary->regions)owned[r.value]=1;for(const auto m:region.members)raw[m.node.value]=1;}
+      for(const auto& region:owner.Summary().regions){for(const auto r:region.boundary->regions)owned[r.value]=1;for(const auto r:region.boundary->enclosures){owned[r.value]=1;retained[r.value]=1;}for(const auto m:region.members)raw[m.node.value]=1;}
       for(std::size_t b=0;b<close.size();++b)close[b]=raw[graph.phases[b].input.value];
-      const auto build=[&](const ValueProgram& g,const std::vector<std::uint8_t>& c,SemanticBudget b=SemanticBudget{}){return AnalyzeProtocolForwarding(g,plan,owned,c,b);};
+      const auto build=[&](const ValueProgram& g,const std::vector<std::uint8_t>& c,SemanticBudget b=SemanticBudget{}){return AnalyzeProtocolForwarding(g,plan,owned,c,b,retained);};
       test::Check(Take<ProtocolForwarding>(build(graph,close),"forwarding")==f);
       const auto handler=std::find_if(f.blocks.begin(),f.blocks.end(),[](const auto& b){return b.has_value();})-f.blocks.begin();
       test::Check(handler<f.blocks.size());auto overlap=close;overlap[handler]=1;
@@ -442,6 +446,12 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     bad_flow=recovered;const auto close_index=bad_flow.iterations[statement.value]->throw_close;
     bad_flow.iteration_closes[close_index].outcomes[static_cast<std::size_t>(CloseOutcomeKind::kGetterThrow)-1].payload=FlowCloseErrorPayload{bad_flow.iteration_closes[close_index].read};
     reject_flow(bad_flow);
+    if(recovered.iterations[statement.value]->thrown!=recovered.terminal) {
+      bad_flow=recovered;
+      const auto index=bad_flow.iterations[statement.value]->throw_close;
+      bad_flow.iteration_closes[index].thrown=bad_flow.terminal;
+      reject_flow(bad_flow); // Enclosing catch may not be replaced by caller exit.
+    }
     bad_flow=recovered;bool wrong_continue=false;
     for(const auto& exit:sem.flow.original->iterations->exits)if(exit.kind==LoopTransferKind::kContinue){for(auto& edge:bad_flow.edges)if(edge.from==bad_flow.statements[exit.statement.value]&&edge.completion==FlowCompletion::kJump){edge.to=bad_flow.iterations[statement.value]->exit;wrong_continue=true;break;}break;}
     test::Check(wrong_continue);reject_flow(bad_flow);

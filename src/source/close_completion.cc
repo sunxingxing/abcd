@@ -343,7 +343,7 @@ class Proof {
     q_.memory.Retain(r.boundary->ports.capacity()*sizeof(CloseOutcomeLeaving)+
         r.boundary->unreachable_entries.capacity()*sizeof(CompletionEdge)+
         r.boundary->private_slots.capacity()*sizeof(ClosePrivateSlot)+
-        r.boundary->regions.capacity()*sizeof(TryId)+r.boundary->protected_ranges.capacity()*sizeof(CloseProtectedRange));
+        (r.boundary->regions.capacity()+r.boundary->enclosures.capacity())*sizeof(TryId)+r.boundary->protected_ranges.capacity()*sizeof(CloseProtectedRange));
     for(const auto& p:r.boundary->protected_ranges) {
       q_.Step();q_.memory.Retain(p.ordinary.capacity()*sizeof(ExceptionNodeId)+p.transport.capacity()*sizeof(ExceptionNodeId)+p.protocol.capacity()*sizeof(ExceptionNodeId)+
           p.dispatch.capacity()*sizeof(CompletionEdge)+p.exits.capacity()*sizeof(CompletionEdge));
@@ -437,7 +437,7 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
           a.boundary->private_state!=b.boundary->private_state || a.boundary->region_coverage!=b.boundary->region_coverage ||
           a.boundary->missing!=b.boundary->missing || a.boundary->ports.size()!=b.boundary->ports.size() ||
           a.boundary->unreachable_entries.size()!=b.boundary->unreachable_entries.size() ||
-          a.boundary->private_slots.size()!=b.boundary->private_slots.size() || a.boundary->regions.size()!=b.boundary->regions.size() || a.boundary->protected_ranges.size()!=b.boundary->protected_ranges.size())
+          a.boundary->enclosures.size()!=b.boundary->enclosures.size() || a.boundary->private_slots.size()!=b.boundary->private_slots.size() || a.boundary->regions.size()!=b.boundary->regions.size() || a.boundary->protected_ranges.size()!=b.boundary->protected_ranges.size())
         return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
       const auto equal=[&](const auto& x,const auto& y)->std::optional<CloseCompletionFailure> {
         for(std::size_t k=0;k<x.size();++k) {
@@ -450,6 +450,7 @@ std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const a
       if(const auto f=equal(a.boundary->unreachable_entries,b.boundary->unreachable_entries))return *f;
       if(const auto f=equal(a.boundary->private_slots,b.boundary->private_slots))return *f;
       if(const auto f=equal(a.boundary->regions,b.boundary->regions))return *f;
+      if(const auto f=equal(a.boundary->enclosures,b.boundary->enclosures))return *f;
       for(std::size_t r=0;r<a.boundary->protected_ranges.size();++r) {
         if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};
         const auto& x=a.boundary->protected_ranges[r];const auto& y=b.boundary->protected_ranges[r];

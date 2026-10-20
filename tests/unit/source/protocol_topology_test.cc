@@ -24,13 +24,13 @@ template<class T,class...U>T Take(std::variant<U...> value,const char* stage) {
     if constexpr(requires{f.pc;}) {if constexpr(requires{f.pc.value;})std::cout<<" pc="<<f.pc.value;else if(f.pc)std::cout<<" pc="<<f.pc->value;}
   },value);std::cout<<'\n';throw Refused{};
 }
-void Case(const char* path,unsigned padding) {
+void Case(const char* path,unsigned padding,unsigned entity) {
   try {
     auto file=Take<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path),"file");
     auto hash=Take<corpus::FileFingerprint>(file->Fingerprint(),"fingerprint");
     auto header=Take<abc::Header>(abc::ParseHeader(std::span(hash.prefix).first(hash.prefix_size),hash.size),"header");
     auto index=Take<abc::MetadataIndex>(abc::BuildMetadataIndex(*file,header),"metadata");
-    const auto entity=451u;
+
     const auto method=std::find_if(index.methods.begin(),index.methods.end(),[&](const auto& m){return m.offset.value==entity;});
     test::Check(method!=index.methods.end() && method->code);
     const auto call=Take<abc::CallType>(abc::ReadCallType(*file,header,index,method->annotations),"calltype");
@@ -65,6 +65,10 @@ void Case(const char* path,unsigned padding) {
     loads.insert(loads.end(),modules.loads.begin(),modules.loads.end());
     auto values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,Arithmetic(SourceContract::kLanguageSourceV4)),"values");
     auto checked=VerifyExceptionInputs(flow,ssa,env,values,kDefaultSemanticWork,nullptr,ExceptionInputDomain::kHoleTransport);
+    if(const auto* f=std::get_if<ExceptionInputFailure>(&checked);f && f->kind==ExceptionInputError::kInternalValue) {
+      values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,Arithmetic(SourceContract::kLanguageSourceV4),ExceptionThrowRefinement::kGuardedNonHole),"refined-values");
+      checked=VerifyExceptionInputs(flow,ssa,env,values,kDefaultSemanticWork,nullptr,ExceptionInputDomain::kHoleTransport);
+    }
     if(const auto* f=std::get_if<ExceptionInputFailure>(&checked)) {
       std::cout<<"input-failure kind="<<unsigned(f->kind)<<" working-pc="<<f->pc.value;
       if(f->node)std::cout<<" node="<<f->node->value;
@@ -95,6 +99,13 @@ void Case(const char* path,unsigned padding) {
     test::Check(std::holds_alternative<CloseCompletionFailure>(seal(std::move(bad))));
     bad=summary;bad.regions[0].boundary->regions.push_back({999});
     test::Check(std::holds_alternative<CloseCompletionFailure>(seal(std::move(bad))));
+    const auto enclosing=std::find_if(summary.regions.begin(),summary.regions.end(),[](const auto& r){return r.boundary && !r.boundary->enclosures.empty();});
+    if(enclosing!=summary.regions.end()) {
+      bad=summary;bad.regions[enclosing-summary.regions.begin()].boundary->enclosures.clear();
+      test::Check(std::holds_alternative<CloseCompletionFailure>(seal(std::move(bad))));
+      bad=summary;bad.regions[enclosing-summary.regions.begin()].boundary->enclosures[0]={999};
+      test::Check(std::holds_alternative<CloseCompletionFailure>(seal(std::move(bad))));
+    }
     auto owner=Take<VerifiedProtocolRegionOwnership>(seal(std::move(summary)),"seal");
     auto built_control=BuildExceptionControl(body,graph,input,plan,{},&owner);
     auto control=Take<ExceptionControl>(std::move(built_control),"control");
@@ -120,21 +131,41 @@ void Case(const char* path,unsigned padding) {
     wrong=control;
     auto unit=std::find_if(wrong.units.begin(),wrong.units.end(),[](const auto& u){return std::holds_alternative<ProtocolCloseUnit>(u);});
     test::Check(unit!=wrong.units.end());std::get<ProtocolCloseUnit>(*unit).entry.successor^=1;refuse(std::move(wrong));
+    const auto ordinary_region=std::find_if(control.regions.begin(),control.regions.end(),[](const auto& r){return r.has_value();});
+    if(ordinary_region!=control.regions.end()) {
+      wrong=control;wrong.regions[ordinary_region-control.regions.begin()]->handler=ordinary_region->value().body;refuse(std::move(wrong));
+      wrong=control;wrong.regions[ordinary_region-control.regions.begin()].reset();refuse(std::move(wrong));
+    }
     const SemanticBudget budget{};
     ControlQuota q(budget);auto topology=ProjectProtocolControl(graph,plan,input,owner,q);
-    const SemanticBudget used{budget.bytes-q.Remaining().bytes,budget.work-q.RemainingWork()};
+    SemanticBudget used{budget.bytes-q.Remaining().bytes,budget.work-q.RemainingWork()};
+    if(ordinary_region!=control.regions.end()) {
+      // Delegated loop discovery releases its scratch before returning the
+      // retained forest. Find the actual admission boundary, not retained size.
+      std::size_t lo=used.bytes,hi=budget.bytes;
+      while(lo<hi) {
+        const auto mid=lo+(hi-lo)/2;bool admitted=false;
+        try{ControlQuota trial({mid,used.work});ProjectProtocolControl(graph,plan,input,owner,trial);admitted=true;}
+        catch(ControlError e){test::Check(e==ControlError::kResourceLimit);}
+        catch(ExceptionControlError e){test::Check(e==ExceptionControlError::kResourceLimit);}
+        if(admitted)hi=mid;else lo=mid+1;
+      }
+      used.bytes=lo;
+    }
     ControlQuota exact(used);ProjectProtocolControl(graph,plan,input,owner,exact);
     for(bool bytes:{false,true}) {
       bool refused=false;auto small=used;
       if(bytes)--small.bytes;else --small.work;
       try {ControlQuota low(small);ProjectProtocolControl(graph,plan,input,owner,low);}
       catch(ControlError e){refused=e==(bytes?ControlError::kResourceLimit:ControlError::kWorkLimit);}
+      catch(ExceptionControlError e){refused=e==(bytes?ExceptionControlError::kResourceLimit:ExceptionControlError::kWorkLimit);}
       test::Check(refused);
     }
     std::cout<<"padding="<<padding<<" units="<<control.units.size()<<" bytes="<<used.bytes<<" work="<<used.work<<'\n';
   }catch(const Refused&){test::Check(false);}
 }
 int main(int argc,char**argv) {
-  test::Check(argc==2);
-  for(unsigned padding:{0,200,201,400,800})Case(argv[1],padding);
+  test::Check(argc==2 || argc==3);
+  const auto entity=argc==3?static_cast<unsigned>(std::stoul(argv[2])):451u;
+  for(unsigned padding:{0,200,201,400,800})Case(argv[1],padding,entity);
 }

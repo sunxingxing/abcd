@@ -87,10 +87,11 @@ std::variant<ExceptionForwarding, ForInFailure> AnalyzeExceptionForwarding(
 }
 std::variant<ProtocolForwarding, ForInFailure> AnalyzeProtocolForwarding(
     const ValueProgram& g,const ExceptionPlan& plan,std::span<const std::uint8_t> owned,
-    std::span<const std::uint8_t> close,SemanticBudget budget) {
+    std::span<const std::uint8_t> close,SemanticBudget budget,std::span<const std::uint8_t> retained) {
   detail::ForInQuota q(budget);
   try {
     q.Require(owned.size()==plan.regions.size() && close.size()==g.blocks.size());
+    q.Require(retained.empty() || retained.size()==plan.regions.size());
     auto analyzed=AnalyzeExceptionForwarding(g,q.Remaining());
     if(const auto* f=std::get_if<ForInFailure>(&analyzed))return *f;
     const auto& summary=std::get<ExceptionForwarding>(analyzed);
@@ -102,6 +103,8 @@ std::variant<ProtocolForwarding, ForInFailure> AnalyzeProtocolForwarding(
     const auto size=[&](auto& v,std::size_t n){q.Reserve(v,n);q.Step(n);v.resize(n);};
     size(out.regions,plan.regions.size());size(out.blocks,g.blocks.size());size(out.operations,g.ops.size());size(out.exits,g.exceptional_exits.size());
     std::pmr::vector<std::optional<TryId>> handlers(g.blocks.size(),{},&q.memory);
+    std::pmr::vector<std::uint8_t> terminal(g.blocks.size(),0,&q.memory);
+    if(!retained.empty())for(std::uint32_t r=0;r<retained.size();++r){q.Step();if(retained[r]){q.Require(owned[r] && plan.regions[r].binding);terminal[plan.regions[r].binding->block.value]=1;}}
     std::pmr::vector<WorkBlockId> queue(&q.memory);queue.reserve(g.blocks.size());
     for(std::uint32_t r=0;r<plan.regions.size();++r) {
       q.Step();if(owned[r] || plan.layout.regions[r].inactive)continue;
@@ -142,12 +145,14 @@ std::variant<ProtocolForwarding, ForInFailure> AnalyzeProtocolForwarding(
     std::pmr::vector<std::uint32_t> pending(plan.regions.size(),0,&q.memory),offset(plan.regions.size()+1,0,&q.memory),pred(plan.regions.size(),0,&q.memory),ready(&q.memory);
     ready.reserve(plan.regions.size());
     for(std::uint32_t r=0;r<out.regions.size();++r){q.Step();if(!out.regions[r])continue;
-      if(const auto dest=out.regions[r]->destination){q.Require(dest->entry.value<handlers.size() && handlers[dest->entry.value],ForInError::kCatchState);const auto parent=*handlers[dest->entry.value];pending[r]=1;++offset[parent.value+1];}
+      if(const auto dest=out.regions[r]->destination){q.Require(dest->entry.value<handlers.size() && (handlers[dest->entry.value] || terminal[dest->entry.value]),ForInError::kCatchState);
+        if(terminal[dest->entry.value])ready.push_back(r);
+        else {const auto parent=*handlers[dest->entry.value];pending[r]=1;++offset[parent.value+1];}}
       else ready.push_back(r);
     }
     for(std::size_t r=1;r<offset.size();++r){q.Step();offset[r]+=offset[r-1];}
     auto cursor=std::pmr::vector<std::uint32_t>(offset,&q.memory);
-    for(std::uint32_t r=0;r<out.regions.size();++r){q.Step();if(out.regions[r] && out.regions[r]->destination)pred[cursor[handlers[out.regions[r]->destination->entry.value]->value]++]=r;}
+    for(std::uint32_t r=0;r<out.regions.size();++r){q.Step();if(out.regions[r] && out.regions[r]->destination && !terminal[out.regions[r]->destination->entry.value])pred[cursor[handlers[out.regions[r]->destination->entry.value]->value]++]=r;}
     for(std::size_t i=0;i<ready.size();++i)for(auto p=offset[ready[i]];p<offset[ready[i]+1];++p){q.Step();pending[pred[p]]=0;ready.push_back(pred[p]);}
     for(std::uint32_t r=0;r<out.regions.size();++r){q.Step();q.Require(!pending[r],ForInError::kExceptionCorrespondence);}
     for(std::uint32_t x=0;x<g.exceptional_exits.size();++x){q.Step();const auto& exit=g.exceptional_exits[x];if(!exit.handler)continue;

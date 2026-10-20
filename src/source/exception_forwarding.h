@@ -41,6 +41,6 @@ struct ProtocolForwarding {
 [[nodiscard]] std::variant<ProtocolForwarding, ForInFailure> AnalyzeProtocolForwarding(
     const analysis::ValueProgram&, const ExceptionPlan&,
     std::span<const std::uint8_t> owned_regions, std::span<const std::uint8_t> close_blocks,
-    analysis::SemanticBudget = {});
+    analysis::SemanticBudget = {}, std::span<const std::uint8_t> retained_regions = {});
 }  // namespace abcd::source
 #endif

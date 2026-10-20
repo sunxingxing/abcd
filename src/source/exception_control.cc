@@ -99,7 +99,7 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
         ProjectExceptionControl(graph, regions, quota);
     const ControlGraphView view{ControlProjection{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}};
     auto skeleton = [&] {
-      try { if(protocols) {
+      try { if(protocols && topology.ports.empty()) {
           std::vector<ControlNodeId> roots;quota.Size(roots,topology.entries.size());
           for(std::size_t i=0;i<roots.size();++i)roots[i]={topology.entries[i].value};
           auto discovered=BuildLoopForest(view,roots,quota.Remaining());
@@ -143,7 +143,7 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
         throw ExceptionControlFailure{Translate(failure.kind), failure};
       }
     }();
-    if(protocols) {
+    if(protocols && topology.ports.empty()) {
       std::vector<ControlNodeId> roots;quota.Size(roots,topology.entries.size());
       for(std::size_t i=0;i<roots.size();++i)roots[i]={topology.entries[i].value};
       VerifyControlRegions(view,roots,skeleton,quota);
@@ -210,7 +210,7 @@ std::variant<std::uint64_t, ExceptionControlError> VerifyExceptionControl(
     }
     auto topology = protocols?ProjectProtocolControl(graph,regions,input,*protocols,quota):
         ProjectExceptionControl(graph, regions, quota);
-    if(protocols) {
+    if(protocols && topology.ports.empty()) {
       const ControlGraphView view{ControlProjection{graph.revision,graph.cfg_revision,topology.blocks,topology.edges}};
       std::vector<ControlNodeId> roots;quota.Size(roots,topology.entries.size());
       for(std::size_t i=0;i<roots.size();++i)roots[i]={topology.entries[i].value};

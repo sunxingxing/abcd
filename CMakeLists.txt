@@ -211,7 +211,7 @@ target_sources(abcd_source PRIVATE src/source/phi_copies.cc src/source/phi_copy_
 target_sources(abcd_source PRIVATE src/source/tree_edge_flow.cc)
 target_sources(abcd_source PRIVATE src/source/loop_forest.cc src/source/for_in_plan.cc src/source/for_in_events.cc src/source/for_in_evaluation.cc src/source/for_in_emission.cc src/source/for_in_recovery.cc src/source/for_of_recovery.cc src/source/exception_forwarding.cc)
 target_sources(abcd_source PRIVATE src/source/iterator_keys.cc src/source/iterator_protocol_scan.cc)
-target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/protocol_forwarding_recovery.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc src/source/for_of_events.cc src/source/for_of_evaluation.cc src/source/for_of_emission.cc)
+target_sources(abcd_source PRIVATE src/source/close_entries.cc src/source/close_completion.cc src/source/close_boundary.cc src/source/close_loop_body.cc src/source/protocol_region_ownership.cc src/source/protocol_topology.cc src/source/protocol_enclosure.cc src/source/protocol_forwarding_recovery.cc src/source/for_of_identity.cc src/source/for_of_iteration.cc src/source/for_of_events.cc src/source/for_of_evaluation.cc src/source/for_of_emission.cc)
 target_sources(abcd_source PRIVATE src/source/loop_control.cc)
 target_sources(abcd_source PRIVATE src/source/loop_exit_corridors.cc)
 target_sources(abcd_source PRIVATE src/source/literal_plan.cc
@@ -741,10 +741,23 @@ if(BUILD_TESTING)
       "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
   endif()
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME for_of_user_try_source_test COMMAND "${ABCD_NODE_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_user_try.mjs"
+      $<TARGET_FILE:abc_structure> "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_user_try")
     add_test(NAME for_of_multiple_source_test COMMAND "${ABCD_NODE_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_multiple.mjs"
       $<TARGET_FILE:abc_structure> "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_multiple")
   endif()
+  add_test(NAME for_of_user_try_member_draft_test COMMAND for_of_draft_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_user_try/member.abc" 425)
+  add_test(NAME for_of_user_try_member_variants_test COMMAND for_of_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_user_try/member.abc" 425 --variants)
+  add_test(NAME for_of_user_try_draft_test COMMAND for_of_draft_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_user_try/main.abc" 419)
+  add_test(NAME for_of_user_try_scale_test COMMAND for_of_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_user_try/main.abc" 419 --scale)
+  add_test(NAME for_of_user_try_variants_test COMMAND for_of_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_user_try/main.abc" 419 --variants)
   add_test(NAME for_of_multiple_draft_test COMMAND for_of_draft_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_multiple/multi.abc" 420)
   add_test(NAME for_of_multiple_test COMMAND for_of_evaluation_test
@@ -786,6 +799,8 @@ if(BUILD_TESTING)
   target_include_directories(protocol_topology_test PRIVATE tests/support)
   add_test(NAME protocol_topology_test COMMAND protocol_topology_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
+  add_test(NAME protocol_enclosure_test COMMAND protocol_topology_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_multiple/catch.abc" 416)
   add_executable(close_completion_test tests/unit/source/close_completion_test.cc)
   target_link_libraries(close_completion_test PRIVATE abcd_source abcd_json)
   target_include_directories(close_completion_test PRIVATE tests/support)
@@ -1084,6 +1099,11 @@ if(BUILD_TESTING)
   add_test(NAME parameter_expression_test COMMAND parameter_expression_test)
   if(ABCD_BUILD_TOOLS AND Python3_Interpreter_FOUND AND
       EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+    add_test(NAME for_of_user_try_roundtrip_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/for_of_multiple_roundtrip.py"
+      $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_user_try"
+      "${CMAKE_CURRENT_BINARY_DIR}/for-of-user-try-roundtrip" --temporary --fixture main)
     add_test(NAME for_of_multiple_roundtrip_test COMMAND ${Python3_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/for_of_multiple_roundtrip.py"
       $<TARGET_FILE:abc_structure>

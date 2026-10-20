@@ -130,7 +130,7 @@ class Boundary {
     for(std::size_t i=1;i<prefix.size();++i){arena_.Step();prefix[i]+=prefix[i-1];}
     std::pmr::vector<bool> associated(plan_.regions.size(),false,arena_.Resource());
     std::pmr::vector<bool> body_wrapper(plan_.regions.size(),false,arena_.Resource());
-    std::optional<InstructionId> live_begin,live_end;
+    std::optional<InstructionId> live_begin,live_end,body_begin,body_end;
     for(const auto& member:r_.members) {
       arena_.Step();if(!reachable_[flow_raw_[member.node.value]])continue;
       const auto site=flow_.nodes[member.node.value].instruction;
@@ -139,13 +139,18 @@ class Boundary {
     }
     for(const auto& region:scan_.regions) {
       arena_.Step();Require(region.region.value<associated.size());
-      if(region.protocol==c_.protocol && region.role==IteratorRegionRole::kEnclosingHandler)
+      if(region.protocol==c_.protocol && region.role==IteratorRegionRole::kEnclosingHandler) {
         body_wrapper[region.region.value]=true;
+        const auto range=plan_.layout.regions[region.region.value].body;
+        if(!body_begin || range.begin<*body_begin)body_begin=range.begin;
+        if(!body_end || *body_end<range.end)body_end=range.end;
+      }
       if(region.protocol==c_.protocol && region.read.operation==c_.read) {
         Require(region.region.value<associated.size());associated[region.region.value]=true;
       }
     }
     Reserve(out_.regions,plan_.regions.size());
+    Reserve(out_.enclosures,plan_.regions.size());
     Reserve(out_.protected_ranges,plan_.regions.size());
     const auto overlaps=[&](InstructionRange range) {
       Require(range.begin.value<=range.end.value && range.end.value<prefix.size());
@@ -182,6 +187,27 @@ class Boundary {
         // the wrapper owner's independently recomputed split certificate.
         if(body_wrapper[t] && entry_dominators_ && live_begin && live_end &&
             region.body.begin<=*live_begin && *live_end<region.body.end)continue;
+        // A user try may surround a whole sealed close statement. Its
+        // handler stays ordinary: only complete protected containment (and
+        // disjoint handler code) authorizes composition, not partial overlap.
+        std::optional<InstructionId> site;
+        if(c_.protocol.value<scan_.candidates.size()) {
+          const auto acquisition=scan_.candidates[c_.protocol.value].acquisition.before;
+          Require(acquisition.value<flow_.nodes.size());site=flow_.nodes[acquisition.value].instruction;
+        }
+        const auto contains=[&](ExceptionNodeId n) {
+          Require(n.value<flow_.nodes.size());const auto i=flow_.nodes[n.value].instruction;
+          return region.body.begin<=i && i<region.body.end;
+        };
+        if (!overlaps(region.handler) && site && body_begin && body_end &&
+            region.body.begin<=*site && *site<region.body.end &&
+            region.body.begin<=*body_begin && *body_end<=region.body.end &&
+            contains(r_.iteration.advance) && contains(r_.iteration.exhausted.source) &&
+            (!r_.iteration.value || contains(*r_.iteration.value)) &&
+            prefix[region.body.end.value]-prefix[region.body.begin.value]==prefix.back()) {
+          out_.enclosures.push_back({t});
+          continue;
+        }
         region_ok=false;
         Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kUserTry);
         if(out_.missing && out_.missing->ownership_gap==CloseOwnershipGap::kUserTry && !out_.missing->region)out_.missing->region=TryId{t};

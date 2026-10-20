@@ -25,8 +25,20 @@ Scope ScopeOf(const std::optional<CatchScope>& scope) {
 }
 class Projection {
  public:
-  Projection(const ValueProgram& graph, const ExceptionPlan& regions, ControlQuota& quota)
-      : graph_(graph), regions_(regions), quota_(quota) {}
+  Projection(const ValueProgram& graph, const ExceptionPlan& regions, ControlQuota& quota,
+      std::span<const std::uint8_t> retained = {})
+      : graph_(graph), regions_(regions), quota_(quota), retained_(retained) {}
+  std::vector<std::optional<CatchScope>> Scopes() {
+    quota_.Size(owners_,graph_.blocks.size());
+    quota_.Size(result_.mapping.inactive_phases,graph_.blocks.size());
+    std::size_t count=0;
+    for(const auto r:regions_.layout.source_order){quota_.Work();count+=Active(r.value);}
+    quota_.Size(entries_,count);
+    Index(); Forwarders();
+    std::vector<std::optional<CatchScope>> result;quota_.Size(result,owners_.size());
+    for(std::size_t b=0;b<owners_.size();++b){quota_.Work();if(owners_[b])result[b]=CatchScope{owners_[b]->region,owners_[b]->part};}
+    return result;
+  }
   ExceptionTopology Build() {
     constexpr auto kMaxId = std::numeric_limits<std::uint32_t>::max();
     const auto blocks = graph_.blocks.size(), regions = regions_.regions.size();
@@ -113,7 +125,7 @@ class Projection {
     result_.owners.resize(unit_count_);
     result_.edges.resize(edge_count_); result_.mapping.arcs.resize(edge_count_);
     result_.entries.resize(root_count);
-    ComposeExceptionLoops(result_, regions_, graph_, quota_);
+    ComposeExceptionLoops(result_, {regions_.layout.source_order,regions_.layout.regions}, graph_, quota_);
     return std::move(result_);
   }
  private:
@@ -152,7 +164,21 @@ class Projection {
     }
     Require(found == completions.size(), Error::kInput);
   }
+  bool Active(std::size_t r) const {
+    return retained_.empty() ? !regions_.layout.regions[r].inactive : retained_[r]!=0;
+  }
+  Scope Resolve(Scope s) const {
+    return !s || Active(s->region.value) ? s : parents_[s->region.value];
+  }
+  Scope Parent(std::size_t r) const {
+    return retained_.empty()?ScopeOf(regions_.layout.regions[r].parent):parents_[r];
+  }
   void Index() {
+    if(!retained_.empty()) {
+      Require(retained_.size()==regions_.regions.size(),Error::kInput);
+      quota_.Size(parents_,regions_.regions.size());
+      for(const auto r:regions_.layout.source_order){quota_.Work();parents_[r.value]=Resolve(ScopeOf(regions_.layout.regions[r.value].parent));}
+    }
     const auto count = regions_.regions.size();
     quota_.Size(intervals_, count);
     std::vector<std::optional<TryId>> heads, siblings;
@@ -160,9 +186,9 @@ class Projection {
     quota_.Size(heads, count + 1); quota_.Size(siblings, count); quota_.Size(visits, 2 * count);
     std::size_t entry = 0;
     for (std::uint32_t r = 0; r < count; ++r) {
-      quota_.Work(); if (regions_.layout.regions[r].inactive) continue;
+      quota_.Work(); if (!Active(r)) continue;
       const TryId region{r};
-      const auto parent = ScopeOf(regions_.layout.regions[r].parent);
+      const auto parent = Parent(r);
       const auto slot = parent ? parent->region.value : count;
       siblings[r] = heads[slot]; heads[slot] = region;
       entries_[entry++] = {parent, regions_.regions[r].body, region};
@@ -184,7 +210,7 @@ class Projection {
         visits[pending++] = {*child, false};
       }
     }
-    Require(stamp == regions_.layout.source_order.size(), Error::kRegion);
+    Require(stamp == entries_.size(), Error::kRegion);
     std::sort(entries_.begin(), entries_.end(), [&](const auto& a, const auto& b) {
       quota_.Work(); return std::tie(a.parent, a.block) < std::tie(b.parent, b.block);
     });
@@ -193,12 +219,12 @@ class Projection {
           entries_[i - 1].block != entries_[i].block, Error::kCrossEntry);
     }
     for (std::size_t b = 0; b < graph_.phases.size(); ++b) {
-      quota_.Work(); owners_[b] = ScopeOf(regions_.layout.scopes[graph_.phases[b].instruction.value]);
+      quota_.Work(); owners_[b] = Resolve(ScopeOf(regions_.layout.scopes[graph_.phases[b].instruction.value]));
     }
     // Catch executes outside any nested try beginning at the handler's first
     // instruction. PC/range membership alone gives the wrong lexical owner.
     for (const auto id : regions_.layout.source_order) {
-      quota_.Work(); const auto r = id.value; const auto& binding = regions_.regions[r].binding;
+      quota_.Work(); const auto r = id.value; if(!Active(r))continue; const auto& binding = regions_.regions[r].binding;
       Require(binding.has_value(), Error::kRegion);
       owners_[binding->block.value] = ControlScope{{r}, CatchPart::kHandler};
     }
@@ -243,8 +269,8 @@ class Projection {
     quota_.Size(depth, count);
     quota_.Size(ancestors, count * levels);
     for (const auto id : regions_.layout.source_order) {
-      quota_.Work();
-      const auto parent = ScopeOf(regions_.layout.regions[id.value].parent);
+      quota_.Work();if(!Active(id.value))continue;
+      const auto parent = Parent(id.value);
       depth[id.value] = parent ? depth[parent->region.value] + 1 : 1;
       ancestors[id.value * levels] = parent;
       for (std::size_t level = 1; level < levels; ++level) {
@@ -385,7 +411,8 @@ class Projection {
   ControlQuota& quota_;
   ExceptionTopology result_;
   std::vector<bool> preserving_;
-  std::vector<Scope> owners_;
+  std::vector<Scope> owners_,parents_;
+  std::span<const std::uint8_t> retained_;
   std::vector<std::optional<ControlId>> wrappers_;
   std::uint32_t wrapper_end_ = 0;
   std::vector<RegionInterval> intervals_;
@@ -395,6 +422,10 @@ class Projection {
   std::uint32_t edge_count_ = 0;
 };
 }  // namespace
+std::vector<std::optional<CatchScope>> ProjectExceptionScopes(const ValueProgram& graph,
+    const ExceptionPlan& regions,std::span<const std::uint8_t> retained,ControlQuota& quota) {
+  quota.Admit(1,sizeof(Projection));return Projection(graph,regions,quota,retained).Scopes();
+}
 ExceptionTopology ProjectExceptionControl(const ValueProgram& graph,
     const ExceptionPlan& regions, ControlQuota& quota) {
   quota.Admit(1, sizeof(Projection));

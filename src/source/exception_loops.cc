@@ -16,7 +16,7 @@ struct Visit { LoopId loop; bool leave; };
 // transfer, and only a unique ordinary continuation survives on the wrapper.
 class Composition {
  public:
-  Composition(ExceptionTopology& topology, const ExceptionPlan& regions,
+  Composition(ExceptionTopology& topology, TryLoopLayout regions,
       const ValueProgram& graph, ControlQuota& quota)
       : t_(topology), regions_(regions), graph_(graph), quota_(quota) {}
   void Run() {
@@ -105,11 +105,11 @@ class Composition {
   }
   void Inherit() {
     quota_.Size(inherited_, t_.ports.size());
-    for (const auto region : regions_.layout.source_order) {
+    for (const auto region : regions_.order) {
       quota_.Work(); const auto wrapper = t_.mapping.regions[region.value]->wrapper;
       inherited_[region.value] = t_.loops.owners[wrapper.value];
       if (!inherited_[region.value]) {
-        const auto parent = regions_.layout.regions[region.value].parent;
+        const auto parent = regions_.regions[region.value].parent;
         if (parent) inherited_[region.value] = inherited_[parent->region.value];
       }
     }
@@ -213,11 +213,16 @@ class Composition {
   void Route() {
     quota_.Size(destinations_, t_.blocks.size());
     quota_.Size(origins_, t_.blocks.size());
+    std::vector<std::optional<ControlNodeId>> phases;
+    quota_.Size(phases, graph_.blocks.size());
+    for(std::uint32_t n=0;n<t_.mapping.units.size();++n) {
+      quota_.Work();if(const auto* p=std::get_if<PhaseControlUnit>(&t_.mapping.units[n]))phases[p->block.value]=ControlNodeId{n};
+    }
     std::vector<std::vector<bool>> abrupt;
     quota_.Size(abrupt, t_.ports.size());
     // Resolve a summary leaving nested tries using its parent's indexed port,
     // not an ancestor walk per CFG edge. Parent summaries precede children.
-    for (const auto region : regions_.layout.source_order) {
+    for (const auto region : regions_.order) {
       quota_.Work(); auto& ports = t_.ports[region.value];
       quota_.Size(abrupt[region.value], ports.size());
       const auto scope = inherited_[region.value];
@@ -247,7 +252,9 @@ class Composition {
       // Preserve the actual source loop for an exit inside a nested arm loop.
       // Normal ports remain arm terminals; abrupt ports become shared transfers.
       if (const auto* edge = std::get_if<EdgeId>(&exit->source)) {
-        origins_[n] = *edge; t_.loops.owners[n] = t_.loops.owners[graph_.edges[edge->value].source.value];
+        origins_[n] = *edge;
+        const auto phase=phases[graph_.edges[edge->value].source.value];Require(phase.has_value());
+        t_.loops.owners[n] = t_.loops.owners[phase->value];
       } else {
         const auto wrapper = t_.mapping.regions[std::get<TryId>(exit->source).value]->wrapper;
         t_.loops.owners[n] = t_.loops.owners[wrapper.value];
@@ -298,7 +305,7 @@ class Composition {
     t_.blocks = std::move(nodes); t_.edges = std::move(edges); t_.mapping.arcs = std::move(origins);
   }
   ExceptionTopology& t_;
-  const ExceptionPlan& regions_;
+  TryLoopLayout regions_;
   const ValueProgram& graph_;
   ControlQuota& quota_;
   std::vector<std::optional<LoopId>> inherited_, headers_;
@@ -307,7 +314,7 @@ class Composition {
   std::vector<std::optional<EdgeId>> origins_;
 };
 }  // namespace
-void ComposeExceptionLoops(ExceptionTopology& topology, const ExceptionPlan& regions,
+void ComposeExceptionLoops(ExceptionTopology& topology, TryLoopLayout regions,
     const ValueProgram& graph, ControlQuota& quota) {
   Composition(topology, regions, graph, quota).Run();
 }

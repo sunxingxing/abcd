@@ -16,10 +16,10 @@ oracles. Only ABC paths go to the engine.
 - `nested`: return/throw crosses inner and outer close. Still refuses the
   current-completion bridge; a failing inner close must become the outer input.
 - `async`: await in the body. Still refuses raw/rejection correspondence.
-- `catch`: a surrounding effectful user catch. Still refuses mixed ordinary
-  try / protocol topology, rather than consuming the catch as close code.
+- `catch`: a surrounding effectful user catch. Now publishes after sealed
+  statement/ordinary-try composition;162 independent trace cases cover it.
 
-The last five are negative admission tests, not differential passes. See
+The four remaining limits are negative admission tests, not differential passes. See
 `docs/design/source-recovery/for-of-multiple-exits.md` for the boundaries.
 
 `tests/tools/for_of_multiple_roundtrip.py` reuses the strict SDK assembly helpers

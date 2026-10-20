@@ -20,9 +20,9 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
     // Occurrence coverage is checked separately from flags: an omitted close
     // or acquisition cannot authorize partial projection of the method.
     std::vector<bool> acquisitions;
-    std::vector<std::uint8_t> owned, close_blocks, close_nodes;
+    std::vector<std::uint8_t> owned, excluded, retained, close_blocks, close_nodes;
     std::vector<std::pair<IteratorProtocolId, OpId>> regions;
-    quota.Size(owned,plan.regions.size());
+    quota.Size(owned,plan.regions.size());quota.Size(excluded,plan.regions.size());quota.Size(retained,plan.regions.size());
     quota.Size(close_blocks,graph.blocks.size());quota.Size(close_nodes,input.flow.nodes.size());
     quota.Size(acquisitions, scan.candidates.size()); quota.Size(regions, summary.regions.size());
     for (std::size_t i=0; i<summary.regions.size(); ++i) {
@@ -35,6 +35,10 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
         return CloseCompletionFailure{CloseCompletionError::kOwnership,r.protocol,r.read};
       for(const auto& member:r.members){quota.Work();if(member.node.value>=close_nodes.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};close_nodes[member.node.value]=1;}
       acquisitions[r.protocol.value]=true; regions[i]={r.protocol,r.read};
+      for (const auto id:r.boundary->enclosures) {
+        quota.Work();if(id.value>=excluded.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
+        excluded[id.value]=true;retained[id.value]=true;
+      }
       for(const auto id:r.boundary->regions) {
         quota.Work();if(id.value>=owned.size())return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
         owned[id.value]=true;
@@ -45,10 +49,17 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
       quota.Work(); if(regions[i-1]==regions[i])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
     }
     for(std::size_t b=0;b<graph.phases.size();++b){quota.Work();close_blocks[b]=close_nodes[graph.phases[b].input.value];}
+    for(std::uint32_t r=0;r<owned.size();++r){
+      quota.Work();
+      if(owned[r] && retained[r]) {
+        CloseCompletionFailure failure{CloseCompletionError::kNested};failure.region=TryId{r};return failure;
+      }
+      excluded[r]|=owned[r];
+    }
     ProtocolForwarding forwarding;
-    bool ordinary=false;for(std::size_t r=0;r<owned.size();++r){quota.Work();ordinary|=!owned[r] && !plan.layout.regions[r].inactive;}
+    bool ordinary=false;for(std::size_t r=0;r<owned.size();++r){quota.Work();ordinary|=!excluded[r] && !plan.layout.regions[r].inactive;}
     if(ordinary){
-    auto forwarded=AnalyzeProtocolForwarding(graph,plan,owned,close_blocks,quota.Remaining());
+    auto forwarded=AnalyzeProtocolForwarding(graph,plan,excluded,close_blocks,quota.Remaining(),retained);
     if(const auto* f=std::get_if<ForInFailure>(&forwarded)){
       CloseCompletionFailure failure{f->kind==ForInError::kWorkLimit?CloseCompletionError::kWorkLimit:f->kind==ForInError::kResourceLimit?CloseCompletionError::kResourceLimit:CloseCompletionError::kOwnership};
       if(f->block)for(std::uint32_t r=0;r<plan.regions.size();++r){quota.Work();if(plan.regions[r].handler==*f->block || (plan.regions[r].binding && plan.regions[r].binding->block==*f->block)){failure.region=TryId{r};break;}}

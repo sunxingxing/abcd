@@ -38,7 +38,12 @@ void VerifyProtocolForwardingRecovery(const FunctionTree&,RecoveryFlow& flow,Tre
   for(std::size_t o=0;o<raw.operations.size();++o){budget.Step();Need(raw.operations[o].block.value<f.blocks.size() && f.operations[o]==f.blocks[raw.operations[o].block.value]);}
   std::pmr::vector<std::uint8_t> incoming(raw.exceptional_exits.size(),0,&memory);
   for(const auto& edge:raw.edges){budget.Step();const auto a=f.blocks[edge.source.value],b=f.blocks[edge.target.value];if(!a&&!b)continue;
-    if(edge.kind==FlowEdgeKind::kException){Need(b);const auto o=raw.phases[edge.source.value].operation;Need(o && exits[o->value] && f.exits[*exits[o->value]]);const auto& exit=raw.exceptional_exits[*exits[o->value]];Need(exit.handler && exit.handler->entry==edge.target && !incoming[*exits[o->value]]);incoming[*exits[o->value]]=1;continue;}
+    if(edge.kind==FlowEdgeKind::kException){
+      if(a && !b) {
+        Need(terminal[edge.source.value] && f.regions[a->value]->destination && f.regions[a->value]->destination->entry==edge.target);
+        continue; // Original same-payload terminal dispatch to an ordinary catch.
+      }
+      Need(b);const auto o=raw.phases[edge.source.value].operation;Need(o && exits[o->value] && f.exits[*exits[o->value]]);const auto& exit=raw.exceptional_exits[*exits[o->value]];Need(exit.handler && exit.handler->entry==edge.target && !incoming[*exits[o->value]]);incoming[*exits[o->value]]=1;continue;}
     Need(a && b && !terminal[edge.source.value] && f.regions[a->value]==f.regions[b->value]);++pending[edge.source.value];++offset[edge.target.value+1];
   }
   for(std::size_t e=0;e<f.exits.size();++e){budget.Step();Need(!f.exits[e] || incoming[e]);}
@@ -53,18 +58,27 @@ void VerifyProtocolForwardingRecovery(const FunctionTree&,RecoveryFlow& flow,Tre
   for(std::uint32_t e=0;e<raw.exceptional_exits.size();++e){budget.Step();if(!f.exits[e])continue;const auto r=*f.exits[e];Need(r.value<f.regions.size() && f.regions[r.value]);const auto& exit=raw.exceptional_exits[e];Need(exit.handler);const auto h=exit.handler->entry;Need(h.value<f.blocks.size() && f.blocks[h.value] && f.regions[f.blocks[h.value]->value]==f.regions[r.value]);
     Need(f.regions[r.value]->payload.value<raw.values.size());const auto& payload=raw.values[f.regions[r.value]->payload.value];const auto* caught=std::get_if<CatchDefinition>(&payload.origin);Need(caught && caught->block==h);handlers[h.value]=r;
   }
+  std::pmr::vector<std::optional<FlowPoint>> ordinary(raw.blocks.size(),{},&memory),targets(f.regions.size(),{},&memory);
+  for(const auto& c:raw.catches){budget.Step();if(c && !f.blocks[c->handler.value]){
+    Need(c->handler.value<ordinary.size());const auto point=FindOriginalPhase(flow,c->handler,ExceptionPhase::kCatch);Need(point);ordinary[c->handler.value]=*point;
+  }}
   std::pmr::vector<std::uint32_t> degrees(f.regions.size(),0,&memory),parents(f.regions.size()+1,0,&memory),children(f.regions.size(),0,&memory),ready(&memory);ready.reserve(f.regions.size());
-  for(std::uint32_t r=0;r<f.regions.size();++r){budget.Step();if(!f.regions[r])continue;if(const auto d=f.regions[r]->destination){Need(d->entry.value<handlers.size() && handlers[d->entry.value]);degrees[r]=1;++parents[handlers[d->entry.value]->value+1];}else ready.push_back(r);}
+  for(std::uint32_t r=0;r<f.regions.size();++r){budget.Step();if(!f.regions[r])continue;
+    if(const auto d=f.regions[r]->destination){Need(d->entry.value<handlers.size());
+      if(handlers[d->entry.value]){degrees[r]=1;++parents[handlers[d->entry.value]->value+1];}
+      else {Need(ordinary[d->entry.value]);targets[r]=ordinary[d->entry.value];ready.push_back(r);}
+    }else {targets[r]=flow.terminal;ready.push_back(r);}}
+
   for(std::size_t r=1;r<parents.size();++r){budget.Step();parents[r]+=parents[r-1];}
   auto insert=std::pmr::vector<std::uint32_t>(parents,&memory);
-  for(std::uint32_t r=0;r<f.regions.size();++r){budget.Step();if(f.regions[r] && f.regions[r]->destination)children[insert[handlers[f.regions[r]->destination->entry.value]->value]++]=r;}
-  for(std::size_t i=0;i<ready.size();++i)for(auto p=parents[ready[i]];p<parents[ready[i]+1];++p){budget.Step();degrees[children[p]]=0;ready.push_back(children[p]);}
+  for(std::uint32_t r=0;r<f.regions.size();++r){budget.Step();if(f.regions[r] && f.regions[r]->destination && handlers[f.regions[r]->destination->entry.value])children[insert[handlers[f.regions[r]->destination->entry.value]->value]++]=r;}
+  for(std::size_t i=0;i<ready.size();++i)for(auto p=parents[ready[i]];p<parents[ready[i]+1];++p){budget.Step();degrees[children[p]]=0;targets[children[p]]=targets[ready[i]];ready.push_back(children[p]);}
   for(auto d:degrees){budget.Step();Need(!d);}
   for(std::uint32_t b=0;b<raw.blocks.size();++b){budget.Step();if(!f.blocks[b])continue;Need(good[b]);flow.original_phases[b]=FlowForwardedTryPhase{*f.blocks[b],WorkBlockId{b}};if(raw.phases[b].phase==ExceptionPhase::kCatch)flow.original_handlers[b]=FlowOriginalRouteCoverage::kComplete;}
   for(std::uint32_t e=0;e<raw.exceptional_exits.size();++e){budget.Step();const auto& exit=raw.exceptional_exits[e];
     if(f.operations[exit.op.value]){const auto r=*f.operations[exit.op.value];Need(raw.operations[exit.op.value].forwarding_throw);flow.original_exceptions[e]=FlowForwardedTryDispatch{e,r};}
-    else if(f.exits[e]){const auto r=*f.exits[e];Need(exit.handler && flow.original_actions[exit.op.value]);const auto& a=*flow.original_actions[exit.op.value];Need(a.exceptions.thrown==flow.terminal && !a.exceptions.finalizer);
-      flow.original_exceptions[e]=FlowForwardedException{a.before,flow.terminal,ForInExceptionExitId{e},exit.handler->entry,f.regions[r.value]->payload};}
+    else if(f.exits[e]){const auto r=*f.exits[e];Need(exit.handler && flow.original_actions[exit.op.value]);const auto& a=*flow.original_actions[exit.op.value];Need(targets[r.value] && a.exceptions.thrown==*targets[r.value] && !a.exceptions.finalizer);
+      flow.original_exceptions[e]=FlowForwardedException{a.before,*targets[r.value],ForInExceptionExitId{e},exit.handler->entry,f.regions[r.value]->payload};}
   }
 }
 }

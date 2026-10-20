@@ -43,19 +43,21 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
   }
   const auto& forwarding=ownership.Forwarding();
   if(!forwarding.regions.empty()) {
-    std::vector<std::uint8_t> owned,close;q.Size(owned,plan.regions.size());q.Size(close,g.blocks.size());
+    std::vector<std::uint8_t> owned,retained,close;q.Size(owned,plan.regions.size());q.Size(retained,plan.regions.size());q.Size(close,g.blocks.size());
     for(std::size_t r=0;r<owned.size();++r){q.Work();owned[r]=t.mapping.region_roles[r]==ExceptionRegionRole::kProtocolOwned;}
     for(std::size_t b=0;b<close.size();++b){q.Work();close[b]=members[g.phases[b].input.value];}
-    const auto verified=AnalyzeProtocolForwarding(g,plan,owned,close,q.Remaining());
+    for(const auto& region:summary.regions)for(const auto id:region.boundary->enclosures){q.Work();owned[id.value]=true;retained[id.value]=true;}
+    const auto verified=AnalyzeProtocolForwarding(g,plan,owned,close,q.Remaining(),retained);
     if(const auto* f=std::get_if<ForInFailure>(&verified))throw f->kind==ForInError::kResourceLimit?ExceptionControlError::kResourceLimit:f->kind==ForInError::kWorkLimit?ExceptionControlError::kWorkLimit:ExceptionControlError::kStructure;
     const auto& actual=std::get<ProtocolForwarding>(verified);q.Admit(actual.allocated_bytes,1);q.Work(actual.work);
     q.Work(actual.regions.size()+actual.blocks.size()+actual.operations.size()+actual.exits.size());
     Require(actual==forwarding);
   }
   for(std::size_t r=0;r<forwarding.regions.size();++r){q.Work();if(forwarding.regions[r]){Require(t.mapping.region_roles[r]==ExceptionRegionRole::kOrdinaryTry);t.mapping.region_roles[r]=ExceptionRegionRole::kForwardedTry;}}
-  // Ordinary wrappers are never erased. Their established multiple-exit
-  // refusal is retained until mixed ordinary/protocol enclosure is supported.
-  for(const auto role:t.mapping.region_roles) {q.Work();if(role==ExceptionRegionRole::kOrdinaryTry)throw ExceptionControlError::kMultipleExits;}
+  // Retain ordinary enclosures around sealed statements. Only independently
+  // proved transparent routes are erased; effectful user catches stay ordinary.
+  bool ordinary=false;
+  for(const auto role:t.mapping.region_roles) {q.Work();ordinary|=role==ExceptionRegionRole::kOrdinaryTry;}
   Require(g.blocks.size()<=UINT32_MAX-summary.entries.size());
   q.Size(t.mapping.units,g.blocks.size()+summary.entries.size());
   q.Size(t.mapping.protocol_ports,ports);
@@ -162,6 +164,6 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
     q.Work();if(incoming[n]==0 && n!=phase[0]->value)t.entries[roots++]={n};
   }
   t.entries.resize(roots);
-  return t;
+  return ordinary?ComposeOrdinaryEnclosures(std::move(t),plan,g,q):std::move(t);
 }
 }

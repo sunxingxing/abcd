@@ -21,7 +21,19 @@ for(const mode of ['return','error','getter','primitive','null']){
 }console.log(JSON.stringify(all));`);
  const oracle=join(scratch,'original.mjs');writeFileSync(oracle,readFileSync(join(fixtures,'handler.js')));
  const evaluate=p=>run(process.execPath,[runner,pathToFileURL(resolve(p)).href]);
- const expected=evaluate(oracle);let published=0,partial=0,refused=0,mutations=0;
+ const expected=evaluate(oracle);let published=0,partial=0,refused=0,mutations=0,loopCases=0;
+ const loopRunner=join(scratch,'loop-runner.mjs');
+ writeFileSync(loopRunner,`import assert from 'node:assert/strict';
+const actual=await import(process.argv[2]),original=await import(process.argv[3]);
+const fn=m=>m.Tool?new m.Tool().query.bind(new m.Tool()):m.query;
+function run(f,mode,outcome){const log=[],error={code:23,message:'failure'};let index=0;
+ const item={get stop(){log.push('stop');if(mode==='throw')throw error;return mode==='break';}};
+ const xs={[Symbol.iterator](){log.push('acquire');const it={next(){log.push('next');return index++<2?{done:false,value:item}:{done:true};}};
+ if(outcome!=='missing')Object.defineProperty(it,'return',{get(){log.push('return-get');if(outcome==='getter')throw error;if(outcome==='null')return null;return function(){log.push(['return',this===it]);if(outcome==='call')throw error;return outcome==='primitive'?1:{};};}});return it;}};
+ const seen=[];seen.push=function(x){log.push(x===item?'item':x);return Array.prototype.push.call(this,x);};
+ try{log.push(['result',f(xs,seen)]);}catch(e){log.push(['throw',e.constructor.name]);}return log;}
+let count=0;for(const mode of ['normal','break','throw'])for(const outcome of ['object','missing','null','getter','call','primitive']){assert.deepEqual(run(fn(actual),mode,outcome),run(fn(original),mode,outcome));++count;}
+if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
  for(const [contract,flags] of [['source',['--language-source']],['previous',['--language-numeric','--language-constructors']]])
  for(const name of ['handler','close','loop','member'])for(const mode of ['O0','default']){
   const out=join(scratch,`${contract}-${name}-${mode}`);
@@ -31,6 +43,13 @@ for(const mode of ['return','error','getter','primitive','null']){
    assert.equal(r.source_status,3,JSON.stringify(r));
    assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::PhasedMethodError',value:5},{domain:'abcd::source::ExceptionPlanError',value:2},{domain:'abcd::analysis::CatchRegionError',value:1}]);
    ++refused;continue;
+  }
+  if((name==='close'||name==='member')&&contract==='source') {
+   assert.equal(r.source_status,0,JSON.stringify(r));++published;
+   const output=join(out,r.source);run(process.execPath,['--check',output]);
+   const reference=join(scratch,name+'-original.mjs');writeFileSync(reference,readFileSync(join(fixtures,name+'.js')));
+   loopCases+=Number(run(process.execPath,[loopRunner,pathToFileURL(resolve(output)).href,pathToFileURL(resolve(reference)).href]));
+   continue;
   }
   if(name==='member') {
    assert.equal(r.source_status,4,JSON.stringify(r));
@@ -66,5 +85,5 @@ for(const mode of ['return','error','getter','primitive','null']){
    run(process.execPath,['--check',bad]);assert.notEqual(evaluate(bad),expected,label);++mutations;
   }
  }
- console.log(JSON.stringify({published,partial,refused,comparisons:published,behaviorCases:published*5,mutations}));
+ console.log(JSON.stringify({published,partial,refused,comparisons:published,behaviorCases:(published-2)*5+loopCases,loopCases,mutations}));
 } finally {rmSync(scratch,{recursive:true,force:true});}
