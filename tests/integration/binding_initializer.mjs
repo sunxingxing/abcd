@@ -442,8 +442,13 @@ for (const row of rows) {
       // A successful constant proof does not authorize removing the other
       // branch's abrupt completion. A valid-JS mutant must expose that error.
       const branch=ast.body[0].expression.body.body.find(node=>node.type==='IfStatement');
-      assert.ok(branch?.alternate);
-      const changed=row.source.slice(0,branch.alternate.start)+'{}'+row.source.slice(branch.alternate.end);
+      assert.ok(branch);assert.equal(branch.alternate,null);
+      assert.equal(branch.test.type,'UnaryExpression');assert.equal(branch.test.operator,'!');
+      assert.equal(branch.test.argument.name,'seed');
+      assert.equal(branch.consequent.type,'BlockStatement');
+      assert.equal(branch.consequent.body.length,1);assert.equal(branch.consequent.body[0].type,'ReturnStatement');
+      const changed=row.source.slice(0,branch.consequent.start)+'{}'+row.source.slice(branch.consequent.end);
+      assert.notEqual(changed,row.source);
       parseJavaScript(changed);const bad=Function('return '+changed)();
       const actual=await run(bad,token,Infinity,false),expected=await run(reference,token,Infinity,false);
       assert.throws(()=>compare(actual,expected),assert.AssertionError);++mutations;

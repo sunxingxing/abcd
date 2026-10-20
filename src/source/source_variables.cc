@@ -29,6 +29,12 @@ std::variant<SourceVariables,TreeStructureError> PrepareSourceVariables(
     RequireTree(binding_storage<=result.bindings.allocated_bytes,TreeStructureError::kOwnership);
     budget.Release(result.bindings.allocated_bytes-binding_storage);
     result.braces=BuildBracePlan(tree,result.bindings,result.nullish,result.loops,budget);
+    result.readable=BuildReadableStatements(tree,result.bindings,result.nullish,result.loops,original,budget);
+    {
+      const auto start=budget.ActiveBytes();
+      RequireTree(VerifyReadableStatements(tree,result.bindings,result.nullish,result.loops,original,result.readable,budget),TreeStructureError::kOwnership);
+      budget.Release(budget.ActiveBytes()-start);
+    }
     result.readable_equalities=BuildReadableEqualityTargets(tree,result.bindings.replacements,budget);
     result.retained_bytes=budget.ActiveBytes();
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;

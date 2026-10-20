@@ -251,3 +251,107 @@ export function sourceAwaitSites(source) {
  }
  return sites.sort((a,b)=>a.start-b.start);
 }
+
+// Independent source witness for printer-only statement projections. The
+// selected sites are found by AST correspondence, not diagnostic text/regex.
+export function rewriteReadableStatements(source,nextSource) {
+  const parse=s=>acorn.parse(s,{ecmaVersion:'latest',sourceType:'module'});
+  const a=parse(source),b=parse(nextSource),edits=[],counts={tdzGuard:0,emptyElse:0,invertedEmpty:0,switchBreak:0,switchLabel:0,switchValue:0};
+  const comments=scan(source).comments;
+  const clear=n=>n?.type==='BlockStatement'&&n.body.length===0&&!comments.some(c=>c.start>=n.start&&c.end<=n.end);
+  const bare=n=>n?.type==='ExpressionStatement'&&n.expression.type==='Identifier';
+  const assignment=n=>n?.type==='ExpressionStatement'&&n.expression.type==='AssignmentExpression'&&n.expression.left.type==='Identifier'?n.expression:undefined;
+  const target=n=>assignment(n)?.left.name??(n?.type==='ExpressionStatement'&&n.expression.type==='UpdateExpression'&&n.expression.argument.type==='Identifier'?n.expression.argument.name:undefined);
+  const text=n=>source.slice(n.start,n.end);
+  const pending=[[a,b]];
+  const equal=(x,y)=>JSON.stringify(clean(x))===JSON.stringify(clean(y));
+  function clean(n){if(Array.isArray(n))return n.map(clean);if(!n||typeof n!=='object')return n;return Object.fromEntries(Object.entries(n).filter(([k])=>!['start','end','raw'].includes(k)).map(([k,v])=>[k,clean(v)]));}
+  function negate(n) {
+    if(n.type==='UnaryExpression'&&n.operator==='!')return text(n.argument);
+    const complement={'==':'!=','!=':'==','===':'!==','!==':'==='};
+    if(n.type==='BinaryExpression'&&complement[n.operator])return `((${text(n.left)}) ${complement[n.operator]} (${text(n.right)}))`;
+    return `!(${text(n)})`;
+  }
+  while(pending.length) {
+    const [x,y]=pending.pop();
+    if(Array.isArray(x)&&Array.isArray(y)) {
+      let i=0,j=0;
+      while(i<x.length&&j<y.length){
+        if(bare(x[i]) && target(x[i+1]) && target(y[j]) &&
+            x[i].expression.name===target(x[i+1]) && equal(x[i+1],y[j])) {
+          // The raw guarded-store certificate establishes RHS effects. This
+          // lexer witness restricts the token change to that exact read only.
+          assert(!comments.some(c=>c.start>=x[i].start&&c.end<=x[i].end));
+          edits.push([x[i].start,x[i].end,'']);++counts.tdzGuard;++i;continue;
+        }
+        if(x[i]?.type==='VariableDeclaration'&&x[i].declarations.length===1 &&
+            x[i].declarations[0].init && x[i].declarations[0].id.type==='Identifier' &&
+            x[i+1]?.type==='SwitchStatement'&&y[j]?.type==='SwitchStatement' &&
+            x[i+1].discriminant.type==='Identifier'&&x[i+1].discriminant.name===x[i].declarations[0].id.name &&
+            equal(x[i].declarations[0].init,y[j].discriminant)) {
+          const d=x[i].declarations[0];edits.push([x[i].start,x[i].end,''],[x[i+1].discriminant.start,x[i+1].discriminant.end,text(d.init)]);
+          ++counts.switchValue;pending.push([x[i+1].cases,y[j].cases]);i+=2;++j;continue;
+        }
+        pending.push([x[i++],y[j++]]);
+      }
+      assert.equal(i,x.length,'unapproved removed statement');assert.equal(j,y.length,'unapproved added statement');continue;
+    }
+    if(x?.type==='IfStatement'&&y?.type==='IfStatement') {
+      if(clear(x.alternate)&&!y.alternate) {
+        const tokens=scan(source).tokens;
+        const token=tokens.find(t=>t.start>=x.consequent.end&&t.end<=x.alternate.start&&t.type.label==='else');assert(token);
+        edits.push([token.start,x.alternate.end,'']);++counts.emptyElse;
+        pending.push([x.test,y.test],[x.consequent,y.consequent]);continue;
+      }
+      if(clear(x.consequent)&&x.alternate&&!y.alternate) {
+        const inverted=negate(x.test);
+        // Parse the witness condition before accepting the opposite arm.
+        assert(equal(parse(`if (${inverted}) {}`).body[0].test,y.test),'wrong inverted predicate');
+        edits.push([x.test.start,x.test.end,inverted]);
+        if(x.alternate.type==='BlockStatement') {
+          edits.push([x.consequent.start,x.alternate.start,'']);
+          pending.push([x.alternate,y.consequent]);
+        } else {
+          assert(y.consequent.type==='BlockStatement'&&y.consequent.body.length===1,'missing braced arm');
+          edits.push([x.consequent.start,x.alternate.start,'{ '],[x.end,x.end,' }']);
+          pending.push([x.alternate,y.consequent.body[0]]);
+        }
+        ++counts.invertedEmpty;continue;
+      }
+    }
+    if(x?.type==='LabeledStatement'&&x.body.type==='SwitchStatement'&&y?.type==='SwitchStatement') {
+      const label=x.label.name;let uses=0;
+      const work=[[x.body,x.body]];
+      while(work.length){const [n,nearest]=work.pop();
+        const owner=['SwitchStatement','WhileStatement','DoWhileStatement','ForStatement','ForOfStatement','ForInStatement'].includes(n.type)?n:nearest;
+        if(n.type==='BreakStatement'&&n.label?.name===label){assert.equal(nearest,x.body,'switch is not innermost');edits.push([n.label.start,n.label.end,'']);++uses;}
+        if(n.type==='ContinueStatement')assert.notEqual(n.label?.name,label);
+        for(const v of Object.values(n))if(Array.isArray(v)){for(const c of v)if(c?.type)work.push([c,owner]);}else if(v?.type)work.push([v,owner]);
+      }
+      edits.push([x.start,x.body.start,'']);counts.switchBreak+=uses;++counts.switchLabel;
+      const projected=structuredClone(x.body),queue=[projected];
+      while(queue.length){const n=queue.pop();if(n.type==='BreakStatement'&&n.label?.name===label)n.label=null;
+        for(const v of Object.values(n))if(Array.isArray(v)){for(const c of v)if(c?.type)queue.push(c);}else if(v?.type)queue.push(v);
+      }
+      pending.push([projected,y]);continue;
+    }
+    if(x===null||y===null||typeof x!=='object'||typeof y!=='object'){assert.deepEqual(x,y,'unapproved AST change');continue;}
+    const keys=n=>Object.keys(n).filter(k=>!['start','end','raw'].includes(k)).sort();assert.deepEqual(keys(x),keys(y),'AST fields');
+    for(const k of keys(x))pending.push([x[k],y[k]]);
+  }
+  let result=source;
+  for(const [lo,hi,v]of edits.sort((p,q)=>q[0]-p[0]))result=result.slice(0,lo)+v+result.slice(hi);
+  // All remaining changes must be grouping-only. Comments outside explicitly
+  // empty blocks are conserved by the same real-lexer check.
+  const normalized=s=>{
+    const scanned=scan(s);
+    return [...scanned.tokens.filter(t=>t.type.label!=='eof').map(t=>[t.start,t.end,false]),
+      ...scanned.comments.map(c=>[c.start,c.end,true])].sort((a,b)=>a[0]-b[0])
+      .map(([lo,hi,comment])=>s.slice(lo,hi)+(comment?'\n':' ')).join('');
+  };
+  // Statement deletion necessarily moves line boundaries. AST matching above
+  // retains ASI semantics; compare real lexer spellings/comments independently
+  // of indentation, with grouping-only differences in the remaining stream.
+  const removed=inferGroupingRemovals(normalized(result),normalized(nextSource)).length;
+  return {source:result,edits,counts,removed};
+}

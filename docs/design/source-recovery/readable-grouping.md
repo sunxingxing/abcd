@@ -1248,3 +1248,10 @@ Final current-run counts match baseline: **104 cases, 330 fault injections, 66
 live swaps, 22 mutations, 2 equivalents**. No program or timeout was changed
 to obtain that result. Paired SDK/token evidence is in `paired-check/report.json`;
 full final graph output is in `community-ability-final-detail.log`.
+
+
+## Readable statement slice 3 (2026-10-21)
+
+See [readable-statements.md](readable-statements.md) for the independent printer
+certificate, TDZ interval restrictions, empty-arm/switch proofs, constructor
+snapshot follow-up design and cohort/SDK acceptance. This remains ReadableV1.

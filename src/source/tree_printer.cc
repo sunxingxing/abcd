@@ -1774,8 +1774,15 @@ class TreePrinter {
     if(!Nullish().statement_projections.empty() && Nullish().statement_projections[at.id.value]) {
       Push(std::string_view(";"));PrintNullish(*Nullish().statement_projections[at.id.value],ExpressionObservation::kDiscarded);return;
     }
+    const auto rewrite=Variables().readable.branches[at.id.value];
     Append("if (");
-    if (node.alternate) {
+    if(rewrite==ReadableBranch::kInvert) {
+      Push(Statement{*node.alternate,at.depth});Push(std::string_view(") "));
+      Push(BooleanOperand{{node.condition,{ExpressionGrammar::kExpression},{},ExpressionObservation::kTruthiness},true});
+      Push(ElideStatement{node.consequent});return;
+    }
+    if(rewrite==ReadableBranch::kDropElse)Push(ElideStatement{*node.alternate});
+    if (node.alternate && rewrite!=ReadableBranch::kDropElse) {
       Push(Statement{*node.alternate, at.depth, Variables().braces.statements[node.alternate->value]==BraceReason::kElseIf ? BlockForm::kElseIf : BlockForm::kBraced}); Push(std::string_view(" else "));
     }
     Push(Statement{node.consequent, at.depth}); Push(std::string_view(") "));
@@ -1797,7 +1804,8 @@ class TreePrinter {
       }
     }
     if (!discriminant) throw Error::kUnsupportedContext;
-    if (node.label) {
+    if(const auto value=Variables().readable.switch_values[at.id.value])discriminant=value;
+    if (node.label && !Variables().readable.omit_labels[at.id.value]) {
       Label(*node.label);
       Append(": ");
     }
@@ -2087,7 +2095,7 @@ class TreePrinter {
     if (label) { Append(" "); Label(*label); }
     Append(";");
   }
-  void StatementNode(BreakStmt node, Statement) { Transfer("break", node.label); }
+  void StatementNode(BreakStmt node, Statement at) { Transfer("break", Variables().readable.plain_breaks[at.id.value] ? std::nullopt : node.label); }
   void StatementNode(ContinueStmt node, Statement) { Transfer("continue", node.label); }
   void StatementNode(DebuggerStmt, Statement) { Append("debugger;"); }
   void StatementNode(UnrecoveredStmt node, Statement) {
@@ -2154,7 +2162,7 @@ class TreePrinter {
       Result().expression_extents[read->value] = GeneratedExtent::kBoundary;
       return;
     }
-    if (Initializers().omitted[child.value]) {
+    if (Initializers().omitted[child.value] || Variables().readable.omit_snapshots[child.value] || Variables().readable.guards[child.value]==ReadableGuard::kRemove) {
       Push(ElideStatement{child}); return;
     }
     if(at.form==BlockForm::kElseIf){Push(Statement{child,at.depth});return;}

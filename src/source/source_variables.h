@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_SOURCE_VARIABLES_H_
 #include "binding_initializer.h"
 #include "brace_plan.h"
+#include "readable_statements.h"
 #include "loop_syntax.h"
 #include "nullish_syntax.h"
 namespace abcd::source {
@@ -16,6 +17,7 @@ struct SourceVariables {
   LoopSyntax loops;
   BindingInitializers bindings;
   BracePlan braces;
+  ReadableStatements readable;
   std::vector<std::optional<ExprId>> readable_equalities;
   // Peak preparation admission and conservative returned storage are distinct.
   // Callers admit the peak before releasing destroyed preparation scratch.

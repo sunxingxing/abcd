@@ -9,6 +9,49 @@
 
 
 
+## Readable output slice 3: certified statement cleanup (2026-10-21)
+
+- OLD **40ed813b**. Added a printer-only `ReadableStatements` certificate and
+  independent recomputation after the existing binding/nullish/loop plans.
+  It consumes OriginalFlow guarded-read/initialized-guard evidence plus the
+  whole RHS effect summary. No engine proof, contract or publication gate is
+  loosened; policy remains **PrinterPolicy::kReadableV1**.
+- Source cohort: **142** adjacent bare-read/store sites in **46** complete files;
+  **106** redundant reads removed in **43** files, **36** conservative residual /
+  composed occurrences retained. Effectful/throwing RHS and lazy module reads
+  remain guarded. Empty-branch cleanup removes **29** empty elses and inverts
+  **201** empty consequents. The native switch loses **7** break labels and its
+  one unused switch label. No discriminant snapshot qualifies in the cohort.
+- Complete sets unchanged: source **599/620**, previous **541/620**; **0**
+  regressions or new completions. Text changes are intentional: source **107**
+  complete files, previous **83**. Acorn/token checks pass **107/107** and
+  **83/83**; Node syntax checks pass all changed files (one Ark lazy-import
+  file uses a token/offset-preserving JS shadow, never for SDK input).
+- SDK, default: source **12 identical / 95 approved / 0 differ / 0 unverified**;
+  previous **12 / 71 / 0 / 0**. O0: source **0 / 107 / 0 / 0**, previous
+  **0 / 83 / 0 / 0**. Each approved difference exactly matches a third SDK
+  compilation of OLD with only independently AST-derived statement edits.
+  Registers, branches, handlers and metadata are never normalized. Reports
+  list each changed method and its approved rewrite classes.
+- Paired samples also preserve **80/80** complete records: **2** changed files,
+  **3** inverted empty arms; token/Node checks **2/2** and SDK **0 identical /
+  2 approved / 0 differ / 0 unverified** at both optimizations.
+- Full build succeeds. Source-regression **65/65**; new/extended readable unit,
+  token and SDK-witness tests **3/3**. Requested sweep **147/159**, with **12**
+  known pre-existing failures reproduced against OLD (ten via wtbase CTest,
+  family/class CLI by their original commands). The only changed existing
+  spelling expectation is `binding_initializer.mjs`: assert the inverted
+  predicate and the single-return arm before deleting that return in its
+  behavioral mutant. No differential/mutation assertion is weakened.
+- The resource tests cover **200/201/400/800** exact byte/work boundaries and
+  one-less refusal. Guard/catch/reference/scope identities stay intact; omitted
+  text keeps source-map boundaries and counting/real sinks share the plan.
+- Constructor/callee/selection snapshot removal is **deferred**, with the
+  required joint invocation projection documented in
+  [readable-statements.md](readable-statements.md). TimeUtils's retained DayInfo
+  and phi assignments are unchanged. Evidence and raw SDK diffs:
+  `build/review/readable3/`. No commit/push/stash performed.
+
 ## Staged call-field forests; TimeUtils complete (2026-10-21)
 
 - Baseline/OLD **2a0ca2a8**. Added `LiteralFields` derivation and independent

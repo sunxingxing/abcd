@@ -67,3 +67,39 @@ const shadow=fieldTypeShadow(typed,true);assert.equal(shadow.source.length,typed
 assert.deepEqual(shadow.types,[['item',': Imported.Type']]);
 assert.notDeepEqual(shadow.types,fieldTypeShadow(typed.replace('Imported.Type','Other.Type'),true).types);
 assert.equal(negated(shadow.source,fieldTypeShadow(typed.replace('(await x)','await x'),true).source).removed,1);
+const {rewriteReadableStatements: statements}=await import('../tools/grouping_tokens.mjs');
+for(const [old,next,key] of [
+ ['function f(){x; x=1;}','function f(){x=1;}','tdzGuard'],
+ ['if(c){f();}else {}','if(c){f();}','emptyElse'],
+ ['if(!c){}else{f();}','if(c){f();}','invertedEmpty'],
+ ['if(a===b){}else{f();}','if(a!==b){f();}','invertedEmpty'],
+ ['$loop1:switch(x){case 1:break $loop1;}','switch(x){case 1:break;}','switchBreak'],
+ ['const $v=f();switch($v){case 1:g();break;}','switch(f()){case 1:g();break;}','switchValue']])assert.equal(statements(old,next).counts[key],1);
+for(const [old,next] of [
+ ['function f(){x;x=1;}','function f(){y=1;}'],
+ ['if(c){a();}else {}','if(c){b();}'],
+ ['if(c){}else{f();}','if(c){f();}'],
+ ['if(a<b){}else{f();}','if(a>=b){f();}'],
+ ['if(c){let x;}else{f();}','if(!c){f();}'],
+ ['$loop1:switch(x){case 1:while(x){break $loop1;}}','switch(x){case 1:while(x){break;}}'],
+ ['const $v=f();switch($v){case 1:g();break;}','switch(h()){case 1:g();break;}'],
+ ['if(c){}else{/*keep*/f();}','if(!c){f();}']])assert.throws(()=>statements(old,next));
+// Executable language oracles: TDZ throw must precede effects; a native inert
+// PutValue has the same throw. Effectful RHS remains a negative case in C++.
+for(const source of ['x; x=1;','x=1;']){
+ const log=[];let error;try{Function('log',`try { ${source} } finally { log.push('finally'); } let x;`)(log);}catch(e){error=e.constructor.name;}
+ assert.equal(error,'ReferenceError');assert.deepEqual(log,['finally']);
+}
+for(const a of [undefined,null,0,1,NaN,{},'x']){
+ const old=Function('a','let out=[];if(!a){}else{out.push(1);}return out;')(a);
+ const next=Function('a','let out=[];if(a){out.push(1);}return out;')(a);assert.deepEqual(old,next);
+}
+console.log('readable statement checker: approved classes, negative mutations, TDZ and branch differentials passed');
+
+const lazy='import lazy { x } from "mod"; function f(){if(x){}else{g();}}';
+const lazyShadow=fieldTypeShadow(lazy,true);assert(lazyShadow.source.includes('import      { x }'));
+assert.deepEqual(lazyShadow.types,[['lazy-import','lazy']]);
+assert.deepEqual(fieldTypeShadow('export { x as "x" }; const x=1;',true).types,[]);
+
+assert.equal(statements('function f(){x;x++;}','function f(){x++;}').counts.tdzGuard,1);
+assert.equal(statements('function f(){x;x+=y;}','function f(){x+=y;}').counts.tdzGuard,1);

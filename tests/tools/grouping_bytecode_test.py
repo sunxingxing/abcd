@@ -45,4 +45,29 @@ class NegatedEqualityWitness(unittest.TestCase):
             wrong,report=check('wrong','--negated-equality')
             self.assertNotEqual(wrong.returncode,0)
             self.assertEqual(report['tokens']['fail'],1)
+class ReadableStatementWitness(unittest.TestCase):
+    @unittest.skipUnless(pathlib.Path(ES2ABC).exists(), 'pinned SDK unavailable')
+    def test_exact_statement_witness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp)
+            old='export function f(c){let x=0;x;x=1;if(!c){}else{x=2;} $loop0:switch(c){case 1:x=3;break $loop0;}return x;}'
+            new='export function f(c){let x=0;x=1;if(c){x=2;} switch(c){case 1:x=3;break;}return x;}'
+            for side,text in [('old',old),('new',new)]:
+                d=root/side;d.mkdir();(d/'input.mjs').write_text(text)
+                (d/'manifest.json').write_text(json.dumps({'records':[{'entity':1,'source_status':0,'source':'input.mjs'}]}))
+            script=pathlib.Path(__file__).with_name('grouping_bytecode.py')
+            def check(name,*flags):
+                p=subprocess.run([sys.executable,str(script),'--old',str(root/'old'),'--new',str(root/'new'),'--out',str(root/name),*flags],capture_output=True,text=True)
+                return p,json.loads((root/name/'report.json').read_text())
+            p,r=check('approved','--readable-statements')
+            self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+            self.assertEqual(r['tokens']['pass'],1)
+            self.assertEqual(r['readable_counts']['tdzGuard'],1)
+            self.assertEqual(r['readable_counts']['invertedEmpty'],1)
+            self.assertEqual(r['readable_counts']['switchBreak'],1)
+            self.assertTrue(all(mode['differ']==0 for mode in r['bytecode'].values()))
+            p,r=check('strict');self.assertNotEqual(p.returncode,0)
+            (root/'new/input.mjs').write_text(new.replace('x=2','x=4'))
+            p,r=check('wrong','--readable-statements');self.assertNotEqual(p.returncode,0)
+            self.assertEqual(r['tokens']['fail'],1)
 if __name__=='__main__':unittest.main()
