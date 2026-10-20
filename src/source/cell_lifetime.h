@@ -14,9 +14,11 @@ struct CellArmScope { ControlId branch; analysis::FlowEdgeKind arm; };
 struct CellLoopScope { LoopId loop; };
 enum class CellTryPart : std::uint8_t { kBody, kHandler };
 struct CellTryScope { analysis::TryId region; CellTryPart part; };
+struct CellSwitchScope { analysis::WorkBlockId entry; };
+struct CellSwitchCaseScope { analysis::WorkBlockId entry; std::uint32_t clause; };
 struct CellScope {
   std::optional<CellScopeId> parent;
-  std::variant<CellBodyScope, CellArmScope, CellLoopScope, CellTryScope> origin;
+  std::variant<CellBodyScope, CellArmScope, CellLoopScope, CellTryScope, CellSwitchScope, CellSwitchCaseScope> origin;
 };
 struct IncomingLifetime {};
 struct CellLifetimes {

@@ -7,6 +7,36 @@
 
 
 
+## Native switch fall-through (2026-10-20)
+
+- Baseline/wtbase **f5c62475**. **o18/57687 completes under --language-source**;
+  m58255's effectful close case is owned once, entered by original fall-through
+  edges e31/e33. Native `SwitchStmt`/case syntax, fresh value/edge-derived control
+  verification, TreeFlow and every recovery projection preserve the cached
+  discriminant, lazy case tests, default position, breaks, returns and loop
+  continue. Empty labels have required retention. No new premise; old successful
+  if-ladder plans are unchanged. Details and exact original/emitted callback:
+  [native-switch.md](native-switch.md).
+- Both 40-input cohorts: **538/620 unchanged** (previous flags),
+  **593/620 -> 594/620** (source); **0 regressions, 0 complete-source text drift**.
+  Only source-contract record o18/57687 changes its manifest. Its previous-flag
+  capture refusal in m57863 PC123 is unchanged.
+- Full build passed; **65/65 source-regression**, **3/3 new tests**;
+  requested sweep **186/192**, six known failures independently reproduced with
+  rebuilt wtbase targets. Real es2abc fixture: **3,150 Node scenarios per flag
+  set**, plus **260 paired target scenarios**, mutations and 200/201/400/800
+  width/depth exact budgets. New output passes `node --check`.
+- Per-method es2abc round-trip: all seven pairs compile at default/O0;
+  strict assembly equality is **4/7 default, 0/7 O0**. Remaining Boolean lowering,
+  private storage/register transport and jump-to-follow differences are listed
+  individually in the design note; no broad normalization or equality claim.
+- Scratch evidence: `build/review/native-switch/`; conservative four-child plus
+  parent peak RSS upper bounds are below 174MB. Unrestricted test-only census:
+  41/51 previously complete records (68/89 sites, previous/source) would pass
+  native publication; production does not convert them. Phased/nested unproved
+  ownership, shared lexical scope and effectful loop-continuation corridors
+  keep typed refusals. No commit, push or stash performed.
+
 ## Switch ownership checkpoint: shared optional-break corridor (2026-10-20)
 
 - Baseline **ca4fc005** (HEAD and built wtbase). This is a **partial round**:

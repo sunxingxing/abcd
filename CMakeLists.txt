@@ -187,7 +187,7 @@ target_sources(abcd_source PRIVATE
 )
 target_sources(abcd_source PRIVATE src/source/source_route.cc)
 target_sources(abcd_source PRIVATE src/source/value_stage.cc)
-target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_forwarding.cc src/source/control_verify.cc src/source/logical_regions.cc src/source/logical_evaluation.cc src/source/joint_selection_use.cc
+target_sources(abcd_source PRIVATE src/source/control_plan.cc src/source/control_forwarding.cc src/source/switch_region.cc src/source/switch_syntax.cc src/source/control_verify.cc src/source/logical_regions.cc src/source/logical_evaluation.cc src/source/joint_selection_use.cc
   src/source/selection_consumer.cc src/source/predicate_snapshots.cc)
 target_sources(abcd_source PRIVATE src/source/control_skeleton_verify.cc)
 target_sources(abcd_source PRIVATE src/source/exception_plan.cc)
@@ -595,6 +595,9 @@ if(BUILD_TESTING)
   add_executable(control_terminal_test tests/unit/source/control_terminal_test.cc)
   target_link_libraries(control_terminal_test PRIVATE abcd_source abcd_json)
   add_test(NAME control_terminal_test COMMAND control_terminal_test)
+  add_executable(switch_region_test tests/unit/source/switch_region_test.cc)
+  target_link_libraries(switch_region_test PRIVATE abcd_source)
+  add_test(NAME switch_region_test COMMAND switch_region_test)
   add_executable(control_forwarding_test tests/unit/source/control_forwarding_test.cc)
   target_link_libraries(control_forwarding_test PRIVATE abcd_source)
   add_test(NAME control_forwarding_test COMMAND control_forwarding_test)
@@ -3080,6 +3083,12 @@ if(BUILD_TESTING)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_source_corpus.mjs
           $<TARGET_FILE:abc_structure> ${ABCD_LANGUAGE_SOURCE_SAMPLE})
       endif()
+      add_test(NAME switch_fallthrough_record_cli_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/switch_fallthrough_record.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR})
+      add_test(NAME switch_fallthrough_cli_test COMMAND ${ABCD_NODE_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/switch_fallthrough.mjs
+        $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/switch_fallthrough)
       add_test(NAME switch_optional_record_cli_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/switch_optional_record.mjs
         $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR})

@@ -18,6 +18,7 @@
 #include "parameter_expression_tree.h"
 #include "sendable_class.h"
 #include "tree_checks.h"
+#include "switch_syntax.h"
 
 namespace abcd::source {
 namespace {
@@ -30,6 +31,7 @@ struct SyntaxFrame {
   bool entered = false;
   std::optional<StmtId> loop;
   std::optional<SymbolId> catch_parameter;
+  std::optional<StmtId> breakable;
 };
 bool ValidUnary(TreeUnary operation) {
   switch (operation) {
@@ -126,6 +128,7 @@ class StructureCheck {
             : (!tree_.class_inner && tree_.capture_requirements.empty()),
         Error::kUnsupportedSyntax);
     CheckCallable(tree_);
+    VerifyAllSwitchSyntax(tree_, budget_);
     for (const auto& issue : tree_.recovery_issues) {
       budget_.Step();
       RequireTree(!issue.end || (issue.begin && *issue.begin <= *issue.end), Error::kRange);
@@ -280,7 +283,7 @@ class StructureCheck {
           if (region && region->handler && statement && *statement == region->handler->body)
             caught = region->handler->parameter;
         }
-        stack_[depth++] = {*child, frame.scope, 0, false, frame.loop, caught};
+        stack_[depth++] = {*child, frame.scope, 0, false, frame.loop, caught, frame.breakable};
         maximum_depth = std::max(depth, maximum_depth);
       } else {
         if (const auto* statement = std::get_if<StmtId>(&frame.node)) {
@@ -534,9 +537,10 @@ class StructureCheck {
     const auto* enumerated = std::get_if<ForInStmt>(&tree_.statements[target.value].statement);
     const auto* iterated = std::get_if<ForOfStmt>(&tree_.statements[target.value].statement);
     const auto* block = std::get_if<BlockStmt>(&tree_.statements[target.value].statement);
-    RequireTree(loop || enumerated || iterated || (!continues && block), Error::kTarget);
+    const auto* selection = std::get_if<SwitchStmt>(&tree_.statements[target.value].statement);
+    RequireTree(loop || enumerated || iterated || (!continues && (block || selection)), Error::kTarget);
     if ((loop || enumerated || iterated) && target == nearest) { RequireTree(!label, Error::kTarget); return; }
-    RequireTree(label && (loop ? loop->label : enumerated ? enumerated->label : iterated ? iterated->label : block->label) == label && label->value < tree_.labels.size() &&
+    RequireTree(label && (loop ? loop->label : enumerated ? enumerated->label : iterated ? iterated->label : selection ? selection->label : block->label) == label && label->value < tree_.labels.size() &&
         tree_.labels[label->value] == target, Error::kTarget);
     labels_used_[label->value] = 1;
   }
@@ -574,6 +578,13 @@ class StructureCheck {
     } else if (const auto* branch = std::get_if<IfStmt>(&node.statement)) {
       RequireBlock(branch->consequent);
       if (branch->alternate) RequireBlock(*branch->alternate);
+    } else if (const auto* selection = std::get_if<SwitchStmt>(&node.statement)) {
+      RequireBlock(selection->body);
+      if (selection->label) RequireTree(selection->label->value < tree_.labels.size() &&
+          tree_.labels[selection->label->value] == id, Error::kTarget);
+      frame.breakable = id;
+    } else if (const auto* clause = std::get_if<SwitchCaseStmt>(&node.statement)) {
+      RequireBlock(clause->body);
     } else if (const auto* region = std::get_if<TryStmt>(&node.statement)) {
       RequireTree(region->handler || region->finalizer, Error::kUnsupportedSyntax);
       RequireBlock(region->body);
@@ -587,7 +598,7 @@ class StructureCheck {
       RequireBlock(loop->body);
       if (loop->label) RequireTree(loop->label->value < tree_.labels.size() &&
           tree_.labels[loop->label->value] == id, Error::kTarget);
-      frame.loop = id;
+      frame.loop = id; frame.breakable = id;
     } else if (const auto* enumeration = std::get_if<ForInStmt>(&node.statement)) {
       RequireBlock(enumeration->body);
       // Per-iteration binding needs its own activation certificate before it
@@ -596,16 +607,16 @@ class StructureCheck {
       scopes_.Reference(enumeration->key, true);
       if (enumeration->label) RequireTree(enumeration->label->value < tree_.labels.size() &&
           tree_.labels[enumeration->label->value] == id, Error::kTarget);
-      frame.loop = id;
+      frame.loop = id; frame.breakable = id;
     } else if (const auto* iteration = std::get_if<ForOfStmt>(&node.statement)) {
       RequireBlock(iteration->body);
       RequireTree(iteration->binding == ForOfBinding::kAssignment, Error::kUnsupportedSyntax);
       scopes_.Reference(iteration->target, true);
       if (iteration->label) RequireTree(iteration->label->value < tree_.labels.size() &&
           tree_.labels[iteration->label->value] == id, Error::kTarget);
-      frame.loop = id;
+      frame.loop = id; frame.breakable = id;
     } else if (const auto* transfer = std::get_if<BreakStmt>(&node.statement)) {
-      Transfer(transfer->target, transfer->label, frame.loop, false);
+      Transfer(transfer->target, transfer->label, frame.breakable, false);
     } else if (const auto* transfer = std::get_if<ContinueStmt>(&node.statement)) {
       Transfer(transfer->target, transfer->label, frame.loop, true);
     } else if (const auto* missing = std::get_if<UnrecoveredStmt>(&node.statement)) {
@@ -747,6 +758,8 @@ class StructureCheck {
           if (node.handler) add(node.handler->body);
           if (node.finalizer) add(*node.finalizer);
         }
+        else if constexpr (std::is_same_v<T, SwitchStmt>) add(node.body);
+        else if constexpr (std::is_same_v<T, SwitchCaseStmt>) { if (node.condition) add(*node.condition); add(node.body); }
         else if constexpr (std::is_same_v<T, LoopStmt>) add(node.body);
         else if constexpr (std::is_same_v<T, ForInStmt>) { add(node.object); add(node.body); }
         else if constexpr (std::is_same_v<T, ForOfStmt>) { add(node.iterable); add(node.body); }

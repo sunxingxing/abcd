@@ -51,6 +51,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     // no effect/exception and unchanged activation. Epsilon control has no
     // fabricated source origin or statement to claim here.
     if (!flow.forwarded_controls.empty() && flow.forwarded_controls[c]) continue;
+    if (!flow.switch_controls.empty() && flow.switch_controls[c]) continue;
     if(flow.for_of && flow.for_of->controls[c]) {
       if(*flow.for_of->controls[c]==EnumerationControl::kLoop)
         RequireMeaning(std::holds_alternative<ForOfStmt>(tree.statements[flow.control_statements[c].value].statement),Error::kOrigin);

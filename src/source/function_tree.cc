@@ -1,5 +1,6 @@
 #include "function_tree.h"
 #include "class_inner_scope.h"
+#include "switch_region.h"
 
 #include <algorithm>
 #include <array>
@@ -273,6 +274,13 @@ class TreeBuilder {
       Grow(iteration_parents_,iteration_->loops.size());iteration_parents_.resize(iteration_->loops.size());
       Grow(iteration_recorded_,graph_.ops.size());iteration_recorded_.resize(graph_.ops.size());
     }
+    if(control_.switches) {
+      Grow(switch_entries_,graph_.blocks.size());switch_entries_.resize(graph_.blocks.size());
+      Grow(switch_tests_,graph_.blocks.size());switch_tests_.resize(graph_.blocks.size());
+      Grow(switch_statements_,control_.switches->regions.size());switch_statements_.resize(control_.switches->regions.size());
+      for(std::uint32_t r=0;r<control_.switches->regions.size();++r){Step();switch_entries_[control_.switches->regions[r].entry.value]=r;}
+      for(std::uint32_t c=0;c<control_.switches->clauses.size();++c){Step();if(control_.switches->clauses[c].test)switch_tests_[control_.switches->clauses[c].test->block.value]=c;}
+    }
     ReservedNames();
     Bindings();
     Require(control_.entry.value < control_.nodes.size(), Error::kControl);
@@ -318,6 +326,21 @@ class TreeBuilder {
             next = enumeration_->continuations[next->value]->next;
             continue;
           }
+        }
+        if(control_.switches && next->value<switch_entries_.size() && switch_entries_[next->value]) {
+          const auto r=*switch_entries_[next->value];EmitSwitch(r,task.draft);
+          const auto follow=control_.switches->regions[r].follow;
+          next=follow?std::optional{ControlId{follow->value}}:std::nullopt;continue;
+        }
+        if(const auto* port=std::get_if<SwitchPort>(&region.synthetic)) {
+          const auto& evidence=control_.switches->ports[port->port];
+          if(evidence.kind==SwitchPortKind::kBreak) {
+            Require(switch_statements_[evidence.region].has_value(),Error::kControl);
+            const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
+            tree_.origins.emplace_back(EdgeOrigin{evidence.edge});
+            Append(task.draft,Statement(BreakStmt{*switch_statements_[evidence.region]},origin));
+          }else Require(evidence.kind==SwitchPortKind::kFallThrough,Error::kControl);
+          next=region.next;continue;
         }
         if (std::holds_alternative<ControlForward>(region.synthetic)) { next = region.next; continue; }
         if (!std::holds_alternative<std::monostate>(region.synthetic)) EmitLoop(region, task.draft);
@@ -615,6 +638,10 @@ class TreeBuilder {
         tree_.origins.size() <= kMaxId - symbols - synthetic - staging &&
         staging <= (kMaxId - statements) / kDecisionStatementSlots, Error::kResourceLimit);
     statements += kDecisionStatementSlots * staging;
+    if(control_.switches) {
+      const auto extra=control_.switches->clauses.size()+control_.switches->regions.size();
+      Require(extra <= kMaxId-statements,Error::kResourceLimit);statements+=extra;
+    }
     Grow(tree_.names, tree_.names.size() + symbols + staging);
     Grow(tree_.origins, tree_.origins.size() + symbols + synthetic + staging);
     Grow(tree_.expressions, tree_.expressions.size() + symbols + decision_expressions);
@@ -1407,6 +1434,10 @@ class TreeBuilder {
     }
     for (const auto& node : control_.nodes) {
       Step();
+      if(control_.switches && std::holds_alternative<std::monostate>(node.synthetic) && node.block.value<control_.switches->blocks.size()) {
+        const auto owner=control_.switches->blocks[node.block.value];
+        if(owner && !owner->clause)continue;
+      }
       if (node.decision) {
         const auto orient = [&](const ControlNode& condition, bool taken) {
           const auto branch = DecisionPredicate(condition);
@@ -1425,6 +1456,10 @@ class TreeBuilder {
         if (copied[block.first_edge.value] || (!logical_branches_.empty() && logical_branches_[branch.value])) continue;
         branch_polarity_[branch.value] = BranchPolarity::kFallthrough;
       }
+    }
+    if(control_.switches)for(const auto& clause:control_.switches->clauses)if(clause.test) {
+      Step();const auto& test=*clause.test;
+      branch_polarity_[test.branch.value]=test.match==graph_.blocks[test.block.value].first_edge?BranchPolarity::kTaken:BranchPolarity::kFallthrough;
     }
   }
   bool DecisionStatements(const ControlNode& root) {
@@ -1718,6 +1753,79 @@ class TreeBuilder {
       alternate = drafts_[Arm(draft, origin, node.arms->fallthrough, fallthrough)].statement;
     const auto statement = Statement(IfStmt{*expression, drafts_[taken].statement, alternate}, origin);
     Append(draft, statement); tree_.operations.push_back({op, statement});
+  }
+  void EmitSwitch(std::uint32_t index, std::size_t parent) {
+    const auto& proof = *control_.switches;
+    const auto& region = proof.regions[index];
+    Require(!exceptions_ && !switch_statements_[index], Error::kControl);
+    const auto& first = *proof.clauses[*switch_tests_[region.entry.value]].test;
+    const TreeOriginId origin{graph_.ops[first.branch.value].origin.value};
+    const ScopeId scope{static_cast<std::uint32_t>(tree_.scopes.size())};
+    tree_.scopes.push_back({ScopeKind::kBlock, drafts_[parent].scope});
+    const auto body = Block(scope, origin);
+    const auto statement =
+        Statement(SwitchStmt{drafts_[body].statement, {}}, origin);
+    switch_statements_[index] = statement;
+    // Only the first test has an unconditional prelude. Later test programs
+    // must already be wholly owned by their case expression (or pure anchors).
+    auto at = region.entry;
+    while (true) {
+      Step();
+      Require(proof.blocks[at.value] &&
+                  proof.blocks[at.value]->region == index &&
+                  !proof.blocks[at.value]->clause,
+              Error::kControl);
+      const auto& source = graph_.blocks[at.value];
+      if (at != region.entry)
+        for (std::uint32_t o = 0; o < source.op_count; ++o) {
+          Step();
+          const auto id = source.first_op.value + o;
+          const auto& op = graph_.ops[id];
+          Require(
+              op.life != analysis::ValueLife::kLive ||
+                  evaluation_.operations[id].kind != EvaluationKind::kRoot ||
+                  std::holds_alternative<analysis::ValueBranch>(op.operation) ||
+                  std::holds_alternative<analysis::ValueJump>(op.operation),
+              Error::kOwnership);
+        }
+      EmitBlock(control_.nodes[at.value], parent, true);
+      for (std::uint8_t e = 0; e < source.edge_count; ++e)
+        RequireNoCopies({source.first_edge.value + e});
+      const auto test = switch_tests_[at.value];
+      const auto edge =
+          test ? proof.clauses[*test].test->miss : source.first_edge;
+      Require(source.edge_count != 0, Error::kControl);
+      const auto next = graph_.edges[edge.value].target;
+      if (!proof.blocks[next.value] ||
+          proof.blocks[next.value]->region != index ||
+          proof.blocks[next.value]->clause)
+        break;
+      at = next;
+    }
+    Append(parent, statement);
+    for (std::uint32_t c = region.first_clause;
+         c < region.first_clause + region.clause_count; ++c) {
+      Step();
+      const auto& clause = proof.clauses[c];
+      const auto here =
+          clause.test
+              ? TreeOriginId{graph_.ops[clause.test->branch.value].origin.value}
+              : origin;
+      const ScopeId child_scope{
+          static_cast<std::uint32_t>(tree_.scopes.size())};
+      tree_.scopes.push_back({ScopeKind::kBlock, scope});
+      const auto child = Block(child_scope, here);
+      std::optional<ExprId> condition;
+      if (clause.test) {
+        Require(clause.test->discriminant_on_left, Error::kControl);
+        condition = forest_.operations[clause.test->branch.value];
+        Require(condition.has_value(), Error::kOwnership);
+      }
+      Append(
+          body,
+          Statement(SwitchCaseStmt{condition, drafts_[child].statement}, here));
+      if (clause.body) tasks_.push_back({{clause.body->value}, child});
+    }
   }
   void EmitExceptionUnit(ControlId id, std::size_t draft) {
     const auto& unit = exceptions_->control.units[id.value];
@@ -2046,6 +2154,8 @@ class TreeBuilder {
   std::vector<std::uint8_t> iteration_recorded_;
   std::optional<ForInEmissionView> enumeration_;
   std::vector<std::optional<std::size_t>> enumeration_drafts_, enumeration_parents_;
+  std::vector<std::optional<std::uint32_t>> switch_entries_, switch_tests_;
+  std::vector<std::optional<StmtId>> switch_statements_;
   std::vector<BlockDraft> drafts_;
   // Per deferred cell: the draft of its allocation's own block statement.
   std::vector<std::optional<std::size_t>> deferred_drafts_;

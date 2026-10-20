@@ -256,6 +256,11 @@ struct BlockStmt {
 struct DeclarationStmt { SymbolId symbol; std::optional<ExprId> initializer; };
 struct ExpressionStmt { ExprId expression; };
 struct IfStmt { ExprId condition; StmtId consequent; std::optional<StmtId> alternate; };
+// Canonical comparisons retain the original predicate ExprIds. The verified
+// switch projection prints their shared discriminant once and each RHS as a
+// lazy case test (like LoopSyntax retains its original predicate program).
+struct SwitchStmt { StmtId body; std::optional<LabelId> label; };
+struct SwitchCaseStmt { std::optional<ExprId> condition; StmtId body; };
 struct ReturnStmt { std::optional<ExprId> value; };
 struct ThrowStmt { ExprId value; };
 struct CatchClause { SymbolId parameter; StmtId body; };
@@ -312,7 +317,7 @@ struct RecoveryIssue {
 struct UnrecoveredStmt { RecoveryIssueId issue; };
 using TreeStatement = std::variant<BlockStmt, DeclarationStmt, ExpressionStmt, IfStmt, ReturnStmt,
                                    LoopStmt, BreakStmt, ContinueStmt, DebuggerStmt, ThrowStmt, TryStmt,
-                                   UnrecoveredStmt, ForInStmt, ForOfStmt>;
+                                   UnrecoveredStmt, ForInStmt, ForOfStmt, SwitchStmt, SwitchCaseStmt>;
 struct StmtNode { TreeStatement statement; TreeOriginId origin; };
 
 // Origins/validation side tables may refer to working IDs. Executable node

@@ -1,5 +1,6 @@
 #include "control_skeleton.h"
 #include "control_forwarding.h"
+#include "switch_region.h"
 
 #include <array>
 #include <limits>
@@ -363,7 +364,8 @@ std::variant<std::uint64_t, ControlError> VerifyControlPlan(
     Require(graph.phases.empty() && plan.view == ControlViewKind::kNormal, Error::kInvalidGraph);
     ControlQuota quota(budget);
     constexpr ControlNodeId root{0};
-    if (plan.forwarding.empty())
+    if (plan.switches) VerifySwitchControl(graph, plan, quota);
+    else if (plan.forwarding.empty())
       VerifyControlRegions(ControlGraphView{graph}, {&root, 1}, plan, quota);
     else VerifyForwardingControl(graph, plan, quota);
     return budget.work - quota.RemainingWork();

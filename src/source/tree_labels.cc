@@ -9,7 +9,7 @@
 namespace abcd::source {
 namespace {
 enum class Visit : std::uint8_t { kUnseen, kActive, kDone };
-struct Frame { StmtId statement; std::optional<StmtId> loop; std::size_t next = 0; bool entered = false; };
+struct Frame { StmtId statement; std::optional<StmtId> loop; std::size_t next = 0; bool entered = false; std::optional<StmtId> breakable; };
 std::optional<StmtId> Next(const FunctionTree& tree, Frame& frame) {
   return StatementChild(tree.statements[frame.statement.value].statement, frame.next++, [&](const BlockStmt& block) {
     RequireTree(block.first_child <= tree.children.size() &&
@@ -31,7 +31,7 @@ std::variant<TreeStorage, TreeStructureError> AssignTreeLabels(FunctionTree& tre
       quota.Step();
       std::visit([&](auto& statement) {
         using T = std::decay_t<decltype(statement)>;
-        if constexpr (std::is_same_v<T, LoopStmt> || std::is_same_v<T, ForInStmt> || std::is_same_v<T, ForOfStmt> || std::is_same_v<T, BlockStmt>) { ++targets; statement.label.reset(); }
+        if constexpr (std::is_same_v<T, LoopStmt> || std::is_same_v<T, ForInStmt> || std::is_same_v<T, ForOfStmt> || std::is_same_v<T, BlockStmt> || std::is_same_v<T, SwitchStmt>) { ++targets; statement.label.reset(); }
         else if constexpr (std::is_same_v<T, BreakStmt> || std::is_same_v<T, ContinueStmt>) statement.label.reset();
       }, node.statement);
     }
@@ -45,7 +45,8 @@ std::variant<TreeStorage, TreeStructureError> AssignTreeLabels(FunctionTree& tre
       if (!frame.entered) {
         RequireTree(visited[frame.statement.value] == Visit::kUnseen, Error::kOwnership);
         visited[frame.statement.value] = Visit::kActive; frame.entered = true;
-        if (std::holds_alternative<LoopStmt>(node) || std::holds_alternative<ForInStmt>(node) || std::holds_alternative<ForOfStmt>(node)) frame.loop = frame.statement;
+        if (std::holds_alternative<LoopStmt>(node) || std::holds_alternative<ForInStmt>(node) || std::holds_alternative<ForOfStmt>(node)) { frame.loop = frame.statement; frame.breakable = frame.statement; }
+        if(std::holds_alternative<SwitchStmt>(node))frame.breakable=frame.statement;
         const auto transfer = [&](auto& jump) {
           RequireTree(jump.target.value < visited.size() && visited[jump.target.value] == Visit::kActive, Error::kTarget);
           auto& target = tree.statements[jump.target.value].statement;
@@ -53,10 +54,11 @@ std::variant<TreeStorage, TreeStructureError> AssignTreeLabels(FunctionTree& tre
           auto* enumeration = std::get_if<ForInStmt>(&target);
           auto* iteration = std::get_if<ForOfStmt>(&target);
           auto* block = std::get_if<BlockStmt>(&target);
+          auto* selection = std::get_if<SwitchStmt>(&target);
           constexpr bool continues = std::is_same_v<std::decay_t<decltype(jump)>, ContinueStmt>;
-          RequireTree(loop || enumeration || iteration || (!continues && block), Error::kTarget);
-          if ((loop || enumeration || iteration) && frame.loop == jump.target) return;
-          auto& label = loop ? loop->label : enumeration ? enumeration->label : iteration ? iteration->label : block->label;
+          RequireTree(loop || enumeration || iteration || (!continues && (block || selection)), Error::kTarget);
+          if ((loop || enumeration || iteration) && (continues?frame.loop:frame.breakable) == jump.target) return;
+          auto& label = loop ? loop->label : enumeration ? enumeration->label : iteration ? iteration->label : selection ? selection->label : block->label;
           if (!label) {
             label = LabelId{static_cast<std::uint32_t>(tree.labels.size())};
             tree.labels.push_back(jump.target);
@@ -68,7 +70,7 @@ std::variant<TreeStorage, TreeStructureError> AssignTreeLabels(FunctionTree& tre
       }
       if (const auto child = Next(tree, frame)) {
         RequireTree(depth < stack.size(), Error::kOwnership);
-        stack[depth++] = {*child, frame.loop};
+        stack[depth++] = {*child, frame.loop,0,false,frame.breakable};
       } else { visited[frame.statement.value] = Visit::kDone; --depth; }
     }
     for (const auto state : visited) { quota.Step(); RequireTree(state == Visit::kDone, Error::kOwnership); }

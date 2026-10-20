@@ -1,6 +1,7 @@
 #include "cell_lifetime.h"
 #include "exception_tree.h"
 #include "for_of_emission.h"
+#include "switch_region.h"
 
 #include <limits>
 #include <bit>
@@ -85,6 +86,14 @@ class Planner {
     Size(result.cells, cells_.cells.size());
     std::vector<Task> tasks; Reserve(tasks, capacity);
     std::vector<std::uint8_t> seen; Size(seen, control_.nodes.size());
+    std::vector<std::optional<std::uint32_t>> switch_entries,switch_tests;
+    if(control_.switches) {
+      Size(switch_entries,graph_.blocks.size());Size(switch_tests,graph_.blocks.size());
+      for(std::uint32_t r=0;r<control_.switches->regions.size();++r){Step();switch_entries[control_.switches->regions[r].entry.value]=r;}
+      for(std::uint32_t c=0;c<control_.switches->clauses.size();++c)if(const auto& t=control_.switches->clauses[c].test){Step();switch_tests[t->block.value]=c;}
+      for(std::uint32_t p=0;p<control_.switches->ports.size();++p){Step();const auto kind=control_.switches->ports[p].kind;
+        if(kind==SwitchPortKind::kMatch||kind==SwitchPortKind::kMiss)seen[graph_.blocks.size()+p]=1;}
+    }
     result.scopes.push_back({{}, CellBodyScope{}});
     tasks.push_back({control_.entry, {0}});
     const auto child = [&](CellScopeId parent, auto origin, ControlId control) {
@@ -98,6 +107,25 @@ class Planner {
       Require(task.control.value < seen.size() && !seen[task.control.value], Error::kControl);
       seen[task.control.value] = 1;
       const auto& node = control_.nodes[task.control.value];
+      if(control_.switches && task.control.value<switch_entries.size() && switch_entries[task.control.value]) {
+        const auto& proof=*control_.switches;const auto r=*switch_entries[task.control.value];const auto& region=proof.regions[r];
+        const CellScopeId scope{static_cast<std::uint32_t>(result.scopes.size())};
+        Require(result.scopes.size()<result.scopes.capacity(),Error::kResourceLimit);
+        result.scopes.push_back({task.scope,CellSwitchScope{region.entry}});
+        if(region.follow){Require(tasks.size()<tasks.capacity(),Error::kResourceLimit);tasks.push_back({ControlId{region.follow->value},task.scope,task.stop});}
+        auto at=region.entry;
+        while(true){Step();if(at!=region.entry){Require(!seen[at.value],Error::kControl);seen[at.value]=1;}
+          result.blocks[at.value]=at==region.entry?task.scope:scope;
+          const auto t=switch_tests[at.value];const auto edge=t?proof.clauses[*t].test->miss:graph_.blocks[at.value].first_edge;
+          const auto next=graph_.edges[edge.value].target;
+          if(!proof.blocks[next.value]||proof.blocks[next.value]->region!=r||proof.blocks[next.value]->clause)break;at=next;
+        }
+        for(std::uint32_t c=region.first_clause;c<region.first_clause+region.clause_count;++c){Step();
+          if(const auto body=proof.clauses[c].body)child(scope,CellSwitchCaseScope{region.entry,c},ControlId{body->value});
+        }
+        continue;
+      }
+      if(std::holds_alternative<SwitchPort>(node.synthetic))continue;
       if (node.next) {
         Require(tasks.size() < tasks.capacity(), Error::kResourceLimit);
         tasks.push_back({*node.next, task.scope, task.stop});

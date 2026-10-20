@@ -2056,10 +2056,11 @@ class Initializers {
         // Keep its existing declaration until native binding projection has
         // separately proved scope, zero-iteration state and activation.
         uses_[syntax.key.value].outside_body = true;
-      } else if constexpr (std::is_same_v<T, IfStmt>) Scan(syntax.condition, visit.lexical, visit.projector);
+      } else if constexpr (std::is_same_v<T, SwitchCaseStmt>) { if(syntax.condition) Scan(*syntax.condition, visit.lexical, visit.projector); }
+      else if constexpr (std::is_same_v<T, IfStmt>) Scan(syntax.condition, visit.lexical, visit.projector);
       else if constexpr (std::is_same_v<T, ReturnStmt>) { if (syntax.value) Scan(*syntax.value, visit.lexical, visit.projector); }
       else if constexpr (std::is_same_v<T, ThrowStmt>) Scan(syntax.value, visit.lexical, visit.projector);
-      else static_assert(std::is_same_v<T, BlockStmt> || std::is_same_v<T, TryStmt> || std::is_same_v<T, LoopStmt> ||
+      else static_assert(std::is_same_v<T, BlockStmt> || std::is_same_v<T, TryStmt> || std::is_same_v<T, LoopStmt> || std::is_same_v<T, SwitchStmt> ||
           std::is_same_v<T, BreakStmt> || std::is_same_v<T, ContinueStmt> || std::is_same_v<T, DebuggerStmt> || std::is_same_v<T, UnrecoveredStmt>);
     }, node);
 

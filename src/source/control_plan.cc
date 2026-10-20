@@ -9,6 +9,7 @@
 
 #include "control_skeleton.h"
 #include "control_forwarding.h"
+#include "switch_region.h"
 
 namespace abcd::source {
 namespace {
@@ -719,7 +720,8 @@ ControlResult BuildControlPlan(
           return BuildLoopControl(graph, quota);
         }
       } catch (const ControlFailure& failure) {
-        return BuildForwardingControl(graph, failure, quota);
+        try { return BuildForwardingControl(graph, failure, quota); }
+        catch (const ControlFailure& remaining) { return BuildSwitchControl(graph, remaining, quota); }
       }
     }();
     const auto checked = VerifyControlPlan(graph, plan, quota.Remaining());

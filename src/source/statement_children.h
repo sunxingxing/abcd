@@ -15,6 +15,8 @@ std::optional<StmtId> StatementChild(const TreeStatement& statement, std::size_t
     if constexpr (std::is_same_v<T, BlockStmt>) {
       const auto children = blocks(node);
       if (index < children.size()) return children[index];
+    } else if constexpr (std::is_same_v<T, SwitchStmt> || std::is_same_v<T, SwitchCaseStmt>) {
+      if (index == 0) return node.body;
     } else if constexpr (std::is_same_v<T, IfStmt>) {
       if (index == 0) return node.consequent;
       if (index == 1) return node.alternate;

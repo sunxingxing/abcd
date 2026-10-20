@@ -37,6 +37,7 @@
 #include "family_route_failure.h"
 #include "class_tree_context.h"
 #include "tree_checks.h"
+#include "switch_syntax.h"
 #include "member_key.h"
 #include "module_default_export.h"
 
@@ -1767,6 +1768,53 @@ class TreePrinter {
     }
     Push(Statement{node.consequent, at.depth}); Push(std::string_view(") "));
     Push(ExpressionOperand{node.condition, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kTruthiness});
+  }
+  void StatementNode(const SwitchStmt& node, Statement at) {
+    const auto& body =
+        std::get<BlockStmt>(Tree().statements[node.body.value].statement);
+    std::optional<ExprId> discriminant;
+    for (std::uint32_t i = 0; i < body.child_count; ++i) {
+      Step();
+      const auto& clause = std::get<SwitchCaseStmt>(
+          Tree()
+              .statements[Tree().children[body.first_child + i].value]
+              .statement);
+      if (clause.condition) {
+        discriminant = SwitchComparison(Tree(), clause).left;
+        break;
+      }
+    }
+    if (!discriminant) throw Error::kUnsupportedContext;
+    if (node.label) {
+      Label(*node.label);
+      Append(": ");
+    }
+    Append("switch (");
+    Push(Statement{node.body, at.depth});
+    Push(std::string_view(") "));
+    Push(ExpressionOperand{*discriminant, {ExpressionGrammar::kExpression}});
+  }
+  void StatementNode(const SwitchCaseStmt& node, Statement at) {
+    Push(Statement{node.body, at.depth});
+    if (!node.condition) {
+      Append("default: ");
+      return;
+    }
+    const auto& comparison = SwitchComparison(Tree(), node);
+    // The comparison is the canonical case predicate. Its cached left read is
+    // printed once in the switch header; the strict-equality witness stays
+    // owned.
+    BeginExpression(*node.condition);
+    if (const auto* unary = std::get_if<UnaryExpr>(
+            &Tree().expressions[node.condition->value].expression))
+      BeginExpression(unary->operand);
+    if (Result().expressions[comparison.left.value].begin ==
+        Result().expressions[comparison.left.value].end)
+      Push(ProjectedExpression{comparison.left, written_, written_,
+                               GeneratedExtent::kBoundary});
+    Push(std::string_view(": "));
+    Push(ExpressionOperand{comparison.right, {ExpressionGrammar::kExpression}});
+    Append("case ");
   }
   void StatementNode(ReturnStmt node, Statement) {
     if (static_fields_) return;

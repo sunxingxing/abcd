@@ -14,6 +14,8 @@
 #include "logical_evaluation.h"
 #include "logical_regions.h"
 #include "tree_checks.h"
+#include "switch_region.h"
+#include "switch_syntax.h"
 #include "tree_edge_flow.h"
 
 namespace abcd::source {
@@ -27,6 +29,8 @@ struct TreeRegion {
   std::uint32_t first_child = 0;
 };
 class FlowCheck {
+  std::vector<std::optional<std::uint32_t>> switch_entries_, switch_tests_;
+  std::vector<std::optional<StmtId>> switch_statements_;
   mutable TreeLocation location_;
   struct LocationScope {
     const FlowCheck& owner; TreeLocation previous;
@@ -115,6 +119,13 @@ class FlowCheck {
     flow_.first_control = {static_cast<std::uint32_t>(control.nodes.size() - flow_.controls.size())};
     budget.Array(flow_.control_statements, flow_.controls.size());
     if (!control.forwarding.empty()) budget.Array(flow_.forwarded_controls, flow_.controls.size());
+    if(control.switches) {
+      budget.Array(switch_entries_,graph.blocks.size());budget.Array(switch_tests_,graph.blocks.size());
+      budget.Array(switch_statements_,control.switches->regions.size());budget.Array(flow_.switch_controls,flow_.controls.size());
+      for(std::uint32_t p=0;p<control.switches->ports.size();++p){budget.Step();const auto kind=control.switches->ports[p].kind;if(kind==SwitchPortKind::kMatch||kind==SwitchPortKind::kMiss)flow_.switch_controls[p]=1;}
+      for(std::uint32_t r=0;r<control.switches->regions.size();++r){budget.Step();switch_entries_[control.switches->regions[r].entry.value]=r;}
+      for(std::uint32_t c=0;c<control.switches->clauses.size();++c)if(const auto&t=control.switches->clauses[c].test){budget.Step();switch_tests_[t->block.value]=c;decision_branches_[t->branch.value]=1;}
+    }
     if (evaluation.phis) {
       logicals_ = FindSelectionExpressions(graph, control, evaluation, budget,
           exceptions ? &exceptions->control : nullptr);
@@ -280,6 +291,21 @@ class FlowCheck {
           flow_.forwarded_controls[cursor->value - flow_.first_control.value] = *port;
           cursor = node.next; continue;
         }
+        if(const auto* port=std::get_if<SwitchPort>(&node.synthetic)) {
+          Require(control_.switches && port->port<control_.switches->ports.size(),Error::kControl);
+          const auto& evidence=control_.switches->ports[port->port];
+          const auto offset=cursor->value-flow_.first_control.value;
+          if(evidence.kind==SwitchPortKind::kBreak) {
+            Require(child<block.child_count && switch_statements_[evidence.region],Error::kSequence);
+            const auto statement=sequences_.Child(block.first_child+child++);
+            const auto* jump=std::get_if<BreakStmt>(&tree_.statements[statement.value].statement);
+            const auto origin=tree_.statements[statement.value].origin;
+            Require(jump && jump->target==*switch_statements_[evidence.region] && origin.value<tree_.origins.size(),Error::kPlacement);
+            const auto* edge=std::get_if<EdgeOrigin>(&tree_.origins[origin.value]);Require(edge && edge->edge==evidence.edge,Error::kPlacement);
+            flow_.controls[offset]=origin;flow_.control_statements[offset]=statement;
+          }else {Require(evidence.kind==SwitchPortKind::kFallThrough,Error::kControl);flow_.switch_controls[offset]=1;}
+          cursor=node.next;continue;
+        }
         if (!std::holds_alternative<std::monostate>(node.synthetic)) {
           if(iteration_)if(const auto* wrapper=std::get_if<LoopControl>(&node.synthetic);wrapper && iteration_->wrappers[wrapper->loop.value]) {
             const auto i=*iteration_->wrappers[wrapper->loop.value];Require(iteration_statements_[i] && loops_[wrapper->loop.value],Error::kControl);
@@ -320,6 +346,7 @@ class FlowCheck {
               std::holds_alternative<analysis::ValueBranch>(graph_.ops[phase.operation->value].operation))
             predicate = phase.operation;
         }
+        bool switched=false;std::optional<ControlId> switch_follow;
         const auto count = predicate ? 1U : source.op_count;
         for (std::uint32_t i = 0; i < count; ++i) {
           budget_.Step();
@@ -368,6 +395,11 @@ class FlowCheck {
             Require(!logical_branches_.empty() && logical_branches_[id.value], Error::kPlacement);
             LogicalValue(logicals_[*logical_branches_[id.value]], region.block, child);
             continue;
+          }
+          if(control_.switches && cursor->value<switch_entries_.size() && switch_entries_[cursor->value] && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
+            const auto r=*switch_entries_[cursor->value];Switch(r,region.block,child,pending);
+            switched=true;const auto follow=control_.switches->regions[r].follow;
+            switch_follow=follow?std::optional{ControlId{follow->value}}:std::nullopt;continue;
           }
           Require(child < block.child_count, Error::kSequence);
           const auto statement = sequences_.Child(block.first_child + child++);
@@ -443,6 +475,7 @@ class FlowCheck {
             RootExpression(owner, expression->expression);
           }
         }
+        if(switched){cursor=switch_follow;continue;}
         if (!node.arms) {
           std::uint8_t normal = 0;
           for (std::uint8_t e = 0; e < source.edge_count; ++e) {
@@ -518,6 +551,81 @@ class FlowCheck {
   }
 
  private:
+  void Switch(std::uint32_t index, StmtId parent, std::uint32_t& child,
+              std::size_t& pending) {
+    const auto& proof = *control_.switches;
+    const auto& region = proof.regions[index];
+    const auto& outer = sequences_.Block(parent);
+    Require(child < outer.child_count && !switch_statements_[index],
+            Error::kSequence);
+    const auto statement = sequences_.Child(outer.first_child + child++);
+    const auto* syntax =
+        std::get_if<SwitchStmt>(&tree_.statements[statement.value].statement);
+    Require(syntax, Error::kPlacement);
+    const auto& clauses = sequences_.Block(syntax->body);
+    Require(clauses.child_count == region.clause_count, Error::kSequence);
+    switch_statements_[index] = statement;
+    for (std::uint32_t c = 0; c < region.clause_count; ++c) {
+      budget_.Step();
+      const auto& expected = proof.clauses[region.first_clause + c];
+      const auto id = sequences_.Child(clauses.first_child + c);
+      const auto* clause =
+          std::get_if<SwitchCaseStmt>(&tree_.statements[id.value].statement);
+      Require(
+          clause && clause->condition.has_value() == expected.test.has_value(),
+          Error::kPlacement);
+      const auto& body = sequences_.Block(clause->body);
+      Require(tree_.scopes[body.scope.value].parent == clauses.scope,
+              Error::kPlacement);
+      if (expected.test) {
+        const auto& t = *expected.test;
+        Require(t.discriminant_on_left, Error::kControl);
+        const auto* placed = std::get_if<ExprId>(
+            &tree_.operations[*placements_[t.branch.value]].node);
+        Require(placed && *placed == *clause->condition, Error::kPlacement);
+        flow_.expressions[t.branch.value] = *clause->condition;
+        flow_.branch_polarity[t.branch.value] =
+            t.match == graph_.blocks[t.block.value].first_edge
+                ? BranchPolarity::kTaken
+                : BranchPolarity::kFallthrough;
+        // Both original arcs are owned here; their phi programs must be empty.
+        std::uint32_t empty = 0;
+        edges_->Consume(t.match, BlockStmt{}, empty);
+        edges_->Consume(t.miss, BlockStmt{}, empty);
+        const auto& cmp = SwitchComparison(tree_, *clause);
+        (void)cmp;
+      }
+      if (expected.body) {
+        Require(pending < tasks_.size(), Error::kResourceLimit);
+        tasks_[pending++] = {ControlId{expected.body->value}, clause->body, 0};
+      } else
+        Require(body.child_count == 0, Error::kSequence);
+    }
+    auto at = region.entry;
+    while (true) {
+      budget_.Step();
+      const auto& block = graph_.blocks[at.value];
+      const auto test = switch_tests_[at.value];
+      if (at != region.entry)
+        for (std::uint32_t o = 0; o < block.op_count; ++o) {
+          const analysis::OpId op{block.first_op.value + o};
+          if (test && proof.clauses[*test].test->branch == op) continue;
+          DecisionOperation(op, parent, child - 1);
+        }
+      if (!test) {
+        std::uint32_t empty = 0;
+        edges_->Consume(block.first_edge, BlockStmt{}, empty);
+      }
+      const auto edge =
+          test ? proof.clauses[*test].test->miss : block.first_edge;
+      const auto next = graph_.edges[edge.value].target;
+      if (!proof.blocks[next.value] ||
+          proof.blocks[next.value]->region != index ||
+          proof.blocks[next.value]->clause)
+        break;
+      at = next;
+    }
+  }
   analysis::WorkBlockId SourceBlock(const ControlNode& node) const {
     if(!exceptions_ || !evaluation_.for_of)return node.block;
     const auto index=static_cast<std::size_t>(&node-control_.nodes.data());

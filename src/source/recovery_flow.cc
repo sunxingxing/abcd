@@ -1,4 +1,5 @@
 #include "recovery_flow.h"
+#include "switch_syntax.h"
 
 #include <algorithm>
 #include <limits>
@@ -77,6 +78,7 @@ class FlowBuilder {
   }
   RecoveryFlow Run() {
     if (tree_.class_inner) VerifyClassInnerScope(tree_, budget_);
+    VerifyAllSwitchSyntax(tree_, budget_);
     const auto normalized=NormalizeBindingProjection(tree_.symbols.size(),projection_.aliases,projection_.storage,budget_);
     if(normalized){projection_.aliases=normalized->aliases;projection_.storage=normalized->storage;}
     result_.scopes.reset();
@@ -1470,6 +1472,28 @@ class FlowBuilder {
         auto next=New({FlowEventKind::kLeaveScope,{},{},{},node.scope});Link(next,context.next);
         scope_lifetimes_[node.scope.value]=ScopeBindingLifetime{node.scope,entered,next};
         scope_events_[entered.value]={enclosing,node.scope};scope_events_[next.value]={node.scope,enclosing};
+        if(at.context.owner && std::holds_alternative<SwitchStmt>(tree_.statements[at.context.owner->value].statement)) {
+          const auto owner=*at.context.owner;
+          exits_[owner.value]=next;
+          std::vector<Point> bodies;budget_.Array(bodies,node.child_count);
+          auto continuation=next;auto fallback=next;
+          for(auto c=node.child_count;c-->0;) {
+            const auto id=tree_.children[node.first_child+c];
+            const auto& clause=std::get<SwitchCaseStmt>(tree_.statements[id.value].statement);
+            RequireTree(!projection_.omitted[id.value],Error::kUnsupportedSyntax);
+            bodies[c]=Stmt(id,context.Child(continuation,at.id,FlowStatementRetention::kRequired));continuation=bodies[c];
+            if(!clause.condition)fallback=continuation;
+          }
+          continuation=fallback;
+          for(auto c=node.child_count;c-->0;) {
+            const auto& clause=std::get<SwitchCaseStmt>(tree_.statements[tree_.children[node.first_child+c].value].statement);
+            if(!clause.condition)continue;
+            const auto branch=New({FlowEventKind::kTruthBranch,{},{},*clause.condition});
+            Link(branch,bodies[c],FlowCompletion::kTaken);Link(branch,continuation,FlowCompletion::kNotTaken);
+            continuation=Expr(*clause.condition,context.Operand(branch));
+          }
+          Link(entered,continuation);Link(start,entered);return;
+        }
         const auto body=loop_bodies_[at.id.value];
         const auto first=body?body->first:0;
         const auto tail=projection_.loops?projection_.loops->tail_starts[at.id.value]:std::nullopt;
@@ -1523,6 +1547,10 @@ class FlowBuilder {
           return Stmt(child,context.Child(context.next,at.id,context.header?FlowStatementRetention::kOptional:FlowStatementRetention::kRequired));
         };
         Link(branch,arm(node.consequent),FlowCompletion::kTaken);Link(branch,node.alternate?arm(*node.alternate):context.next,FlowCompletion::kNotTaken);
+      } else if constexpr(std::is_same_v<T,SwitchStmt>) {
+        Link(start,Stmt(node.body,context.Child(context.next,at.id,FlowStatementRetention::kRequired)));
+      } else if constexpr(std::is_same_v<T,SwitchCaseStmt>) {
+        Link(start,Stmt(node.body,context.Child(context.next,at.id)));
       } else if constexpr(std::is_same_v<T,ForOfStmt>) {
         RequireTree(node.binding==ForOfBinding::kAssignment && result_.original && result_.original->iterations && at.id.value<result_.iterations.size(),Error::kUnsupportedSyntax);
         // Each throwing native action has its own Before/Commit/exception port.

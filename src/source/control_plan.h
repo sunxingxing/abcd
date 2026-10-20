@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/value_ir.h"
 #include "loop_forest.h"
+#include <memory>
 #include "abcd/source/control_failure.h"
 
 #include "abcd/source/source_ids.h"
@@ -29,7 +30,9 @@ struct ControlForward {
   analysis::EdgeId incoming;
   auto operator<=>(const ControlForward&) const = default;
 };
-using ControlSynthetic = std::variant<std::monostate, LoopControl, LoopTransfer, ControlForward>;
+struct SwitchPort { std::uint32_t port; auto operator<=>(const SwitchPort&) const = default; };
+using ControlSynthetic = std::variant<std::monostate, LoopControl, LoopTransfer, ControlForward, SwitchPort>;
+struct SwitchRegions;
 // An original single-entry evaluation path and its ending condition, entered
 // only when the current test misses the shared arm. Original arcs remain in
 // PlacedEdge; a final private fallback stays in the last condition's other arm.
@@ -77,6 +80,7 @@ struct ControlPlan {
   std::uint64_t work = 0;
   std::vector<ControlLoop> loops;
   std::vector<ControlForward> forwarding;
+  std::shared_ptr<const SwitchRegions> switches;
 };
 enum class ControlError : std::uint8_t {
   kInvalidGraph, kRevision, kCycle, kCrossEntry, kUncoveredBlock, kWorkLimit, kResourceLimit,
