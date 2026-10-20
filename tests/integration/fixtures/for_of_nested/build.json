@@ -1,0 +1,39 @@
+{
+  "compiler": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca"
+  },
+  "source": "main.js",
+  "source_sha256": "2762d56da206b2ab553cfae6e67d4aa34e48d88ec38e65d4db78616d601451ef",
+  "fixtures": [
+    {
+      "mode": "O0",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_nested",
+        "--source-file=main.js",
+        "--output=tests/integration/fixtures/for_of_nested/main.abc",
+        "--opt-level=0",
+        "tests/integration/fixtures/for_of_nested/main.js"
+      ],
+      "abc": "main.abc",
+      "abc_sha256": "a06526866ecf9c136792f790743686a947d609fba17bc47d7083397c6158f31f"
+    },
+    {
+      "mode": "default",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=for_of_nested",
+        "--source-file=main.js",
+        "--output=tests/integration/fixtures/for_of_nested/main.default.abc",
+        "tests/integration/fixtures/for_of_nested/main.js"
+      ],
+      "abc": "main.default.abc",
+      "abc_sha256": "3ac8d8f8e74f67466c09001d781aa44a25808bd802e969607f2b8b95c32ac113"
+    }
+  ]
+}

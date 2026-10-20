@@ -644,12 +644,12 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 451 --boundary)
   set_tests_properties(close_loop_body_probe_test PROPERTIES
     PASS_REGULAR_EXPRESSION "entry-proof=1 port-proof=1 private-proof=1 region-proof=1")
-  # Existing derived-entry gap: retain refusal, never assume an outer close
-  # guard is a transparent continuation merely to construct a nested proof.
+  # Entry derivation now cuts before the enclosing close. Ownership remains
+  # missing until shared completion storage and nested dispatch are verified.
   add_test(NAME close_completion_nested_gap_test COMMAND close_completion_probe
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 395)
   set_tests_properties(close_completion_nested_gap_test PROPERTIES
-    PASS_REGULAR_EXPRESSION "failure=4 derivation=4 node=199 pc=226")
+    PASS_REGULAR_EXPRESSION "obligation3=0:6\\[ownership-gap=3\\]@287 obligation4=0:8")
   add_executable(for_of_tree_test tests/unit/source/for_of_tree_test.cc)
   target_link_libraries(for_of_tree_test PRIVATE abcd_source abcd_json)
   target_include_directories(for_of_tree_test PRIVATE tests/support)
@@ -806,6 +806,10 @@ if(BUILD_TESTING)
   target_include_directories(close_completion_test PRIVATE tests/support)
   add_test(NAME close_completion_test COMMAND close_completion_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
+  add_test(NAME close_entries_nested_test COMMAND close_entries_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 395)
+  add_test(NAME close_entries_nested_fixture_test COMMAND close_entries_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_nested/main.abc" 396)
   add_executable(close_entries_test tests/unit/source/close_entries_test.cc)
   target_link_libraries(close_entries_test PRIVATE abcd_source abcd_json)
   target_include_directories(close_entries_test PRIVATE tests/support)

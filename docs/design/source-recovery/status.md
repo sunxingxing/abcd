@@ -5,6 +5,45 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Remaining o32 closes: nested entry boundary — partial (2026-10-20)
+
+- Baseline/wtbase **92e4bfcb**. This round is **not complete**: no new method or
+  record publishes. Source cohort **591/620**, previous flags **537/620**;
+  both40-input comparisons have zero regressions, zero complete-text changes,
+  and **zero manifest changes**. The three first refusals remain
+  `PhasedMethodError::kControl > ExceptionControlError::kMultipleExits`:
+  m42717@633, m47128@398, m23306@149 (working125).
+- [for-of-remaining-close.md](for-of-remaining-close.md): derive an original
+  enclosing-close entry boundary, rather than walking through its effectful
+  implementation. m42717 now derives all four close copies and verifies their
+  separate priorities. Inner exit **Commit685 -> Before687** and outer entry
+  carry the same **Return(V232, caller)**. Fresh backward guard verification
+  rechecks this correspondence. Structurally unreachable handler rethrows are
+  excluded from arrivals using original exception dominance, not a PC rule.
+- No nested ownership admission was added. Remaining m42717 witnesses:
+  inner private-state live-out **PC753**, outer return/inner-wrapper role
+  **Try4**, inner-body dispatch **PC705**, outer-body dispatch **PC480**.
+  Shared completion storage and CURRENT inner-error -> outer-Throw dispatch
+  still need joint ownership. m47128's second close remains body-dispatch
+  **PC717**, plus unimplemented captured per-iteration binding; m23306 remains
+  raw async correspondence **original99/working96**. These are kept typed.
+- Added real es2abc O0/default fixture with compiler/command/hash registry,
+  original-edge/correlated-value mutations, omitted-close rejection,
+  200/201/400/800 padding, register renumbering, and exact bytes/work limits.
+  O0 entry/priority checks pass; default fixture has the earlier ExceptionPlan
+  layout gap@450. Neither is counted as engine-output Node/round-trip success.
+- Full build passed; fixed regression **65/65**; focused **4/4**;
+  requested sweep **236/244**. The seven user-listed failures remain;
+  `async_semantics_test` also reproduces the same bad_variant_access on a
+  freshly built **92e4bfcb** wtbase target (previously documented below).
+  Existing published for-of Node differentials and SDK comparison tests pass.
+  No assertion was weakened into a claimed publication.
+- Evidence: `build/review/for-of-remaining/` (cohorts, comparisons, probes,
+  exact budgets, build/CTest logs, baseline-async reproduction, summary.json).
+  Fresh80-job/four-worker resource run: max engine RSS **40,337,408 bytes**;
+  conservative concurrent engine+runner bound **182,992,896 bytes**.
+  No commit/push/stash performed; unrelated sample.tar.gz preserved.
+
 ## For-of close under an enclosing user try (2026-10-20)
 
 - Baseline/wtbase **3e475a3b**. **o37/20175 m20512** and **o38/25106 m25655**

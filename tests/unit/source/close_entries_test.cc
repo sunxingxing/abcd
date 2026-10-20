@@ -1,4 +1,5 @@
 #include "../../../src/source/close_entries.h"
+#include "../../../src/source/close_completion.h"
 #include "abcd/corpus/abc_file.h"
 #include "analysis/ssa_fixture.h"
 #include <algorithm>
@@ -15,7 +16,7 @@ ExceptionNodeId Node(const ExceptionFlow& flow, unsigned pc, ExceptionPhase phas
   Check(false);return {};
 }
 enum class Mutation { kNone,kInitiallyClosed,kReset,kReceiver,kInvertedDone,kRegisters,kSplitDone,kCycleExit };
-void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned padding=0,Mutation mutation=Mutation::kNone) {
+void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned padding=0,Mutation mutation=Mutation::kNone,bool nested=false,unsigned register_shift=0) {
   auto body=std::get<abc::MethodBody>(abc::DecodeMethodBody(file.file,file.header.profile,*method.code));
   if(mutation==Mutation::kSplitDone || mutation==Mutation::kCycleExit) {
     const auto end=body.instructions.back().offset.value+body.instructions.back().decoded.size;
@@ -54,6 +55,9 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
       i.decoded.opcode=i.decoded.opcode==abc::Opcode::kJNEZ_IMM16?abc::Opcode::kJEQZ_IMM16:abc::Opcode::kJEQZ_IMM8;
     }
   }
+  if(register_shift)for(auto& instruction:body.instructions)
+    for(auto& operand:instruction.decoded.operands)
+      if(operand.kind==abc::OperandKind::kRegister)operand.raw_bits+=register_shift;
   if(padding) {
     const auto nop=test::Body({0xd5}).instructions.front();
     for(auto& instruction:body.instructions) {
@@ -65,14 +69,14 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
     body.instructions.insert(body.instructions.begin(),padding,nop);
     for(unsigned i=0;i<padding;++i) body.instructions[i].offset={i};
   }
-  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(method.code->registers,method.code->arguments,{}));
+  const auto frame=std::get<abc::FrameLayout>(abc::BuildFrameLayout(method.code->registers+register_shift,method.code->arguments,{}));
   const auto flow=std::get<ExceptionFlow>(BuildExceptionFlow(body,file.header.profile,frame.registers,{}, {},&frame));
   IdfQuota work{kDefaultSemanticWork};
   const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(flow,frame.registers,work));
   std::vector<EntryValueFact> entries;
   for(std::uint32_t v=0;v<ssa.Values().size();++v)
     if(std::holds_alternative<MethodEntry>(ssa.Values()[v].origin))
-      if(const auto* reg=std::get_if<abc::RegisterId>(&ssa.Values()[v].slot);reg && reg->value>=method.code->registers)
+      if(const auto* reg=std::get_if<abc::RegisterId>(&ssa.Values()[v].slot);reg && reg->value>=method.code->registers+register_shift)
         entries.push_back({{v},ValueKinds::Language()});
   const auto env=std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
   const auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entries,work,{},
@@ -103,7 +107,7 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
       <<" pc="<<(f->node?flow.instructions[flow.nodes[f->node->value].instruction.value].pc.value:UINT32_MAX)<<'\n';Check(false);
   }
   const auto& derived=std::get<CloseEntries>(result);
-  Check(derived.closes.size()==(method.offset.value==423?3:1));
+  Check(nested?derived.closes.size()>=4:derived.closes.size()==(method.offset.value==423?3:1));
   Check(std::holds_alternative<std::uint64_t>(VerifyCloseEntries(body,file.header.profile,graph,input,regions,keys,scan,derived)));
   for(const auto& close:derived.closes) {
     Check(close.precision==CloseEntryPrecision::kConservativeSentinelValues);
@@ -125,7 +129,47 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
       return graph.phases[graph.ops[c.read.value].block.value].input==id;});
     Check(it!=derived.closes.end());return *it;
   };
-  if(method.offset.value==423) {
+  if(nested) {
+    unsigned chained=0;
+    for(const auto& close:derived.closes)if(close.continuation) {
+      ++chained;
+      Check(close.entries.front().entry.pending.kind==PendingCompletionKind::kReturn);
+      bool port=false;
+      for(const auto& leaving:close.relation.leaving)if(const auto* edge=std::get_if<CompletionEdge>(&leaving.exit)) {
+        if(flow.nodes[edge->source.value].successors[edge->successor].target==*close.continuation) {
+          Check(leaving.pending==close.entries[leaving.entry].entry.pending);port=true;
+        }
+      }
+      Check(port);
+      // The next close's real entry has the SAME correlated return, not a
+      // separately collected payload/target set or a fabricated PC boundary.
+      bool matched=false;
+      for(const auto& outer:derived.closes)if(outer.protocol!=close.protocol)
+        for(const auto& entry:outer.entries)
+          if(flow.nodes[entry.entry.edge.source.value].successors[entry.entry.edge.successor].target==*close.continuation) {
+            Check(entry.entry.pending==close.entries.front().entry.pending);matched=true;
+          }
+      Check(matched);
+    }
+    Check(chained>0);
+    const auto proved=AnalyzeCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,{},SourceContract::kLanguageSourceV4);
+    Check(std::holds_alternative<CloseCompletionSummary>(proved));
+    const auto& summary=std::get<CloseCompletionSummary>(proved);
+    for(const auto& entry:summary.entries) {
+      Check(entry.obligations[static_cast<unsigned>(CloseObligation::kPriority)].state==CloseProofState::kVerified);
+      // Entry/priority evidence grants no nested storage or topology ownership.
+      Check(entry.obligations[static_cast<unsigned>(CloseObligation::kNested)].state==CloseProofState::kMissing);
+    }
+    Check(std::holds_alternative<std::uint64_t>(VerifyCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,summary,{},SourceContract::kLanguageSourceV4)));
+    auto forged=summary;forged.regions.erase(forged.regions.begin());
+    Check(std::holds_alternative<CloseCompletionFailure>(VerifyCloseCompletion(body,file.header.profile,graph,input,regions,keys,scan,forged,{},SourceContract::kLanguageSourceV4)));
+
+    auto wrong=derived;
+    const auto at=std::find_if(wrong.closes.begin(),wrong.closes.end(),[](const auto& c){return c.continuation.has_value();});
+    at->continuation=ExceptionNodeId{0};
+    Check(std::holds_alternative<CloseEntryFailure>(VerifyCloseEntries(body,file.header.profile,graph,input,regions,keys,scan,wrong)));
+
+  } else if(method.offset.value==423) {
     const auto& breaking=find(105);const auto& returning=find(196);
     Check(breaking.entries.size()==1 && returning.entries.size()==1);
     Check(breaking.entries[0].entry.pending.kind==PendingCompletionKind::kBreak);
@@ -189,11 +233,19 @@ void Method(const IteratorKeyInput& file,const abc::MethodInfo& method,unsigned 
 }
 }
 int main(int argc,char** argv) {
-  Check(argc==2);
+  Check(argc==2 || argc==3);
   const auto file=std::get<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(argv[1]));
   const auto hash=std::get<corpus::FileFingerprint>(file->Fingerprint());
   const auto header=std::get<abc::Header>(abc::ParseHeader(std::span(hash.prefix).first(hash.prefix_size),hash.size));
   const auto index=std::get<abc::MetadataIndex>(abc::BuildMetadataIndex(*file,header));
+  if(argc==3) {
+    const auto entity=std::stoul(argv[2]);
+    const auto method=std::find_if(index.methods.begin(),index.methods.end(),[&](const auto& m){return m.offset.value==entity;});
+    Check(method!=index.methods.end());
+    for(unsigned n:{0,200,201,400,800})Method({*file,header,index},*method,n,Mutation::kNone,true);
+    Method({*file,header,index},*method,0,Mutation::kNone,true,1);
+    return 0;
+  }
   unsigned tested=0;
   for(const auto& method:index.methods) if(method.offset.value==423 || method.offset.value==451) {
     ++tested;

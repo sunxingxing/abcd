@@ -124,7 +124,12 @@ int main(int argc,char**argv) {
       std::cout<<"try="<<r.region.value<<" protocol="<<r.protocol.value<<" role="<<unsigned(r.role)<<" body="<<flow.instructions[x.body.begin.value].pc.value<<" handler="<<flow.instructions[x.handler.begin.value].pc.value<<" body-end-site="<<x.body.end.value<<" handler-end-site="<<x.handler.end.value<<" read="<<r.read.working_pc.value<<'\n';
     }
     if(argc>3 && std::string_view(argv[3])=="--boundary") {
-      auto entries=Take<CloseEntries>(DeriveCloseEntries(body,header.profile,graph,input,plan,keys,scan),"entries");
+      auto derived=DeriveCloseEntries(body,header.profile,graph,input,plan,keys,scan);
+      if(const auto* f=std::get_if<CloseEntryFailure>(&derived);f && f->node) {
+        const auto& site=flow.instructions[flow.nodes[f->node->value].instruction.value];
+        std::cout<<"entry-witness original="<<site.origin.value_or(site.pc).value<<" working="<<site.pc.value<<'\n';
+      }
+      auto entries=Take<CloseEntries>(std::move(derived),"entries");
       const auto pc=[&](ExceptionNodeId n){return flow.instructions[flow.nodes[n.value].instruction.value].pc.value;};
       std::vector<bool> live(flow.nodes.size());std::vector<ExceptionNodeId> pending;
       live[0]=true;pending.push_back({0});
@@ -140,6 +145,14 @@ int main(int argc,char**argv) {
 
       for(const auto& c:entries.closes) {
         std::cout<<"BOUNDARY read="<<flow.instructions[flow.nodes[graph.phases[graph.ops[c.read.value].block.value].input.value].instruction.value].pc.value<<" exhausted="<<pc(c.iteration.exhausted.source)<<"->"<<pc(flow.nodes[c.iteration.exhausted.source.value].successors[c.iteration.exhausted.successor].target)<<'\n';
+        if(c.continuation)std::cout<<" next-close="<<pc(*c.continuation)<<'\n';
+        for(const auto& e:c.entries) {
+          std::cout<<" derived-entry="<<pc(e.entry.edge.source)<<":"<<unsigned(e.entry.edge.successor)
+              <<"->"<<pc(flow.nodes[e.entry.edge.source.value].successors[e.entry.edge.successor].target)
+              <<" completion="<<unsigned(e.entry.pending.kind);
+          if(const auto* value=std::get_if<SsaValueId>(&e.entry.pending.payload))std::cout<<" payload=V"<<value->value;
+          std::cout<<'\n';
+        }
         for(const auto& e:c.exits)std::visit([&](const auto& x){
           std::cout<<" exit="<<pc(x.source)<<" phase="<<unsigned(flow.nodes[x.source.value].phase);
           if constexpr(requires{x.successor;})std::cout<<"->"<<pc(flow.nodes[x.source.value].successors[x.successor].target);

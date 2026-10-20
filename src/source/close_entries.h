@@ -43,6 +43,9 @@ struct DerivedClose {
   analysis::OpId read;
   CloseIterationBoundary iteration;
   analysis::ExceptionNodeId predicate, state_write;
+  // A normal outcome resumes another certified close before its terminal.
+  // This is an original Before boundary, never a replacement completion.
+  std::optional<analysis::ExceptionNodeId> continuation;
   std::vector<DerivedCloseEntry> entries;
   std::vector<analysis::CompletionExit> exits;
   analysis::CompletionRelation relation;

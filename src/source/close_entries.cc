@@ -57,6 +57,7 @@ struct Continuation {
   PendingCompletion pending;
   ExceptionNodeId origin;
   std::optional<CompletionEdge> transfer;
+  std::optional<ExceptionNodeId> close;
 };
 struct CallFact {
   std::uint32_t count=0,arguments=0;
@@ -75,7 +76,7 @@ class Derivation {
         stamps_(&q_.memory),loop_begin_(&q_.memory),loop_end_(&q_.memory),header_loop_(&q_.memory),
         exhausted_(&q_.memory),success_(&q_.memory),value_read_(&q_.memory),value_ambiguous_(&q_.memory),calls_(&q_.memory),state_checked_(&q_.memory),
         value_stamps_(&q_.memory),guard_owner_(&q_.memory),region_offsets_(&q_.memory),region_index_(&q_.memory),
-        branch_aliases_(&q_.memory),alias_slots_(&q_.memory),boundaries_(&q_.memory),
+        close_guards_(&q_.memory),branch_aliases_(&q_.memory),alias_slots_(&q_.memory),boundaries_(&q_.memory),
         writes_(&q_.memory),read_offsets_(&q_.memory),phi_offsets_(&q_.memory),phi_values_(&q_.memory),verify_(verify) {
     // Dense loop/entry contexts are a resource refusal, not quadratic admitted
     // work. This grant includes delegated analyses and all sparse graph walks.
@@ -507,10 +508,13 @@ class Derivation {
   }
   void StateIndex() {
     state_checked_.resize(scan_.candidates.size());value_stamps_.resize(g_.values.size());
+    close_guards_.resize(in_.flow.nodes.size());
     guard_owner_.resize(in_.flow.nodes.size());region_offsets_.resize(scan_.candidates.size()+1);
     q_.Step(g_.values.size()+in_.flow.nodes.size()+scan_.candidates.size()*2);
     for(const auto& r:scan_.regions)if(r.role==IteratorRegionRole::kReturnProtection) {
       q_.Step();++region_offsets_[r.protocol.value+1];const auto guard=GuardFor(r.read.before);
+      q_.Require(!close_guards_[guard.first.value],CloseEntryError::kGuard,guard.first);
+      close_guards_[guard.first.value]=&r;
       for(const auto n:{guard.predicate,guard.write}) {
         q_.Require(!guard_owner_[n.value] || guard_owner_[n.value]==r.protocol,CloseEntryError::kGuard,n);guard_owner_[n.value]=r.protocol;
       }
@@ -640,21 +644,34 @@ class Derivation {
   }
   Continuation Continue(ExceptionNodeId n,std::optional<LoopId> loop,ExceptionNodeId exhausted,CompletionEdge incoming) {
     const auto stamp=Stamp();
+    std::optional<ExceptionNodeId> continuation;
     for(;;) {
       q_.Step();q_.Require(stamps_[n.value]!=stamp,CloseEntryError::kContinuation,n);stamps_[n.value]=stamp;
+      // Derive the eventual completion through an enclosing close's bypass,
+      // but cut this relation at its original entry. No enclosing effects are
+      // absorbed or executed by this close. State/reference/priority of every
+      // occurrence must still verify before a method can obtain ownership.
+      if(const auto* next=close_guards_[n.value]) {
+        const auto outer=protocol_loop_[next->protocol.value];
+        q_.Require(next->protocol!=*current_protocol_ && loop && outer &&
+            loop_begin_[outer->value]<loop_begin_[loop->value] &&
+            loop_begin_[loop->value]<loop_end_[outer->value],CloseEntryError::kContinuation,n);
+        if(!continuation)continuation=n;
+        n=GuardFor(next->read.before).bypass;continue;
+      }
       const auto& node=Node(n);const auto& instruction=Instruction(n);
       if(n==exhausted)
-        return {{PendingCompletionKind::kBreak,{},n},incoming.source,incoming};
+        return {{PendingCompletionKind::kBreak,{},n},incoming.source,incoming,continuation};
       if(node.phase==ExceptionPhase::kBefore) {
         if(const auto* ret=std::get_if<ReturnOperation>(&instruction.operation)) {
           CompletionPayload payload;
           if(const auto value=Read(n,ret->value))payload=Canonical(*value);
           else q_.Require(std::get_if<SpecialValue>(&ret->value) && std::get<SpecialValue>(ret->value)==SpecialValue::kUndefined,CloseEntryError::kPayload,n);
-          return {{PendingCompletionKind::kReturn,payload,CompletionCaller{}},n,{}};
+          return {{PendingCompletionKind::kReturn,payload,CompletionCaller{}},n,{},continuation};
         }
         if(const auto* thrown=std::get_if<ThrowOperation>(&instruction.operation)) {
           const auto value=Read(n,thrown->value);q_.Require(value.has_value(),CloseEntryError::kPayload,n);
-          return {{PendingCompletionKind::kThrow,Canonical(*value),CompletionCaller{}},n,{}};
+          return {{PendingCompletionKind::kThrow,Canonical(*value),CompletionCaller{}},n,{},continuation};
         }
       }
       q_.Require(instruction.effects.exceptional==ExceptionalCompletion::kImpossible &&
@@ -665,7 +682,7 @@ class Derivation {
       if(node.phase==ExceptionPhase::kCommit && std::holds_alternative<JumpOperation>(instruction.operation) && loop && !Inside(*loop,next)) {
         const auto outer=header_loop_[next.value];
         if(outer && loop_begin_[outer->value]<loop_begin_[loop->value] && loop_begin_[loop->value]<loop_end_[outer->value])
-          return {{PendingCompletionKind::kContinue,{},next},n,CompletionEdge{n,0}};
+          return {{PendingCompletionKind::kContinue,{},next},n,CompletionEdge{n,0},continuation};
       }
       incoming={n,0};n=next;
     }
@@ -712,7 +729,8 @@ class Derivation {
         const bool completion=edge.kind!=ExceptionArcKind::kException && std::holds_alternative<ExceptionNodeId>(target) &&
           (edge.target==std::get<ExceptionNodeId>(target) ||
            (q_.Step(1+std::bit_width(shared.size())),shared.contains(edge.target)));
-        if(external || completion)cuts.push_back(CompletionEdge{n,e});
+        const bool chained=edge.kind!=ExceptionArcKind::kException && close.continuation==edge.target;
+        if(external || completion || chained)cuts.push_back(CompletionEdge{n,e});
         else if(stamps_[edge.target.value]!=stamp){stamps_[edge.target.value]=stamp;queue.push_back(edge.target);}
       }
     }
@@ -741,6 +759,7 @@ class Derivation {
     const auto pending=Continue(guard.bypass,loop,exit,{guard.predicate,bypass_edge});
     DerivedClose close{region.protocol,region.read.operation,
         {advance,exhausted,exit,success,loop?std::optional{original_[loops_.loops[loop->value].header.value]}:std::nullopt},guard.predicate,guard.write};
+    close.continuation=pending.close;
     if(!value_ambiguous_[region.protocol.value])close.iteration.value=value_read_[region.protocol.value];
     if(pending.pending.kind==PendingCompletionKind::kThrow) {
       const auto payload=std::get<SsaValueId>(pending.pending.payload);
@@ -756,6 +775,7 @@ class Derivation {
       q_.Reserve(close.entries,pred_offsets_[catcher.value+1]-pred_offsets_[catcher.value]);
       for(auto i=pred_offsets_[catcher.value];i<pred_offsets_[catcher.value+1];++i) {
         q_.Step();const auto edge=preds_[i];const auto& source=Node(edge.source);
+        if(!dom_.nodes[edge.source.value].begin)continue;
         // The body handler can also be entered by an error from an inlined
         // close copy. Its CURRENT exception is the pending Throw here. Do not
         // substitute the earlier Break/Return or require natural-loop
@@ -778,6 +798,7 @@ class Derivation {
       q_.Reserve(close.entries,pred_offsets_[guard.first.value+1]-pred_offsets_[guard.first.value]);
       for(auto i=pred_offsets_[guard.first.value];i<pred_offsets_[guard.first.value+1];++i) {
         q_.Step();const auto edge=preds_[i];
+        if(!dom_.nodes[edge.source.value].begin)continue;
         q_.Require(Node(edge.source).successors[edge.successor].kind!=ExceptionArcKind::kException &&
             Dominates(success,edge.source),CloseEntryError::kExternalEntry,edge.source);
         close.entries.push_back({{edge,pending.pending},pending.origin,{},pending.transfer});
@@ -804,6 +825,7 @@ class Derivation {
   std::pmr::vector<std::optional<SsaValueId>> copy_;
   std::pmr::vector<Dependency> deps_;std::pmr::vector<std::uint8_t> ready_;
   std::pmr::vector<std::optional<ControlNodeId>> normal_;std::pmr::vector<ExceptionNodeId> original_;
+  std::pmr::vector<const IteratorRegionCandidate*> close_guards_;
   std::pmr::vector<std::optional<Guard>> guards_;std::pmr::vector<std::optional<LoopId>> protocol_loop_;
   std::pmr::vector<std::optional<ExceptionNodeId>> protocol_advance_;
   std::pmr::vector<std::uint32_t> pred_offsets_;std::pmr::vector<CompletionEdge> preds_;
@@ -860,7 +882,7 @@ std::variant<std::uint64_t,CloseEntryFailure> VerifyCloseEntries(const abc::Meth
     const auto& a=expected.closes[i];const auto& b=supplied.closes[i];
     if(!step())return CloseEntryFailure{CloseEntryError::kWorkLimit};
     if(a.protocol!=b.protocol || a.read!=b.read || a.iteration!=b.iteration || a.predicate!=b.predicate ||
-        a.state_write!=b.state_write || a.precision!=b.precision || a.entries.size()!=b.entries.size() || a.exits.size()!=b.exits.size() ||
+        a.state_write!=b.state_write || a.continuation!=b.continuation || a.precision!=b.precision || a.entries.size()!=b.entries.size() || a.exits.size()!=b.exits.size() ||
         a.relation.arrivals.size()!=b.relation.arrivals.size() || a.relation.leaving.size()!=b.relation.leaving.size())
       return CloseEntryFailure{CloseEntryError::kCorrespondence,a.protocol,a.read};
     for(std::size_t e=0;e<a.exits.size();++e) {
