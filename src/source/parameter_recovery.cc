@@ -67,6 +67,10 @@ std::variant<DefaultSignatureProof,DefaultSignatureError> RetainParameterDefault
   catch(const std::bad_alloc&){return DefaultSignatureError::kResourceLimit;}
 }
 void VerifyParameterDefaultFlow(const FunctionTree& tree,const RecoveryFlow& flow,TreeCheckBudget& budget) {
+  if (tree.parameter_expressions) {
+    VerifyParameterExpressionFlow(tree, flow, budget);
+    return;
+  }
   if(!flow.original||!flow.original->parameter_defaults){Require(flow.parameter_defaults.empty());return;}
   const auto& source=*flow.original->parameter_defaults;
   Require(flow.parameter_defaults.size()==source.entries.size());

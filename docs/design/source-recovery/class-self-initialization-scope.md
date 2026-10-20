@@ -775,3 +775,22 @@ does not forge a publication port from the export.
 - `build/review/class-self6/` retains raw m8638 IR, the actual disassembly,
   compiler/fixture identity, build/test logs, target first-refusal comparison and
   full cohort comparison. `tree_failure.mjs` needs no expectation change.
+
+
+### Generic parameter-expression implementation (2026-10-20)
+
+The approved expression-default extension is now consumed across discovery,
+DefaultBody, signature bindings/ABI and OriginalFlow/RecoveryFlow. See
+[parameter-initializer-expressions.md](parameter-initializer-expressions.md)
+for the certificate, refusal boundary, independent verifiers, complexity and
+exact round-trip differences. Existing literal/cell projections retain priority.
+
+The former negative member-ABI fixture now publishes; its old literal-only
+proof continues to reject treating a property read as a constant. o20/8166
+publishes IndicatorBarAttribute with six native defaults and constructor length
+1. Its O0 constructor instruction body equals original m8638. Deferred initializer
+module aliases now rebind through the actual record enclosure rather than a
+provisional owner. This does not initialize or copy an outer binding.
+
+o0/4660 is unchanged at the completed-class availability/publication-port gate.
+The getInstance result remains distinct from the class identity.

@@ -3,8 +3,9 @@
 `defaults.js` is a new independent fixture. It contains a guarded import-property
 initializer, four numeric initializers and a global-property initializer. Its
 static self-reference drives the real class family through the member ABI check.
-The current expected result is **refusal**, not recovered-source support:
-`ClassSelfError::kRecoveryGate / kMemberAbi`, declared length 1 / signature 7.
+The diagnostic baseline refused with `ClassSelfError::kRecoveryGate / kMemberAbi`,
+declared length 1 / signature 7. The current generic proof publishes the native
+signature with `.length === 1`.
 Neither property expression may be replaced by its base binding or a constant.
 
 Pinned compiler:
@@ -31,3 +32,10 @@ actual parameter count, candidate/proof refusal, and resource/work boundaries.
 `member_expression_default_source_test` checks the production record failure
 and both actual ABI lengths. This is an explicit negative regression. It is
 not a Node differential or bytecode-equivalence claim for recovered output.
+
+
+The generic parameter-expression round now publishes this fixture. The old
+literal-only discovery test still rejects treating its property read as a
+constant; the new independent certificate owns all six initializers, including
+module guard and getter exceptions. The integration test checks native length 1,
+static self construction, default getter order and explicit provided values.

@@ -385,6 +385,7 @@ struct SendableConstructorDirective {
   abc::PoolIndex constructor, literal;
   bool operator==(const SendableConstructorDirective&)const=default;
 };
+class ParameterExpressionSource;
 struct FunctionTree {
   struct ClassScope {
     ClassInnerBinding binding;
@@ -464,6 +465,7 @@ struct FunctionTree {
   std::optional<ConcurrentDirective> concurrent;
   std::optional<SendableConstructorDirective> sendable;
   analysis::ModuleDomain module_domain = analysis::ModuleDomain::kOrdinary;
+  std::shared_ptr<const ParameterExpressionSource> parameter_expressions;
 };
 // FunctionTree is the direct printer input, not a source-publication token.
 // Structural safety checks do not imply complete recovery or IR equivalence.

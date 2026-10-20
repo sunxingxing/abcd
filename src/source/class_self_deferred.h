@@ -45,6 +45,6 @@ ClassSelfInitializationDiagnostic BindDeferredClassSelf(
     const abc::MethodLookup&, const analysis::MethodRoleIndex&,
     const analysis::ClassMethodSites&, const FileFunction&, ClassSelfDeferred&,
     ClassTree&, FunctionOwnerId, CaptureTree, const CaptureStorage*,
-    analysis::SemanticBudget = {});
+    analysis::SemanticBudget = {}, const ModuleEnclosure* = nullptr);
 }  // namespace abcd::source
 #endif

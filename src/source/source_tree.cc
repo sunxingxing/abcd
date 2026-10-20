@@ -1,6 +1,8 @@
 #include "abcd/source/source_tree.h"
 
 #include <type_traits>
+
+#include "parameter_expression_tree.h"
 #include "tree_print_trace.h"
 
 namespace abcd::source {
@@ -44,6 +46,27 @@ std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
   };
   if (const auto error = payloads(tree.names)) return *error;
   if (const auto error = payloads(tree.texts)) return *error;
+  if (tree.parameter_expressions) {
+    const auto& s = *tree.parameter_expressions;
+    const auto& g = s.Input();
+    const auto& c = s.Certificate();
+    if (!admit(1, sizeof(ParameterExpressionSource)) ||
+        !admit(1, sizeof(analysis::ValueProgram)) || !arena(g.blocks) ||
+        !arena(g.edges) || !arena(g.ops) || !arena(g.values) ||
+        !arena(g.uses) || !arena(g.origins) || !arena(g.exceptional_exits) ||
+        !arena(g.input.sites) || !arena(g.input.values) || !arena(g.phases) ||
+        !arena(c.defaults) || !arena(c.events) || !arena(c.exceptions) ||
+        !arena(s.Operations()) || !arena(s.Roots()) || !arena(s.Names()) ||
+        !arena(s.Bindings()))
+      return TreeStorageError::kResourceLimit;
+    for (const auto& text : s.Names()) {
+      if (!work) return TreeStorageError::kWorkLimit;
+      --work;
+      if (text && (!admit(text->capacity(), sizeof(char16_t)) ||
+                   !admit(1, sizeof(char16_t))))
+        return TreeStorageError::kResourceLimit;
+    }
+  }
   return TreeStorage{budget.bytes - remaining, budget.work - work};
 }
 }  // namespace abcd::source

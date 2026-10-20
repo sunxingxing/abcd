@@ -326,7 +326,8 @@ std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
             input.file, input.header, input.index, input.lookup, input.roles,
             input.classes, input.creator, *input.creator.class_self, *task.tree,
             {static_cast<std::uint32_t>(task.owners->end - 1)}, *parent,
-            input.storage, q.Left());
+            input.storage, q.Left(),
+            globals ? globals->module_enclosure : nullptr);
         auto& retained = *input.creator.class_self;
         if (retained.flow && retained.initializer.tree.class_scope &&
             diagnostic.recovery &&

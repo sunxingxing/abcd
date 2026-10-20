@@ -1,10 +1,13 @@
 #include "module_guards.h"
-#include "module_state_flow.h"
 
-#include <new>
-#include <stdexcept>
 #include <algorithm>
 #include <bit>
+#include <new>
+#include <stdexcept>
+
+#include "module_state_flow.h"
+#include "parameter_expression.h"
+#include "tree_checks.h"
 
 namespace abcd::source {
 namespace {
@@ -152,6 +155,78 @@ std::variant<std::uint64_t, ModuleGuardError> VerifyModuleGuards(
   try {
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     const auto& facts = input.Proof().module_reads;
+    if (plan.signature) {
+      TreeCheckBudget q(budget);
+      const auto& source = *plan.signature;
+      Require(source.graph != nullptr, Error::kCoverage);
+      const auto& raw = *source.graph;
+      Require(graph.revision.value == raw.revision.value + 1 &&
+                  graph.cfg_revision.value == raw.cfg_revision.value + 1,
+              Error::kRevision);
+      auto parameters =
+          BuildParameterPlan(raw, source.certificate.formals, q.Remaining());
+      if (const auto* e = std::get_if<ParameterPlanError>(&parameters))
+        throw *e == ParameterPlanError::kResourceLimit ? Error::kResourceLimit
+        : *e == ParameterPlanError::kWorkLimit ? Error::kWorkLimit
+                                               : Error::kUnsupportedProof;
+      const auto& p = std::get<ParameterPlan>(parameters);
+      q.Admit(p.allocated_bytes, 1);
+      q.Step(p.work);
+      auto proof =
+          VerifyParameterExpressions(raw, p, source.certificate, q.Remaining());
+      if (const auto* e = std::get_if<ParameterExpressionFailure>(&proof))
+        throw e->kind == ParameterExpressionError::kResourceLimit
+            ? Error::kResourceLimit
+        : e->kind == ParameterExpressionError::kWorkLimit
+            ? Error::kWorkLimit
+            : Error::kUnsupportedProof;
+      const auto cost = std::get<ParameterExpressionCost>(proof);
+      q.Admit(cost.allocated_bytes, 1);
+      q.Step(cost.work);
+      std::vector<std::uint8_t> moved;
+      q.Array(moved, raw.ops.size());
+      for (const auto& e : source.certificate.events) {
+        q.Step();
+        moved[e.operation.value] = 1;
+      }
+      const auto allowed = q.Remaining().work;
+      Correspondence old(input, raw, q.Remaining());
+      Correspondence current(input, graph, q.Remaining());
+      std::size_t kept = 0, migrated = 0;
+      for (const auto& fact : facts) {
+        q.Step();
+        const auto pair = old.Pair(fact);
+        if (moved[pair.read.value]) {
+          Require(migrated < plan.signature_pairs.size() &&
+                      plan.signature_pairs[migrated++] == pair &&
+                      (!pair.guard || moved[pair.guard->value]),
+                  Error::kCoverage);
+          const auto tombstone = [&](analysis::OpId id) {
+            Require(
+                id.value < graph.ops.size() &&
+                    graph.ops[id.value].life == analysis::ValueLife::kRemoved &&
+                    std::holds_alternative<analysis::ValueNop>(
+                        graph.ops[id.value].operation) &&
+                    graph.ops[id.value].origin == raw.ops[id.value].origin,
+                Error::kOrigin);
+          };
+          tombstone(pair.read);
+          if (pair.guard) tombstone(*pair.guard);
+        } else
+          Require(kept < plan.pairs.size() &&
+                      plan.pairs[kept++] == current.Pair(fact),
+                  Error::kCoverage);
+      }
+      Require(
+          kept == plan.pairs.size() && migrated == plan.signature_pairs.size(),
+          Error::kCoverage);
+      q.Step(allowed - old.Remaining());
+      q.Step(allowed - current.Remaining());
+      const auto lazy = VerifyLazyModuleReads(graph, plan, q.Remaining());
+      if (const auto* error = std::get_if<Error>(&lazy)) return *error;
+      q.Step(std::get<std::uint64_t>(lazy));
+      return q.Work();
+    }
     Require(plan.pairs.size() == facts.size(), Error::kCoverage);
     Correspondence checked(input, graph, budget);
     for (std::size_t i = 0; i < facts.size(); ++i) {
@@ -162,7 +237,12 @@ std::variant<std::uint64_t, ModuleGuardError> VerifyModuleGuards(
     const auto lazy=VerifyLazyModuleReads(graph,plan,{budget.bytes,checked.Remaining()});
     if(const auto* error=std::get_if<Error>(&lazy))return *error;
     return budget.work - checked.Remaining()+std::get<std::uint64_t>(lazy);
-  } catch (Error error) { return error; }
+  } catch (TreeStructureError e) {
+    return e == TreeStructureError::kWorkLimit ? Error::kWorkLimit
+                                               : Error::kResourceLimit;
+  } catch (Error error) {
+    return error;
+  }
 }
 std::variant<ModuleGuards, ModuleGuardError> BuildModuleGuards(
     const FunctionInput& input, const analysis::ValueProgram& graph,
@@ -192,5 +272,55 @@ std::variant<ModuleGuards, ModuleGuardError> BuildModuleGuards(
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<ModuleGuards, ModuleGuardError> BuildParameterModuleGuards(
+    const FunctionInput& input, const analysis::ValueProgram& graph,
+    std::shared_ptr<const ParameterExpressionInput> source,
+    analysis::SemanticBudget budget) {
+  try {
+    Require(source && source->graph, Error::kUnsupportedProof);
+    TreeCheckBudget q(budget);
+    auto raw = BuildModuleGuards(input, *source->graph, q.Remaining());
+    if (const auto* e = std::get_if<ModuleGuardError>(&raw)) return *e;
+    auto plan = std::get<ModuleGuards>(std::move(raw));
+    q.Admit(plan.allocated_bytes, 1);
+    q.Step(plan.work);
+    std::vector<std::uint8_t> moved;
+    q.Array(moved, graph.ops.size());
+    for (const auto& e : source->certificate.events) {
+      q.Step();
+      Require(e.operation.value < moved.size(), Error::kCoverage);
+      moved[e.operation.value] = 1;
+    }
+    q.Admit(plan.pairs.size(), sizeof(ModuleReadSite));
+    plan.signature_pairs.reserve(plan.pairs.size());
+    q.Admit(plan.signature_pairs.capacity() - plan.pairs.size(),
+            sizeof(ModuleReadSite));
+    auto out = plan.pairs.begin();
+    for (const auto& pair : plan.pairs) {
+      q.Step();
+      if (moved[pair.read.value])
+        plan.signature_pairs.push_back(pair);
+      else
+        *out++ = pair;
+    }
+    plan.pairs.erase(out, plan.pairs.end());
+    plan.signature = std::move(source);
+    plan.revision = graph.revision;
+    plan.cfg_revision = graph.cfg_revision;
+    auto checked = VerifyModuleGuards(input, graph, plan, q.Remaining());
+    if (auto* e = std::get_if<ModuleGuardError>(&checked)) return *e;
+    q.Step(std::get<std::uint64_t>(checked));
+    plan.allocated_bytes = q.Bytes();
+    plan.work = q.Work();
+    return plan;
+  } catch (TreeStructureError e) {
+    return e == TreeStructureError::kWorkLimit ? Error::kWorkLimit
+                                               : Error::kResourceLimit;
+  } catch (Error e) {
+    return e;
+  } catch (const std::bad_alloc&) {
+    return Error::kResourceLimit;
+  }
 }
 }  // namespace abcd::source

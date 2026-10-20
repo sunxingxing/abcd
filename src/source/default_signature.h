@@ -7,10 +7,12 @@
 
 namespace abcd::source {
 struct ControlPlan;
+struct ModuleAliases;
 struct DefaultSignatureContext {
   const ControlPlan& control;
   const EvaluationPlan& evaluation;
   const ExpressionConstants* constants = nullptr;
+  const ModuleAliases* modules = nullptr;
 };
 enum class DefaultSignatureError : std::uint8_t {
   kRevision, kContext, kParameter, kLiteral, kPlacement, kOrigin, kStructure,

@@ -213,6 +213,7 @@ struct OriginalFlow {
   std::vector<OriginalClassInitialization> class_initializations;
   std::optional<OriginalIterations> iterations;
   std::optional<OriginalParameterDefaults> parameter_defaults;
+  std::shared_ptr<const ParameterExpressionSource> parameter_expressions;
   std::vector<OriginalConcurrentNotification> notifications;
   // Retain exact immutable operations only for concurrent completion recovery.
   // This prevents a cached tree port from inventing a raw notification/return.

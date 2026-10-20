@@ -15,6 +15,7 @@
 #include "borrowed_print_trees.h"
 #include "class_inner_scope.h"
 #include "class_tree.h"
+#include "parameter_expression_tree.h"
 #include "sendable_class.h"
 #include "tree_checks.h"
 
@@ -237,12 +238,31 @@ class StructureCheck {
       RequireTree(id.value < tree_.expressions.size(), Error::kRange);
       const auto& expression = tree_.expressions[id.value].expression;
       const auto* captured = std::get_if<SymbolExpr>(&expression);
-      RequireTree(std::holds_alternative<TreeLiteral>(expression) ||
-          (captured && captured->symbol.value < tree_.symbols.size() &&
-           tree_.symbols[captured->symbol.value].kind == BindingKind::kCapture), Error::kUnsupportedSyntax);
-      SyntaxFrame initializer{id, tree_.parameter_scope, 0, false};
-      Enter(initializer);
+      RequireTree(
+          tree_.parameter_expressions ||
+              std::holds_alternative<TreeLiteral>(expression) ||
+              (captured && captured->symbol.value < tree_.symbols.size() &&
+               tree_.symbols[captured->symbol.value].kind ==
+                   BindingKind::kCapture),
+          Error::kUnsupportedSyntax);
+      std::size_t depth = 1;
+      stack_[0] = {id, tree_.parameter_scope, 0, false};
+      while (depth) {
+        budget_.Step();
+        auto& frame = stack_[depth - 1];
+        if (!frame.entered) {
+          Enter(frame);
+          frame.entered = true;
+        }
+        if (auto child = Next(frame)) {
+          RequireTree(depth < stack_.size(), Error::kOwnership);
+          stack_[depth++] = {*child, frame.scope, 0, false};
+        } else
+          --depth;
+      }
     }
+    if (tree_.parameter_expressions)
+      VerifyParameterExpressionTree(tree_, budget_);
     std::size_t depth = 1;
     std::size_t maximum_depth = depth;
     stack_[0] = {tree_.body, tree_.parameter_scope, 0, false};

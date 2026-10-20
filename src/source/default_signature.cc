@@ -1,10 +1,11 @@
 #include "default_signature.h"
 
+#include <bit>
 #include <limits>
 #include <new>
-#include <bit>
 #include <stdexcept>
 
+#include "parameter_expression_tree.h"
 #include "tree_checks.h"
 #include "tree_flow.h"
 
@@ -54,6 +55,12 @@ std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature
         ? Error::kWorkLimit : Error::kResourceLimit;
     TreeCheckBudget checked(budget);
     checked.Admit(measured->bytes, 1); checked.Step(measured->work);
+    if (body.Expressions()) {
+      Require(capture != nullptr, Error::kContext);
+      BuildParameterExpressionSignature(body, tree, *capture, checked);
+      return DefaultSignatureProof{graph.revision, graph.cfg_revision,
+                                   checked.Bytes(), checked.Work()};
+    }
     for (const auto& parameter : tree.parameters) {
       checked.Step(); Require(!parameter.initializer && !parameter.rest, Error::kParameter);
     }
@@ -124,7 +131,9 @@ std::variant<DefaultSignatureProof, DefaultSignatureError> BuildDefaultSignature
     return DefaultSignatureProof{graph.revision, graph.cfg_revision, checked.Bytes(), checked.Work()};
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {
-    return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
+    return error == TreeStructureError::kWorkLimit       ? Error::kWorkLimit
+           : error == TreeStructureError::kResourceLimit ? Error::kResourceLimit
+                                                         : Error::kContext;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }

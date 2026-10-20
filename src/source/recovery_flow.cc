@@ -14,6 +14,7 @@
 #include "expression_observation.h"
 #include "flow_units.h"
 #include "loop_syntax.h"
+#include "parameter_expression_tree.h"
 #include "parameter_recovery.h"
 #include "recovery_scratch.h"
 namespace abcd::source {
@@ -69,6 +70,8 @@ class FlowBuilder {
     result_.snapshot_slots.clear();
     result_.invocation_values.clear();
     result_.parameter_defaults.clear();
+    result_.parameter_expression_events.clear();
+    result_.parameter_guards.clear();
     result_.captured_inputs.clear();
     result_.unit_captures.clear();
   }
@@ -173,8 +176,24 @@ class FlowBuilder {
     }
     native_scopes_=projection_.loops&&std::any_of(native_bindings_.begin(),native_bindings_.end(),[](const auto& member){return member.has_value();});
     if(native_scopes_){budget_.Step(tree_.statements.size());Resize(loop_scopes_,tree_.statements.size());}
+    if (tree_.parameter_expressions)
+      VerifyParameterExpressionTree(tree_, budget_);
     if(result_.original && result_.original->parameter_defaults)
       VerifyParameterDefaultInput(tree_,*result_.original->parameter_defaults,budget_);
+    Resize(parameter_guards_,
+           tree_.parameter_expressions ? tree_.expressions.size() : 0);
+    if (tree_.parameter_expressions)
+      for (const auto& e : tree_.parameter_expressions->Certificate().events) {
+        budget_.Step();
+        const auto& op =
+            tree_.parameter_expressions->Input().ops[e.operation.value];
+        if (std::holds_alternative<analysis::ValueGuard>(op.operation)) {
+          const auto id =
+              tree_.parameter_expressions->Operations()[e.operation.value];
+          RequireTree(id && !parameter_guards_[id->value], Error::kOwnership);
+          parameter_guards_[id->value] = e.operation;
+        }
+      }
     terminal_=New(); dispatch_=New();
     if(native_scopes_)loop_scope_events_[terminal_.value]={IncomingScope{},IncomingScope{}};
     current_loop_=IncomingScope{};
@@ -215,7 +234,29 @@ class FlowBuilder {
         const auto& entries=result_.original->parameter_defaults->entries;
         if(default_index<entries.size()&&entries[default_index].proof.parameter==i)joint=&entries[default_index++];
       }
-      if(joint) {
+      const auto expression_default =
+          tree_.parameter_expressions ? tree_.parameter_expressions->Roots()[i]
+                                      : std::optional<ExprId>{};
+      if (expression_default) {
+        RequireTree(
+            !parameter.rest && parameter.initializer == expression_default,
+            Error::kOwnership);
+        const auto argument = New(), decision = New(), provided = New(),
+                   missing = New();
+        Context invocation{missing, terminal_, {}};
+        invocation.entry_evaluation = true;
+        Link(previous, argument);
+        Link(argument, decision);
+        Link(decision, provided, FlowCompletion::kNotTaken);
+        Link(decision, Expr(*expression_default, invocation),
+             FlowCompletion::kTaken);
+        Link(provided, initialized);
+        Link(missing, initialized);
+        Append(
+            result_.parameter_defaults,
+            {ParameterId{static_cast<std::uint32_t>(i)}, argument, decision,
+             provided, missing, initialized, *expression_default, terminal_});
+      } else if (joint) {
         RequireTree(!parameter.rest&&parameter.initializer==joint->initializer,Error::kOwnership);
         const auto argument=New(),decision=New(),provided=New(),missing=New();
         Context invocation{missing,terminal_,{}};invocation.entry_evaluation=true;
@@ -224,7 +265,7 @@ class FlowBuilder {
         Link(decision,Expr(joint->initializer,invocation),FlowCompletion::kTaken);
         Link(provided,initialized);Link(missing,initialized);
         Append(result_.parameter_defaults,{ParameterId{static_cast<std::uint32_t>(i)},argument,decision,provided,missing,initialized,joint->initializer,terminal_});
-      } else if(parameter.rest) {
+      } else if (parameter.rest) {
         const auto creation=New({FlowEventKind::kEvaluation});
         const auto effects=NormalValueEffects(EmptyArrayExpr{},{},ResourceFailures(tree_.identity.contract));
         events_[creation.value].effects=effects;events_[creation.value].effect=effects.Evaluation();
@@ -232,7 +273,8 @@ class FlowBuilder {
         Link(previous,creation);Link(creation,initialized);
         if(effects.exceptional==analysis::ExceptionalCompletion::kMayThrow)Link(creation,terminal_,FlowCompletion::kThrow);
         Append(result_.invocation_values,{ParameterId{static_cast<unsigned>(i)},creation,*events_[initialized.value].definition});
-      } else Link(previous,initialized);
+      } else
+        Link(previous, initialized);
       previous=initialized;
     }
     Link(previous,statements_[tree_.body.value]);
@@ -376,6 +418,7 @@ class FlowBuilder {
     VerifyForInRecovery(tree_, result, budget_);
     VerifyForOfRecovery(tree_,result,budget_);
     VerifyProtocolForwardingRecovery(tree_,result,budget_);
+    BuildParameterExpressionPorts(tree_, result, budget_);
     VerifyParameterDefaultFlow(tree_,result,budget_);
     VerifyClassInitializationRecovery(tree_, result, budget_);
     result.allocated_bytes=budget_.Bytes();
@@ -395,7 +438,7 @@ class FlowBuilder {
     };
     // Ownership census, not semantic dispatch. Add any new owned flow buffer
     // here; original evidence is borrowed and scopes are charged separately.
-    add(flow.enumerations);add(flow.iterations);add(flow.iteration_closes);add(flow.parameter_defaults);
+    add(flow.enumerations);add(flow.iterations);add(flow.iteration_closes);add(flow.parameter_defaults);add(flow.parameter_expression_events);add(flow.parameter_guards);
     add(flow.class_initializations);
     add(flow.normal_kinds);add(flow.normal_truths);add(flow.normal_exits);
     add(flow.actions);add(flow.aggregates);add(flow.argument_carriers);
@@ -1247,7 +1290,18 @@ class FlowBuilder {
     events_[effect.value].effects=required?NormalValueEffects(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract)):SourceEffects{};
     if(context.discarded && required)discarded_[context.discarded->value].effect=ExpressionEvaluation::kRequired;
     const bool suspension=std::holds_alternative<AwaitExpr>(node)||std::holds_alternative<YieldExpr>(node);
-    Link(effect,normal,suspension?FlowCompletion::kResumeNext:FlowCompletion::kNormal);
+    if (context.entry_evaluation && at.id.value < parameter_guards_.size() &&
+        parameter_guards_[at.id.value]) {
+      const auto guard = New();
+      Link(effect, guard);
+      Link(guard, normal);
+      Link(guard, context.thrown, FlowCompletion::kThrow);
+      Append(result_.parameter_guards,
+             FlowParameterGuard{at.id, *parameter_guards_[at.id.value], guard,
+                                normal});
+    } else
+      Link(effect, normal,
+           suspension ? FlowCompletion::kResumeNext : FlowCompletion::kNormal);
     if(NormalValueEvaluation(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract))==ExpressionEvaluation::kRequired &&
         projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert &&
         !projection_.normal_stores[at.id.value])Link(effect,context.thrown,suspension?FlowCompletion::kResumeThrow:FlowCompletion::kThrow);
@@ -1664,6 +1718,7 @@ class FlowBuilder {
   std::vector<std::optional<FlowLoopScope>> loop_scopes_;
   std::optional<StmtId> current_owner_;
   bool current_entry_evaluation_=false;
+  std::vector<std::optional<analysis::OpId>> parameter_guards_;
   const FunctionTree& tree_;LegacyFlowProjection projection_;TreeCheckBudget budget_;RecoveryScratch memory_;
   std::vector<FlowEvent> events_;std::vector<FlowEdge> edges_;
   std::vector<std::optional<FlowStatementAction>> statement_actions_;

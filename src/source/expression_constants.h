@@ -13,7 +13,12 @@ struct DerivedCaptureInput;
 // Constants are resolved by the ABC adapter before syntax construction. Pool
 // indices never become executable tree operands. Entries are indexed by OpId.
 // Sealed signature projection supplies pool-backed literals at removed sites.
-struct SignatureString { analysis::OpId operation; abc::PoolIndex string; };
+enum class SignatureConstantKind : std::uint8_t { kString, kName };
+struct SignatureString {
+  analysis::OpId operation;
+  abc::PoolIndex string;
+  SignatureConstantKind kind = SignatureConstantKind::kString;
+};
 struct AggregateConstant {
   std::uint32_t first;
   std::uint32_t count;

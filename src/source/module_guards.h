@@ -6,6 +6,7 @@
 
 namespace abcd::analysis { struct PhasedValueInput; }
 namespace abcd::source {
+struct ParameterExpressionInput;
 struct ModuleReadSite {
   analysis::OpId read;
   // Absence is an initialized local read, never an omitted required check.
@@ -20,6 +21,8 @@ struct ModuleGuards {
   std::vector<ModuleReadSite> pairs;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  std::shared_ptr<const ParameterExpressionInput> signature;
+  std::vector<ModuleReadSite> signature_pairs;
 };
 enum class ModuleGuardError : std::uint8_t {
   kRevision, kOrigin, kCoverage, kRead, kGuard, kOrder, kEffects,
@@ -36,6 +39,10 @@ enum class ModuleGuardError : std::uint8_t {
 [[nodiscard]] std::variant<ModuleGuards, ModuleGuardError> BuildModuleGuards(
     const FunctionInput& input, const analysis::ValueProgram& graph,
     analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<ModuleGuards, ModuleGuardError>
+BuildParameterModuleGuards(const FunctionInput&, const analysis::ValueProgram&,
+                           std::shared_ptr<const ParameterExpressionInput>,
+                           analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<std::uint64_t, ModuleGuardError> VerifyModuleGuards(
     const FunctionInput& input, const analysis::ValueProgram& graph,
     const ModuleGuards& plan, analysis::SemanticBudget budget = {});

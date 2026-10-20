@@ -29,7 +29,7 @@ class ConstantResolver {
     if (file_.Size() != header_.file_size || file_.CheckUnchanged()) throw abc::MetadataError::kFileChanged;
     if (graph_.ops.size() >= std::numeric_limits<std::uint32_t>::max()) throw Error::kResourceLimit;
     Admit(1, sizeof(ConstantResolver));
-    Reserve(uses_, graph_.ops.size());
+    Reserve(uses_, graph_.ops.size() + signature_.size());
     Reserve(result_.operations, graph_.ops.size());
     result_.operations.resize(graph_.ops.size());
     std::size_t indexed_names = 0;
@@ -84,7 +84,10 @@ class ConstantResolver {
             graph_.origins[op.origin.value].disposition != analysis::OriginDisposition::kRetained)
           throw Error::kSignatureLiteral;
         seen[literal.operation.value] = 1;
-        uses_.push_back({literal.string,literal.operation,TextUse::kLiteral});
+        uses_.push_back({literal.string, literal.operation,
+                         literal.kind == SignatureConstantKind::kString
+                             ? TextUse::kLiteral
+                             : TextUse::kMember});
       }
     }
     std::sort(uses_.begin(), uses_.end(), [&](const auto& a, const auto& b) {

@@ -25,6 +25,9 @@ struct DefaultCandidate {
   // Pool identity is verified against the original ValueString, then resolved
   // by TreeConstants in the original method pool. Never executable pool syntax.
   std::optional<abc::PoolIndex> text;
+  // A missing-edge initialized-parameter value, with no physical expression op.
+  std::optional<analysis::UseId> input;
+  std::optional<analysis::WorkBlockId> prologue;
 };
 // A nonliteral boundary, not a migrated default. Captured-cell scope, guard,
 // initializer environment and source ownership still need separate proof.
@@ -55,5 +58,9 @@ enum class DefaultCandidateError : std::uint8_t {
 FindDefaultCandidates(const analysis::ValueProgram& graph,
     const ParameterPlan& parameters, std::uint32_t length,
     analysis::SemanticBudget budget = {});
+[[nodiscard]] std::variant<DefaultCandidates, DefaultCandidateError>
+FindParameterExpressionCandidates(const analysis::ValueProgram&,
+                                  const ParameterPlan&, std::uint32_t length,
+                                  analysis::SemanticBudget budget = {});
 }  // namespace abcd::source
 #endif

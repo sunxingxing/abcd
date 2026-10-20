@@ -166,8 +166,11 @@ class TreePrinter {
       Name(parameter.symbol);
       if (parameter.initializer) {
         if (parameter.initializer->value >= Tree().expressions.size() ||
-            (!std::holds_alternative<TreeLiteral>(Tree().expressions[parameter.initializer->value].expression) &&
-             !std::holds_alternative<SymbolExpr>(Tree().expressions[parameter.initializer->value].expression)))
+            (!Tree().parameter_expressions &&
+             !std::holds_alternative<TreeLiteral>(
+                 Tree().expressions[parameter.initializer->value].expression) &&
+             !std::holds_alternative<SymbolExpr>(
+                 Tree().expressions[parameter.initializer->value].expression)))
           throw Error::kUnsupportedContext;
         Append(" = ");
         Push(ExpressionOperand{*parameter.initializer,{ExpressionGrammar::kAssignmentValue}});
@@ -1269,8 +1272,11 @@ class TreePrinter {
     Name(parameter.symbol);
     Push(ParameterCursor{cursor.index + 1}); Push(EndParameter{cursor.index});
     if (parameter.initializer) {
-      if ((!std::holds_alternative<TreeLiteral>(Tree().expressions[parameter.initializer->value].expression) &&
-             !std::holds_alternative<SymbolExpr>(Tree().expressions[parameter.initializer->value].expression)))
+      if ((!Tree().parameter_expressions &&
+           !std::holds_alternative<TreeLiteral>(
+               Tree().expressions[parameter.initializer->value].expression) &&
+           !std::holds_alternative<SymbolExpr>(
+               Tree().expressions[parameter.initializer->value].expression)))
         throw Error::kUnsupportedContext;
       Append(" = "); Push(ExpressionOperand{*parameter.initializer,{ExpressionGrammar::kAssignmentValue}});
     }

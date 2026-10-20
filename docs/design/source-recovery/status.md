@@ -5,6 +5,60 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Generic parameter-initializer expressions: o20 publishes (2026-10-20)
+
+- Added a sealed conditional expression-default proof and independent raw,
+  syntax and recovery verifiers. Original argument/undefined-test/initializer/
+  conditional commit identities and each caller exception remain separate.
+  Live module/capture reads and their HoleGuards remain binding reads, including
+  getter order and TDZ. Later parameters and body-local dependencies refuse.
+  Native signature length is verified against ABC metadata; no ABI check is
+  weakened and no new source premise is introduced.
+- Existing literal/captured/cell-default projections retain priority and text.
+  The new path uses shared region/phi indexes and explicit stacks, with prepaid
+  retained input/certificate/names/flow buffers and typed resource/work failures.
+  200/201/400/800 raw proof costs are linear; exact limits and one-below failure,
+  block splitting, wrong ownership/order/commit/guard/catch and recovery mutations
+  are tested. Unsupported initializer event protocols remain typed refusals.
+- **o20/8166 IndicatorBarAttribute now publishes** with constructor defaults
+  `SizeMode.Normal, 0, 0, -1, 1, VerticalAlign.Center`, `.length === 1`.
+  The deferred initializer's module aliases are independently rebound through
+  the actual record enclosure, preserving their real slots/names/TDZ domains.
+  o0/4660 is unchanged at `kClassInitializationPorts` (m5040 PC12): getInstance
+  needs a distinct completed-class availability port, not a fabricated export.
+- Fresh OLD/NEW 40-input cohorts against wtbase **024e759c**: **532→533/620**
+  previous flags and **584→585/620** source; zero regressions and zero text drift
+  for every previously complete record. Only o20/8166's manifest row changes.
+  Node syntax passes for its new output. Six generic fixtures also publish and
+  pass independent original-vs-engine-output Node behavior tests; later-parameter
+  defaults refuse. The static-self constructor fixture checks native length,
+  construction, getter order and explicit provided arguments.
+- Pinned SDK/compiler identity, exact commands and full disassembly diffs are
+  retained. Twelve generic fixture recompilations: **6 identical / 6 different**
+  full disassemblies; **24/30 identical method bodies**. Differences are physical
+  pool offsets, private copy moves and the initialized creator capture's inert
+  source-let guard. o20: all **15/15** methods are paired by source member role
+  or original enclosing definefunc relation; **11/15 O0 bodies identical**,
+  including m8638, all eight accessors and both callbacks. Remaining bodies and
+  default-optimized output are recorded as different, with semantic explanations
+  in the design note; no register/branch/exception normalization is used.
+- Full build passes. Final serial source-regression **65/65**; focused tests
+  **4/4**; requested broad sweep **221/235**. Its 14 failures exactly match
+  the supplied pre-existing set (family_source_cli, tree_structure, try_tree
+  and source, derived_cells and source/unguarded, class_tree_source and the
+  six captured_receiver variants). An earlier run correctly rejected producer
+  hashes changed by concurrent relinking; it is invalid acceptance evidence.
+  The final runs are quiescent, with regenerated receipts and unchanged producer
+  hashes after the test-registration-only CMake update. No check was weakened.
+- Final 80 engine processes all exit zero. Observed peak RSS is **42,385,408
+  bytes** previous flags / **41,598,976 bytes** source. Summing the four largest
+  engine peaks gives conservative concurrent-engine bounds **145,080,320 /
+  151,814,144 bytes**; each engine includes its internal workers.
+  Full logs, exact SDK diffs, manifest changes and machine-readable acceptance
+  are retained under `build/review/parameter-expressions/`. Design:
+  [parameter-initializer-expressions.md](parameter-initializer-expressions.md).
+  No commit, push or stash.
+
 ## Class-self increment 6: effectful member defaults diagnosed; gates retained (2026-10-20)
 
 - **No new completion.** o20/8166 remains `kRecoveryGate / kMemberAbi`,

@@ -6,6 +6,10 @@ namespace abcd::source {
 std::variant<DefaultSignatureProof, DefaultSignatureError> RetainParameterDefaults(
     const DefaultBody&, const FunctionTree&, TreeFlow&, const DefaultSignatureContext&,
     analysis::SemanticBudget);
+void BuildParameterExpressionPorts(const FunctionTree&, RecoveryFlow&,
+                                   TreeCheckBudget&);
+void VerifyParameterExpressionFlow(const FunctionTree&, const RecoveryFlow&,
+                                   TreeCheckBudget&);
 // Recompute immutable input and actual signature before every recovery trial.
 void VerifyParameterDefaultInput(const FunctionTree&, const OriginalParameterDefaults&, TreeCheckBudget&);
 void VerifyParameterDefaultFlow(const FunctionTree&, const RecoveryFlow&, TreeCheckBudget&);

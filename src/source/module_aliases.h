@@ -32,6 +32,7 @@ struct ModuleAliases {
   // Actual retained writes into bindings initialized at callable creation.
   // These are assignments only; declaration ownership stays in the record.
   std::vector<ModuleWriteBinding> writes;
+  std::vector<ModuleEvaluation> signature_evaluations;
 };
 enum class ModuleAliasError : std::uint8_t {
   kIdentity, kCoverage, kGuardName, kResourceLimit, kWorkLimit, kInitialization

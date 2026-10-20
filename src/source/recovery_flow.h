@@ -78,6 +78,26 @@ struct FlowEnumeration {
 };
 // Commits are path qualified; only initialized commits define the formal in
 // the residual. The raw argument value has no fabricated source ExprId.
+enum class ParameterEventStage : std::uint8_t { kTest, kInitializer, kGuard };
+enum class ParameterExceptionPort : std::uint8_t {
+  kNone,
+  kCaller,
+  kDomainImpossible
+};
+struct FlowParameterExpressionEvent {
+  ParameterId parameter;
+  analysis::OpId operation;
+  ParameterEventStage stage;
+  FlowPoint before, commit;
+  std::optional<FlowPoint> exception;
+  ParameterExceptionPort exception_kind = ParameterExceptionPort::kNone;
+  bool operator==(const FlowParameterExpressionEvent&) const = default;
+};
+struct FlowParameterGuard {
+  ExprId expression;
+  analysis::OpId operation;
+  FlowPoint before, commit;
+};
 struct FlowParameterDefault {
   ParameterId parameter;
   FlowPoint argument, decision, provided, missing, initialized;
@@ -510,6 +530,8 @@ struct RecoveryFlow {
   std::vector<std::optional<FlowIteration>> iterations; // StmtId indexed.
   std::vector<FlowIterationClose> iteration_closes;
   std::vector<FlowParameterDefault> parameter_defaults;
+  std::vector<FlowParameterExpressionEvent> parameter_expression_events;
+  std::vector<FlowParameterGuard> parameter_guards;
   // The common lifetime/activation owner decides current-unit capability.
   // Consumers must not repeat a scope/loop shape test. Partial point contexts
   // remain unknown at TransferBinding; a known site alone never equates cells.

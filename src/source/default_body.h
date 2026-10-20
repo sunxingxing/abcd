@@ -1,11 +1,13 @@
 #ifndef ABCD_SOURCE_DEFAULT_BODY_H_
 #define ABCD_SOURCE_DEFAULT_BODY_H_
 
-#include "default_value_proof.h"
+#include <memory>
+
 #include "cell_default_proof.h"
 #include "cell_parameter_default.h"
-#include <memory>
+#include "default_value_proof.h"
 #include "expression_constants.h"
+#include "parameter_expression.h"
 
 namespace abcd::source {
 enum class DefaultBodyError : std::uint8_t {
@@ -19,7 +21,8 @@ struct InitializedParameterCommit {
 };
 struct SignatureCapture {
   std::uint32_t parameter;
-  analysis::OpId read, guard;
+  analysis::OpId read;
+  std::optional<analysis::OpId> guard;
   analysis::InstructionId site;
   analysis::LexicalAddress address;
   IncomingCell storage;
@@ -53,6 +56,16 @@ class DefaultBody {
       const analysis::ValueProgram&, const analysis::ValueEnvironments&,
       const CellPlan&, const ParameterPlan&, const DefaultCandidates&,
       std::uint32_t length, analysis::SemanticBudget budget = {});
+  [[nodiscard]] static std::variant<DefaultBody, DefaultBodyError>
+  BuildExpressions(const analysis::ValueProgram&, const ParameterPlan&,
+                   const DefaultCandidates&, std::uint32_t length,
+                   analysis::SemanticBudget budget = {});
+  std::shared_ptr<const ParameterExpressionInput> ExpressionInput() const {
+    return expression_input_;
+  }
+  const ParameterExpressionProof* Expressions() const {
+    return std::get_if<ParameterExpressionProof>(&proof_);
+  }
   [[nodiscard]] const CapturedDefaultBinding* Capture() const {
     const auto* proof = std::get_if<DefaultValueProof>(&proof_);
     return proof && proof->Capture() ? &*proof->Capture() : nullptr;
@@ -89,16 +102,28 @@ class DefaultBody {
   [[nodiscard]] std::size_t AllocatedBytes() const { return allocated_bytes_; }
   [[nodiscard]] std::uint64_t Work() const { return work_; }
  private:
-  DefaultBody(analysis::ValueProgram graph, std::variant<DefaultValueProof, CellDefaultProof, CellParameterDefaultProof> proof,
-              std::vector<DefaultInitializer> initializers, std::vector<SignatureString> strings,
-              std::size_t bytes, std::uint64_t work)
-      : graph_(std::move(graph)), proof_(std::move(proof)), initializers_(std::move(initializers)), strings_(std::move(strings)), allocated_bytes_(bytes), work_(work) {}
+  DefaultBody(analysis::ValueProgram graph,
+              std::variant<DefaultValueProof, CellDefaultProof,
+                           CellParameterDefaultProof, ParameterExpressionProof>
+                  proof,
+              std::vector<DefaultInitializer> initializers,
+              std::vector<SignatureString> strings, std::size_t bytes,
+              std::uint64_t work)
+      : graph_(std::move(graph)),
+        proof_(std::move(proof)),
+        initializers_(std::move(initializers)),
+        strings_(std::move(strings)),
+        allocated_bytes_(bytes),
+        work_(work) {}
   analysis::ValueProgram graph_;
-  std::variant<DefaultValueProof, CellDefaultProof, CellParameterDefaultProof> proof_;
+  std::variant<DefaultValueProof, CellDefaultProof, CellParameterDefaultProof,
+               ParameterExpressionProof>
+      proof_;
   std::vector<DefaultInitializer> initializers_;
   std::vector<SignatureString> strings_;
   // Original input remains immutable for independent signature verification.
   std::shared_ptr<const analysis::ValueProgram> original_;
+  std::shared_ptr<const ParameterExpressionInput> expression_input_;
   std::vector<DefaultOpPlacement> joint_operations_;
   std::vector<SignatureCapture> captures_;
   std::vector<InitializedParameterCommit> commits_;

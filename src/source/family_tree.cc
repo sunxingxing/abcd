@@ -96,15 +96,69 @@ class FamilyTrees {
       Account(syntax);
       auto& normal_aliases = normal_aliases_[i];
       const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;
-      if (aliases || (!phase && (!function.Normal().values.modules.pairs.empty() || std::any_of(graph.ops.begin(), graph.ops.end(),
-          [&](const auto& op) { Step(1); return op.life == analysis::ValueLife::kLive &&
-              std::holds_alternative<analysis::ValueModuleWrite>(op.operation); })))) {
+      const auto* expression_defaults =
+          function.Defaults() ? function.Defaults()->Expressions() : nullptr;
+      if (aliases || expression_defaults ||
+          (!phase &&
+           (!function.Normal().values.modules.pairs.empty() ||
+            std::any_of(
+                graph.ops.begin(), graph.ops.end(), [&](const auto& op) {
+                  Step(1);
+                  return op.life == analysis::ValueLife::kLive &&
+                         std::holds_alternative<analysis::ValueModuleWrite>(
+                             op.operation);
+                })))) {
         Require(modules_ != nullptr, FamilyTreeError::kModules);
         Require(syntax.syntax.names.size() < std::numeric_limits<std::uint32_t>::max(), FamilyTreeError::kResourceLimit);
         const auto first_name = static_cast<std::uint32_t>(syntax.syntax.names.size());
         if (!phase) {
-          normal_aliases = Take<ModuleAliases, ModuleAliasFailure>(BindModuleAliases(file_, header_, index_,
-              function.Normal().input, function.Normal().values, *modules_, module_owner_, {first_name}, left_, ModuleAccess::kMutable));
+          if (expression_defaults) {
+            const auto& raw = *function.Defaults()->CellParameterOriginal();
+            Admit(function.Defaults()->AllocatedBytes(),
+                  1);  // raw binding view copy + its guards
+            analysis::SemanticBudget allowance = left_;
+            FunctionValues original;
+            original.identity = function.Normal().values.identity;
+            original.method = function.Normal().values.method;
+            original.record = function.Normal().values.record;
+            original.capture_mode = function.Normal().values.capture_mode;
+            original.graph = raw;
+            original.modules = Take<ModuleGuards, ModuleGuardError>(
+                BuildModuleGuards(function.Normal().input, raw, allowance));
+            Account(original.modules);
+            normal_aliases =
+                Take<ModuleAliases, ModuleAliasFailure>(BindModuleAliases(
+                    file_, header_, index_, function.Normal().input, original,
+                    *modules_, module_owner_, {first_name}, left_,
+                    ModuleAccess::kMutable));
+            std::vector<std::uint8_t> moved;
+            Reserve(moved, raw.ops.size());
+            moved.resize(raw.ops.size());
+            for (const auto& e : expression_defaults->Operations()) {
+              Step(1);
+              moved[e.operation.value] = 1;
+            }
+            Reserve(normal_aliases->signature_evaluations,
+                    normal_aliases->evaluations.size());
+            auto out = normal_aliases->evaluations.begin();
+            for (const auto& e : normal_aliases->evaluations) {
+              Step(1);
+              if (moved[e.pair.read.value])
+                normal_aliases->signature_evaluations.push_back(e);
+              else
+                *out++ = e;
+            }
+            normal_aliases->evaluations.erase(
+                out, normal_aliases->evaluations.end());
+            normal_aliases->revision = graph.revision;
+            normal_aliases->cfg_revision = graph.cfg_revision;
+          } else {
+            normal_aliases =
+                Take<ModuleAliases, ModuleAliasFailure>(BindModuleAliases(
+                    file_, header_, index_, function.Normal().input,
+                    function.Normal().values, *modules_, module_owner_,
+                    {first_name}, left_, ModuleAccess::kMutable));
+          }
           Account(*normal_aliases); aliases = &*normal_aliases;
         }
         Require(aliases && aliases->record == modules_->record() && aliases->owner == module_owner_ &&
@@ -401,7 +455,8 @@ class FamilyTrees {
         continue;
       }
       if (family.members[i].function.Defaults()) {
-        const DefaultSignatureContext capture{control,evaluation,&constants};
+        const DefaultSignatureContext capture{control, evaluation, &constants,
+                                              aliases};
         auto signature = Take<DefaultSignatureProof, DefaultSignatureError>(
             BuildDefaultSignature(*family.members[i].function.Defaults(), constructed.tree, left_, &capture));
         Account(signature);
@@ -697,20 +752,43 @@ class FamilyTrees {
         projected.emplace(Take<DefaultBody, DefaultBodyError>(
             DefaultBody::Build(values.graph, parameters, direct, length, left_)));
       } else {
-        if (!values.cells) continue;
-        auto candidates = Take<CellDefaults, CellDefaultError>(FindCellDefaults(values.graph, *values.cells, parameters, length, left_));
-        Account(candidates); default_candidates_ = candidates.candidates.size();
-        Require(values.environments.has_value(), FamilyTreeError::kContext);
-        if(candidates.candidates.empty()) {
-          auto joint=DefaultBody::BuildCellParameter(values.graph,*values.environments,*values.cells,parameters,length,left_);
-          if(const auto* error=std::get_if<DefaultBodyError>(&joint)) {
-            if(*error==DefaultBodyError::kResourceLimit||*error==DefaultBodyError::kWorkLimit)throw FamilyTreeFailure{member_,*error};
-            continue;
-          }
-          projected.emplace(std::get<DefaultBody>(std::move(joint)));
-        } else projected.emplace(Take<DefaultBody, DefaultBodyError>(DefaultBody::BuildCell(values.graph,
-            *values.environments, *values.cells, parameters, candidates, length, left_)));
-        defaults_proved_ = true;
+        auto expressions = Take<DefaultCandidates, DefaultCandidateError>(
+            FindParameterExpressionCandidates(values.graph, parameters, length,
+                                              left_));
+        Account(expressions);
+        if (!expressions.values.empty()) {
+          projected.emplace(
+              Take<DefaultBody, DefaultBodyError>(DefaultBody::BuildExpressions(
+                  values.graph, parameters, expressions, length, left_)));
+        }
+        if (projected) {
+          defaults_proved_ = true;
+        } else {
+          if (!values.cells) continue;
+          auto candidates =
+              Take<CellDefaults, CellDefaultError>(FindCellDefaults(
+                  values.graph, *values.cells, parameters, length, left_));
+          Account(candidates);
+          default_candidates_ = candidates.candidates.size();
+          Require(values.environments.has_value(), FamilyTreeError::kContext);
+          if (candidates.candidates.empty()) {
+            auto joint = DefaultBody::BuildCellParameter(
+                values.graph, *values.environments, *values.cells, parameters,
+                length, left_);
+            if (const auto* error = std::get_if<DefaultBodyError>(&joint)) {
+              if (*error == DefaultBodyError::kResourceLimit ||
+                  *error == DefaultBodyError::kWorkLimit)
+                throw FamilyTreeFailure{member_, *error};
+              continue;
+            }
+            projected.emplace(std::get<DefaultBody>(std::move(joint)));
+          } else
+            projected.emplace(
+                Take<DefaultBody, DefaultBodyError>(DefaultBody::BuildCell(
+                    values.graph, *values.environments, *values.cells,
+                    parameters, candidates, length, left_)));
+          defaults_proved_ = true;
+        }
       }
       auto& body = *projected;
       Admit(body.AllocatedBytes(), 1); Step(body.Work());
@@ -729,7 +807,13 @@ class FamilyTrees {
       Account(environments); values.environments = std::move(environments);
       auto cells = Take<CellPlan, CellError>(BuildCellPlan(values.graph, *values.environments, left_));
       Account(cells); values.cells = std::move(cells);
-      auto modules = Take<ModuleGuards, ModuleGuardError>(BuildModuleGuards(member.function.Normal().input, values.graph, left_));
+      auto modules = Take<ModuleGuards, ModuleGuardError>(
+          member.function.Defaults()->Expressions()
+              ? BuildParameterModuleGuards(
+                    member.function.Normal().input, values.graph,
+                    member.function.Defaults()->ExpressionInput(), left_)
+              : BuildModuleGuards(member.function.Normal().input, values.graph,
+                                  left_));
       Account(modules); values.modules = std::move(modules);
     }
   }

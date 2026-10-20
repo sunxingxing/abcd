@@ -7,6 +7,7 @@
 #include "class_initialization_ports.h"
 #include "exception_tree.h"
 #include "original_flow.h"
+#include "parameter_expression_tree.h"
 #include "tree_correspondence.h"
 
 namespace abcd::source {
@@ -35,6 +36,10 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     checked.Admit(flow->allocated_bytes, 1);
     checked.Step(flow->work);
     auto original=RetainOriginalFlow(graph,tree,*flow,checked);
+    if (tree.parameter_expressions) {
+      VerifyParameterExpressionTree(tree, checked);
+      original->parameter_expressions = tree.parameter_expressions;
+    }
     if (evaluation.for_of) {
       RequireTree(flow->for_of.has_value(),TreeStructureError::kOwnership);
       original->iterations.emplace(); auto& retained=*original->iterations;

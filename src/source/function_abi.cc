@@ -1,10 +1,13 @@
 #include "function_abi.h"
-#include "evaluation_plan.h"
 
 #include <limits>
 #include <new>
 #include <stdexcept>
 #include <type_traits>
+
+#include "evaluation_plan.h"
+#include "parameter_expression_tree.h"
+#include "tree_checks.h"
 
 namespace abcd::source {
 namespace {
@@ -26,6 +29,11 @@ class AbiBuilder {
         throw Error::kEvaluation;
       }
       Step(std::get<std::uint64_t>(verified));
+    }
+    if (tree_.parameter_expressions) {
+      TreeCheckBudget q(remaining_);
+      VerifyParameterExpressionTree(tree_, q);
+      remaining_ = q.Remaining();
     }
     switch (tree_.invocation) {
       case InvocationForm::kDeclared: break;
@@ -72,9 +80,13 @@ class AbiBuilder {
         Require(parameter.initializer->value < tree_.expressions.size(), Error::kParameter);
         const auto& initializer = tree_.expressions[parameter.initializer->value].expression;
         const auto* captured = std::get_if<SymbolExpr>(&initializer);
-        Require(std::holds_alternative<TreeLiteral>(initializer) ||
-            (captured && captured->symbol.value < tree_.symbols.size() &&
-             tree_.symbols[captured->symbol.value].kind == BindingKind::kCapture), Error::kParameter);
+        Require(
+            tree_.parameter_expressions ||
+                std::holds_alternative<TreeLiteral>(initializer) ||
+                (captured && captured->symbol.value < tree_.symbols.size() &&
+                 tree_.symbols[captured->symbol.value].kind ==
+                     BindingKind::kCapture),
+            Error::kParameter);
         if (result_.layout == ParameterLayout::kSimple) source_length = static_cast<std::uint32_t>(i);
         result_.layout = ParameterLayout::kLiteralDefaults;
       }
@@ -297,16 +309,32 @@ std::variant<ConstructedAbi, FunctionAbiError> BuildFunctionAbi(
     const abc::FrameLayout& frame, std::uint32_t length,
     analysis::SemanticBudget budget) {
   try { return AbiBuilder(graph, tree, frame, budget).Build(length);
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (TreeStructureError e) {
+    return e == TreeStructureError::kWorkLimit       ? Error::kWorkLimit
+           : e == TreeStructureError::kResourceLimit ? Error::kResourceLimit
+                                                     : Error::kParameter;
+  } catch (Error error) {
+    return error;
+  } catch (const std::bad_alloc&) {
+    return Error::kResourceLimit;
+  } catch (const std::length_error&) {
+    return Error::kResourceLimit;
+  }
 }
 std::variant<ConstructedAbi, FunctionAbiError> BuildPhasedFunctionAbi(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, const FunctionTree& tree,
     const abc::FrameLayout& frame, std::uint32_t length, analysis::SemanticBudget budget,const ForOfEvaluationInput* for_of) {
   try { return AbiBuilder(graph, tree, frame, budget, &evaluation,for_of).Build(length);
-  } catch (Error error) { return error;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (TreeStructureError e) {
+    return e == TreeStructureError::kWorkLimit       ? Error::kWorkLimit
+           : e == TreeStructureError::kResourceLimit ? Error::kResourceLimit
+                                                     : Error::kParameter;
+  } catch (Error error) {
+    return error;
+  } catch (const std::bad_alloc&) {
+    return Error::kResourceLimit;
+  } catch (const std::length_error&) {
+    return Error::kResourceLimit;
+  }
 }
 }  // namespace abcd::source

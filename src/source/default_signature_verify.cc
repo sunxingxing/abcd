@@ -1,9 +1,9 @@
-#include "default_signature.h"
-
-#include <new>
 #include <bit>
+#include <new>
 #include <stdexcept>
 
+#include "default_signature.h"
+#include "parameter_expression_tree.h"
 #include "tree_checks.h"
 #include "tree_flow.h"
 
@@ -39,6 +39,15 @@ class SignatureCheck {
   SignatureCheck(const DefaultBody& body, const FunctionTree& tree, TreeCheckBudget& budget, const DefaultSignatureContext* capture)
       : body_(body), tree_(tree), budget_(budget), capture_(capture) {}
   void Run() {
+    if (body_.Expressions()) {
+      // Revisions and equal-looking initializer syntax cannot transfer a proof
+      // between function occurrences. Bind it to this sealed original owner.
+      Require(tree_.parameter_expressions &&
+                  body_.CellParameterOriginal().get() ==
+                      &tree_.parameter_expressions->Input(), Error::kContext);
+      VerifyParameterExpressionTree(tree_, budget_);
+      return;
+    }
     const auto& graph = body_.Graph();
     const bool ordinary = tree_.callable == CallableKind::kMethod ||
         tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kArrow;
@@ -201,10 +210,18 @@ std::variant<DefaultSignatureProof, DefaultSignatureError> VerifyDefaultSignatur
     checked.Admit(valid->allocated_bytes, 1); checked.Step(valid->work);
     SignatureCheck(body, tree, checked, capture).Run();
     return DefaultSignatureProof{tree.value_revision, tree.cfg_revision, checked.Bytes(), checked.Work()};
-  } catch (Error error) { return error;
+  } catch (TreeStructureError error) {
+    return error == TreeStructureError::kWorkLimit       ? Error::kWorkLimit
+           : error == TreeStructureError::kResourceLimit ? Error::kResourceLimit
+                                                         : Error::kContext;
+  } catch (Error error) {
+    return error;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
-  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
-  } catch (const std::length_error&) { return Error::kResourceLimit; }
+  } catch (const std::bad_alloc&) {
+    return Error::kResourceLimit;
+  } catch (const std::length_error&) {
+    return Error::kResourceLimit;
+  }
 }
 }  // namespace abcd::source

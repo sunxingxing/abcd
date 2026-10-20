@@ -2,9 +2,11 @@
 #include <new>
 #include <stdexcept>
 
+#include "abcd/source/module_enclosure.h"
 #include "class_inner_scope.h"
 #include "class_self_deferred.h"
 #include "class_self_resource.h"
+#include "module_aliases.h"
 #include "tree_constants.h"
 #include "tree_structure.h"
 
@@ -313,7 +315,7 @@ ClassSelfInitializationDiagnostic BindDeferredClassSelf(
     const analysis::ClassMethodSites& classes, const FileFunction& creator,
     ClassSelfDeferred& p, ClassTree& layout, FunctionOwnerId syntax_owner,
     CaptureTree parent, const CaptureStorage* storage,
-    analysis::SemanticBudget budget) {
+    analysis::SemanticBudget budget, const ModuleEnclosure* module_enclosure) {
   auto result = p.diagnostic;
   Quota q(p, budget);
   q.failure.projection.reset();
@@ -369,6 +371,40 @@ ClassSelfInitializationDiagnostic BindDeferredClassSelf(
       p.bindings.push_back(target.binding);
     }
     tree.capture_requirements.clear();
+    if (module_enclosure && !tree.modules.empty()) {
+      const auto& member = p.initializer_family.members[0].function.Normal();
+      q.Require(
+          module_enclosure->Identity() == tree.identity &&
+              module_enclosure->Context().record() == member.input.Record(),
+          Error::kScope);
+      auto aliases = q.Take<ModuleAliases>(
+          BindModuleAliases(f, h, i, member.input, member.values,
+                            module_enclosure->Context(),
+                            module_enclosure->Owner(), {}, q.left),
+          Error::kScope);
+      q.Admit(aliases.allocated_bytes);
+      q.Step(aliases.work);
+      q.Require(aliases.evaluations.size() == p.evaluation.modules.size() &&
+                    aliases.aliases.size() == tree.modules.size(),
+                Error::kScope);
+      for (std::size_t n = 0; n < aliases.evaluations.size(); ++n) {
+        q.Step();
+        auto& old = p.evaluation.modules[n];
+        const auto& actual = aliases.evaluations[n];
+        q.Require(old.pair == actual.pair && old.read == actual.read &&
+                      old.target.symbol == actual.target.symbol,
+                  Error::kScope);
+        old.target = actual.target;
+      }
+      for (auto& alias : tree.modules) {
+        q.Step();
+        alias.target.owner = module_enclosure->Owner();
+      }
+      q.Step(q.Take<std::uint64_t>(
+          VerifyModuleAliasTree(aliases, p.evaluation, tree, q.left),
+          Error::kScope));
+    }
+
     q.Require(
         p.members.layout.class_self &&
             layout.operation == p.initialization.Evidence().call.creation &&

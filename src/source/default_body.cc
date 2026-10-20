@@ -5,6 +5,8 @@
 #include <stdexcept>
 
 #include "../analysis/value_flow.h"
+#include "recovery_scratch.h"
+#include "tree_checks.h"
 
 namespace abcd::source {
 namespace {
@@ -28,19 +30,28 @@ template<class Proof> class Projection {
     for (const auto placement : proof_.Operations()) {
       Step(); Require(placement.operation.value < removed_.size() && !removed_[placement.operation.value]);
       removed_[placement.operation.value] = true;
+      if constexpr (std::is_same_v<Proof, ParameterExpressionProof>) {
+        const auto& op = original_.ops[placement.operation.value];
+        if (std::holds_alternative<ValueJump>(op.operation)) {
+          Require(original_.blocks[op.block.value].edge_count == 1);
+          paths_[op.block.value] = original_.blocks[op.block.value].first_edge;
+        }
+      }
     }
     for (const auto& parameter : proof_.Defaults()) {
       Step();
       Require(parameter.header.value < paths_.size() && parameter.arm.value < paths_.size());
       Require(!paths_[parameter.header.value] && !paths_[parameter.arm.value]);
-      if constexpr (std::is_same_v<Proof, DefaultValueProof>) {
+      if constexpr ((std::is_same_v<Proof, DefaultValueProof> ||
+                     std::is_same_v<Proof, ParameterExpressionProof>)) {
         if (parameter.merged) {
           Require(parameter.merged->value < aliases_.size() && parameter.entry.value < aliases_.size() && !aliases_[parameter.merged->value]);
           aliases_[parameter.merged->value] = parameter.entry;
         }
       }
       paths_[parameter.header.value] = parameter.missing;
-      paths_[parameter.arm.value] = parameter.merge;
+      if constexpr (!std::is_same_v<Proof, ParameterExpressionProof>)
+        paths_[parameter.arm.value] = parameter.merge;
     }
     ValueProgram body;
     body.arguments = original_.arguments;
@@ -209,7 +220,8 @@ template<class Proof> ProjectedDefault Project(const ValueProgram& original,
   const auto initializer_bytes = initializers.capacity() * sizeof(DefaultInitializer);
   budget.bytes -= initializer_bytes;
   for (const auto& candidate : proof.Defaults()) {
-    if constexpr (std::is_same_v<Proof, DefaultValueProof>)
+    if constexpr ((std::is_same_v<Proof, DefaultValueProof> ||
+                   std::is_same_v<Proof, ParameterExpressionProof>))
       initializers.push_back({candidate.parameter, candidate.fallback, candidate.initializer, candidate.text});
     else initializers.push_back({candidate.parameter,candidate.fallback,candidate.fallback_store,candidate.text});
   }
@@ -224,6 +236,39 @@ template<class Proof> ProjectedDefault Project(const ValueProgram& original,
   Require(count <= budget.work, Error::kWorkLimit); budget.work -= count;
   for (const auto& candidate : initializers)
     if (candidate.text) strings.push_back({candidate.initializer,*candidate.text});
+  if constexpr (std::is_same_v<Proof, ParameterExpressionProof>) {
+    std::size_t count = 0;
+    for (const auto& e : proof.Operations()) {
+      if (std::holds_alternative<ValueString>(
+              original.ops[e.operation.value].operation) ||
+          std::holds_alternative<ValueNamedRead>(
+              original.ops[e.operation.value].operation) ||
+          std::holds_alternative<ValueGlobalRead>(
+              original.ops[e.operation.value].operation))
+        ++count;
+    }
+    Require(count <= budget.bytes / sizeof(SignatureString),
+            Error::kResourceLimit);
+    budget.bytes -= count * sizeof(SignatureString);
+    strings.reserve(count);
+    Require(
+        strings.capacity() - count <= budget.bytes / sizeof(SignatureString),
+        Error::kResourceLimit);
+    budget.bytes -= (strings.capacity() - count) * sizeof(SignatureString);
+    for (const auto& e : proof.Operations()) {
+      Require(budget.work != 0, Error::kWorkLimit);
+      --budget.work;
+      const auto& op = original.ops[e.operation.value];
+      if (const auto* text = std::get_if<ValueString>(&op.operation))
+        strings.push_back({e.operation, text->string});
+      else if (const auto* name = std::get_if<ValueNamedRead>(&op.operation))
+        strings.push_back(
+            {e.operation, name->name, SignatureConstantKind::kName});
+      else if (const auto* name = std::get_if<ValueGlobalRead>(&op.operation))
+        strings.push_back(
+            {e.operation, name->name, SignatureConstantKind::kName});
+    }
+  }
   const auto preparation_work = initial_work - budget.work;
   Projection<Proof> projection(original, proof, budget);
   auto graph = projection.Build();
@@ -237,8 +282,11 @@ template<class Proof> ProjectedDefault Project(const ValueProgram& original,
   arena(graph.uses); arena(graph.origins); arena(graph.exceptional_exits);
   arena(graph.input.sites); arena(graph.input.values);
   Require(bytes <= budget.bytes, Error::kResourceLimit);
-  return {std::move(graph),std::move(initializers),std::move(strings),bytes + initializer_bytes + string_bytes,
-      preparation_work + projection.Work()};
+  const auto retained_string_bytes =
+      strings.capacity() * sizeof(SignatureString);
+  return {std::move(graph), std::move(initializers), std::move(strings),
+          bytes + initializer_bytes + retained_string_bytes,
+          preparation_work + projection.Work()};
 }
 }  // namespace
 
@@ -264,6 +312,153 @@ std::variant<DefaultBody, DefaultBodyError> DefaultBody::Build(
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+
+std::variant<DefaultBody, DefaultBodyError> DefaultBody::BuildExpressions(
+    const analysis::ValueProgram& original, const ParameterPlan& parameters,
+    const DefaultCandidates& candidates, std::uint32_t length,
+    analysis::SemanticBudget budget) {
+  try {
+    auto checked = ParameterExpressionProof::Build(original, parameters,
+                                                   candidates, length, budget);
+    if (const auto* e = std::get_if<ParameterExpressionFailure>(&checked))
+      return e->kind == ParameterExpressionError::kResourceLimit
+                 ? Error::kResourceLimit
+             : e->kind == ParameterExpressionError::kWorkLimit
+                 ? Error::kWorkLimit
+                 : Error::kProof;
+    auto proof = std::get<ParameterExpressionProof>(std::move(checked));
+    auto projected = Project(original, proof, budget);
+    std::size_t bytes = sizeof(ValueProgram);
+    std::uint64_t copy_work = 0;
+    const auto charge = [&](const auto& v) {
+      using T = typename std::decay_t<decltype(v)>::value_type;
+      Require(v.size() <=
+                  (budget.bytes - std::min(budget.bytes, bytes)) / sizeof(T),
+              Error::kResourceLimit);
+      bytes += v.size() * sizeof(T);
+      Require(v.size() <= budget.work - std::min(copy_work, budget.work),
+              Error::kWorkLimit);
+      copy_work += v.size();
+    };
+    charge(original.blocks);
+    charge(original.edges);
+    charge(original.ops);
+    charge(original.values);
+    charge(original.uses);
+    charge(original.origins);
+    charge(original.exceptional_exits);
+    charge(original.input.sites);
+    charge(original.input.values);
+    Require(projected.bytes <= budget.bytes &&
+                bytes <= budget.bytes - projected.bytes,
+            Error::kResourceLimit);
+    DefaultBody body{
+        std::move(projected.graph),        std::move(proof),
+        std::move(projected.initializers), std::move(projected.strings),
+        projected.bytes + bytes,           projected.work};
+    Require(body.work_ <= budget.work && copy_work <= budget.work - body.work_,
+            Error::kWorkLimit);
+    body.work_ += copy_work;
+    TreeCheckBudget q(
+        {budget.bytes - std::min(body.allocated_bytes_, budget.bytes),
+         budget.work - std::min(body.work_, budget.work)});
+    body.original_ = std::allocate_shared<const analysis::ValueProgram>(
+        RecoveryAllocator<analysis::ValueProgram>{q}, original);
+    body.formal_count_ = parameters.formals.size();
+    body.length_ = length;
+    const auto& cert = body.Expressions()->Evidence();
+    std::vector<std::optional<OpId>> guards;
+    q.Array(guards, original.values.size());
+    std::size_t count = 0;
+    for (const auto& e : cert.events) {
+      q.Step();
+      const auto& op = original.ops[e.operation.value];
+      if (std::holds_alternative<ValueLexicalLoad>(op.operation)) ++count;
+      if (std::holds_alternative<ValueGuard>(op.operation)) {
+        const auto* value =
+            std::get_if<ValueId>(&original.uses[op.first_use.value].operand);
+        Require(value);
+        guards[value->value] = e.operation;
+      }
+    }
+    if (count) {
+      auto env = BuildValueEnvironments(original, q.Remaining());
+      if (const auto* e = std::get_if<ValueEnvironmentError>(&env))
+        throw *e == ValueEnvironmentError::kResourceLimit
+            ? Error::kResourceLimit
+        : *e == ValueEnvironmentError::kWorkLimit ? Error::kWorkLimit
+                                                  : Error::kProof;
+      const auto& environments = std::get<ValueEnvironments>(env);
+      q.Admit(environments.allocated_bytes, 1);
+      q.Step(environments.work);
+      auto planned = BuildCellPlan(original, environments, q.Remaining());
+      if (const auto* e = std::get_if<CellError>(&planned))
+        throw *e == CellError::kResourceLimit ? Error::kResourceLimit
+        : *e == CellError::kWorkLimit         ? Error::kWorkLimit
+                                              : Error::kProof;
+      const auto& cells = std::get<CellPlan>(planned);
+      q.Admit(cells.allocated_bytes, 1);
+      q.Step(cells.work);
+      q.Admit(count, sizeof(SignatureCapture));
+      body.captures_.reserve(count);
+      q.Admit(body.captures_.capacity() - count, sizeof(SignatureCapture));
+      q.Admit(count, sizeof(std::uint32_t));
+      body.capture_sites_.reserve(count);
+      q.Admit(body.capture_sites_.capacity() - count, sizeof(std::uint32_t));
+      for (const auto& e : cert.events) {
+        q.Step();
+        const auto& op = original.ops[e.operation.value];
+        const auto* load = std::get_if<ValueLexicalLoad>(&op.operation);
+        if (!load) continue;
+        Require(cells.operations[e.operation.value].has_value());
+        const auto* incoming = std::get_if<IncomingCell>(
+            &cells.cells[cells.operations[e.operation.value]->value].storage);
+        Require(incoming);
+        body.capture_sites_.push_back(body.captures_.size());
+        body.captures_.push_back(
+            {e.parameter,
+             e.operation,
+             guards[op.result->value],
+             {original.origins[op.origin.value].site.value},
+             load->address,
+             *incoming});
+      }
+      std::sort(body.capture_sites_.begin(), body.capture_sites_.end(),
+                [&](auto a, auto b) {
+                  q.Step();
+                  return body.captures_[a].site < body.captures_[b].site;
+                });
+    }
+    q.Admit(1, sizeof(ParameterExpressionInput) +
+                   sizeof(std::shared_ptr<ParameterExpressionInput>));
+    auto input = std::allocate_shared<ParameterExpressionInput>(
+        RecoveryAllocator<ParameterExpressionInput>{q});
+    input->graph = body.original_;
+    input->certificate.revision = cert.revision;
+    input->certificate.cfg_revision = cert.cfg_revision;
+    input->certificate.formals = cert.formals;
+    input->certificate.length = cert.length;
+    const auto clone = [&](auto& to, const auto& from) {
+      q.Array(to, from.size());
+      std::copy(from.begin(), from.end(), to.begin());
+    };
+    clone(input->certificate.defaults, cert.defaults);
+    clone(input->certificate.events, cert.events);
+    clone(input->certificate.exceptions, cert.exceptions);
+    body.expression_input_ = std::move(input);
+    body.allocated_bytes_ += q.Bytes();
+    body.work_ += q.Work();
+    return body;
+  } catch (TreeStructureError e) {
+    return e == TreeStructureError::kWorkLimit       ? Error::kWorkLimit
+           : e == TreeStructureError::kResourceLimit ? Error::kResourceLimit
+                                                     : Error::kProof;
+  } catch (Error e) {
+    return e;
+  } catch (const std::bad_alloc&) {
+    return Error::kResourceLimit;
+  }
 }
 
 std::variant<DefaultBody, DefaultBodyError> DefaultBody::BuildCaptured(

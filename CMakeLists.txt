@@ -264,7 +264,7 @@ target_sources(abcd_source PRIVATE src/source/verified_function.cc)
 target_sources(abcd_source PRIVATE src/source/function_abi.cc)
 target_sources(abcd_source PRIVATE src/source/class_method_emission.cc)
 target_sources(abcd_source PRIVATE src/source/parameter_plan.cc)
-target_sources(abcd_source PRIVATE src/source/default_candidates.cc)
+target_sources(abcd_source PRIVATE src/source/default_candidates.cc src/source/parameter_expression.cc src/source/parameter_expression_discovery.cc src/source/parameter_expression_tree.cc src/source/parameter_expression_flow.cc)
 target_sources(abcd_source PRIVATE src/source/default_value_proof.cc)
 target_sources(abcd_source PRIVATE src/source/default_body.cc src/source/default_cell_parameter_body.cc src/source/parameter_recovery.cc)
 target_sources(abcd_source PRIVATE src/source/call_plan.cc)
@@ -1048,6 +1048,17 @@ if(BUILD_TESTING)
   add_executable(default_candidates_test tests/unit/source/default_candidates_test.cc)
   target_link_libraries(default_candidates_test PRIVATE abcd_source)
   add_test(NAME default_candidates_test COMMAND default_candidates_test)
+  add_executable(parameter_expression_test tests/unit/source/parameter_expression_test.cc)
+  target_link_libraries(parameter_expression_test PRIVATE abcd_source)
+  add_test(NAME parameter_expression_test COMMAND parameter_expression_test)
+  if(ABCD_BUILD_TOOLS AND Python3_Interpreter_FOUND AND
+      EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+    add_test(NAME parameter_expression_source_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/parameter_expressions.py"
+      $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/parameter_expressions"
+      "${CMAKE_CURRENT_BINARY_DIR}/parameter-expression-source")
+  endif()
   add_executable(member_expression_default_test tests/unit/source/member_expression_default_test.cc)
   target_include_directories(member_expression_default_test PRIVATE tests/support)
   target_link_libraries(member_expression_default_test PRIVATE abcd_source)
