@@ -89,6 +89,15 @@ class ForestBuilder {
         if (region.logical) {
           for (const auto truth : region.logical->truths) { Step(); predicates[truth.value] = 1; }
           for (const auto& condition : region.conditions) { Step(); predicates[condition.branch.value] = 1; }
+          if (region.logical->shared_right) {
+            const auto defer = [&](const SelectionOperand& input) {
+              if (const auto* value = std::get_if<analysis::ValueId>(&input)) {
+                const auto producer = std::get<analysis::OpResult>(graph_.values[value->value].origin).op;
+                predicates[producer.value] = 1;
+              }
+            };
+            defer(region.right); if (region.consequent) defer(*region.consequent);
+          }
         }
       }
     }
@@ -494,7 +503,9 @@ class ForestBuilder {
         Require(dependency < index && logicals_[dependency].parent == region.branch, Error::kOwnership);
         if (!selection_built_[dependency]) pending = dependency;
       };
-      child(region.right); if (region.consequent) child(*region.consequent);
+      if (!region.logical || !region.logical->shared_right) {
+        child(region.right); if (region.consequent) child(*region.consequent);
+      }
       if (pending) { selection_tasks_.push_back(*pending); continue; }
       Logical(region); selection_built_[index] = 1; selection_tasks_.pop_back();
     }
@@ -556,7 +567,9 @@ class ForestBuilder {
         left = Add(SequenceExpr{prefix, left}, branch_origin);
       }
     }
-    const auto right = operand(region.logical && !region.logical->keep_consequent ? *region.consequent : region.right);
+    const auto right = operand(region.logical && region.logical->shared_right
+        ? *region.logical->shared_right
+        : region.logical && !region.logical->keep_consequent ? *region.consequent : region.right);
     const auto expression = region.logical
         ? Add(LogicalExpr{region.logical->operation, left, right}, branch_origin)
         : region.consequent ? Add(ConditionalExpr{left, operand(*region.consequent), right}, branch_origin)
@@ -569,6 +582,30 @@ class ForestBuilder {
         Step();
         if (condition.branch != region.branch) Combine(expression, {graph_.ops[condition.branch.value].origin.value});
         forest_.operations[condition.branch.value] = expression;
+      }
+    }
+    if (region.logical && region.logical->shared_right) {
+      const auto bind = [&](const SelectionRegion& part) {
+        const auto leaf = [&](const SelectionOperand& input) {
+          if (const auto* value = std::get_if<analysis::ValueId>(&input)) {
+            const auto op = std::get<analysis::OpResult>(graph_.values[value->value].origin).op;
+            const auto* representative = std::get_if<analysis::ValueId>(&*region.logical->shared_right);
+            if (!representative || *representative != *value)
+              Combine(right, {graph_.ops[op.value].origin.value});
+            forest_.operations[op.value] = right;
+          }
+        };
+        leaf(part.right); if (part.consequent) leaf(*part.consequent);
+        if (part.branch != region.branch) for (const auto& test : part.tests) {
+          Step(); Combine(expression, {graph_.ops[test.operation.value].origin.value});
+          forest_.operations[test.operation.value] = expression;
+        }
+        forest_.operations[part.branch.value] = expression;
+      };
+      bind(region);
+      for (const auto branch : region.logical->shared_branches) {
+        Step(); const auto index = *selection_indices_[branch.value];
+        bind(logicals_[index]); selection_built_[index] = 1;
       }
     }
     if (!region.consequent) forest_.operations[region.boolean.value] = expression;

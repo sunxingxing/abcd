@@ -244,7 +244,7 @@ SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& 
   for (std::size_t i=0;i<joints.size();++i) {budget.Step();joint_values[joints[i].value.value]=i;}
   std::vector<std::optional<OpId>> truth_owners;budget.Array(truth_owners,graph.ops.size());
   for(const auto& region:regions) if(region.logical) for(const auto op:region.logical->truths) {
-    budget.Step();truth_owners[op.value]=region.branch;
+    budget.Step();truth_owners[op.value]=region.logical->shared_owner.value_or(region.branch);
   }
   for (const auto& region:regions) {
     budget.Step();if(region.parent || !region.complete_phi || !joint_values[region.merged.value])continue;
@@ -252,7 +252,9 @@ SelectionIndex IndexSelections(const ValueProgram& graph, const EvaluationPlan& 
     const auto& later=regions[*next];const auto& proof=joints[*joint_values[region.merged.value]];
     if(!later.logical || later.logical->value!=region.merged)continue;
     const auto& keep=graph.uses[proof.keep.value];
-    const auto incoming=later.logical->keep_consequent?later.keep_input:later.evaluate_input;
+    const auto incoming=later.logical->shared_keep
+        ? std::optional{std::get<EdgeId>(*graph.uses[later.logical->shared_keep->value].incoming)}
+        : later.logical->keep_consequent?later.keep_input:later.evaluate_input;
     const auto* edge=keep.incoming?std::get_if<EdgeId>(&*keep.incoming):nullptr;
     if(keep.owner!=decltype(keep.owner){later.merged} || !incoming || !edge || *incoming!=*edge)continue;
     bool covered=true;
@@ -856,7 +858,11 @@ struct ReferenceRouteIndex {
       }
       const auto original = BeforeLogicalFusion(graph, plan, i);
       const auto use = uses[i].first;
-      if (roots[i] || !use || uses[i].multiple ||
+      // A saved member invocation may itself be an inline argument of a
+      // surrounding saved member invocation. Its result has one real use;
+      // keep following that eager ancestry so ONE interval checks both
+      // references, rather than committing only the innermost callee.
+      if (!use || uses[i].multiple ||
           (original.kind != EvaluationKind::kInline &&
            !(original.kind == EvaluationKind::kRoot && original.temporary == TemporaryReason::kCrossRegionValue))) continue;
       const auto& occurrence = graph.uses[use->value];
@@ -882,9 +888,11 @@ struct ReferenceRouteIndex {
         cursor = *parents[cursor.value];
       }
       Require(!parents[cursor.value] || state[cursor.value] == Visit::kDone);
-      const auto root = roots[cursor.value];
+      auto root = roots[cursor.value];
       while (count) {
-        budget.Step(); const auto id = path[--count]; roots[id.value] = root; state[id.value] = Visit::kDone;
+        budget.Step(); const auto id = path[--count];
+        if (!root) root = roots[id.value];
+        roots[id.value] = root; state[id.value] = Visit::kDone;
       }
     }
     for (const auto root : roots) { budget.Step(); if (root) ++owner_starts[root->value+1]; }
@@ -1146,8 +1154,10 @@ void VerifyLogicalValues(const ValueProgram& graph, const EvaluationPlan& plan, 
     }
     return;
   }
-  const auto regions = Regions(graph, plan, budget); const auto index = IndexSelections(graph, plan, regions, budget, plan.joint_selection_uses);
+  // Validate the untrusted certificate census before any region view indexes
+  // its value/keep identities. Range/owner mutations must be typed refusals.
   VerifyJointSelectionUses(graph, plan, plan.joint_selection_uses, budget);
+  const auto regions = Regions(graph, plan, budget); const auto index = IndexSelections(graph, plan, regions, budget, plan.joint_selection_uses);
   DomainIndex domain_index(graph, budget);
   std::vector<Interval> intervals; std::vector<SelectionBlock> used;
   std::vector<std::uint8_t> consumed, values, objects;

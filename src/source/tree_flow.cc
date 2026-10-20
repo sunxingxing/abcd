@@ -1067,7 +1067,7 @@ class FlowCheck {
       if (current.logical) {
         consequent = current.logical->keep_consequent ? selected_condition : logical->right;
         alternate = current.logical->keep_consequent ? logical->right : selected_condition;
-        const TreeSelectionTruth truth{current.branch, current.logical->value, selected_condition, current.logical->input};
+        const TreeSelectionTruth truth{current.logical->shared_owner.value_or(current.branch), current.logical->value, selected_condition, current.logical->input};
         flow_.expressions[current.branch.value] = task.expression;
         const auto mark = [&](analysis::OpId id) {
           Require(flow_.expressions[id.value] == task.expression && !flow_.selection_truths[id.value], Error::kPlacement);
@@ -1114,6 +1114,21 @@ class FlowCheck {
         }
       }
       const auto arm = [&](const SelectionOperand& input, ExprId actual) {
+        if (current.logical && current.logical->shared_right) {
+          if (const auto* nested = std::get_if<SelectionChild>(&input)) {
+            Require(logical_branches_[nested->branch.value].has_value(), Error::kPlacement);
+            const auto index = *logical_branches_[nested->branch.value];
+            const auto& part = logicals_[index];
+            Require(part.parent == current.branch && part.merged == current.merged &&
+                part.logical && part.logical->shared_owner == current.logical->shared_owner.value_or(current.branch) &&
+                flow_.expressions[nested->branch.value] == task.expression && pending < conditional_tasks_.size(), Error::kPlacement);
+            conditional_tasks_[pending++] = {index, task.expression, task.target};
+            return;
+          }
+          const auto* snapshot = std::get_if<SelectionSnapshot>(&input);
+          actual = snapshot && ResolveEvaluationValue(evaluation_, snapshot->value) == current.logical->value
+              ? selected_condition : logical->right;
+        }
         if (const auto* snapshot = std::get_if<SelectionSnapshot>(&input)) {
           if (current.logical && actual == selected_condition &&
               ResolveEvaluationValue(evaluation_, snapshot->value) == current.logical->value) {
@@ -1182,6 +1197,14 @@ class FlowCheck {
       arm(*current.consequent, consequent); arm(current.right, alternate);
       flow_.expressions[current.branch.value] = task.expression;
       if (!current.logical) flow_.conditional_operations[current.branch.value] = 1;
+      if (current.logical && current.logical->shared_right) {
+        const auto leaf = [&](const SelectionOperand& input) {
+          const auto* snapshot = std::get_if<SelectionSnapshot>(&input);
+          return snapshot && ResolveEvaluationValue(evaluation_, snapshot->value) == current.logical->value
+              ? selected_condition : logical->right;
+        };
+        consequent = leaf(*current.consequent); alternate = leaf(current.right);
+      }
       LogicalEdges(current, task.target, consequent, alternate, parent, child);
     }
   }

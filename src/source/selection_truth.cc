@@ -105,7 +105,8 @@ std::optional<PureTruthTest> PureBranchTruth(const analysis::ValueProgram& graph
 }
 
 void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& control,
-    const EvaluationPlan& evaluation, std::span<SelectionRegion> regions, TreeCheckBudget& budget) {
+    const EvaluationPlan& evaluation, std::span<SelectionRegion> regions, TreeCheckBudget& budget,
+    std::span<const JointSelectionUse> joints) {
   if (regions.empty()) return;
   const auto roots = EvaluationRoots(graph, evaluation, budget);
   std::vector<std::optional<Equation>> equations;
@@ -259,5 +260,140 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
     budget.Array(region.tests,test_count);std::copy_n(tests.begin(),test_count,region.tests.begin());
     region.logical = std::move(logical);
   }
+  if (joints.empty() || !graph.phases.empty()) return;
+  // Joint Reference seeds alone authorize this additional projection. A
+  // shared-phi decision is a four-domain function of ONE retained value, not
+  // a new consumer exemption. Walk disjoint original region trees once.
+  std::vector<std::optional<std::size_t>> branches, joint_values;
+  std::vector<std::optional<Truth>> branch_truths;
+  std::vector<std::uint8_t> visited;
+  struct Task { std::size_t region; TruthMask arrival; };
+  std::vector<Task> tasks, members;
+  budget.Array(branches, graph.ops.size());
+  budget.Array(branch_truths, graph.ops.size());
+  budget.Array(joint_values, graph.values.size());
+  budget.Array(visited, regions.size());
+  budget.Array(tasks, regions.size()); budget.Array(members, regions.size());
+  for (std::size_t i = 0; i < regions.size(); ++i) {
+    budget.Step(); branches[regions[i].branch.value] = i;
+    const auto& op = graph.ops[regions[i].branch.value];
+    if (op.use_count != 1) continue;
+    const auto operand = ResolveEvaluationOperand(evaluation, graph.uses[op.first_use.value].operand);
+    const auto* value = std::get_if<ValueId>(&operand);
+    if (!value || !BooleanEvaluation(graph, operand) || !equations[value->value] ||
+        equations[value->value]->owner != regions[i].branch || !truths[value->value]) continue;
+    const auto polarity = TruthPolarity(graph, std::get<ValueBranch>(op.operation).predicate, operand);
+    if (!polarity) continue;
+    branch_truths[regions[i].branch.value] = *truths[value->value];
+    if (!*polarity) branch_truths[regions[i].branch.value]->mask ^= kAll;
+  }
+  for (std::size_t i = 0; i < joints.size(); ++i) {
+    budget.Step(); joint_values[joints[i].value.value] = i;
+  }
+  const auto same = [](const ValueOperand& a, const ValueOperand& b) {
+    if (a.index() != b.index()) return false;
+    return std::visit([&](const auto& value) {
+      using T = std::decay_t<decltype(value)>;
+      if constexpr (std::is_same_v<T, analysis::SpecialValue>) return value == std::get<T>(b);
+      else return value.value == std::get<T>(b).value;
+    }, a);
+  };
+  const auto constant = [&](ValueId value) -> std::optional<ValueOperand> {
+    const auto input = ResolveEvaluationOperand(evaluation, value);
+    if (!std::holds_alternative<ValueId>(input)) return input;
+    const auto* result = std::get_if<OpResult>(&graph.values[std::get<ValueId>(input).value].origin);
+    if (!result) return {};
+    const auto& op = graph.ops[result->op.value];
+    if (!IsSelectionConstant(graph, result->op)) return {};
+    return graph.uses[op.first_use.value].operand;
+  };
+  for (std::size_t root = 0; root < regions.size(); ++root) {
+    budget.Step(); const auto& first = regions[root];
+    const auto truth = branch_truths[first.branch.value];
+    if (first.parent || !first.complete_phi || first.logical || !first.consequent ||
+        !truth || !joint_values[truth->value.value]) continue;
+    const auto& joint = joints[*joint_values[truth->value.value]];
+    std::size_t pending = 1, count = 0; tasks[0] = {root, kAll};
+    std::optional<SelectionOperand> fallback;
+    std::optional<ValueOperand> fallback_constant;
+    TruthMask retained_domains, fallback_domains;
+    bool closed = true; bool kept = false;
+    while (pending && closed) {
+      budget.Step(); const auto task = tasks[--pending]; auto& region = regions[task.region];
+      const auto scalar = branch_truths[region.branch.value];
+      if (visited[task.region] || !scalar || scalar->value != truth->value ||
+          !region.consequent || !region.conditions.empty() ||
+          region.merged != first.merged || !region.prefix_regions.empty() ||
+          !region.arm_prefixes.empty() || !pure(region.header)) { closed = false; break; }
+      visited[task.region] = 1; members[count++] = task;
+      // Consequent is the Boolean predicate's true arm, independently of VM
+      // branch polarity. Its domain therefore uses the original truth value.
+      const auto predicate = ResolveEvaluationOperand(evaluation,
+          graph.uses[graph.ops[region.branch.value].first_use.value].operand);
+      const auto yes_domains = truths[std::get<ValueId>(predicate).value]->mask;
+      const auto leaf = [&](const SelectionOperand& operand, TruthMask domain,
+                            std::optional<EdgeId> edge) {
+        if (const auto* child = std::get_if<SelectionChild>(&operand)) {
+          const auto child_index = branches[child->branch.value];
+          if (!child_index || regions[*child_index].parent != region.branch ||
+              pending >= tasks.size()) { closed = false; return; }
+          tasks[pending++] = {*child_index, domain}; return;
+        }
+        if (!edge) { closed = false; return; }
+        std::optional<ValueOperand> meaning;
+        if (const auto* snapshot = std::get_if<SelectionSnapshot>(&operand)) {
+          const auto value = ResolveEvaluationValue(evaluation, snapshot->value);
+          if (value == truth->value) {
+            const auto& keep = graph.uses[joint.keep.value];
+            const auto* incoming = keep.incoming ? std::get_if<EdgeId>(&*keep.incoming) : nullptr;
+            if (!incoming || *incoming != *edge) { closed = false; return; }
+            retained_domains |= domain; kept = true; return;
+          }
+          meaning = ResolveEvaluationOperand(evaluation, value);
+        } else if (const auto* value = std::get_if<ValueId>(&operand)) {
+          meaning = constant(*value);
+        }
+        if (!meaning || (fallback_constant && !same(*fallback_constant, *meaning))) {
+          closed = false; return;
+        }
+        fallback = operand; fallback_constant = meaning; fallback_domains |= domain;
+      };
+      leaf(*region.consequent, task.arrival & yes_domains, region.keep_input);
+      leaf(region.right, task.arrival & yes_domains.Complement(), region.evaluate_input);
+    }
+    if (!closed || !kept || !fallback || retained_domains != kOther ||
+        fallback_domains != TruthDomains::Nullish()) continue;
+    // Commit only after every original leaf is covered. Each scalar keeps its
+    // arrival domain so recovery can match the shared native nullish decision
+    // without inventing an unconditional second read or dropping a phi edge.
+    for (std::size_t i = 0; i < count; ++i) {
+      budget.Step(); const auto task = members[i]; auto& region = regions[task.region];
+      const auto& scalar = *branch_truths[region.branch.value];
+      SelectionLogical logical{TreeLogical::kNullish, truth->value, truth->occurrence, false, {}};
+      logical.shared_owner = task.region == root ? std::nullopt : std::optional{first.branch};
+      logical.shared_right = fallback; logical.shared_keep = joint.keep;
+      std::size_t size = 0, test_size = 0;
+      tests[test_size++] = {region.branch, {task.arrival, task.arrival & scalar.mask, PureTruthOutcome::kDecision}};
+      auto cursor = std::get<ValueId>(ResolveEvaluationOperand(evaluation,
+          graph.uses[graph.ops[region.branch.value].first_use.value].operand));
+      while (equations[cursor.value] && equations[cursor.value]->owner == region.branch) {
+        budget.Step(); const auto op = std::get<OpResult>(graph.values[cursor.value].origin).op;
+        path[size++] = op; const auto& derived = *truths[cursor.value];
+        tests[test_size++] = {op, {task.arrival, task.arrival & derived.mask,
+            derived.boolean_result ? PureTruthOutcome::kBoolean : PureTruthOutcome::kInput}};
+        cursor = equations[cursor.value]->input;
+      }
+      budget.Array(logical.truths, size); std::copy_n(path.begin(), size, logical.truths.begin());
+      budget.Array(region.tests, test_size); std::copy_n(tests.begin(), test_size, region.tests.begin());
+      if (task.region == root) {
+        budget.Array(logical.shared_branches, count - 1);
+        for (std::size_t j = 1; j < count; ++j) {
+          budget.Step(); logical.shared_branches[j - 1] = regions[members[j].region].branch;
+        }
+      }
+      region.logical = std::move(logical);
+    }
+  }
+
 }
 }  // namespace abcd::source

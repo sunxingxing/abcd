@@ -7,6 +7,57 @@
 
 
 
+
+## Shared-phi nullish call References (2026-10-20)
+
+- Baseline/wtbase **f1eb2418**. **o39/12680 m13322 completes under both
+  contracts**. The new view proves the complete same-phi null/undefined
+  selection by four-domain partitions, retaining every original child/test/
+  phi edge. Joint-use and eager-ancestry verification compose the two saved
+  member callees without a second lookup. TreeFlow/OriginalFlow/recovery
+  independently rederive the view and original event correspondence. No new
+  premise, printer change, phased admission, or allocation exclusion change.
+- Both 40-input cohorts finish: previous flags **538 -> 539/620**, source
+  **594 -> 595/620**. **0 regressions; 0 previously-complete text drift**.
+  The only changed manifest row in each is **o39/12680**. Both newly emitted
+  records pass `node --check`. Conservative 4-child RSS upper bounds plus
+  parent are **165,658,624 bytes** / **175,620,096 bytes**, below 1 GB.
+- **o36/36985 m37638 PC378** still requires a member-update Reference
+  certificate for the shared captured base (Get + Set + numeric result).
+  **o7/28433 m28692 PC166** still requires the constructor-result wrapper
+  around verified literal forests. Existing typed refusals are unchanged;
+  **o5/28303** was not pursued. Exact IR and the next proof boundaries:
+  [cross-region-call-values.md](cross-region-call-values.md).
+- Extended joint-selection unit cases cover direct/nested references, copies,
+  register/block variants, proof/edge/domain/fallback/effect/operand mutations,
+  and **200/201/400/800 exact work+byte boundaries**. At 800 nested calls the
+  exact allowance is **90,682,592 bytes / 21,949,101 work**; at width800 it is
+  **35,744,950 / 8,257,111**. One less refuses with the typed limit.
+- Real SDK fixtures: **5 O0 methods publish**, **5 optimized-input encodings
+  retain their typed Reference refusal**. New Node differential: **17,280
+  scenarios**, all **10 mutations observed**; existing Boolean differential:
+  **21,000 scenarios**. All **10/10** default/O0 per-method disassemblies match
+  exactly, no instruction/control/handler/register normalization. The separate
+  grouping-only token checker correctly flags parameter renaming (5/5); it is
+  not counted as a grouping pass. Compiler identity/commands are pinned in the
+  fixture manifests and raw comparison report.
+- Full build passed; **65/65 serial source-regression**, **7/7 targeted
+  tests**. Requested sweep **208/214**; the six failures are pre-existing:
+  `family_source_cli_test`, `tree_structure_test`, `try_tree_test`,
+  `class_tree_source_test`, `try_tree_source_test`,
+  `phased_arm_selection_source_test`. All six were additionally reproduced by
+  the exact same commands against freshly linked **f1eb2418** baseline
+  binaries (`baseline-failures.json` and individual baseline logs). Only the
+  three optional/nullish fixture expectations moved refusal -> publication,
+  backed by the new differential; no negative expectation was weakened.
+- Scratch: `build/review/remaining-calls/` (final cohorts `verified-source` /
+  `verified-previous`, RSS-measured identical manifests in `final-source` /
+  `final-previous`, `manifest-changes.json`, `unit-final.log`, `bytecode/`,
+  `full-build-final.log`, `source-regression-final.log`, `targeted-final.log`,
+  `sweep-final.log`).
+  No commit/push/stash performed; unrelated `sample.tar.gz` preserved.
+
+
 ## Native switch fall-through (2026-10-20)
 
 - Baseline/wtbase **f5c62475**. **o18/57687 completes under --language-source**;

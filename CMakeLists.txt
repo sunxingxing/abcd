@@ -2233,6 +2233,10 @@ if(BUILD_TESTING)
     add_test(NAME decision_literal_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_literal.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_literal)
+    add_test(NAME nullish_call_values_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/nullish_call_values.mjs $<TARGET_FILE:abc_structure>
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/joint_selection
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/nullish_call_values)
     add_test(NAME joint_selection_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/joint_selection.mjs $<TARGET_FILE:abc_structure>
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/joint_selection)

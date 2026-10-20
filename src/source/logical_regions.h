@@ -23,15 +23,22 @@ struct SelectionCondition {
 struct SelectionPureTest {analysis::OpId operation;PureTruthTest meaning;};
 // Representation of a proved retained-value truth selection. The original
 // arms/edges remain authoritative; this is not another control recognizer.
+using SelectionOperand = std::variant<analysis::ValueId, analysis::SpecialValue,
+    analysis::IntegerLiteral, analysis::Float64Bits, SelectionChild, SelectionSnapshot>;
 struct SelectionLogical {
   TreeLogical operation;
   analysis::ValueId value;
   analysis::UseId input;
   bool keep_consequent;
   std::vector<analysis::OpId> truths;
+  // A domain-partitioned subtree may share the root phi (e.g. separate null
+  // and undefined tests). Preserve every original region and edge; only their
+  // pure truth/constant occurrences share the native logical expression.
+  std::optional<analysis::OpId> shared_owner;
+  std::optional<SelectionOperand> shared_right;
+  std::optional<analysis::UseId> shared_keep;
+  std::vector<analysis::OpId> shared_branches;
 };
-using SelectionOperand = std::variant<analysis::ValueId, analysis::SpecialValue,
-    analysis::IntegerLiteral, analysis::Float64Bits, SelectionChild, SelectionSnapshot>;
 inline SelectionOperand SelectionLeaf(const analysis::ValueOperand& value) {
   return std::visit([](const auto& input) -> SelectionOperand { return input; }, value);
 }
@@ -113,7 +120,8 @@ inline bool IsSelectionConstant(const analysis::ValueProgram& graph, analysis::O
 // SSA value. Copies/aliases, unary composition and predicate polarity share
 // one indexed proof; VM numeric predicates require a Boolean input.
 void ProjectSelectionLogicals(const analysis::ValueProgram& graph, const ControlPlan& control,
-    const EvaluationPlan& evaluation, std::span<SelectionRegion> regions, TreeCheckBudget& budget);
+    const EvaluationPlan& evaluation, std::span<SelectionRegion> regions, TreeCheckBudget& budget,
+    std::span<const JointSelectionUse> joints = {});
 // Candidate discovery from checked phase/SSA edges before a control tree is
 // available. Endpoints are original block IDs; keep_path/evaluate_path remain
 // empty until FindPhasedSelections binds the actual control owner.

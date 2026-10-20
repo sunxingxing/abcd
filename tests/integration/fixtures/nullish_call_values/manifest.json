@@ -1,0 +1,78 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "commands": [
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=nestedNullish",
+      "--source-file=nestedNullish.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/nullish_call_values/nestedNullish-O0.abc",
+      "tests/integration/fixtures/nullish_call_values/nestedNullish.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=nestedNullish",
+      "--source-file=nestedNullish.js",
+      "--output=tests/integration/fixtures/nullish_call_values/nestedNullish-default.abc",
+      "tests/integration/fixtures/nullish_call_values/nestedNullish.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=optionalArgument",
+      "--source-file=optionalArgument.js",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/nullish_call_values/optionalArgument-O0.abc",
+      "tests/integration/fixtures/nullish_call_values/optionalArgument.js"
+    ],
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--record-name=optionalArgument",
+      "--source-file=optionalArgument.js",
+      "--output=tests/integration/fixtures/nullish_call_values/optionalArgument-default.abc",
+      "tests/integration/fixtures/nullish_call_values/optionalArgument.js"
+    ]
+  ],
+  "fixtures": [
+    {
+      "name": "nestedNullish",
+      "mode": "O0",
+      "source": "nestedNullish.js",
+      "abc": "nestedNullish-O0.abc"
+    },
+    {
+      "name": "nestedNullish",
+      "mode": "default",
+      "source": "nestedNullish.js",
+      "abc": "nestedNullish-default.abc"
+    },
+    {
+      "name": "optionalArgument",
+      "mode": "O0",
+      "source": "optionalArgument.js",
+      "abc": "optionalArgument-O0.abc"
+    },
+    {
+      "name": "optionalArgument",
+      "mode": "default",
+      "source": "optionalArgument.js",
+      "abc": "optionalArgument-default.abc"
+    }
+  ],
+  "hashes": {
+    "nestedNullish-O0.abc": "7e1db139a1ccace406aeba17a6035e028df761cc7d5e6b2bee6c59cec78c7e00",
+    "nestedNullish-default.abc": "de50c03eeaa874f9ca2828ad37dbc87c2a837809820a32ee722f06b1391d2bb0",
+    "optionalArgument-O0.abc": "80bbc489ed2a8995671d107b6208e962148f29edb02e88a30f895f02cd28096f",
+    "nestedNullish.js": "6ee7f430b663fde2f6a2585b46651f802827cf9401b3e870c0356e6861626845",
+    "optionalArgument.js": "8189e701f38912c19054a62b02fe4b6b459fddf693dc1e5fd7b3f5e29f5ed484",
+    "optionalArgument-default.abc": "0cf3a282ef71cc89e1795315f2c2b88e4bc55e0e027463bbf98ddb5c40f63288"
+  }
+}

@@ -12,8 +12,9 @@ receiver identity). Receiver and logical-operator mutations are observed.
 Strict SDK recompile/disassembly comparison is identical for all three emitted
 fixtures at both O0 and default optimization, including their module entry.
 
-The optimized-input variants and the optional/nullish cases retain precise
-CallReferenceError::kNotInline assertions. They are not counted as successful
-semantic recovery. In particular the optional result followed by nullish
-selection still needs shared-fallback truth-event correspondence; this round
-never treats an unverified joint-use census as permission to eliminate control.
+The optimized-input variants retain precise CallReferenceError::kNotInline
+assertions. O0 optionalMethod, optionalProperty and nullishChain now publish
+through the independently checked shared-phi truth view. Their full Node
+matrix is registered as nullish_call_values_source_test, including nested
+saved member calls and throwing/receiver/short-circuit cases. See
+cross-region-call-values.md for the exact contract and compiler comparisons.

@@ -32,6 +32,9 @@ console.log(JSON.stringify({count,trace}));`);
   for(const entry of manifest.fixtures) {
     const output=join(temp,entry.abc);run(engine,[join(fixture,entry.abc),output,'--value-source','--language-source']);
     const record=JSON.parse(readFileSync(join(output,'manifest.json'))).records.find(r=>r.source_status!==2);
+    if(entry.mode==='O0'&&['optionalMethod','optionalProperty','nullishChain'].includes(entry.name)) {
+      assert.equal(record.source_status,0,JSON.stringify(record));run(process.execPath,['--check',join(output,record.source)]);continue; // Full differential: nullish_call_values_source_test.
+    }
     const publish=entry.mode==='O0'&&['booleanJoin','booleanNot','booleanConjunction'].includes(entry.name);
     if(!publish) {
       assert.equal(record.source_status,3,entry.abc);assert.equal(record.source_failure?.call_reference?.kind,1,entry.abc);++refused;continue;
@@ -47,6 +50,6 @@ console.log(JSON.stringify({count,trace}));`);
       assert.ok(text.includes(' && '));writeFileSync(wrong,text.replace(' && ',' || '));assert.notEqual(run(process.execPath,[runner,wrong,entry.name]),expected);
     }
   }
-  assert.equal(scenarios,21000);assert.equal(refused,11);
-  console.log(scenarios+' engine-output/original scenarios; 3 published O0 fixtures; 11 precise remaining reference refusals; receiver/operator mutations observed');
+  assert.equal(scenarios,21000);assert.equal(refused,8);
+  console.log(scenarios+' engine-output/original scenarios; 3 published O0 fixtures; 8 precise remaining reference refusals; 3 nullish publication checks; receiver/operator mutations observed');
 } finally {rmSync(temp,{recursive:true,force:true});}

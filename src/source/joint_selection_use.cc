@@ -61,7 +61,7 @@ std::vector<JointSelectionUse> FindJointSelectionUses(const ValueProgram& graph,
     else {
       const auto owner=std::get<OpId>(occurrence.owner);
       if(const auto property=MemberProperty(graph,plan,owner);property && BeforeLogicalFusion(graph,plan,property->value).kind==EvaluationKind::kRoot && BeforeLogicalFusion(graph,plan,property->value).temporary==TemporaryReason::kCrossRegionValue) roots[i]=owner;
-      else if(graph.ops[owner.value].result && BeforeLogicalFusion(graph,plan,owner.value).kind==EvaluationKind::kInline)
+      if(graph.ops[owner.value].result && BeforeLogicalFusion(graph,plan,owner.value).kind==EvaluationKind::kInline)
         parents[i]=graph.ops[owner.value].result;
     }
   }
@@ -74,8 +74,9 @@ std::vector<JointSelectionUse> FindJointSelectionUses(const ValueProgram& graph,
       budget.Step();visited[at.value]=Visit::kActive;path[count++]=at;
       if(!parents[at.value])break;at=*parents[at.value];
     }
-    const auto root=(!parents[at.value] || visited[at.value]==Visit::kDone)?roots[at.value]:std::nullopt;
-    while(count){budget.Step();const auto id=path[--count];roots[id.value]=root;visited[id.value]=Visit::kDone;}
+    auto root=(!parents[at.value] || visited[at.value]==Visit::kDone)?roots[at.value]:std::nullopt;
+    const bool cycle=parents[at.value] && visited[at.value]!=Visit::kDone;
+    while(count){budget.Step();const auto id=path[--count];if(!root && !cycle)root=roots[id.value];roots[id.value]=root;visited[id.value]=Visit::kDone;}
   }
   std::vector<JointSelectionUse> result;
   budget.Admit(graph.values.size(),sizeof(JointSelectionUse));result.reserve(graph.values.size());

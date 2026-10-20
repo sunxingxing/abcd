@@ -263,3 +263,178 @@ Evidence directory: `build/review/joint-selection/`; final cohorts are
 `bytecode-verified/summary.json`, exact budgets are in
 `new-tests-detail.log`, regression and sweep outcomes in
 `source-regression.log` and `sweep-final.log`. No commit/push/stash was made.
+
+## Shared-phi nullish calls (2026-10-20, baseline f1eb2418)
+
+### Fresh boundary and implementation
+
+Original m13322 has `member120@330 -> v75`; `invoke157@415` consumes
+`Use161=v75`, receiver `Use162=v72`, argument `Use163=phi20`. The optional
+selection `branch126 -> phi19` precedes `strict-null145@387 Use148=phi19`
+and `strict-undefined150@397 Use154=phi19`. `branch146` owns the complete
+phi20 and `branch151` owns a partial subtree of that **same** phi. The retained
+leaf is `Use183/edge15=phi19`; the two other original incoming edges carry
+separate pure zero constants. This is a value selection, not an extra read of
+the optional call or a Boolean result replacing it.
+
+`ProjectSelectionLogicals` now derives a shared-phi view only from the existing
+unmet-Reference `JointSelectionUse` seeds. Its explicit stack partitions the
+original selection tree into the four existing truth domains. Every scalar
+must be a pure equation of the same retained ValueId. Every leaf must retain
+that exact value/edge or supply the same canonical constant/retained binding.
+The retained domains must be exactly non-nullish; fallback domains exactly
+null/undefined. An effectful or unequal fallback, extra observation, unrelated
+event, changed retained input or incomplete path keeps the refusal.
+
+`SelectionLogical` retains the root, original keep occurrence, shared fallback
+and disjoint descendant list. No original region/phi/edge is removed. Each
+predicate retains its own evaluated-domain and true-domain sets, including the
+child's non-null arrival. The expression forest emits one `LogicalExpr(??)`
+and combines the proven pure test and fallback origins. It never first builds
+unused duplicate syntax. TreeFlow independently recomputes the view from the
+original graph, visits every original child and selects every actual phi edge;
+OriginalFlow/recovery compare each original scalar domain/occurrence against
+that single source evaluation. These are normal-flow Reference routes; no
+phased catch/guard admission or new language premise is introduced.
+
+After PC415 was composed, the next failure was `member112@310 -> v67`, the
+callee of `invoke165@442` (`Use172=v67`, receiver `Use173=v64`, argument
+`Use174=v92`). `invoke157 -> v89` feeds `binary160@428 -> v92`. Both members
+are saved before the selections. The canonical one-use ancestry indexes now
+continue through an inline member invocation to the outer saved member owner,
+retaining the outermost actual Reference if the chain ends at a non-Reference
+statement. One existing Domain interval then proves both lookups, the selected
+argument, both calls and subtraction in source order. This is not permission to
+re-read a callee, invoke via `.call`, or discard intervening effects. Verification
+rebuilds that ancestry and its forward event equations independently.
+
+All added scratch arrays/stacks and result vectors are admitted before
+allocation. Shared-region subtrees are disjoint; indexes and explicit walks are
+linear apart from existing sorted ownership lookup, O((V+E) log V). The fallback
+runs only on an unmet Reference. Successful old plans are unchanged.
+
+### Result and source oracle
+
+**o39/12680 completes under both contracts.** The source oracle is
+`samples/applications_app_samples/code/DocsSample/ArkWeb/ArkWebMenu/entry/src/main/ets/pages/WebContextMenu.ets:117`,
+inspected only for evaluation after engine recovery. Its callback statement is:
+
+```ts
+this.offsetY = Math.max(this.uiContext!.px2vp(event?.param.y() ?? 0) - 0, 0);
+```
+
+The emitted m13322 callback is:
+
+```js
+(event) => {
+  if (event) {
+    $local0.result = event.result;
+    console.info("x coord = " + event.param.x());
+    console.info("link url = " + event.param.getLinkUrl());
+    $local0.linkUrl = event.param.getLinkUrl();
+  }
+  console.info(TAG, "x: " + $local0.offsetX + ", y: " + $local0.offsetY + "");
+  $local0.showMenu = true;
+  $local0.offsetX = 0;
+  $local0.offsetY = Math.max($local0.uiContext.px2vp(event?.param.y() ?? 0) - 0, 0);
+  return true;
+}
+```
+
+### Remaining cases, deliberately not admitted
+
+- **o36/36985 m37638 original PC378 / working PC352** remains the same
+  CallReference `kNotInline > kRoot > kCrossRegionValue`. Original saved
+  `member123@342` (working316) produces v122, copied to v123/v134, consumed
+  by `invoke137 Use136`, receiver Use137=v120. Its second argument
+  `Use139=v133` aliases the numeric result v132. In working IR:
+  `lexical127@327 -> v126`, copies v127/v128, `member130@333 Use128=v128 ->
+  v129`, copies v130/v131, `unary133@341 Use131=v131 -> v132`, then
+  `write134@343 Use132=v127, Use133=v132`; result copy135 supplies the call.
+  The raw unary operator is **kIncrement** (not a guessed compound or postfix
+  update); the incoming environment address is depth0/slot0. The returned
+  argument aliases the new numeric result, so this is the prefix-result case.
+  The assignment-result correspondence already exists: write134 is inline at
+  that argument. The captured base has **both** the Get and Set observations.
+  The present `UpdateExpr` represents only a private numeric **symbol**, not a
+  member Reference; neither duplicating the lexical read nor absorbing just
+  the write proves native prefix/postfix semantics. The next contained design
+  is a MemberUpdate reference certificate: original base/key occurrence once,
+  Get -> ToNumeric/update -> Set successful Commit, old/new result identity,
+  and all abrupt exits, consumed atomically by phase composition and mirrored
+  in tree/recovery. Until that reference proof exists the current refusal is
+  correct. No update opcode or sample shape has been newly admitted.
+- **o7/28433 m28692 PC166** remains the same Reference refusal. Saved
+  `member9@23 -> v28` feeds `invoke58@166 Use57`, receiver Use58=v25,
+  argument Use59=phi19. The arm ending at `construct35@98` returns v97;
+  the other arm ends at `construct55@158` with v50. Their private object and
+  array arguments have their own definitions, but **the constructor result,
+  not either allocation, is the phi input**. `LiteralArmView` certifies a
+  literal allocation/final-value forest; it does not own the enclosing
+  constructor invocation and exception/result commit. The next proof must
+  extend an arm event view through an independently verified ConstructCall
+  (callee/arguments -> constructor Before/Commit/exception -> selected value),
+  without changing the existing allocation exclusion. It cannot be inferred
+  from the nullish test view implemented here.
+- **o5/28303** was not pursued; its retained guarded snapshot proof remains
+  separate. The corpus check requires its existing diagnosis to stay intact.
+
+### Tests and decisive compiler comparison
+
+`joint_selection_use_test` covers direct and nested Reference owners, copies,
+register shifts and split corridors. Mutations remove/duplicate a joint proof,
+change its owner/predicate/kept edge, add an observation or effect, change a
+fallback constant, change a nullish domain, and swap native logical operands.
+Fresh re-planning rejects unequal fallback/domain mutants; no stale proof alone
+is counted as that negative result. Many calls and a wide chain exercise
+200/201/400/800 with exact work and byte boundaries (one less refuses).
+
+The new `nullish_call_values_source_test` uses the existing pinned optional
+method/property/nullish-chain ABCs and two new real es2abc fixtures: an optional
+method with an argument, and nested saved member calls. **5 O0 inputs publish**;
+the 5 optimized-input encodings keep their exact Reference refusals. Published
+methods compare **17,280** Node scenarios, including null/undefined, other falsy
+values, NaN/-0, BigInt/Symbol/object identity, getter/call/coercion throws,
+noncallable timing, receiver identity and argument-side callee replacement.
+All 10 receiver/operator mutants are observed. The prior Boolean matrix still
+compares 21,000 scenarios; its three new nullish publication checks are backed
+by the separate differential, not weakened refusal assertions.
+
+The emitted methods are compiled with the pinned SDK at default and O0 using
+`grouping_bytecode.py`, compiler SHA-256
+`4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca`.
+All **10/10 per-method comparisons match exactly**, with zero allowed
+instruction/register/branch/handler/metadata differences. Both sides use the
+same test-only function/export wrapper, retaining original body/signature
+text; only the SDK's identifier-valued string export spelling is adapted
+symmetrically. The tool's separate grouping-only token check reports 5 failures
+because recovered parameter names differ from original names; this is a
+recovery round, not a claim that identifier changes are grouping removals.
+That exit status is not hidden or normalized. Bytecode and Node checks pass
+5/5 at each optimization; raw reports/commands/diffs are under
+`build/review/remaining-calls/bytecode/`.
+
+Final build/cohort/test evidence is recorded in the current status entry.
+
+Final acceptance: full build; **65/65** source-regression; **7/7** targeted;
+requested sweep **208/214**. Its six failures are all reproduced with freshly
+linked f1eb2418 baseline executables: family_source_cli, tree_structure,
+try_tree, class_tree_source, try_tree_source and phased_arm_selection_source.
+Both 40-input cohorts have no process failures: previous **538 -> 539/620**,
+source **594 -> 595/620**, no regressions and no previously-complete text drift.
+Exactly o39/12680's manifest row changes in each. Newly emitted records pass
+node --check. Final-verifier-build manifests are byte-identical to all 80
+RSS-measured manifests. Conservative four-child+parent bounds are
+165,658,624 bytes (previous) and 175,620,096 bytes (source).
+
+| Nullish scale | Nested calls: exact bytes / work | Wide chain: exact bytes / work |
+|---|---|---|
+| 200 | 22,677,992 / 5,387,988 | 8,995,150 / 2,022,662 |
+| 201 | 22,791,333 / 5,414,922 | 9,039,733 / 2,032,429 |
+| 400 | 45,346,192 / 10,873,627 | 17,911,750 / 4,082,774 |
+| 800 | 90,682,592 / 21,949,101 | 35,744,950 / 8,257,111 |
+
+Each boundary succeeds; one less byte/work unit refuses. The independent
+verifier checks joint-certificate identity/ranges **before** any region view
+indexes them; out-of-range value/keep mutations now fail with typed ownership
+rather than relying on trusted builder output. No commit, push or stash.

@@ -755,7 +755,7 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
   regions.resize(count);
   budget.Admit(conditional.size(), sizeof(SelectionRegion));
   regions.insert(regions.end(), std::make_move_iterator(conditional.begin()), std::make_move_iterator(conditional.end()));
-  ProjectSelectionLogicals(graph, control, evaluation, regions, budget);
+  ProjectSelectionLogicals(graph, control, evaluation, regions, budget, joints);
   return regions;
 }
 std::vector<std::optional<UseId>> FindLogicalLeftInputs(const ValueProgram& graph,
