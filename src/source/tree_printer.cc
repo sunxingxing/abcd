@@ -2616,8 +2616,16 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
       member(family);
     }
     std::optional<DefinitionOrder> previous_definition;
+    std::size_t installation = 0;
+    if (tree.installation_order &&
+        (!tree.initializer ||
+         tree.installation_order->initializer != tree.initializer->call ||
+         tree.installation_order->definitions.size() != tree.definitions.size()))
+      throw Failure::kUnsupportedContext;
     for (const auto& accessor : tree.definitions) {
-      if ((tree.initializer &&
+      const bool ordered = tree.installation_order &&
+          tree.installation_order->definitions[installation++] == accessor.site.definition;
+      if ((tree.initializer && !ordered &&
            (!tree.class_self || !tree.class_self->certificate)) ||
           (previous_definition && *previous_definition >= accessor.site.order))
         throw Failure::kUnsupportedContext;

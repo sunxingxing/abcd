@@ -10,6 +10,45 @@
 
 
 
+## Class initializer composition — partial checkpoint (2026-10-21)
+
+Against `8f50e7e8`, **o25/40458 CustomScanViewModel completes** in both flag
+sets: **605/620 --language-source**, **542/620 previous flags**. No regressions
+and no byte changes to previously complete source. Only o25/40458 and
+o32/15324 manifests change. No contract bump or ISA admission.
+
+The combined class projection now consumes the independently proven member
+installation corridor before static initialization. A shared creator projection
+avoids per-class CFG rescans; layout/printer carry original installation IDs and
+creator/evaluation verifiers recompute them. A separate independently checked
+private-receiver certificate permits an uncaptured static initializer's RHS
+calls while its fresh class receiver remains unobserved; closed-field successes
+keep their first path, and failed-attempt costs are charged before fallback.
+
+**This round's original three-record goal is not complete.** Hypium passes
+ClassSelfOrder and stops in m15918, Try1 PC283/H308, at MultipleExits; the close
+probe identifies per-iteration cleanup/dispatch coverage at PC84→H259→H265.
+ArgumentMatchers still refuses the stored instance-initializer role at
+m51746 / creation51442 PC40 (CreationContextError::kKind). Its CALLINIT and
+native per-construction field projection remain unimplemented. Parked42397 and
+46008 were not changed.
+
+Full build passes; source-regression **65/65**; new tests **3/3**; requested
+sweep **215/221**. Five failures are on the documented list. The additional
+class_self_initialization_scale nested_members800 failure is reproduced on
+both old/new binaries with the same FamilyEnclosureError::kResourceLimit.
+The five other failures were also reproduced with baseline binaries. New tests
+cover mutations/copies/block splits and 200/201/400/800 exact budgets; real
+compiler fixtures have **56 passing engine-output Node differentials**.
+Target syntax checks pass. SDK recompilation of the complete target has all33
+methods; O0 **18/33 bodies exact**, including static_initializer; default0/33.
+Non-identical bodies and refused fixture variants are explicitly separated
+from exact comparisons, with raw diffs retained.
+
+See [class-initializer-composition.md](class-initializer-composition.md) for
+bytecode diagnosis, semantics, per-method SDK differences, remaining work and
+scratch evidence under `build/review/class-initializers/`. No commit/push/stash.
+
 ## Native arguments V6; remaining nested/sequential close gates (2026-10-21)
 
 - Baseline wtbase **80b4030a**. **A completes:** o32/52417 (`stub`, m52655) and

@@ -105,7 +105,15 @@ struct ClassTreeInitialization {
   // at THIS ClassExpr's source scope, never copied or marked initialized.
   std::vector<CapturedSymbol> outer;
 };
+// Original installation identities, sealed by the combined private corridor.
+// The creator verifier recomputes this inventory from the unchanged graph.
+struct ClassInstallationOrder {
+  ClassInitializerCall initializer;
+  std::vector<analysis::OpId> definitions;
+  bool operator==(const ClassInstallationOrder&) const = default;
+};
 struct ClassTree {
+  std::optional<ClassInstallationOrder> installation_order;
   std::optional<ClassTreeInitialization> class_self;
   RouteInputIdentity identity;
   ClassConstructorSite creation;
@@ -146,7 +154,8 @@ using ClassTreeFailure = std::variant<SendableFailure, ClassTreeError, ClassCont
     const abc::MethodLookup&, const analysis::MethodRoleIndex&,
     const analysis::ClassMethodSites&, const FileFunction&, analysis::OpId,
     RouteInputIdentity, analysis::SemanticBudget = {},
-    const ClassInitializerCall* = nullptr, std::span<const ClassDefinitionSite> = {});
+    const ClassInitializerCall* = nullptr, std::span<const ClassDefinitionSite> = {},
+    const ClassProjection* shared_projection = nullptr);
 // Bodies' residual inputs are prepared in the original emission order. No
 // syntax owners/names are allocated here; member count reserves the same range.
 struct ClassPreparation {
@@ -164,7 +173,8 @@ struct ClassPreparation {
     const FileFunction&, analysis::OpId, RouteInputIdentity, const GlobalScope*,
     analysis::SemanticBudget, const ClassInitializerCall*, std::span<const ClassDefinitionSite>,
     FunctionOwnerId, RecoveryMode, const CaptureStorage* creator_storage = nullptr,
-    ClassRootBinding root_binding = ClassRootBinding::kBind);
+    ClassRootBinding root_binding = ClassRootBinding::kBind,
+    const ClassProjection* shared_projection = nullptr);
 // Fresh unchanged caller and same-file indexes are admitted by the caller.
 // Constructor and every member use the shared family pipeline. Refusal of any
 // member refuses this creation by default. Explicit AllowPartial may retain a

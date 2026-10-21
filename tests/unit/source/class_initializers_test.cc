@@ -12,7 +12,8 @@ using namespace abcd;
 using namespace abcd::analysis;
 using namespace abcd::source;
 enum class AccessorCase { kValid, kWrongHome, kEscape, kNameFlag, kClassEscape, kPrototypeEscape, kBarrier, kUsedResult, kLaterClassUse, kLaterPrototypeUse, kPair, kEnvironment, kLaterBlock, kLaterPhi, kLaterLoop, kSplitInstall, kPureDiamond, kEffectDiamond, kPureLoop, kRepeatedInstall, kConditionalInstall, kBalancedEffects };
-void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool setter, AccessorCase kind = AccessorCase::kValid, bool ordinary = false) {
+enum class StaticTail { kNone, kValid, kSplit, kBarrier, kEscape, kWrongReceiver };
+void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool setter, AccessorCase kind = AccessorCase::kValid, bool ordinary = false, StaticTail tail = StaticTail::kNone) {
   std::vector<std::uint8_t> bytes;
   const auto op = [&](abc::Opcode code) { bytes.push_back(static_cast<std::uint8_t>(code)); };
   const auto word = [&](std::uint16_t n) { bytes.push_back(n); bytes.push_back(n >> 8); };
@@ -60,6 +61,14 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
     }
     if (kind == AccessorCase::kConditionalInstall) bytes[conditional + 3] = bytes.size() - (conditional + 2);
   }
+  if (tail != StaticTail::kNone) {
+    load(1);
+    if (tail == StaticTail::kEscape) { op(abc::Opcode::kSTMODULEVAR_IMM8); bytes.push_back(0); }
+    if (tail == StaticTail::kBarrier) op(abc::Opcode::kDEBUGGER);
+    if (tail == StaticTail::kSplit) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
+    op(abc::Opcode::kDEFINEMETHOD_IMM8_ID16_IMM8); bytes.push_back(0); word(11); bytes.push_back(0);
+    op(abc::Opcode::kCALLTHIS0_IMM8_V8); bytes.push_back(0); bytes.push_back(tail == StaticTail::kWrongReceiver ? 2 : 1);
+  }
   const bool later_flow = kind == AccessorCase::kLaterBlock || kind == AccessorCase::kLaterPhi || kind == AccessorCase::kLaterLoop;
   const bool installs = kind == AccessorCase::kSplitInstall || kind == AccessorCase::kPureDiamond || kind == AccessorCase::kPureLoop;
   if (kind == AccessorCase::kLaterBlock) { op(abc::Opcode::kJMP_IMM8); bytes.push_back(2); }
@@ -91,6 +100,44 @@ void Accessors(abc::ProfileId profile, unsigned count, bool prototype, bool sett
     test::Check(site.Method(abc::ClassMethodKind::kOrdinary).has_value() == ordinary);
     test::Check(site.Method(abc::ClassMethodKind::kGetter).has_value() == (!ordinary && !setter));
     test::Check(site.Method(abc::ClassMethodKind::kSetter).has_value() == (!ordinary && (setter || kind == AccessorCase::kPair)));
+  }
+  if (tail != StaticTail::kNone) {
+    const auto calls = std::get<ClassInitializerCalls>(FindClassInitializerCalls(graph));
+    if (tail == StaticTail::kWrongReceiver) {
+      test::Check(calls.calls.empty()); return;
+    }
+    test::Check(calls.calls.size() == 1 && result.sites.size() == count);
+    const auto projected = ProjectClassMembers(graph, calls.calls, {}, result.sites);
+    if (tail == StaticTail::kBarrier || tail == StaticTail::kEscape) {
+      test::Check(std::holds_alternative<ClassInitializerError>(projected)); return;
+    }
+    test::Check(std::holds_alternative<ClassProjection>(projected));
+    const auto& proof = std::get<ClassProjection>(projected);
+    SemanticBudget exact; exact.work = proof.work;
+    test::Check(std::holds_alternative<ClassProjection>(ProjectClassMembers(graph, calls.calls, exact, result.sites)));
+    --exact.work;
+    test::Check(std::get<ClassInitializerError>(ProjectClassMembers(graph, calls.calls, exact, result.sites)) == ClassInitializerError::kWorkLimit);
+    std::size_t lo = 0, hi = SemanticBudget{}.bytes;
+    while (lo < hi) {
+      const auto mid = lo + (hi-lo)/2;
+      auto attempt = ProjectClassMembers(graph, calls.calls, {mid}, result.sites);
+      if (std::holds_alternative<ClassProjection>(attempt)) hi = mid;
+      else { test::Check(std::get<ClassInitializerError>(attempt) == ClassInitializerError::kResourceLimit); lo = mid+1; }
+    }
+    test::Check(std::holds_alternative<ClassProjection>(ProjectClassMembers(graph, calls.calls, {lo}, result.sites)));
+    test::Check(std::get<ClassInitializerError>(ProjectClassMembers(graph, calls.calls, {lo-1}, result.sites)) == ClassInitializerError::kResourceLimit);
+    auto planned = BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, calls.calls, ClosureWrites::kUnknown, result.sites);
+    test::Check(std::holds_alternative<EvaluationPlan>(planned));
+    auto& plan = std::get<EvaluationPlan>(planned);
+    test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph, plan)));
+    plan.class_projection.owners[result.sites.front().definition.value].reset();
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, plan)));
+    auto wrong = result.sites; ++wrong.front().order.value;
+    test::Check(std::holds_alternative<ClassInitializerError>(ProjectClassMembers(graph, calls.calls, {}, wrong)));
+    wrong = result.sites; wrong.erase(wrong.begin());
+    test::Check(std::holds_alternative<ClassInitializerError>(ProjectClassMembers(graph, calls.calls, {}, wrong)));
+    std::cout << "installations=" << count << " bytes=" << lo << " work=" << proof.work << '\n';
+    return;
   }
   if (candidate) {
     const auto projected = ProjectClassDefinitions(graph, result.sites);
@@ -314,6 +361,14 @@ void Run(abc::ProfileId profile, unsigned count, Case kind, std::uint64_t* proje
 }
 }
 int main(int argc, char** argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--static-installations") {
+    for (const auto count : {200U, 201U, 400U, 800U})
+      for (const auto tail : {StaticTail::kValid, StaticTail::kSplit})
+        Accessors(abc::ProfileId::kDynamic1206, count, true, false, AccessorCase::kValid, false, tail);
+    for (const auto tail : {StaticTail::kBarrier, StaticTail::kEscape, StaticTail::kWrongReceiver})
+      Accessors(abc::ProfileId::kDynamic1206, 1, true, false, AccessorCase::kValid, false, tail);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--cross-install") {
     for (const auto kind : {AccessorCase::kSplitInstall, AccessorCase::kPureDiamond, AccessorCase::kPureLoop})
       Accessors(abc::ProfileId::kDynamic1206, 1, true, false, kind);

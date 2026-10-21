@@ -41,6 +41,8 @@ struct CreatorClasses {
   analysis::CfgRevision cfg_revision{};
   std::vector<ClassDefinitionSite> definitions;
   std::vector<CreatorClassTask> tasks;
+  // One combined original-graph proof per creator, never one CFG scan per class.
+  std::optional<ClassProjection> initialization_projection;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

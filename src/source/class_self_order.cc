@@ -6,6 +6,7 @@
 #include "class_initializer_file.h"
 #include "class_self_scope.h"
 #include "closed_class_fields.h"
+#include "private_class_receiver.h"
 
 namespace abcd::source {
 std::span<const ClassSelfStore> ClassSelfOrder::Stores(const analysis::ValueProgram& graph) const {
@@ -75,14 +76,38 @@ std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const Fi
           site->creation.length.value == method->length && site->creation.cache_slot == method->cache_slot &&
           site->creation.home_object == method->home_object && context.Callable() == CallableKind::kMethod &&
           !context.Length() && !context.Frame().parameters && body.input.Captures().empty(),Error::kOwner);
-      auto checked = ClosedClassFields::Build(body.values.graph,budget);
+      ClosedClassFieldCost attempt;
+      auto checked = ClosedClassFields::Build(body.values.graph,budget, &attempt);
       if (const auto* error = std::get_if<ClosedClassFieldError>(&checked)) {
         if (*error == ClosedClassFieldError::kResourceLimit) return Error::kResourceLimit;
         if (*error == ClosedClassFieldError::kWorkLimit) return Error::kWorkLimit;
-        return Error::kObservation;
+        if (*error != ClosedClassFieldError::kUnsupported) return Error::kObservation;
+        // Capture barriers include buffered literals with unresolved methods,
+        // not just explicit function creation. A child may export this self
+        // environment without a receiver operand. This route has no child
+        // family/literal capture certificate; retain that obligation.
+        if (!body.input.Children().empty()) return Error::kObservation;
+        admit(attempt.bytes, 1); step(attempt.work);
+        // The Closed reader proved this initializer has no incoming captures.
+        // Its RHS may still run user code while the fresh class remains private.
+        // Do not move those effects: prove its receiver cannot be observed, then
+        // let ordinary static-field TreeFlow/recovery retain every RHS event.
+        auto private_receiver = BuildPrivateClassReceiver(body.values.graph, budget);
+        const auto* proof = std::get_if<PrivateClassReceiverProof>(&private_receiver);
+        const auto map = [](PrivateClassReceiverError e) {
+          return e == PrivateClassReceiverError::kResourceLimit ? Error::kResourceLimit :
+                 e == PrivateClassReceiverError::kWorkLimit ? Error::kWorkLimit : Error::kObservation;
+        };
+        if (!proof) return map(std::get<PrivateClassReceiverError>(private_receiver));
+        admit(proof->allocated_bytes, 1); step(proof->work);
+        auto verified = VerifyPrivateClassReceiver(body.values.graph, proof->evidence, budget);
+        const auto* fresh = std::get_if<PrivateClassReceiverProof>(&verified);
+        if (!fresh) return map(std::get<PrivateClassReceiverError>(verified));
+        admit(fresh->allocated_bytes, 1); step(fresh->work);
+      } else {
+        const auto& fields = std::get<ClosedClassFields>(checked);
+        admit(fields.AllocatedBytes(),1); step(fields.Work());
       }
-      const auto& fields = std::get<ClosedClassFields>(checked);
-      admit(fields.AllocatedBytes(),1); step(fields.Work());
       result.stores_.push_back(store); indexed[call.call.value].reset();
     }
     const auto& input = parent.input;

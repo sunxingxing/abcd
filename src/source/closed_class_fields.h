@@ -5,6 +5,7 @@
 
 namespace abcd::source {
 enum class ClosedClassFieldError : std::uint8_t { kUnsupported, kFlow, kResourceLimit, kWorkLimit };
+struct ClosedClassFieldCost { std::size_t bytes = 0; std::uint64_t work = 0; };
 // Closed initializer effect certificate: all paths execute one ordered chain of
 // closed own writes through proven receiver sources, then undefined return. CFG
 // placement is irrelevant; divergence, bypass and repeated writes fail. The class owner
@@ -15,7 +16,8 @@ class ClosedClassFields {
   ClosedClassFields(ClosedClassFields&&) noexcept = default;
   ClosedClassFields& operator=(ClosedClassFields&&) noexcept = default;
   static std::variant<ClosedClassFields, ClosedClassFieldError> Build(
-      const analysis::ValueProgram&, analysis::SemanticBudget = {});
+      const analysis::ValueProgram&, analysis::SemanticBudget = {},
+      ClosedClassFieldCost* attempted = nullptr);
   std::span<const analysis::OpId> Fields() const { return fields_; }
   analysis::IrRevision Revision() const { return revision_; }
   analysis::CfgRevision ControlRevision() const { return cfg_revision_; }

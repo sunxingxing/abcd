@@ -142,6 +142,15 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
         }
       }
     }
+    // Independently proved member installations are part of the same private
+    // construction corridor, whether or not the class has a self cell. The
+    // combined predecessor checks below still require every installation to
+    // precede the static invocation without an intervening observation.
+    for (std::size_t i = 0; i < result.owners.size(); ++i) {
+      step();
+      if (result.owners[i] && HasOrderedEffect(graph.ops[i]))
+        effects[i] = result.owners[i];
+    }
     std::optional<OpId> previous;
     for (const auto& call : requested) {
       step(); require(!previous || *previous < call.method); previous = call.method;

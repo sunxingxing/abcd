@@ -28,6 +28,11 @@ class Quota {
     if (auto* error = std::get_if<ClassTreeFailure>(&result)) throw CreatorClassFailure{*error, operation};
     return std::get<T>(std::move(result));
   }
+  template<class T> T Take(std::variant<T, ClassInitializerError> result) {
+    if (auto* error = std::get_if<ClassInitializerError>(&result))
+      throw CreatorClassFailure{ClassTreeFailure{ClassInitializerReadFailure{*error}}, operation};
+    return std::get<T>(std::move(result));
+  }
   analysis::SemanticBudget Left() const { return left_; }
   CreatorClassCost Cost() const { return {initial_.bytes-left_.bytes, initial_.work-left_.work}; }
  private:
@@ -78,6 +83,13 @@ std::variant<CreatorClasses, CreatorClassFailure> DiscoverCreatorClasses(
       q.Step(); q.operation=call.creation; q.Require(call.creation.value < initializers.size() && !initializers[call.creation.value], Error::kCreation);
       initializers[call.creation.value] = &call;
     }
+    if (!values.initializers.calls.empty() && !values.definitions.sites.empty()) {
+      auto proof = q.Take<ClassProjection>(ProjectClassMembers(values.graph,
+          values.initializers.calls, q.Left(), values.definitions.sites,
+          input.creator.self_order ? &*input.creator.self_order : nullptr));
+      q.Admit(proof.allocated_bytes); q.Step(proof.work);
+      result.initialization_projection.emplace(std::move(proof));
+    }
     q.Reserve(result.tasks, values.classes.classes.size());
     // The family reader supplies the explicit creator DFS stack. This worklist
     // visits this creator's class occurrences in existing emission order only;
@@ -92,7 +104,8 @@ std::variant<CreatorClasses, CreatorClassFailure> DiscoverCreatorClasses(
           [](auto id, const auto& site) { return id < site.creation; });
       auto layout = q.Take<ClassTree>(BuildClassLayout(input.file, input.header, input.index,
           input.lookup, input.roles, input.classes, input.creator, occurrence.operation, input.identity,
-          q.Left(), initializers[occurrence.operation.value], std::span(first,last)));
+          q.Left(), initializers[occurrence.operation.value], std::span(first,last),
+          result.initialization_projection ? &*result.initialization_projection : nullptr));
       q.Admit(layout.allocated_bytes); q.Step(layout.work);
       auto tree = std::allocate_shared<ClassTree>(ClassAllocator<ClassTree>{q},std::move(layout));
       result.tasks.push_back({occurrence.operation,std::move(tree),std::span(first,last),initializers[occurrence.operation.value]});
@@ -121,6 +134,19 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyCreatorClasses(
       q.Step();q.operation=call.creation;q.Require(call.creation.value<initializers.size() && !initializers[call.creation.value],Error::kCreation);
       initializers[call.creation.value]=&call;
     }
+    std::optional<ClassProjection> projection;
+    if (!input.creator.values.initializers.calls.empty() && !input.creator.values.definitions.sites.empty()) {
+      projection.emplace(q.Take<ClassProjection>(ProjectClassMembers(graph,
+          input.creator.values.initializers.calls, q.Left(), input.creator.values.definitions.sites,
+          input.creator.self_order ? &*input.creator.self_order : nullptr)));
+      q.Admit(projection->allocated_bytes); q.Step(projection->work);
+    }
+    q.Require(projection.has_value() == plan.initialization_projection.has_value(), Error::kCreation);
+    if (projection) {
+      q.Step(projection->owners.size() + projection->prototypes.size());
+      q.Require(projection->owners == plan.initialization_projection->owners &&
+          projection->prototypes == plan.initialization_projection->prototypes, Error::kCreation);
+    }
     std::vector<analysis::OpId> seen; q.Reserve(seen,plan.tasks.size());
     for (std::size_t i=0;i<plan.tasks.size();++i) {
       q.Step(); const auto& task=plan.tasks[i]; q.operation=task.operation;
@@ -139,12 +165,13 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyCreatorClasses(
       q.Require(task.definitions.size()==static_cast<std::size_t>(last-first) &&
           std::equal(first,last,task.definitions.begin()) && task.initializer==initializers[task.operation.value],Error::kCreation);
       auto expected=q.Take<ClassTree>(BuildClassLayout(input.file,input.header,input.index,input.lookup,
-          input.roles,input.classes,input.creator,task.operation,input.identity,q.Left(),initializers[task.operation.value],std::span(first,last)));
+          input.roles,input.classes,input.creator,task.operation,input.identity,q.Left(),initializers[task.operation.value],std::span(first,last),
+          projection ? &*projection : nullptr));
       q.Admit(expected.allocated_bytes); q.Step(expected.work);
       q.Require(tree.creation.target==expected.creation.target && tree.creation.pc==expected.creation.pc &&
           tree.creation.creation==expected.creation.creation &&
           tree.member_sites==expected.member_sites && tree.callable==expected.callable && tree.name==expected.name && tree.sendable==expected.sendable,Error::kCreation);
-      q.Require(tree.initializer_site==expected.initializer_site && tree.definitions.size()==expected.definitions.size(),Error::kCreation);
+      q.Require(tree.initializer_site==expected.initializer_site && tree.installation_order==expected.installation_order && tree.definitions.size()==expected.definitions.size(),Error::kCreation);
       for(std::size_t d=0;d<tree.definitions.size();++d) {
         q.Step();const auto& definition=tree.definitions[d];
         q.Require(definition.site==expected.definitions[d].site && !definition.bodies[0] &&
@@ -177,7 +204,8 @@ std::variant<CreatorClassCost, CreatorClassFailure> PrepareCreatorClasses(
       q.Require(!task.preparation && !task.owners,Error::kCreation);
       auto prepared=q.Take<ClassPreparation>(PrepareClassTree(input.file,input.header,input.index,input.lookup,
           input.roles,input.functions,input.classes,input.creator,task.operation,input.identity,globals,q.Left(),
-          task.initializer,task.definitions,{static_cast<std::uint32_t>(next)},recovery,input.storage,root_binding));
+          task.initializer,task.definitions,{static_cast<std::uint32_t>(next)},recovery,input.storage,root_binding,
+          plan.initialization_projection ? &*plan.initialization_projection : nullptr));
       q.Admit(prepared.allocated_bytes);q.Step(prepared.work);
       const ClassOwnerRange range{next,prepared.next_owner};
       q.Require(ValidClassOwnerRange(range,next),Error::kCreation);

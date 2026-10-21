@@ -1,5 +1,26 @@
 # o32 cluster: fresh bytecode census
 
+## Class initializer checkpoint — partial (2026-10-21)
+
+* **15324 Hypium:** m15697's `context = new Map()` now passes the private
+  class-receiver observation proof. The record next refuses m15918
+  (handleItResult), `PhasedMethodError::kControl >
+  ExceptionControlError::kMultipleExits`, Try1 PC283/H308. The close probe passes
+  entries, ports, private state and priority; body-protection Try3 needs the
+  original PC84→H259 pop/rethrow→H265 dispatch route and per-iteration captured
+  description activation. No close ownership is granted by the initializer proof.
+* **51260 ArgumentMatchers:** unchanged typed CreationContextError::kKind at
+  m51746, creation m51442 PC40. Its prototype-home initializer is stored in
+  private slot0 and called by constructor m51713 through CALLINIT; the stored
+  role, constructor event correspondence and native instance fields remain work.
+* **o25/40458**, outside o32, completes through the combined member-installation
+  and static-initialization corridor proof. Source total605/620, previous542/620;
+  o32 receives no new complete record this checkpoint. Existing complete text
+  is byte-identical. Parked42397/46008 were untouched.
+
+The three-record goal is **not complete**. Evidence, exact remaining obligations
+and SDK/Node results: [class-initializer-composition.md](class-initializer-composition.md).
+
 ## Native arguments and remaining close checkpoint (2026-10-21)
 
 LanguageSourceV6 consumes the 2026-10-21 native-arguments premise. **52417 and

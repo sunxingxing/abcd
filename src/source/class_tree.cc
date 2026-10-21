@@ -107,7 +107,8 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
     const analysis::ClassMethodSites& classes, const FileFunction& creator,
     analysis::OpId operation, RouteInputIdentity identity, analysis::SemanticBudget budget,
-    const ClassInitializerCall* initializer, std::span<const ClassDefinitionSite> definitions) {
+    const ClassInitializerCall* initializer, std::span<const ClassDefinitionSite> definitions,
+    const ClassProjection* shared_projection) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -168,21 +169,57 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     }
     // Layout retains actual wire order. Projection/movement is a separate
     // parent-tree obligation; a metadata inventory grants no executable body.
+    if (initializer && !definitions.empty() &&
+        (!creator.class_self ||
+         creator.class_self->initialization.Evidence().call != *initializer)) {
+      // A normal private installation corridor can compose with a static
+      // initializer without a self cell. Recompute its original effects and
+      // every pre-initialization observation; layout alone grants no movement.
+      std::optional<ClassProjection> local_projection;
+      if (!shared_projection) {
+        local_projection.emplace(Take<ClassProjection>(ProjectClassMembers(
+            creator.values.graph, std::span{initializer, 1}, budget, definitions,
+            creator.self_order ? &*creator.self_order : nullptr)));
+        admit(local_projection->allocated_bytes, 1); step(local_projection->work);
+        shared_projection = &*local_projection;
+      }
+      const auto& projection = *shared_projection;
+      if (initializer->method.value >= projection.owners.size() ||
+          initializer->call.value >= projection.owners.size() ||
+          projection.owners[initializer->method.value] != operation ||
+          projection.owners[initializer->call.value] != operation)
+        return ClassTreeFailure{Error::kCreation};
+      tree.installation_order.emplace(ClassInstallationOrder{*initializer});
+      auto& installs = tree.installation_order->definitions;
+      admit(definitions.size(), sizeof(analysis::OpId));
+      installs.reserve(definitions.size());
+      admit(installs.capacity() - definitions.size(), sizeof(analysis::OpId));
+      for (const auto& definition : definitions) {
+        step(1);
+        if (definition.definition.value >= projection.owners.size() ||
+            projection.owners[definition.definition.value] != operation)
+          return ClassTreeFailure{Error::kCreation};
+        installs.push_back(definition.definition);
+      }
+    }
     admit(definitions.size(), sizeof(ClassDefinitionTree));
     tree.definitions.reserve(definitions.size());
     admit(tree.definitions.capacity() - definitions.size(), sizeof(ClassDefinitionTree));
     for (const auto& definition : definitions) {
       step(1);
-      if (definition.creation != operation ||
-          (initializer && (!creator.class_self ||
-                           creator.class_self->initialization.Evidence().call !=
-                               *initializer)))
+      if (definition.creation != operation)
         return ClassTreeFailure{Error::kCreation};
       tree.definitions.push_back({definition});
     }
     std::sort(tree.definitions.begin(), tree.definitions.end(), [&](const auto& a, const auto& b) {
       step(1); return a.site.order < b.site.order;
     });
+    if (tree.installation_order) {
+      for (std::size_t i = 0; i < tree.definitions.size(); ++i) {
+        step(1);
+        tree.installation_order->definitions[i] = tree.definitions[i].site.definition;
+      }
+    }
     for (std::size_t i = 1; i < tree.definitions.size(); ++i) {
       step(1); if (tree.definitions[i - 1].site.order == tree.definitions[i].site.order)
         return ClassTreeFailure{Error::kCreation};
@@ -224,7 +261,8 @@ std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
     const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
     const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
     const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
-    std::span<const ClassDefinitionSite> definitions, FunctionOwnerId first_owner, RecoveryMode recovery, const CaptureStorage* creator_storage, ClassRootBinding root_binding) {
+    std::span<const ClassDefinitionSite> definitions, FunctionOwnerId first_owner, RecoveryMode recovery, const CaptureStorage* creator_storage, ClassRootBinding root_binding,
+    const ClassProjection* shared_projection) {
   const auto initial = budget;
   try {
     const auto admit = [&](std::size_t count, std::size_t width) {
@@ -239,7 +277,7 @@ std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
     result.recovery = recovery;
     admit(1, sizeof(ClassPreparation));
     result.layout = Take<ClassTree>(BuildClassLayout(file, header, index, lookup, roles, classes,
-        creator, operation, identity, budget, initializer, definitions));
+        creator, operation, identity, budget, initializer, definitions, shared_projection));
     admit(result.layout.allocated_bytes, 1); step(result.layout.work);
     std::size_t count = 1 + result.layout.member_sites.size();
     for (const auto& definition : result.layout.definitions)

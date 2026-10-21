@@ -9,10 +9,19 @@
 
 namespace abcd::source {
 std::variant<ClosedClassFields, ClosedClassFieldError> ClosedClassFields::Build(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget,
+    ClosedClassFieldCost* attempted) {
   using namespace analysis;
   using Error = ClosedClassFieldError;
   const auto initial = budget;
+  struct Attempt {
+    analysis::SemanticBudget initial;
+    const analysis::SemanticBudget& left;
+    ClosedClassFieldCost* output;
+    ~Attempt() {
+      if (output) *output = {initial.bytes - left.bytes, initial.work - left.work};
+    }
+  } attempt{initial, budget, attempted};
   try {
     const auto require = [](bool condition, Error error = Error::kUnsupported) { if (!condition) throw error; };
     const auto step = [&](std::uint64_t count = 1) { require(count <= budget.work,Error::kWorkLimit); budget.work -= count; };
