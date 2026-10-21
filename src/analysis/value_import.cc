@@ -69,7 +69,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
         } else if constexpr (std::is_same_v<E, BinaryExpression>) {
           return ValueBinary{expression.op};
         } else {
-          return ValuePropertyRead{};
+          return ValuePropertyRead{expression.lookup};
         }
       }, op.expression);
     } else if constexpr (std::is_same_v<T, AcquireIterator>) {
@@ -158,7 +158,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, ArgumentSnapshot>) {
       return ValueArgumentSnapshot{op.window.Count()};
     } else if constexpr (std::is_same_v<T, StringLoad>) {
-      return ValueString{op.value};
+      return ValueString{op.value, op.kind};
     } else if constexpr (std::is_same_v<T, GlobalAccess>) {
       switch (op.operation) {
         case GlobalOp::kReadName: return ValueGlobalRead{GlobalLookup::kName, op.name};

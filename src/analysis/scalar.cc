@@ -217,6 +217,8 @@ ScalarResult LiftScalarInstruction(const DecodedInstruction& instruction,
                ? UINT8_MAX : UINT16_MAX))
         return ScalarError::kMalformedInstruction;
       return AssignAccumulator(EmptyArray{});
+    case Opcode::kLDSUPERBYVALUE_IMM8_V8:
+    case Opcode::kLDSUPERBYVALUE_IMM16_V8:
     case Opcode::kLDOBJBYVALUE_IMM8_V8:
     case Opcode::kLDOBJBYVALUE_IMM16_V8: {
       if (const auto error = CheckOperands(
@@ -225,7 +227,8 @@ ScalarResult LiftScalarInstruction(const DecodedInstruction& instruction,
         return *error;
       constexpr std::size_t kCacheOperand = 0;
       constexpr std::size_t kReceiverOperand = 1;
-      const auto cache_max = instruction.opcode == Opcode::kLDOBJBYVALUE_IMM8_V8
+      const auto cache_max = (instruction.opcode == Opcode::kLDOBJBYVALUE_IMM8_V8 ||
+                              instruction.opcode == Opcode::kLDSUPERBYVALUE_IMM8_V8)
                                  ? UINT8_MAX
                                  : UINT16_MAX;
       if (instruction.operands[kCacheOperand].raw_bits >
@@ -236,7 +239,10 @@ ScalarResult LiftScalarInstruction(const DecodedInstruction& instruction,
       // slow path reads acc instead of its encoded key register.
       return ScalarAssignment{
           Accumulator{},
-          PropertyRead{Register(instruction, kReceiverOperand), Accumulator{}},
+          PropertyRead{Register(instruction, kReceiverOperand), Accumulator{},
+              instruction.opcode == Opcode::kLDSUPERBYVALUE_IMM8_V8 ||
+              instruction.opcode == Opcode::kLDSUPERBYVALUE_IMM16_V8
+                  ? PropertyLookup::kSuper : PropertyLookup::kObject},
           CompletionEffect::kMayThrow};
     }
     case Opcode::kMOV_V4_V4:

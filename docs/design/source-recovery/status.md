@@ -10,6 +10,51 @@
 
 
 
+## ISA coverage2 — super reads, BigInt and wide oracles (partial, 2026-10-21)
+
+Against ef018a26: **95/72/137/28 → 117/62/125/28** (Verified / Unverified /
+Unmeasured / NonExecutable). **22 variants promoted**, none backward at variant
+or profile level; all 332 observed over 864 inputs. Nine of the 25 requested
+lift-ok encodings now verify; sixteen remain gated. Production adds typed
+computed-super reads with independently checked home/receiver/primitive-key
+order, and typed BigInt pool literals with linear prepaid syntax validation.
+No contract change, no LDNEWTARGET code, no ordinary member-update admission for
+super. The [round note](isa-coverage-round2.md) contains the exact moved list,
+pinned citations, restrictions and unfinished families. Generated table:
+[isa-coverage.md](isa-coverage.md); JSON is untracked under build/review/isa-r2/.
+
+20 SDK default/O0 fixtures: **13 complete / 7 measured optimized refusals**;
+**107 Node cases**, seven observed source/dependency mutants. Only complete
+exports supply the strict occurrence writer. Lazy imports are tested with
+already-initialized dependencies and that timing exclusion is explicit. Ark
+runtime remains null. Strict SDK recompile comparisons in each optimization
+mode: **7 exact records / 6 different / 0 unverified**; **38 exact method bodies /
+5 different**. All differences are retained and explained (private lexical env,
+derived-return checks, pure constant-key loads, equivalent iterator control,
+and pool offsets); none is silently accepted by normalization. The generic
+parenthesis token checker is inapplicable to recovered renaming/control and its
+13 rejects are reported, not semantic passes.
+
+Fresh 40-input cohorts: **605/620 source, 542/620 previous**, zero new
+completions, regressions or complete-text changes. Full build passes;
+source-regression **65/65**; all scale **11/11**; ISA **13/13** after updating the
+explicit object-lookup raw payload in historical snapshots; focused **6/6** and
+final super/pool **2/2**. Touched sweep **189/201**: only already-listed
+family_source_cli, tree_structure, try_tree, literal_construct, mixed_literal,
+phased_literal, class_tree_source, literal_closure/unguarded_literal_closure,
+derived_literal_receiver/unguarded_derived_literal_receiver, try_tree_source.
+Full recovery kernel peak RSS over both cohorts: **41,107,456 bytes**; raw
+probe peak **42,352,640 bytes**. Exact budgets and block variants cover
+200/201/400/800. No previous printed expectations weakened; complete text is
+unchanged. No commit/push/stash; unrelated sample.tar.gz untouched.
+
+**Decision candidates, not assumptions:** template arrays have non-enumerable
+indexes and raw-array-identity caching; object spread copies descriptors;
+object rest uses strict Set instead of CreateDataProperty; LDNEWTARGET differs
+between fatal/no-op interpreters and AOT. See cited questions in the round note.
+This does not complete the remaining this/super-store, RegExp, prototype,
+throw-source, or remaining sixteen lift-ok recovery items.
+
 ## ISA coverage1 — oracle importer and indexed accesses (partial,2026-10-21)
 
 Against a964be2a, measured ledger moves **148/156/0/28 →137/72/95/28**

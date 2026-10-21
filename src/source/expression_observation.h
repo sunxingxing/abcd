@@ -71,7 +71,7 @@ inline LexicalDependency IntrinsicLexicalDependency(const TreeExpression& expres
         std::is_same_v<T,SymbolConstructorExpr> || std::is_same_v<T,ArgumentSnapshotExpr> ||
         std::is_same_v<T,SuperCallExpr> || std::is_same_v<T,FieldDefinitionExpr>) return LexicalDependency::kEnclosingEnvironment;
     else {
-      static_assert(std::is_same_v<T,TreeLiteral> || std::is_same_v<T,SymbolExpr> ||
+      static_assert(std::is_same_v<T,BigIntExpr> || std::is_same_v<T,TreeLiteral> || std::is_same_v<T,SymbolExpr> ||
           std::is_same_v<T,GlobalNameExpr> ||
           std::is_same_v<T,MemberExpr>||std::is_same_v<T,DeleteExpr> || std::is_same_v<T,UnaryExpr> ||
           std::is_same_v<T,AwaitExpr> || std::is_same_v<T,YieldExpr> ||
@@ -114,7 +114,8 @@ inline analysis::ValueKinds NormalValueKinds(const TreeExpression& expression,
   using K=analysis::ValueKinds;
   return std::visit([&](const auto& node)->K {
     using T=std::decay_t<decltype(node)>;
-    if constexpr(std::is_same_v<T,DeleteExpr>)return K::Boolean();
+    if constexpr(std::is_same_v<T,BigIntExpr>) return K::Defined();
+    else if constexpr(std::is_same_v<T,DeleteExpr>)return K::Boolean();
     else if constexpr(std::is_same_v<T,TreeLiteral>)return PrimitiveKinds(node);
     else if constexpr(std::is_same_v<T,UnaryExpr>) {
       switch(node.operation) {
@@ -214,7 +215,8 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
       resources==ResourceFailureScope::kObservable?X::kMayThrow:X::kImpossible};
   return std::visit([&](const auto& node)->SourceEffects {
     using T=std::decay_t<decltype(node)>;
-    if constexpr(std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SequenceExpr>||
+    if constexpr(std::is_same_v<T,BigIntExpr>) return {L::kAllocation,L::kAllocation,X::kMayThrow};
+    else if constexpr(std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SequenceExpr>||
         std::is_same_v<T,LogicalExpr>||std::is_same_v<T,ConditionalExpr>)return {};
     else if constexpr(std::is_same_v<T,UnaryExpr>) {
       const bool primitive=!kinds.empty()&&CoercionPrimitive(kinds[node.operand.value]);

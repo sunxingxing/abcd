@@ -133,7 +133,8 @@ std::optional<ReferenceCandidate> Candidate(const ValueProgram& g,
     if (!property || property->lookup != PropertyLookup::kObject ||
         property->name != std::get<ValueNamedWrite>(write.operation).name)
       return {};
-  } else if (!std::holds_alternative<ValuePropertyRead>(get.operation))
+  } else if (!std::holds_alternative<ValuePropertyRead>(get.operation) ||
+             std::get<ValuePropertyRead>(get.operation).lookup != PropertyLookup::kObject)
     return {};
   Inputs(g, *read, budget);
   const auto base = get.first_use;

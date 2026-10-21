@@ -113,8 +113,10 @@ enum class NotificationOwner : std::uint8_t { kInvocationFunction };
 struct ConcurrentNotification {
   NotificationOwner owner = NotificationOwner::kInvocationFunction;
 };
+enum class PoolTextKind : std::uint8_t { kString, kBigInt };
 struct StringLoad {
   abc::PoolIndex value;
+  PoolTextKind kind = PoolTextKind::kString;
 };
 // Realm-owned object identity, not a mutable globalThis identifier lookup.
 struct GlobalObjectLoad {};

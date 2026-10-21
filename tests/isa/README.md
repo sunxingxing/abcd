@@ -160,3 +160,17 @@ numeric access sources, so the distinct index encodings use the existing typed
 ABC builder rather than claiming an unobserved compiler emission. SDK decode,
 production `abc_decode`, complete recovery and independent Node traces are
 required. A source index mutation must change the program and be observed.
+
+## Round-2 recovery fixtures
+
+`isa_recovery_variants_test` adds deterministic default/O0 SDK artifacts under
+`tests/fixtures/isa/recovery/`; its manifest pins source/compiler/disassembler
+hashes, commands, observed opcodes and the exact current recovery outcome.
+Only a complete record that passes `isa_recovery.mjs` supplies occurrence
+oracles. Optimized-body refusals are asserted separately and supply no oracle.
+Primitive-key computed super and BigInt pool literals are independently checked
+by `super_read_test` and `isa_pool_super_test`, including exact resource limits.
+The semantic restrictions, remaining lift-ok targets and runtime differences
+requiring decisions are in
+[isa-coverage-round2.md](../../docs/design/source-recovery/isa-coverage-round2.md).
+No new contract or LDNEWTARGET behavior is enabled.

@@ -7,7 +7,7 @@
 namespace abcd::source {
 enum class TreeSemanticError : std::uint8_t {
   kFlow, kOperand, kOperator, kConstant, kOrigin, kUnsupportedOperation,
-  kResourceLimit, kWorkLimit, kDeleteStrictness, kSuperHomeObject, kSuperReceiver
+  kResourceLimit, kWorkLimit, kDeleteStrictness, kSuperHomeObject, kSuperReceiver, kSuperKeyDomain
 };
 struct TreeSemanticFailure {
   TreeSemanticError kind = TreeSemanticError::kFlow;

@@ -46,7 +46,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     } else if constexpr (std::is_same_v<T, PushEnvironment>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Environment()};
     } else if constexpr (std::is_same_v<T, StringLoad>) {
-      return ValueRule{ValueRuleKind::kFixed, ValueKinds::String()};
+      return ValueRule{ValueRuleKind::kFixed, operation.kind == PoolTextKind::kBigInt ? ValueKinds::Defined() : ValueKinds::String()};
     } else if constexpr (std::is_same_v<T, GlobalObjectLoad> ||
                          std::is_same_v<T, SymbolConstructorLoad> ||
                          std::is_same_v<T, FrameFunctionLoad> ||

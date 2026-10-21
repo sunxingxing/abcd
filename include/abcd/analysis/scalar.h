@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_SCALAR_H_
 
 #include "abcd/abc/register_access.h"
+#include "abcd/analysis/named_read.h"
 
 namespace abcd::analysis {
 struct Accumulator {};
@@ -72,6 +73,7 @@ struct BinaryExpression {
 struct PropertyRead {
   ScalarValue receiver;
   ScalarValue key;
+  PropertyLookup lookup = PropertyLookup::kObject;
 };
 enum class CompletionEffect { kNormal, kMayThrow };
 using ScalarExpression =

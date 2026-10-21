@@ -804,6 +804,10 @@ class TreePrinter {
     }
     Expression(node);
   }
+  void Expression(BigIntExpr node) {
+    for (const auto ch : Tree().texts[node.text.value]) { const char c = static_cast<char>(ch); Append({&c, 1}); }
+    Append("n");
+  }
   void Expression(const TreeLiteral& node) {
     std::visit([&](auto value) { Literal(value); }, node);
   }

@@ -20205,6 +20205,7 @@
                   "type": "abcd::analysis::Float64Bits",
                   "value": 0
                 },
+                "lookup": 0,
                 "receiver": {
                   "type": "abcd::abc::RegisterId",
                   "value": 0
@@ -20303,6 +20304,7 @@
                   "type": "abcd::analysis::Float64Bits",
                   "value": 0
                 },
+                "lookup": 0,
                 "receiver": {
                   "type": "abcd::abc::RegisterId",
                   "value": 0
@@ -20401,6 +20403,7 @@
                   "type": "abcd::analysis::Float64Bits",
                   "value": 0
                 },
+                "lookup": 0,
                 "receiver": {
                   "type": "abcd::abc::RegisterId",
                   "value": 0
@@ -20499,6 +20502,7 @@
                   "type": "abcd::analysis::Float64Bits",
                   "value": 0
                 },
+                "lookup": 0,
                 "receiver": {
                   "type": "abcd::abc::RegisterId",
                   "value": 0

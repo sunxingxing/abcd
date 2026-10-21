@@ -185,14 +185,15 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* value = std::get_if<ReceiverCall>(&receiver_call)) return *value;
   if (std::get<CallError>(receiver_call) != CallError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
-  if (decoded.opcode == Opcode::kLDA_STR_ID16) {
+  if (decoded.opcode == Opcode::kLDA_STR_ID16 || decoded.opcode == Opcode::kLDBIGINT_ID16) {
     if (!std::holds_alternative<RegisterEffect>(
             LiftRegisterEffect(decoded, frame_size)))
       return Fail(SemanticError::kMalformedInstruction, site.offset);
     // Retain the method-relative pool reference; resolve UTF-16 only at the
     // output boundary. Never use a property-name filter for string values.
     return StringLoad{abc::PoolIndex{
-        static_cast<std::uint16_t>(decoded.operands.front().raw_bits)}};
+        static_cast<std::uint16_t>(decoded.operands.front().raw_bits)},
+        decoded.opcode == Opcode::kLDBIGINT_ID16 ? PoolTextKind::kBigInt : PoolTextKind::kString};
   }
   const auto scalar = LiftScalarInstruction(decoded, frame_size);
   if (const auto* assignment = std::get_if<ScalarAssignment>(&scalar))
@@ -433,6 +434,12 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kUserCode | LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, StringLoad>) {
+          if (value.kind == PoolTextKind::kBigInt) {
+            effects.normal = LanguageEffect::kAllocation;
+            effects.before_throw = effects.normal;
+            effects.exceptional = ExceptionalCompletion::kMayThrow;
+          }
         } else if constexpr (std::is_same_v<T, NamedRead>) {
           effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;
@@ -508,7 +515,6 @@ SemanticEffects Effects(const SemanticOperation& operation,
         } else {
           static_assert(std::is_same_v<T, NoOperation> ||
                         std::is_same_v<T, LoadHole> ||
-                        std::is_same_v<T, StringLoad> ||
                         std::is_same_v<T, GlobalObjectLoad> ||
                         std::is_same_v<T, SymbolConstructorLoad> ||
                         std::is_same_v<T, FrameThisLoad> ||

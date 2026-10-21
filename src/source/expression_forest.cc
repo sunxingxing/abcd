@@ -1229,7 +1229,7 @@ class ForestBuilder {
         else
           return Add(AssignmentExpr{MemberTarget{operands[0], *name}, operands[1]}, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>)
-        return Add(MemberExpr{operands[0], ComputedKey{operands[1]}}, origin);
+        return Add(MemberExpr{operands[0], ComputedKey{operands[1]}, operation.lookup}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValuePropertyDelete>)
         return Add(DeleteExpr{operands[0], ComputedKey{operands[1]}}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>)
@@ -1237,7 +1237,7 @@ class ForestBuilder {
       else if constexpr (std::is_same_v<T, analysis::ValueString>) {
         const auto* text = std::get_if<TextId>(&constant);
         Require(text && text->value < constants_.text_count, Error::kConstant);
-        return Literal(*text, origin);
+        return operation.kind == analysis::PoolTextKind::kBigInt ? Add(BigIntExpr{*text}, origin) : Literal(*text, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
         Require(operation.lookup == analysis::GlobalLookup::kName, Error::kUnsupportedOperation);
         const auto* name = std::get_if<NameId>(&constant);

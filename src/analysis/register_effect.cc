@@ -503,6 +503,7 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
     return ScalarError::kMalformedInstruction;
   using abc::Opcode;
   switch (instruction.opcode) {
+    case Opcode::kLDBIGINT_ID16:
     case Opcode::kLDA_STR_ID16:
       if (instruction.operand_count != 1 ||
           instruction.operands[0].kind != abc::OperandKind::kString ||

@@ -126,6 +126,7 @@ struct IntegerLiteral { std::int32_t value; };
 struct NumberLiteral { std::uint64_t bits; };
 using TreeLiteral = std::variant<UndefinedLiteral, NullLiteral, BooleanLiteral,
                                  IntegerLiteral, NumberLiteral, TextId>;
+struct BigIntExpr { TextId text; };
 struct SymbolExpr { SymbolId symbol; analysis::ModuleLoading loading = analysis::ModuleLoading::kOrdinary; analysis::ModuleDomain domain = analysis::ModuleDomain::kOrdinary; };
 // Free global-name lookup, not a lexical Symbol or globalThis property read.
 // Publication additionally requires an unshadowed enclosing source context.
@@ -266,7 +267,7 @@ using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, Rea
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr, UpdateExpr, SequenceExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr, BigIntExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
 struct BlockStmt {

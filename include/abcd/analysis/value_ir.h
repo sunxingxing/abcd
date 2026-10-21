@@ -137,7 +137,7 @@ struct ValueEnumeration {
 struct ValueIteratorAcquire { bool operator==(const ValueIteratorAcquire&) const = default; };
 struct ValueObjectCheck { bool operator==(const ValueObjectCheck&) const = default; };
 struct ValuePropertyDelete { bool operator==(const ValuePropertyDelete&) const = default; };
-struct ValuePropertyRead { bool operator==(const ValuePropertyRead&) const = default; };
+struct ValuePropertyRead { PropertyLookup lookup = PropertyLookup::kObject; bool operator==(const ValuePropertyRead&) const = default; };
 struct ValueBranch { UnaryOperator predicate; bool operator==(const ValueBranch&) const = default; };
 struct ValueJump { bool operator==(const ValueJump&) const = default; };
 struct ValueReturn { bool operator==(const ValueReturn&) const = default; };
@@ -162,7 +162,7 @@ struct ValueArgumentSnapshot {
   std::uint32_t slots;
   bool operator==(const ValueArgumentSnapshot&) const = default;
 };
-struct ValueString { abc::PoolIndex string; bool operator==(const ValueString&) const = default; };
+struct ValueString { abc::PoolIndex string; PoolTextKind kind = PoolTextKind::kString; bool operator==(const ValueString&) const = default; };
 // Name lookup and IC-dependent var lookup have different domains. Retain the
 // opcode contract; neither denotes a source lexical declaration or pure read.
 enum class GlobalLookup : std::uint8_t { kName, kVar };

@@ -256,6 +256,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
         break;
     }
   }
+  if (instruction.opcode == abc::Opcode::kLDBIGINT_ID16)
+    return ValueRule{ValueRuleKind::kFixed, ValueKinds::Defined()};
   if (instruction.opcode == abc::Opcode::kLDA_STR_ID16)
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::String()};
   if (instruction.opcode == abc::Opcode::kCREATEEMPTYARRAY_IMM8 ||

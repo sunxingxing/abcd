@@ -403,6 +403,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/constructed_branches_test.py)
     add_test(NAME isa_oracle_import_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/oracle_import_test.py)
+    add_test(NAME isa_recovery_variants_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/recovery_variants_test.py")
     add_test(NAME isa_verified_variants_test COMMAND ${Python3_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/verified_variants_test.py")
     add_test(NAME isa_coverage_matrix_test COMMAND ${Python3_EXECUTABLE}
@@ -1307,6 +1309,10 @@ if(BUILD_TESTING)
   add_executable(property_delete_tree_test tests/unit/source/property_delete_tree_test.cc)
   target_link_libraries(property_delete_tree_test PRIVATE abcd_source)
   add_test(NAME property_delete_tree_test COMMAND property_delete_tree_test)
+  add_executable(isa_pool_super_test tests/unit/analysis/isa_pool_super_test.cc)
+  target_include_directories(isa_pool_super_test PRIVATE tests/support)
+  target_link_libraries(isa_pool_super_test PRIVATE abcd_source)
+  add_test(NAME isa_pool_super_test COMMAND isa_pool_super_test)
   add_executable(super_read_test tests/unit/source/super_read_test.cc)
   target_link_libraries(super_read_test PRIVATE abcd_source)
   add_test(NAME super_read_test COMMAND super_read_test)

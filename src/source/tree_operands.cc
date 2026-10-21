@@ -553,7 +553,27 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>) {
           original_.operations[i].intrinsic_expression=expression;
           const auto& member = Node<MemberExpr>(expression);
-          RequireMeaning(member.lookup == analysis::PropertyLookup::kObject, Error::kOperator);
+          RequireMeaning(member.lookup == operation.lookup, Error::kOperator);
+          if (operation.lookup == analysis::PropertyLookup::kSuper) {
+            RequireMeaning(tree_.home_object == HomeObjectBinding::kClass, Error::kSuperHomeObject);
+            // Pinned RuntimeLdSuperByValue rejects a null super base before
+            // ToPropertyKey; native GetValue rejects it after key conversion.
+            // Primitive keys make that ordering unobservable. Unknown object
+            // coercion needs an independent non-null-base proof, not admission.
+            const auto key_operand = ResolveEvaluationOperand(evaluation_, input(1));
+            const bool primitive = std::visit([&](const auto& value) {
+              if constexpr (std::is_same_v<std::decay_t<decltype(value)>, analysis::ValueId>) {
+                const auto kinds = graph_.values[value.value].domain;
+                return kinds.IsNumber() || kinds.IsString() || kinds.IsZeroOrOnePrimitive();
+              } else return true;
+            }, key_operand);
+            RequireMeaning(primitive, Error::kSuperKeyDomain);
+            const auto receiver = ResolveEvaluationOperand(evaluation_, input(0));
+            RequireMeaning(IsReceiverOperand(graph_, receiver) &&
+                std::holds_alternative<ThisExpr>(tree_.expressions[member.base.value].expression) &&
+                std::get<ThisExpr>(tree_.expressions[member.base.value].expression).owner == tree_.owner,
+                Error::kSuperReceiver);
+          }
           const auto* key = std::get_if<ComputedKey>(&member.key);
           RequireMeaning(key != nullptr, Error::kOperator);
           InputAt(0, member.base); InputAt(1, key->expression);
@@ -628,7 +648,9 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueString>) {
           const auto* text = std::get_if<TextId>(&constants_.operations[i]);
           RequireMeaning(text && text->value < constants_.text_count, Error::kConstant);
-          RequireMeaning(Literal<TextId>(expression) == *text, Error::kConstant);
+          if (operation.kind == analysis::PoolTextKind::kBigInt)
+            RequireMeaning(Node<BigIntExpr>(expression).text == *text, Error::kConstant);
+          else RequireMeaning(Literal<TextId>(expression) == *text, Error::kConstant);
         } else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
           original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(operation.lookup == analysis::GlobalLookup::kName, Error::kUnsupportedOperation);

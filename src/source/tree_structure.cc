@@ -1,5 +1,6 @@
 #include "member_update.h"
 #include "tree_structure.h"
+#include "bigint_literal.h"
 #include "native_arguments.h"
 
 #include <algorithm>
@@ -331,7 +332,11 @@ class StructureCheck {
     RequireTree(node.origin.value < tree_.origins.size(), Error::kOrigin);
     std::visit([&](const auto& expression) {
       using T = std::decay_t<decltype(expression)>;
-      if constexpr (std::is_same_v<T, TreeLiteral>) {
+      if constexpr (std::is_same_v<T, BigIntExpr>) {
+        RequireTree(expression.text.value < tree_.texts.size(), Error::kRange);
+        budget_.Step(tree_.texts[expression.text.value].size());
+        RequireTree(ValidBigIntLiteral(tree_.texts[expression.text.value]), Error::kUnsupportedSyntax);
+      } else if constexpr (std::is_same_v<T, TreeLiteral>) {
         if (const auto* text = std::get_if<TextId>(&expression))
           RequireTree(text->value < tree_.texts.size(), Error::kRange);
         if (const auto* number = std::get_if<NumberLiteral>(&expression)) {
@@ -411,7 +416,6 @@ class StructureCheck {
             RequireTree(tree_.home_object == HomeObjectBinding::kClass &&
                 (IsMethodCallable(tree_.callable) || tree_.callable == CallableKind::kBaseConstructor ||
                  tree_.callable == CallableKind::kDerivedConstructor) &&
-                std::holds_alternative<NameId>(expression.key) &&
                 expression.base.value < tree_.expressions.size() &&
                 std::holds_alternative<ThisExpr>(tree_.expressions[expression.base.value].expression), Error::kUnsupportedSyntax);
         }
@@ -743,7 +747,7 @@ class StructureCheck {
           if (const auto* member = std::get_if<MemberTarget>(&node.target)) { add(member->base); key(member->key); }
           add(node.value);
         } else {
-          static_assert(std::is_same_v<T, UpdateExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
+          static_assert(std::is_same_v<T, BigIntExpr> || std::is_same_v<T, UpdateExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
                         std::is_same_v<T, GlobalNameExpr> ||
                         std::is_same_v<T, RealmObjectExpr> ||
                         std::is_same_v<T, SymbolConstructorExpr> ||

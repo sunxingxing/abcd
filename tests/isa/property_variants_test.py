@@ -124,6 +124,10 @@ class Properties(unittest.TestCase):
                         self.assertEqual(rows[1]['lift']['roles']['name_setting'],1)
                         self.assertIsNone(rows[1]['lift']['normal_commit'])
                         self.assertEqual(rows[1]['lift']['exceptional_completion'],1)
+                    elif entry['name'].startswith('LDSUPERBYVALUE_'):
+                        self.assertEqual(rows[1]['lift']['status'],'ok')
+                        self.assertEqual(rows[1]['lift']['roles']['expression']['lookup'],1)
+                        self.assertEqual(rows[1]['lift']['exceptional_completion'],1)
                     elif 'STOBJBYINDEX' in entry['name']:
                         self.assertEqual(rows[1]['lift']['status'],'ok')
                         self.assertEqual(rows[1]['lift']['semantic_family'],'abcd::analysis::ValueWrite')

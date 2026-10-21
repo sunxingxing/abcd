@@ -281,12 +281,46 @@
       "opcode": 57,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 5,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 5,
+        "roles": {
+          "completion": 1,
+          "destination": {
+            "type": "abcd::analysis::Accumulator"
+          },
+          "expression": {
+            "key": {
+              "type": "abcd::analysis::Accumulator"
+            },
+            "lookup": 1,
+            "receiver": {
+              "type": "abcd::abc::RegisterId",
+              "value": 0
+            },
+            "type": "abcd::analysis::PropertyRead"
+          },
+          "type": "abcd::analysis::ScalarAssignment"
+        },
+        "semantic_family": "abcd::analysis::ScalarAssignment",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -348,6 +382,7 @@
               "type": "abcd::analysis::Float64Bits",
               "value": 0
             },
+            "lookup": 0,
             "receiver": {
               "type": "abcd::analysis::Accumulator"
             },
@@ -1379,12 +1414,46 @@
       "opcode": 135,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 5,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 5,
+        "roles": {
+          "completion": 1,
+          "destination": {
+            "type": "abcd::analysis::Accumulator"
+          },
+          "expression": {
+            "key": {
+              "type": "abcd::analysis::Accumulator"
+            },
+            "lookup": 1,
+            "receiver": {
+              "type": "abcd::abc::RegisterId",
+              "value": 0
+            },
+            "type": "abcd::analysis::PropertyRead"
+          },
+          "type": "abcd::analysis::ScalarAssignment"
+        },
+        "semantic_family": "abcd::analysis::ScalarAssignment",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -1446,6 +1515,7 @@
               "type": "abcd::analysis::Float64Bits",
               "value": 0
             },
+            "lookup": 0,
             "receiver": {
               "type": "abcd::analysis::Accumulator"
             },
@@ -3488,12 +3558,29 @@
       "opcode": 211,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 64,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 64,
+        "roles": {
+          "kind": 1,
+          "type": "abcd::analysis::StringLoad",
+          "value": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          }
+        },
+        "semantic_family": "abcd::analysis::StringLoad",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": false,
@@ -4592,6 +4679,7 @@
               "type": "abcd::analysis::Float64Bits",
               "value": 0
             },
+            "lookup": 0,
             "receiver": {
               "type": "abcd::analysis::Accumulator"
             },
