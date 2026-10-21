@@ -1,5 +1,30 @@
 # o32 cluster: fresh bytecode census
 
+## Native arguments and remaining close checkpoint (2026-10-21)
+
+LanguageSourceV6 consumes the 2026-10-21 native-arguments premise. **52417 and
+53454 complete**; the previous flags retain their prior refusals. Source count
+602 → **604/620**, previous flags **541/620**. No previous complete text changes.
+See [argument-snapshots.md](argument-snapshots.md) for the proof, original-module
+Node differential and exact SDK diff accounting.
+
+The nested private-state liveness proof now follows pure scalar copies through
+normal Commit and refuses any subsequent observation. All four m42717 close
+copies pass private-state liveness, including the dead PC753 restore killed at
+755. This grants no extra region/dispatch ownership. **42397 remains incomplete**:
+outer read705 overlaps Try4, inner throw close's body dispatch fails at705 and
+outer throw close's body dispatch fails at480. The unresolved source projection
+must carry correlated closed-state/payload/destination through those wrappers;
+same final Throw alone does not prove absence of a second return() call.
+
+**46008 remains incomplete** at the second acquisition's body dispatch717:
+H874 pops the per-iteration environment, then rethrows875 to H880. That scope
+exit must correspond to a fresh native iteration activation on normal and
+exceptional paths. It cannot be admitted as an inert forwarding handler.
+Both first production causes remain kMultipleExits at633/398. No new premise is
+needed for either remaining proof, but this checkpoint does not complete B.
+
+
 ## Group B continuation: one completion, two gates retained (2026-10-21)
 
 | Record | Before | Current result |

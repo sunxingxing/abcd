@@ -189,8 +189,9 @@ class EnclosureCheck {
           }
           continue;
         }
-        if (std::holds_alternative<ArgumentSnapshotExpr>(expression)) {
+        if (const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&expression)) {
           ++argument_snapshots;
+          if(snapshot->form==ArgumentSnapshotForm::kNativeEntry)continue;
           if (extent_ == EnclosureExtent::kDestination) {
             if (scope_ && scope_->argument_snapshot_binding) Step(scope_->argument_snapshot_binding->name.size());
             const auto binding = ResolveArgumentSnapshotBinding(scope_);

@@ -132,7 +132,7 @@ class TreePrinter {
       if (std::holds_alternative<FunctionExpr>(expression.expression)) throw Error::kUnsupportedContext;
       if (std::holds_alternative<RealmObjectExpr>(expression.expression)) RecordRealm();
       if (std::holds_alternative<SymbolConstructorExpr>(expression.expression)) RecordSymbol();
-      if (std::holds_alternative<ArgumentSnapshotExpr>(expression.expression)) RecordArgumentSnapshot();
+      if (const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&expression.expression)) RecordArgumentSnapshot(snapshot->form);
     }
     Result().identity = Tree().identity;
     Result().method = Tree().method;
@@ -267,9 +267,9 @@ class TreePrinter {
       if (std::holds_alternative<FunctionExpr>(node.expression)) throw Error::kUnsupportedContext;
       if (std::holds_alternative<RealmObjectExpr>(node.expression)) RecordRealm();
       if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) RecordSymbol();
-      if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) {
+      if (const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&node.expression)) {
         if (fields) throw Error::kUnsupportedContext;
-        RecordArgumentSnapshot();
+        RecordArgumentSnapshot(snapshot->form);
       }
     }
     Result().identity = Tree().identity; Result().method = Tree().method;
@@ -361,7 +361,7 @@ class TreePrinter {
         Step();
         if (std::holds_alternative<RealmObjectExpr>(node.expression)) RecordRealm();
         if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) RecordSymbol();
-        if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) RecordArgumentSnapshot();
+        if (const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&node.expression)) RecordArgumentSnapshot(snapshot->form);
       }
     }
     if (has_external_binding_) {
@@ -608,7 +608,8 @@ class TreePrinter {
     Admit(Result().symbol_binding->name.capacity() - binding->size(), sizeof(char16_t));
   }
   bool ClassRoot() const { return class_root_ && current_ == family_->root.value; }
-  void RecordArgumentSnapshot() {
+  void RecordArgumentSnapshot(ArgumentSnapshotForm form) {
+    if(form==ArgumentSnapshotForm::kNativeEntry)return;
     has_external_binding_ = true;
     if (Result().argument_snapshot_binding) return;
     if (scope_ && scope_->argument_snapshot_binding) Step(scope_->argument_snapshot_binding->name.size());
@@ -818,6 +819,7 @@ class TreePrinter {
   }
   void Expression(ThisExpr) { Append("this"); }
   void Expression(ArgumentSnapshotExpr node) {
+    if(node.form==ArgumentSnapshotForm::kNativeEntry){Append("arguments");return;}
     if (!Result().argument_snapshot_binding) throw Error::kUnsupportedContext;
     Append("(0, "); Identifier(Result().argument_snapshot_binding->name);
     Append(")(arguments, [");

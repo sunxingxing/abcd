@@ -1,0 +1,30 @@
+{
+  "compiler": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca"
+  },
+  "disassembler": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+    "sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676"
+  },
+  "source_sha256": "f87952c31f08c8d205d8536b0f6b5d1a01d37f07a2600e34ac5084c57fda1dad",
+  "abc_sha256": "f162fd09d50559a079508f2ff3ee659853d0242b93f75863d200ce3aa7738c24",
+  "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--opt-level=0",
+    "--output=tests/integration/fixtures/native_arguments/entry.abc",
+    "tests/integration/fixtures/native_arguments/entry.js"
+  ],
+  "default_observed": true,
+  "accepted_difference": "own nonconfigurable throwing caller accessor (2026-10-21)",
+  "default_command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--output=build/review/native-arguments/entry-default.abc",
+    "tests/integration/fixtures/native_arguments/entry.js"
+  ],
+  "default_abc_sha256": "d5ede767267c9ee86745acf5c36232fbb531f72a09f14b362c858e4b602af301"
+}

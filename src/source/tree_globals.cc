@@ -22,7 +22,7 @@ class GlobalCheck {
       Step(); globals |= std::holds_alternative<GlobalNameExpr>(node.expression) ||
           std::holds_alternative<RealmObjectExpr>(node.expression) ||
           std::holds_alternative<SymbolConstructorExpr>(node.expression) ||
-          std::holds_alternative<ArgumentSnapshotExpr>(node.expression);
+          (std::holds_alternative<ArgumentSnapshotExpr>(node.expression) && std::get<ArgumentSnapshotExpr>(node.expression).form==ArgumentSnapshotForm::kExactFactory);
     }
     if (!globals) return Result();
     Require(scope != nullptr, Error::kMissingContext);
@@ -33,7 +33,7 @@ class GlobalCheck {
       const auto* global = std::get_if<GlobalNameExpr>(&node.expression);
       const bool realm = std::holds_alternative<RealmObjectExpr>(node.expression);
       const bool symbol = std::holds_alternative<SymbolConstructorExpr>(node.expression);
-      const bool snapshot = std::holds_alternative<ArgumentSnapshotExpr>(node.expression);
+      const bool snapshot = (std::holds_alternative<ArgumentSnapshotExpr>(node.expression) && std::get<ArgumentSnapshotExpr>(node.expression).form==ArgumentSnapshotForm::kExactFactory);
       if (!global && !realm && !symbol && !snapshot) continue;
       std::u16string_view name;
       if (realm) {

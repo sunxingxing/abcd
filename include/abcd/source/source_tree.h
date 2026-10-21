@@ -203,7 +203,8 @@ struct SuperCallExpr {
 // Fresh pinned arguments object. Slots are conditional current-value leaves;
 // count and extra tail belong to this owner's unexposed native invocation.
 // Publication requires an explicit exact factory, not a mutable global helper.
-struct ArgumentSnapshotExpr { FunctionOwnerId owner; ArgumentRange slots; };
+enum class ArgumentSnapshotForm : std::uint8_t { kExactFactory, kNativeEntry };
+struct ArgumentSnapshotExpr { FunctionOwnerId owner; ArgumentRange slots; ArgumentSnapshotForm form = ArgumentSnapshotForm::kExactFactory; };
 // Fresh creation of an owned child function, not a function value constant.
 // The family must contain and verify that child before publication. No raw
 // method/pool/register ID is an executable operand in this node.

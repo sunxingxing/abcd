@@ -291,9 +291,30 @@ class Boundary {
             [&](const auto& a,const auto& b){arena_.Step();return a<b;});
       }
       if(Reads(node.registers,slot) && !protocol_read) {
-        private_ok=false;
-        // Map a raw event to its real immutable flow identity; no made-up PC.
-        Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kLiveOut,witness);continue;
+        // A pure copy is transport, not observation. Propagate taint only after
+        // its normal Commit to the exact destination, while retaining the
+        // source taint below. A read by return/call/branch still refuses. This
+        // distinguishes a dead restore from a live private-state escape.
+        bool transport=false;
+        if(witness && node.phase==RawEventPhase::kBefore) {
+          const auto& instruction=flow_.instructions[flow_.nodes[witness->value].instruction.value];
+          const auto* assignment=std::get_if<ScalarAssignment>(&instruction.operation);
+          if(assignment && std::holds_alternative<ScalarValue>(assignment->expression) &&
+              instruction.effects.normal==LanguageEffect::kNone && instruction.effects.before_throw==LanguageEffect::kNone &&
+              instruction.effects.exceptional==ExceptionalCompletion::kImpossible && node.count==1) {
+            const auto& commit=raw_.Nodes()[node.next[0]];
+            if(commit.phase==RawEventPhase::kCommit && commit.registers.write) {
+              ClosePrivateSlot destination;
+              if(const auto* reg=std::get_if<abc::RegisterId>(&*commit.registers.write))destination.reg=*reg;
+              for(std::uint8_t edge=0;edge<commit.count;++edge){arena_.Step();add({commit.next[edge],destination});}
+              transport=true;
+            }
+          }
+        }
+        if(!transport) {
+          private_ok=false;
+          Missing(CloseCompletionError::kOwnership,CloseOwnershipGap::kLiveOut,witness);continue;
+        }
       }
       if(node.registers.write) {
         if(slot.reg) {if(const auto* r=std::get_if<abc::RegisterId>(&*node.registers.write);r && *r==*slot.reg)continue;}

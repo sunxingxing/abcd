@@ -1,8 +1,8 @@
-# 源语言契约：LanguageSourceV1–V4
+# 源语言契约：LanguageSourceV1–V6
 
 `SourceContract::kLanguageSourceV1`（序列化名 `language_source_v1`）保留原有四项前提。
 2026-10-14 新增 `kLanguageSourceV2`（`language_source_v2`）；V2 继承 V1，并加入 §5 的独立标准迭代获取前提。
-2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），CLI 的 `--language-source` 现选择 V4；
+2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），该轮 CLI 的 `--language-source` 选择 V4（当前版本见文末 V6）；
 V4 继承 V3（含 V2 与独立 Ark 输出政策），并增加文末 2026-10-16 批准的外部异常值域前提。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
 `--language-constructors` 组合。它包含 `LanguageNumericConstructorsV1` 的全部前提（numeric 算术、
 原生 super 语义），并另外加入下面四项源语言前提。默认契约 V3 以及其他已有 opt-in 都不变。
@@ -624,3 +624,41 @@ The real fixture's Node differential and adapted es2abc call-body round-trip are
 in `tests/integration/fixtures/call_spread/README.md`. Unmodified full-file
 recompilation is blocked by this SDK's rejection of string-named export aliases;
 the test documents its identifier-alias-only compatibility adaptation.
+
+
+## Native entry arguments (LanguageSourceV6, 2026-10-21)
+
+**User approved 2026-10-21.** `--language-source` now selects
+`kLanguageSourceV6` / `language_source_v6`. V6 inherits V5 and adds the independent
+`NativeArguments()` predicate. V1–V5 and the previous numeric/constructor flags
+keep their meanings. Receipt serialization and contract/cache identity include V6.
+
+An own-frame GETUNMAPPEDARGS in a strict, non-arrow function may print native
+`arguments` only after proving one snapshot per invocation, entry execution
+before observable events, and unchanged incoming argument values. Escape is
+allowed: `this.params = arguments` and ordinary `f.apply(this, arguments)` are
+in scope. This does **not** authorize an arbitrary APPLY opcode array or widen
+`CallSpread()`. The snapshot's declared inputs retain their conditional-presence
+and original frame correspondence. Signature-initialized parameter entries are
+not raw invocation slots and do not satisfy that correspondence.
+
+The accepted difference is precise: pinned Ark installs an **own,
+non-configurable throwing `caller` accessor**; standard strict arguments lacks
+that own property. Therefore `args.caller`, its descriptor, `hasOwn` and own-key
+reflection may differ. This is accepted even when the object escapes. `callee`,
+indexed values, unmapped parameter behavior, brand, iterator and identity are
+not additional accepted differences.
+
+Pinned `ets_runtime` revision `f04900cf951c66c2ea18b2bab5b591d5336c34b9`:
+`ecmascript/interpreter/interpreter-inl.cpp:1765–1775` dispatches snapshot creation;
+`ecmascript/stubs/runtime_stubs-inl.h:2276–2286` copies current argument slots and
+`:2957–2994` installs the object fields; `ecmascript/object_factory.cpp:972–980`
+adds the own caller accessor; `ecmascript/compiler/new_object_stub_builder.cpp:1681–1711`
+implements the same compiled layout. These citations are evidence for the
+approved difference, not an assertion of standard-JS descriptor equivalence.
+
+The source proof rejects arrows, non-entry/repeated snapshots, parameter-value
+changes and missing entry correspondence; scope verification rejects any local,
+parameter or capture named `arguments`. A descendant non-arrow never substitutes
+its own carrier for an ancestor snapshot: named source storage/capture remains
+explicit. Exact host-factory output remains available under its existing ABI.

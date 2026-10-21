@@ -664,7 +664,7 @@ if(BUILD_TESTING)
   add_test(NAME close_completion_nested_gap_test COMMAND close_completion_probe
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 395)
   set_tests_properties(close_completion_nested_gap_test PROPERTIES
-    PASS_REGULAR_EXPRESSION "obligation3=0:6\\[ownership-gap=3\\]@287 obligation4=0:8")
+    PASS_REGULAR_EXPRESSION "protocol=1 read=169 entry=149 completion=3 payload=V60 obligation0=1 obligation1=1 obligation2=1 obligation3=1 obligation4=0:8")
   add_executable(for_of_tree_test tests/unit/source/for_of_tree_test.cc)
   target_link_libraries(for_of_tree_test PRIVATE abcd_source abcd_json)
   target_include_directories(for_of_tree_test PRIVATE tests/support)
@@ -3485,4 +3485,28 @@ if(BUILD_TESTING AND ABCD_NODE_EXECUTABLE)
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decision_edge_copies.mjs
     $<TARGET_FILE:abc_structure> $<TARGET_FILE:abc_semantic>
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/decision_edge_copies)
+endif()
+
+target_sources(abcd_source PRIVATE src/source/native_arguments.cc)
+if(BUILD_TESTING)
+  add_executable(native_arguments_test tests/unit/source/native_arguments_test.cc)
+  target_link_libraries(native_arguments_test PRIVATE abcd_source)
+  add_test(NAME native_arguments_test COMMAND native_arguments_test)
+endif()
+if(BUILD_TESTING AND ABCD_NODE_EXECUTABLE)
+  add_test(NAME native_arguments_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/native_arguments.mjs
+    $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/native_arguments)
+endif()
+if(BUILD_TESTING AND ABCD_BUILD_TOOLS AND Python3_Interpreter_FOUND AND
+    EXISTS "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
+  add_test(NAME native_arguments_roundtrip_test COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/native_arguments_roundtrip.py
+    $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/native_arguments
+    ${CMAKE_CURRENT_BINARY_DIR}/native-arguments-roundtrip --temporary)
+endif()
+if(BUILD_TESTING AND ABCD_NODE_EXECUTABLE)
+  add_test(NAME native_arguments_records_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/native_arguments_records.mjs
+    $<TARGET_FILE:abc_structure> ${CMAKE_CURRENT_SOURCE_DIR})
 endif()

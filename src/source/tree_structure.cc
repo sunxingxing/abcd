@@ -1,5 +1,6 @@
 #include "member_update.h"
 #include "tree_structure.h"
+#include "native_arguments.h"
 
 #include <algorithm>
 #include <array>
@@ -129,6 +130,9 @@ class StructureCheck {
             : (!tree_.class_inner && tree_.capture_requirements.empty()),
         Error::kUnsupportedSyntax);
     CheckCallable(tree_);
+    bool native_snapshot=false;
+    for(const auto& node:tree_.expressions){budget_.Step();if(const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&node.expression))native_snapshot|=snapshot->form==ArgumentSnapshotForm::kNativeEntry;}
+    if(native_snapshot)VerifyNativeArgumentsNames(tree_,budget_);
     VerifyAllSwitchSyntax(tree_, budget_);
     for (const auto& issue : tree_.recovery_issues) {
       budget_.Step();
@@ -442,7 +446,11 @@ class StructureCheck {
                     expression.operation == TreeLogical::kNullish,
                     Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, ArgumentSnapshotExpr>) {
-        if (destination_) {
+        RequireTree(expression.form==ArgumentSnapshotForm::kNativeEntry || expression.form==ArgumentSnapshotForm::kExactFactory,Error::kUnsupportedSyntax);
+        if(expression.form==ArgumentSnapshotForm::kNativeEntry) {
+          RequireTree(NativeArguments(tree_.identity.contract)&&!IsArrowCallable(tree_.callable),Error::kBinding);
+        }
+        if (destination_ && expression.form==ArgumentSnapshotForm::kExactFactory) {
           const auto binding = ResolveArgumentSnapshotBinding(destination_);
           RequireTree(binding.has_value(), Error::kBinding); scopes_.FreeReference(*binding);
         }
@@ -853,7 +861,7 @@ class StructureCheck {
             } else if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) {
               const auto binding = ResolveSymbolBinding(destination_);
               RequireTree(binding.has_value(), Error::kBinding); scopes_.EnclosingReference(*binding);
-            } else if (std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) {
+            } else if (const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&node.expression); snapshot && snapshot->form==ArgumentSnapshotForm::kExactFactory) {
               const auto binding = ResolveArgumentSnapshotBinding(destination_);
               RequireTree(binding.has_value(), Error::kBinding); scopes_.EnclosingReference(*binding);
             }

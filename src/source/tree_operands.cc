@@ -1,4 +1,5 @@
 #include "assignment_values.h"
+#include "native_arguments.h"
 #include "implicit_constructor.h"
 #include "derived_projection.h"
 #include "derived_value_states.h"
@@ -41,6 +42,15 @@ class OperandCheck {
         throw Error::kOperand;
       }
       budget_.Step(std::get<std::uint64_t>(checked));
+    }
+    bool native_snapshot=false;
+    for(const auto& node:tree_.expressions){budget_.Step();if(const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&node.expression))native_snapshot|=snapshot->form==ArgumentSnapshotForm::kNativeEntry;}
+    if(native_snapshot) {
+      RequireMeaning(NativeArguments(tree_.identity.contract)&&tree_.strictness==Strictness::kStrict,Error::kOperand);
+      const auto proof=ProveNativeArguments(graph_,tree_.callable,budget_);
+      RequireMeaning(std::holds_alternative<NativeArgumentsProof>(proof),Error::kOperand);
+      RequireMeaning(VerifyNativeArguments(graph_,tree_.callable,std::get<NativeArgumentsProof>(proof),budget_),Error::kOperand);
+      VerifyNativeArgumentsNames(tree_,budget_);
     }
     const auto indexed = IndexCallArgumentUses(graph_, evaluation_, budget_.Remaining());
     if (const auto* error = std::get_if<CallPlanError>(&indexed)) {

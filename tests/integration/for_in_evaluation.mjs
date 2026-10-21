@@ -20,6 +20,7 @@ try {
       [53454,i==='old'?54291:undefined,undefined,
         [[i==='old'?'ArrayInitializationError':'FamilyEnclosureError',i==='old'?0:1]]],
     ]) {
+      if(record===53454 && i==='source')continue;
       const row=rows.find(r=>r.entity===record);assert.equal(row.source_complete,false);assert.equal(row.source,undefined);
       const f=row.source_failure;
       assert.deepEqual(f.causes,causes.map(([type,value])=>({domain:`abcd::source::${type}`,value})));
@@ -30,11 +31,12 @@ try {
     // Round 60 discharges Filter's later decision-edge phi transfer; the record
     // now publishes its native loops. Keep strict CLI/manifest source correspondence
     // instead of the obsolete m44496 PC252 DecisionEdgeCopies refusal.
-    for(const [entity,method] of [[29268,29450],[43537,44496]]) {
+    for(const [entity,method] of [[29268,29450],[43537,44496],...(i==='source'?[[53454,53795],[52417,52655]]:[])]) {
       const complete=rows.find(r=>r.entity===entity);assert.equal(complete.source_complete,true);
       const report=JSON.parse(run(semantic,[abc,String(method),'--record-source','--value-source',...flags]));
       assert.equal(report.source_complete,true);assert.equal(report.source,readFileSync(join(out,complete.source),'utf8'));
       assert.equal(report.source_failure,undefined);
+      if(entity===53454 || entity===52417){assert.match(report.source,/\barguments\b/);run(process.execPath,['--check',join(out,complete.source)]);}
       if(entity===43537)assert.equal((report.source.match(/for \(.* in /g)||[]).length,3);
     }
     // GETITERATOR now has raw semantics, but this for-of method still fails

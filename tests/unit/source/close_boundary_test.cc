@@ -9,7 +9,7 @@ using test::Check;
 namespace {
 constexpr auto kProfile=abc::ProfileId::kDynamic1206;
 constexpr std::uint64_t kFrame=32;
-enum class Change { kNone,kLiveOut,kAccLiveOut,kKilled,kExternalEntry,kUserTry,kForgedUserTry,kDropExit };
+enum class Change { kNone,kDeadCopy,kDeadCopyChain,kLiveCopyChain,kLiveOut,kAccLiveOut,kKilled,kExternalEntry,kUserTry,kForgedUserTry,kDropExit };
 void Case(unsigned padding,Change change) {
   // Entry nop; private guard write; private code; port; continuation. These
   // are raw boundary unit tests, not claimed iterator acquisition evidence.
@@ -17,8 +17,9 @@ void Case(unsigned padding,Change change) {
   bytes.insert(bytes.end(),padding+1,0xd5);
   const auto port_pc=static_cast<unsigned>(bytes.size());
   if(change==Change::kKilled){bytes.push_back(0x02);bytes.push_back(0x61);bytes.push_back(0);}
-  if(change==Change::kLiveOut || change==Change::kKilled){bytes.push_back(0x60);bytes.push_back(0);}
-  bytes.push_back(change==Change::kAccLiveOut?0x64:0x65);
+  if(change==Change::kDeadCopy || change==Change::kDeadCopyChain || change==Change::kLiveCopyChain || change==Change::kLiveOut || change==Change::kKilled){bytes.push_back(0x60);bytes.push_back(0);}
+  if(change==Change::kDeadCopyChain || change==Change::kLiveCopyChain)bytes.insert(bytes.end(),{0x61,1,0x60,1});
+  bytes.push_back((change==Change::kAccLiveOut || change==Change::kLiveOut || change==Change::kLiveCopyChain)?0x64:0x65);
   const auto handler_pc=static_cast<unsigned>(bytes.size());
   if((change==Change::kUserTry || change==Change::kForgedUserTry))bytes.insert(bytes.end(),{0x61,1,0x65});
   auto body=test::Body(bytes);
@@ -80,15 +81,15 @@ void Case(unsigned padding,Change change) {
   if(change==Change::kDropExit){Check(std::holds_alternative<CloseCompletionFailure>(result));return;}
   Check(std::holds_alternative<CloseBoundaryProof>(result));
   const auto& proof=std::get<CloseBoundaryProof>(result);
-  if(change==Change::kLiveOut || change==Change::kAccLiveOut || change==Change::kUserTry || change==Change::kForgedUserTry || change==Change::kExternalEntry) {
+  if(change==Change::kLiveCopyChain || change==Change::kLiveOut || change==Change::kAccLiveOut || change==Change::kUserTry || change==Change::kForgedUserTry || change==Change::kExternalEntry) {
     Check(proof.missing.has_value());
-    if(change==Change::kLiveOut || change==Change::kAccLiveOut)Check(proof.missing->ownership_gap==CloseOwnershipGap::kLiveOut);
+    if(change==Change::kLiveCopyChain || change==Change::kLiveOut || change==Change::kAccLiveOut)Check(proof.missing->ownership_gap==CloseOwnershipGap::kLiveOut);
     if((change==Change::kUserTry || change==Change::kForgedUserTry))Check(proof.missing->ownership_gap==CloseOwnershipGap::kUserTry);
     if(change==Change::kExternalEntry)Check(proof.missing->kind==CloseCompletionError::kExternalEntry);
   } else Check(!proof.missing);
   Check(proof.entry_coverage==(change==Change::kExternalEntry?CloseProofState::kMissing:CloseProofState::kVerified));
   Check(proof.port_coverage==CloseProofState::kVerified);
-  Check(proof.private_state==((change==Change::kLiveOut || change==Change::kAccLiveOut)?CloseProofState::kMissing:CloseProofState::kVerified));
+  Check(proof.private_state==((change==Change::kLiveCopyChain || change==Change::kLiveOut || change==Change::kAccLiveOut)?CloseProofState::kMissing:CloseProofState::kVerified));
   const auto reversed=std::get<CloseBoundaryProof>(run({},true));
   Check(proof.ports==reversed.ports && proof.unreachable_entries==reversed.unreachable_entries && proof.private_slots==reversed.private_slots && proof.missing==reversed.missing);
   Check(proof.private_slots==std::vector<ClosePrivateSlot>{{},{abc::RegisterId{0}}});
@@ -117,6 +118,6 @@ void MissingExceptionEdge() {
 }
 int main() {
   MissingExceptionEdge();
-  for(const auto change:{Change::kNone,Change::kLiveOut,Change::kAccLiveOut,Change::kKilled,Change::kExternalEntry,Change::kUserTry,Change::kForgedUserTry,Change::kDropExit})Case(0,change);
-  for(unsigned n:{200,201,400,800})Case(n,Change::kNone);
+  for(const auto change:{Change::kNone,Change::kDeadCopy,Change::kDeadCopyChain,Change::kLiveCopyChain,Change::kLiveOut,Change::kAccLiveOut,Change::kKilled,Change::kExternalEntry,Change::kUserTry,Change::kForgedUserTry,Change::kDropExit})Case(0,change);
+  for(unsigned n:{200,201,400,800}){Case(n,Change::kNone);Case(n,Change::kDeadCopyChain);Case(n,Change::kLiveCopyChain);}
 }

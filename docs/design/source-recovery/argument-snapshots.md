@@ -1,5 +1,50 @@
 # Frame Argument Snapshots
 
+## V6 consumption checkpoint (2026-10-21)
+
+The user has now approved the caller-accessor difference documented below.
+`NativeArguments()` is a separate LanguageSourceV6 predicate; both application
+targets publish through the existing ABI/tree/recovery checks:
+
+| Record / method | Prior refusal | Result |
+| --- | --- | --- |
+| o32/52417 / m52655 PC6 (`stub`) | FamilyEnclosureError::kStructure / TreeStructureError::kBinding | Complete: `this.params = arguments; return this;` |
+| o32/53454 / m53795 PC6 (nested `f`) | same missing exact snapshot factory | Complete: one retained snapshot passed to `getReturnInfo`, `recordMethodCall`, then ordinary `action.apply(this, snapshot)` |
+
+`native_arguments.{h,cc}` proves a single own-frame entry snapshot. One prepaid
+prefix index excludes re-entry and observable events. A shared memoized copy
+index rechecks each snapshot input against its original ParameterEntry, rather
+than assuming an initialized signature parameter is an incoming argument.
+DefaultBody's deliberately absent original value correspondence refuses this
+substitution. The semantic verifier recomputes the proof on fresh graph inputs;
+structure rechecks strictness, callable owner and binding names. The expression
+keeps its original snapshot event, inputs and exception/normal boundaries while
+selecting a typed native-entry spelling. Counting and real sinks use that same
+form. Factory snapshots and their old contracts are unchanged.
+
+Fixtures cover escaping snapshots, `.apply`, length/index reads, identity,
+parameter mutation, constructor ownership and a named capture in a non-arrow
+child. Node: 38 constructed cases plus 24 against the two actual packaged
+original modules, with only the approved own caller observation excluded.
+Negative/mutation and 200/201/400/800 exact-budget tests cover repeated/non-entry
+snapshots, arrow ownership, shadowing, changed parameters, projected entries,
+copy/block variants and a backedge into entry.
+
+`native_arguments_roundtrip.py` imports grouping_bytecode.py's pinned SDK and
+strict assembly comparison. Default: 7/8 methods identical; O0: 4/8. Both retain
+six GETUNMAPPEDARGS and both emitted ABCs re-import to complete source. The
+unaltered differences are recorded under build/review/native-arguments/roundtrip3:
+(1) the captured local `saved` is renamed `$local1`, including its HoleGuard's
+name constant and relocated pool offsets (that guard is unreachable before the
+captured declaration in this fixture); (2) O0 exposes retained scalar temporary
+copies/register numbering in apply/inspect/changed; (3) the unused `a = 42` in
+changed is omitted, with unmapped snapshot identity/values checked by Node.
+No register/handler/branch normalization is counted as bytecode equality.
+The SDK string-export alias adaptation is applied by AST to both inputs.
+
+The exact source/ABC/SDK hashes and compile command are in the fixture build.json.
+The following sections retain the historical evidence and exact-factory route.
+
 ## Entry-time native arguments checkpoint (2026-10-21)
 
 User proposal: a single entry-time `GETUNMAPPEDARGS` in a strict, non-arrow
@@ -383,3 +428,51 @@ The opcode family and group 1 are not globally complete.
 
 Keep production inputs ABC-only. Generated-JS checks and a small test oracle do
 not replace Ark VM differential evidence, and neither proves the process RSS cap.
+
+### Published methods versus packaged original (evaluation only)
+
+The original package is under the exploration input's
+`modules/src/oh_modules/.ohpm/@ohos+hypium@1.0.19/oh_modules/@ohos/hypium/src/main/module/mock/`.
+`native_arguments_records.mjs` evaluates that JS independently; no original
+source text is supplied to the decompiler.
+
+Both original and recovered ExtendInterface.stub are:
+
+```js
+stub() {
+  this.params = arguments;
+  return this;
+}
+```
+
+Original nested MockKit.mockFunc function:
+
+```js
+let f = function () {
+  let args = arguments;
+  let action = tmp.getReturnInfo(f, args);
+  if (originalMethod) tmp.recordMethodCall(originalMethod, args);
+  if (action) return action.apply(this, args);
+};
+```
+
+Recovered function (surrounding mockFunc retains its original bindings):
+
+```js
+let f = function() {
+  const $value0 = arguments;
+  const $value1 = tmp.getReturnInfo(f, $value0);
+  if ($local7) {
+    tmp.recordMethodCall($local7, $value0);
+  }
+  if (!$value1) {
+    return void 0;
+  } else {
+    return $value1.apply(this, $value0);
+  }
+};
+```
+
+`$local7` is the retained originalMethod parameter. The action's `.apply`
+reference and receiver are ordinary proved member-call semantics; no arbitrary
+APPLY-array or unconditional call-spread premise is involved.

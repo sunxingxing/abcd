@@ -326,7 +326,7 @@ class NamePlan {
     if (std::holds_alternative<SymbolConstructorExpr>(expression)) {
       const auto binding = ResolveSymbolBinding(scope_); if (binding) Reference(*binding, 0); else Unknown();
     }
-    if (std::holds_alternative<ArgumentSnapshotExpr>(expression)) {
+    if (const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&expression); snapshot && snapshot->form==ArgumentSnapshotForm::kExactFactory) {
       const auto binding = ResolveArgumentSnapshotBinding(scope_); if (binding) Reference(*binding, 0); else Unknown();
     }
     VisitExpressionChildren(tree, expression, [&](ExprId child) { budget_.Step(); Push(Expression{at.tree,child}); });

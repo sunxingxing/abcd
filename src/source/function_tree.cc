@@ -1,4 +1,5 @@
 #include "function_tree.h"
+#include "native_arguments.h"
 #include "class_inner_scope.h"
 #include "switch_region.h"
 
@@ -223,9 +224,21 @@ class TreeBuilder {
       throw FunctionTreeFailure{Error::kExpression, *error, syntax_.method};
     }
     forest_ = std::get<ExpressionForest>(std::move(expressions));
-
     Admit(forest_.allocated_bytes, 1);
     Step(forest_.work);
+    if (NativeArguments(syntax_.identity.contract) && syntax_.strictness==Strictness::kStrict) {
+      bool snapshot=false;
+      for (const auto& node:forest_.expressions) { Step();snapshot|=std::holds_alternative<ArgumentSnapshotExpr>(node.expression); }
+      if(snapshot) {
+        TreeCheckBudget checked({bytes_,work_});
+        const auto proof=ProveNativeArguments(graph_,syntax_.callable,checked);
+        if(std::holds_alternative<NativeArgumentsProof>(proof)) {
+          Require(VerifyNativeArguments(graph_,syntax_.callable,std::get<NativeArgumentsProof>(proof),checked),Error::kOwnership);
+          for(auto& node:forest_.expressions){checked.Step();if(auto* value=std::get_if<ArgumentSnapshotExpr>(&node.expression))value->form=ArgumentSnapshotForm::kNativeEntry;}
+        }
+        Admit(checked.Bytes(),1);Step(checked.Work());
+      }
+    }
     tree_.identity = syntax_.identity;
     tree_.method = syntax_.method;
     tree_.owner = syntax_.owner;

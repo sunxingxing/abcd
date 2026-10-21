@@ -10,6 +10,55 @@
 
 
 
+## Native arguments V6; remaining nested/sequential close gates (2026-10-21)
+
+- Baseline wtbase **80b4030a**. **A completes:** o32/52417 (`stub`, m52655) and
+  o32/53454 (nested `f`, m53795). **B remains incomplete:** 42397 and46008 retain
+  their original kMultipleExits first causes. No commit/push/stash performed.
+- The user-approved 2026-10-21 `NativeArguments()` predicate is versioned as
+  **LanguageSourceV6**. CLI source output selects V6; V1–V5 and previous flags
+  are unchanged. The accepted difference is only the own non-configurable
+  throwing `caller` accessor and its reflective consequences. No APPLY premise
+  was widened: the published use is ordinary `action.apply(this, snapshot)`.
+- A prepaid native-entry certificate proves own-frame/non-arrow ownership,
+  a unique unreentered prefix before observable events, original parameter
+  correspondence through copies, and one snapshot identity per invocation.
+  Projected initialized default formals are not incoming arguments. Independent
+  semantic/structure checks re-derive the proof and reject shadowing. The
+  existing snapshot's original event/conditional inputs/exception exits remain;
+  only a typed native-entry source form replaces the exact factory spelling.
+- Private-state liveness now follows normal-Commit scalar copies until kill or
+  observation; live returns/calls/branches still refuse. The dead753 restore in
+  m42717 is no longer a live-out. All four nested copies pass that obligation,
+  but Try4/read705 and throw-body dispatch705/480 still need correlated
+  closed-state/payload/destination propagation. In m47128,717 still needs the
+  fresh-iteration scope exit at POP874 → rethrow875 → H880. Neither unproved
+  route is admitted as inert forwarding. See [o32-cluster.md](o32-cluster.md).
+- Both 40-input cohorts: **604/620 source** (was602), **541/620 previous**;
+  zero regressions and zero text changes in previous complete records. After
+  version-label normalization the only changed manifest records are52417/53454.
+  The helper's1007 denominator includes387 skipped structural records.
+- Full build succeeds. Source regression **65/65**; targeted native/contract/
+  boundary/round-trip checks **8/8**; expectation-census extras **8/8**. Requested expanded sweep **247/255**, with
+  eight known failures: family_source_cli, tree_structure, try_tree,
+  class_tree_source, try_tree_source, snapshot_syntax(+source), async_semantics.
+  Six reproduce via wtbase CTest; the other two reproduce with the same current
+  test commands pointed at wtbase binaries. No new failure is classified away.
+- Node: **38** constructed plus **24** packaged-original differential cases;
+  both new records pass node --check. Tests cover ordinary escape, apply,
+  lengths/indexes, repeated identity, parameter mutation, named descendant
+  capture, receiver, throws and separate invocations. Only caller observation
+  is excluded, explicitly. Wrong owner/input/certificate/shadow/prefix/reentry,
+  private-copy live-out mutations and200/201/400/800 exact budgets pass.
+- SDK round-trip retains **6 GETUNMAPPEDARGS at both levels** and both emitted
+  ABCs re-import complete. Exact method equality is **7/8 default**, **4/8 O0**;
+  no register/branch/handler normalization. Diffs preserve the renamed capture
+  guard-name string/pool relocation, O0 scalar copies/registers and an unused
+  formal store. Full explanation: [argument-snapshots.md](argument-snapshots.md).
+- Evidence: `build/review/native-arguments/` (cohorts, comparison and manifest
+  census, build/source-regression/sweep/targeted logs, original-record Node
+  traces, nested/sequential probes, SDK hashes and raw roundtrip3 diffs).
+
 ## o32 Group B: async loop completion; nested/sequential still gated (2026-10-21)
 
 - Baseline wtbase **7c4c6912**, HEAD **07c6c665**. **Partial round: o32/23058
@@ -352,7 +401,7 @@
   four-child+parent RSS bounds: **166,363,136 bytes** source,
   **160,284,672 bytes** previous (below 1,000,000,000).
 - Full build; serial source-regression **65/65**; targeted update/property/call
-  tests **7/7**. Requested sweep **180/185**: only the documented pre-existing
+  tests **8/8**. Requested sweep **180/185**: only the documented pre-existing
   family_source_cli, tree_structure, try_tree, class_tree_source and
   try_tree_source failures. No assertions weakened. An initial overlapped-build
   archive-link failure was discarded; the complete build and suites were rerun
@@ -644,7 +693,7 @@
   (**104 cases/330 faults/66 swaps/22 mutations/2 equivalents**), after two
   worker-timeout attempts retained in the logs. Paired OLD/NEW checks add
   **80/80 unchanged complete records**, 7 changed files and 30 removed pairs;
-  token/Node **7/7**, SDK default/O0 **7 exact/0 differ/0 unverified** each.
+  token/Node **8/8**, SDK default/O0 **7 exact/0 differ/0 unverified** each.
   No timeout, case inventory, mutation or oracle was weakened.
 - Existing stale spelling checks were updated for await/generator/backup,
   capture scope, precedence/Boolean contexts, conditional snapshots, VoIP,
@@ -893,7 +942,7 @@
   obligations in this slice. Only these two manifests change under either
   flag set: refusal status3 becomes partial-class status4, with method/entry
   spans and the exact omitted-member causes. CLI/manifest parity **8/8**.
-- Full build passed. Serial source-regression **65/65**; targeted tests **7/7**
+- Full build passed. Serial source-regression **65/65**; targeted tests **8/8**
   including all three new unit/CLI/SDK tests. Mutations cover wrong slot,
   environment/allocation, store, certificate interval, capture family/scope,
   reset, catch route, an old allocation crossing a loop and native TDZ/reader
@@ -1128,7 +1177,7 @@
   unit mode checks certificates; its complete production gate is asserted by
   the exporter test, since the synthetic enclosure adapter has no module loads.
 - Full build passed. Serial source-regression **65/65**; focused class tests
-  **16/16**; call-reference/spread/guarded-call checks **7/7**;
+  **16/16**; call-reference/spread/guarded-call checks **8/8**;
   requested broader sweep **225/239**, with exactly the 14 documented
   pre-existing failures and no new failure. The initial new test-adapter failure
   and the corrected final runs are both retained under
@@ -1468,7 +1517,7 @@
   combined definitions/initializer placement. Raw family preparation is write
   evidence only and does not waive that check. The exact boundary is recorded in
   [class-self-initialization-scope.md](class-self-initialization-scope.md).
-- Full build passes; serial source-regression **65/65**; new tests **7/7**.
+- Full build passes; serial source-regression **65/65**; new tests **8/8**.
   Six real es2abc fixtures cover self construction, static-block outer access,
   read-only reentry, throwing initialization, branches and copies. Mutations cover
   storage/occurrence, guard/exception, ordering, omitted/extra roots and descendants,
@@ -1694,7 +1743,7 @@
   position drift in complete records. Only source o5/28303's diagnostic moves;
   previous-flag manifests are unchanged. Baseline HEAD and executable freshness
   checked against the baseline build-log start.
-- Full build, focused **7/7** checks and serial source-regression **65/65**
+- Full build, focused **8/8** checks and serial source-regression **65/65**
   passed. The ordinary composition test also resolves the projected control
   unit to its real block and requires an explicit scope; it cannot pass by
   comparing two absent mappings. The TimeUtils CLI/manifest test now asserts
@@ -2242,7 +2291,7 @@
   naming obligation 种下该证明，不重排已有 literal。带 static initializer 的
   class、共享/已命名的值、非 private/staged store 和 computed-key stores 继续拒绝。
   computed numeric-key `.name` 差异没有获得新前提，也未开放。
-- 完整构建通过；固定集 **65/65**；7 项定向测试 **7/7**。新增 literal proof/
+- 完整构建通过；固定集 **65/65**；7 项定向测试 **8/8**。新增 literal proof/
   mutation、200/201/400/800 与精确 byte/work 边界、真实 es2abc 两宽度 fixture，
   两种契约的 engine-output Node 差分（name/descriptor、prototype setter、sibling
   getter 顺序及异常）通过。node --check 通过，编译器命令/hash 已登记。
@@ -2653,7 +2702,7 @@
 - 基线 `7eee8402`；未 commit/push/stash。普通 Function 与 verified directive 分离；原始 notify 保留 acc 和调用帧 owner，有限格完成证明、专用事件端口及 TreeFlow/OriginalFlow/recovery 重算贯通。实际输出引用逐项核对请求注解；普通 outer cell（含转发）仍拒绝，ModuleCapturePrefix 的 concurrent 排除未改。
 - 三个 record 完整：o14/18164（cancel/delayed）、25688（query）、31477（parallelTask）。collectFrame m16922 的通知证明通过，但 16446 首拒绝推进至另一方法 m16784 的 `PhasedMethodError::kEnvironment`（创建点 m16700@123；没有虚构子 PC）。10719 的 async m11357 明确保留 `kAsync` 门禁，原始/工作 PC10。
 - pinned parser 不接受 quoted export aliases。仅实际发射 verified concurrent 的新 record 改用 IdentifierName；当前 formatter 需字符串拼写的 import/re-export/export 名返回 `kModuleSyntax`，Unicode 夹具验证这一覆盖边界。未改写往返编译输入，未改变无 concurrent 输出的格式。
-- 最终完整构建成功；固定集串行 **65/65**；相关定向 **14/14**（并发 **7/7**）；CLI/corpus/failure/receipt/manifest 扫描 **67/68**，仅已登记的 `family_source_cli_test` owner/origin 断言失败，未弱化。新完整输出通过 Node syntax check。三个真实 record 的直接 es2abc 往返及六方法真实夹具通过 kind/sendable/注解/请求顺序/模块表与通知完成核对；Node 只验证普通调用值/异常类型/轨迹，不验证 taskpool/跨线程。
+- 最终完整构建成功；固定集串行 **65/65**；相关定向 **14/14**（并发 **8/8**）；CLI/corpus/failure/receipt/manifest 扫描 **67/68**，仅已登记的 `family_source_cli_test` owner/origin 断言失败，未弱化。新完整输出通过 Node syntax check。三个真实 record 的直接 es2abc 往返及六方法真实夹具通过 kind/sendable/注解/请求顺序/模块表与通知完成核对；Node 只验证普通调用值/异常类型/轨迹，不验证 taskpool/跨线程。
 - 相对 explore73/explore73s，结果 **521/620、564/620**，0 回退、0 既有完整文本漂移。旧 flags 的 manifest 无变化；source 仅 o14 的 10719/16446/18164/25688/31477 五个候选变化。无留出集、全语料、RSS 基准或全套测试运行。
 - 同步 increment 的边界、编译器身份/命令和测试 oracle 见 [language-source.md](language-source.md) 增量 II 及 `tests/integration/fixtures/concurrent_functions/README.md`。日志、逐字段比较、目标表和完整改动清单在 `/private/tmp/abcd-r73-ii/`；入口 `acceptance.md`。async、concurrent 内 class-body 引用普查，以及一个通知对应多个物理 Return 的端口仍严格拒绝。
 
@@ -2938,7 +2987,7 @@
   m473 PC170 → H247，PC325 → H337，PC377 → caller；重复 finally 轨迹忠实于字节码，
   **不是引擎缺陷**。现仅该模式改用完整的 ABC handler 轨迹期望，其他模式继续源代码差分；
   o5/28303 更新为 m28799 PC677 的真实 unsupported-instruction 原因链。生产代码不变。
-- 审查修订后定向 **7/7**；22 次源码 oracle、2 次 ABC handler 严格期望和 6 个变异全部通过。
+- 审查修订后定向 **8/8**；22 次源码 oracle、2 次 ABC handler 严格期望和 6 个变异全部通过。
   本次固定集重跑 **64/65**，仅 rich-text worker 调用失败（stderr 空）；不改代码单独重跑
   **1/1 通过**，耗时 13.76 秒。此前的完整 65/65 仍是前一轮运行结果，不混记为本次全绿。
 - 新 IR/规模/预算/JSON/CLI 定位测试通过。7 个 T 与 8 个 E 的逐项结果、完整定向名单
@@ -3023,7 +3072,7 @@
   资源/工作预算分类保持不变。设计、边界与逐 record 结果见
   [phased-reachability.md](phased-reachability.md)。
 - 构建 `cmake --build build/regression -j 6 -- -k` 成功；固定集串行 **65/65**；
-  直接相关 7 项 **7/7**。phase/exception/source 等定向串行批次 **293/324**：
+  直接相关 7 项 **8/8**。phase/exception/source 等定向串行批次 **293/324**：
   指定的 7 个 literal 和 2 个 generator 失败前后不变；额外 21 项在 `/private/tmp`
   从精确基线 `03b1681b` 构建的工具上逐项复现。community graph 两次 worker 失败，
   第三次带进程错误诊断的串行复跑通过；前两次错误未报告退出原因，不断言为超时。
@@ -3334,7 +3383,7 @@ S0–S4 已实施，Codex 第十轮复审已 APPROVE。下列各项按审计共�
   unverified without a token witness. No unapproved bytecode difference.
 - Full evidence, wrapper counts and ten examples are in
   [readable-grouping.md](readable-grouping.md) and `build/review/paren2/`.
-- Final verification: full build passed; fixed suite **65/65**; grouping **7/7**;
+- Final verification: full build passed; fixed suite **65/65**; grouping **8/8**;
   required sweep **98/99**, only pre-existing `family_source_cli_test`.
   Broader receiver/reference checks **15/29**: the 14 registered receiver-family
   failures occur before printing; function-name and call-reference checks pass.
