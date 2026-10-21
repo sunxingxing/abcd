@@ -12,7 +12,7 @@ namespace abcd::source {
 // Lifetime of retained storage, not the exact lexical owner: private slots,
 // native formals/receiver/self and phi storage survive the invocation. A native
 // catch parameter survives only its handler; Value IR cannot widen that scope.
-enum class EvaluationStorageLifetime : std::uint8_t { kInvocation, kHandler };
+enum class EvaluationStorageLifetime : std::uint8_t { kInvocation, kHandler, kIteration };
 [[nodiscard]] std::optional<EvaluationStorageLifetime> RetainedEvaluationLifetime(
     const analysis::ValueProgram&, const EvaluationPlan&, analysis::ValueId);
 struct EvaluationLivenessCost {

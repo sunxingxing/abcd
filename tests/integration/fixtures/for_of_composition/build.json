@@ -1,0 +1,27 @@
+{
+  "compiler": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca"
+  },
+  "disassembler": {
+    "path": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+    "sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676"
+  },
+  "sources": {
+    "async.js": "e5e08d5b866a22255ad2c33ac23d707c6fb50f1597e2717500215e763337dc28"
+  },
+  "outputs": {
+    "async.abc": "1e0c9bf5124ae0d1b930b1962d6cc6c2ce182bc1e8ada22542ffde2d8658ab38"
+  },
+  "commands": [
+    [
+      "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+      "--module",
+      "--merge-abc",
+      "--opt-level=0",
+      "--output=tests/integration/fixtures/for_of_composition/async.abc",
+      "tests/integration/fixtures/for_of_composition/async.js"
+    ]
+  ],
+  "oracle": "Only async.abc is supplied to the engine; async.js is an independent Node and SDK oracle."
+}

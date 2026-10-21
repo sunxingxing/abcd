@@ -209,6 +209,7 @@ struct OriginalIterations {
   std::vector<analysis::ValueId> input_values;
   std::vector<ForOfKeyPhi> phis;
   std::vector<OriginalIterationBinding> bindings;
+  std::vector<std::optional<IteratorProtocolId>> binding_values;
   std::vector<std::optional<ForOfMember>> operations, values;
   std::vector<StmtId> statements;
   std::vector<std::optional<StmtId>> closes;

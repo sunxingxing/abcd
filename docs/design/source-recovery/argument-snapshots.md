@@ -1,5 +1,74 @@
 # Frame Argument Snapshots
 
+## Entry-time native arguments checkpoint (2026-10-21)
+
+User proposal: a single entry-time `GETUNMAPPEDARGS` in a strict, non-arrow
+function, before parameter writes, may use native `arguments`. The proposal
+correctly addresses initial indexed values and repeated-read identity. Those
+conditions do **not** discharge the pinned runtime's descriptor difference.
+
+The locked `ets_runtime` revision is
+`f04900cf951c66c2ea18b2bab5b591d5336c34b9`:
+
+- `ecmascript/interpreter/interpreter-inl.cpp:1765–1775` dispatches to
+  `SlowRuntimeStub::GetUnmapedArgs`.
+- `ecmascript/stubs/runtime_stubs-inl.h:2276–2286` copies the current argument
+  slots; `:2957–2994` allocates the object and explicitly installs both `caller`
+  and `callee` accessors.
+- `ecmascript/object_factory.cpp:972–980` defines `caller` as an own accessor,
+  non-enumerable and non-configurable. This is an actual layout entry, not an
+  obsolete runtime comment.
+- `ecmascript/builtins/builtins.cpp:3283–3295` supplies the intrinsic
+  ThrowTypeError as both getter and setter.
+- `ecmascript/compiler/new_object_stub_builder.cpp:1681–1711` installs the same
+  fields on the compiled path.
+
+[ECMA-262 CreateUnmappedArgumentsObject](https://tc39.es/ecma262/multipage/ordinary-and-exotic-objects-behaviours.html#sec-createunmappedargumentsobject)
+defines indexed properties, length, the iterator and the throwing `callee`
+accessor, but no own `caller`. A fresh strict Node v25.7.0 module probe confirms:
+
+| Observation | Pinned Ark code | Standard strict arguments / Node probe |
+|---|---|---|
+| `Object.hasOwn(args, "caller")` | true | false |
+| `Object.getOwnPropertyDescriptor(args, "caller")` | non-configurable throwing accessor | undefined |
+| `args.caller` with unmodified Object.prototype | TypeError | undefined |
+| `Reflect.ownKeys(args)` | includes caller | omits caller |
+
+This distinguishes even a zero-formal function with one instruction at entry:
+`function snapshot() { return arguments; }`. For `this.params = arguments`, a
+caller can directly inspect `instance.params`; passing the object to arbitrary
+code also exposes the difference. Strictness, no shadowing, unchanged parameter
+slots and one allocation do not make those observations unreachable.
+
+The minimal independent source and its real es2abc output/disassembly are in
+`build/review/o32-groups23/arguments.{js,abc,pa}`. The SDK emits
+`getunmappedargs` for both `snapshot` and `save`. The ABC SHA-256 is
+`63b67ccc63e3b512708d6afeaba809821c734c11a0f42c30102cd4a33863a5c0`;
+`node-arguments.json` records the ordinary-JS observations. No Ark execution is
+claimed. Fresh decoding also confirms both target methods 52655/53795 take the
+snapshot at PC6 after frame copies; no parameter overwrite is needed for this
+counterexample.
+
+Reproduction from the repository root (SDK identities are in
+`build/review/o32-groups23/sdk-sha256.txt`):
+
+```sh
+/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc --module --merge-abc --opt-level=0 --output=build/review/o32-groups23/arguments.abc build/review/o32-groups23/arguments.js
+/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm build/review/o32-groups23/arguments.abc build/review/o32-groups23/arguments.pa
+node build/review/o32-groups23/probe.mjs
+```
+
+Thus Ark recompilation and standard-JS equivalence must remain separate oracle
+layers. Publishing plain native `arguments` for an escaping object needs either
+explicit acceptance of this exact reflection/throwing-access difference, or an
+independent closed-use proof excluding every such observation. The existing
+explicit exact host factory remains a premise-free embedding option; it must
+not be fabricated. No new contract predicate or recovery admission is added.
+
+Per this round's explicit stop condition, implementation is paused at this
+evidence boundary; group B is not started. No production or test behavior
+changes, no claimed completion or new build/cohort acceptance run.
+
 GETUNMAPPEDARGS belongs to group 1. This document specifies its remaining common
 pipeline work; it is not a source-completion receipt. Reference identities are
 the pinned v7 lock, not the host JavaScript engine.

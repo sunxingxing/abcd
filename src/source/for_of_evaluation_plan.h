@@ -22,6 +22,9 @@ struct ForOfEvaluationPlan {
   ForOfEvents events;
   std::vector<std::optional<ForOfMember>> operations, values;
   std::vector<ForOfUseDisposition> uses;
+  // Ordinary source binding aliases, separately indexed from private protocol
+  // values. Their storage survives a body evaluation, not the whole invocation.
+  std::vector<std::optional<IteratorProtocolId>> bindings;
   std::size_t allocated_bytes=0;
   std::uint64_t work=0;
 };

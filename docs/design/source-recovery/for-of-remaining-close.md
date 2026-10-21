@@ -1,5 +1,7 @@
 # Remaining o32 iterator closes: nested entry boundary checkpoint
 
+Latest: [Group B continuation](#group-b-continuation-async-body--synchronous-iterator-2026-10-21) completes23058; the older checkpoint below records baseline92e4bfcb.
+
 Baseline: `92e4bfcb`. This is a **partial implementation**, not completion of the
 three-record round. No new source-language premise or publication is introduced.
 Paired source remains evaluation-only.
@@ -113,3 +115,137 @@ The verifier's exact work limit and limit-1 are checked separately. Full80-job
 resource measurement uses four concurrent engines: maximum child40,337,408
 bytes plus runner21,643,264 gives a conservative182,992,896-byte bound.
 All logs and the generated target table are under build/review/for-of-remaining/.
+
+## Group B continuation: async body / synchronous iterator (2026-10-21)
+
+Baseline `7c4c6912`, HEAD `07c6c665`. **This checkpoint completes 23058 only;
+42397 and 46008 remain incomplete.** Group A is not part of this change.
+
+### Original evidence and correspondence
+
+m23306 acquires the synchronous iterator at PC29, reads/caches `next` at35,
+calls it at46, checks the result object at51, and branches on `done` at63.
+The success edge reads `value` at68. Copies retain this value as the receiver
+for the named member call at96 (`specStart`), followed by the original await99.
+A rejection reaches the original body handler131, then the guarded close read
+149. Normalization maps await99 to working96 and close149 to working125.
+
+The close relation used ordinary raw opcode effects on that normalized body,
+while ExceptionFlow used the verified native-await effects. Its PC99/96
+correspondence refusal was therefore real, not an iterator-priority gap.
+ExceptionFlow now retains the owner-proven AwaitSites with its memory/work
+charge. Both completion_relation and close_boundary replay the same semantic
+lifter. RawEventGraph accepts a generic semantic owner, without depending on
+AwaitRegion or changing ordinary/await-catch query order. The async owner remains
+PhasedBody's fresh completion proof; this adapter supplies no new premise.
+Unused, malformed or duplicate normalization sites refuse. Rejection bypasses
+normal Commit and retains the original Catch dispatch.
+
+The next refusal was the method-call receiver. Successful iteration-value
+copies already have independent ForOfKeyDefinition/commit evidence, but the
+call checker could not see that native binding identity. A prepaid ValueId
+index now records these ordinary binding aliases separately from private
+iterator/next/result values. Its lifetime is `kIteration`, never invocation;
+phase-corridor fusion cannot extend it across an iteration/handler boundary.
+The operand verifier checks the actual target symbol, and recovery reconstructs
+the index from the original success-edge commits. No fabricated expression,
+source temporary, initialized cell or source-scope assumption is introduced.
+
+The record publishes all six async event methods; for example:
+
+```js
+async specStart() {
+  let $key2;
+  for ($key2 of this.eventMonitors) {
+    await $key2["specStart"]();
+    continue;
+  }
+}
+```
+
+The independent packaged source, used only for evaluation, says:
+
+```js
+async specStart() {
+  for (const monitor of this.eventMonitors) {
+    await monitor['specStart']();
+  }
+}
+```
+
+All six changed async bodies have the same checked correspondence; the
+emitted body starts with `let $key2;`:
+
+| Method | Original body (evaluation only) | Emitted loop |
+| --- | --- | --- |
+| `SpecEvent.specStart` | `for (const monitor of this.eventMonitors) { await monitor['specStart'](); }` | `for ($key2 of this.eventMonitors) { await $key2["specStart"](); continue; }` |
+| `SpecEvent.specDone` | `for (const monitor of this.eventMonitors) { await monitor['specDone'](); }` | `for ($key2 of this.eventMonitors) { await $key2["specDone"](); continue; }` |
+| `SuiteEvent.suiteStart` | `for (const monitor of this.eventMonitors) { await monitor['suiteStart'](); }` | `for ($key2 of this.eventMonitors) { await $key2["suiteStart"](); continue; }` |
+| `SuiteEvent.suiteDone` | `for (const monitor of this.eventMonitors) { await monitor['suiteDone'](); }` | `for ($key2 of this.eventMonitors) { await $key2["suiteDone"](); continue; }` |
+| `TaskEvent.taskStart` | `for (const monitor of this.eventMonitors) { await monitor['taskStart'](); }` | `for ($key2 of this.eventMonitors) { await $key2["taskStart"](); continue; }` |
+| `TaskEvent.taskDone` | `for (const monitor of this.eventMonitors) { await monitor['taskDone'](); }` | `for ($key2 of this.eventMonitors) { await $key2["taskDone"](); continue; }` |
+
+The existing assignment-form key proof establishes that this noncaptured
+binding needs no source per-iteration lexical environment. The engine input
+remains ABC only.
+
+### Remaining cases are not admitted
+
+- **42397:** separate entry/priority certificates pass. The retained production
+  boundary still refuses the inner private register27 live-out at753, outer
+  body-wrapper ownership, and current-completion dispatch. An experimental
+  dead-copy/forest composition reached recovery, exposing an additional route:
+  outer return-close failure (705/721, rethrown746) can enter the already-closed
+  inner handler760, then the outer handler823. A parent-only target rule is
+  incorrect. A future certificate must prove the closed-state bypass, unchanged
+  exception payload, absence of another observable close and final destination
+  for each original exception edge. The experimental admission is **not** in
+  production; scratch evidence is under `build/review/o32-groupb/`.
+- **46008:** the second loop's PC717 guard dispatches through H874's environment
+  pop and rethrow875 to H880. A pop is not an inert forwarding operation. Its
+  environment allocation/parent identity and native per-iteration block exit
+  must be matched jointly. Routing evidence alone does not establish a fresh
+  captured source binding. The existing `kBodyDispatch` refusal stays.
+
+Neither remaining blocker needs a new language premise. Their scope/completion
+proofs are unfinished; the round's three-record completion goal is not met.
+
+### Evidence
+
+The new `for_of_composition` SDK fixture and the extended user-try differential
+check ordinary values, exception identity/type, iterator `return` order,
+receiver identity and microtasks. Mutation tests cover stale/missing/duplicate
+normalization, wrong binding ownership, callee/receiver swaps, missing exception
+ports and the existing iteration mutations, with 200/201/400/800 scaling and
+exact budget boundaries.
+
+SDK comparison uses `grouping_bytecode.py`'s strict assembly helpers, preserving
+every difference. At default optimization both methods and the whole fixture
+are byte-identical. O0 preserves acquisition/next/return/object-check counts,
+and the recompiled close/evaluation certificate verifies, but raw assembly
+is **not identical**: the engine's assignment-form key and retained result use
+separate scalar slots, so declaration initialization, register copies, the
+explicit continue and resulting branch labels differ. No register/handler
+normalization is applied. The default-optimized body is byte-identical, but the
+standalone async owner still refuses that optimized shape (`kAwait`); this is
+not counted as an independent default re-import proof.
+
+
+Final checks: full build succeeds; serial source-regression **65/65**; focused
+raw/close/evaluation/draft/async tests **13/13**; publication refresh **4/4**.
+Requested sweep **227/233**. Its six remaining failures are documented existing
+failures: family_source_cli, tree_structure, try_tree, class_tree_source,
+try_tree_source and async_semantics. The obsolete async refusal assertions in
+for_of_user_try, for_of_multiple and async_failure are replaced by publication
+and differentials, not by optional/skipped assertions. Differential cases per
+script are **60 / 865 / 756 / 360**, including all six actual event methods.
+
+Against wtbase7c4c6912, both40-input cohorts have zero regressions and no text
+changes to previously complete records. Source **601→602/620**; previous flags
+**541→541/620**. Full manifest-record comparison changes only o32/23058 under
+source, and no records under previous flags. The helper also reports387 skipped
+records, which are outside the620 denominator. Node checks the new record and
+all newly publishing fixtures. Maximum CLI OS peak RSS across80 runs is
+**44,269,568 bytes**; four CLI processes plus their wrappers have a conservative
+**246,546,432-byte** bound. Logs, exact SDK diffs, cohort comparisons and the
+unpublished experimental routes are under `build/review/o32-groupb/`.

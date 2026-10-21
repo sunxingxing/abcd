@@ -1,6 +1,7 @@
 // Engine publication and independent source oracle. Fixture source never enters
 // the engine. The raw close certificate/recovery mutations are separate tests.
 import assert from 'node:assert/strict';
+import {traceAsyncForOf} from '../support/for_of_async_oracle.mjs';
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -85,9 +86,20 @@ try {
   for(const values of [[],[3],[3,8]])for(const mode of ['normal','break','return'])for(const outcome of outcomes)for(const at of [0,1,2]) {
     assert.deepEqual(run(caughtActual,values,mode,outcome,at),run(caughtExpected,values,mode,outcome,at),`catch/${values}/${mode}/${outcome}/${at}`);++cases;
   }
+  const asyncOut=join(root,'async');
+  execFileSync(engine,[join(fixtures,'async.abc'),asyncOut,'--value-source','--language-source']);
+  const asyncRecord=JSON.parse(readFileSync(join(asyncOut,'manifest.json'))).records.find(r=>r.source_status!==2);
+  assert.equal(asyncRecord.source_status,0,JSON.stringify(asyncRecord.source_failure));
+  const asyncFile=join(asyncOut,asyncRecord.source);execFileSync(process.execPath,['--check',asyncFile]);
+  const asyncActual=(await import(pathToFileURL(asyncFile))).scan;
+  const asyncExpected=(await import('data:text/javascript;base64,'+Buffer.from(readFileSync(join(fixtures,'async.js'))).toString('base64'))).scan;
+  for(const values of [[],[3],[3,8]])for(const mode of ['normal','break','return'])
+    for(const outcome of outcomes)for(const at of [0,1,2])for(const rejected of [false,true]) {
+      assert.deepEqual(await traceAsyncForOf(asyncActual,values,mode,outcome,at,rejected),await traceAsyncForOf(asyncExpected,values,mode,outcome,at,rejected),`async/${values}/${mode}/${outcome}/${at}/${rejected}`);++cases;
+    }
   // The remaining admission limits are asserted, not counted as semantic passes.
   const gaps = {};
-  for (const name of ['liveout', 'labelled', 'async', 'nested']) {
+  for (const name of ['liveout', 'labelled', 'nested']) {
     const dest = join(root, name);
     execFileSync(engine, [join(fixtures, name + '.abc'), dest, '--value-source', '--language-source']);
     const record = JSON.parse(readFileSync(join(dest, 'manifest.json'))).records.find(r => r.source_status !== 2);
@@ -99,5 +111,5 @@ try {
         c.domain === 'abcd::source::ExceptionControlError' && c.value === 4), name);
     gaps[name] = record.source_failure.causes;
   }
-  console.log(JSON.stringify({published: 2, differential_cases: cases, refused: gaps}));
+  console.log(JSON.stringify({published: 3, differential_cases: cases, refused: gaps}));
 } finally { rmSync(root, {recursive: true, force: true}); }

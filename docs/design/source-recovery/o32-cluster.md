@@ -1,5 +1,35 @@
 # o32 cluster: fresh bytecode census
 
+## Group B continuation: one completion, two gates retained (2026-10-21)
+
+| Record | Before | Current result |
+| --- | --- | --- |
+| 23058 / m23306 | `kMultipleExits` at149 (working125), underlying raw await correspondence99/96 | **Complete**, including the other five async event methods. |
+| 42397 / m42717 | `kMultipleExits` at633; nested ownership/private live-out | Unchanged. The attempted projection exposed a further already-closed handler route and was not admitted. |
+| 46008 / m47128 | `kMultipleExits` at398; second acquisition's cleanup dispatch717 | Unchanged. Requires joint environment-pop/native iteration-scope correspondence. |
+
+The implementation and exact remaining obligations are in
+[for-of-remaining-close.md](for-of-remaining-close.md#group-b-continuation-async-body--synchronous-iterator-2026-10-21).
+No group-A code changed. Neither remaining B case needs a new premise, but the
+three-record completion request is **not fully implemented** at this checkpoint.
+Cohort results against wtbase7c4c6912: **602/620** source (was601), **541/620**
+previous flags; zero regressions and zero changed text in previously complete
+records. The sole new complete record is `o32/23058`.
+
+
+### Groups 2 + 3 checkpoint (2026-10-21)
+
+The proposed entry-time native-arguments proof reaches the explicit stop
+condition in group A: pinned v7 objects have an own non-configurable throwing
+`caller` accessor, absent from standard strict `arguments`. This remains
+observable when `this.params` or an arbitrary call exposes the object, even
+without parameter writes or repeated allocations. Fresh target decoding, SDK
+compilation/disassembly and a Node probe are recorded in
+[argument-snapshots.md](argument-snapshots.md#entry-time-native-arguments-checkpoint-2026-10-21).
+Plain `arguments` recompiles to the same Ark instruction, but that is not proof
+of standard-JS descriptor equivalence. No new premise is assumed. No production
+change in group A. The boundary applies only to A; the B continuation is above.
+
 Baseline `f497690f`; the prompt enumerates eleven records. Evidence is the
 production V5 export of the cohort's input 32, raw decoded methods, the SDK
 disassembly, and standalone close probes, under `build/review/o32-cluster/`.

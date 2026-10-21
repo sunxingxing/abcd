@@ -35,7 +35,7 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
   if(!f.original||!f.original->iterations)return;
   const auto& raw=*f.original;const auto& native=*raw.iterations;
   Need(native.view.close_blocks.size()==raw.blocks.size()&&raw.phases.size()==raw.blocks.size()&&native.operations.size()==raw.operations.size()&&native.values.size()==raw.values.size()&&native.loops.size()==native.statements.size()&&native.view.loops.size()==native.loops.size());
-  Need(raw.canonical_values.size()==raw.values.size()&&native.bindings.size()==native.loops.size()&&native.close_members.size()==raw.phases.size());
+  Need(raw.canonical_values.size()==raw.values.size()&&native.bindings.size()==native.loops.size()&&native.close_members.size()==raw.phases.size()&&native.binding_values.size()==raw.values.size());
   RecoveryScratch scratch(budget);
   std::pmr::vector<std::optional<std::uint32_t>> events(raw.operations.size(),{},&scratch),exits(raw.operations.size(),{},&scratch);
   std::pmr::vector<std::optional<IteratorProtocolId>> handlers(raw.blocks.size(),{},&scratch);
@@ -143,9 +143,12 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
     }
   }
   std::pmr::vector<std::uint8_t> commits(raw.operations.size(),0,&scratch),roots(native.loops.size(),0,&scratch);
+  std::pmr::vector<std::optional<IteratorProtocolId>> binding_values(raw.values.size(),{},&scratch);
   for(const auto& commit:native.events.commits){
     budget.Step();const auto& d=commit.definition;Need(d.protocol.value<native.loops.size()&&d.operation.value<raw.operations.size()&&d.value.value<raw.values.size()&&d.value.value<native.input_values.size());
     Need(!commits[d.operation.value]);commits[d.operation.value]=1;
+    Need(!binding_values[d.value.value] || binding_values[d.value.value]==d.protocol);
+    binding_values[d.value.value]=d.protocol;
     const auto& loop=native.loops[d.protocol.value];const auto& op=raw.operations[d.operation.value];
     const auto* result=std::get_if<OpResult>(&raw.values[d.value.value].origin);
     Need(op.result==d.value&&result&&result->op==d.operation&&result->commit==commit.commit&&commit.commit.value<raw.phases.size());
@@ -158,6 +161,7 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
     f.original_phases[commit.commit.value]=FlowIterationPhase{d.protocol,commit.commit,FlowIterationPhaseKind::kBindingCommit};
   }
   for(const auto root:roots){budget.Step();Need(root);}
+  for(std::size_t v=0;v<binding_values.size();++v){budget.Step();Need(binding_values[v]==native.binding_values[v]);}
   for(const auto& phi:native.phis){budget.Step();Need(phi.protocol.value<native.loops.size()&&phi.phi.value<raw.values.size()&&phi.input.value<raw.uses.size()&&phi.edge.value<raw.edges.size());
     const auto& use=raw.uses[phi.input.value];Need(use.life==ValueLife::kLive&&std::get_if<ValueId>(&use.owner)&&std::get<ValueId>(use.owner)==phi.phi&&std::get_if<ValueId>(&use.operand)&&std::get<ValueId>(use.operand)==phi.value&&use.incoming&&std::get_if<EdgeId>(&*use.incoming)&&std::get<EdgeId>(*use.incoming)==phi.edge);
   }

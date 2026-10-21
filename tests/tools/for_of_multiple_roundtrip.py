@@ -33,6 +33,8 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--temporary", action="store_true")
     parser.add_argument("--fixture", default="multi")
+    parser.add_argument("--export", default="scan")
+    parser.add_argument("--async", dest="asynchronous", action="store_true")
     args = parser.parse_args()
     if args.temporary:
         args.output.mkdir(parents=True, exist_ok=True)
@@ -116,10 +118,10 @@ writeFileSync(file,source);console.log(edits.length);
                             str(metadata)], check=True, capture_output=True)
             records = json.loads((metadata / "manifest.json").read_text())["records"]
             infos = [json.loads((metadata / r["metadata"]).read_text()) for r in records]
-            method = next(m for r in infos for m in r.get("methods", []) if m["runtime_name"] == "scan")
+            method = next(m for r in infos for m in r.get("methods", []) if m["runtime_name"] == args.export)
             probe = Path(args.engine).resolve().parent / "close_completion_probe"
             proved = subprocess.run([str(probe), str(folder / ("emitted-"+mode) / "input.abc"),
-                                     str(method["entity"]), "--evaluation"], check=True,
+                                     str(method["entity"]), "--evaluation", *(["--async"] if args.asynchronous else [])], check=True,
                                     capture_output=True, text=True)
             (folder / (mode+"-proof.txt")).write_text(proved.stdout)
             row["bytecode"][mode]["recompiled_protocol_verified"] = "evaluation-verified" in proved.stdout
@@ -137,8 +139,11 @@ writeFileSync(file,source);console.log(edits.length);
                     "object_check": len(re.findall(r"(?m)^\tthrow.ifnotobject ", texts[side])),
                     "receiver_call": len(re.findall(r"(?m)^\tcallthis0 ", texts[side]))}
             assert features["original"] == features["emitted"], features
-            assert features["emitted"]["acquire"] == 1 and features["emitted"]["return_read"] == 3
+            assert features["emitted"]["acquire"] == 1 and features["emitted"]["return_read"] == (1 if args.asynchronous else 3)
             row["bytecode"][mode]["instruction_features"] = features
+            if args.asynchronous:
+                assert row["bytecode"][mode]["equal"] or row["bytecode"][mode]["recompiled_protocol_verified"], row["bytecode"][mode]
+
         report["records"].append(row)
     (args.output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({"recompiled": len(report["records"]) * 2,

@@ -21,6 +21,8 @@
 #include "../../../src/source/exception_control.h"
 #include "../../../src/source/exception_topology.h"
 #include "abcd/source/async_completion.h"
+#include "abcd/analysis/raw_event_graph.h"
+#include "../../../src/analysis/normalized_raw_semantics.h"
 #include "abcd/analysis/exception_locals.h"
 #include "abcd/analysis/exception_captures.h"
 #include "abcd/analysis/exception_modules.h"
@@ -62,17 +64,27 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     const auto frame=Take<abc::FrameLayout>(abc::BuildFrameLayout(method->code->registers+shift,method->code->arguments,abc::DecodeCallFlags(call.value)),"frame");
     auto body=Take<abc::MethodBody>(abc::DecodeMethodBody(*file,header.profile,*method->code),"body");
     if(shift)for(auto& i:body.instructions)for(auto& o:std::span(i.decoded.operands).first(i.decoded.operand_count))if(o.kind==abc::OperandKind::kRegister){test::Check(o.raw_bits+shift<(std::uint64_t{1}<<o.width_bits));o.raw_bits+=shift;}
+    std::vector<abc::CodeOffset> origins;std::vector<AwaitSite> awaits;
+#ifdef ABCD_TEST_FOR_OF_ASYNC
+    // Exercise layout variation in the graph being certified, after the
+    // independent owner proves/removes its private resume protocol.
+    if(split)body=Take<abc::MethodBody>(ProveAsyncCompletion(body,frame,SemanticBudget{}.bytes,&origins,&awaits,header.profile,ResourceFailureScope::kExcluded),"async");
+#endif
     if(split){
       std::map<std::uint32_t,std::uint32_t> positions;std::uint32_t end=0;
       for(const auto& i:body.instructions){positions[i.offset.value]=end;end+=i.decoded.size+1;}
       const auto old_end=body.instructions.back().offset.value+body.instructions.back().decoded.size;positions[old_end]=end;
       auto nop=test::Body({0xd5}).instructions.front();std::vector<abc::BodyInstruction> changed;
-      for(auto i:body.instructions){const auto at=positions.at(i.offset.value);nop.offset={at};changed.push_back(nop);i.offset={at+1};if(i.branch_target){i.branch_target=abc::CodeOffset{positions.at(i.branch_target->value)};if(i.decoded.branch_delta)i.decoded.branch_delta=std::int64_t{i.branch_target->value}-i.offset.value;}changed.push_back(i);}
+      std::vector<abc::CodeOffset> mapped_origins;std::size_t original_index=0;
+      for(auto i:body.instructions){
+        if(!origins.empty()){mapped_origins.push_back(origins[original_index]);mapped_origins.push_back(origins[original_index++]);}
+        const auto at=positions.at(i.offset.value);nop.offset={at};changed.push_back(nop);i.offset={at+1};if(i.branch_target){i.branch_target=abc::CodeOffset{positions.at(i.branch_target->value)};if(i.decoded.branch_delta)i.decoded.branch_delta=std::int64_t{i.branch_target->value}-i.offset.value;}changed.push_back(i);}
       for(auto& r:body.tries){const auto first=positions.at(r.offset.value),last=positions.at(r.offset.value+r.length);r.offset={first};r.length=last-first;}
       for(auto& h:body.handlers){if(h.length)h.length=positions.at(h.offset.value+h.length)-positions.at(h.offset.value);h.offset={positions.at(h.offset.value)};}
+      for(auto& site:awaits){site.pc={positions.at(site.pc.value)+1};site.mode_pc={positions.at(site.mode_pc.value)+1};}
+      if(!origins.empty())origins=std::move(mapped_origins);
       body.instructions=std::move(changed);
     }
-    std::vector<abc::CodeOffset> origins;std::vector<AwaitSite> awaits;
     if(padding) {
       const auto nop=test::Body({0xd5}).instructions.front();
       for(auto& i:body.instructions){i.offset.value+=padding;if(i.branch_target)i.branch_target->value+=padding;}
@@ -81,6 +93,9 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
       body.instructions.insert(body.instructions.begin(),padding,nop);
       for(unsigned i=0;i<padding;++i)body.instructions[i].offset={i};
     }
+#ifdef ABCD_TEST_FOR_OF_ASYNC
+    if(!split)body=Take<abc::MethodBody>(ProveAsyncCompletion(body,frame,SemanticBudget{}.bytes,&origins,&awaits,header.profile,ResourceFailureScope::kExcluded),"async");
+#endif
     auto flow=Take<ExceptionFlow>(BuildExceptionFlow(body,header.profile,frame.registers,{},awaits,&frame),"flow");
     for(std::size_t i=0;i<origins.size();++i)flow.instructions[i].origin=origins[i];
     IdfQuota quota{kDefaultSemanticWork};
@@ -120,10 +135,31 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     }
     auto proof=Take<ExceptionInputProof>(std::move(checked),"inputs");
     PhasedValueInput input{flow,ssa,env,values,proof,frame};
+#ifdef ABCD_TEST_FOR_OF_ASYNC
+    test::Check(!flow.awaits.empty());
+    const auto stale=[&](ExceptionFlow changed) {
+      RawEventArena arena({});RawEventGraph raw(body,arena);
+      const auto dispatch=raw.Select(header.profile);raw.Allocate();
+      bool refused=false;
+      try {analysis::detail::NormalizedRawSemantics semantics(header.profile,frame.registers,changed.awaits);raw.Connect(dispatch,header.profile,frame.registers,nullptr,&semantics);(void)raw.Nodes();}
+      catch(const RawEventFailure& f){refused=f.kind==RawEventError::kCorrespondence;}
+      test::Check(refused);
+    };
+    auto moved=flow;moved.awaits[0].pc.value+=1;stale(std::move(moved));
+    auto mode=flow;mode.awaits[0].mode_pc.value+=1;stale(std::move(mode));
+    auto duplicate=flow;duplicate.awaits.push_back(duplicate.awaits.front());stale(std::move(duplicate));
+#endif
+
     auto graph=Take<ValueProgram>(ImportPhasedValues(input),"import");
     auto plan=Take<ExceptionPlan>(BuildExceptionPlan(body,graph,input),"plan");
     auto keys=Take<IteratorKeys>(ResolveIteratorKeys({*file,header,index},method->offset,graph),"keys");
     auto scan=Take<IteratorProtocolScan>(ScanIteratorProtocols(graph,input,plan,keys),"scan");
+#ifdef ABCD_TEST_FOR_OF_ASYNC
+    auto unowned=flow;unowned.awaits.clear();
+    const PhasedValueInput missing{unowned,ssa,env,values,proof,frame};
+    test::Check(std::holds_alternative<CloseEntryFailure>(DeriveCloseEntries(body,header.profile,graph,missing,plan,keys,scan)));
+#endif
+
     auto summary=Take<CloseCompletionSummary>(AnalyzeCloseCompletion(body,header.profile,graph,input,plan,keys,scan,{},SourceContract::kLanguageSourceV4),"summary");
     const auto seal=[&](CloseCompletionSummary value,SourceContract contract=SourceContract::kLanguageSourceV4) {
       return VerifyProtocolRegionOwnership(body,header.profile,graph,input,plan,keys,scan,std::move(value),{},contract);
@@ -327,6 +363,10 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     const auto located = VerifyForOfEvaluation(graph,nullptr,evaluation,{0,location_work});
     test::Check(std::get<EvaluationFailure>(located).evaluation == context_failure);
     test::Check(std::get<EvaluationFailure>(VerifyForOfEvaluation(graph,nullptr,evaluation,{0,location_work-1})).kind == EvaluationError::kWorkLimit);
+    auto wrong_binding=evaluation;
+    const auto bound=std::find_if(wrong_binding.for_of->bindings.begin(),wrong_binding.for_of->bindings.end(),[](const auto& b){return b.has_value();});
+    test::Check(bound!=wrong_binding.for_of->bindings.end());bound->reset();
+    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph,wrong_binding,{},&source)));
     auto missing_plan = evaluation; missing_plan.for_of.reset();
     const auto absent = VerifyPhasedEvaluationPlan(graph,missing_plan,{},&source);
     test::Check(std::get<EvaluationFailure>(absent).evaluation.protocol_context == ProtocolContextCheck::kMissingPlan);
@@ -458,6 +498,9 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     };
     auto recovered=Take<RecoveryFlow>(recover(*sem.flow.original),"joint-recovery");
     const auto statement=sem.flow.original->iterations->statements[0];
+    auto wrong_alias=*sem.flow.original;
+    wrong_alias.iterations->binding_values[protocol.loops[0].key.value].reset();
+    test::Check(std::holds_alternative<TreeStructureError>(recover(wrong_alias)));
     auto bad_flow=recovered;
     for(auto& edge:bad_flow.edges)if(edge.from==bad_flow.iterations[statement.value]->done && edge.completion==FlowCompletion::kTaken){edge.to=bad_flow.iterations[statement.value]->write;break;}
     const auto reject_flow=[&](RecoveryFlow& proposal){try{TreeCheckBudget budget({});VerifyForOfRecovery(draft.tree,proposal,budget);test::Check(false);}catch(TreeStructureError error){test::Check(error==TreeStructureError::kOwnership);}};

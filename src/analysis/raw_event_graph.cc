@@ -56,7 +56,7 @@ void RawEventGraph::Add(RawEventNode& node, std::uint32_t target) {
   node.next[node.count++] = target;
 }
 void RawEventGraph::Connect(const ExceptionDispatch& dispatch, abc::ProfileId profile,
-    std::uint64_t frame, const RawEventExtension* extension) {
+    std::uint64_t frame, const RawEventExtension* extension, RawEventSemantics* semantics) {
   const auto count = body_.instructions.size();
   // This is a one-shot builder; a partially failed graph is never consumable.
   if (state_ != State::kAllocated || nodes_.size() != count * kPhases) Fail(RawEventError::kCorrespondence);
@@ -71,7 +71,9 @@ void RawEventGraph::Connect(const ExceptionDispatch& dispatch, abc::ProfileId pr
     caught.registers.write = Accumulator{};
     Add(caught, static_cast<std::uint32_t>(i * kPhases));
     nodes_[i * kPhases + 3].phase = RawEventPhase::kCallerExit;
-    const auto lifted = LiftSemanticInstruction(site, profile, frame);
+    const auto lifted = semantics ? semantics->Lift(site) : LiftSemanticInstruction(site, profile, frame);
+    if(semantics)if(const auto* failure=std::get_if<SemanticFailure>(&lifted);
+        failure && failure->kind==SemanticError::kMalformedInstruction)Fail(RawEventError::kCorrespondence);
     auto exceptional = ExceptionalCompletion::kImpossible;
     if (const auto* semantic = std::get_if<SemanticInstruction>(&lifted)) {
       before.registers = semantic->effects.normal_registers;
@@ -113,6 +115,7 @@ void RawEventGraph::Connect(const ExceptionDispatch& dispatch, abc::ProfileId pr
         break;
     }
   }
+  if (semantics && !semantics->Complete()) Fail(RawEventError::kCorrespondence);
   state_ = State::kReady;
 }
 }  // namespace abcd::analysis

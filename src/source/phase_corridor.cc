@@ -321,7 +321,7 @@ std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, 
     const auto input = ResolveEvaluationOperand(plan_, graph_.uses[child.first_use.value].operand);
     if (const auto* value = std::get_if<ValueId>(&input)) {
       const auto lifetime = RetainedEvaluationLifetime(graph_, plan_, *value);
-      if (!lifetime || *lifetime == EvaluationStorageLifetime::kHandler) return std::nullopt;
+      if (!lifetime || *lifetime != EvaluationStorageLifetime::kInvocation) return std::nullopt;
     }
   }
   return false;

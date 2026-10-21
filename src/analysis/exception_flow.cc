@@ -38,6 +38,8 @@ ExceptionFlowResult BuildExceptionFlow(const abc::MethodBody& body,
   const auto dispatch_bytes = dispatch.spans.capacity() * sizeof(DispatchSpan);
   if (dispatch_bytes > available) return Resource();
   available -= dispatch_bytes;
+  if (awaits.size() > available / sizeof(AwaitSite)) return Resource();
+  available -= awaits.size() * sizeof(AwaitSite);
   const auto count = body.instructions.size();
   const auto catches = std::min(count, body.handlers.size());
   constexpr auto kNodeLimit = std::numeric_limits<std::uint32_t>::max();
@@ -56,6 +58,9 @@ ExceptionFlowResult BuildExceptionFlow(const abc::MethodBody& body,
       work -= units;
     };
     ExceptionFlow result;
+    result.awaits.assign(awaits.begin(), awaits.end());
+    if (result.awaits.capacity() > awaits.size()) return Resource();
+    charge(awaits.size());
     if (frame) result.frame = *frame;
     result.nodes.reserve(node_limit);
     result.instructions.reserve(count);
@@ -129,7 +134,8 @@ ExceptionFlowResult BuildExceptionFlow(const abc::MethodBody& body,
       }
     }
     result.allocated_bytes = result.nodes.capacity() * sizeof(ExceptionNode) +
-        result.instructions.capacity() * sizeof(SemanticInstruction);
+        result.instructions.capacity() * sizeof(SemanticInstruction) +
+        result.awaits.capacity() * sizeof(AwaitSite);
     result.work_units = budget.graph_work - work;
     return result;
   } catch (const WorkLimit&) {

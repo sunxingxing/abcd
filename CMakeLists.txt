@@ -798,6 +798,9 @@ if(BUILD_TESTING)
       "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc")
   endif()
   if(ABCD_NODE_EXECUTABLE)
+    add_test(NAME for_of_composition_source_test COMMAND "${ABCD_NODE_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_composition.mjs" $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_composition")
     add_test(NAME for_of_user_try_source_test COMMAND "${ABCD_NODE_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/for_of_user_try.mjs"
       $<TARGET_FILE:abc_structure> "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_user_try")
@@ -839,6 +842,16 @@ if(BUILD_TESTING)
   target_include_directories(for_of_evaluation_test PRIVATE tests/support)
   add_test(NAME for_of_evaluation_test COMMAND for_of_evaluation_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc")
+  add_executable(for_of_async_evaluation_test tests/unit/source/for_of_iteration_test.cc)
+  target_compile_definitions(for_of_async_evaluation_test PRIVATE ABCD_TEST_FOR_OF_EVALUATION=1 ABCD_TEST_FOR_OF_ASYNC=1)
+  target_link_libraries(for_of_async_evaluation_test PRIVATE abcd_source abcd_json)
+  target_include_directories(for_of_async_evaluation_test PRIVATE tests/support)
+  add_test(NAME for_of_async_evaluation_test COMMAND for_of_async_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_composition/async.abc" 392)
+  add_test(NAME for_of_async_scale_test COMMAND for_of_async_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_composition/async.abc" 392 --scale)
+  add_test(NAME for_of_async_variants_test COMMAND for_of_async_evaluation_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_composition/async.abc" 392 --variants)
   add_executable(for_of_iteration_test tests/unit/source/for_of_iteration_test.cc)
   target_link_libraries(for_of_iteration_test PRIVATE abcd_source abcd_json)
   target_include_directories(for_of_iteration_test PRIVATE tests/support)
@@ -1181,6 +1194,11 @@ if(BUILD_TESTING)
       $<TARGET_FILE:abc_structure>
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures"
       "${CMAKE_CURRENT_BINARY_DIR}/staged-field-roundtrip" --temporary)
+    add_test(NAME for_of_async_roundtrip_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/for_of_multiple_roundtrip.py"
+      $<TARGET_FILE:abc_structure>
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/for_of_composition"
+      "${CMAKE_CURRENT_BINARY_DIR}/for-of-async-roundtrip" --temporary --fixture async --export collect --async)
     add_test(NAME for_of_user_try_roundtrip_test COMMAND ${Python3_EXECUTABLE}
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/for_of_multiple_roundtrip.py"
       $<TARGET_FILE:abc_structure>

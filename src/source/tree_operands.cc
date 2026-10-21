@@ -1030,7 +1030,8 @@ class OperandCheck {
       const auto& definition = graph_.values[id->value];
       if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin)) {
         const auto& base = evaluation_.operations[producer->op.value];
-        RequireMeaning(((base.kind == EvaluationKind::kRoot || base.kind == EvaluationKind::kPredicateSnapshot) &&
+        RequireMeaning((evaluation_.for_of && evaluation_.for_of->bindings[id->value]) ||
+            ((base.kind == EvaluationKind::kRoot || base.kind == EvaluationKind::kPredicateSnapshot) &&
                 (flow_.snapshots[producer->op.value].has_value() || flow_.receivers[producer->op.value] != ReceiverValue::kNone)) ||
             ((base.kind == EvaluationKind::kInline || base.kind == EvaluationKind::kNestedLiteral) && base.consumer == property.first_use), Error::kOperand);
       } else if (std::holds_alternative<analysis::PhiDefinition>(definition.origin))
@@ -1114,8 +1115,9 @@ class OperandCheck {
       }
       return;
     }
-    if(const auto* value=std::get_if<analysis::ValueId>(&resolved);value && original_.iterations && original_.iterations->values[value->value]) {
-      auto& native=*original_.iterations;const auto member=*native.values[value->value];
+    if(const auto* value=std::get_if<analysis::ValueId>(&resolved);value && original_.iterations && (original_.iterations->values[value->value] || original_.iterations->binding_values[value->value])) {
+      auto& native=*original_.iterations;const auto member=native.binding_values[value->value]
+          ? ForOfMember{*native.binding_values[value->value],ForOfRole::kValue} : *native.values[value->value];
       RequireMeaning(member.role==ForOfRole::kValue && member.protocol.value<native.statements.size(),Error::kOperand);
       const auto& syntax=std::get<ForOfStmt>(tree_.statements[native.statements[member.protocol.value].value].statement);
       RequireMeaning(Node<SymbolExpr>(expression).symbol==syntax.target,Error::kOperand);LeafOrigin(expression);

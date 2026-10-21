@@ -9,6 +9,67 @@
 
 
 
+
+## o32 Group B: async loop completion; nested/sequential still gated (2026-10-21)
+
+- Baseline wtbase **7c4c6912**, HEAD **07c6c665**. **Partial round: o32/23058
+  completes; o32/42397 and46008 do not.** Group A code remains untouched.
+- ExceptionFlow retains charged owner-proven AwaitSites. A generic raw-event
+  semantic owner replays the same native-await effects in completion_relation
+  and close_boundary; unused/malformed sites refuse. RawEventGraph remains
+  independent of AwaitRegion and the Round78 fast/query order is unchanged.
+- Verified success-edge iteration bindings have a prepaid ValueId alias index,
+  separate from private protocol values. Their lifetime is iteration-scoped;
+  ordinary phase-corridor fusion cannot promote it to invocation scope. Operand
+  checking resolves the actual loop symbol, and recovery independently rebuilds
+  the index from original commits. No fabricated expressions or initialized cells.
+- The record publishes all six async event methods. Its source is checked by
+  Node and compared with the packaged original in360 differential cases.
+  New/existing fixture scripts add60/865/756 cases covering async rejection,
+  synchronous throws, iterator close priority/receiver and microtasks. Mutation,
+  layout/register,200/201/400/800 and exact-budget tests pass.
+- SDK default: whole fixture and2/2 methods byte-identical. O0:1/2 methods exact;
+  scalar declaration/transport/register/backedge differences retained in diffs,
+  with the recompiled close/evaluation proof passing. Default standalone async
+  re-import still has its existing kAwait limitation; exact assembly equality
+  is reported separately. Compiler/disassembler hashes/options are pinned.
+- Full build passed; serial fixed suite **65/65**; focused tests **13/13**;
+  publication refresh **4/4**; required sweep **227/233**, only known
+  family_source_cli, tree_structure, try_tree, class_tree_source,
+  try_tree_source and async_semantics failures. Obsolete refusal assertions in
+  async_failure, for_of_multiple and for_of_user_try now require publication
+  plus differentials. No printer change.
+- Both40-input cohorts vs wtbase: **602/620** source (was601), **541/620**
+  previous flags; zero regressions and zero prior-complete text changes.
+  Manifest-record changes: only source o32/23058. OS peak CLI RSS **44,269,568**
+  bytes across80 runs; four-engine+wrapper bound **246,546,432** bytes.
+- Remaining B work is implementation, not a new premise: nested failures need
+  correlated forwarding through already-closed inner/outer handlers; sequential
+  cleanup needs environment-pop/fresh per-iteration source-scope correspondence.
+  Experimental incomplete admissions are kept out of production. See
+  [for-of-remaining-close.md](for-of-remaining-close.md) and
+  `build/review/o32-groupb/`. No commit, push or stash.
+
+
+## o32 groups 2 + 3: native arguments premise boundary (2026-10-21)
+
+- HEAD **07c6c665**, wtbase **7c4c6912**. No production change. The single,
+  entry-time, strict non-arrow proposal addresses argument values and identity,
+  but the pinned runtime additionally installs an own non-configurable throwing
+  `caller` accessor. Standard strict arguments has no own `caller`; a fresh
+  Node probe confirms the descriptor/own-key/read difference.
+- Verified interpreter, runtime factory, accessor initialization and compiled
+  stub source. Freshly decoded target methods 52655/53795 (snapshot PC6), and
+  compiled/disassembled minimal `return arguments` / `this.params = arguments`
+  fixtures with the SDK. Native source recompiles to GETUNMAPPEDARGS, which
+  supports Ark round-trip fidelity, not standard-JS descriptor equivalence.
+- Stopped at the user's explicit new-premise boundary. No fabricated host
+  factory, no native-arguments admission, no work on group B. No new build,
+  suite/cohort run or completion is claimed; the reviewed baseline remains
+  **601/620** source / **541/620** previous flags. Details and evidence commands:
+  [argument-snapshots.md](argument-snapshots.md#entry-time-native-arguments-checkpoint-2026-10-21),
+  `build/review/o32-groups23/`. No commit/push/stash.
+
 ## o32 cluster: enumeration / retained-selection composition (2026-10-21)
 
 - OLD/wtbase **f497690f**. Fresh bytecode-only census covers the eleven listed

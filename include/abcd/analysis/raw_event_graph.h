@@ -60,6 +60,15 @@ class RawEventExtension {
   virtual std::optional<RawEventExtensionEffect> Effect(std::size_t instruction) const = 0;
   virtual bool Resume(std::size_t instruction) const = 0;
 };
+// Optional semantic owner for an already-normalized body. The raw graph stays
+// protocol-independent: the owner must certify its normalization and original
+// correspondence. A failed/missing site never supplies invented effects.
+class RawEventSemantics {
+ public:
+  virtual ~RawEventSemantics() = default;
+  virtual InstructionLift Lift(const abc::BodyInstruction&) = 0;
+  virtual bool Complete() const = 0;
+};
 class RawEventGraph {
  public:
   static constexpr std::uint32_t kPhases = 4;
@@ -73,7 +82,8 @@ class RawEventGraph {
   ExceptionDispatch Select(abc::ProfileId profile);
   void Allocate();
   void Connect(const ExceptionDispatch&, abc::ProfileId, std::uint64_t frame,
-               const RawEventExtension* = nullptr);
+               const RawEventExtension* = nullptr,
+               RawEventSemantics* = nullptr);
   std::span<const RawEventNode> Nodes() const;
   std::size_t Site(abc::CodeOffset pc);
   abc::CodeOffset Pc(std::uint32_t node) const;

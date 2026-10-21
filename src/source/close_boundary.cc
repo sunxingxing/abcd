@@ -1,3 +1,4 @@
+#include "../analysis/normalized_raw_semantics.h"
 #include "close_boundary.h"
 #include "close_loop_body.h"
 #include "abcd/analysis/raw_event_graph.h"
@@ -24,7 +25,8 @@ class Boundary {
     const auto n=std::uint64_t(flow.nodes.size())+plan.regions.size()+1;
     Require(n<=UINT32_MAX && plan.layout.regions.size()==plan.regions.size() && body.instructions.size()==flow.instructions.size());
     limit_=std::min(budget.work,4096*n*(1+std::bit_width(n)));arena_.LimitWork(limit_);
-    auto dispatch=raw_.Select(profile);raw_.Allocate();raw_.Connect(dispatch,profile,frame);
+    auto dispatch=raw_.Select(profile);raw_.Allocate();analysis::detail::NormalizedRawSemantics semantics(profile,frame,flow.awaits,flow.frame?&*flow.frame:nullptr);
+    raw_.Connect(dispatch,profile,frame,nullptr,flow.awaits.empty()?nullptr:&semantics);
     member_.resize(flow.nodes.size());flow_raw_.resize(flow.nodes.size());
     reachable_.resize(raw_.Nodes().size());raw_flow_.resize(raw_.Nodes().size());
     for(const auto& m:r_.members){arena_.Step();Require(m.node.value<member_.size());member_[m.node.value]=true;}

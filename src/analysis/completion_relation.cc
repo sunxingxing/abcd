@@ -1,3 +1,4 @@
+#include "normalized_raw_semantics.h"
 #include "abcd/analysis/completion_relation.h"
 #include "abcd/analysis/close_outcome_relation.h"
 #include "completion_values.h"
@@ -134,7 +135,8 @@ template<bool Outcomes> class Relation {
     work_limit_=std::min(budget.resources.work,kWorkPerInput*input*(1+std::bit_width(input)));
     arena_.LimitWork(work_limit_);
     const auto dispatch=raw_.Select(profile);
-    raw_.Allocate();raw_.Connect(dispatch,profile,frame);
+    raw_.Allocate();detail::NormalizedRawSemantics semantics(profile,frame,flow.awaits,flow.frame?&*flow.frame:nullptr);
+    raw_.Connect(dispatch,profile,frame,nullptr,flow.awaits.empty()?nullptr:&semantics);
     const auto nodes=raw_.Nodes();
     if(flow.instructions.size()!=body.instructions.size()) Fail(CompletionRelationError::kInput);
     raw_to_flow_.resize(nodes.size());flow_to_raw_.resize(flow.nodes.size());

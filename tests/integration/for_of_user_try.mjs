@@ -1,5 +1,6 @@
 // ABC-only production input. Independent sources are evaluated only by Node.
 import assert from 'node:assert/strict';
+import {traceAsyncForOf as runAsync} from '../support/for_of_async_oracle.mjs';
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -52,14 +53,24 @@ try {
       assert.deepEqual(run(memberActual,values,mode,outcome,at,true),run(memberExpected,values,mode,outcome,at,true),`member/${values}/${mode}/${outcome}/${at}`);++cases;
     }
   assert.deepEqual(run(memberActual,[1],'break','object',0,true,true),run(memberExpected,[1],'break','object',0,true,true));++cases;
-  // Async source correspondence and finally completion propagation have their
-  // own gates. Rejected fixtures are not counted as differential passes.
+  const asyncOut=join(root,'async');
+  execFileSync(engine,[join(fixtures,'async.abc'),asyncOut,'--value-source','--language-source']);
+  const asyncRecord=JSON.parse(readFileSync(join(asyncOut,'manifest.json'))).records.find(r=>r.source_status!==2);
+  assert.equal(asyncRecord.source_status,0,JSON.stringify(asyncRecord.source_failure));
+  const asyncFile=join(asyncOut,asyncRecord.source);execFileSync(process.execPath,['--check',asyncFile]);
+  const asyncActual=(await import(pathToFileURL(asyncFile))).scan;
+  const asyncExpected=(await import('data:text/javascript;base64,'+Buffer.from(readFileSync(join(fixtures,'async.js'))).toString('base64'))).scan;
+  for(const values of [[],[1],[1,2]])for(const mode of ['normal','break','return','throw'])
+    for(const outcome of ['object','missing','null','getter-throw','call-throw','primitive'])for(const at of [0,1,2])for(const rejected of [false,true]) {
+      assert.deepEqual(await runAsync(asyncActual,values,mode,outcome,at,rejected),await runAsync(asyncExpected,values,mode,outcome,at,rejected),`async/${values}/${mode}/${outcome}/${at}/${rejected}`);++cases;
+    }
+  // Finally completion propagation keeps its separately typed gate.
   const refused={};
-  for(const name of ['async','finally']) {
+  for(const name of ['finally']) {
     const dest=join(root,name);execFileSync(engine,[join(fixtures,name+'.abc'),dest,'--value-source','--language-source']);
     const r=JSON.parse(readFileSync(join(dest,'manifest.json'))).records.find(r=>r.source_status!==2);
     assert.equal(r.source_status,3,name);assert.ok(r.source_failure.causes.some(c=>c.domain==='abcd::source::ExceptionControlError'&&c.value===4),name);
     refused[name]=r.source_failure;
   }
-  console.log(JSON.stringify({published:2,differential_cases:cases,refused}));
+  console.log(JSON.stringify({published:3,differential_cases:cases,refused}));
 }finally{rmSync(root,{recursive:true,force:true});}

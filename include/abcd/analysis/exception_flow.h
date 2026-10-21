@@ -29,6 +29,9 @@ struct ExceptionFlow {
   // Layout supplied for implicit reads; snapshot lifting validates it.
   // Retaining it does not establish invocation ownership.
   std::optional<abc::FrameLayout> frame;
+  // Borrowed normalization is retained for independent raw-event replay.
+  // This does not certify the async owner or its original resume correspondence.
+  std::vector<AwaitSite> awaits;
 };
 using ExceptionFlowResult = std::variant<ExceptionFlow, SemanticFailure,
                                          FlowFailure, DispatchFailure>;

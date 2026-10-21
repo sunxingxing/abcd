@@ -220,6 +220,34 @@ int main(int argc,char**argv) {
       std::cout<<"protocol-control units="<<control.units.size()<<" loops="<<control.skeleton.loops.size()<<'\n';return 0;
     }
     const auto& summary=std::get<CloseCompletionSummary>(result);
+    if(argc>3 && std::string_view(argv[3])=="--closed-forwarding") {
+      std::vector<std::uint8_t> owned(flow.nodes.size());
+      for(const auto& r:summary.regions)for(const auto& m:r.members)owned[m.node.value]=1;
+      std::vector<CompletionExit> cuts;
+      for(std::uint32_t n=0;n<flow.nodes.size();++n) {
+        const auto& x=flow.nodes[n];const auto& site=flow.instructions[x.instruction.value];
+        if(x.phase==ExceptionPhase::kBefore && x.exception&&!x.exception->target)cuts.push_back(CompletionCallerExit{{n}});
+        if(x.phase==ExceptionPhase::kCommit&&std::holds_alternative<ReturnOperation>(site.operation))cuts.push_back(CompletionCallerExit{{n}});
+        for(std::uint8_t e=0;e<x.successor_count;++e)if(x.successors[e].kind==ExceptionArcKind::kException&&!owned[x.successors[e].target.value])cuts.push_back(CompletionEdge{{n},e});
+      }
+      for(const auto& r:summary.regions)if(r.outcomes) {
+        std::optional<ExceptionNodeId> read,call;
+        for(const auto& m:r.members)if(flow.nodes[m.node.value].phase==ExceptionPhase::kBefore){if(m.role==CloseMemberRole::kReturnRead)read=m.node;if(m.role==CloseMemberRole::kReturnCall)call=m.node;}
+        if(!read||!call)continue;
+        for(const auto start:{*read,*call})for(std::uint8_t e=0;e<flow.nodes[start.value].successor_count;++e)if(flow.nodes[start.value].successors[e].kind==ExceptionArcKind::kException) {
+          const auto pc=flow.instructions[flow.nodes[start.value].instruction.value].pc.value;
+          const std::array entries{CompletionEntry{{start,e},{PendingCompletionKind::kThrow,CompletionExceptionValue{start},CompletionCaller{}}}};
+          auto answer=AnalyzeCloseOutcomeRelation(body,header.profile,frame.registers,flow,ssa,{*read,*call,ExternalExceptionPolicy::kNoHoleV1},entries,cuts);
+          std::cout<<"FORWARD pc="<<pc;
+          if(const auto* f=std::get_if<CompletionRelationFailure>(&answer)){std::cout<<" failure="<<unsigned(f->kind)<<'\n';continue;}
+          const auto& proof=std::get<CloseOutcomeRelation>(answer);std::cout<<" exits="<<proof.leaving.size();
+          for(const auto& x:proof.leaving)std::cout<<" kind="<<unsigned(x.pending.kind)<<" same="<<(x.pending.payload==entries[0].pending.payload)<<" caller="<<std::holds_alternative<CompletionCaller>(x.pending.target);
+          std::cout<<'\n';
+          for(const auto& x:proof.events)if(!x.proved && !std::holds_alternative<ThrowOperation>(flow.instructions[flow.nodes[x.node.value].instruction.value].operation))std::cout<<" effect="<<flow.instructions[flow.nodes[x.node.value].instruction.value].pc.value<<'\n';
+        }
+      }
+    }
+
     Take<std::uint64_t>(VerifyCloseCompletion(body,header.profile,graph,input,plan,keys,scan,summary,{},SourceContract::kLanguageSourceV4),"verify");
     for(const auto& e:summary.entries) {
       std::cout<<"protocol="<<e.protocol.value<<" read="<<flow.instructions[flow.nodes[graph.phases[graph.ops[e.read.value].block.value].input.value].instruction.value].pc.value<<" entry="<<flow.instructions[flow.nodes[e.source.source.value].instruction.value].pc.value<<" completion="<<unsigned(e.pending.kind);

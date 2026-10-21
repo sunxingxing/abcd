@@ -100,15 +100,22 @@ std::variant<ForOfEvaluationPlan,ForOfIterationFailure> BuildForOfEvaluationPlan
     p.iteration=std::get<ForOfIterationProof>(std::move(y));q.Retain(p.iteration.allocated_bytes);q.Step(p.iteration.work);
     auto z=BuildForOfEvents(i.body,g,i.input,i.regions,i.control,i.ownership,i.contract,p.identity,p.iteration,q.Remaining());if(const auto* f=std::get_if<ForOfIterationFailure>(&z))return *f;
     p.events=std::get<ForOfEvents>(std::move(z));q.Retain(p.events.allocated_bytes);q.Step(p.events.work);
-    Index(g,i,p,q);p.allocated_bytes=p.identity.allocated_bytes+p.iteration.allocated_bytes+p.events.allocated_bytes+(p.operations.capacity()+p.values.capacity())*sizeof(std::optional<ForOfMember>)+p.uses.capacity()*sizeof(ForOfUseDisposition);p.work=q.initial-q.left;return p;
+    Index(g,i,p,q);
+    q.Array(p.bindings,g.values.size());
+    for(const auto& definition:p.iteration.definitions) {
+      q.Step();q.Require(definition.value.value<p.bindings.size());
+      auto& owner=p.bindings[definition.value.value];
+      q.Require(!owner || *owner==definition.protocol);owner=definition.protocol;
+    }
+    p.allocated_bytes=p.identity.allocated_bytes+p.iteration.allocated_bytes+p.events.allocated_bytes+(p.operations.capacity()+p.values.capacity())*sizeof(std::optional<ForOfMember>)+p.uses.capacity()*sizeof(ForOfUseDisposition)+p.bindings.capacity()*sizeof(std::optional<IteratorProtocolId>);p.work=q.initial-q.left;return p;
   }catch(const ForOfIterationFailure& f){return f;}catch(const std::bad_alloc&){return ForOfIterationFailure{Error::kResourceLimit};}catch(const std::length_error&){return ForOfIterationFailure{Error::kResourceLimit};}
 }
 std::variant<std::uint64_t,ForOfIterationFailure> VerifyForOfEvaluationPlan(
     const ValueProgram& g,const ForOfEvaluationInput& i,const ForOfEvaluationPlan& p,SemanticBudget budget){
   auto built=BuildForOfEvaluationPlan(g,i,budget);if(const auto* f=std::get_if<ForOfIterationFailure>(&built))return *f;const auto& e=std::get<ForOfEvaluationPlan>(built);
-  const auto cost=e.operations.size()+e.values.size()+e.uses.size()+e.events.events.size()+e.events.commits.size()+e.events.ports.size()+e.identity.loops.size()+e.iteration.definitions.size()+e.iteration.phis.size()+e.iteration.references.size()+e.iteration.iterations.size()+e.identity.operations.size()+e.identity.values.size()+e.identity.uses.size()+1;
+  const auto cost=e.operations.size()+e.values.size()+e.uses.size()+e.bindings.size()+e.events.events.size()+e.events.commits.size()+e.events.ports.size()+e.identity.loops.size()+e.iteration.definitions.size()+e.iteration.phis.size()+e.iteration.references.size()+e.iteration.iterations.size()+e.identity.operations.size()+e.identity.values.size()+e.identity.uses.size()+1;
   if(cost>budget.work-e.work)return ForOfIterationFailure{Error::kWorkLimit};
-  if(p.operations!=e.operations || p.values!=e.values || p.uses!=e.uses || p.identity.loops!=e.identity.loops || p.identity.operations!=e.identity.operations || p.identity.values!=e.identity.values || p.identity.uses!=e.identity.uses || p.identity.revision!=g.revision || p.identity.cfg_revision!=g.cfg_revision || p.iteration.revision!=g.revision || p.iteration.cfg_revision!=g.cfg_revision || p.iteration.iterations!=e.iteration.iterations || p.iteration.definitions!=e.iteration.definitions || p.iteration.phis!=e.iteration.phis || p.iteration.references!=e.iteration.references || p.events.revision!=g.revision || p.events.cfg_revision!=g.cfg_revision || p.events.events!=e.events.events || p.events.commits!=e.events.commits || p.events.ports!=e.events.ports)return ForOfIterationFailure{Error::kCorrespondence};
+  if(p.bindings!=e.bindings || p.operations!=e.operations || p.values!=e.values || p.uses!=e.uses || p.identity.loops!=e.identity.loops || p.identity.operations!=e.identity.operations || p.identity.values!=e.identity.values || p.identity.uses!=e.identity.uses || p.identity.revision!=g.revision || p.identity.cfg_revision!=g.cfg_revision || p.iteration.revision!=g.revision || p.iteration.cfg_revision!=g.cfg_revision || p.iteration.iterations!=e.iteration.iterations || p.iteration.definitions!=e.iteration.definitions || p.iteration.phis!=e.iteration.phis || p.iteration.references!=e.iteration.references || p.events.revision!=g.revision || p.events.cfg_revision!=g.cfg_revision || p.events.events!=e.events.events || p.events.commits!=e.events.commits || p.events.ports!=e.events.ports)return ForOfIterationFailure{Error::kCorrespondence};
   return e.work+cost;
 }
 EvaluationFailure ForOfEvaluationFailure(const ValueProgram& g,ForOfIterationFailure f){EvaluationFailure e{f.kind==Error::kResourceLimit?EvaluationError::kResourceLimit:f.kind==Error::kWorkLimit?EvaluationError::kWorkLimit:EvaluationError::kProtocolOperand};if(f.operation)e.evaluation.location=OperationLocation(g,*f.operation);return e;}

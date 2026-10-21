@@ -53,6 +53,7 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
       checked.Array(retained.close_members,graph.phases.size());
       for(std::uint32_t b=0;b<graph.phases.size();++b){checked.Step();RequireTree(graph.phases[b].input.value<members.size(),TreeStructureError::kOwnership);retained.close_members[b]=members[graph.phases[b].input.value];}
       const auto& plan=*evaluation.for_of;
+      copy(retained.binding_values,plan.bindings);
       copy(retained.input_values,graph.input.values);copy(retained.phis,plan.iteration.phis);
       copy(retained.loops,plan.identity.loops);copy(retained.operations,plan.operations);copy(retained.values,plan.values);
       copy(retained.events.events,plan.events.events);copy(retained.events.commits,plan.events.commits);copy(retained.events.ports,plan.events.ports);

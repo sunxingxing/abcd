@@ -2,7 +2,9 @@
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
-import {join} from 'node:path';
+import {join,dirname} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {traceAsyncMemberForOf} from '../support/for_of_async_oracle.mjs';
 import {tmpdir} from 'node:os';
 const [semantic,structure,root]=process.argv.slice(2);
 const inputs=new Map([
@@ -25,6 +27,21 @@ try{
     assert.equal(r.source_status,0);assert.equal(r.source_complete,true);assert.ok(r.source);
     const cli=JSON.parse(run(semantic,[inputs.get(n),String(method),'--record-source',...flags]));
     assert.equal(cli.source_complete,true);assert.equal(cli.source,readFileSync(join(dir,label+n,r.source),'utf8'));continue;
+   }
+   if(record===23058 && label==='source') {
+    assert.equal(r.source_status,0);assert.equal(r.source_complete,true);assert.ok(r.source);
+    const cli=JSON.parse(run(semantic,[inputs.get(n),String(method),'--record-source',...flags]));
+    const file=join(dir,label+n,r.source);assert.equal(cli.source_complete,true);assert.equal(cli.source,readFileSync(file,'utf8'));
+    run(process.execPath,['--check',file]);
+    const actual=await import(pathToFileURL(file));
+    const oracle=readFileSync(join(dirname(inputs.get(n)),'src/oh_modules/.ohpm/@ohos+hypium@1.0.19/oh_modules/@ohos/hypium/src/main/event.js'),'utf8');
+    const expected=await import('data:text/javascript;base64,'+Buffer.from(oracle).toString('base64'));
+    for(const [name,methods] of [['SpecEvent',['specStart','specDone']],['SuiteEvent',['suiteStart','suiteDone']],['TaskEvent',['taskStart','taskDone']]])for(const member of methods) {
+      const invoke=module=>values=>{const instance=new module[name]({id:1,context:{},coreContext:{}});instance.eventMonitors=values;return instance[member]();};
+      for(const count of [0,1,3])for(const fail of ['none','getter','throw','reject'])for(const close of ['object','getter','call','null','primitive'])
+        assert.deepEqual(await traceAsyncMemberForOf(invoke(actual),count,fail,close,member),await traceAsyncMemberForOf(invoke(expected),count,fail,close,member),`${name}.${member}/${count}/${fail}/${close}`);
+    }
+    continue;
    }
    assert.equal(r.source_status,3);assert.equal(r.source,undefined);
    // The input-register proof authorizes no effectful IteratorClose projection.
@@ -51,5 +68,5 @@ try{
    else{assert.equal(actual.opcode,0x33);assert.equal(actual.operands[1].method_entity,59227);}
   }
  }
- console.log('async failures: two completions, close still refused, prelude refusal unchanged; two contracts, CLI/manifest equality');
+ console.log('async failures: two prior completions, event completes under source with 360 Node cases, old-contract close and prelude refusals unchanged; CLI/manifest equality');
 }finally{rmSync(dir,{recursive:true,force:true});}

@@ -16,6 +16,8 @@ std::optional<EvaluationStorageLifetime> RetainedEvaluationLifetime(const analys
   if (id.value >= graph.values.size()) return {};
   const auto& value = graph.values[id.value];
   if (value.life != ValueLife::kLive || !value.domain.IsLanguage()) return {};
+  if (plan.for_of && id.value < plan.for_of->bindings.size() && plan.for_of->bindings[id.value])
+    return EvaluationStorageLifetime::kIteration;
   return std::visit([&](const auto& origin) -> std::optional<EvaluationStorageLifetime> {
     using T = std::decay_t<decltype(origin)>;
     if constexpr (std::is_same_v<T, EntryDefinition>) {
