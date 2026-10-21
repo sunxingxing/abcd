@@ -37,6 +37,7 @@ struct MemberUpdate {
   bool operator==(const MemberUpdate&) const = default;
 };
 struct MemberUpdatePlan {
+  std::size_t allocated_bytes = 0;
   std::vector<MemberUpdate> updates;
   // Intrinsic operations map to the write; inputs remain ordinary expressions.
   std::vector<std::optional<analysis::OpId>> events;
@@ -54,6 +55,7 @@ enum class MemberUpdateError : std::uint8_t {
   kCorrespondence,
   kStrictness
 };
+[[nodiscard]] const MemberUpdatePlan& MemberUpdates(const EvaluationPlan&);
 [[nodiscard]] bool MemberCompoundOperator(analysis::BinaryOperator);
 [[nodiscard]] MemberUpdatePlan DiscoverMemberUpdates(
     const analysis::ValueProgram&, const EvaluationPlan&, TreeCheckBudget&);

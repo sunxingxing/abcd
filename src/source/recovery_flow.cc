@@ -1391,7 +1391,7 @@ class FlowBuilder {
       Link(put,result_.properties.back().receiver);
       Link(calculation.normal,put);
       auto next=calculation.before;
-      if(mutation->rhs)next=Expr(*mutation->rhs,context.Operand(next));
+      if(const auto* compound=std::get_if<MemberCompound>(&mutation->operation))next=Expr(compound->rhs,context.Operand(next));
       if(conversion){Link(conversion->normal,next);next=conversion->before;}
       Link(get.normal,next);
       auto get_context=context.Operand(get.normal);

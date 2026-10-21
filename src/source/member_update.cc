@@ -7,6 +7,7 @@
 #include "logical_evaluation.h"
 #include "phase_corridor.h"
 #include "tree_checks.h"
+#include "recovery_scratch.h"
 namespace abcd::source {
 namespace {
 using namespace analysis;
@@ -76,28 +77,98 @@ bool Same(const ValueProgram& g, const EvaluationPlan& p, UseId a, UseId b) {
       },
       x);
 }
+// Allocation-free semantic census. Unmet calls alone do not justify per-value
+// indexes or a certificate arena: most families contain no member mutation.
+// The same identity derivation runs in discovery and independent verification.
+struct ReferenceCandidate {
+  OpId read, calculation;
+  std::optional<OpId> conversion;
+  NativeMemberOperation operation;
+  bool computed;
+};
+std::optional<ReferenceCandidate> Candidate(const ValueProgram& g,
+    const EvaluationPlan& p, OpId id, TreeCheckBudget& budget) {
+  const auto& write = g.ops[id.value];
+  if (write.life != ValueLife::kLive) return {};
+  const bool named = std::holds_alternative<ValueNamedWrite>(write.operation),
+             computed =
+                 std::holds_alternative<ValuePropertyWrite>(write.operation);
+  if (!named && !computed) return {};
+  Inputs(g, id, budget);
+  const UseId stored{write.first_use.value + write.use_count - 1};
+  const auto calc = Producer(g, p, stored);
+  if (!calc) return {};
+  const auto& operation = g.ops[calc->value];
+  const auto* inc = std::get_if<ValueUnary>(&operation.operation);
+  const auto* binary = std::get_if<ValueBinary>(&operation.operation);
+  NativeMemberOperation native;
+  if (inc && (inc->op == UnaryOperator::kIncrement ||
+              inc->op == UnaryOperator::kDecrement))
+    native = MemberIncrement{inc->op == UnaryOperator::kIncrement
+                                 ? UpdateDirection::kIncrement
+                                 : UpdateDirection::kDecrement,
+                             UpdateResult::kPrefix};
+  else if (binary && MemberCompoundOperator(binary->op))
+    native = binary->op;
+  else
+    return {};
+  // Reject non-arithmetic producers before visiting their operands. One call
+  // result can feed many writes; revisiting its argument list per write is
+  // quadratic in an otherwise linear-size graph.
+  Inputs(g, *calc, budget);
+  auto read = Producer(g, p, operation.first_use);
+  std::optional<OpId> conversion;
+  if (read)
+    if (const auto* numeric =
+            std::get_if<ValueUnary>(&g.ops[read->value].operation);
+        numeric && numeric->op == UnaryOperator::kToNumeric) {
+      Inputs(g, *read, budget);
+      conversion = read;
+      read = Producer(g, p, g.ops[read->value].first_use);
+    }
+  if (!read || (binary && conversion)) return {};
+  const auto& get = g.ops[read->value];
+  if (named) {
+    const auto* property = std::get_if<ValueNamedRead>(&get.operation);
+    if (!property || property->lookup != PropertyLookup::kObject ||
+        property->name != std::get<ValueNamedWrite>(write.operation).name)
+      return {};
+  } else if (!std::holds_alternative<ValuePropertyRead>(get.operation))
+    return {};
+  Inputs(g, *read, budget);
+  const auto base = get.first_use;
+  if (!Same(g, p, base, write.first_use) ||
+      (computed &&
+       !Same(g, p, {base.value + 1}, {write.first_use.value + 1})))
+    return {};
+  return ReferenceCandidate{*read, *calc, conversion, native, computed};
+}
 }  // namespace
+const MemberUpdatePlan& MemberUpdates(const EvaluationPlan& p) {
+  static const MemberUpdatePlan empty;
+  return p.member_updates ? *p.member_updates : empty;
+}
 const MemberUpdate* MemberUpdateAt(const EvaluationPlan& p, OpId id) {
-  const auto& list = p.member_updates.updates;
+  const auto& list = MemberUpdates(p).updates;
   const auto at =
       std::lower_bound(list.begin(), list.end(), id,
                        [](const auto& x, OpId n) { return x.write < n; });
   return at != list.end() && at->write == id ? &*at : nullptr;
 }
 bool MemberUpdateIntrinsic(const EvaluationPlan& p, OpId id) {
-  return id.value < p.member_updates.events.size() &&
-         p.member_updates.events[id.value] &&
-         p.member_updates.events[id.value] != id;
+  return id.value < MemberUpdates(p).events.size() &&
+         MemberUpdates(p).events[id.value] &&
+         MemberUpdates(p).events[id.value] != id;
 }
 bool MemberUpdateWire(const EvaluationPlan& p, UseId id) {
-  return id.value < p.member_updates.wires.size() &&
-         p.member_updates.wires[id.value];
+  return id.value < MemberUpdates(p).wires.size() &&
+         MemberUpdates(p).wires[id.value];
 }
 MemberUpdatePlan DiscoverMemberUpdates(const ValueProgram& g,
                                        const EvaluationPlan& p,
                                        TreeCheckBudget& budget) {
   MemberUpdatePlan out;
-  bool needed = !p.member_updates.updates.empty();
+  bool needed = !MemberUpdates(p).updates.empty();
   for (std::size_t i = 0; i < g.ops.size() && !needed; ++i) {
     budget.Step();
     if (const auto property =
@@ -107,12 +178,18 @@ MemberUpdatePlan DiscoverMemberUpdates(const ValueProgram& g,
     }
   }
   if (!needed) return out;
+  std::size_t candidates = 0;
+  for (std::size_t i = 0; i < g.ops.size(); ++i) {
+    budget.Step();
+    candidates += Candidate(g, p, OpId{static_cast<std::uint32_t>(i)}, budget).has_value();
+  }
+  if (!candidates) return out;
   // No successful Reference is a seed. The same original disposition is
   // recovered after composition by its separately verified root registration.
   std::vector<std::uint8_t> proposed_calls;
-  if (!p.member_updates.updates.empty()) {
+  if (!MemberUpdates(p).updates.empty()) {
     budget.Array(proposed_calls, g.ops.size());
-    for (const auto& update : p.member_updates.updates) {
+    for (const auto& update : MemberUpdates(p).updates) {
       budget.Step();
       Require(update.call.value < g.ops.size());
       proposed_calls[update.call.value] = 1;
@@ -164,61 +241,24 @@ MemberUpdatePlan DiscoverMemberUpdates(const ValueProgram& g,
       ++counts[v->value];
     }
   }
-  budget.Admit(g.ops.size(), sizeof(MemberUpdate));
-  out.updates.reserve(g.ops.size());
-  budget.Admit(out.updates.capacity() - g.ops.size(), sizeof(MemberUpdate));
+  budget.Admit(candidates, sizeof(MemberUpdate));
+  out.updates.reserve(candidates);
+  budget.Admit(out.updates.capacity() - candidates, sizeof(MemberUpdate));
   for (std::size_t w = 0; w < g.ops.size(); ++w) {
     budget.Step();
+    const auto candidate = Candidate(g, p, OpId{static_cast<std::uint32_t>(w)}, budget);
+    if (!candidate) continue;
     const auto& write = g.ops[w];
-    if (write.life != ValueLife::kLive) continue;
-    const bool named = std::holds_alternative<ValueNamedWrite>(write.operation),
-               computed =
-                   std::holds_alternative<ValuePropertyWrite>(write.operation);
-    if (!named && !computed) continue;
-    Inputs(g, {static_cast<std::uint32_t>(w)}, budget);
-    const UseId stored{write.first_use.value + write.use_count - 1};
-    const auto calc = Producer(g, p, stored);
-    if (!calc) continue;
+    const auto read = std::optional{candidate->read};
+    const auto calc = std::optional{candidate->calculation};
+    const auto conversion = candidate->conversion;
+    auto native = candidate->operation;
+    const bool computed = candidate->computed;
     const auto& operation = g.ops[calc->value];
-    Inputs(g, *calc, budget);
-    const auto* inc = std::get_if<ValueUnary>(&operation.operation);
-    const auto* binary = std::get_if<ValueBinary>(&operation.operation);
-    NativeMemberOperation native;
-    if (inc && (inc->op == UnaryOperator::kIncrement ||
-                inc->op == UnaryOperator::kDecrement))
-      native = MemberIncrement{inc->op == UnaryOperator::kIncrement
-                                   ? UpdateDirection::kIncrement
-                                   : UpdateDirection::kDecrement,
-                               UpdateResult::kPrefix};
-    else if (binary && MemberCompoundOperator(binary->op))
-      native = binary->op;
-    else
-      continue;
-    auto read = Producer(g, p, operation.first_use);
-    std::optional<OpId> conversion;
-    if (read) Inputs(g, *read, budget);
-    if (read)
-      if (const auto* numeric =
-              std::get_if<ValueUnary>(&g.ops[read->value].operation);
-          numeric && numeric->op == UnaryOperator::kToNumeric) {
-        conversion = read;
-        read = Producer(g, p, g.ops[read->value].first_use);
-      }
-    if (!read || (binary && conversion)) continue;
     const auto& get = g.ops[read->value];
-    Inputs(g, *read, budget);
-    if (named) {
-      const auto* property = std::get_if<ValueNamedRead>(&get.operation);
-      if (!property || property->lookup != PropertyLookup::kObject ||
-          property->name != std::get<ValueNamedWrite>(write.operation).name)
-        continue;
-    } else if (!std::holds_alternative<ValuePropertyRead>(get.operation))
-      continue;
     const auto base = get.first_use;
-    if (!Same(g, p, base, write.first_use) ||
-        (computed &&
-         !Same(g, p, {base.value + 1}, {write.first_use.value + 1})))
-      continue;
+    const bool inc = std::holds_alternative<MemberIncrement>(native);
+    const bool binary = !inc;
     if (!operation.result) continue;
     auto result = *operation.result;
     if (inc && conversion && g.ops[conversion->value].result &&
@@ -485,8 +525,24 @@ MemberUpdatePlan DiscoverMemberUpdates(const ValueProgram& g,
 }
 void BuildMemberUpdates(const ValueProgram& g, EvaluationPlan& p,
                         TreeCheckBudget& budget) {
-  p.member_updates = DiscoverMemberUpdates(g, p, budget);
-  for (const auto& update : p.member_updates.updates) {
+  auto discovered = DiscoverMemberUpdates(g, p, budget);
+  p.member_updates.reset();
+  if (discovered.updates.empty()) return;
+  const auto before = budget.ActiveBytes();
+  auto owned = std::allocate_shared<MemberUpdatePlan>(
+      RecoveryAllocator<MemberUpdatePlan>{budget}, std::move(discovered));
+  owned->allocated_bytes = budget.ActiveBytes() - before +
+      owned->updates.capacity() * sizeof(MemberUpdate) +
+      (owned->events.capacity() + owned->owned.capacity() + owned->results.capacity()) *
+          sizeof(std::optional<OpId>) +
+      owned->moves.capacity() * sizeof(std::optional<UseId>) + owned->wires.capacity();
+  for (const auto& update : owned->updates) {
+    budget.Step();
+    owned->allocated_bytes += update.inputs.capacity() * sizeof(MemberUpdateInput) +
+                              update.ports.capacity() * sizeof(MemberUpdatePort);
+  }
+  p.member_updates = std::move(owned);
+  for (const auto& update : MemberUpdates(p).updates) {
     budget.Step();
     p.operations[update.read.value] = {
         EvaluationKind::kInline,
@@ -508,29 +564,29 @@ void BuildMemberUpdates(const ValueProgram& g, EvaluationPlan& p,
       p.operations[update.callee.value] = {
           EvaluationKind::kInline, g.ops[update.call.value].first_use, {}};
   }
-  for (std::size_t i = 0; i < p.member_updates.moves.size(); ++i)
-    if (p.member_updates.moves[i]) {
+  for (std::size_t i = 0; i < MemberUpdates(p).moves.size(); ++i)
+    if (MemberUpdates(p).moves[i]) {
       budget.Step();
       p.operations[i] = {
-          EvaluationKind::kInline, p.member_updates.moves[i], {}};
+          EvaluationKind::kInline, MemberUpdates(p).moves[i], {}};
     }
 }
 void VerifyMemberUpdates(const ValueProgram& g, const EvaluationPlan& p,
                          TreeCheckBudget& budget) {
-  if (p.member_updates.updates.empty()) {
-    Require(p.member_updates.events.empty() &&
-            p.member_updates.results.empty() &&
-            p.member_updates.moves.empty() && p.member_updates.wires.empty() &&
-            p.member_updates.owned.empty());
+  if (MemberUpdates(p).updates.empty()) {
+    Require(MemberUpdates(p).events.empty() &&
+            MemberUpdates(p).results.empty() &&
+            MemberUpdates(p).moves.empty() && MemberUpdates(p).wires.empty() &&
+            MemberUpdates(p).owned.empty());
     return;
   }
   const auto expected = DiscoverMemberUpdates(g, p, budget);
-  Require(expected.updates == p.member_updates.updates &&
-          expected.results == p.member_updates.results &&
-          expected.events == p.member_updates.events &&
-          expected.moves == p.member_updates.moves &&
-          expected.wires == p.member_updates.wires &&
-          expected.owned == p.member_updates.owned);
+  Require(expected.updates == MemberUpdates(p).updates &&
+          expected.results == MemberUpdates(p).results &&
+          expected.events == MemberUpdates(p).events &&
+          expected.moves == MemberUpdates(p).moves &&
+          expected.wires == MemberUpdates(p).wires &&
+          expected.owned == MemberUpdates(p).owned);
   for (const auto& update : expected.updates) {
     budget.Step();
     Require(p.operations[update.read.value].kind == EvaluationKind::kInline &&

@@ -287,3 +287,18 @@ This is compiler/Node evidence, not an Ark runtime execution claim.
   `cohort-rss.json` and `rss-{previous,source}-comparison.txt`.
 
 No commit, push or stash. The pre-existing untracked archive is untouched.
+
+
+## Priority scale checkpoint (2026-10-21, baseline7003dce3)
+
+The member-update storage regression is fixed without a budget increase; all11
+scale tests pass, including class_self_initialization_scale_test at800.
+Both cohorts retain605/620 source and542/620 previous flags, with no manifest
+record or complete-source text differences. See
+[member-update-storage.md](member-update-storage.md).
+
+51260 remains at CreationContextError::kKind, m51746 / creator51442 PC40.
+A fresh constructor probe also confirms unsupported CALLINIT at m51713 PC12.
+This checkpoint has not implemented the private stored-initializer role or
+its once-per-construction OriginalFlow/RecoveryFlow field expansion.
+15324's PC84→H259→H265 iteration cleanup was not attempted.

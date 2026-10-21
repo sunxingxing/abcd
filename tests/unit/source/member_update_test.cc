@@ -107,6 +107,48 @@ auto Graph(unsigned count, bool postfix, bool computed, bool copies, bool split,
   auto graph = std::get<ValueProgram>(ImportPhasedValues(input));
   return inspect(graph, body, input);
 }
+// A single large-arity call result stored repeatedly is not a mutation.
+// Discovery must not rescan that call's operand list once per store.
+void CallResultFanout(unsigned count) {
+  ValueProgram graph;
+  const auto add = [&](ValueOperation operation,
+                       std::vector<ValueOperand> operands,
+                       bool result = false) {
+    const OpId id{static_cast<std::uint32_t>(graph.ops.size())};
+    const auto shape = DescribeEvaluation(operation);
+    Check(shape && shape->Count() == operands.size());
+    const UseId first{static_cast<std::uint32_t>(graph.uses.size())};
+    for (std::uint32_t i = 0; i < operands.size(); ++i)
+      graph.uses.push_back({id, *shape->Role(i), ReadPurpose::kOperand,
+                            operands[i]});
+    std::optional<ValueId> value;
+    if (result) {
+      value = ValueId{static_cast<std::uint32_t>(graph.values.size())};
+      graph.values.push_back({OpResult{id, {}}, ValueKinds::Language(), {}});
+    }
+    graph.ops.push_back({std::move(operation), {0}, id.value, first,
+                         static_cast<std::uint32_t>(operands.size()), value,
+                         LanguageEffect::kNone, LanguageEffect::kNone,
+                         ExceptionalCompletion::kMayThrow, {0}});
+    return value;
+  };
+  const auto callee = *add(ValueNamedRead{{0}}, {SpecialValue::kUndefined}, true);
+  std::vector<ValueOperand> arguments(count + 1, analysis::IntegerLiteral{0});
+  const auto value = *add(ValueInvoke{InvokeReceiver::kUndefined, count},
+                           std::move(arguments), true);
+  for (unsigned i = 0; i < count; ++i)
+    add(ValueNamedWrite{{i}}, {SpecialValue::kUndefined, value});
+  add(ValueInvoke{InvokeReceiver::kExplicit, 1},
+      {callee, SpecialValue::kUndefined, value});
+  EvaluationPlan pending{};
+  pending.operations.resize(graph.ops.size(),
+      {EvaluationKind::kRoot, {}, TemporaryReason::kCrossRegionValue});
+  TreeCheckBudget budget({0, graph.ops.size() + graph.uses.size()});
+  Check(DiscoverMemberUpdates(graph, pending, budget).updates.empty());
+  Check(budget.Bytes() == 0);
+  std::cout << "call-fanout " << count << " bytes=" << budget.Bytes()
+            << " work=" << budget.Work() << '\n';
+}
 void Run(unsigned count, bool postfix = false, bool computed = false,
          bool copies = false, bool split = false, bool rename = false) {
   Graph(
@@ -117,7 +159,7 @@ void Run(unsigned count, bool postfix = false, bool computed = false,
           std::cerr << "evaluation " << unsigned(e->kind) << "\n";
         Check(std::holds_alternative<EvaluationPlan>(built));
         const auto& plan = std::get<EvaluationPlan>(built);
-        Check(plan.member_updates.updates.size() == count);
+        Check(MemberUpdates(plan).updates.size() == count);
         Check(
             std::holds_alternative<CallPlan>(BuildPhasedCallPlan(graph, plan)));
         TreeCheckBudget budget({});
@@ -139,7 +181,64 @@ void Run(unsigned count, bool postfix = false, bool computed = false,
                 (limit.bytes == exact.bytes && limit.work == exact.work));
         }
         std::cout << count << " " << exact.bytes << " " << exact.work << "\n";
+        auto rebuilt = plan;
+        Check(rebuilt.member_updates == plan.member_updates);
+        TreeCheckBudget rebuilding({});
+        BuildMemberUpdates(graph, rebuilt, rebuilding);
+        Check(MemberUpdates(rebuilt).updates == MemberUpdates(plan).updates);
+        const SemanticBudget rebuild_cost{rebuilding.Bytes(), rebuilding.Work()};
+        for (const auto limit : {rebuild_cost,
+             SemanticBudget{rebuild_cost.bytes - 1, rebuild_cost.work},
+             SemanticBudget{rebuild_cost.bytes, rebuild_cost.work - 1}}) {
+          auto trial = plan;
+          bool passed = false;
+          try {
+            TreeCheckBudget low(limit);
+            BuildMemberUpdates(graph, trial, low);
+            passed = true;
+          } catch (TreeStructureError error) {
+            Check(error == TreeStructureError::kResourceLimit ||
+                  error == TreeStructureError::kWorkLimit);
+          }
+          Check(passed == (limit.bytes == rebuild_cost.bytes &&
+                           limit.work == rebuild_cost.work));
+        }
+        std::cout << "build " << count << " bytes=" << rebuild_cost.bytes
+                  << " work=" << rebuild_cost.work << '\n';
+        // An unmet member reference without a matching Get/Set pair owns no
+        // per-value index or certificate allocation, including in large families.
+        auto no_pair = graph;
+        if (!computed) for (const auto& update : MemberUpdates(plan).updates) {
+          auto& write = std::get<ValueNamedWrite>(no_pair.ops[update.write.value].operation);
+          ++write.name.value;
+        }
+        if (!computed) {
+          auto pending = plan;
+          pending.member_updates.reset();
+          for (const auto& update : MemberUpdates(plan).updates)
+            pending.operations[update.callee.value] = {
+                EvaluationKind::kRoot, {}, TemporaryReason::kCrossRegionValue};
+          TreeCheckBudget empty({0, kDefaultSemanticWork});
+          Check(DiscoverMemberUpdates(no_pair, pending, empty).updates.empty());
+          Check(empty.Bytes() == 0 && empty.Work() > graph.ops.size());
+          TreeCheckBudget exact_empty({0, empty.Work()});
+          Check(DiscoverMemberUpdates(no_pair, pending, exact_empty).updates.empty());
+          if (empty.Work()) {
+            bool exhausted = false;
+            try {
+              TreeCheckBudget low({0, empty.Work() - 1});
+              (void)DiscoverMemberUpdates(no_pair, pending, low);
+            } catch (TreeStructureError e) {
+              exhausted = e == TreeStructureError::kWorkLimit;
+            }
+            Check(exhausted);
+          }
+          std::cout << "no-pair " << count << " bytes=" << empty.Bytes()
+                    << " work=" << empty.Work() << '\n';
+        }
         auto changed = plan;
+        auto mutation = std::make_shared<MemberUpdatePlan>(MemberUpdates(plan));
+        changed.member_updates = mutation;
         const auto rejected = [&] {
           TreeCheckBudget b({});
           bool fail = false;
@@ -150,27 +249,34 @@ void Run(unsigned count, bool postfix = false, bool computed = false,
           }
           Check(fail);
         };
-        changed.member_updates.updates.front().base =
-            graph.ops[plan.member_updates.updates.front().write.value]
+        mutation->updates.front().base =
+            graph.ops[MemberUpdates(plan).updates.front().write.value]
                 .first_use;
         rejected();
         changed = plan;
-        changed.member_updates.updates.front().ports.front().exception.reset();
+        mutation = std::make_shared<MemberUpdatePlan>(MemberUpdates(plan));
+        changed.member_updates = mutation;
+        mutation->updates.front().ports.front().exception.reset();
         rejected();
         changed = plan;
-        changed.member_updates.updates.front().ports.back().phase =
+        mutation = std::make_shared<MemberUpdatePlan>(MemberUpdates(plan));
+        changed.member_updates = mutation;
+        mutation->updates.front().ports.back().phase =
             MemberUpdatePhase::kGet;
         rejected();
         changed = plan;
-        changed.member_updates.updates.front().value = {0};
+        mutation = std::make_shared<MemberUpdatePlan>(MemberUpdates(plan));
+        changed.member_updates = mutation;
+        mutation->updates.front().value = {0};
         rejected();
         changed = plan;
-        changed.member_updates
-            .wires[graph.ops[changed.member_updates.updates.front().write.value]
+        mutation = std::make_shared<MemberUpdatePlan>(MemberUpdates(plan));
+        changed.member_updates = mutation;
+        mutation->wires[graph.ops[mutation->updates.front().write.value]
                        .first_use.value] = 0;
         rejected();
         if (count == 1) {
-          const auto& certificate = plan.member_updates.updates.front();
+          const auto& certificate = MemberUpdates(plan).updates.front();
           const auto rawRejected = [&](const auto& raw) {
             TreeCheckBudget b({});
             bool fail = false;
@@ -194,9 +300,13 @@ void Run(unsigned count, bool postfix = false, bool computed = false,
                                       *certificate.ports.front().exception);
           rawRejected(raw);
           changed = plan;
-          changed.member_updates.updates.clear();
+        mutation = std::make_shared<MemberUpdatePlan>(MemberUpdates(plan));
+        changed.member_updates = mutation;
+          mutation->updates.clear();
           rejected();
           changed = plan;
+        mutation = std::make_shared<MemberUpdatePlan>(MemberUpdates(plan));
+        changed.member_updates = mutation;
           changed.operations[certificate.read.value].kind =
               EvaluationKind::kRoot;
           rejected();
@@ -281,7 +391,7 @@ void Run(unsigned count, bool postfix = false, bool computed = false,
               project(bindings, corrupted)));
           auto wrong = draft.tree;
           const auto expr =
-              *draft.flow->expressions[plan.member_updates.updates.front()
+              *draft.flow->expressions[MemberUpdates(plan).updates.front()
                                            .write.value];
           auto& node = std::get<MemberMutationExpr>(
               wrong.expressions[expr.value].expression);
@@ -295,7 +405,11 @@ void Run(unsigned count, bool postfix = false, bool computed = false,
 }
 }  // namespace
 int main() {
-  for (const auto count : {1U, 200U, 201U, 400U, 800U}) Run(count);
+  static_assert(sizeof(MemberMutationExpr) <= sizeof(CallExpr));
+  for (const auto count : {1U, 200U, 201U, 400U, 800U}) {
+    Run(count);
+    CallResultFanout(count);
+  }
   Run(1, true);
   Run(1, false, true);
   Run(1, false, false, true, true);

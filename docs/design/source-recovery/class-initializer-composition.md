@@ -246,3 +246,12 @@ Scratch evidence is under `build/review/class-initializers/`.
 An additional 40-input source run measured maximum CLI peak RSS **40,992,768
 bytes**. Summing the four largest individual process peaks gives a conservative
 four-worker bound of **149,520,384 bytes** (runner storage is separate).
+
+
+## Scale-regression correction (2026-10-21)
+
+The baseline reproduction above was real, but was not evidence that the scale
+failure was accepted or pre-existing to our work. cc bisected it to24b01ff0.
+[Member-update storage](member-update-storage.md) fixes it without raising
+budgets; all11 scale tests now pass, including nested_members800.
+ArgumentMatchers's stored-instance-initializer implementation remains open.

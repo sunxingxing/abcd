@@ -434,8 +434,8 @@ class StructureCheck {
         RequireTree(tree_.strictness==Strictness::kStrict,Error::kUnsupportedSyntax);
         Key(expression.target.key);
         if(const auto* update=std::get_if<MemberIncrement>(&expression.operation))
-          RequireTree(!expression.rhs && (update->direction==UpdateDirection::kIncrement || update->direction==UpdateDirection::kDecrement) && (update->result==UpdateResult::kPrefix || update->result==UpdateResult::kPostfix),Error::kUnsupportedSyntax);
-        else RequireTree(expression.rhs.has_value() && MemberCompoundOperator(std::get<analysis::BinaryOperator>(expression.operation)),Error::kUnsupportedSyntax);
+          RequireTree((update->direction==UpdateDirection::kIncrement || update->direction==UpdateDirection::kDecrement) && (update->result==UpdateResult::kPrefix || update->result==UpdateResult::kPostfix),Error::kUnsupportedSyntax);
+        else RequireTree(MemberCompoundOperator(std::get<MemberCompound>(expression.operation).operation),Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, UpdateExpr>) {
         RequireTree((expression.direction == UpdateDirection::kIncrement || expression.direction == UpdateDirection::kDecrement) &&
             (expression.result == UpdateResult::kPrefix || expression.result == UpdateResult::kPostfix), Error::kUnsupportedSyntax);
@@ -738,7 +738,7 @@ class StructureCheck {
         } else if constexpr (std::is_same_v<T, FieldDefinitionExpr>) {
           add(node.receiver); add(node.value);
         } else if constexpr (std::is_same_v<T, MemberMutationExpr>) {
-          add(node.target.base);key(node.target.key);if(node.rhs)add(*node.rhs);
+          add(node.target.base);key(node.target.key);if(const auto* compound=std::get_if<MemberCompound>(&node.operation))add(compound->rhs);
         } else if constexpr (std::is_same_v<T, AssignmentExpr>) {
           if (const auto* member = std::get_if<MemberTarget>(&node.target)) { add(member->base); key(member->key); }
           add(node.value);

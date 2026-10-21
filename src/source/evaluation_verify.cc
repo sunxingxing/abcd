@@ -387,7 +387,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     // proves ordered intervals and final throw owners. The forest below must
     // still visit every operation exactly once.
     const auto cross = [&](std::size_t i) {
-      return (i<plan.member_updates.owned.size() && plan.member_updates.owned[i]) || CrossEvaluationInline(graph, plan, analysis::OpId{static_cast<std::uint32_t>(i)});
+      return (i<MemberUpdates(plan).owned.size() && MemberUpdates(plan).owned[i]) || CrossEvaluationInline(graph, plan, analysis::OpId{static_cast<std::uint32_t>(i)});
     };
     admit(graph.ops.size(), sizeof(EvaluationFrame));
     admit(graph.ops.size(), sizeof(EvaluationVisit));

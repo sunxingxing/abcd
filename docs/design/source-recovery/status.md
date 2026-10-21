@@ -10,6 +10,36 @@
 
 
 
+## Member-update scale regression — partial round (2026-10-21)
+
+Priority regression fixed against `7003dce3`: **all11 scale tests pass**, including
+class_self_initialization_scale_test / nested_members800, without increasing any
+budget. The decisive regression was MemberMutationExpr increasing every ExprNode
+from48 to56 bytes. A typed increment/compound-with-RHS alternative restores48;
+a static assertion protects the arena width. Discovery now prepays by actual
+Get/Set candidates and takes no heap allocation for a forced-unmet reference
+without a matching pair. Empty/per-family evaluation plans retain a nullable
+immutable shared owner; verification still independently recomputes the proof.
+
+Full build passes; source-regression **65/65**; requested exact-budget tests
+**5/5**; non-scale sweep **208/213** (only the five documented failures).
+Member-update fixtures: **5,852 Node differentials / 8 observed mutants**;
+strict SDK old/new comparison **3/3 each at default and O0**, no differences or
+unverified fixture exports. Both cohorts remain **605/620 source**, **542/620
+previous flags**, with zero text/status/manifest-record drift.
+
+**The stored-instance-initializer work is unfinished:** o32/51260 still refuses
+CreationContextError::kKind at m51746 / creation51442 PC40. A fresh constructor
+probe also exposes unsupported CALLINIT at m51713 PC12. No creation-kind gate
+was weakened, no new field output was published, and Hypium cleanup was not
+attempted. See [member-update-storage.md](member-update-storage.md) for the
+before/after800 cost table, evidence and remaining cross-method recovery work.
+
+Correction to the previous checkpoint: reproducing nested_members800 on a
+baseline did not make it an accepted pre-existing failure. The cc bisect to
+24b01ff0 is acknowledged; the regression is now fixed and included in every
+round's scale acceptance. Scratch: build/review/scale-stored-init/.
+
 ## Class initializer composition — partial checkpoint (2026-10-21)
 
 Against `8f50e7e8`, **o25/40458 CustomScanViewModel completes** in both flag

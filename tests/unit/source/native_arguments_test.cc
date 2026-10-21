@@ -54,7 +54,7 @@ int main(){
   if(count){auto projected=g;projected.input.values.clear();Check(!Proves(projected));}
   auto twice=g;twice.ops.push_back(g.ops[0]);++twice.blocks[0].op_count;Check(!Proves(twice));
   // Exact work and storage frontiers, not a guessed minimum grant.
-  for(bool bytes:{false,true}){std::uint64_t lo=0,hi=10000000;while(lo<hi){auto mid=(lo+hi)/2;SemanticBudget grant{};if(bytes)grant.bytes=mid;else grant.work=mid;bool ok=false;try{ok=Proves(g,grant);}catch(TreeStructureError){}if(ok)hi=mid;else lo=mid+1;}SemanticBudget exact{};if(bytes)exact.bytes=lo;else exact.work=lo;Check(Proves(g,exact));if(lo){if(bytes)--exact.bytes;else --exact.work;bool refused=false;try{refused=!Proves(g,exact);}catch(TreeStructureError){refused=true;}Check(refused);}}
+  for(bool bytes:{false,true}){std::uint64_t lo=0,hi=10000000;while(lo<hi){auto mid=(lo+hi)/2;SemanticBudget grant{};if(bytes)grant.bytes=mid;else grant.work=mid;bool ok=false;try{ok=Proves(g,grant);}catch(TreeStructureError){}if(ok)hi=mid;else lo=mid+1;}SemanticBudget exact{};if(bytes)exact.bytes=lo;else exact.work=lo;Check(Proves(g,exact));if(count==800)std::cout<<"800 "<<(bytes?"bytes=":"work=")<<lo<<"\n";if(lo){if(bytes)--exact.bytes;else --exact.work;bool refused=false;try{refused=!Proves(g,exact);}catch(TreeStructureError){refused=true;}Check(refused);}}
  }
  std::cout<<"native arguments: mutations, 200/201/400/800 and exact budgets passed\n";
 }

@@ -401,7 +401,7 @@ class Composition {
     // Only forests reached from independently verified composition roots may
     // replace interval equations. Include their full original event membership,
     // especially implicit definition-base uses, not just the allocation token.
-    for(std::size_t i=0;i<plan_.member_updates.owned.size();++i){budget_.Step();if(plan_.member_updates.owned[i]&&mask[plan_.member_updates.owned[i]->value])mask[i]=1;}
+    for(std::size_t i=0;i<MemberUpdates(plan_).owned.size();++i){budget_.Step();if(MemberUpdates(plan_).owned[i]&&mask[MemberUpdates(plan_).owned[i]->value])mask[i]=1;}
     for (std::size_t i = 0; i < literal_members_.size(); ++i) {
       budget_.Step();
       const auto owner = literal_members_[i];
@@ -665,7 +665,7 @@ class Composition {
 };
 }  // namespace
 static void ComposePhasePass(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget, bool transitive) {
-  if (plan.flow != EvaluationFlow::kPhased || (plan.phase_selections.empty() && plan.member_updates.updates.empty() && plan.literal_fields.objects.empty())) return;
+  if (plan.flow != EvaluationFlow::kPhased || (plan.phase_selections.empty() && MemberUpdates(plan).updates.empty() && plan.literal_fields.objects.empty())) return;
   std::vector<std::pair<OpId, UseId>> edges;
   budget.Admit(graph.ops.size(), sizeof(std::pair<OpId, UseId>)); edges.reserve(graph.ops.size());
   budget.Admit(edges.capacity() - graph.ops.size(), sizeof(std::pair<OpId, UseId>));
@@ -762,7 +762,7 @@ std::vector<std::uint8_t> VerifyPhaseCompositions(const ValueProgram& graph, con
   std::vector<std::uint8_t> mask;
   if (plan.phase_compositions.empty() && plan.checked_compositions.empty()) return mask;
   Require(plan.flow == EvaluationFlow::kPhased);
-  Require(plan.phase_compositions.empty() || !plan.phase_selections.empty() || !plan.member_updates.updates.empty() || !plan.literal_fields.objects.empty());
+  Require(plan.phase_compositions.empty() || !plan.phase_selections.empty() || !MemberUpdates(plan).updates.empty() || !plan.literal_fields.objects.empty());
   budget.Array(mask, graph.ops.size());
   Composition proof(graph, plan, budget, false, true);
   for (std::size_t i = 0; i < plan.phase_compositions.size(); ++i) {

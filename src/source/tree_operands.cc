@@ -223,9 +223,9 @@ class OperandCheck {
     RequireMeaning(tree_.receiver_guards.size() == constants_.receiver_guards.size() &&
         std::equal(tree_.receiver_guards.begin(), tree_.receiver_guards.end(), constants_.receiver_guards.begin()), Error::kOperand);
     VerifyMemberUpdates(graph_, evaluation_, budget_);
-    budget_.Admit(evaluation_.member_updates.updates.size(), sizeof(OriginalMemberUpdate));
-    original_.member_updates.reserve(evaluation_.member_updates.updates.size());
-    budget_.Admit(original_.member_updates.capacity()-evaluation_.member_updates.updates.size(), sizeof(OriginalMemberUpdate));
+    budget_.Admit(MemberUpdates(evaluation_).updates.size(), sizeof(OriginalMemberUpdate));
+    original_.member_updates.reserve(MemberUpdates(evaluation_).updates.size());
+    budget_.Admit(original_.member_updates.capacity()-MemberUpdates(evaluation_).updates.size(), sizeof(OriginalMemberUpdate));
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
       const auto& op = graph_.ops[i];
@@ -269,8 +269,13 @@ class OperandCheck {
       const auto expression = predicate.value_or(*flow_.expressions[i]);
       if (const auto* proof=MemberUpdateAt(evaluation_, current_)) {
         const auto& native=Node<MemberMutationExpr>(expression);
-        RequireMeaning(tree_.strictness==Strictness::kStrict && native.operation==proof->operation &&
-            bool(native.rhs)==bool(proof->rhs), Error::kOperator);
+        RequireMeaning(tree_.strictness==Strictness::kStrict && ((std::get_if<MemberIncrement>(&native.operation) &&
+              std::get_if<MemberIncrement>(&proof->operation) &&
+              std::get<MemberIncrement>(native.operation)==std::get<MemberIncrement>(proof->operation)) ||
+             (std::get_if<MemberCompound>(&native.operation) &&
+              std::get_if<analysis::BinaryOperator>(&proof->operation) &&
+              std::get<MemberCompound>(native.operation).operation==std::get<analysis::BinaryOperator>(proof->operation))) &&
+            std::holds_alternative<MemberCompound>(native.operation)==bool(proof->rhs), Error::kOperator);
         current_=proof->read; origin_={graph_.ops[current_.value].origin.value};
         InputAt(0,native.target.base);
         if (proof->key) {
@@ -282,7 +287,7 @@ class OperandCheck {
         }
         if (proof->rhs) {
           current_=proof->calculation;origin_={graph_.ops[current_.value].origin.value};
-          InputAt(1,*native.rhs);
+          InputAt(1,std::get<MemberCompound>(native.operation).rhs);
         }
         for(const auto& port:proof->ports) {
           budget_.Step();RequireMeaning(flow_.expressions[port.operation.value]==expression,Error::kOperand);

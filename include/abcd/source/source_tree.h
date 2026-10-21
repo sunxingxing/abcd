@@ -169,10 +169,17 @@ struct MemberIncrement {
 using NativeMemberOperation = std::variant<MemberIncrement, analysis::BinaryOperator>;
 // One retained Reference: base/key are evaluated once. The implicit Get,
 // conversion/RHS, calculation and strict Set have individually verified ports.
+struct MemberCompound {
+  analysis::BinaryOperator operation;
+  ExprId rhs;
+  bool operator==(const MemberCompound&) const = default;
+};
 struct MemberMutationExpr {
   MemberTarget target;
-  NativeMemberOperation operation;
-  std::optional<ExprId> rhs;
+  // A compound operation always has an RHS; an increment never has one.
+  // Keep this payload within the existing CallExpr arena width so functions
+  // without native updates pay no per-expression storage tax.
+  std::variant<MemberIncrement, MemberCompound> operation;
   bool operator==(const MemberMutationExpr&) const = default;
 };
 struct DeleteExpr { ExprId base; MemberKey key; };

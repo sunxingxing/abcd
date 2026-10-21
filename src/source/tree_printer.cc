@@ -903,8 +903,9 @@ class TreePrinter {
       if(update->result==UpdateResult::kPostfix)Push(token);
       target();if(update->result==UpdateResult::kPrefix)Push(token);
     } else {
-      Push(ExpressionOperand{*node.rhs,{ExpressionGrammar::kAssignmentValue}});
-      auto token=TreeBinaryToken(std::get<analysis::BinaryOperator>(node.operation));
+      const auto& compound=std::get<MemberCompound>(node.operation);
+      Push(ExpressionOperand{compound.rhs,{ExpressionGrammar::kAssignmentValue}});
+      auto token=TreeBinaryToken(compound.operation);
       Push(std::string_view("= "));Push(token.substr(1,token.size()-2));Push(std::string_view(" "));target();
     }
   }

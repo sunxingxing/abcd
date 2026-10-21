@@ -360,7 +360,10 @@ class ForestBuilder {
           if(update->key)key=ComputedKey{Use(*update->key,get_origin)};
           else {const auto* name=std::get_if<NameId>(&constants_.operations[i]);Require(name,Error::kConstant);key=*name;}
           const auto rhs=update->rhs?std::optional{Use(*update->rhs,{graph_.ops[update->calculation.value].origin.value})}:std::nullopt;
-          const auto node=Add(MemberMutationExpr{{base,key},update->operation,rhs},origin);
+          MemberMutationExpr mutation{{base,key},MemberIncrement{}};
+          if (const auto* increment=std::get_if<MemberIncrement>(&update->operation)) mutation.operation=*increment;
+          else { Require(rhs.has_value(),Error::kOwnership); mutation.operation=MemberCompound{std::get<analysis::BinaryOperator>(update->operation),*rhs}; }
+          const auto node=Add(mutation,origin);
           for(const auto& port:update->ports){Step();forest_.operations[port.operation.value]=node;if(port.operation.value!=i)Combine(node,{graph_.ops[port.operation.value].origin.value});}
           continue;
         }

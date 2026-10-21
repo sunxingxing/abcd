@@ -617,7 +617,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       witness = {}; witness.obligation = EvaluationObligation::kProjection;
       ComposeCheckedCalls(graph, plan, selection_budget);
       BuildMemberUpdates(graph, plan, selection_budget);
-      if (!plan.member_updates.updates.empty()) ComposePhaseExpressions(graph, plan, selection_budget);
+      if (!MemberUpdates(plan).updates.empty()) ComposePhaseExpressions(graph, plan, selection_budget);
       BuildLiteralFieldForests(graph, plan, selection_budget);
       if (!plan.literal_fields.objects.empty()) {
         BuildPhasedObjectOperands(graph, plan, selection_budget);
@@ -633,11 +633,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     const auto checked = VerifyEvaluationForFlow(graph, plan, {bytes, work}, flow,for_of);
     if (const auto* error = std::get_if<EvaluationFailure>(&checked)) return *error;
     step(std::get<std::uint64_t>(checked));
-    std::size_t member_bytes=plan.member_updates.updates.capacity()*sizeof(MemberUpdate) +
-        (plan.member_updates.events.capacity()+plan.member_updates.owned.capacity()+plan.member_updates.results.capacity())*sizeof(std::optional<analysis::OpId>)+
-        plan.member_updates.moves.capacity()*sizeof(std::optional<analysis::UseId>)+plan.member_updates.wires.capacity();
-    for(const auto& update:plan.member_updates.updates){step();member_bytes+=update.inputs.capacity()*sizeof(MemberUpdateInput)+update.ports.capacity()*sizeof(MemberUpdatePort);}
-    plan.allocated_bytes = member_bytes +
+    plan.allocated_bytes = (plan.member_updates ? plan.member_updates->allocated_bytes : 0) +
         plan.literal_fields.objects.capacity()*sizeof(LiteralFieldObject) +
         plan.literal_fields.fields.capacity()*sizeof(LiteralFieldRange) +
         plan.literal_fields.prefixes.capacity()*sizeof(analysis::OpId) +

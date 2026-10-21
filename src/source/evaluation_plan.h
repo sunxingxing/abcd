@@ -114,7 +114,8 @@ struct EvaluationPlan {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   std::vector<OpEvaluation> operations;
-  MemberUpdatePlan member_updates;
+  // Empty functions retain no member-update arenas or per-vector headers.
+  std::shared_ptr<const MemberUpdatePlan> member_updates;
   // Ordinary phi copies execute at incoming boundaries. Selected logical_values
   // consume both inputs in one expression instead; this table still proves
   // original values/schedules, not their eventual AST edge placement.
