@@ -1,3 +1,4 @@
+import {recordNodeEvidence} from '../support/isa/oracle_evidence.mjs';
 // ABC-only engine input. Source is an independent differential oracle.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -40,6 +41,7 @@ try {
  }
  const old=join(root,'previous');execFileSync(engine,[join(fixtures,'entry.abc'),old,'--value-source','--language-numeric','--language-constructors']);
  assert.notEqual(JSON.parse(readFileSync(join(old,'manifest.json'))).records.find(r=>r.source_status!==2).source_status,0);
+ recordNodeEvidence({abc:join(fixtures,'entry.abc'),output:out,original:join(fixtures,'entry.js'),producer:import.meta.url,cases,engine,exclusions:['own nonconfigurable throwing caller accessor']});
  // The approved Ark-specific caller descriptor is deliberately not compared.
  console.log(JSON.stringify({published:1,cases,excluded:['own nonconfigurable throwing caller accessor']}));
 }finally{rmSync(root,{recursive:true,force:true});}

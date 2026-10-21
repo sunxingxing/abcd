@@ -42,9 +42,15 @@ method result or a per-instruction semantic oracle.
 * `SupportedUnverified` means at least one raw lift succeeded and that occurrence
   belongs to a complete record. This is partial evidence, not universal opcode
   support or execution coverage. The per-profile lift distribution remains.
-* `SupportedVerified` requires an occurrence-level oracle importer, which is not
-  implemented in increment 0. All Node / Ark round-trip / Ark runtime columns
-  are null. Existing green tests are not imported without occurrence evidence.
+* `SupportedVerified` requires raw lift success, current complete recovery, and
+  an imported successful occurrence oracle in that same ISA profile. A green
+  method/record or registry label alone never suffices. The 332-row display is
+  existential and lists `verified_profiles`; `profile_rows` is authoritative for
+  profile-specific coverage. Other profiles keep their own classification.
+* `node` records a complete record tested by a registered differential suite,
+  not a claim that every instruction/branch executed. `ark_round_trip` records
+  a separate matched recompiled event. `ark_runtime` remains null: no Ark VM is
+  available. These layers must not be described as interchangeable.
 * `UnsupportedPremiseFree`, `NeedsDecision`, and `NonExecutable` require a reviewed
   semantic justification. Refusal alone never selects one of these categories.
 * `Unmeasured` includes never-seen variants and measured variants lacking enough
@@ -105,3 +111,52 @@ the matrix classifies each real `(profile, variant)` observation separately.
 No runtime pass is claimed. Handler, baseline and AOT metadata citations and
 known path differences are in
 [the evidence note](../../docs/design/source-recovery/isa-deprecated-evidence.md).
+
+## Occurrence oracle transactions
+
+`coverage_manifest.json::oracle_producers` names existing CTest differentials.
+The matrix runs them serially in a fresh `oracle-run-*` directory with
+`ABCD_ISA_ORACLE_DIR` set. The shared test-only
+`tests/support/isa/oracle_evidence.{py,mjs}` writer is called **after** differential
+assertions. CTest success, a non-skipped JUnit case, a positive executed-case
+count and a committed evidence file are all required. Tests behave normally
+without the environment variable. No production target imports this code.
+
+Evidence retains ABC, emitted source, evaluation-only source, manifest and
+SHA-256 identities for the producer, writer, production engine and raw probe;
+Node version, tested contract and approved observation exclusions are recorded.
+For a multi-record input, the producer must explicitly list covered record IDs.
+It cannot certify unrelated complete records. The occurrence stream joins on
+`(ABC sha256, ISA profile, record, method, original PC, contract)`, then checks
+the current decoded variant, raw semantic family and complete recovery again.
+Skipped/refused/stale/wrong-profile evidence never counts as a pass.
+
+The round-trip writer uses pinned es2abc at `--opt-level=0`, SDK ark_disasm and
+the **same production probe** on the recompiled ABC. Method identity must be
+unique on both sides (encoded name, kind, formal slots), and the full ordered
+semantic-family sequence, refined by nested typed expression/operator kinds,
+must agree. Correspondence is positional only after those checks. No LCS,
+register renaming, width equality or branch/exception normalization is used to
+manufacture a match. Method ambiguities, sequence differences and compilation
+failures are retained in `round-trip.json`, with exact commands/tool hashes;
+they remain null oracles. This is deliberately conservative and is weaker than
+whole-bytecode equality. The existing real-lexer string-export adaptation is
+applied only at the SDK compilation boundary and logged. An ordinal match is
+not an Ark execution oracle.
+
+Transactions are streamed as gzip JSONL and joined through a SQLite index with
+16 MiB page cache. Retained round-trip rows have a prepaid 64 MiB byte allowance,
+a 65,536-event per-method cap, and a 1 MiB input-row cap; admission precedes
+retention. Exhaustion records a resource mismatch, never round-trip success.
+Importer JSON metadata is capped at16 MiB and each occurrence at1 MiB.
+`isa_oracle_import_test` covers stale artifacts, incomplete recovery, refusal,
+wrong identity/profile, skipped Node evidence, forged round trips and exact
+200/201/400/800 event-budget boundaries.
+
+`isa_verified_variants_test` checks SDK-generated XOR/exponent/index-lookup
+sources at default/O0, and constructed current/deprecated indexed Get and strict
+Set encodings. The compiler currently emits by-value operations for these
+numeric access sources, so the distinct index encodings use the existing typed
+ABC builder rather than claiming an unobserved compiler emission. SDK decode,
+production `abc_decode`, complete recovery and independent Node traces are
+required. A source index mutation must change the program and be observed.

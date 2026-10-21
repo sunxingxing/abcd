@@ -1,518 +1,369 @@
 # Measured ISA coverage
 
-## Increment 1b evidence (2026-10-19)
-
-Baseline `845c786a` (the runtime-evidence commit after `59db43cc`). The large JSON
-is generated at `build/isa-coverage/coverage.json`, outside version control;
-reproduce with the command in [the tool README](../../../tests/isa/README.md).
-The full streaming run is in `/private/tmp/isa1b-coverage-final`.
-
-The 28 extended conditional variants move from Unmeasured to **NonExecutable**
-only for their constructed, measured profile (12.0.6). Other unmeasured profile
-rows stay Unmeasured. Variant-level totals are 128 SupportedUnverified,
-176 Unmeasured, 28 NonExecutable, and zero in the other three classes. This is
-not a new support claim. JEQZ/JNEZ semantics are unchanged.
-
-Classification requires the [pinned runtime citation](isa-branches-runtime-evidence.md),
-its hash, a registered constructed fixture hash, successful decoding, the typed
-raw refusal, both production record refusals, and a passing constructed-fixture
-suite (including SDK disassembly). The source compiler does not produce these
-variants. Node, Ark runtime, and round-trip columns for them remain empty.
-The independent positive controls and their ordinary-call Node comparisons are
-specified in [the fixture README](../../../tests/fixtures/isa/branches/README.md);
-those passes are not transferred to the refused variants.
-
-## Increment 2 evidence slice (2026-10-19)
-
-Baseline `5e057b6f`. [Property evidence](isa-properties-runtime-evidence.md)
-adds 21 constructed ABCs plus two reproducible es2abc O0/default ABCs. All 21
-handlers are implemented; none is NonExecutable. Ten variants occur in both
-compiler outputs; eleven occur only in the constructed fixtures in this run.
-All 21 still refuse raw lifting. This slice does not implement source support.
-
-The run `/private/tmp/isa2-coverage` contains 237 ABCs / 941,774 decoded
-occurrences / 189 observed variants. Class counts are unchanged: 128
-SupportedUnverified, 176 Unmeasured, 28 NonExecutable, zero in the other classes.
-Unmeasured is retained for these property variants despite measured decoding:
-the missing semantic/source oracle evidence must not be inferred from runtime
-implementation or frontend emission. No Node/Ark oracle pass is claimed.
-JSON: `build/isa-coverage/coverage.json` (generated, untracked).
-Both exploration flag sets are byte-identical to the saved increment-1b run,
-including manifests; counts remain 526/620 and 573/620.
-
-## Increment 2b raw lifting (2026-10-19, incomplete)
-
-Baseline `163b91aa`; measurement includes the uncommitted worktree changes.
-The four WITHNAMESET variants now lift with `PropertyNameSetting::kPropertyKey`.
-This does not complete literal recovery: a located `kNameSettingProof` gate
-prevents the name-neutral path from publishing them. The constructed-fixture
-tests check raw roles, accumulator preservation and throwing effects. No Node,
-Ark runtime or round-trip oracle pass is imported.
-
-The streaming run `/private/tmp/isa2b-coverage` has 237 ABCs / 941,774 occurrences.
-Classification remains 128 SupportedUnverified / 176 Unmeasured / 28
-NonExecutable; all four WITHNAMESET variants remain Unmeasured. The remaining
-source-proof boundary and the computed numeric-key discrepancy are documented
-in [the runtime evidence](isa-properties-runtime-evidence.md).
-
-Both exploration flag sets are byte-identical to `/private/tmp/isa2-coverage`,
-including all manifests (3,635 previous-flags files and 3,776 V4 files).
-No record status changes: 526/620 and 573/620. The underlying raw-lift evidence
-changes for the four variants, not their source-support classification.
-
-## Increment 2c: named string-key projection (2026-10-19)
-
-Baseline `67083c01`; measurements include the current worktree implementation.
-The new engine-output fixture completes under both contracts. Both
-STOWNBYNAMEWITHNAMESET widths move from Unmeasured to SupportedUnverified in
-profile 6 (24.0.0.0); the constructed profile-4 occurrences still refuse publication
-and retain Unmeasured. Both computed-key variants remain Unmeasured and gated.
-This does not transfer source support across profiles or across key domains.
-
-`/private/tmp/isa2c-coverage` measures 238 ABCs and 942,564 instructions, with
-no probe failures. Totals: **130 SupportedUnverified, 174 Unmeasured,
-28 NonExecutable**, zero in the other three classes. The Node fixture passes
-separately; the ledger still has no occurrence-level oracle importer, so its
-Node/Ark columns remain empty and no row claims SupportedVerified.
-
-The exploration outputs are byte-identical to the increment-2b measurement,
-including manifests and partial records: 3,635 previous-flags files and 3,776
-V4 files, with 526/620 and 573/620 complete. No exploration record status
-changed. Commands, hashes and the conservative class/static boundary are in
-[the fixture README](../../../tests/fixtures/isa/named_properties/README.md) and
-[the proof note](isa-properties-runtime-evidence.md#increment-2c-string-key-native-naming-2026-10-19).
-
-## Increment 3: current-variant evidence pass (2026-10-19)
-
-Baseline `7d97d2a6`. The fixed selection is 127 current / 47 deprecated
-Unmeasured variants. This increment audits the **127 current** variants;
-**47 deprecated remain pending**, without presuming they are non-executable.
-See the [complete current inventory and prioritized backlog](isa-current-evidence.md).
-
-All 127 have constructed engine/SDK-disassembler witnesses (43 raw lifts,
-84 typed UnsupportedInstruction refusals). Forty-eight reproducible es2abc
-O0/default commands observe 82 selected variants; 45 remain not observed.
-No additional current variant is non-executable on all pinned paths:
-LDNEWTARGET is FATAL/stub in interpreter paths but implemented in baseline/AOT.
-No production code, source policy or refusal table changes in this increment.
-The test-only probe corrects prefix reporting for secondary opcode zero.
-
-`/private/tmp/isa3-coverage`: **413 ABCs / 1,309,154 instructions**, no probe
-failures. Class totals: **144 SupportedUnverified / 160 Unmeasured /
-28 NonExecutable**, zero in the other classes. The fourteen newly classified
-variants are TONUMBER, NOT, LDNAN, LDINFINITY, TYPEOF_IMM16, JMP/JEQZ/JNEZ_IMM32,
-DEBUGGER, NOP, WIDE_NEWLEXENV, WIDE_NEWLEXENVWITHNAME, WIDE_LDLEXVAR and
-WIDE_STLEXVAR. These are measurement gains, not new semantics. Oracle columns
-remain empty; successful compilation and raw lifting are not VM/source oracles.
-
-Both exploration outputs are byte-identical to the prior ledger run, including
-manifests and partial files: **526/620** previous flags, **573/620** V4;
-3,635 / 3,776 files, zero changes. Comparison evidence is
-`/private/tmp/isa3-cohort-comparison.json`.
-
-## Current refresh: activation-local staged literals (2026-10-19)
-
-Regenerated with the working tree based on `66ed407c`, including the staged
-activation proof. The generated JSON and binary hashes remain untracked at
-`build/review/triage/staged-accepted-isa/matrix.json`. Historical sections above
-retain their original measurements; the tables below are current.
-
-The generator's `v4` result key/column is historical: this run uses
-`--language-source`, which selects **V5**. Current totals are **145
-SupportedUnverified / 159 Unmeasured / 28 NonExecutable**, zero in the other
-classes. APPLY has measured supported occurrences following the previously
-committed private-call-spread work. No new ISA semantics or oracle classification
-is claimed by the staged-literal proof. The historical APPLY unsupported-first-
-refusal rows are removed by real pipeline measurement, not manual filtering.
-
-## Deprecated-variant evidence refresh (2026-10-20)
-
-Baseline `41f6b2a1`. All **47 deprecated variants** now have six
-profile-specific constructed witnesses (282 ABCs), independently decoded by
-`abc_decode`, the production coverage probe and SDK `ark_disasm`. The
-[per-variant evidence](isa-deprecated-evidence.md) distinguishes C++/assembly,
-baseline, AOT metadata and runtime-execution gaps. None meets an all-path
-NonExecutable proof; no production behavior or refusal policy changes.
-
-Fresh before/after totals: **145 -> 155 SupportedUnverified**,
-**159 -> 149 Unmeasured**, **28 NonExecutable unchanged**. All other classes,
-including SupportedVerified, remain zero. Ten deprecated scalar/environment
-variants have both raw lift and complete constructed-record evidence; that
-limited classification is not a runtime or source-equivalence oracle.
-The other 37 remain Unmeasured, with measured typed causes and no oracle pass.
-
-The streaming run at `build/review/isa-deprecated/after` covers **712 ABCs /
-1,312,780 instructions** without probe failures. All 47 still have zero
-exploration-cohort occurrences or first-refusal impact. Historical profiles
-9/11.0.2 decode, then retain the existing UnsupportedProfile refusal; modern
-profiles each yield 11 raw successes and 36 UnsupportedInstruction refusals.
-The generator's historical `v4` column selects current `--language-source`
-(V5). Large JSON remains untracked under `build/isa-coverage/coverage.json`.
-
 Generated by `tests/isa/coverage_matrix.py`. Oracle layers remain separate. NonExecutable requires a pinned citation and passing constructed-ABC refusal tests.
 
-Engine: `41f6b2a1b04a28ee27bfe0e37096a5019a82d2f4`. Files: 712. Occurrences: 1312780.
+Engine: `a964be2a0b0556444b9b708bd0aeaf615b99c37b`. Files: 844. Occurrences: 1334291.
 
 Raw lift and record completion do not prove per-instruction source equivalence. Method status is unmeasured unless independently inspected.
 
-| Opcode | Family | Occurrences | Measured profiles | Classification |
-|---|---|---:|---|---|
-| LDUNDEFINED | Constant | 24300 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| LDNULL | Constant | 716 | 3, 4, 5, 6 | SupportedUnverified |
-| LDTRUE | Constant | 2318 | 3, 4, 5, 6 | SupportedUnverified |
-| LDFALSE | Constant | 4150 | 3, 4, 5, 6 | SupportedUnverified |
-| CREATEEMPTYOBJECT | Creation | 1250 | 3, 4, 5, 6 | SupportedUnverified |
-| CREATEEMPTYARRAY_IMM8 | Creation | 3436 | 3, 4, 5, 6 | SupportedUnverified |
-| CREATEARRAYWITHBUFFER_IMM8_ID16 | Creation | 198 | 3, 4, 5, 6 | SupportedUnverified |
-| CREATEOBJECTWITHBUFFER_IMM8_ID16 | Creation | 8305 | 3, 4, 5, 6 | SupportedUnverified |
-| NEWOBJRANGE_IMM8_IMM8_V8 | Creation | 2358 | 3, 4, 5, 6 | SupportedUnverified |
-| NEWLEXENV_IMM8 | Creation | 128 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| ADD2_IMM8_V8 | Binary | 6291 | 3, 4, 5, 6 | SupportedUnverified |
-| SUB2_IMM8_V8 | Binary | 210 | 3, 4, 5, 6 | SupportedUnverified |
-| MUL2_IMM8_V8 | Binary | 170 | 3, 4, 5, 6 | SupportedUnverified |
-| DIV2_IMM8_V8 | Binary | 130 | 3, 4, 5, 6 | SupportedUnverified |
-| MOD2_IMM8_V8 | Binary | 42 | 3, 4, 5, 6 | SupportedUnverified |
-| EQ_IMM8_V8 | Binary | 1618 | 3, 4, 5, 6 | SupportedUnverified |
-| NOTEQ_IMM8_V8 | Binary | 431 | 3, 4, 5, 6 | SupportedUnverified |
-| LESS_IMM8_V8 | Binary | 211 | 3, 4, 5, 6 | SupportedUnverified |
-| LESSEQ_IMM8_V8 | Binary | 50 | 3, 4, 5, 6 | SupportedUnverified |
-| GREATER_IMM8_V8 | Binary | 146 | 3, 4, 5, 6 | SupportedUnverified |
-| GREATEREQ_IMM8_V8 | Binary | 65 | 3, 4, 5, 6 | SupportedUnverified |
-| SHL2_IMM8_V8 | Binary | 36 | 6 | SupportedUnverified |
-| SHR2_IMM8_V8 | Binary | 5 | 5 | SupportedUnverified |
-| ASHR2_IMM8_V8 | Binary | 10 | 5 | SupportedUnverified |
-| AND2_IMM8_V8 | Binary | 16 | 5, 6 | SupportedUnverified |
-| OR2_IMM8_V8 | Binary | 15 | 3, 4, 5, 6 | SupportedUnverified |
-| XOR2_IMM8_V8 | Binary | 5 | 3, 4, 6 | Unmeasured |
-| EXP_IMM8_V8 | Binary | 5 | 3, 4, 6 | Unmeasured |
-| TYPEOF_IMM8 | Unary | 500 | 3, 4, 5, 6 | SupportedUnverified |
-| TONUMBER_IMM8 | Unary | 11 | 3, 4, 6 | SupportedUnverified |
-| TONUMERIC_IMM8 | Unary | 153 | 3, 4, 5, 6 | SupportedUnverified |
-| NEG_IMM8 | Unary | 584 | 3, 4, 5, 6 | SupportedUnverified |
-| NOT_IMM8 | Unary | 5 | 3, 4, 6 | SupportedUnverified |
-| INC_IMM8 | Unary | 177 | 3, 4, 5, 6 | SupportedUnverified |
-| DEC_IMM8 | Unary | 12 | 3, 4, 6 | SupportedUnverified |
-| ISTRUE | Unary | 238 | 3, 4 | SupportedUnverified |
-| ISFALSE | Unary | 835 | 3 | SupportedUnverified |
-| ISIN_IMM8_V8 | Comparison | 366 | 3, 4, 5, 6 | SupportedUnverified |
-| INSTANCEOF_IMM8_V8 | Comparison | 10 | 6 | SupportedUnverified |
-| STRICTNOTEQ_IMM8_V8 | Comparison | 2422 | 3, 4, 5, 6 | SupportedUnverified |
-| STRICTEQ_IMM8_V8 | Comparison | 2736 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLARG0_IMM8 | Call | 374 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLARG1_IMM8_V8 | Call | 852 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLARGS2_IMM8_V8_V8 | Call | 476 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLARGS3_IMM8_V8_V8_V8 | Call | 243 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLTHIS0_IMM8_V8 | Call | 44690 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLTHIS1_IMM8_V8_V8 | Call | 13377 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLTHIS2_IMM8_V8_V8_V8 | Call | 4624 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLTHIS3_IMM8_V8_V8_V8_V8 | Call | 795 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLTHISRANGE_IMM8_IMM8_V8 | Call | 423 | 3, 4, 5, 6 | SupportedUnverified |
-| SUPERCALLTHISRANGE_IMM8_IMM8_V8 | Call | 394 | 3, 4, 5, 6 | SupportedUnverified |
-| DEFINEFUNC_IMM8_ID16_IMM8 | Definition | 13059 | 3, 4, 5, 6 | SupportedUnverified |
-| DEFINEMETHOD_IMM8_ID16_IMM8 | Definition | 3655 | 3, 4, 5, 6 | SupportedUnverified |
-| DEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8 | Definition | 1436 | 3, 4, 5, 6 | SupportedUnverified |
-| GETNEXTPROPNAME_V8 | ObjectAccess | 34 | 6 | SupportedUnverified |
-| LDOBJBYVALUE_IMM8_V8 | ObjectAccess | 739 | 3, 4, 5, 6 | SupportedUnverified |
-| STOBJBYVALUE_IMM8_V8_V8 | ObjectAccess | 405 | 3, 5, 6 | SupportedUnverified |
-| LDSUPERBYVALUE_IMM8_V8 | ObjectAccess | 300 | 4, 6 | Unmeasured |
-| LDOBJBYINDEX_IMM8_IMM16 | ObjectAccess | 1 | 4 | Unmeasured |
-| STOBJBYINDEX_IMM8_V8_IMM16 | ObjectAccess | 2 | 4 | Unmeasured |
-| LDLEXVAR_IMM4_IMM4 | ObjectAccess | 20526 | 3, 4, 5, 6 | SupportedUnverified |
-| STLEXVAR_IMM4_IMM4 | ObjectAccess | 2901 | 3, 4, 5, 6 | SupportedUnverified |
-| LDA_STR_ID16 | String | 20552 | 3, 4, 5, 6 | SupportedUnverified |
-| TRYLDGLOBALBYNAME_IMM8_ID16 | ObjectAccess | 29722 | 3, 4, 5, 6 | SupportedUnverified |
-| TRYSTGLOBALBYNAME_IMM8_ID16 | ObjectAccess | 7 | 4, 6 | Unmeasured |
-| LDGLOBALVAR_IMM16_ID16 | ObjectAccess | 7 | 4, 6 | Unmeasured |
-| LDOBJBYNAME_IMM8_ID16 | ObjectAccess | 68394 | 3, 4, 5, 6 | SupportedUnverified |
-| STOBJBYNAME_IMM8_ID16_V8 | ObjectAccess | 6876 | 3, 4, 5, 6 | SupportedUnverified |
-| MOV_V4_V4 | Move | 89543 | 3, 4, 5, 6 | SupportedUnverified |
-| MOV_V8_V8 | Move | 8320 | 3, 4, 5, 6 | SupportedUnverified |
-| LDSUPERBYNAME_IMM8_ID16 | ObjectAccess | 51 | 3, 6 | SupportedUnverified |
-| STCONSTTOGLOBALRECORD_IMM16_ID16 | ObjectAccess | 3 | 4, 6 | Unmeasured |
-| STTOGLOBALRECORD_IMM16_ID16 | ObjectAccess | 7 | 4, 6 | Unmeasured |
-| LDTHISBYNAME_IMM8_ID16 | ObjectAccess | 2 | 4 | Unmeasured |
-| STTHISBYNAME_IMM8_ID16 | ObjectAccess | 2 | 4 | Unmeasured |
-| LDTHISBYVALUE_IMM8 | ObjectAccess | 2 | 4 | Unmeasured |
-| STTHISBYVALUE_IMM8_V8 | ObjectAccess | 2 | 4 | Unmeasured |
-| JMP_IMM8 | Jump | 5439 | 3, 4, 5, 6 | SupportedUnverified |
-| JMP_IMM16 | Jump | 1376 | 3, 4, 5, 6 | SupportedUnverified |
-| JEQZ_IMM8 | Jump | 5705 | 3, 4, 5, 6 | SupportedUnverified |
-| JEQZ_IMM16 | Jump | 321 | 3, 4, 5, 6 | SupportedUnverified |
-| JNEZ_IMM8 | Jump | 5131 | 3, 4, 5, 6 | SupportedUnverified |
-| JSTRICTEQZ_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JNSTRICTEQZ_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JEQNULL_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JNENULL_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JSTRICTEQNULL_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JNSTRICTEQNULL_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JEQUNDEFINED_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JNEUNDEFINED_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JSTRICTEQUNDEFINED_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JNSTRICTEQUNDEFINED_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JEQ_V8_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JNE_V8_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JSTRICTEQ_V8_IMM8 | Jump | 1 | 4 | NonExecutable |
-| JNSTRICTEQ_V8_IMM8 | Jump | 1 | 4 | NonExecutable |
-| LDA_V8 | RegisterLoad | 316150 | 3, 4, 5, 6 | SupportedUnverified |
-| STA_V8 | RegisterStore | 340039 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| LDAI_IMM32 | Immediate | 12269 | 3, 4, 5, 6 | SupportedUnverified |
-| FLDAI_IMM64 | Immediate | 198 | 3, 4, 5, 6 | SupportedUnverified |
-| RETURN | Return | 13706 | 3, 4, 5, 6 | SupportedUnverified |
-| RETURNUNDEFINED | Return | 15623 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| GETPROPITERATOR | Iterator | 34 | 6 | SupportedUnverified |
-| GETITERATOR_IMM8 | Iterator | 59 | 3, 5, 6 | SupportedUnverified |
-| CLOSEITERATOR_IMM8_V8 | Iterator | 1 | 4 | Unmeasured |
-| POPLEXENV | Constant | 104 | 3, 4, 5, 6 | SupportedUnverified |
-| LDNAN | Constant | 7 | 3, 4, 6 | SupportedUnverified |
-| LDINFINITY | Constant | 8 | 3, 4, 6 | SupportedUnverified |
-| GETUNMAPPEDARGS | Constant | 12 | 3, 4, 6 | Unmeasured |
-| LDGLOBAL | Constant | 249 | 3, 4, 6 | SupportedUnverified |
-| LDNEWTARGET | Constant | 1 | 4 | Unmeasured |
-| LDTHIS | Constant | 1 | 4 | Unmeasured |
-| LDHOLE | Constant | 4535 | 3, 4, 5, 6 | SupportedUnverified |
-| CREATEREGEXPWITHLITERAL_IMM8_ID16_IMM8 | Creation | 1 | 4 | Unmeasured |
-| CREATEREGEXPWITHLITERAL_IMM16_ID16_IMM8 | Creation | 1 | 4 | Unmeasured |
-| CALLRANGE_IMM8_IMM8_V8 | Call | 10 | 5, 6 | SupportedUnverified |
-| DEFINEFUNC_IMM16_ID16_IMM8 | Definition | 1056 | 3, 5, 6 | SupportedUnverified |
-| DEFINECLASSWITHBUFFER_IMM16_ID16_ID16_IMM16_V8 | Definition | 2522 | 6 | SupportedUnverified |
-| GETTEMPLATEOBJECT_IMM8 | ObjectAccess | 5 | 3, 4, 6 | Unmeasured |
-| SETOBJECTWITHPROTO_IMM8_V8 | ObjectAccess | 5 | 3, 4, 6 | Unmeasured |
-| STOWNBYVALUE_IMM8_V8_V8 | ObjectAccess | 13 | 6 | SupportedUnverified |
-| STOWNBYINDEX_IMM8_V8_IMM16 | ObjectAccess | 2119 | 3, 4, 5, 6 | SupportedUnverified |
-| STOWNBYNAME_IMM8_ID16_V8 | ObjectAccess | 1465 | 3, 4, 5, 6 | SupportedUnverified |
-| GETMODULENAMESPACE_IMM8 | ObjectAccess | 3 | 4, 6 | Unmeasured |
-| STMODULEVAR_IMM8 | ObjectAccess | 1570 | 3, 4, 5, 6 | SupportedUnverified |
-| LDLOCALMODULEVAR_IMM8 | ObjectAccess | 524 | 3, 4, 5, 6 | SupportedUnverified |
-| LDEXTERNALMODULEVAR_IMM8 | ObjectAccess | 6360 | 3, 4, 5, 6 | SupportedUnverified |
-| STGLOBALVAR_IMM16_ID16 | ObjectAccess | 13 | 4, 6 | Unmeasured |
-| CREATEEMPTYARRAY_IMM16 | Creation | 2360 | 3, 5, 6 | SupportedUnverified |
-| CREATEARRAYWITHBUFFER_IMM16_ID16 | Creation | 30 | 5, 6 | SupportedUnverified |
-| CREATEOBJECTWITHBUFFER_IMM16_ID16 | Creation | 1402 | 3, 5, 6 | SupportedUnverified |
-| NEWOBJRANGE_IMM16_IMM8_V8 | Creation | 22 | 5, 6 | SupportedUnverified |
-| TYPEOF_IMM16 | Unary | 257 | 4, 6 | SupportedUnverified |
-| LDOBJBYVALUE_IMM16_V8 | ObjectAccess | 10 | 3, 6 | SupportedUnverified |
-| STOBJBYVALUE_IMM16_V8_V8 | ObjectAccess | 261 | 4, 6 | Unmeasured |
-| LDSUPERBYVALUE_IMM16_V8 | ObjectAccess | 286 | 4, 6 | Unmeasured |
-| LDOBJBYINDEX_IMM16_IMM16 | ObjectAccess | 1 | 4 | Unmeasured |
-| STOBJBYINDEX_IMM16_V8_IMM16 | ObjectAccess | 2 | 4 | Unmeasured |
-| LDLEXVAR_IMM8_IMM8 | ObjectAccess | 291 | 4, 5, 6 | SupportedUnverified |
-| STLEXVAR_IMM8_IMM8 | ObjectAccess | 270 | 4, 5, 6 | SupportedUnverified |
-| TRYLDGLOBALBYNAME_IMM16_ID16 | ObjectAccess | 845 | 3, 4, 5, 6 | SupportedUnverified |
-| TRYSTGLOBALBYNAME_IMM16_ID16 | ObjectAccess | 1 | 4 | Unmeasured |
-| STOWNBYNAMEWITHNAMESET_IMM8_ID16_V8 | ObjectAccess | 174 | 4, 6 | SupportedUnverified |
-| MOV_V16_V16 | Move | 54632 | 6 | SupportedUnverified |
-| LDOBJBYNAME_IMM16_ID16 | ObjectAccess | 42252 | 3, 4, 5, 6 | SupportedUnverified |
-| STOBJBYNAME_IMM16_ID16_V8 | ObjectAccess | 80 | 3, 5, 6 | SupportedUnverified |
-| LDSUPERBYNAME_IMM16_ID16 | ObjectAccess | 259 | 4, 6 | Unmeasured |
-| LDTHISBYNAME_IMM16_ID16 | ObjectAccess | 2 | 4 | Unmeasured |
-| STTHISBYNAME_IMM16_ID16 | ObjectAccess | 2 | 4 | Unmeasured |
-| LDTHISBYVALUE_IMM16 | ObjectAccess | 2 | 4 | Unmeasured |
-| STTHISBYVALUE_IMM16_V8 | ObjectAccess | 2 | 4 | Unmeasured |
-| ASYNCGENERATORREJECT_V8 | ObjectAccess | 3 | 4, 6 | Unmeasured |
-| JMP_IMM32 | Jump | 3 | 4, 6 | SupportedUnverified |
-| STOWNBYVALUEWITHNAMESET_IMM8_V8_V8 | ObjectAccess | 90 | 4, 6 | Unmeasured |
-| JEQZ_IMM32 | Jump | 1 | 4 | SupportedUnverified |
-| JNEZ_IMM16 | Jump | 1098 | 3, 4, 5, 6 | SupportedUnverified |
-| JNEZ_IMM32 | Jump | 3 | 4, 6 | SupportedUnverified |
-| JSTRICTEQZ_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JNSTRICTEQZ_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JEQNULL_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JNENULL_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JSTRICTEQNULL_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JNSTRICTEQNULL_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JEQUNDEFINED_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JNEUNDEFINED_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JSTRICTEQUNDEFINED_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JNSTRICTEQUNDEFINED_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JEQ_V8_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JNE_V8_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JSTRICTEQ_V8_IMM16 | Jump | 1 | 4 | NonExecutable |
-| JNSTRICTEQ_V8_IMM16 | Jump | 1 | 4 | NonExecutable |
-| GETITERATOR_IMM16 | Iterator | 309 | 4, 6 | Unmeasured |
-| CLOSEITERATOR_IMM16_V8 | Iterator | 1 | 4 | Unmeasured |
-| LDSYMBOL | Constant | 1 | 4 | Unmeasured |
-| ASYNCFUNCTIONENTER | Constant | 591 | 3, 4, 5, 6 | SupportedUnverified |
-| LDFUNCTION | Constant | 1 | 4 | Unmeasured |
-| DEBUGGER | Constant | 3 | 4, 6 | SupportedUnverified |
-| CREATEGENERATOROBJ_V8 | Creation | 3 | 4, 6 | Unmeasured |
-| CREATEITERRESULTOBJ_V8_V8 | Creation | 3 | 4, 6 | Unmeasured |
-| CREATEOBJECTWITHEXCLUDEDKEYS_IMM8_V8_V8 | Creation | 5 | 3, 4, 6 | Unmeasured |
-| NEWOBJAPPLY_IMM8_V8 | Creation | 3 | 4, 6 | Unmeasured |
-| NEWOBJAPPLY_IMM16_V8 | Creation | 301 | 4, 6 | Unmeasured |
-| NEWLEXENVWITHNAME_IMM8_ID16 | Creation | 1473 | 3, 4, 5, 6 | SupportedUnverified |
-| CREATEASYNCGENERATOROBJ_V8 | Creation | 3 | 4, 6 | Unmeasured |
-| ASYNCGENERATORRESOLVE_V8_V8_V8 | Creation | 13 | 4, 6 | Unmeasured |
-| SUPERCALLSPREAD_IMM8_V8 | Call | 39 | 3, 4, 6 | SupportedUnverified |
-| APPLY_IMM8_V8_V8 | Call | 21 | 4, 6 | SupportedUnverified |
-| SUPERCALLARROWRANGE_IMM8_IMM8_V8 | Call | 1 | 4 | Unmeasured |
-| DEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8 | Definition | 2136 | 3, 4, 5, 6 | SupportedUnverified |
-| DYNAMICIMPORT | ObjectAccess | 5 | 3, 4, 6 | Unmeasured |
-| DEFINEMETHOD_IMM16_ID16_IMM8 | Definition | 1 | 4 | Unmeasured |
-| RESUMEGENERATOR | ObjectAccess | 590 | 3, 4, 5, 6 | Unmeasured |
-| GETRESUMEMODE | ObjectAccess | 590 | 3, 4, 5, 6 | Unmeasured |
-| GETTEMPLATEOBJECT_IMM16 | ObjectAccess | 301 | 4, 6 | Unmeasured |
-| DELOBJPROP_V8 | ObjectAccess | 9 | 6 | SupportedUnverified |
-| SUSPENDGENERATOR_V8 | ObjectAccess | 586 | 3, 4, 5, 6 | Unmeasured |
-| ASYNCFUNCTIONAWAITUNCAUGHT_V8 | ObjectAccess | 578 | 3, 4, 5, 6 | Unmeasured |
-| COPYDATAPROPERTIES_V8 | ObjectAccess | 5 | 3, 4, 6 | Unmeasured |
-| STARRAYSPREAD_V8_V8 | ObjectAccess | 342 | 3, 4, 6 | SupportedUnverified |
-| SETOBJECTWITHPROTO_IMM16_V8 | ObjectAccess | 301 | 4, 6 | Unmeasured |
-| STOWNBYVALUE_IMM16_V8_V8 | ObjectAccess | 1 | 4 | Unmeasured |
-| STSUPERBYVALUE_IMM8_V8_V8 | ObjectAccess | 172 | 4, 6 | Unmeasured |
-| STSUPERBYVALUE_IMM16_V8_V8 | ObjectAccess | 414 | 4, 6 | Unmeasured |
-| STOWNBYINDEX_IMM16_V8_IMM16 | ObjectAccess | 2284 | 3, 5, 6 | SupportedUnverified |
-| STOWNBYNAME_IMM16_ID16_V8 | ObjectAccess | 1 | 4 | Unmeasured |
-| ASYNCFUNCTIONRESOLVE_V8 | ObjectAccess | 721 | 3, 4, 5, 6 | SupportedUnverified |
-| ASYNCFUNCTIONREJECT_V8 | ObjectAccess | 591 | 3, 4, 5, 6 | SupportedUnverified |
-| COPYRESTARGS_IMM8 | ObjectAccess | 125 | 3, 4, 5, 6 | SupportedUnverified |
-| STSUPERBYNAME_IMM8_ID16_V8 | ObjectAccess | 174 | 4, 6 | Unmeasured |
-| STSUPERBYNAME_IMM16_ID16_V8 | ObjectAccess | 412 | 4, 6 | Unmeasured |
-| STOWNBYVALUEWITHNAMESET_IMM16_V8_V8 | ObjectAccess | 498 | 4, 6 | Unmeasured |
-| LDBIGINT_ID16 | ObjectAccess | 5 | 3, 4, 6 | Unmeasured |
-| STOWNBYNAMEWITHNAMESET_IMM16_ID16_V8 | ObjectAccess | 213 | 4, 6 | SupportedUnverified |
-| NOP | Nop | 13 | 3, 4, 6 | SupportedUnverified |
-| SETGENERATORSTATE_IMM8 | ObjectAccess | 15 | 4, 6 | Unmeasured |
-| GETASYNCITERATOR_IMM8 | Iterator | 5 | 4, 6 | Unmeasured |
-| LDPRIVATEPROPERTY_IMM8_IMM16_IMM16 | Iterator | 9 | 4, 6 | Unmeasured |
-| STPRIVATEPROPERTY_IMM8_IMM16_IMM16_V8 | Iterator | 3 | 4, 6 | Unmeasured |
-| TESTIN_IMM8_IMM16_IMM16 | Iterator | 3 | 4, 6 | Unmeasured |
-| DEFINEFIELDBYNAME_IMM8_ID16_V8 | Iterator | 4386 | 3 | SupportedUnverified |
-| DEFINEPROPERTYBYNAME_IMM8_ID16_V8 | Iterator | 5831 | 4, 5, 6 | SupportedUnverified |
-| CALLTHIS0WITHNAME_IMM8_ID16_V8 | Call | 4325 | 6 | SupportedUnverified |
-| CALLTHIS1WITHNAME_IMM8_ID16_V8_V8 | Call | 7852 | 6 | SupportedUnverified |
-| CALLTHIS2WITHNAME_IMM8_ID16_V8_V8_V8 | Call | 2794 | 6 | SupportedUnverified |
-| CALLTHIS3WITHNAME_IMM8_ID16_V8_V8_V8_V8 | Call | 610 | 6 | SupportedUnverified |
-| CALLTHISRANGEWITHNAME_IMM8_IMM8_ID16_V8 | Call | 242 | 6 | SupportedUnverified |
-| CALLRUNTIME_NOTIFYCONCURRENTRESULT_PREF_NONE | RuntimeCall | 31 | 6 | SupportedUnverified |
-| DEPRECATED_LDLEXENV_PREF_NONE | Constant | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_CREATEOBJECTWITHEXCLUDEDKEYS_PREF_IMM16_V8_V8 | Creation | 3 | 4, 6 | Unmeasured |
-| THROW_PREF_NONE | Throw | 2629 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLRUNTIME_DEFINEFIELDBYVALUE_PREF_IMM8_V8_V8 | RuntimeCall | 1225 | 3, 4, 6 | Unmeasured |
-| DEPRECATED_POPLEXENV_PREF_NONE | Constant | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| WIDE_NEWOBJRANGE_PREF_IMM16_V8 | Creation | 3 | 4, 6 | Unmeasured |
-| THROW_NOTEXISTS_PREF_NONE | Throw | 5 | 4, 6 | Unmeasured |
-| CALLRUNTIME_DEFINEFIELDBYINDEX_PREF_IMM8_IMM32_V8 | RuntimeCall | 9 | 6 | SupportedUnverified |
-| DEPRECATED_GETITERATORNEXT_PREF_V8_V8 | Iterator | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_NEWLEXENV_PREF_IMM16 | Creation | 1 | 4 | SupportedUnverified |
-| THROW_PATTERNNONCOERCIBLE_PREF_NONE | Throw | 9 | 3, 4, 6 | Unmeasured |
-| CALLRUNTIME_TOPROPERTYKEY_PREF_NONE | RuntimeCall | 1 | 4 | Unmeasured |
-| DEPRECATED_CREATEARRAYWITHBUFFER_PREF_IMM16 | Creation | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_NEWLEXENVWITHNAME_PREF_IMM16_ID16 | Creation | 3 | 4, 6 | SupportedUnverified |
-| THROW_DELETESUPERPROPERTY_PREF_NONE | Throw | 1 | 4 | Unmeasured |
-| CALLRUNTIME_CREATEPRIVATEPROPERTY_PREF_IMM16_ID16 | RuntimeCall | 3 | 4, 6 | Unmeasured |
-| DEPRECATED_CREATEOBJECTWITHBUFFER_PREF_IMM16 | Creation | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_CALLRANGE_PREF_IMM16_V8 | Call | 3 | 4, 6 | Unmeasured |
-| THROW_CONSTASSIGNMENT_PREF_V8 | Throw | 3 | 4, 6 | Unmeasured |
-| CALLRUNTIME_DEFINEPRIVATEPROPERTY_PREF_IMM8_IMM16_IMM16_V8 | RuntimeCall | 7 | 4, 6 | Unmeasured |
-| DEPRECATED_TONUMBER_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| WIDE_CALLTHISRANGE_PREF_IMM16_V8 | Call | 1 | 4 | Unmeasured |
-| THROW_IFNOTOBJECT_PREF_V8 | Throw | 1083 | 3, 5, 6 | SupportedUnverified |
-| CALLRUNTIME_CALLINIT_PREF_IMM8_V8 | RuntimeCall | 4 | 4, 6 | Unmeasured |
-| DEPRECATED_TONUMERIC_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| WIDE_SUPERCALLTHISRANGE_PREF_IMM16_V8 | Call | 3 | 4, 6 | Unmeasured |
-| THROW_UNDEFINEDIFHOLE_PREF_V8_V8 | Throw | 1 | 4 | Unmeasured |
-| CALLRUNTIME_DEFINESENDABLECLASS_PREF_IMM16_ID16_ID16_IMM16_V8 | RuntimeCall | 19 | 6 | SupportedUnverified |
-| DEPRECATED_NEG_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| WIDE_SUPERCALLARROWRANGE_PREF_IMM16_V8 | Call | 1 | 4 | Unmeasured |
-| THROW_IFSUPERNOTCORRECTCALL_PREF_IMM8 | Throw | 5421 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLRUNTIME_LDSENDABLECLASS_PREF_IMM16 | RuntimeCall | 5 | 4, 6 | Unmeasured |
-| DEPRECATED_NOT_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| WIDE_LDOBJBYINDEX_PREF_IMM32 | ObjectAccess | 1 | 4 | Unmeasured |
-| THROW_IFSUPERNOTCORRECTCALL_PREF_IMM16 | Throw | 1 | 4 | Unmeasured |
-| CALLRUNTIME_LDSENDABLEEXTERNALMODULEVAR_PREF_IMM8 | RuntimeCall | 264 | 6 | SupportedUnverified |
-| DEPRECATED_INC_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| WIDE_STOBJBYINDEX_PREF_V8_IMM32 | ObjectAccess | 2 | 4 | Unmeasured |
-| THROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16 | Throw | 14753 | 3, 4, 5, 6 | SupportedUnverified |
-| CALLRUNTIME_WIDELDSENDABLEEXTERNALMODULEVAR_PREF_IMM16 | RuntimeCall | 265 | 4, 6 | Unmeasured |
-| DEPRECATED_DEC_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| WIDE_STOWNBYINDEX_PREF_V8_IMM32 | ObjectAccess | 1 | 4 | Unmeasured |
-| CALLRUNTIME_NEWSENDABLEENV_PREF_IMM8 | RuntimeCall | 3 | 4, 6 | Unmeasured |
-| DEPRECATED_CALLARG0_PREF_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_COPYRESTARGS_PREF_IMM16 | ObjectAccess | 3 | 4, 6 | Unmeasured |
-| CALLRUNTIME_WIDENEWSENDABLEENV_PREF_IMM16 | RuntimeCall | 1 | 4 | Unmeasured |
-| DEPRECATED_CALLARG1_PREF_V8_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_LDLEXVAR_PREF_IMM16_IMM16 | ObjectAccess | 285 | 4, 6 | SupportedUnverified |
-| CALLRUNTIME_STSENDABLEVAR_PREF_IMM4_IMM4 | RuntimeCall | 3 | 4, 6 | Unmeasured |
-| DEPRECATED_CALLARGS2_PREF_V8_V8_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_STLEXVAR_PREF_IMM16_IMM16 | ObjectAccess | 285 | 4, 6 | SupportedUnverified |
-| CALLRUNTIME_STSENDABLEVAR_PREF_IMM8_IMM8 | RuntimeCall | 1 | 4 | Unmeasured |
-| DEPRECATED_CALLARGS3_PREF_V8_V8_V8_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_GETMODULENAMESPACE_PREF_IMM16 | ObjectAccess | 3 | 4, 6 | Unmeasured |
-| CALLRUNTIME_WIDESTSENDABLEVAR_PREF_IMM16_IMM16 | RuntimeCall | 1 | 4 | Unmeasured |
-| DEPRECATED_CALLRANGE_PREF_IMM16_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_STMODULEVAR_PREF_IMM16 | ObjectAccess | 533 | 4, 6 | Unmeasured |
-| CALLRUNTIME_LDSENDABLEVAR_PREF_IMM4_IMM4 | RuntimeCall | 1 | 4 | Unmeasured |
-| DEPRECATED_CALLSPREAD_PREF_V8_V8_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_LDLOCALMODULEVAR_PREF_IMM16 | ObjectAccess | 265 | 4, 6 | Unmeasured |
-| CALLRUNTIME_LDSENDABLEVAR_PREF_IMM8_IMM8 | RuntimeCall | 1 | 4 | Unmeasured |
-| DEPRECATED_CALLTHISRANGE_PREF_IMM16_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_LDEXTERNALMODULEVAR_PREF_IMM16 | ObjectAccess | 529 | 4, 6 | Unmeasured |
-| CALLRUNTIME_WIDELDSENDABLEVAR_PREF_IMM16_IMM16 | RuntimeCall | 1 | 4 | Unmeasured |
-| DEPRECATED_DEFINECLASSWITHBUFFER_PREF_ID16_IMM16_IMM16_V8_V8 | Definition | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_LDPATCHVAR_PREF_IMM16 | ObjectAccess | 1 | 4 | Unmeasured |
-| CALLRUNTIME_ISTRUE_PREF_IMM8 | RuntimeCall | 1898 | 4, 5, 6 | SupportedUnverified |
-| DEPRECATED_RESUMEGENERATOR_PREF_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_STPATCHVAR_PREF_IMM16 | ObjectAccess | 1 | 4 | Unmeasured |
-| CALLRUNTIME_ISFALSE_PREF_IMM8 | RuntimeCall | 2479 | 4, 5, 6 | SupportedUnverified |
-| DEPRECATED_GETRESUMEMODE_PREF_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| WIDE_CALLTHISRANGEWITHNAME_PREF_IMM16_ID16_V8 | Call | 3 | 4, 6 | Unmeasured |
-| CALLRUNTIME_LDLAZYMODULEVAR_PREF_IMM8 | RuntimeCall | 364 | 6 | SupportedUnverified |
-| DEPRECATED_GETTEMPLATEOBJECT_PREF_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| CALLRUNTIME_WIDELDLAZYMODULEVAR_PREF_IMM16 | RuntimeCall | 265 | 4, 6 | Unmeasured |
-| DEPRECATED_DELOBJPROP_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| CALLRUNTIME_LDLAZYSENDABLEMODULEVAR_PREF_IMM8 | RuntimeCall | 259 | 4, 6 | Unmeasured |
-| DEPRECATED_SUSPENDGENERATOR_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| CALLRUNTIME_WIDELDLAZYSENDABLEMODULEVAR_PREF_IMM16 | RuntimeCall | 265 | 4, 6 | Unmeasured |
-| DEPRECATED_ASYNCFUNCTIONAWAITUNCAUGHT_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| CALLRUNTIME_SUPERCALLFORWARDALLARGS_PREF_V8 | RuntimeCall | 87 | 5, 6 | SupportedUnverified |
-| DEPRECATED_COPYDATAPROPERTIES_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| CALLRUNTIME_LDSENDABLELOCALMODULEVAR_PREF_IMM8 | Throw | 255 | 4, 6 | Unmeasured |
-| DEPRECATED_SETOBJECTWITHPROTO_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| CALLRUNTIME_WIDELDSENDABLELOCALMODULEVAR_PREF_IMM16 | Throw | 267 | 4, 6 | Unmeasured |
-| DEPRECATED_LDOBJBYVALUE_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_LDSUPERBYVALUE_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_LDOBJBYINDEX_PREF_V8_IMM32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_ASYNCFUNCTIONRESOLVE_PREF_V8_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_ASYNCFUNCTIONREJECT_PREF_V8_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_STLEXVAR_PREF_IMM4_IMM4_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| DEPRECATED_STLEXVAR_PREF_IMM8_IMM8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| DEPRECATED_STLEXVAR_PREF_IMM16_IMM16_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | SupportedUnverified |
-| DEPRECATED_GETMODULENAMESPACE_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_STMODULEVAR_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_LDOBJBYNAME_PREF_ID32_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_LDSUPERBYNAME_PREF_ID32_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_LDMODULEVAR_PREF_ID32_IMM8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_STCONSTTOGLOBALRECORD_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_STLETTOGLOBALRECORD_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_STCLASSTOGLOBALRECORD_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_LDHOMEOBJECT_PREF_NONE | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_CREATEOBJECTHAVINGMETHOD_PREF_IMM16 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_DYNAMICIMPORT_PREF_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
-| DEPRECATED_ASYNCGENERATORREJECT_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | Unmeasured |
+| Opcode | Family | Occurrences | Measured profiles | Verified profiles | Classification |
+|---|---|---:|---|---|---|
+| LDUNDEFINED | Constant | 24690 | 1, 2, 3, 4, 5, 6 | 6 | SupportedVerified |
+| LDNULL | Constant | 749 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LDTRUE | Constant | 2425 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LDFALSE | Constant | 4229 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CREATEEMPTYOBJECT | Creation | 1250 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CREATEEMPTYARRAY_IMM8 | Creation | 3468 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CREATEARRAYWITHBUFFER_IMM8_ID16 | Creation | 208 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CREATEOBJECTWITHBUFFER_IMM8_ID16 | Creation | 8327 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| NEWOBJRANGE_IMM8_IMM8_V8 | Creation | 2393 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| NEWLEXENV_IMM8 | Creation | 189 | 1, 2, 3, 4, 5, 6 | 6 | SupportedVerified |
+| ADD2_IMM8_V8 | Binary | 6322 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| SUB2_IMM8_V8 | Binary | 216 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| MUL2_IMM8_V8 | Binary | 174 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| DIV2_IMM8_V8 | Binary | 130 | 3, 4, 5, 6 | none | SupportedUnverified |
+| MOD2_IMM8_V8 | Binary | 42 | 3, 4, 5, 6 | none | SupportedUnverified |
+| EQ_IMM8_V8 | Binary | 1721 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| NOTEQ_IMM8_V8 | Binary | 487 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LESS_IMM8_V8 | Binary | 220 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LESSEQ_IMM8_V8 | Binary | 50 | 3, 4, 5, 6 | none | SupportedUnverified |
+| GREATER_IMM8_V8 | Binary | 146 | 3, 4, 5, 6 | none | SupportedUnverified |
+| GREATEREQ_IMM8_V8 | Binary | 65 | 3, 4, 5, 6 | none | SupportedUnverified |
+| SHL2_IMM8_V8 | Binary | 36 | 6 | none | SupportedUnverified |
+| SHR2_IMM8_V8 | Binary | 5 | 5 | none | SupportedUnverified |
+| ASHR2_IMM8_V8 | Binary | 10 | 5 | none | SupportedUnverified |
+| AND2_IMM8_V8 | Binary | 16 | 5, 6 | none | SupportedUnverified |
+| OR2_IMM8_V8 | Binary | 15 | 3, 4, 5, 6 | none | SupportedUnverified |
+| XOR2_IMM8_V8 | Binary | 7 | 3, 4, 6 | 6 | SupportedVerified |
+| EXP_IMM8_V8 | Binary | 7 | 3, 4, 6 | 6 | SupportedVerified |
+| TYPEOF_IMM8 | Unary | 504 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| TONUMBER_IMM8 | Unary | 11 | 3, 4, 6 | none | SupportedUnverified |
+| TONUMERIC_IMM8 | Unary | 167 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| NEG_IMM8 | Unary | 587 | 3, 4, 5, 6 | none | SupportedUnverified |
+| NOT_IMM8 | Unary | 5 | 3, 4, 6 | none | SupportedUnverified |
+| INC_IMM8 | Unary | 207 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| DEC_IMM8 | Unary | 14 | 3, 4, 6 | 6 | SupportedVerified |
+| ISTRUE | Unary | 238 | 3, 4 | none | SupportedUnverified |
+| ISFALSE | Unary | 835 | 3 | none | SupportedUnverified |
+| ISIN_IMM8_V8 | Comparison | 366 | 3, 4, 5, 6 | none | SupportedUnverified |
+| INSTANCEOF_IMM8_V8 | Comparison | 14 | 6 | none | SupportedUnverified |
+| STRICTNOTEQ_IMM8_V8 | Comparison | 2493 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| STRICTEQ_IMM8_V8 | Comparison | 2854 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CALLARG0_IMM8 | Call | 405 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CALLARG1_IMM8_V8 | Call | 908 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CALLARGS2_IMM8_V8_V8 | Call | 482 | 3, 4, 5, 6 | none | SupportedUnverified |
+| CALLARGS3_IMM8_V8_V8_V8 | Call | 243 | 3, 4, 5, 6 | none | SupportedUnverified |
+| CALLTHIS0_IMM8_V8 | Call | 44921 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CALLTHIS1_IMM8_V8_V8 | Call | 13555 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CALLTHIS2_IMM8_V8_V8_V8 | Call | 4628 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CALLTHIS3_IMM8_V8_V8_V8_V8 | Call | 801 | 3, 4, 5, 6 | none | SupportedUnverified |
+| CALLTHISRANGE_IMM8_IMM8_V8 | Call | 427 | 3, 4, 5, 6 | none | SupportedUnverified |
+| SUPERCALLTHISRANGE_IMM8_IMM8_V8 | Call | 394 | 3, 4, 5, 6 | none | SupportedUnverified |
+| DEFINEFUNC_IMM8_ID16_IMM8 | Definition | 13265 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| DEFINEMETHOD_IMM8_ID16_IMM8 | Definition | 3692 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| DEFINECLASSWITHBUFFER_IMM8_ID16_ID16_IMM16_V8 | Definition | 1465 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| GETNEXTPROPNAME_V8 | ObjectAccess | 35 | 6 | 6 | SupportedVerified |
+| LDOBJBYVALUE_IMM8_V8 | ObjectAccess | 1018 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| STOBJBYVALUE_IMM8_V8_V8 | ObjectAccess | 413 | 3, 5, 6 | 6 | SupportedVerified |
+| LDSUPERBYVALUE_IMM8_V8 | ObjectAccess | 300 | 4, 6 | none | Unmeasured |
+| LDOBJBYINDEX_IMM8_IMM16 | ObjectAccess | 3 | 4, 6 | 4,6 | SupportedVerified |
+| STOBJBYINDEX_IMM8_V8_IMM16 | ObjectAccess | 4 | 4, 6 | 4,6 | SupportedVerified |
+| LDLEXVAR_IMM4_IMM4 | ObjectAccess | 20654 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| STLEXVAR_IMM4_IMM4 | ObjectAccess | 2985 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LDA_STR_ID16 | String | 20718 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| TRYLDGLOBALBYNAME_IMM8_ID16 | ObjectAccess | 29750 | 3, 4, 5, 6 | 4,6 | SupportedVerified |
+| TRYSTGLOBALBYNAME_IMM8_ID16 | ObjectAccess | 7 | 4, 6 | none | Unmeasured |
+| LDGLOBALVAR_IMM16_ID16 | ObjectAccess | 7 | 4, 6 | none | Unmeasured |
+| LDOBJBYNAME_IMM8_ID16 | ObjectAccess | 69196 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| STOBJBYNAME_IMM8_ID16_V8 | ObjectAccess | 6917 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| MOV_V4_V4 | Move | 92102 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| MOV_V8_V8 | Move | 9702 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LDSUPERBYNAME_IMM8_ID16 | ObjectAccess | 51 | 3, 6 | none | SupportedUnverified |
+| STCONSTTOGLOBALRECORD_IMM16_ID16 | ObjectAccess | 3 | 4, 6 | none | Unmeasured |
+| STTOGLOBALRECORD_IMM16_ID16 | ObjectAccess | 7 | 4, 6 | none | Unmeasured |
+| LDTHISBYNAME_IMM8_ID16 | ObjectAccess | 2 | 4 | none | Unmeasured |
+| STTHISBYNAME_IMM8_ID16 | ObjectAccess | 2 | 4 | none | Unmeasured |
+| LDTHISBYVALUE_IMM8 | ObjectAccess | 2 | 4 | none | Unmeasured |
+| STTHISBYVALUE_IMM8_V8 | ObjectAccess | 2 | 4 | none | Unmeasured |
+| JMP_IMM8 | Jump | 5830 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| JMP_IMM16 | Jump | 1442 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| JEQZ_IMM8 | Jump | 5917 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| JEQZ_IMM16 | Jump | 343 | 3, 4, 5, 6 | none | SupportedUnverified |
+| JNEZ_IMM8 | Jump | 5421 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| JSTRICTEQZ_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JNSTRICTEQZ_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JEQNULL_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JNENULL_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JSTRICTEQNULL_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JNSTRICTEQNULL_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JEQUNDEFINED_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JNEUNDEFINED_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JSTRICTEQUNDEFINED_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JNSTRICTEQUNDEFINED_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JEQ_V8_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JNE_V8_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JSTRICTEQ_V8_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| JNSTRICTEQ_V8_IMM8 | Jump | 1 | 4 | none | NonExecutable |
+| LDA_V8 | RegisterLoad | 319211 | 3, 4, 5, 6 | 4,6 | SupportedVerified |
+| STA_V8 | RegisterStore | 344186 | 1, 2, 3, 4, 5, 6 | 4,6 | SupportedVerified |
+| LDAI_IMM32 | Immediate | 13767 | 3, 4, 5, 6 | 4,6 | SupportedVerified |
+| FLDAI_IMM64 | Immediate | 200 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| RETURN | Return | 14046 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| RETURNUNDEFINED | Return | 15803 | 1, 2, 3, 4, 5, 6 | 4,6 | SupportedVerified |
+| GETPROPITERATOR | Iterator | 35 | 6 | 6 | SupportedVerified |
+| GETITERATOR_IMM8 | Iterator | 96 | 3, 5, 6 | 6 | SupportedVerified |
+| CLOSEITERATOR_IMM8_V8 | Iterator | 1 | 4 | none | Unmeasured |
+| POPLEXENV | Constant | 142 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LDNAN | Constant | 7 | 3, 4, 6 | none | SupportedUnverified |
+| LDINFINITY | Constant | 8 | 3, 4, 6 | none | SupportedUnverified |
+| GETUNMAPPEDARGS | Constant | 18 | 3, 4, 6 | 6 | SupportedVerified |
+| LDGLOBAL | Constant | 337 | 3, 4, 6 | 6 | SupportedVerified |
+| LDNEWTARGET | Constant | 1 | 4 | none | Unmeasured |
+| LDTHIS | Constant | 1 | 4 | none | Unmeasured |
+| LDHOLE | Constant | 4695 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CREATEREGEXPWITHLITERAL_IMM8_ID16_IMM8 | Creation | 1 | 4 | none | Unmeasured |
+| CREATEREGEXPWITHLITERAL_IMM16_ID16_IMM8 | Creation | 1 | 4 | none | Unmeasured |
+| CALLRANGE_IMM8_IMM8_V8 | Call | 10 | 5, 6 | none | SupportedUnverified |
+| DEFINEFUNC_IMM16_ID16_IMM8 | Definition | 1056 | 3, 5, 6 | none | SupportedUnverified |
+| DEFINECLASSWITHBUFFER_IMM16_ID16_ID16_IMM16_V8 | Definition | 2522 | 6 | none | SupportedUnverified |
+| GETTEMPLATEOBJECT_IMM8 | ObjectAccess | 5 | 3, 4, 6 | none | Unmeasured |
+| SETOBJECTWITHPROTO_IMM8_V8 | ObjectAccess | 5 | 3, 4, 6 | none | Unmeasured |
+| STOWNBYVALUE_IMM8_V8_V8 | ObjectAccess | 13 | 6 | none | SupportedUnverified |
+| STOWNBYINDEX_IMM8_V8_IMM16 | ObjectAccess | 2187 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| STOWNBYNAME_IMM8_ID16_V8 | ObjectAccess | 1469 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| GETMODULENAMESPACE_IMM8 | ObjectAccess | 3 | 4, 6 | none | Unmeasured |
+| STMODULEVAR_IMM8 | ObjectAccess | 1774 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LDLOCALMODULEVAR_IMM8 | ObjectAccess | 540 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LDEXTERNALMODULEVAR_IMM8 | ObjectAccess | 6364 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| STGLOBALVAR_IMM16_ID16 | ObjectAccess | 13 | 4, 6 | none | Unmeasured |
+| CREATEEMPTYARRAY_IMM16 | Creation | 2360 | 3, 5, 6 | none | SupportedUnverified |
+| CREATEARRAYWITHBUFFER_IMM16_ID16 | Creation | 30 | 5, 6 | none | SupportedUnverified |
+| CREATEOBJECTWITHBUFFER_IMM16_ID16 | Creation | 1402 | 3, 5, 6 | none | SupportedUnverified |
+| NEWOBJRANGE_IMM16_IMM8_V8 | Creation | 22 | 5, 6 | none | SupportedUnverified |
+| TYPEOF_IMM16 | Unary | 257 | 4, 6 | none | SupportedUnverified |
+| LDOBJBYVALUE_IMM16_V8 | ObjectAccess | 38 | 3, 6 | 6 | SupportedVerified |
+| STOBJBYVALUE_IMM16_V8_V8 | ObjectAccess | 261 | 4, 6 | none | Unmeasured |
+| LDSUPERBYVALUE_IMM16_V8 | ObjectAccess | 286 | 4, 6 | none | Unmeasured |
+| LDOBJBYINDEX_IMM16_IMM16 | ObjectAccess | 3 | 4, 6 | 4,6 | SupportedVerified |
+| STOBJBYINDEX_IMM16_V8_IMM16 | ObjectAccess | 4 | 4, 6 | 4,6 | SupportedVerified |
+| LDLEXVAR_IMM8_IMM8 | ObjectAccess | 291 | 4, 5, 6 | none | SupportedUnverified |
+| STLEXVAR_IMM8_IMM8 | ObjectAccess | 270 | 4, 5, 6 | none | SupportedUnverified |
+| TRYLDGLOBALBYNAME_IMM16_ID16 | ObjectAccess | 845 | 3, 4, 5, 6 | none | SupportedUnverified |
+| TRYSTGLOBALBYNAME_IMM16_ID16 | ObjectAccess | 1 | 4 | none | Unmeasured |
+| STOWNBYNAMEWITHNAMESET_IMM8_ID16_V8 | ObjectAccess | 174 | 4, 6 | none | SupportedUnverified |
+| MOV_V16_V16 | Move | 56822 | 6 | 6 | SupportedVerified |
+| LDOBJBYNAME_IMM16_ID16 | ObjectAccess | 42252 | 3, 4, 5, 6 | none | SupportedUnverified |
+| STOBJBYNAME_IMM16_ID16_V8 | ObjectAccess | 80 | 3, 5, 6 | none | SupportedUnverified |
+| LDSUPERBYNAME_IMM16_ID16 | ObjectAccess | 259 | 4, 6 | none | Unmeasured |
+| LDTHISBYNAME_IMM16_ID16 | ObjectAccess | 2 | 4 | none | Unmeasured |
+| STTHISBYNAME_IMM16_ID16 | ObjectAccess | 2 | 4 | none | Unmeasured |
+| LDTHISBYVALUE_IMM16 | ObjectAccess | 2 | 4 | none | Unmeasured |
+| STTHISBYVALUE_IMM16_V8 | ObjectAccess | 2 | 4 | none | Unmeasured |
+| ASYNCGENERATORREJECT_V8 | ObjectAccess | 3 | 4, 6 | none | Unmeasured |
+| JMP_IMM32 | Jump | 3 | 4, 6 | none | SupportedUnverified |
+| STOWNBYVALUEWITHNAMESET_IMM8_V8_V8 | ObjectAccess | 90 | 4, 6 | none | Unmeasured |
+| JEQZ_IMM32 | Jump | 1 | 4 | none | SupportedUnverified |
+| JNEZ_IMM16 | Jump | 1175 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| JNEZ_IMM32 | Jump | 3 | 4, 6 | none | SupportedUnverified |
+| JSTRICTEQZ_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JNSTRICTEQZ_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JEQNULL_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JNENULL_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JSTRICTEQNULL_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JNSTRICTEQNULL_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JEQUNDEFINED_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JNEUNDEFINED_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JSTRICTEQUNDEFINED_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JNSTRICTEQUNDEFINED_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JEQ_V8_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JNE_V8_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JSTRICTEQ_V8_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| JNSTRICTEQ_V8_IMM16 | Jump | 1 | 4 | none | NonExecutable |
+| GETITERATOR_IMM16 | Iterator | 309 | 4, 6 | none | Unmeasured |
+| CLOSEITERATOR_IMM16_V8 | Iterator | 1 | 4 | none | Unmeasured |
+| LDSYMBOL | Constant | 1 | 4 | none | Unmeasured |
+| ASYNCFUNCTIONENTER | Constant | 604 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| LDFUNCTION | Constant | 1 | 4 | none | Unmeasured |
+| DEBUGGER | Constant | 3 | 4, 6 | none | SupportedUnverified |
+| CREATEGENERATOROBJ_V8 | Creation | 3 | 4, 6 | none | Unmeasured |
+| CREATEITERRESULTOBJ_V8_V8 | Creation | 3 | 4, 6 | none | Unmeasured |
+| CREATEOBJECTWITHEXCLUDEDKEYS_IMM8_V8_V8 | Creation | 5 | 3, 4, 6 | none | Unmeasured |
+| NEWOBJAPPLY_IMM8_V8 | Creation | 3 | 4, 6 | none | Unmeasured |
+| NEWOBJAPPLY_IMM16_V8 | Creation | 301 | 4, 6 | none | Unmeasured |
+| NEWLEXENVWITHNAME_IMM8_ID16 | Creation | 1473 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CREATEASYNCGENERATOROBJ_V8 | Creation | 3 | 4, 6 | none | Unmeasured |
+| ASYNCGENERATORRESOLVE_V8_V8_V8 | Creation | 13 | 4, 6 | none | Unmeasured |
+| SUPERCALLSPREAD_IMM8_V8 | Call | 39 | 3, 4, 6 | none | SupportedUnverified |
+| APPLY_IMM8_V8_V8 | Call | 21 | 4, 6 | none | SupportedUnverified |
+| SUPERCALLARROWRANGE_IMM8_IMM8_V8 | Call | 1 | 4 | none | Unmeasured |
+| DEFINEGETTERSETTERBYVALUE_V8_V8_V8_V8 | Definition | 2146 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| DYNAMICIMPORT | ObjectAccess | 5 | 3, 4, 6 | none | Unmeasured |
+| DEFINEMETHOD_IMM16_ID16_IMM8 | Definition | 1 | 4 | none | Unmeasured |
+| RESUMEGENERATOR | ObjectAccess | 599 | 3, 4, 5, 6 | none | Unmeasured |
+| GETRESUMEMODE | ObjectAccess | 599 | 3, 4, 5, 6 | none | Unmeasured |
+| GETTEMPLATEOBJECT_IMM16 | ObjectAccess | 301 | 4, 6 | none | Unmeasured |
+| DELOBJPROP_V8 | ObjectAccess | 9 | 6 | 6 | SupportedVerified |
+| SUSPENDGENERATOR_V8 | ObjectAccess | 595 | 3, 4, 5, 6 | none | Unmeasured |
+| ASYNCFUNCTIONAWAITUNCAUGHT_V8 | ObjectAccess | 587 | 3, 4, 5, 6 | none | Unmeasured |
+| COPYDATAPROPERTIES_V8 | ObjectAccess | 5 | 3, 4, 6 | none | Unmeasured |
+| STARRAYSPREAD_V8_V8 | ObjectAccess | 342 | 3, 4, 6 | 6 | SupportedVerified |
+| SETOBJECTWITHPROTO_IMM16_V8 | ObjectAccess | 301 | 4, 6 | none | Unmeasured |
+| STOWNBYVALUE_IMM16_V8_V8 | ObjectAccess | 1 | 4 | none | Unmeasured |
+| STSUPERBYVALUE_IMM8_V8_V8 | ObjectAccess | 172 | 4, 6 | none | Unmeasured |
+| STSUPERBYVALUE_IMM16_V8_V8 | ObjectAccess | 414 | 4, 6 | none | Unmeasured |
+| STOWNBYINDEX_IMM16_V8_IMM16 | ObjectAccess | 2284 | 3, 5, 6 | none | SupportedUnverified |
+| STOWNBYNAME_IMM16_ID16_V8 | ObjectAccess | 1 | 4 | none | Unmeasured |
+| ASYNCFUNCTIONRESOLVE_V8 | ObjectAccess | 752 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| ASYNCFUNCTIONREJECT_V8 | ObjectAccess | 604 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| COPYRESTARGS_IMM8 | ObjectAccess | 125 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| STSUPERBYNAME_IMM8_ID16_V8 | ObjectAccess | 174 | 4, 6 | none | Unmeasured |
+| STSUPERBYNAME_IMM16_ID16_V8 | ObjectAccess | 412 | 4, 6 | none | Unmeasured |
+| STOWNBYVALUEWITHNAMESET_IMM16_V8_V8 | ObjectAccess | 498 | 4, 6 | none | Unmeasured |
+| LDBIGINT_ID16 | ObjectAccess | 5 | 3, 4, 6 | none | Unmeasured |
+| STOWNBYNAMEWITHNAMESET_IMM16_ID16_V8 | ObjectAccess | 213 | 4, 6 | none | SupportedUnverified |
+| NOP | Nop | 37 | 3, 4, 6 | none | SupportedUnverified |
+| SETGENERATORSTATE_IMM8 | ObjectAccess | 15 | 4, 6 | none | Unmeasured |
+| GETASYNCITERATOR_IMM8 | Iterator | 5 | 4, 6 | none | Unmeasured |
+| LDPRIVATEPROPERTY_IMM8_IMM16_IMM16 | Iterator | 9 | 4, 6 | none | Unmeasured |
+| STPRIVATEPROPERTY_IMM8_IMM16_IMM16_V8 | Iterator | 3 | 4, 6 | none | Unmeasured |
+| TESTIN_IMM8_IMM16_IMM16 | Iterator | 3 | 4, 6 | none | Unmeasured |
+| DEFINEFIELDBYNAME_IMM8_ID16_V8 | Iterator | 4386 | 3 | none | SupportedUnverified |
+| DEFINEPROPERTYBYNAME_IMM8_ID16_V8 | Iterator | 5888 | 4, 5, 6 | 6 | SupportedVerified |
+| CALLTHIS0WITHNAME_IMM8_ID16_V8 | Call | 4325 | 6 | 6 | SupportedVerified |
+| CALLTHIS1WITHNAME_IMM8_ID16_V8_V8 | Call | 7852 | 6 | 6 | SupportedVerified |
+| CALLTHIS2WITHNAME_IMM8_ID16_V8_V8_V8 | Call | 2794 | 6 | 6 | SupportedVerified |
+| CALLTHIS3WITHNAME_IMM8_ID16_V8_V8_V8_V8 | Call | 610 | 6 | 6 | SupportedVerified |
+| CALLTHISRANGEWITHNAME_IMM8_IMM8_ID16_V8 | Call | 242 | 6 | none | SupportedUnverified |
+| CALLRUNTIME_NOTIFYCONCURRENTRESULT_PREF_NONE | RuntimeCall | 31 | 6 | none | SupportedUnverified |
+| DEPRECATED_LDLEXENV_PREF_NONE | Constant | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_CREATEOBJECTWITHEXCLUDEDKEYS_PREF_IMM16_V8_V8 | Creation | 3 | 4, 6 | none | Unmeasured |
+| THROW_PREF_NONE | Throw | 2851 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CALLRUNTIME_DEFINEFIELDBYVALUE_PREF_IMM8_V8_V8 | RuntimeCall | 1225 | 3, 4, 6 | none | Unmeasured |
+| DEPRECATED_POPLEXENV_PREF_NONE | Constant | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| WIDE_NEWOBJRANGE_PREF_IMM16_V8 | Creation | 5 | 4, 6 | 6 | SupportedVerified |
+| THROW_NOTEXISTS_PREF_NONE | Throw | 5 | 4, 6 | none | Unmeasured |
+| CALLRUNTIME_DEFINEFIELDBYINDEX_PREF_IMM8_IMM32_V8 | RuntimeCall | 9 | 6 | none | SupportedUnverified |
+| DEPRECATED_GETITERATORNEXT_PREF_V8_V8 | Iterator | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_NEWLEXENV_PREF_IMM16 | Creation | 1 | 4 | none | SupportedUnverified |
+| THROW_PATTERNNONCOERCIBLE_PREF_NONE | Throw | 9 | 3, 4, 6 | none | Unmeasured |
+| CALLRUNTIME_TOPROPERTYKEY_PREF_NONE | RuntimeCall | 1 | 4 | none | Unmeasured |
+| DEPRECATED_CREATEARRAYWITHBUFFER_PREF_IMM16 | Creation | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_NEWLEXENVWITHNAME_PREF_IMM16_ID16 | Creation | 3 | 4, 6 | none | SupportedUnverified |
+| THROW_DELETESUPERPROPERTY_PREF_NONE | Throw | 1 | 4 | none | Unmeasured |
+| CALLRUNTIME_CREATEPRIVATEPROPERTY_PREF_IMM16_ID16 | RuntimeCall | 3 | 4, 6 | none | Unmeasured |
+| DEPRECATED_CREATEOBJECTWITHBUFFER_PREF_IMM16 | Creation | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_CALLRANGE_PREF_IMM16_V8 | Call | 3 | 4, 6 | none | Unmeasured |
+| THROW_CONSTASSIGNMENT_PREF_V8 | Throw | 3 | 4, 6 | none | Unmeasured |
+| CALLRUNTIME_DEFINEPRIVATEPROPERTY_PREF_IMM8_IMM16_IMM16_V8 | RuntimeCall | 7 | 4, 6 | none | Unmeasured |
+| DEPRECATED_TONUMBER_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| WIDE_CALLTHISRANGE_PREF_IMM16_V8 | Call | 1 | 4 | none | Unmeasured |
+| THROW_IFNOTOBJECT_PREF_V8 | Throw | 1195 | 3, 5, 6 | 6 | SupportedVerified |
+| CALLRUNTIME_CALLINIT_PREF_IMM8_V8 | RuntimeCall | 4 | 4, 6 | none | Unmeasured |
+| DEPRECATED_TONUMERIC_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| WIDE_SUPERCALLTHISRANGE_PREF_IMM16_V8 | Call | 5 | 4, 6 | 6 | SupportedVerified |
+| THROW_UNDEFINEDIFHOLE_PREF_V8_V8 | Throw | 1 | 4 | none | Unmeasured |
+| CALLRUNTIME_DEFINESENDABLECLASS_PREF_IMM16_ID16_ID16_IMM16_V8 | RuntimeCall | 19 | 6 | none | SupportedUnverified |
+| DEPRECATED_NEG_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| WIDE_SUPERCALLARROWRANGE_PREF_IMM16_V8 | Call | 1 | 4 | none | Unmeasured |
+| THROW_IFSUPERNOTCORRECTCALL_PREF_IMM8 | Throw | 5425 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CALLRUNTIME_LDSENDABLECLASS_PREF_IMM16 | RuntimeCall | 5 | 4, 6 | none | Unmeasured |
+| DEPRECATED_NOT_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| WIDE_LDOBJBYINDEX_PREF_IMM32 | ObjectAccess | 3 | 4, 6 | 4,6 | SupportedVerified |
+| THROW_IFSUPERNOTCORRECTCALL_PREF_IMM16 | Throw | 1 | 4 | none | Unmeasured |
+| CALLRUNTIME_LDSENDABLEEXTERNALMODULEVAR_PREF_IMM8 | RuntimeCall | 264 | 6 | none | SupportedUnverified |
+| DEPRECATED_INC_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| WIDE_STOBJBYINDEX_PREF_V8_IMM32 | ObjectAccess | 4 | 4, 6 | 4,6 | SupportedVerified |
+| THROW_UNDEFINEDIFHOLEWITHNAME_PREF_ID16 | Throw | 14851 | 3, 4, 5, 6 | 6 | SupportedVerified |
+| CALLRUNTIME_WIDELDSENDABLEEXTERNALMODULEVAR_PREF_IMM16 | RuntimeCall | 265 | 4, 6 | none | Unmeasured |
+| DEPRECATED_DEC_PREF_V8 | Unary | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| WIDE_STOWNBYINDEX_PREF_V8_IMM32 | ObjectAccess | 1 | 4 | none | Unmeasured |
+| CALLRUNTIME_NEWSENDABLEENV_PREF_IMM8 | RuntimeCall | 3 | 4, 6 | none | Unmeasured |
+| DEPRECATED_CALLARG0_PREF_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_COPYRESTARGS_PREF_IMM16 | ObjectAccess | 3 | 4, 6 | none | Unmeasured |
+| CALLRUNTIME_WIDENEWSENDABLEENV_PREF_IMM16 | RuntimeCall | 1 | 4 | none | Unmeasured |
+| DEPRECATED_CALLARG1_PREF_V8_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_LDLEXVAR_PREF_IMM16_IMM16 | ObjectAccess | 285 | 4, 6 | none | SupportedUnverified |
+| CALLRUNTIME_STSENDABLEVAR_PREF_IMM4_IMM4 | RuntimeCall | 3 | 4, 6 | none | Unmeasured |
+| DEPRECATED_CALLARGS2_PREF_V8_V8_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_STLEXVAR_PREF_IMM16_IMM16 | ObjectAccess | 285 | 4, 6 | none | SupportedUnverified |
+| CALLRUNTIME_STSENDABLEVAR_PREF_IMM8_IMM8 | RuntimeCall | 1 | 4 | none | Unmeasured |
+| DEPRECATED_CALLARGS3_PREF_V8_V8_V8_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_GETMODULENAMESPACE_PREF_IMM16 | ObjectAccess | 3 | 4, 6 | none | Unmeasured |
+| CALLRUNTIME_WIDESTSENDABLEVAR_PREF_IMM16_IMM16 | RuntimeCall | 1 | 4 | none | Unmeasured |
+| DEPRECATED_CALLRANGE_PREF_IMM16_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_STMODULEVAR_PREF_IMM16 | ObjectAccess | 533 | 4, 6 | none | Unmeasured |
+| CALLRUNTIME_LDSENDABLEVAR_PREF_IMM4_IMM4 | RuntimeCall | 1 | 4 | none | Unmeasured |
+| DEPRECATED_CALLSPREAD_PREF_V8_V8_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_LDLOCALMODULEVAR_PREF_IMM16 | ObjectAccess | 265 | 4, 6 | none | Unmeasured |
+| CALLRUNTIME_LDSENDABLEVAR_PREF_IMM8_IMM8 | RuntimeCall | 1 | 4 | none | Unmeasured |
+| DEPRECATED_CALLTHISRANGE_PREF_IMM16_V8 | Call | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_LDEXTERNALMODULEVAR_PREF_IMM16 | ObjectAccess | 529 | 4, 6 | none | Unmeasured |
+| CALLRUNTIME_WIDELDSENDABLEVAR_PREF_IMM16_IMM16 | RuntimeCall | 1 | 4 | none | Unmeasured |
+| DEPRECATED_DEFINECLASSWITHBUFFER_PREF_ID16_IMM16_IMM16_V8_V8 | Definition | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_LDPATCHVAR_PREF_IMM16 | ObjectAccess | 1 | 4 | none | Unmeasured |
+| CALLRUNTIME_ISTRUE_PREF_IMM8 | RuntimeCall | 2071 | 4, 5, 6 | 6 | SupportedVerified |
+| DEPRECATED_RESUMEGENERATOR_PREF_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_STPATCHVAR_PREF_IMM16 | ObjectAccess | 1 | 4 | none | Unmeasured |
+| CALLRUNTIME_ISFALSE_PREF_IMM8 | RuntimeCall | 2555 | 4, 5, 6 | 6 | SupportedVerified |
+| DEPRECATED_GETRESUMEMODE_PREF_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| WIDE_CALLTHISRANGEWITHNAME_PREF_IMM16_ID16_V8 | Call | 3 | 4, 6 | none | Unmeasured |
+| CALLRUNTIME_LDLAZYMODULEVAR_PREF_IMM8 | RuntimeCall | 364 | 6 | none | SupportedUnverified |
+| DEPRECATED_GETTEMPLATEOBJECT_PREF_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| CALLRUNTIME_WIDELDLAZYMODULEVAR_PREF_IMM16 | RuntimeCall | 265 | 4, 6 | none | Unmeasured |
+| DEPRECATED_DELOBJPROP_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| CALLRUNTIME_LDLAZYSENDABLEMODULEVAR_PREF_IMM8 | RuntimeCall | 259 | 4, 6 | none | Unmeasured |
+| DEPRECATED_SUSPENDGENERATOR_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| CALLRUNTIME_WIDELDLAZYSENDABLEMODULEVAR_PREF_IMM16 | RuntimeCall | 265 | 4, 6 | none | Unmeasured |
+| DEPRECATED_ASYNCFUNCTIONAWAITUNCAUGHT_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| CALLRUNTIME_SUPERCALLFORWARDALLARGS_PREF_V8 | RuntimeCall | 87 | 5, 6 | none | SupportedUnverified |
+| DEPRECATED_COPYDATAPROPERTIES_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| CALLRUNTIME_LDSENDABLELOCALMODULEVAR_PREF_IMM8 | Throw | 255 | 4, 6 | none | Unmeasured |
+| DEPRECATED_SETOBJECTWITHPROTO_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| CALLRUNTIME_WIDELDSENDABLELOCALMODULEVAR_PREF_IMM16 | Throw | 267 | 4, 6 | none | Unmeasured |
+| DEPRECATED_LDOBJBYVALUE_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_LDSUPERBYVALUE_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_LDOBJBYINDEX_PREF_V8_IMM32 | ObjectAccess | 8 | 1, 2, 3, 4, 5, 6 | 4,6 | SupportedVerified |
+| DEPRECATED_ASYNCFUNCTIONRESOLVE_PREF_V8_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_ASYNCFUNCTIONREJECT_PREF_V8_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_STLEXVAR_PREF_IMM4_IMM4_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| DEPRECATED_STLEXVAR_PREF_IMM8_IMM8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| DEPRECATED_STLEXVAR_PREF_IMM16_IMM16_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | SupportedUnverified |
+| DEPRECATED_GETMODULENAMESPACE_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_STMODULEVAR_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_LDOBJBYNAME_PREF_ID32_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_LDSUPERBYNAME_PREF_ID32_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_LDMODULEVAR_PREF_ID32_IMM8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_STCONSTTOGLOBALRECORD_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_STLETTOGLOBALRECORD_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_STCLASSTOGLOBALRECORD_PREF_ID32 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_LDHOMEOBJECT_PREF_NONE | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_CREATEOBJECTHAVINGMETHOD_PREF_IMM16 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_DYNAMICIMPORT_PREF_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
+| DEPRECATED_ASYNCGENERATORREJECT_PREF_V8_V8 | ObjectAccess | 6 | 1, 2, 3, 4, 5, 6 | none | Unmeasured |
 
 ## Family impact (distinct records, not summed opcode hits)
 
 | Family | Variants observed / total | Occurrences | Cohort records | Located first refusal previous / V4 |
 |---|---:|---:|---:|---|
-| Call | 31 / 31 | 82195 | 548 | 9 / 8 |
-| ObjectAccess | 113 / 113 | 197903 | 572 | 19 / 5 |
-| RegisterLoad | 1 / 1 | 316150 | 572 | 8 / 4 |
-| Throw | 12 / 12 | 24428 | 518 | 2 / 2 |
-| Definition | 8 / 8 | 23871 | 569 | 2 / 2 |
-| Creation | 26 / 26 | 21317 | 521 | 1 / 1 |
-| Constant | 18 / 18 | 37009 | 620 | 0 / 0 |
-| Iterator | 12 / 12 | 10647 | 392 | 0 / 0 |
-| Binary | 18 / 18 | 9456 | 327 | 0 / 0 |
-| Unary | 16 / 16 | 2808 | 381 | 0 / 0 |
-| Comparison | 4 / 4 | 5534 | 411 | 0 / 0 |
-| RuntimeCall | 26 / 26 | 7462 | 383 | 1 / 0 |
-| String | 1 / 1 | 20552 | 582 | 0 / 0 |
-| Jump | 37 / 37 | 19105 | 499 | 0 / 0 |
-| Move | 3 / 3 | 152495 | 620 | 0 / 0 |
-| RegisterStore | 1 / 1 | 340039 | 572 | 0 / 0 |
-| Immediate | 2 / 2 | 12467 | 514 | 0 / 0 |
-| Return | 2 / 2 | 29329 | 620 | 0 / 0 |
-| Nop | 1 / 1 | 13 | 0 | 0 / 0 |
+| RegisterLoad | 1 / 1 | 319211 | 572 | 9 / 4 |
+| Definition | 8 / 8 | 24153 | 569 | 2 / 2 |
+| Creation | 26 / 26 | 21479 | 521 | 1 / 1 |
+| ObjectAccess | 113 / 113 | 199692 | 572 | 16 / 1 |
+| Constant | 18 / 18 | 37923 | 620 | 0 / 0 |
+| Iterator | 12 / 12 | 10742 | 392 | 0 / 0 |
+| Binary | 18 / 18 | 9669 | 327 | 0 / 0 |
+| Unary | 16 / 16 | 2861 | 381 | 0 / 0 |
+| Comparison | 4 / 4 | 5727 | 411 | 0 / 0 |
+| RuntimeCall | 26 / 26 | 7711 | 383 | 1 / 0 |
+| Throw | 12 / 12 | 24864 | 518 | 0 / 0 |
+| Call | 31 / 31 | 82713 | 548 | 2 / 0 |
+| String | 1 / 1 | 20718 | 582 | 0 / 0 |
+| Jump | 37 / 37 | 20163 | 499 | 0 / 0 |
+| Move | 3 / 3 | 158626 | 620 | 0 / 0 |
+| RegisterStore | 1 / 1 | 344186 | 572 | 0 / 0 |
+| Immediate | 2 / 2 | 13967 | 514 | 0 / 0 |
+| Return | 2 / 2 | 29849 | 620 | 0 / 0 |
+| Nop | 1 / 1 | 37 | 0 | 0 / 0 |
 
 ## Current unsupported instruction first refusals (exploration)
 

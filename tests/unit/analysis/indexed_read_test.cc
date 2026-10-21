@@ -1,4 +1,6 @@
 #include "abcd/analysis/indexed_read.h"
+#include "abcd/analysis/scalar.h"
+#include <bit>
 
 #include <array>
 #include <cstdlib>
@@ -42,6 +44,13 @@ int main() {
       if (form < 2 && index > UINT16_MAX) continue;
       auto instruction = decoded;
       instruction.operands[index_operand].raw_bits = index;
+      const auto scalar = std::get<ScalarAssignment>(LiftScalarInstruction(instruction, 256));
+      Check(scalar.completion == CompletionEffect::kMayThrow);
+      const auto property = std::get<PropertyRead>(scalar.expression);
+      Check(std::bit_cast<double>(std::get<Float64Bits>(property.key).value) ==
+            static_cast<double>(index));
+      Check(legacy ? std::get<abc::RegisterId>(property.receiver).value == 255
+                   : std::holds_alternative<Accumulator>(property.receiver));
       Check(std::get<IndexedRead>(LiftIndexedRead(instruction, 256))
                 .index.value == index);
     }

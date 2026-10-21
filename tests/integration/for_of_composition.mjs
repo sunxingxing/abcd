@@ -1,3 +1,4 @@
+import {recordNodeEvidence} from '../support/isa/oracle_evidence.mjs';
 // Independent Node oracle; only ABC goes into the production engine.
 import assert from 'node:assert/strict';
 import {traceAsyncMemberForOf as run} from '../support/for_of_async_oracle.mjs';
@@ -21,5 +22,6 @@ try {
   for(const count of [0,1,3])for(const fail of ['none','getter','throw','reject'])for(const close of ['object','getter','call','null','primitive']) {
     assert.deepEqual(await run(actual,count,fail,close),await run(expected,count,fail,close),`${count}/${fail}/${close}`);++cases;
   }
+  recordNodeEvidence({abc:join(fixtures,'async.abc'),output:join(root,'async'),original:join(fixtures,'async.js'),producer:import.meta.url,cases:60,engine});
   console.log(JSON.stringify({published:1,differential_cases:cases}));
 }finally{rmSync(root,{recursive:true,force:true});}

@@ -1,3 +1,4 @@
+import {recordNodeEvidence} from '../support/isa/oracle_evidence.mjs';
 // ABC-only production input. Independent sources are evaluated only by Node.
 import assert from 'node:assert/strict';
 import {traceAsyncForOf as runAsync} from '../support/for_of_async_oracle.mjs';
@@ -72,5 +73,8 @@ try {
     assert.equal(r.source_status,3,name);assert.ok(r.source_failure.causes.some(c=>c.domain==='abcd::source::ExceptionControlError'&&c.value===4),name);
     refused[name]=r.source_failure;
   }
+  recordNodeEvidence({abc:join(fixtures,'main.abc'),output:out,original:join(fixtures,'main.js'),producer:import.meta.url,cases:216,engine});
+  recordNodeEvidence({abc:join(fixtures,'member.abc'),output:memberOut,original:join(fixtures,'member.js'),producer:import.meta.url,cases:217,engine});
+  recordNodeEvidence({abc:join(fixtures,'async.abc'),output:asyncOut,original:join(fixtures,'async.js'),producer:import.meta.url,cases:432,engine});
   console.log(JSON.stringify({published:3,differential_cases:cases,refused}));
 }finally{rmSync(root,{recursive:true,force:true});}

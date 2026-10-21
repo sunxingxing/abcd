@@ -1,4 +1,5 @@
 #include "abcd/analysis/scalar.h"
+#include "abcd/analysis/indexed_read.h"
 
 #include <bit>
 #include <initializer_list>
@@ -187,6 +188,24 @@ ScalarResult LiftScalarInstruction(const DecodedInstruction& instruction,
     return ScalarAssignment{Accumulator{}, UnaryExpression{spec->op, input},
                             completion};
   }
+  // IndexedRead owns format/profile decoding. uint32 indices are exactly
+  // representable as doubles, including UINT32_MAX (a named property rather
+  // than an array index). Reuse ordinary [[Get]] with its throwing Commit;
+  // do not turn the lookup into a pure array-element load.
+  // Pinned interpreter-inl.cpp:5718-5785, RuntimeLdObjByIndex.
+  const auto indexed = LiftIndexedRead(instruction, frame_size);
+  if (const auto* read = std::get_if<IndexedRead>(&indexed)) {
+    const ScalarValue receiver = std::visit([](const auto& slot) -> ScalarValue {
+      return slot;
+    }, read->receiver);
+    return ScalarAssignment{Accumulator{},
+        PropertyRead{receiver, Float64Bits{std::bit_cast<std::uint64_t>(
+            static_cast<double>(read->index.value))}}, CompletionEffect::kMayThrow};
+  }
+  if (const auto error = std::get<IndexedReadError>(indexed);
+      error != IndexedReadError::kUnsupportedOpcode)
+    return error == IndexedReadError::kRegisterRange ? ScalarError::kRegisterRange
+                                                    : ScalarError::kMalformedInstruction;
   switch (instruction.opcode) {
     case Opcode::kCREATEEMPTYARRAY_IMM8:
     case Opcode::kCREATEEMPTYARRAY_IMM16:

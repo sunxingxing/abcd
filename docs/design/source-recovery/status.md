@@ -10,6 +10,43 @@
 
 
 
+## ISA coverage1 — oracle importer and indexed accesses (partial,2026-10-21)
+
+Against a964be2a, measured ledger moves **148/156/0/28 →137/72/95/28**
+(Unmeasured / SupportedUnverified / SupportedVerified / NonExecutable). No
+backward movement. All332 variants remain observed.95 display rows now have
+actual occurrence oracles in profile24;12 also verify in12.0.6. Other profiles
+keep their own state. The generated table is [isa-coverage.md](isa-coverage.md);
+full changes/profile identities are under build/review/isa-r1/.
+
+The test-only writer/importer hooks11 existing/new differential suites and
+checks immutable artifacts, exact ABC/profile/record/method/PC, current raw lift,
+complete recovery and non-skipped CTest success. Node and SDK event-family
+round-trip evidence stay separate; Ark runtime remains null. Multi-record tests
+explicitly name tested records. Resources are bounded; exhaustion never proves
+an oracle. Production adds allocation-free typed indexed Get and strict Set
+lifting (current narrow/imm16/wide plus deprecated register-base Get), reusing
+existing property/source/recovery checks. Own definitions remain distinct.
+
+**The requested whole round is not complete:**4/29 lift-ok targets verify
+(XOR,EXP,wide new-range,wide super-range);25 remain Unmeasured. Seven newly
+lifted index encodings also verify. Other requested this/super, literal/cache,
+spread/rest and throw families are not implemented. LDNEWTARGET has fatal/NOP/
+AOT-new-target execution-path disagreement and keeps its typed refusal. No new
+premise, no contract bump, no publication or ownership gate weakened.
+
+Fresh cohorts: **605/620 source,542/620 previous**, no new completions,
+regressions or byte changes in previously complete source. Full build passes;
+source regression65/65; all scale11/11; ISA11/11; touched sweep211/216, only
+known family_source_cli/tree_structure/try_tree/class_tree_source/try_tree_source
+failures.20 new complete fixture exports pass syntax/274 Node cases and14
+observed index mutants. Strict SDK comparison is18 exact/2 different/0
+unverified in each optimization mode; the2 differences are existing
+`return super(...)` lowering, retained and explained, never called exact passes.
+See [isa-occurrence-oracles.md](isa-occurrence-oracles.md) for evidence, budgets,
+round-trip mismatches, remaining variants and the string-export adaptation.
+No commit/push/stash. The unrelated sample.tar.gz remains untouched.
+
 ## Member-update scale regression — partial round (2026-10-21)
 
 Priority regression fixed against `7003dce3`: **all11 scale tests pass**, including

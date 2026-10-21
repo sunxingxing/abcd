@@ -13,6 +13,10 @@ import subprocess
 import sys
 import tempfile
 
+sys.dont_write_bytecode = True
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'support/isa'))
+from oracle_evidence import record_node
+
 engine, fixtures, directory = sys.argv[1:]
 fixtures = Path(fixtures).resolve()
 root = Path(directory).resolve()
@@ -108,6 +112,7 @@ for source in sorted(fixtures.glob('*.js')):
                     for s in (original,emitted)]
             assert values[0]==values[1],(name,mode,scenario,values)
             report['node_differentials']+=1
+        record_node(abc, exported, original, Path(__file__), 8, engine)
         adapted=out/(mode+'-emitted.js')
         adapted.write_text(re.sub(r' as "([A-Za-z_$][\w$]*)"',r' as \1',emitted.read_text()))
         newabc=out/(mode+'-emitted.abc')

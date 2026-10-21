@@ -84,7 +84,7 @@ RegisterEffect EffectOf(const OwnWrite& value) {
 RegisterEffect EffectOf(const ValueWrite& value) {
   RegisterEffect effect;
   effect.reads[effect.read_count++] = value.object;
-  effect.reads[effect.read_count++] = value.key;
+  Read(effect, value.key);
   effect.reads[effect.read_count++] = Accumulator{};
   return effect;
 }

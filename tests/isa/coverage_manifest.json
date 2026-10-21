@@ -5584,7 +5584,241 @@
       "classification": "Unmeasured",
       "oracles": {},
       "note": "Constructed encoding/raw lift only; execution and source semantics not verified. Deprecated does not imply NonExecutable."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/expressions-default.abc",
+      "sha256": "df3f900a426010ca3fa6e33c6c98b7684859e3081c2a23ccb38b35e85ee51102",
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/expressions-o0.abc",
+      "sha256": "2293367578c9036a8f2b1ea090aecd074710b26581093cfc032f4cf52b219aae",
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/wide-new-default.abc",
+      "sha256": "55c47f82af76c937fd10e80ed26e5b78767e998cb9cf8606dcf40f8263376d2c",
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/wide-new-o0.abc",
+      "sha256": "4c47988242c46be4a130048f6edb8d022d07d6bfae47474bda1997b68884bb42",
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/wide-super-default.abc",
+      "sha256": "8e6e0612ab40562b5fbb27a6651a637c015246be1260855b06bf7a77f4f428b3",
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/wide-super-o0.abc",
+      "sha256": "6b2e39b47842f236ae2326bbbe830e738b5d9e25bfae84c0574b17a45cbe955a",
+      "opcodes": [],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/ldobjbyindex_imm8_imm16-dynamic1206.abc",
+      "sha256": "5441214608f70e7e40823c3b0ee73e2727198ab971565037471d91ef298fc053",
+      "opcodes": [
+        58
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/ldobjbyindex_imm8_imm16-dynamic2400.abc",
+      "sha256": "84f184ca67cb427f5688f7df59120abbbe5a0c713707bfd8dc8cd5c032879f3c",
+      "opcodes": [
+        58
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/ldobjbyindex_imm16_imm16-dynamic1206.abc",
+      "sha256": "cd642e771fa9049a97e1211542ddd7e139a10f68d4eb3e804c80a7614b3a18a3",
+      "opcodes": [
+        136
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/ldobjbyindex_imm16_imm16-dynamic2400.abc",
+      "sha256": "cb82dffbdb81fa9adf776b3dbbacf0f758dda119526ed172e6877cf77d7ff9da",
+      "opcodes": [
+        136
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/wide_ldobjbyindex_pref_imm32-dynamic1206.abc",
+      "sha256": "6cb1ccf36c179c07ee16235ad37724b9cc39a84d0e669c7830961302f7d52ac7",
+      "opcodes": [
+        2301
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/wide_ldobjbyindex_pref_imm32-dynamic2400.abc",
+      "sha256": "678f8622fe7e9af8cfb5db6d99e33420f9f1cd7b0829697dae5eb738519016c7",
+      "opcodes": [
+        2301
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/deprecated_ldobjbyindex_pref_v8_imm32-dynamic1206.abc",
+      "sha256": "d6fb077aa307203a7033d5049ddbe3ffeba9c37cf9af28954213321eea4a5d60",
+      "opcodes": [
+        7676
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/deprecated_ldobjbyindex_pref_v8_imm32-dynamic2400.abc",
+      "sha256": "36f07453441e960f986c3156f14d9d222987b4efb83e2f1e79afec68019ce521",
+      "opcodes": [
+        7676
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/stobjbyindex_imm8_v8_imm16-dynamic1206.abc",
+      "sha256": "d6793806b1062f70b69c06f8c9ba7fabe2ff0159ffc5e501edab4052859067fa",
+      "opcodes": [
+        59
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/stobjbyindex_imm8_v8_imm16-dynamic2400.abc",
+      "sha256": "3a7e8b0b46b66b8ac924331a771a98720a9da0dff04d4b4e19fe9ec6b437418c",
+      "opcodes": [
+        59
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/stobjbyindex_imm16_v8_imm16-dynamic1206.abc",
+      "sha256": "7e6e92b24ff8445c29905c1394d75ae874fb6d25c3e31a6272bc2f6b1d8606d3",
+      "opcodes": [
+        137
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/stobjbyindex_imm16_v8_imm16-dynamic2400.abc",
+      "sha256": "928a712ce23c769b03f317d6fa9c264d09098008ee4f40d85c4923e49d982dfb",
+      "opcodes": [
+        137
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/wide_stobjbyindex_pref_v8_imm32-dynamic1206.abc",
+      "sha256": "d7c0e3c2f20b153a36ea83c6b394c068c50b44643864898d8e24c459641f7b4c",
+      "opcodes": [
+        2557
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/verified/wide_stobjbyindex_pref_v8_imm32-dynamic2400.abc",
+      "sha256": "07f2edd11d48b6b12de6089d6a6640ec11d640085f8cc0987b585f2bc91d5d9c",
+      "opcodes": [
+        2557
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
     }
   ],
-  "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass."
+  "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.",
+  "oracle_producers": [
+    {
+      "test": "native_member_updates_source_test",
+      "producer": "tests/integration/native_member_updates.mjs"
+    },
+    {
+      "test": "guarded_stores_source_test",
+      "producer": "tests/integration/guarded_stores.mjs"
+    },
+    {
+      "test": "literal_field_forests_source_test",
+      "producer": "tests/integration/literal_field_forests.mjs"
+    },
+    {
+      "test": "native_arguments_source_test",
+      "producer": "tests/integration/native_arguments.mjs"
+    },
+    {
+      "test": "for_of_source_cli_test",
+      "producer": "tests/integration/for_of_source.mjs"
+    },
+    {
+      "test": "class_initializer_composition_source_test",
+      "producer": "tests/integration/class_initializer_composition.py"
+    },
+    {
+      "test": "for_of_multiple_source_test",
+      "producer": "tests/integration/for_of_multiple.mjs"
+    },
+    {
+      "test": "for_of_user_try_source_test",
+      "producer": "tests/integration/for_of_user_try.mjs"
+    },
+    {
+      "test": "for_of_composition_source_test",
+      "producer": "tests/integration/for_of_composition.mjs"
+    },
+    {
+      "test": "native_arguments_records_source_test",
+      "producer": "tests/integration/native_arguments_records.mjs"
+    },
+    {
+      "test": "isa_verified_variants_test",
+      "producer": "tests/isa/verified_variants_test.py"
+    }
+  ]
 }

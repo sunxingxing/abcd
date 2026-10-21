@@ -1,3 +1,4 @@
+import {recordNodeEvidence} from '../support/isa/oracle_evidence.mjs';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync} from 'node:fs';
@@ -42,6 +43,7 @@ try {
     const out=join(temp,input.mode);run(engine,[join(fixture,input.abc),out,'--value-source','--language-source']);
     const record=JSON.parse(readFileSync(join(out,'manifest.json'))).records.find(r=>r.source_status===0);assert.ok(record,'fixture must publish');
     const file=join(out,record.source);run(process.execPath,['--check',file]);const emitted=await import(pathToFileURL(file));
+    const evidenceStart=cases;
     for(const name of Object.keys(original))for(const mode of modes)for(const value of values){assert.deepEqual(evaluate(emitted,name,mode,value),evaluate(original,name,mode,value),`${name}/${mode}/${String(value)}`);++cases;}
     assert.match(emitted.makePrefix.toString(),/\+\+\$(?:arg|local)\d+\.p/);
     assert.match(emitted.makePostfix.toString(),/\$(?:arg|local)\d+\.p\+\+/);
@@ -58,6 +60,7 @@ try {
       assert.ok(observed);++mutations;
     }
     for(const name of Object.keys(original))assert.equal(original[name].length,emitted[name].length);
+    recordNodeEvidence({abc:join(fixture,input.abc),output:out,original:source,producer:import.meta.url,cases:cases-evidenceStart,engine});
     if(process.env.ABCD_REVIEW_OUT){const root=resolve(process.env.ABCD_REVIEW_OUT,input.mode);mkdirSync(root,{recursive:true});writeFileSync(join(root,'original.mjs'),readFileSync(source));writeFileSync(join(root,'emitted.mjs'),readFileSync(file));}
   }
   const catchesSource=join(temp,'catches-original.mjs');writeFileSync(catchesSource,readFileSync(join(fixture,'catches.js')));
@@ -72,7 +75,9 @@ try {
     }
     const record=records.find(r=>r.source_status===0);assert.ok(record);const file=join(out,record.source);
     run(process.execPath,['--check',file]);const emitted=await import(pathToFileURL(file));
+    const evidenceStart=cases;
     for(const name of Object.keys(catches))for(const mode of modes)for(const value of values){assert.deepEqual(evaluate(emitted,name,mode,value),evaluate(catches,name,mode,value),`${name}/${mode}/${String(value)}`);++cases;}
+    recordNodeEvidence({abc:join(fixture,input.abc),output:out,original:catchesSource,producer:import.meta.url,cases:cases-evidenceStart,engine});
     if(process.env.ABCD_REVIEW_OUT){const root=resolve(process.env.ABCD_REVIEW_OUT,'catch-'+input.mode);mkdirSync(root,{recursive:true});writeFileSync(join(root,'original.mjs'),readFileSync(catchesSource));writeFileSync(join(root,'emitted.mjs'),readFileSync(file));}
   }
   console.log(`native_member_updates: ${cases} differential cases; ${mutations} observed mutants; O0/default native + O0 catch publish; optimized catch retains kHandlerShape`);

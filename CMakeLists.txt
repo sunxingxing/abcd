@@ -401,6 +401,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/property_variants_test.py)
     add_test(NAME isa_constructed_branches_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/constructed_branches_test.py)
+    add_test(NAME isa_oracle_import_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/oracle_import_test.py)
+    add_test(NAME isa_verified_variants_test COMMAND ${Python3_EXECUTABLE}
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/verified_variants_test.py")
     add_test(NAME isa_coverage_matrix_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/coverage_matrix_test.py
       $<TARGET_FILE:isa_coverage_probe>
@@ -1797,6 +1801,10 @@ if(BUILD_TESTING)
   add_executable(indexed_read_test tests/unit/analysis/indexed_read_test.cc)
   target_link_libraries(indexed_read_test PRIVATE abcd_analysis)
   add_test(NAME indexed_read_test COMMAND indexed_read_test)
+  add_executable(indexed_property_test tests/unit/analysis/indexed_property_test.cc)
+  target_include_directories(indexed_property_test PRIVATE tests/support)
+  target_link_libraries(indexed_property_test PRIVATE abcd_analysis)
+  add_test(NAME indexed_property_test COMMAND indexed_property_test)
   add_executable(indexed_write_test tests/unit/analysis/indexed_write_test.cc)
   target_link_libraries(indexed_write_test PRIVATE abcd_analysis)
   add_test(NAME indexed_write_test COMMAND indexed_write_test)

@@ -20178,77 +20178,56 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "before_throw_effects": 5,
+            "exception_cause": 0,
+            "exception_exit": {
+              "before": 3,
+              "handler_pc": null,
+              "payload_variant": 0
             },
-            "status": "refused"
+            "exceptional_completion": 1,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
+            },
+            "normal_effects": 5,
+            "roles": {
+              "completion": 1,
+              "destination": {
+                "type": "abcd::analysis::Accumulator"
+              },
+              "expression": {
+                "key": {
+                  "type": "abcd::analysis::Float64Bits",
+                  "value": 0
+                },
+                "receiver": {
+                  "type": "abcd::abc::RegisterId",
+                  "value": 0
+                },
+                "type": "abcd::analysis::PropertyRead"
+              },
+              "type": "abcd::analysis::ScalarAssignment"
+            },
+            "semantic_family": "abcd::analysis::ScalarAssignment",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
-              "method_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "method_status": "refused",
-              "record_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "record_status": 3
+              "method_first_refusal": null,
+              "method_status": "not_individually_reported",
+              "record_first_refusal": null,
+              "record_status": 0
             },
             "v4": {
-              "method_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "method_status": "refused",
-              "record_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "record_status": 3
+              "method_first_refusal": null,
+              "method_status": "not_individually_reported",
+              "record_first_refusal": null,
+              "record_status": 0
             }
           },
           "disassembler": {
@@ -20297,77 +20276,56 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "before_throw_effects": 5,
+            "exception_cause": 0,
+            "exception_exit": {
+              "before": 3,
+              "handler_pc": null,
+              "payload_variant": 0
             },
-            "status": "refused"
+            "exceptional_completion": 1,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
+            },
+            "normal_effects": 5,
+            "roles": {
+              "completion": 1,
+              "destination": {
+                "type": "abcd::analysis::Accumulator"
+              },
+              "expression": {
+                "key": {
+                  "type": "abcd::analysis::Float64Bits",
+                  "value": 0
+                },
+                "receiver": {
+                  "type": "abcd::abc::RegisterId",
+                  "value": 0
+                },
+                "type": "abcd::analysis::PropertyRead"
+              },
+              "type": "abcd::analysis::ScalarAssignment"
+            },
+            "semantic_family": "abcd::analysis::ScalarAssignment",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
-              "method_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "method_status": "refused",
-              "record_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "record_status": 3
+              "method_first_refusal": null,
+              "method_status": "not_individually_reported",
+              "record_first_refusal": null,
+              "record_status": 0
             },
             "v4": {
-              "method_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "method_status": "refused",
-              "record_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "record_status": 3
+              "method_first_refusal": null,
+              "method_status": "not_individually_reported",
+              "record_first_refusal": null,
+              "record_status": 0
             }
           },
           "disassembler": {
@@ -20416,77 +20374,56 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "before_throw_effects": 5,
+            "exception_cause": 0,
+            "exception_exit": {
+              "before": 3,
+              "handler_pc": null,
+              "payload_variant": 0
             },
-            "status": "refused"
+            "exceptional_completion": 1,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
+            },
+            "normal_effects": 5,
+            "roles": {
+              "completion": 1,
+              "destination": {
+                "type": "abcd::analysis::Accumulator"
+              },
+              "expression": {
+                "key": {
+                  "type": "abcd::analysis::Float64Bits",
+                  "value": 0
+                },
+                "receiver": {
+                  "type": "abcd::abc::RegisterId",
+                  "value": 0
+                },
+                "type": "abcd::analysis::PropertyRead"
+              },
+              "type": "abcd::analysis::ScalarAssignment"
+            },
+            "semantic_family": "abcd::analysis::ScalarAssignment",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
-              "method_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "method_status": "refused",
-              "record_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "record_status": 3
+              "method_first_refusal": null,
+              "method_status": "not_individually_reported",
+              "record_first_refusal": null,
+              "record_status": 0
             },
             "v4": {
-              "method_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "method_status": "refused",
-              "record_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "record_status": 3
+              "method_first_refusal": null,
+              "method_status": "not_individually_reported",
+              "record_first_refusal": null,
+              "record_status": 0
             }
           },
           "disassembler": {
@@ -20535,77 +20472,56 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "before_throw_effects": 5,
+            "exception_cause": 0,
+            "exception_exit": {
+              "before": 3,
+              "handler_pc": null,
+              "payload_variant": 0
             },
-            "status": "refused"
+            "exceptional_completion": 1,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
+            },
+            "normal_effects": 5,
+            "roles": {
+              "completion": 1,
+              "destination": {
+                "type": "abcd::analysis::Accumulator"
+              },
+              "expression": {
+                "key": {
+                  "type": "abcd::analysis::Float64Bits",
+                  "value": 0
+                },
+                "receiver": {
+                  "type": "abcd::abc::RegisterId",
+                  "value": 0
+                },
+                "type": "abcd::analysis::PropertyRead"
+              },
+              "type": "abcd::analysis::ScalarAssignment"
+            },
+            "semantic_family": "abcd::analysis::ScalarAssignment",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
-              "method_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "method_status": "refused",
-              "record_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "record_status": 3
+              "method_first_refusal": null,
+              "method_status": "not_individually_reported",
+              "record_first_refusal": null,
+              "record_status": 0
             },
             "v4": {
-              "method_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "method_status": "refused",
-              "record_first_refusal": {
-                "causes": [
-                  {
-                    "domain": "abcd::analysis::SemanticError",
-                    "value": 1
-                  }
-                ],
-                "causes_truncated": false,
-                "class": "unproved",
-                "method": 240,
-                "pc": 3,
-                "reason": "tree_stage",
-                "working_pc": 3
-              },
-              "record_status": 3
+              "method_first_refusal": null,
+              "method_status": "not_individually_reported",
+              "record_first_refusal": null,
+              "record_status": 0
             }
           },
           "disassembler": {

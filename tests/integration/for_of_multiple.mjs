@@ -1,3 +1,4 @@
+import {recordNodeEvidence} from '../support/isa/oracle_evidence.mjs';
 // Engine publication and independent source oracle. Fixture source never enters
 // the engine. The raw close certificate/recovery mutations are separate tests.
 import assert from 'node:assert/strict';
@@ -111,5 +112,8 @@ try {
         c.domain === 'abcd::source::ExceptionControlError' && c.value === 4), name);
     gaps[name] = record.source_failure.causes;
   }
+  recordNodeEvidence({abc:join(fixtures,'multi.abc'),output:out,original:join(fixtures,'multi.js'),producer:import.meta.url,cases:270,engine});
+  recordNodeEvidence({abc:join(fixtures,'catch.abc'),output:caughtOut,original:join(fixtures,'catch.js'),producer:import.meta.url,cases:162,engine});
+  recordNodeEvidence({abc:join(fixtures,'async.abc'),output:asyncOut,original:join(fixtures,'async.js'),producer:import.meta.url,cases:324,engine});
   console.log(JSON.stringify({published: 3, differential_cases: cases, refused: gaps}));
 } finally { rmSync(root, {recursive: true, force: true}); }

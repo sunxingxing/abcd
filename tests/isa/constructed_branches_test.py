@@ -75,11 +75,11 @@ def generate():
         js.write_text('if (' + ('' if name.startswith('JEQZ') else '!') + 'input) { observed; }\n')
         subprocess.run([ES2ABC, '--module', '--merge-abc', '--opt-level=0',
             '--output=' + str(FIXTURES / (name.lower() + '-es2abc.abc')), js], check=True)
-    prior = json.loads((ROOT / 'tests/isa/coverage_manifest.json').read_text())['fixtures']
-    registry.extend(e for e in prior if not e['path'].startswith('tests/fixtures/isa/branches/'))
-    (ROOT / 'tests/isa/coverage_manifest.json').write_text(json.dumps(
-        {'schema': 1, 'fixtures': registry,
-         'note': 'NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.'}, indent=2)+'\n')
+    document = json.loads((ROOT / 'tests/isa/coverage_manifest.json').read_text())
+    registry.extend(e for e in document['fixtures'] if not e['path'].startswith('tests/fixtures/isa/branches/'))
+    document['fixtures'] = registry
+    # Oracle producers and other independent fixture families survive regeneration.
+    (ROOT / 'tests/isa/coverage_manifest.json').write_text(json.dumps(document, indent=2)+'\n')
 
 class BuilderTest(unittest.TestCase):
     def test_runtime_evidence(self):

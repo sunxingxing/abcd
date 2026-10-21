@@ -1,3 +1,4 @@
+import {recordNodeEvidence} from '../support/isa/oracle_evidence.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
@@ -36,6 +37,7 @@ console.log(JSON.stringify({count,trace}));`);
   const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
   assert.equal(records.length,1);assert.equal(records[0].source_status,0,JSON.stringify(records[0]));
   const file=resolve(out,records[0].source);run(process.execPath,['--check',file]);assert.equal(run(process.execPath,[runner,file]),expected);++comparisons;
+  recordNodeEvidence({abc:join(fixtures,'fields.abc'),output:out,original:oracle,producer:import.meta.url,cases:176,engine});
   const text=readFileSync(file,'utf8');
   for(const [label,bad] of [['wrong-field',text.replaceAll('first:','wrong:').replaceAll('before:','wrong:')],['wrong-callee',text.replaceAll('.method(','.missing(')],['wrong-arm',text.replaceAll('.a', '.b')]]){
    assert.notEqual(bad,text,label+' must mutate');const mutated=join(out,label+'.mjs');writeFileSync(mutated,bad);run(process.execPath,['--check',mutated]);assert.notEqual(run(process.execPath,[runner,mutated]),expected,label);++mutations;
@@ -46,6 +48,7 @@ console.log(JSON.stringify({count,trace}));`);
  const loopRecord=JSON.parse(readFileSync(join(loopOut,'manifest.json'))).records.find(r=>r.source_status!==2);
  assert.equal(loopRecord.source_status,0,JSON.stringify(loopRecord));const loopFile=resolve(loopOut,loopRecord.source);run(process.execPath,['--check',loopFile]);
  assert.equal(run(process.execPath,[runner,loopFile,'loop']),run(process.execPath,[runner,loopOracle,'loop']));++comparisons;
+ recordNodeEvidence({abc:join(fixtures,'loop.abc'),output:loopOut,original:loopOracle,producer:import.meta.url,cases:88,engine});
  const negative=join(dir,'tdz-refusal');run(engine,[join(fixtures,'tdz.abc'),negative,'--value-source','--language-source']);
  const refused=JSON.parse(readFileSync(join(negative,'manifest.json'))).records.find(r=>r.source_status!==2);
  assert.equal(refused.source_status,3);assert.deepEqual(refused.source_failure.causes,[{domain:'abcd::source::FunctionTreeError',value:2},{domain:'abcd::source::TreeObligation',value:6}]);

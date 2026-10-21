@@ -1,3 +1,4 @@
+import {recordNodeEvidence} from '../support/isa/oracle_evidence.mjs';
 // Original packaged JS is evaluation-only. Production input is always modules.abc.
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -41,6 +42,10 @@ try{
  }
  for(const args of [[],[undefined],[0],[null],[false],[1,'x',3n]])for(const kind of ['none','value','throw','mutate']){
   assert.deepEqual(observe(modules[1],args,kind),observe(modules[0],args,kind));++cases;
+ }
+ for (const [name,id] of [['ExtendInterface',52417],['MockKit',53454]]) {
+  recordNodeEvidence({abc:input,output:out,original:join(oracle,name+'.js'),producer:import.meta.url,
+    cases,engine,records:[id],exclusions:['approved own non-configurable throwing caller accessor']});
  }
  console.log(JSON.stringify({published_records:2,differential_cases:cases,excluded:['own caller accessor']}));
 }finally{rmSync(temp,{recursive:true,force:true});}

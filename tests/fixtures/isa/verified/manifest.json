@@ -1,0 +1,275 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "path": "expressions-default.abc",
+      "sha256": "df3f900a426010ca3fa6e33c6c98b7684859e3081c2a23ccb38b35e85ee51102",
+      "source": "expressions.js",
+      "source_sha256": "ea3c70d509df1617bbd9cfe1898d8c17de8d3baba4656ed53330a5eb668562b8",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=isaVerified",
+        "--source-file=expressions.js",
+        "--output=tests/fixtures/isa/verified/expressions-default.abc",
+        "tests/fixtures/isa/verified/expressions.js"
+      ],
+      "origin": "es2abc"
+    },
+    {
+      "path": "expressions-o0.abc",
+      "sha256": "2293367578c9036a8f2b1ea090aecd074710b26581093cfc032f4cf52b219aae",
+      "source": "expressions.js",
+      "source_sha256": "ea3c70d509df1617bbd9cfe1898d8c17de8d3baba4656ed53330a5eb668562b8",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=isaVerified",
+        "--source-file=expressions.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/verified/expressions-o0.abc",
+        "tests/fixtures/isa/verified/expressions.js"
+      ],
+      "origin": "es2abc"
+    },
+    {
+      "path": "wide-new-default.abc",
+      "sha256": "55c47f82af76c937fd10e80ed26e5b78767e998cb9cf8606dcf40f8263376d2c",
+      "source": "wide-new.js",
+      "source_sha256": "87b494c816f54534a73c96cc5eede01a02efbb9cbd17f5099ab5af72ab8316f9",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=isaVerified",
+        "--source-file=wide-new.js",
+        "--output=tests/fixtures/isa/verified/wide-new-default.abc",
+        "tests/fixtures/isa/verified/wide-new.js"
+      ],
+      "origin": "es2abc"
+    },
+    {
+      "path": "wide-new-o0.abc",
+      "sha256": "4c47988242c46be4a130048f6edb8d022d07d6bfae47474bda1997b68884bb42",
+      "source": "wide-new.js",
+      "source_sha256": "87b494c816f54534a73c96cc5eede01a02efbb9cbd17f5099ab5af72ab8316f9",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=isaVerified",
+        "--source-file=wide-new.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/verified/wide-new-o0.abc",
+        "tests/fixtures/isa/verified/wide-new.js"
+      ],
+      "origin": "es2abc"
+    },
+    {
+      "path": "wide-super-default.abc",
+      "sha256": "8e6e0612ab40562b5fbb27a6651a637c015246be1260855b06bf7a77f4f428b3",
+      "source": "wide-super.js",
+      "source_sha256": "abc86fa2a9d7eadb616bd116af29799b4bcd13f74d7a9a673e3801871986de8e",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=isaVerified",
+        "--source-file=wide-super.js",
+        "--output=tests/fixtures/isa/verified/wide-super-default.abc",
+        "tests/fixtures/isa/verified/wide-super.js"
+      ],
+      "origin": "es2abc"
+    },
+    {
+      "path": "wide-super-o0.abc",
+      "sha256": "6b2e39b47842f236ae2326bbbe830e738b5d9e25bfae84c0574b17a45cbe955a",
+      "source": "wide-super.js",
+      "source_sha256": "abc86fa2a9d7eadb616bd116af29799b4bcd13f74d7a9a673e3801871986de8e",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--record-name=isaVerified",
+        "--source-file=wide-super.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/verified/wide-super-o0.abc",
+        "tests/fixtures/isa/verified/wide-super.js"
+      ],
+      "origin": "es2abc"
+    },
+    {
+      "path": "ldobjbyindex_imm8_imm16-dynamic1206.abc",
+      "sha256": "5441214608f70e7e40823c3b0ee73e2727198ab971565037471d91ef298fc053",
+      "source": "ldobjbyindex_imm8_imm16-dynamic1206.js",
+      "source_sha256": "77c232aa8807bc7079c9e0754da054f28c89a4baf12e8df267d7fa8ce9f6998b",
+      "origin": "constructed",
+      "variant": "LDOBJBYINDEX_IMM8_IMM16",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        58
+      ]
+    },
+    {
+      "path": "ldobjbyindex_imm8_imm16-dynamic2400.abc",
+      "sha256": "84f184ca67cb427f5688f7df59120abbbe5a0c713707bfd8dc8cd5c032879f3c",
+      "source": "ldobjbyindex_imm8_imm16-dynamic2400.js",
+      "source_sha256": "77c232aa8807bc7079c9e0754da054f28c89a4baf12e8df267d7fa8ce9f6998b",
+      "origin": "constructed",
+      "variant": "LDOBJBYINDEX_IMM8_IMM16",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        58
+      ]
+    },
+    {
+      "path": "ldobjbyindex_imm16_imm16-dynamic1206.abc",
+      "sha256": "cd642e771fa9049a97e1211542ddd7e139a10f68d4eb3e804c80a7614b3a18a3",
+      "source": "ldobjbyindex_imm16_imm16-dynamic1206.js",
+      "source_sha256": "77c232aa8807bc7079c9e0754da054f28c89a4baf12e8df267d7fa8ce9f6998b",
+      "origin": "constructed",
+      "variant": "LDOBJBYINDEX_IMM16_IMM16",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        136
+      ]
+    },
+    {
+      "path": "ldobjbyindex_imm16_imm16-dynamic2400.abc",
+      "sha256": "cb82dffbdb81fa9adf776b3dbbacf0f758dda119526ed172e6877cf77d7ff9da",
+      "source": "ldobjbyindex_imm16_imm16-dynamic2400.js",
+      "source_sha256": "77c232aa8807bc7079c9e0754da054f28c89a4baf12e8df267d7fa8ce9f6998b",
+      "origin": "constructed",
+      "variant": "LDOBJBYINDEX_IMM16_IMM16",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        136
+      ]
+    },
+    {
+      "path": "wide_ldobjbyindex_pref_imm32-dynamic1206.abc",
+      "sha256": "6cb1ccf36c179c07ee16235ad37724b9cc39a84d0e669c7830961302f7d52ac7",
+      "source": "wide_ldobjbyindex_pref_imm32-dynamic1206.js",
+      "source_sha256": "b916eea3ff83d692e19b489b0d43485301024d924c083a3119207a06ed1c9c49",
+      "origin": "constructed",
+      "variant": "WIDE_LDOBJBYINDEX_PREF_IMM32",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        2301
+      ]
+    },
+    {
+      "path": "wide_ldobjbyindex_pref_imm32-dynamic2400.abc",
+      "sha256": "678f8622fe7e9af8cfb5db6d99e33420f9f1cd7b0829697dae5eb738519016c7",
+      "source": "wide_ldobjbyindex_pref_imm32-dynamic2400.js",
+      "source_sha256": "b916eea3ff83d692e19b489b0d43485301024d924c083a3119207a06ed1c9c49",
+      "origin": "constructed",
+      "variant": "WIDE_LDOBJBYINDEX_PREF_IMM32",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        2301
+      ]
+    },
+    {
+      "path": "deprecated_ldobjbyindex_pref_v8_imm32-dynamic1206.abc",
+      "sha256": "d6fb077aa307203a7033d5049ddbe3ffeba9c37cf9af28954213321eea4a5d60",
+      "source": "deprecated_ldobjbyindex_pref_v8_imm32-dynamic1206.js",
+      "source_sha256": "b916eea3ff83d692e19b489b0d43485301024d924c083a3119207a06ed1c9c49",
+      "origin": "constructed",
+      "variant": "DEPRECATED_LDOBJBYINDEX_PREF_V8_IMM32",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        7676
+      ]
+    },
+    {
+      "path": "deprecated_ldobjbyindex_pref_v8_imm32-dynamic2400.abc",
+      "sha256": "36f07453441e960f986c3156f14d9d222987b4efb83e2f1e79afec68019ce521",
+      "source": "deprecated_ldobjbyindex_pref_v8_imm32-dynamic2400.js",
+      "source_sha256": "b916eea3ff83d692e19b489b0d43485301024d924c083a3119207a06ed1c9c49",
+      "origin": "constructed",
+      "variant": "DEPRECATED_LDOBJBYINDEX_PREF_V8_IMM32",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        7676
+      ]
+    },
+    {
+      "path": "stobjbyindex_imm8_v8_imm16-dynamic1206.abc",
+      "sha256": "d6793806b1062f70b69c06f8c9ba7fabe2ff0159ffc5e501edab4052859067fa",
+      "source": "stobjbyindex_imm8_v8_imm16-dynamic1206.js",
+      "source_sha256": "d3227dfe5f0ae053bc3317703581b5cd2891b0f548a9187d607e42e4de1842dd",
+      "origin": "constructed",
+      "variant": "STOBJBYINDEX_IMM8_V8_IMM16",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        59
+      ]
+    },
+    {
+      "path": "stobjbyindex_imm8_v8_imm16-dynamic2400.abc",
+      "sha256": "3a7e8b0b46b66b8ac924331a771a98720a9da0dff04d4b4e19fe9ec6b437418c",
+      "source": "stobjbyindex_imm8_v8_imm16-dynamic2400.js",
+      "source_sha256": "d3227dfe5f0ae053bc3317703581b5cd2891b0f548a9187d607e42e4de1842dd",
+      "origin": "constructed",
+      "variant": "STOBJBYINDEX_IMM8_V8_IMM16",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        59
+      ]
+    },
+    {
+      "path": "stobjbyindex_imm16_v8_imm16-dynamic1206.abc",
+      "sha256": "7e6e92b24ff8445c29905c1394d75ae874fb6d25c3e31a6272bc2f6b1d8606d3",
+      "source": "stobjbyindex_imm16_v8_imm16-dynamic1206.js",
+      "source_sha256": "d3227dfe5f0ae053bc3317703581b5cd2891b0f548a9187d607e42e4de1842dd",
+      "origin": "constructed",
+      "variant": "STOBJBYINDEX_IMM16_V8_IMM16",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        137
+      ]
+    },
+    {
+      "path": "stobjbyindex_imm16_v8_imm16-dynamic2400.abc",
+      "sha256": "928a712ce23c769b03f317d6fa9c264d09098008ee4f40d85c4923e49d982dfb",
+      "source": "stobjbyindex_imm16_v8_imm16-dynamic2400.js",
+      "source_sha256": "d3227dfe5f0ae053bc3317703581b5cd2891b0f548a9187d607e42e4de1842dd",
+      "origin": "constructed",
+      "variant": "STOBJBYINDEX_IMM16_V8_IMM16",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        137
+      ]
+    },
+    {
+      "path": "wide_stobjbyindex_pref_v8_imm32-dynamic1206.abc",
+      "sha256": "d7c0e3c2f20b153a36ea83c6b394c068c50b44643864898d8e24c459641f7b4c",
+      "source": "wide_stobjbyindex_pref_v8_imm32-dynamic1206.js",
+      "source_sha256": "6b804733e05200f8998ef6a990eec1b5f8a741986c9d41b4432997bea0e99345",
+      "origin": "constructed",
+      "variant": "WIDE_STOBJBYINDEX_PREF_V8_IMM32",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        2557
+      ]
+    },
+    {
+      "path": "wide_stobjbyindex_pref_v8_imm32-dynamic2400.abc",
+      "sha256": "07f2edd11d48b6b12de6089d6a6640ec11d640085f8cc0987b585f2bc91d5d9c",
+      "source": "wide_stobjbyindex_pref_v8_imm32-dynamic2400.js",
+      "source_sha256": "6b804733e05200f8998ef6a990eec1b5f8a741986c9d41b4432997bea0e99345",
+      "origin": "constructed",
+      "variant": "WIDE_STOBJBYINDEX_PREF_V8_IMM32",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        2557
+      ]
+    }
+  ]
+}

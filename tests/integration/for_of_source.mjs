@@ -1,3 +1,4 @@
+import {recordNodeEvidence} from '../support/isa/oracle_evidence.mjs';
 // Production engine export: joint OriginalFlow/recovery, never direct draft printing.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -59,5 +60,6 @@ try {
     };}});
     assert.deepEqual(trace(draft,make,1),trace(oracle,make,1),where);
   }
+  recordNodeEvidence({abc,output:out,original:source,producer:import.meta.url,cases:34,engine:structure});
   console.log('production native for-of: Node values/order/live-out/throws/close priority; emitted output recompiled and protocol reverified');
 } finally {rmSync(dir,{recursive:true,force:true});}

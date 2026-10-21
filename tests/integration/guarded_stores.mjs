@@ -1,3 +1,4 @@
+import {recordNodeEvidence} from '../support/isa/oracle_evidence.mjs';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,writeFileSync,copyFileSync,rmSync} from 'node:fs';
@@ -37,5 +38,6 @@ try{
   assert.notEqual(mutant,text);const file=join(dir,`mutant${i}.mjs`);writeFileSync(file,mutant);
   const a=run(process.execPath,[runner,original,'none']),b=run(process.execPath,[runner,file,'none']);assert.ok(b.status!==0||a.stdout!==b.stdout,'undetected mutation '+i);
  }
+ recordNodeEvidence({abc:join(fixtures,'stores.abc'),output,original,producer:import.meta.url,cases:count,engine:structure});
  console.log(`guarded_stores: ${count} Node scenarios; 3 observed mutations; native-TDZ equivalent control`);
 }finally{rmSync(dir,{recursive:true,force:true});}

@@ -124,6 +124,10 @@ class Properties(unittest.TestCase):
                         self.assertEqual(rows[1]['lift']['roles']['name_setting'],1)
                         self.assertIsNone(rows[1]['lift']['normal_commit'])
                         self.assertEqual(rows[1]['lift']['exceptional_completion'],1)
+                    elif 'STOBJBYINDEX' in entry['name']:
+                        self.assertEqual(rows[1]['lift']['status'],'ok')
+                        self.assertEqual(rows[1]['lift']['semantic_family'],'abcd::analysis::ValueWrite')
+                        self.assertIsNone(rows[1]['lift']['normal_commit'])
                     else:
                         self.assertEqual(rows[1]['lift']['status'],'refused')
                         self.assertEqual(rows[1]['lift']['cause']['value'],1)
@@ -151,7 +155,7 @@ class Properties(unittest.TestCase):
                 path=Path(tmp)/'scale.abc';path.write_bytes(expected)
                 rows=probe(path)
                 self.assertEqual(len(rows),n+2)
-                self.assertTrue(all(r['lift']['cause']['value']==1 for r in rows[1:-1]))
+                self.assertTrue(all(r['lift']['status']=='ok' and r['lift']['semantic_family']=='abcd::analysis::ValueWrite' for r in rows[1:-1]))
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--generate',action='store_true')

@@ -4,12 +4,12 @@
 #include <cstdint>
 #include <variant>
 
-#include "abcd/abc/register_access.h"
+#include "abcd/analysis/scalar.h"
 
 namespace abcd::analysis {
 struct ValueWrite {
   abc::RegisterId object;
-  abc::RegisterId key;
+  ScalarValue key;
 };
 enum class ValueWriteError {
   kUnsupportedOpcode,
@@ -17,7 +17,8 @@ enum class ValueWriteError {
   kRegisterRange
 };
 
-// Pinned v7 STOBJBYVALUE is strict [[Set]] with register receiver/key and
+// Pinned v7 STOBJBYVALUE / STOBJBYINDEX are strict [[Set]] with register
+// receiver and an already evaluated register key / exact uint32 constant, and
 // accumulator value. It may throw and leaves the accumulator unchanged.
 [[nodiscard]] std::variant<ValueWrite, ValueWriteError> LiftValueWrite(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size);
