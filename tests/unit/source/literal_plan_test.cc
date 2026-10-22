@@ -1155,10 +1155,11 @@ ValueProgram SpreadGraph(std::uint32_t count, bool split=false) {
   }
   return std::move(f.graph);
 }
-void ObjectSpreads() {
+void ObjectSpreads(bool prototype = false) {
   std::uint64_t previous=0;
   for (const auto count : {1U,200U,201U,400U,800U}) for(const bool split:{false,true}) {
     auto graph=SpreadGraph(count,split);
+    if (prototype) std::get<ValueCopyProperties>(graph.ops[1].operation).kind = ObjectMutationKind::kSetPrototype;
     Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(graph)));
     const auto built=BuildLiteralPlan(graph);
     Check(std::holds_alternative<LiteralPlan>(built));
@@ -1203,8 +1204,17 @@ void ObjectSpreads() {
     Check(std::holds_alternative<ConstructedFunction>(built_tree));
     const auto& tree=std::get<ConstructedFunction>(built_tree).tree;
     const auto reject=[&](FunctionTree changed){Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph,control,evaluation,changed,resolved)));};
+    if (prototype && count > 1) {
+      auto duplicate=tree;
+      duplicate.properties[1].effect=ObjectPropertyEffect::kSetPrototype;
+      Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(duplicate)));
+      reject(std::move(duplicate));
+    }
     auto forged=tree;forged.properties[0].key=NameId{0};reject(std::move(forged));
-    forged=tree;forged.identity.contract=SourceContract::kLanguageSourceV6;reject(std::move(forged));
+    forged=tree;
+    if (prototype) forged.properties[0].effect=ObjectPropertyEffect::kDefine;
+    else forged.identity.contract=SourceContract::kLanguageSourceV6;
+    reject(std::move(forged));
     forged=tree;forged.properties[0].value=forged.properties.back().value;
     if(count>1){forged.properties[0].origin=forged.properties.back().origin;reject(std::move(forged));}
     if(count==800)std::cout<<"object_spread800 split="<<split<<" retained="<<plan.allocated_bytes<<" work="<<plan.work<<" admission="<<lo<<'\n';
@@ -1212,6 +1222,7 @@ void ObjectSpreads() {
 }
 }  // namespace
 int main(int argc, char** argv) {
+  if(argc==2 && std::string_view(argv[1])=="--object-prototypes"){ObjectSpreads(true);return 0;}
   if(argc==2 && std::string_view(argv[1])=="--object-spreads"){ObjectSpreads();return 0;}
   if (argc == 2 && std::string_view(argv[1]) == "--indexed-activations") {
     IndexedActivations();

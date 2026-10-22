@@ -45,7 +45,13 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     }
     else if constexpr (std::is_same_v<T, analysis::ValueBinary>) return EvaluationShape{kBinary, true};
     else if constexpr (std::is_same_v<T, analysis::ValueObjectRest>) return EvaluationShape{kNamedRead,true,op.keys};
-    else if constexpr (std::is_same_v<T, analysis::ValueCopyProperties>) return EvaluationShape{kNamedWrite,true};
+    else if constexpr (std::is_same_v<T, analysis::ValueCopyProperties>) {
+      switch (op.kind) {
+        case analysis::ObjectMutationKind::kCopyProperties:
+        case analysis::ObjectMutationKind::kSetPrototype: return EvaluationShape{kNamedWrite,true};
+      }
+      return {};
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueThisProperty>) {
       if(!analysis::WritesThisProperty(op.kind))return EvaluationShape{analysis::NamedThisProperty(op.kind)?std::span<const Role>(kNoOperands):std::span<const Role>(kThisKey),true};
       EvaluationShape shape{analysis::NamedThisProperty(op.kind)?std::span<const Role>(kCellStore):std::span<const Role>(kThisWrite),false};

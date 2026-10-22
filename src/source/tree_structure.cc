@@ -38,6 +38,7 @@ struct SyntaxFrame {
   std::optional<StmtId> loop;
   std::optional<SymbolId> catch_parameter;
   std::optional<StmtId> breakable;
+  bool prototype = false;
 };
 bool ValidUnary(TreeUnary operation) {
   switch (operation) {
@@ -710,7 +711,17 @@ class StructureCheck {
         RequireTree(!properties_[slot], Error::kOwnership); properties_[slot] = 1;
         RequireTree(property.origin.value < tree_.origins.size(), Error::kRange);
         if(property.key)RequireTree(property.key->value < tree_.names.size(),Error::kRange);
-        else RequireTree(object->kind==AggregateKind::kObject && ObjectSpreads(tree_.identity.contract) && property.name_setting==analysis::PropertyNameSetting::kNone,Error::kUnsupportedSyntax);
+        else RequireTree(object->kind==AggregateKind::kObject &&
+            (property.effect == ObjectPropertyEffect::kSetPrototype || ObjectSpreads(tree_.identity.contract)) &&
+            property.name_setting==analysis::PropertyNameSetting::kNone,Error::kUnsupportedSyntax);
+        RequireTree(property.effect == ObjectPropertyEffect::kDefine ||
+            (property.effect == ObjectPropertyEffect::kSetPrototype && !property.key && object->kind == AggregateKind::kObject), Error::kUnsupportedSyntax);
+        // The native grammar permits only one prototype setter per literal.
+        // Fold this into the existing single property traversal, never rescan.
+        if (property.effect == ObjectPropertyEffect::kSetPrototype) {
+          RequireTree(!frame.prototype, Error::kUnsupportedSyntax);
+          frame.prototype = true;
+        }
         switch (property.name_setting) {
           case analysis::PropertyNameSetting::kNone: break;
           case analysis::PropertyNameSetting::kPropertyKey: {

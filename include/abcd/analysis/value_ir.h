@@ -304,7 +304,7 @@ struct ValueConcurrentNotification {
   bool operator==(const ValueConcurrentNotification&) const = default;
 };
 struct ValueObjectRest { std::uint32_t keys; bool operator==(const ValueObjectRest&) const = default; };
-struct ValueCopyProperties { bool operator==(const ValueCopyProperties&) const = default; };
+struct ValueCopyProperties { ObjectMutationKind kind = ObjectMutationKind::kCopyProperties; bool operator==(const ValueCopyProperties&) const = default; };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole, ValueAwait, ValueYield,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValueIndexedWrite, ValueDefineAccessor, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation, ValueIterResult,

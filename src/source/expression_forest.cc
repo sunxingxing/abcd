@@ -885,7 +885,10 @@ class ForestBuilder {
       const PropertyId property{static_cast<std::uint32_t>(forest_.properties.size())};
       const auto* own = std::get_if<analysis::ValueOwnWrite>(&op.operation);
       forest_.properties.push_back({name, value, field_origin,
-          own ? own->name_setting : analysis::PropertyNameSetting::kNone});
+          own ? own->name_setting : analysis::PropertyNameSetting::kNone,
+          std::get_if<analysis::ValueCopyProperties>(&op.operation) &&
+          std::get<analysis::ValueCopyProperties>(op.operation).kind == analysis::ObjectMutationKind::kSetPrototype ?
+          ObjectPropertyEffect::kSetPrototype : ObjectPropertyEffect::kDefine});
       forest_.initializers[id.value] = property; forest_.operations[id.value] = value;
     }
     return Add(ObjectExpr{range, kind, prefix}, origin);

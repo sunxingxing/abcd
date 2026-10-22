@@ -1,0 +1,305 @@
+{
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "path": "const-default.abc",
+      "sha256": "66012c69912cbdf123cc545389a77886778576c1d914221427802f66e71feebf",
+      "source": "const.js",
+      "source_sha256": "7022f40b57fba03048d1e627c1449db13dd4843e896af66c4fad84cd2aeb1711",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=const.js",
+        "--output=tests/fixtures/isa/globals/const-default.abc",
+        "tests/fixtures/isa/globals/const.js"
+      ],
+      "opcodes": [
+        64,
+        66,
+        67,
+        71,
+        77,
+        96,
+        97,
+        98,
+        101,
+        109,
+        213
+      ]
+    },
+    {
+      "path": "const-o0.abc",
+      "sha256": "92ef639dc155fc62e2b1d0108b04b2d9bb7f69435b7a2312854d18f7c2cfa973",
+      "source": "const.js",
+      "source_sha256": "7022f40b57fba03048d1e627c1449db13dd4843e896af66c4fad84cd2aeb1711",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=const.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/globals/const-o0.abc",
+        "tests/fixtures/isa/globals/const.js"
+      ],
+      "opcodes": [
+        0,
+        62,
+        64,
+        66,
+        67,
+        68,
+        71,
+        77,
+        96,
+        97,
+        98,
+        101,
+        109
+      ]
+    },
+    {
+      "path": "script-default.abc",
+      "sha256": "90d6ec522c3a62f0837f982893de4643427f5cd979a334564bb3948f73065033",
+      "source": "script.js",
+      "source_sha256": "4fbad0cc8bdd956dc7672c37306263d9eb94024ae3ac3c463a860c6bee756a9e",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=script.js",
+        "--output=tests/fixtures/isa/globals/script-default.abc",
+        "tests/fixtures/isa/globals/script.js"
+      ],
+      "opcodes": [
+        0,
+        10,
+        53,
+        63,
+        64,
+        65,
+        66,
+        71,
+        72,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        127
+      ]
+    },
+    {
+      "path": "script-o0.abc",
+      "sha256": "eef1ceb4eaa0ca9f112112c89d3f900b7d11fb04c46f12cc97c586aed7b3bbd6",
+      "source": "script.js",
+      "source_sha256": "4fbad0cc8bdd956dc7672c37306263d9eb94024ae3ac3c463a860c6bee756a9e",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=script.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/globals/script-o0.abc",
+        "tests/fixtures/isa/globals/script.js"
+      ],
+      "opcodes": [
+        0,
+        10,
+        53,
+        62,
+        63,
+        64,
+        65,
+        66,
+        68,
+        71,
+        72,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        127
+      ]
+    },
+    {
+      "path": "sloppy-default.abc",
+      "sha256": "cdd94b3a72894eafb04757068e4face2fdf5f0e54e76d01a58ec362c57e9902c",
+      "source": "sloppy.js",
+      "source_sha256": "2b737498362619133aabe5c1d4cc0033a46ddff65e20ebccbc58a556d087fa02",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=sloppy.js",
+        "--output=tests/fixtures/isa/globals/sloppy-default.abc",
+        "tests/fixtures/isa/globals/sloppy.js"
+      ],
+      "opcodes": [
+        64,
+        98,
+        101
+      ]
+    },
+    {
+      "path": "sloppy-o0.abc",
+      "sha256": "4699136812442b9bd02ceab51f377a8b71647a81bd6da81b7ea90e8d1204adca",
+      "source": "sloppy.js",
+      "source_sha256": "2b737498362619133aabe5c1d4cc0033a46ddff65e20ebccbc58a556d087fa02",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=sloppy.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/globals/sloppy-o0.abc",
+        "tests/fixtures/isa/globals/sloppy.js"
+      ],
+      "opcodes": [
+        0,
+        64,
+        68,
+        98,
+        101
+      ]
+    },
+    {
+      "path": "tdz-default.abc",
+      "sha256": "77d0d7d40a84afa93e90ad88e19ad3d77d040c656c06f577a47ec247f2734756",
+      "source": "tdz.js",
+      "source_sha256": "1e3f51f673b10fdb815c97718dd5ab0dda5f246acab89bb1100d444abae142a1",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=tdz.js",
+        "--output=tests/fixtures/isa/globals/tdz-default.abc",
+        "tests/fixtures/isa/globals/tdz.js"
+      ],
+      "opcodes": [
+        28,
+        63,
+        66,
+        67,
+        72,
+        77,
+        96,
+        97,
+        98,
+        101,
+        109,
+        213
+      ]
+    },
+    {
+      "path": "tdz-o0.abc",
+      "sha256": "17acbd4e7175d0f96c3efedf8235d5a5c7b41a7ba0da23df938916b7e6c7016d",
+      "source": "tdz.js",
+      "source_sha256": "1e3f51f673b10fdb815c97718dd5ab0dda5f246acab89bb1100d444abae142a1",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=tdz.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/globals/tdz-o0.abc",
+        "tests/fixtures/isa/globals/tdz.js"
+      ],
+      "opcodes": [
+        0,
+        28,
+        63,
+        66,
+        67,
+        68,
+        72,
+        77,
+        96,
+        97,
+        98,
+        101,
+        109
+      ]
+    },
+    {
+      "path": "wide-default.abc",
+      "sha256": "b377e4ad0a4cac552e4fef910ec2804bf146f49ee7a887c342835858196461da",
+      "source": "wide.js",
+      "source_sha256": "6befe3543559dd0b3cfe3a2ff70b1a65b850596d9a7e7bf0d7f9e5189c348a70",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=wide.js",
+        "--output=tests/fixtures/isa/globals/wide-default.abc",
+        "tests/fixtures/isa/globals/wide.js"
+      ],
+      "opcodes": [
+        0,
+        10,
+        65,
+        72,
+        96,
+        97,
+        98,
+        101,
+        127,
+        140,
+        141
+      ]
+    },
+    {
+      "path": "wide-o0.abc",
+      "sha256": "1deea3aabaed6b559fa6c4b08513cc5d07fe0c28385b8736712d5cab16e3b4ea",
+      "source": "wide.js",
+      "source_sha256": "6befe3543559dd0b3cfe3a2ff70b1a65b850596d9a7e7bf0d7f9e5189c348a70",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaglobals",
+        "--source-file=wide.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/globals/wide-o0.abc",
+        "tests/fixtures/isa/globals/wide.js"
+      ],
+      "opcodes": [
+        0,
+        10,
+        62,
+        65,
+        68,
+        72,
+        97,
+        98,
+        101,
+        127,
+        140,
+        141
+      ]
+    }
+  ]
+}

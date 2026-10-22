@@ -1254,7 +1254,8 @@ class FlowBuilder {
         budget_.Step();const auto property=aggregate->properties.first+i-1;
         RequireTree(property<tree_.properties.size()&&!result_.property_initializers[property],Error::kOwnership);
         const bool spread=!tree_.properties[property].key;
-        const auto define=action(spread?FlowEventKind::kObjectSpread:FlowEventKind::kAggregateDefinition,next);
+        const bool prototype = tree_.properties[property].effect == ObjectPropertyEffect::kSetPrototype;
+        const auto define=action(prototype ? FlowEventKind::kObjectPrototype : spread ? FlowEventKind::kObjectSpread : FlowEventKind::kAggregateDefinition,next);
         if(spread){
           const auto spread_effects=CallbackEffects();
           events_[define.value].effects=spread_effects;events_[define.value].effect=ExpressionEvaluation::kRequired;
@@ -2103,7 +2104,7 @@ FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const Functio
   // A spread's action belongs to one property, not to the aggregate's inert
   // fresh allocation. Its descriptor/proxy effects cannot be refined away
   // using the ObjectExpr's allocation-only normal-value rule.
-  if(event.kind==FlowEventKind::kObjectSpread)
+  if(event.kind==FlowEventKind::kObjectSpread || event.kind==FlowEventKind::kObjectPrototype)
     return {ExpressionEvaluation::kRequired,CallbackEffects()};
   if(!event.expression||event.kind==FlowEventKind::kTruthBranch||event.kind==FlowEventKind::kNullishBranch)
     return {event.effect,event.effects};

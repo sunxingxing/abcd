@@ -1,0 +1,227 @@
+{
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "path": "computed_data-default.abc",
+      "sha256": "dfe590a0cb43f13e9d9fd7180b02cdd7f303b3c81da1c45acb307f0638777279",
+      "source": "computed_data.js",
+      "source_sha256": "1ff2500507ffeab8624c0294405c04e9a8a6308ba8893f792c0722d668d75833",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaobject_proto",
+        "--source-file=computed_data.js",
+        "--output=tests/fixtures/isa/object_proto/computed_data-default.abc",
+        "tests/fixtures/isa/object_proto/computed_data.js"
+      ],
+      "opcodes": [
+        4,
+        51,
+        62,
+        96,
+        97,
+        98,
+        100,
+        101,
+        119,
+        124,
+        507
+      ],
+      "refused": true
+    },
+    {
+      "path": "computed_data-o0.abc",
+      "sha256": "45a3ccf72c001f23c381e93d21698c32c61912a64674f3c2c33942ecd86c447b",
+      "source": "computed_data.js",
+      "source_sha256": "1ff2500507ffeab8624c0294405c04e9a8a6308ba8893f792c0722d668d75833",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaobject_proto",
+        "--source-file=computed_data.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/object_proto/computed_data-o0.abc",
+        "tests/fixtures/isa/object_proto/computed_data.js"
+      ],
+      "opcodes": [
+        0,
+        4,
+        51,
+        62,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        119,
+        124,
+        507
+      ],
+      "refused": true
+    },
+    {
+      "path": "proto-default.abc",
+      "sha256": "c4d63a1ec250e3cfb8bf267ea7220a405008c2a7da22c5ffa0054398346a1f5c",
+      "source": "proto.js",
+      "source_sha256": "dcd9794ba64efdc877b5dbff004a3c8e87aaf2287ba2aea88a16a613ab26fafe",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaobject_proto",
+        "--source-file=proto.js",
+        "--output=tests/fixtures/isa/object_proto/proto-default.abc",
+        "tests/fixtures/isa/object_proto/proto.js"
+      ],
+      "opcodes": [
+        1,
+        4,
+        7,
+        41,
+        51,
+        96,
+        97,
+        98,
+        100,
+        101,
+        119,
+        124,
+        220
+      ],
+      "refused": false
+    },
+    {
+      "path": "proto-o0.abc",
+      "sha256": "acc03714c160b022594d266613d853a47f5793ff8f243e67c8c7d72b72b94a2b",
+      "source": "proto.js",
+      "source_sha256": "dcd9794ba64efdc877b5dbff004a3c8e87aaf2287ba2aea88a16a613ab26fafe",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaobject_proto",
+        "--source-file=proto.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/object_proto/proto-o0.abc",
+        "tests/fixtures/isa/object_proto/proto.js"
+      ],
+      "opcodes": [
+        0,
+        1,
+        4,
+        7,
+        41,
+        51,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        119,
+        124,
+        220
+      ],
+      "refused": false
+    },
+    {
+      "path": "wide-default.abc",
+      "sha256": "cd2d3bce6515595b9506a1e8c4e0b882e2c9193081c0423ef7ffa3ec034c254a",
+      "source": "wide.js",
+      "source_sha256": "969b253670d18fb1a2d038f1e4ba82455aed54cb3d25ffd916c1a294f27c2203",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaobject_proto",
+        "--source-file=wide.js",
+        "--output=tests/fixtures/isa/object_proto/wide-default.abc",
+        "tests/fixtures/isa/object_proto/wide.js"
+      ],
+      "opcodes": [
+        51,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        130,
+        144,
+        199,
+        220
+      ],
+      "refused": false
+    },
+    {
+      "path": "wide-o0.abc",
+      "sha256": "105b8b5697ff4d41457e0418ead3833ae8224bced0e6afe034a0e8743bdb891b",
+      "source": "wide.js",
+      "source_sha256": "969b253670d18fb1a2d038f1e4ba82455aed54cb3d25ffd916c1a294f27c2203",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaobject_proto",
+        "--source-file=wide.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/object_proto/wide-o0.abc",
+        "tests/fixtures/isa/object_proto/wide.js"
+      ],
+      "opcodes": [
+        0,
+        51,
+        66,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        130,
+        144,
+        199,
+        220
+      ],
+      "refused": false
+    },
+    {
+      "path": "nonprivate-setobjectwithproto_imm8_v8.abc",
+      "sha256": "c40b82291938e3ac537702e39cf9f07938caa4cd235e7a3d5bfb45a6ace43941",
+      "origin": "constructed",
+      "kind": "SETOBJECTWITHPROTO_IMM8_V8",
+      "refused": true,
+      "opcodes": [
+        119
+      ]
+    },
+    {
+      "path": "nonprivate-setobjectwithproto_imm16_v8.abc",
+      "sha256": "f85b72e35406de9b5ef14a4683cb97d672e781e6992dd508a8dad544af40682e",
+      "origin": "constructed",
+      "kind": "SETOBJECTWITHPROTO_IMM16_V8",
+      "refused": true,
+      "opcodes": [
+        199
+      ]
+    }
+  ]
+}

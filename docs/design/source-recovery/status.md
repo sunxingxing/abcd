@@ -10,6 +10,64 @@
 
 
 
+## ISA coverage9 — private prototype literals; globals/throws remain partial (2026-10-22)
+
+- Both SETOBJECTWITHPROTO widths now retain a typed literal-mutation effect,
+  prototype input, target/result identity, Commit and exception exit. Existing
+  LiteralPlan ownership/order/catch proofs are reused; TreeFlow checks the
+  original kind and RecoveryFlow reconstructs a distinct prototype action.
+  Tree structure rejects duplicate native prototype setters. The printer emits
+  `__proto__: value` only from this effect; ordinary data keys keep their prior
+  computed spelling. No contract or successful-plan admission was loosened.
+- Four complete SDK records at default/O0 verify both widths and field order,
+  primitive/null/object/function prototypes, nested/fresh identity and throws.
+  Four negative records keep exact nonprivate-target / computed-DefineField
+  refusals. SDK scaling covers 200/201/400/800 allocations; component tests also
+  check exact work/byte boundaries, copies, block splits, missing/reordered
+  commits and forged property effects. At 800 fields the literal plan retains
+  **3,600 bytes**, with **114,674 work / 296,802-byte admission** normally, or
+  **461,234 work / 1,403,736-byte admission** with split copy corridors.
+- Ledger **156/55/93/28 → 159/54/91/28**
+  (Verified/Unverified/Unmeasured/NonExecutable), **1,056 ABCs** and
+  **1,565,773 instructions**, no probe failure and no backward verified-profile
+  move. New Verified rows are both SETOBJECTWITHPROTO widths and
+  CREATEOBJECTWITHBUFFER_IMM16, all in SDK profile **6**. The two new oracle
+  producers attest **76 Node cases**; Ark runtime remains unmeasured.
+- Partial scope is explicit: script globals are **not recovered**. Ten real
+  non-module probes show that native global lexical activation/TDZ and sloppy
+  unresolved writes are not established by the current contract. Their current
+  route emits metadata only, not completed source. The throw family is also
+  **not complete**: const binding/throw correspondence, register-named guards,
+  yield* throw-resume and invalid-super protocols remain refused. SDK delete
+  super lowers to delete-this; the test observes this discrepancy and does not
+  create a successful oracle. See the cited evidence note below.
+- Strict `grouping_bytecode.py` on four prototype records plus the valid O0
+  super-check fixture: **2 exact / 3 differ / 0 unverified** separately at
+  default and O0; all **5** emitted files pass Node syntax. All callable bodies
+  in the two prototype differences are exact; only independent function
+  installation order and physical literal/string placement change. The super
+  fixture uses the existing private heritage inlining and object-result super
+  return projection; its additional undefined comparison is inert. Differences
+  remain reported, never normalized into passes. The grouping-only token
+  checker correctly rejects these full source-recovery comparisons (5/5);
+  no token-equivalence pass is claimed.
+- OLD **dac3bfb5**: both fresh 40-input comparisons remain **605/620** source /
+  **542/620** previous flags, with **zero** regressions, new completions or text
+  changes in previously complete records. No contract-label change.
+- Full build passes; final fixed source suite **65/65**, all scale **17/17**,
+  ISA **23/23**, and touched sweep **191/203**. Its 12 failures are the listed
+  pre-existing family_source_cli, tree_structure, try_tree, class_tree_source,
+  unguarded derived_cells/literal_closure/derived_literal_receiver,
+  captured/forwarded/reversed-initialization receiver variants, and
+  try_tree_source failures. The affected-spelling grep also selected **40**
+  tests through their actual fixture commands: **37 pass**, with only known
+  tree_structure, phased_literal and phased_arm_selection_source failures.
+  No existing printed-spelling assertion changed.
+- Evidence: `build/review/isa-r9/`, `build/review/isa-r9-work/`; design and exact
+  remaining boundaries:
+  [isa-globals-prototype-throws.md](isa-globals-prototype-throws.md).
+  No commit, push or stash. User-owned `sample.tar.gz` remains untouched.
+
 ## ISA coverage8 — wide ranges and strict super stores (2026-10-22)
 
 - `LanguageSourceV8` inherits V7 and adds only the user-approved

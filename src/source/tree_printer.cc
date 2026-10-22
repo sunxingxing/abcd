@@ -1364,7 +1364,8 @@ class TreePrinter {
     const PropertyId id{cursor.range.first + cursor.index};
     const auto& property = Tree().properties[id.value];
     Result().properties[id.value].begin = written_;
-    if(!property.key)Append("...");
+    if(property.effect == ObjectPropertyEffect::kSetPrototype)Append("__proto__: ");
+    else if(!property.key)Append("...");
     else if (cursor.kind == AggregateKind::kObject) {
       const auto& name = Tree().names[property.key->value];
       Step(name.size());

@@ -17073,6 +17073,7 @@
             },
             "normal_effects": 71,
             "roles": {
+              "kind": 0,
               "object": {
                 "type": "abcd::abc::RegisterId",
                 "value": 0
@@ -17167,6 +17168,7 @@
             },
             "normal_effects": 71,
             "roles": {
+              "kind": 0,
               "object": {
                 "type": "abcd::abc::RegisterId",
                 "value": 0
@@ -17261,6 +17263,7 @@
             },
             "normal_effects": 71,
             "roles": {
+              "kind": 0,
               "object": {
                 "type": "abcd::abc::RegisterId",
                 "value": 0
@@ -17355,6 +17358,7 @@
             },
             "normal_effects": 71,
             "roles": {
+              "kind": 0,
               "object": {
                 "type": "abcd::abc::RegisterId",
                 "value": 0

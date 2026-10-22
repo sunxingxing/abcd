@@ -665,9 +665,12 @@ class OperandCheck {
               current_);
           InputAt(1, property.value); edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueCopyProperties>) {
-          RequireMeaning(ObjectSpreads(tree_.identity.contract) && flow_.initializers[i],Error::kUnsupportedOperation);
+          RequireMeaning((operation.kind == analysis::ObjectMutationKind::kSetPrototype ||
+              ObjectSpreads(tree_.identity.contract)) && flow_.initializers[i],Error::kUnsupportedOperation);
           const auto& property=tree_.properties[flow_.initializers[i]->value];
-          RequireMeaning(!property.key && property.name_setting==analysis::PropertyNameSetting::kNone,Error::kOperator);
+          RequireMeaning(!property.key && property.name_setting==analysis::PropertyNameSetting::kNone &&
+              property.effect == (operation.kind == analysis::ObjectMutationKind::kSetPrototype ?
+                  ObjectPropertyEffect::kSetPrototype : ObjectPropertyEffect::kDefine),Error::kOperator);
           const auto target=ResolveEvaluationOperand(evaluation_,input(0));
           const auto result=op.result?ResolveEvaluationOperand(evaluation_,analysis::ValueOperand{*op.result}):analysis::ValueOperand{analysis::SpecialValue::kUndefined};
           const auto* target_id=std::get_if<analysis::ValueId>(&target);

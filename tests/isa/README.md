@@ -334,3 +334,35 @@ are required by the current proof: Ark resolves the super reference after RHS,
 standard JS before it. No new premise is inferred. Only complete,
 differential-tested occurrences feed `isa_wide_calls_source_test` and
 `isa_super_stores_source_test` into the oracle importer; refusal fixtures do not.
+
+## ISA round 9: literal prototypes and script/throw boundaries
+
+The regenerated ledger is **159 SupportedVerified / 54 SupportedUnverified /
+91 Unmeasured / 28 NonExecutable**. Both SETOBJECTWITHPROTO widths and
+CREATEOBJECTWITHBUFFER_IMM16 gain SDK-profile occurrence evidence; no previously
+verified profile is lost. `isa_object_proto_source_test` covers four complete
+SDK records, four precise refusal records, and 200/201/400/800 allocation scaling.
+`object_proto_scale_test` rechecks exact byte/work admission and independent
+ownership/tree mutations. Native prototype setters are distinct typed literal
+mutation effects, not data properties or object spread. No new predicate is used.
+
+`isa_global_evidence_test` records ten **non-module** SDK probes. The current
+source route emits metadata only for these executable scripts; this must not be
+read as a NonExecutable opcode classification or a successful source oracle.
+The bytecode/runtime exposes global lexical activation/TDZ and unresolved sloppy
+write differences, so native script publication stays unimplemented pending a
+separate decision and script-scope proof.
+
+`isa_throw_evidence_test` preserves exact current throw-protocol boundaries.
+The valid O0 derived-constructor record supplies a Node oracle. Its default
+form retains the pre-existing CatchRegionError::kHandlerShape refusal. The SDK
+`delete super.x` probe compiles to delete-this; Node observes the difference and
+**no** successful oracle is emitted for that pair. THROW_NOTEXISTS is the
+missing delegated-iterator throw-method TypeError, not a global ReferenceError.
+Const writes, register-named Hole guards and invalid-super protocols retain
+source/binding/generator refusals; this throw family is not complete.
+
+Commands/hashes, runtime citations, the native prototype certificate and all
+remaining obligations are in
+[isa-globals-prototype-throws.md](../../docs/design/source-recovery/isa-globals-prototype-throws.md).
+Generated JSON and full acceptance logs remain under `build/review/isa-r9*`.

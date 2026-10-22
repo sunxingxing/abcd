@@ -391,7 +391,7 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if(const auto* op=std::get_if<ObjectRest>(&object_rest)){RegisterEffect r;r.reads[r.read_count++]=op->object;r.range=RegisterRange{op->first,op->count};r.write=Accumulator{};return r;}
   if(std::get<ScalarError>(object_rest)!=ScalarError::kUnsupportedOpcode)return std::get<ScalarError>(object_rest);
   const auto spread=LiftCopyProperties(instruction,frame_size);
-  if(const auto* p=std::get_if<CopyProperties>(&spread)){RegisterEffect r;r.reads[r.read_count++]=p->object;Read(r,p->source);r.write=Accumulator{};return r;}
+  if(const auto* p=std::get_if<CopyProperties>(&spread)){RegisterEffect r;Read(r,p->object);Read(r,p->source);r.write=Accumulator{};return r;}
   if(std::get<ScalarError>(spread)!=ScalarError::kUnsupportedOpcode)return ScalarError::kMalformedInstruction;
   const auto implicit=LiftThisProperty(instruction,frame_size);
   if(const auto* p=std::get_if<ThisProperty>(&implicit)) {

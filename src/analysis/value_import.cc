@@ -146,7 +146,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, DebuggerOperation>) {
       return ValueDebugger{};
     } else if constexpr (std::is_same_v<T, ObjectRest>) return ValueObjectRest{op.count};
-    else if constexpr (std::is_same_v<T, CopyProperties>) return ValueCopyProperties{};
+    else if constexpr (std::is_same_v<T, CopyProperties>) return ValueCopyProperties{op.kind};
     else if constexpr (std::is_same_v<T, ThisProperty>) {
       return ValueThisProperty{op.kind,op.name};
     } else if constexpr (std::is_same_v<T, NewTargetLoad>) {

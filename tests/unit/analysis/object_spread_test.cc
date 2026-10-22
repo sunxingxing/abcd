@@ -18,7 +18,7 @@ int main() {
       bytes.push_back(1);if(legacy)bytes.push_back(2);
       const auto decoded=std::get<abc::DecodedInstruction>(abc::DecodeInstruction(bytes,profile));
       const auto raw=std::get<CopyProperties>(LiftCopyProperties(decoded,3));
-      Check(raw.object==abc::RegisterId{1});
+      Check(std::get<abc::RegisterId>(raw.object)==abc::RegisterId{1});
       Check(legacy?std::get<abc::RegisterId>(raw.source)==abc::RegisterId{2}:std::holds_alternative<Accumulator>(raw.source));
       const auto semantic=std::get<SemanticInstruction>(LiftSemanticInstruction({{7},decoded},profile,3));
       const auto operands=std::get<ValueOperands>(DescribeValueOperands(semantic));
@@ -39,4 +39,21 @@ int main() {
       Check(std::holds_alternative<ScalarError>(LiftCopyProperties(decoded,1)));
     }
   }
+  for (const auto code : {abc::Opcode::kSETOBJECTWITHPROTO_IMM8_V8, abc::Opcode::kSETOBJECTWITHPROTO_IMM16_V8}) {
+    abc::DecodedInstruction d{}; d.opcode=code; d.operand_count=2;
+    d.operands[0]={1,abc::OperandKind::kImmediate};
+    d.operands[1]={2,abc::OperandKind::kRegister};
+    const auto raw=std::get<CopyProperties>(LiftCopyProperties(d,3));
+    Check(raw.kind==ObjectMutationKind::kSetPrototype && std::holds_alternative<Accumulator>(raw.object) && std::get<abc::RegisterId>(raw.source).value==2);
+    const auto lifted=std::get<SemanticInstruction>(LiftSemanticInstruction({{0},d},abc::ProfileId::kDynamic2400,3));
+    const auto value=std::get<ValueCopyProperties>(ImportValueOperation(lifted.operation));
+    Check(value.kind==ObjectMutationKind::kSetPrototype);
+    const auto inputs=std::get<ValueOperands>(DescribeValueOperands(lifted));
+    Check(inputs.count==2 && inputs.operands[0].role==OperandRole::kBase && inputs.operands[1].role==OperandRole::kStoredValue);
+    Check(lifted.effects.exceptional==ExceptionalCompletion::kMayThrow);
+    auto bad=d;bad.operands[1].raw_bits=3;Check(std::get<ScalarError>(LiftCopyProperties(bad,3))==ScalarError::kRegisterRange);
+    bad=d;bad.operands[1].kind=abc::OperandKind::kString;Check(std::get<ScalarError>(LiftCopyProperties(bad,3))==ScalarError::kMalformedInstruction);
+    bad=d;bad.operand_count=1;Check(std::get<ScalarError>(LiftCopyProperties(bad,3))==ScalarError::kMalformedInstruction);
+  }
+
 }

@@ -1320,12 +1320,39 @@
       "opcode": 119,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          },
+          {
+            "register": 0
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 71,
+        "roles": {
+          "kind": 1,
+          "object": {
+            "type": "abcd::analysis::Accumulator"
+          },
+          "source": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::CopyProperties"
+        },
+        "semantic_family": "abcd::analysis::CopyProperties",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -3405,6 +3432,7 @@
         },
         "normal_effects": 71,
         "roles": {
+          "kind": 0,
           "object": {
             "type": "abcd::abc::RegisterId",
             "value": 0
@@ -3443,12 +3471,39 @@
       "opcode": 199,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          },
+          {
+            "register": 0
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 71,
+        "roles": {
+          "kind": 1,
+          "object": {
+            "type": "abcd::analysis::Accumulator"
+          },
+          "source": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::CopyProperties"
+        },
+        "semantic_family": "abcd::analysis::CopyProperties",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,

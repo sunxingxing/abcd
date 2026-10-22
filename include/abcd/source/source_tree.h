@@ -259,14 +259,17 @@ struct ObjectExpr {
   // replace its last matching position only while preserving RHS order.
   std::uint32_t buffered = 0;
 };
-// Computed string data property, never a colon-style __proto__ setter or method.
+// Computed string data property by default. A verified prototype mutation has
+// its own effect and no key; it is never inferred from the spelling __proto__.
 // Array aggregates reuse the ordered property arena with canonical decimal keys;
 // keys must equal element ordinals and are implicit in native array syntax.
+enum class ObjectPropertyEffect : std::uint8_t { kDefine, kSetPrototype };
 struct DataProperty {
   std::optional<NameId> key; ExprId value; TreeOriginId origin;
   // An ordered own definition with native anonymous NamedEvaluation; verified
   // against the original store, private construction and creation identity.
   analysis::PropertyNameSetting name_setting = analysis::PropertyNameSetting::kNone;
+  ObjectPropertyEffect effect = ObjectPropertyEffect::kDefine;
 };
 // This operation is not [[Set]]. Only a field-definition destination may
 // print it; ordinary function expression output must refuse it.

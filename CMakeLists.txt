@@ -414,6 +414,12 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/regexp_test.py)
     add_test(NAME isa_object_rest_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/object_rest_test.py)
+    add_test(NAME isa_object_proto_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/object_proto_test.py)
+    add_test(NAME isa_throw_evidence_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/throw_evidence_test.py)
+    add_test(NAME isa_global_evidence_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/global_evidence_test.py)
     add_test(NAME isa_object_spread_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/object_spread_test.py)
     add_test(NAME isa_native_frame_test COMMAND ${Python3_EXECUTABLE}
@@ -1361,6 +1367,8 @@ if(BUILD_TESTING)
   target_link_libraries(literal_plan_test PRIVATE abcd_source)
   add_test(NAME literal_plan_test COMMAND literal_plan_test)
   add_test(NAME object_spread_test COMMAND literal_plan_test --object-spreads)
+  add_test(NAME object_proto_test COMMAND literal_plan_test --object-prototypes)
+  add_test(NAME object_proto_scale_test COMMAND literal_plan_test --object-prototypes)
   add_test(NAME staged_activation_test COMMAND literal_plan_test --staged-activations)
   add_executable(staged_indexed_array_test tests/unit/source/staged_indexed_array_test.cc)
   target_link_libraries(staged_indexed_array_test PRIVATE abcd_source)
