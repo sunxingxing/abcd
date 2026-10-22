@@ -689,10 +689,15 @@ that all runtime paths implement standard ECMAScript semantics.
 * `ObjectRests()`: certified CREATEOBJECTWITHEXCLUDEDKEYS/WIDE may print object
   destructuring rest. Accepted difference: pinned
   `ecmascript/stubs/runtime_stubs-inl.h:2565` writes remaining keys with
-  strict SetProperty rather than CreateDataProperty. Recovery must additionally
+  strict SetProperty rather than CreateDataProperty. The user extended this same
+  V7 predicate on **2026-10-22** to accept the runtime's Proxy unwrapping:
+  `runtime_stubs-inl.h:2642-2648` replaces a Proxy source with its source target
+  before copying, so its traps are not called on Ark. This is an additional
+  accepted difference, not a new contract version. Recovery must additionally
   prove excluded-key identity/order, once-only computed-key evaluation and the
-  original separate null/undefined coercibility guard. **Predicate only this
-  round; no arbitrary excluded-key instruction is admitted.**
+  original separate null/undefined coercibility guard. Coverage round 5 consumes
+  this predicate only through the independently verified object-rest construction
+  and native-pattern surface; arbitrary excluded-key instructions stay refused.
 * `NativeNewTarget()`: LDNEWTARGET and a verified ABI new-target entry may print
   `new.target` in the owning non-arrow function/constructor. Accepted difference:
   `ecmascript/interpreter/interpreter-inl.cpp:7047` is fatal;

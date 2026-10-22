@@ -6698,6 +6698,179 @@
       "classification": "Unmeasured",
       "oracles": {},
       "note": "V7 descriptor-copy premise; only occurrence evidence promotes this row."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/rest-default.abc",
+      "sha256": "11d5b609a23c799048acc8665c7a5c86c28a7882923c74918019d357dd32e62e",
+      "opcodes": [
+        0,
+        1,
+        5,
+        39,
+        51,
+        55,
+        62,
+        66,
+        68,
+        79,
+        81,
+        96,
+        97,
+        100,
+        101,
+        121,
+        124,
+        179,
+        766
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/rest-o0.abc",
+      "sha256": "e5f3e14b7450bbf62e58780a3dd8013663e7b16b2cf33b98ec8cebf3d788c4f5",
+      "opcodes": [
+        0,
+        1,
+        5,
+        39,
+        51,
+        55,
+        62,
+        66,
+        68,
+        77,
+        79,
+        96,
+        97,
+        100,
+        101,
+        121,
+        124,
+        179,
+        766
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/wide-default.abc",
+      "sha256": "8c20de8e2fabc45d8ce8a4b2e051878947b6cdc4a9b734f023e794f54257eca5",
+      "opcodes": [
+        0,
+        1,
+        39,
+        51,
+        62,
+        66,
+        77,
+        79,
+        96,
+        97,
+        100,
+        101,
+        124,
+        128,
+        143,
+        144,
+        203,
+        253,
+        766
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/wide-o0.abc",
+      "sha256": "a222df2f3f5fde3c60f2ca1ac555f56def9ef873ea9eaf93edd166dc16c97548",
+      "opcodes": [
+        0,
+        1,
+        39,
+        51,
+        62,
+        66,
+        68,
+        77,
+        79,
+        96,
+        97,
+        100,
+        101,
+        124,
+        128,
+        143,
+        144,
+        203,
+        253,
+        766
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/createobjectwithexcludedkeys_imm8_v8_v8-dynamic1206.abc",
+      "sha256": "2debe60a13e826a85863dab84f43679a54b4e020440b484910b0160d3938dc4b",
+      "opcodes": [
+        179
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/wide_createobjectwithexcludedkeys_pref_imm16_v8_v8-dynamic1206.abc",
+      "sha256": "cea53f465e6cd90a4916c930b7199f7b025d85aa417fc87dccbbb1e2b6b0c16d",
+      "opcodes": [
+        253
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/createobjectwithexcludedkeys_imm8_v8_v8-dynamic2400.abc",
+      "sha256": "f12b79fb0fa1e55beb148557574d76b8b10a100f2100c691368380c8a3dd01c6",
+      "opcodes": [
+        179
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/wide_createobjectwithexcludedkeys_pref_imm16_v8_v8-dynamic2400.abc",
+      "sha256": "82f942809fd2dba4935b904baa188748c377119eb87c23100b428fd808355831",
+      "opcodes": [
+        253
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/dynamic-dynamic1206.abc",
+      "sha256": "f814cc9f92f18082075d4de6d70468e70b8c80922c6dafe873e6ddc52917a48c",
+      "opcodes": [
+        179
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/object_rest/dynamic-dynamic2400.abc",
+      "sha256": "5679555c75fedf748decc8b65967a12ddbaa1ae03b476faef6faf7732b8f54fb",
+      "opcodes": [
+        179
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.",
@@ -6757,6 +6930,10 @@
     {
       "test": "isa_object_spread_source_test",
       "producer": "tests/isa/object_spread_test.py"
+    },
+    {
+      "test": "isa_object_rest_source_test",
+      "producer": "tests/isa/object_rest_test.py"
     }
   ]
 }

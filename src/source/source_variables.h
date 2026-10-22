@@ -17,6 +17,8 @@ struct SourceVariables {
   LoopSyntax loops;
   BindingInitializers bindings;
   BracePlan braces;
+  std::vector<std::optional<std::uint32_t>> object_rests;
+  std::vector<std::uint8_t> object_rest_fields;
   ReadableStatements readable;
   std::vector<std::optional<ExprId>> readable_equalities;
   // Peak preparation admission and conservative returned storage are distinct.

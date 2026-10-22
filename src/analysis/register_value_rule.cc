@@ -1,6 +1,7 @@
 #include "register_value_rule.h"
 #include "abcd/analysis/this_property.h"
 #include "abcd/analysis/object_spread.h"
+#include "abcd/analysis/object_rest.h"
 #include "abcd/analysis/property_delete.h"
 #include "abcd/analysis/iterator.h"
 
@@ -206,6 +207,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
   if (const auto* error = std::get_if<ScalarError>(&effect)) return *error;
   if (!std::get<RegisterEffect>(effect).write)
     return ScalarError::kMalformedInstruction;
+  if(std::holds_alternative<ObjectRest>(LiftObjectRest(instruction,frame_size)))return ValueRule{ValueRuleKind::kFixed,ValueKinds::Language()};
   if(std::holds_alternative<CopyProperties>(LiftCopyProperties(instruction,frame_size)))
     return ValueRule{ValueRuleKind::kJoin, {}, arithmetic, 0};
   const auto implicit=LiftThisProperty(instruction,frame_size);

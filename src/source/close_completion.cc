@@ -226,7 +226,7 @@ class Proof {
       }
       return CloseMemberRole::kUnproved;
     }
-    if(std::holds_alternative<ValueThrow>(v.operation)||std::holds_alternative<ValueReturn>(v.operation))return CloseMemberRole::kCompletion;
+    if((std::get_if<ValueThrow>(&v.operation)&&std::get<ValueThrow>(v.operation).kind==ThrowKind::kValue)||std::holds_alternative<ValueReturn>(v.operation))return CloseMemberRole::kCompletion;
     if(v.normal==LanguageEffect::kNone && v.before_throw==LanguageEffect::kNone && v.exceptional==ExceptionalCompletion::kImpossible)
       return CloseMemberRole::kScalar;
     // Unknown comparisons may execute user code. Keeping their exit relation

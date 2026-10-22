@@ -230,3 +230,29 @@ CopyDataProperties variants move, with independent evidence in profiles 4 and 6.
 Tagged-template construction and object-rest recovery are still gated. See
 [the round note](../../docs/design/source-recovery/isa-coverage-round4.md) for the
 additional, unapproved Proxy-unwrapping difference in the object-rest runtime.
+
+## V7 object-rest evidence (coverage round 5)
+
+`isa_object_rest_source_test` runs SDK default/O0 declaration and assignment
+patterns, computed string keys, a 260-key WIDE SDK source, empty rest and
+constructed normal/WIDE encodings
+in profiles 12.0.6 and 24.0.0. Ten registered ABCs must complete. Dynamic String
+key snapshots are recompiled, independently re-certified and executed again;
+private value-sequence keys avoid the frontend identifier-spelling discrepancy.
+The 200/201/400/800-key SDK cases also complete. It supplies Node evidence through
+the shared occurrence writer. Set-vs-CreateDataProperty and Proxy unwrap are the two explicit
+V7 exclusions; neither a runtime pass nor an exact recompile pass is invented.
+Dynamic frontend key mismatches and missing original coercibility evidence stay
+refused. The raw/value/surface proof and precise limitations are documented in
+[isa-object-rest.md](../../docs/design/source-recovery/isa-object-rest.md).
+
+The round-5 object-rest ledger is **138 SupportedVerified / 61
+SupportedUnverified / 105 Unmeasured / 28 NonExecutable** (912 ABCs, no probe
+failures). Four variants move: both rest widths and PatternNonCoercible from
+Unmeasured, plus CreateEmptyArray imm16 from SupportedUnverified. No variant or
+profile moves backwards. The ten fixture evidence files contain 182 Node cases,
+7,289 Node occurrence attestations, 15 exact ordered-event round-trip matches
+and 7,274 null round-trip entries. Ark runtime remains null. Additional SDK
+200/201/400/800 and dynamic default/O0 re-certification checks are tests, not
+transferred occurrence evidence. Tagged-template and RegExp recovery are still
+unimplemented in this working-tree round.

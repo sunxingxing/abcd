@@ -13,7 +13,8 @@ bool SameSlot(const ScalarSlot& a,const ScalarSlot& b) {
 // are external boundaries covered ONLY by the 2026-10-16 NoHoleV1 premise.
 bool RuntimeError(const SemanticOperation& op) {
   return std::holds_alternative<ObjectCheck>(op) || std::holds_alternative<HoleGuard>(op) ||
-      std::holds_alternative<SuperCheck>(op);
+      std::holds_alternative<SuperCheck>(op) ||
+      (std::get_if<ThrowOperation>(&op)&&std::get<ThrowOperation>(op).kind==ThrowKind::kPatternNonCoercible);
 }
 bool External(const SemanticInstruction& instruction) {
   // The shared effect model owns which instructions may execute user code,
@@ -89,7 +90,7 @@ std::pmr::vector<CatchPayloadFact> DeriveCatchPayloadDomains(const ExceptionFlow
       const auto c=arc.target.value,target=static_cast<std::uint32_t>(nv)+c;++sources[c];
       if(arc.kind!=ExceptionArcKind::kException || node.phase!=ExceptionPhase::kBefore){blocked[target]=1;continue;}
       const auto& op=flow.instructions[node.instruction.value].operation;
-      if(const auto* thrown=std::get_if<ThrowOperation>(&op))scalar(target,thrown->value,{n});
+      if(const auto* thrown=std::get_if<ThrowOperation>(&op);thrown&&thrown->kind==ThrowKind::kValue)scalar(target,thrown->value,{n});
       else if(!RuntimeError(op) && !(policy==ExternalExceptionPolicy::kNoHoleV1 && External(flow.instructions[node.instruction.value])))blocked[target]=1;
     }
   }

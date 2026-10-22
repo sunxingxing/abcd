@@ -132,7 +132,7 @@ ExpressionPrecedence TreeExpressionPrecedence(const TreeExpression& node) {
                        std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr>) return P::kPostfix;
     else if constexpr (std::is_same_v<T, FieldDefinitionExpr> || std::is_same_v<T, ArrayElement>) return P::kLowest;
     else {
-      static_assert(std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, BigIntExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
+      static_assert(std::is_same_v<T, ObjectRestExpr> || std::is_same_v<T, PatternFailureExpr> || std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, BigIntExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
           std::is_same_v<T, GlobalNameExpr> || std::is_same_v<T, RealmObjectExpr> ||
           std::is_same_v<T, SymbolConstructorExpr> || std::is_same_v<T, ThisExpr> ||
           std::is_same_v<T, EmptyArrayExpr> || std::is_same_v<T, EmptyObjectExpr> ||

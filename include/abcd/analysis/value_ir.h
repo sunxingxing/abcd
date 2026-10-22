@@ -141,7 +141,7 @@ struct ValuePropertyRead { PropertyLookup lookup = PropertyLookup::kObject; bool
 struct ValueBranch { UnaryOperator predicate; bool operator==(const ValueBranch&) const = default; };
 struct ValueJump { bool operator==(const ValueJump&) const = default; };
 struct ValueReturn { bool operator==(const ValueReturn&) const = default; };
-struct ValueThrow { bool operator==(const ValueThrow&) const = default; };
+struct ValueThrow { ThrowKind kind = ThrowKind::kValue; bool operator==(const ValueThrow&) const = default; };
 struct ValueNop { bool operator==(const ValueNop&) const = default; };
 struct ValueDebugger { bool operator==(const ValueDebugger&) const = default; };
 struct ValueThisProperty { ThisPropertyKind kind; std::optional<abc::PoolIndex> name; bool operator==(const ValueThisProperty&) const = default; };
@@ -300,6 +300,7 @@ struct ValueConcurrentNotification {
   NotificationOwner owner = NotificationOwner::kInvocationFunction;
   bool operator==(const ValueConcurrentNotification&) const = default;
 };
+struct ValueObjectRest { std::uint32_t keys; bool operator==(const ValueObjectRest&) const = default; };
 struct ValueCopyProperties { bool operator==(const ValueCopyProperties&) const = default; };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole, ValueAwait, ValueYield,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValueIndexedWrite, ValueDefineAccessor, ValuePropertyRead, ValueBranch, ValueJump,
@@ -307,7 +308,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueInvoke, ValueConstruct, ValueConstructApply, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValuePropertyDelete, ValueEnumeration, ValueIteratorAcquire, ValueObjectCheck, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite, ValueConcurrentNotification, ValueNewTarget, ValueThisProperty, ValueCopyProperties>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite, ValueConcurrentNotification, ValueNewTarget, ValueThisProperty, ValueCopyProperties, ValueObjectRest>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

@@ -85,6 +85,7 @@ struct BlockCursor { StmtId id; std::uint32_t index; std::size_t depth; BlockFor
 struct Indent { std::size_t depth; };
 struct PropertyKey { NameId id; bool optional = false; };
 struct SymbolName { SymbolId id; };
+struct ObjectRestCursor { const ObjectRestSurface* pattern; std::uint32_t index; };
 struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
 struct ArrayArgumentCursor { ExprId array; };
 struct SnapshotCursor { ArgumentRange range; std::uint32_t index; };
@@ -101,7 +102,7 @@ struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectElidedOperands, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
-    ObjectCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideStatement, LoopBody, LoopTransitionEnd, LoopInitializerCursor, LoopDeclarationCursor, LoopKeyword, BlockBoundary>;
+    ObjectCursor, ObjectRestCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideStatement, LoopBody, LoopTransitionEnd, LoopInitializerCursor, LoopDeclarationCursor, LoopKeyword, BlockBoundary>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
 struct LocatedAnchor { BlockBoundary boundary; AnchorId id; };
 struct OwnerTree { FunctionOwnerId owner; std::size_t member; };
@@ -899,6 +900,8 @@ class TreePrinter {
     Push(TreeLogicalToken(node.operation));
     Push(ExpressionOperand{node.left, {node.operation, OperandSide::kLeft}, {}, left, false, statement_start});
   }
+  void Expression(PatternFailureExpr) { Append("({} = null)"); }
+  void Expression(ObjectRestExpr) { throw Error::kUnsupportedContext; }
   void Expression(SequenceExpr node, ExpressionObservation observation, bool statement_start = false) {
     Push(ExpressionOperand{node.right, {ExpressionGrammar::kAssignmentValue}, {}, observation});
     Push(std::string_view(", "));
@@ -1756,7 +1759,25 @@ class TreePrinter {
     Name(node.symbol); Push(std::string_view(";"));
     if (node.initializer) { Append(" = "); Push(ExpressionOperand{*node.initializer, {ExpressionGrammar::kAssignmentValue}, Tree().symbols[node.symbol.value].name}); }
   }
+  void Run(ObjectRestCursor at) {
+    if(at.index==at.pattern->fields.size()) { Append("...");Name(at.pattern->target);return; }
+    const auto& field=at.pattern->fields[at.index];const auto& member=std::get<MemberExpr>(Tree().expressions[field.expression.value].expression);
+    Push(ObjectRestCursor{at.pattern,at.index+1});Push(std::string_view(", "));BeginExpression(field.expression);Push(SymbolName{field.target});Push(std::string_view(": "));
+    if(const auto* key=std::get_if<NameId>(&member.key))Key(Tree().names[key->value]);
+    else {const auto& rest=std::get<ObjectRestExpr>(Tree().expressions[at.pattern->expression.value].expression);const auto excluded_key=Tree().arguments[rest.keys.first+at.index];
+      // The pinned frontend otherwise excludes an identifier's spelling. A
+      // certified private String snapshot is inert to read twice: the value
+      // sequence forces the computed-key lowering without repeating its producer.
+      const bool snapshot=std::holds_alternative<SymbolExpr>(Tree().expressions[excluded_key.value].expression);
+      Push(std::string_view(snapshot?")]":"]"));Push(ExpressionOperand{excluded_key,{ExpressionGrammar::kAssignmentValue}});Push(std::string_view(snapshot?"[(0, ":"["));}
+  }
   void StatementNode(ExpressionStmt node, Statement at) {
+    if(!Variables().object_rests.empty()&&Variables().object_rests[at.id.value]) {
+      const auto& pattern=Original()->object_rests[*Variables().object_rests[at.id.value]];const auto& rest=std::get<ObjectRestExpr>(Tree().expressions[pattern.expression.value].expression);
+      Append("(");Push(std::string_view(");"));BeginExpression(node.expression);BeginExpression(pattern.expression);Append("{");
+      for(std::uint32_t k=0;k<rest.keys.count;++k){Step();Push(ProjectedExpression{Tree().arguments[rest.keys.first+k],written_,written_,GeneratedExtent::kBoundary,{}});}
+      Push(ExpressionOperand{rest.source,{ExpressionGrammar::kAssignmentValue}});Push(std::string_view("} = "));Push(ObjectRestCursor{&pattern,0});return;
+    }
     if (const auto& initializer = Initializers().statements[at.id.value]) {
       const auto& assignment = std::get<AssignmentExpr>(Tree().expressions[initializer->assignment.value].expression);
       BeginDeclarationExpression(node.expression, initializer->assignment);
@@ -2174,7 +2195,7 @@ class TreePrinter {
       Result().expression_extents[read->value] = GeneratedExtent::kBoundary;
       return;
     }
-    if (Initializers().omitted[child.value] || Variables().readable.omit_snapshots[child.value] || Variables().readable.guards[child.value]==ReadableGuard::kRemove) {
+    if ((!Variables().object_rest_fields.empty()&&Variables().object_rest_fields[child.value]) || Initializers().omitted[child.value] || Variables().readable.omit_snapshots[child.value] || Variables().readable.guards[child.value]==ReadableGuard::kRemove) {
       Push(ElideStatement{child}); return;
     }
     if(at.form==BlockForm::kElseIf){Push(Statement{child,at.depth});return;}

@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_ORIGINAL_FLOW_H_
 #define ABCD_SOURCE_ORIGINAL_FLOW_H_
 #include "tree_checks.h"
+#include "object_rest_surface.h"
 #include "abcd/analysis/value_ir.h"
 #include "truth_domains.h"
 #include "cell_plan.h"
@@ -218,6 +219,7 @@ struct OriginalIterations {
 };
 struct OriginalMemberUpdate { ExprId expression; MemberUpdate proof; MemberMutationExpr syntax; };
 struct OriginalFlow {
+  std::vector<ObjectRestSurface> object_rests;
   std::vector<OriginalMemberUpdate> member_updates;
   std::vector<OriginalClassInitialization> class_initializations;
   std::optional<OriginalIterations> iterations;

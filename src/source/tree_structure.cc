@@ -499,6 +499,9 @@ class StructureCheck {
           } else RequireTree(Constructors(tree_.identity.contract) == ConstructorSemantics::kSourceLanguage &&
               expression.source == analysis::SuperArgumentSource::kExplicit, Error::kUnsupportedSyntax);
         }
+      } else if constexpr (std::is_same_v<T, PatternFailureExpr>) {
+      } else if constexpr (std::is_same_v<T, ObjectRestExpr>) {
+        RequireTree(ObjectRests(tree_.identity.contract) && expression.keys.first<=tree_.arguments.size() && expression.keys.count<=tree_.arguments.size()-expression.keys.first,Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, CallExpr>) {
         if (expression.array_arguments) {
           RequireTree(CallSpread(tree_.identity.contract) == CallSpreadSemantics::kPrivateArgumentsV1 &&
@@ -658,6 +661,11 @@ class StructureCheck {
     };
     if (const auto* expression = std::get_if<ExprId>(&frame.node)) {
       const auto& syntax = tree_.expressions[expression->value].expression;
+      if(const auto* rest=std::get_if<ObjectRestExpr>(&syntax)) {
+        if(frame.next_child==0){++frame.next_child;return rest->source;}
+        const auto k=frame.next_child++-1;if(k==rest->keys.count)return {};
+        const auto slot=rest->keys.first+k;RequireTree(!arguments_[slot],Error::kOwnership);arguments_[slot]=1;return tree_.arguments[slot];
+      }
       if (const auto* array = std::get_if<ArrayExpr>(&syntax)) {
         if (frame.next_child == array->elements.count) return {};
         const auto slot = array->elements.first + frame.next_child++;
@@ -754,7 +762,7 @@ class StructureCheck {
           if (const auto* member = std::get_if<MemberTarget>(&node.target)) { add(member->base); key(member->key); }
           add(node.value);
         } else {
-          static_assert(std::is_same_v<T, BigIntExpr> || std::is_same_v<T, UpdateExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
+          static_assert(std::is_same_v<T, ObjectRestExpr> || std::is_same_v<T, PatternFailureExpr> || std::is_same_v<T, BigIntExpr> || std::is_same_v<T, UpdateExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
                         std::is_same_v<T, GlobalNameExpr> ||
                         std::is_same_v<T, RealmObjectExpr> ||
                         std::is_same_v<T, SymbolConstructorExpr> ||

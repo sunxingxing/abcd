@@ -436,8 +436,17 @@ class OperandCheck {
           if (!evaluation_.integer_nans.empty() && evaluation_.integer_nans[current_.value] == NaNProjection::kIntegerCoercion)
             IntegerInput(input(0), expression, op.first_use);
           else InputAt(0, expression);
-        } else if constexpr (std::is_same_v<T, analysis::ValueThrow> ||
-                      std::is_same_v<T, analysis::ValueReturn>) {
+        } else if constexpr (std::is_same_v<T, analysis::ValueObjectRest>) {
+          RequireMeaning(ObjectRests(tree_.identity.contract),Error::kUnsupportedOperation);
+          const auto& rest=Node<ObjectRestExpr>(expression);
+          RequireMeaning(rest.keys.count==operation.keys,Error::kOperand);
+          original_.operations[i].intrinsic_expression=expression;
+          InputAt(0,rest.source);
+          for(std::uint32_t k=0;k<operation.keys;++k){budget_.Step();InputAt(k+1,tree_.arguments[rest.keys.first+k]);}
+        } else if constexpr (std::is_same_v<T, analysis::ValueThrow>) {
+          if(operation.kind==analysis::ThrowKind::kPatternNonCoercible){Node<PatternFailureExpr>(expression);original_.operations[i].intrinsic_expression=expression;}
+          else InputAt(0,expression);
+        } else if constexpr (std::is_same_v<T, analysis::ValueReturn>) {
           InputAt(0, expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
           original_.operations[i].intrinsic_expression=Unary(operation.op, input(0), expression);

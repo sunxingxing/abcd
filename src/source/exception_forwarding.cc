@@ -44,7 +44,7 @@ std::variant<ExceptionForwarding, ForInFailure> AnalyzeExceptionForwarding(
       for (std::uint32_t n = 0; n < block.op_count; ++n) {
         quota.Step(); const OpId id{block.first_op.value + n}; const auto& op = graph.ops[id.value];
         if (op.life == ValueLife::kRemoved) continue;
-        if (std::holds_alternative<ValueThrow>(op.operation)) {
+        if (const auto* thrown=std::get_if<ValueThrow>(&op.operation);thrown&&thrown->kind==ThrowKind::kValue) {
           quota.Require(op.use_count == 1 && op.first_use.value < graph.uses.size());
           const auto& use = graph.uses[op.first_use.value];
           const auto* value = std::get_if<ValueId>(&use.operand);

@@ -10,6 +10,7 @@
 
 namespace abcd::source {
 namespace {
+bool ValueThrowPayload(const analysis::ValueOperation& op){const auto* thrown=std::get_if<analysis::ValueThrow>(&op);return thrown&&thrown->kind==analysis::ThrowKind::kValue;}
 using namespace analysis;
 void Require(bool condition) { if (!condition) throw CompletionError::kInput; }
 bool Same(const ValueOperand& a, const ValueOperand& b) {
@@ -32,7 +33,7 @@ bool CleanupOperation(const ValueOperation& operation) {
         std::is_same_v<T, ValueInvoke> || std::is_same_v<T, ValueSuperCall> || std::is_same_v<T, ValueSuperSpread> || std::is_same_v<T, ValueSuperCheck> || std::is_same_v<T, ValueConstruct> || std::is_same_v<T, ValueConstructApply> ||
         std::is_same_v<T, ValueArrayAllocation> || std::is_same_v<T, ValueObjectAllocation> ||
         std::is_same_v<T, ValueGlobalRead> || std::is_same_v<T, ValueGlobalObject> ||
-        std::is_same_v<T, ValueSymbolConstructor> || std::is_same_v<T, ValueCopyProperties> || std::is_same_v<T, ValueThisProperty> || std::is_same_v<T, ValueNewTarget> || std::is_same_v<T, ValueFrameThis> ||
+        std::is_same_v<T, ValueSymbolConstructor> || std::is_same_v<T, ValueObjectRest> || std::is_same_v<T, ValueCopyProperties> || std::is_same_v<T, ValueThisProperty> || std::is_same_v<T, ValueNewTarget> || std::is_same_v<T, ValueFrameThis> ||
         std::is_same_v<T, ValueFrameFunction> || std::is_same_v<T, ValueDebugger> ||
         std::is_same_v<T, ValueYield>;
   }, operation);
@@ -198,7 +199,7 @@ class CompletionBuilder {
            normal.operations.size() > handler.operations.size())) {
         const auto thrown = handler.operations.back();
         const auto binding = exceptions_.regions[r].binding;
-        if (!binding || !std::holds_alternative<ValueThrow>(graph_.ops[thrown.value].operation) ||
+        if (!binding || !ValueThrowPayload(graph_.ops[thrown.value].operation) ||
             !Same(Operand(thrown, 0), ValueOperand{binding->value})) continue;
         std::vector<CleanupPair> pairs;
         bool equal = true;
@@ -221,13 +222,13 @@ class CompletionBuilder {
       const auto& handler_exit = graph_.ops[thrown.value].operation;
       const auto binding = exceptions_.regions[r].binding;
       const bool preserve = (std::holds_alternative<ValueReturn>(normal_exit) ||
-          std::holds_alternative<ValueThrow>(normal_exit)) &&
-          std::holds_alternative<ValueThrow>(handler_exit) && binding &&
+          ValueThrowPayload(normal_exit)) &&
+          ValueThrowPayload(handler_exit) && binding &&
           Same(Operand(thrown, 0), ValueOperand{binding->value});
       const bool replace_return = std::holds_alternative<ValueReturn>(normal_exit) &&
           std::holds_alternative<ValueReturn>(handler_exit);
-      const bool replace_throw = std::holds_alternative<ValueThrow>(normal_exit) &&
-          std::holds_alternative<ValueThrow>(handler_exit);
+      const bool replace_throw = ValueThrowPayload(normal_exit) &&
+          ValueThrowPayload(handler_exit);
       if (!preserve && !replace_return && !replace_throw) continue;
       // A replacement terminal is itself the finalizer action. Preserving an
       // incoming completion still needs actual cleanup before its terminal.
@@ -253,7 +254,7 @@ class CompletionBuilder {
       // An overwritten normal path need not invent a discarded source return.
       // Emit the actual protected effects and let finally supply its completion.
       const PendingCompletion incoming = !preserve ? PendingCompletion{NormalCompletion{}} :
-          std::holds_alternative<ValueThrow>(normal_exit) ? PendingCompletion{ThrowCompletion{pending}} :
+          ValueThrowPayload(normal_exit) ? PendingCompletion{ThrowCompletion{pending}} :
           PendingCompletion{ReturnCompletion{pending}};
       Append(plan.finalizers, FinalizerRegion{{r}, incoming, ThrowCompletion{binding->value},
           returned, thrown, std::move(normal.nodes), std::move(handler.nodes), std::move(pairs), replacement});
@@ -488,7 +489,7 @@ class CompletionBuilder {
           const auto& exit = graph_.exceptional_exits[*exits_[index]];
           consume({true, !exit.handler, exit.handler ? std::optional{exit.handler->entry} : std::nullopt});
         }
-        caught_throw |= std::holds_alternative<ValueThrow>(op.operation);
+        caught_throw |= ValueThrowPayload(op.operation);
       }
       if (node.next) Append(pending, Task{*node.next, task.stop});
       if (node.arms) {
@@ -597,7 +598,7 @@ class CompletionBuilder {
       for (std::uint32_t o = 0; o < block.op_count; ++o) {
         quota_.Work(); const auto& op = graph_.ops[block.first_op.value + o];
         if (std::holds_alternative<ValueReturn>(op.operation) || std::holds_alternative<ValueYield>(op.operation)) return false;
-        throwing |= std::holds_alternative<ValueThrow>(op.operation);
+        throwing |= ValueThrowPayload(op.operation);
       }
       if (node.next) Append(pending, Task{*node.next, task.stop});
       if (node.arms) {
@@ -667,7 +668,7 @@ class CompletionBuilder {
   bool Pair(OpId a, OpId b, TryId region, bool completion = false) {
     const auto& left = graph_.ops[a.value]; const auto& right = graph_.ops[b.value];
     const bool supported = completion ? (std::holds_alternative<ValueReturn>(left.operation) ||
-        std::holds_alternative<ValueThrow>(left.operation)) : CleanupOperation(left.operation);
+        ValueThrowPayload(left.operation)) : CleanupOperation(left.operation);
     if (!supported || !SameCleanupOperation(left.operation, right.operation) ||
         left.normal != right.normal || left.before_throw != right.before_throw ||
         left.exceptional != right.exceptional || left.exception_cause != right.exception_cause || left.use_count != right.use_count ||

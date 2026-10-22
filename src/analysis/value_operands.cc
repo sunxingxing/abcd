@@ -106,7 +106,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
     } else if constexpr (std::is_same_v<T, ReturnOperation>) {
       Append(plan, OperandRole::kReturnValue, op.value);
     } else if constexpr (std::is_same_v<T, ThrowOperation>) {
-      Append(plan, OperandRole::kThrownValue, op.value);
+      if(op.kind==ThrowKind::kValue)Append(plan, OperandRole::kThrownValue, op.value);
     } else if constexpr (std::is_same_v<T, LoadHole> || std::is_same_v<T, FrameThisLoad> ||
                          std::is_same_v<T, FrameFunctionLoad> || std::is_same_v<T, NewTargetLoad> ||
                          std::is_same_v<T, GlobalObjectLoad> ||
@@ -169,7 +169,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       // Preserve the protocol dependency; never make it an eager JS operand.
       if (const auto* name = std::get_if<abc::RegisterId>(&op.name))
         Append(plan, OperandRole::kDiagnosticName, *name, ReadPurpose::kProtocol);
-    } else if constexpr (std::is_same_v<T, NoOperation> ||
+    } else if constexpr (std::is_same_v<T, ObjectRest> || std::is_same_v<T, NoOperation> ||
                          std::is_same_v<T, DebuggerOperation> ||
                          std::is_same_v<T, JumpOperation>) {
     } else {

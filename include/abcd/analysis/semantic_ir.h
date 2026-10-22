@@ -40,6 +40,7 @@
 #include "abcd/analysis/scalar.h"
 #include "abcd/analysis/this_property.h"
 #include "abcd/analysis/object_spread.h"
+#include "abcd/analysis/object_rest.h"
 #include "abcd/analysis/value_write.h"
 
 namespace abcd::analysis {
@@ -101,8 +102,10 @@ struct JumpOperation {
 struct ReturnOperation {
   ScalarValue value;
 };
+enum class ThrowKind : std::uint8_t { kValue, kPatternNonCoercible };
 struct ThrowOperation {
   ScalarValue value;
+  ThrowKind kind = ThrowKind::kValue;
 };
 struct NoOperation {};
 // Pinned DEBUGGER notifies the debugger without assigning accumulator state.
@@ -174,7 +177,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck, ConcurrentNotification, NewTargetLoad, ThisProperty, CopyProperties>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck, ConcurrentNotification, NewTargetLoad, ThisProperty, CopyProperties, ObjectRest>;
 // Exact VM-enumerator transport only. Does not prove acquisition identity,
 // closed use, loop advancement or source admission.
 [[nodiscard]] bool AcceptsPropertyEnumerator(const SemanticOperation& operation);

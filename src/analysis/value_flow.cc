@@ -99,7 +99,7 @@ NormalFlow ReadFlow(const ValueProgram& graph, FlowQuota& quota,
       if (op.life != ValueLife::kLive) continue;
       if (std::holds_alternative<ValueThrow>(op.operation))
         Require(op.exceptional == ExceptionalCompletion::kAlwaysThrow && !op.result &&
-            op.use_count == 1, Error::kInvalidTerminator);
+            op.use_count == (std::get<ValueThrow>(op.operation).kind==ThrowKind::kValue ? 1U : 0U), Error::kInvalidTerminator);
       if (last) {
         const auto& prior = graph.ops[last->value];
         Require(!std::holds_alternative<ValueReturn>(prior.operation) &&

@@ -110,11 +110,11 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
     result->operations[i]={op.block,op.first_use,op.use_count,op.result,op.normal,
         op.before_throw,op.exceptional,op.life,op.origin,flow.expressions[i],flow.statements[i]};
     if (const auto* enumeration=std::get_if<analysis::ValueEnumeration>(&op.operation)) result->operations[i].enumeration=enumeration->action;
-    result->operations[i].forwarding_throw=std::holds_alternative<analysis::ValueThrow>(op.operation);
+    result->operations[i].forwarding_throw=(std::get_if<analysis::ValueThrow>(&op.operation) && std::get<analysis::ValueThrow>(op.operation).kind==analysis::ThrowKind::kValue);
     if(op.life==analysis::ValueLife::kLive&&flow.statements[i] &&
         (!flow.for_of || (!flow.for_of->view.close_blocks[op.block.value] && (flow.for_of->view.forwarding.operations.empty() || !flow.for_of->view.forwarding.operations[i]))) &&
         (result->forwarded_operations.empty() || !result->forwarded_operations[i])) {
-      if(std::holds_alternative<analysis::ValueThrow>(op.operation))result->operations[i].statement_kind=OriginalStatementKind::kThrow;
+      if(const auto* thrown=std::get_if<analysis::ValueThrow>(&op.operation);thrown&&thrown->kind==analysis::ThrowKind::kValue)result->operations[i].statement_kind=OriginalStatementKind::kThrow;
       else if(std::holds_alternative<analysis::ValueReturn>(op.operation))result->operations[i].statement_kind=OriginalStatementKind::kReturn;
       else if(std::holds_alternative<analysis::ValueDebugger>(op.operation))result->operations[i].statement_kind=OriginalStatementKind::kNormal;
     }

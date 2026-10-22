@@ -102,7 +102,7 @@ std::variant<EnvironmentCleanup, CleanupFailure> EnvironmentCleanup::Build(
         const auto& node = flow.nodes[before[i]->value];
         if (i == last) {
           const auto* rethrow = std::get_if<ThrowOperation>(&instruction.operation);
-          Require(rethrow && std::holds_alternative<Accumulator>(rethrow->value) && node.exception &&
+          Require(rethrow && rethrow->kind==ThrowKind::kValue && std::holds_alternative<Accumulator>(rethrow->value) && node.exception &&
               !node.exception->target && instruction.effects.exceptional == ExceptionalCompletion::kAlwaysThrow,
               Error::kRethrow);
           continue;

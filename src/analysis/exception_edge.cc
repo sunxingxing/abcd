@@ -11,7 +11,7 @@ std::optional<ExceptionEdge> ResolveExceptionEdge(
       break;
   }
   ExceptionValue value = PendingException{};
-  if (const auto* thrown = std::get_if<ThrowOperation>(&instruction.operation))
+  if (const auto* thrown = std::get_if<ThrowOperation>(&instruction.operation);thrown&&thrown->kind==ThrowKind::kValue)
     value = ThrownValue{thrown->value};
   return ExceptionEdge{instruction.pc, dispatch.Find(instruction.pc), value,
                        instruction.effects.exceptional};

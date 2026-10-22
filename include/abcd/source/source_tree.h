@@ -129,6 +129,8 @@ using TreeLiteral = std::variant<UndefinedLiteral, NullLiteral, BooleanLiteral,
 enum class NewTargetForm : std::uint8_t { kAbiEntry, kInstruction };
 struct NewTargetExpr { FunctionOwnerId owner; NewTargetForm form = NewTargetForm::kAbiEntry; };
 struct BigIntExpr { TextId text; };
+// Intrinsic carriers require the independently verified native rest projection.
+struct PatternFailureExpr {};
 struct SymbolExpr { SymbolId symbol; analysis::ModuleLoading loading = analysis::ModuleLoading::kOrdinary; analysis::ModuleDomain domain = analysis::ModuleDomain::kOrdinary; };
 // Free global-name lookup, not a lexical Symbol or globalThis property read.
 // Publication additionally requires an unshadowed enclosing source context.
@@ -191,6 +193,7 @@ struct SequenceExpr { ExprId left; ExprId right; };
 // Call references are explicit: value calls must not acquire member this or
 // direct-eval semantics merely because their callee prints as an identifier.
 struct ArgumentRange { std::uint32_t first; std::uint32_t count; };
+struct ObjectRestExpr { ExprId source; ArgumentRange keys; };
 enum class CallReference : std::uint8_t { kValue, kMember };
 struct CallExpr {
   ExprId callee; ArgumentRange arguments; CallReference reference;
@@ -269,7 +272,7 @@ using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, Rea
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr, UpdateExpr, SequenceExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr, BigIntExpr, NewTargetExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr, BigIntExpr, NewTargetExpr, ObjectRestExpr, PatternFailureExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
 struct BlockStmt {

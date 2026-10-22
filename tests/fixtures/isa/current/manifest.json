@@ -2597,12 +2597,41 @@
       "opcode": 179,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "input_range": {
+          "count": 1,
+          "first": 0
+        },
+        "inputs": [
+          {
+            "register": 0
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 71,
+        "roles": {
+          "count": 1,
+          "first": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "object": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::ObjectRest"
+        },
+        "semantic_family": "abcd::analysis::ObjectRest",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": false,
@@ -4047,12 +4076,41 @@
       "opcode": 253,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "input_range": {
+          "count": 1,
+          "first": 0
+        },
+        "inputs": [
+          {
+            "register": 0
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 71,
+        "roles": {
+          "count": 1,
+          "first": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "object": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::ObjectRest"
+        },
+        "semantic_family": "abcd::analysis::ObjectRest",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": false,
@@ -4268,12 +4326,24 @@
       "opcode": 766,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 64,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 2,
+        "inputs": [],
+        "normal_commit": null,
+        "normal_effects": 0,
+        "roles": {
+          "kind": 1,
+          "type": "abcd::analysis::ThrowOperation",
+          "value": 0
+        },
+        "semantic_family": "abcd::analysis::ThrowOperation",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": false,

@@ -21,7 +21,8 @@ class OperandView {
   explicit OperandView(ValueOperands scalar) : operands_(std::move(scalar)) {}
   explicit OperandView(CallOperands call) : operands_(std::move(call)) {}
   explicit OperandView(ArgumentWindow window) : operands_(window) {}
-  std::variant<ValueOperands, CallOperands, ArgumentWindow> operands_;
+  explicit OperandView(ObjectRest rest) : operands_(rest) {}
+  std::variant<ValueOperands, CallOperands, ArgumentWindow, ObjectRest> operands_;
 };
 }  // namespace abcd::analysis
 #endif

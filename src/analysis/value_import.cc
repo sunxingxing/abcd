@@ -138,14 +138,15 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, ReturnOperation>) {
       return ValueReturn{};
     } else if constexpr (std::is_same_v<T, ThrowOperation>) {
-      return ValueThrow{};
+      return ValueThrow{op.kind};
     } else if constexpr (std::is_same_v<T, ConcurrentNotification>) {
       return ValueConcurrentNotification{op.owner};
     } else if constexpr (std::is_same_v<T, NoOperation>) {
       return ValueNop{};
     } else if constexpr (std::is_same_v<T, DebuggerOperation>) {
       return ValueDebugger{};
-    } else if constexpr (std::is_same_v<T, CopyProperties>) return ValueCopyProperties{};
+    } else if constexpr (std::is_same_v<T, ObjectRest>) return ValueObjectRest{op.count};
+    else if constexpr (std::is_same_v<T, CopyProperties>) return ValueCopyProperties{};
     else if constexpr (std::is_same_v<T, ThisProperty>) {
       return ValueThisProperty{op.kind,op.name};
     } else if constexpr (std::is_same_v<T, NewTargetLoad>) {

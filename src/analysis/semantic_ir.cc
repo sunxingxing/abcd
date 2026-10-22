@@ -58,6 +58,8 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
         return ReturnOperation{ScalarValue{SpecialValue::kUndefined}};
       return Fail(SemanticError::kUnsupportedInstruction, site.offset);
     case ControlTransfer::kThrow:
+      if(decoded.opcode==Opcode::kTHROW_PATTERNNONCOERCIBLE_PREF_NONE && !decoded.operand_count)
+        return ThrowOperation{ScalarValue{SpecialValue::kUndefined},ThrowKind::kPatternNonCoercible};
       if (decoded.opcode == Opcode::kTHROW_PREF_NONE) {
         if (decoded.operand_count != 0)
           return Fail(SemanticError::kMalformedInstruction, site.offset);
@@ -216,6 +218,9 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   const auto deleted=LiftPropertyDelete(decoded,frame_size);
   if(const auto* op=std::get_if<PropertyDelete>(&deleted))return *op;
   if(std::get<ScalarError>(deleted)!=ScalarError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
+  const auto object_rest=LiftObjectRest(decoded,frame_size);
+  if(const auto* op=std::get_if<ObjectRest>(&object_rest))return *op;
+  if(std::get<ScalarError>(object_rest)!=ScalarError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
   const auto copied=LiftCopyProperties(decoded,frame_size);
   if(const auto* p=std::get_if<CopyProperties>(&copied))return *p;
   if(std::get<ScalarError>(copied)!=ScalarError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
@@ -422,6 +427,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           // Pinned interpreter THROW_PREF_NONE passes acc to Throw and jumps
           // directly to exception dispatch. No coercion, normal destination,
           // or fallthrough may be invented; SSA still checks the value read.
+          if(value.kind==ThrowKind::kPatternNonCoercible)effects.before_throw=LanguageEffect::kAllocation;
           effects.exceptional = ExceptionalCompletion::kAlwaysThrow;
         } else if constexpr (std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
           effects.normal = LanguageEffect::kSuspension |
@@ -454,7 +460,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
             effects.before_throw = effects.normal;
             effects.exceptional = ExceptionalCompletion::kMayThrow;
           }
-        } else if constexpr (std::is_same_v<T, CopyProperties>) {
+        } else if constexpr (std::is_same_v<T, CopyProperties> || std::is_same_v<T, ObjectRest>) {
           effects.normal=LanguageEffect::kHeapRead|LanguageEffect::kHeapWrite|LanguageEffect::kUserCode|LanguageEffect::kAllocation;
           effects.before_throw=effects.normal;effects.exceptional=ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, ThisProperty>) {

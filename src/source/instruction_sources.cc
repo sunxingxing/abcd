@@ -30,7 +30,7 @@ class SourceIndex {
           Require(std::holds_alternative<analysis::PopEnvironment>(instructions[i].operation), Error::kOrigin);
         else {
           const auto* thrown = std::get_if<analysis::ThrowOperation>(&instructions[i].operation);
-          Require(thrown && std::holds_alternative<analysis::Accumulator>(thrown->value), Error::kOrigin);
+          Require(thrown && thrown->kind==analysis::ThrowKind::kValue && std::holds_alternative<analysis::Accumulator>(thrown->value), Error::kOrigin);
         }
       }
     }

@@ -44,6 +44,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       EvaluationShape shape{kInput, true}; shape.source = SourceEvaluation::kSuspending; return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueBinary>) return EvaluationShape{kBinary, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueObjectRest>) return EvaluationShape{kNamedRead,true,op.keys};
     else if constexpr (std::is_same_v<T, analysis::ValueCopyProperties>) return EvaluationShape{kNamedWrite,true};
     else if constexpr (std::is_same_v<T, analysis::ValueThisProperty>) {
       if(!analysis::WritesThisProperty(op.kind))return EvaluationShape{analysis::NamedThisProperty(op.kind)?std::span<const Role>(kNoOperands):std::span<const Role>(kThisKey),true};
@@ -81,7 +82,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueReturn>) return EvaluationShape{kReturn, false};
-    else if constexpr (std::is_same_v<T, analysis::ValueThrow>) return EvaluationShape{kThrow, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueThrow>) return EvaluationShape{op.kind==analysis::ThrowKind::kValue?std::span<const Role>(kThrow):std::span<const Role>(kNoOperands), false};
     else if constexpr (std::is_same_v<T, analysis::ValueJump> || std::is_same_v<T, analysis::ValueNop>) {
       EvaluationShape shape{kNoOperands, false}; shape.control = ControlEvaluation::kNormal; return shape;
     }
@@ -254,7 +255,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                   std::is_same_v<T, analysis::ValueBinary> ||
                   std::is_same_v<T, analysis::ValueString> || std::is_same_v<T, analysis::ValueHole>) return false;
     else {
-      static_assert(std::is_same_v<T, analysis::ValueCopyProperties> || std::is_same_v<T, analysis::ValueThisProperty> || std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield> || std::is_same_v<T, analysis::ValueNamedRead> ||
+      static_assert(std::is_same_v<T, analysis::ValueObjectRest> || std::is_same_v<T, analysis::ValueCopyProperties> || std::is_same_v<T, analysis::ValueThisProperty> || std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield> || std::is_same_v<T, analysis::ValueNamedRead> ||
                     std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger> ||
                     std::is_same_v<T, analysis::ValueNewTarget> || std::is_same_v<T, analysis::ValueFrameThis> ||
                     std::is_same_v<T, analysis::ValueFrameFunction> ||

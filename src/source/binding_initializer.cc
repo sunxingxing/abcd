@@ -260,6 +260,14 @@ class Initializers {
     for(std::size_t i=0;i<uses_.size();++i){budget_.Step();const auto kind=tree_.symbols[i].kind;
       stable_entries_[i]=!uses_[i].escaped&&!uses_[i].outside_body&&
           ((kind==BindingKind::kParameter&&!mapped_arguments_)||kind==BindingKind::kFunctionSelf);}
+    if(original_&&!original_->object_rests.empty()) {
+      VerifyObjectRestSurface(tree_,*original_,budget_);
+      auto retained=BuildProjectedFlow(plan_,declaration_sites_);
+      plan_.normal_stores=std::move(retained.expressions.normal_stores);
+      plan_.evaluations=std::move(retained.expressions.evaluations);
+      for(std::size_t i=0;i<loops_.initializer_roots.size();++i){budget_.Step();plan_.entry_counts[i+1]=plan_.entry_counts[i]+!plan_.omitted[loops_.initializer_roots[i].statement.value];}
+      return Finish();
+    }
     progress_.emplace(tree_.expressions.size(),tree_.statements.size(),tree_.symbols.size(),budget_);
     do {
       RunStage();
@@ -1037,7 +1045,12 @@ class Initializers {
     std::size_t loop_bytes=0;
     if(!loops_.initializer_roots.empty()) {
       const auto before=budget_.ActiveBytes();
-      loop_declarations=LoopDeclarationsFor(candidate);
+      if(original_&&!original_->object_rests.empty()) {
+        auto planned=PlanLoopDeclarations(loops_,candidate,original_declarations_,budget_.Remaining());
+        if(const auto* error=std::get_if<TreeStructureError>(&planned))throw *error;
+        loop_declarations=std::get<LoopDeclarations>(std::move(planned));
+        budget_.Admit(loop_declarations->allocated_bytes,1);budget_.Step(loop_declarations->work);
+      } else loop_declarations=LoopDeclarationsFor(candidate);
       if(!loop_declarations->entries.empty()) {
         auto adapted=ProjectLoopEntryFlow(*loop_declarations,candidate.statements,candidate.declaration_completions,
             original_bindings,projection.source_scopes,loop_entry_occurrences_,budget_.Remaining());

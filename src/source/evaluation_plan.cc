@@ -1,3 +1,4 @@
+#include "object_rest_plan.h"
 #include "evaluation_plan.h"
 
 #include <bit>
@@ -193,6 +194,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
       const auto shape = op.life == analysis::ValueLife::kLive ? DescribeEvaluation(op.operation) : std::nullopt;
+      plan.object_rest |= op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueObjectRest>(op.operation);
       has_arguments |= shape && shape->NeedsArgumentFrame();
       has_spread |= op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueArraySpread>(op.operation);
       if (projected_op(i)) if (const auto failure = NameSettingRefusal(graph,
@@ -387,6 +389,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     TreeCheckBudget use_budget({bytes,work});
     if (assignments) BuildAssignmentValues(graph, plan, use_budget);
     if (proposed) *proposed = !plan.assignment_values.empty();
+    if(plan.object_rest) { TreeCheckBudget rest_budget({bytes,work}); PinObjectRests(graph,plan,pinned,rest_budget); admit(rest_budget.Bytes(),1);step(rest_budget.Work()); }
     visible = IndexEvaluationUses(graph,plan,module_index,literal_allocations,plan.class_projection.owners,
         flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr,plan.receiver_guards,use_budget);
     admit(use_budget.Bytes(),1); step(use_budget.Work());

@@ -134,6 +134,7 @@ struct EvaluationPlan {
   std::vector<std::optional<GuardedReadPeer>> guarded_peers;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
+  bool object_rest = false;
   // Invocation count/tail obligation, not a native JS arguments binding.
   std::optional<analysis::ArgumentFrameFact> arguments;
   std::vector<std::optional<analysis::OpId>> assignment_values;

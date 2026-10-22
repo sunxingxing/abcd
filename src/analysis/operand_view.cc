@@ -8,6 +8,12 @@ std::variant<OperandView, OperandViewError> OperandView::Build(
     const SemanticInstruction& instruction, SemanticBudget budget) {
   using Error = OperandViewError;
   if (budget.bytes < sizeof(OperandView)) return Error::kResourceLimit;
+  if(const auto* rest=std::get_if<ObjectRest>(&instruction.operation)) {
+    const auto& r=instruction.effects.normal_registers;
+    if(r.read_count!=1 || !std::holds_alternative<abc::RegisterId>(r.reads[0]) ||
+        std::get<abc::RegisterId>(r.reads[0])!=rest->object || !r.range || r.range->first!=rest->first || r.range->count!=rest->count || !r.write || !std::holds_alternative<Accumulator>(*r.write))return Error::kMismatch;
+    if(budget.work<1)return Error::kWorkLimit;return OperandView{*rest};
+  }
   if (const auto* snapshot = std::get_if<ArgumentSnapshot>(&instruction.operation)) {
     if (budget.work < kSnapshotWork) return Error::kWorkLimit;
     const auto& registers = instruction.effects.normal_registers;
@@ -44,11 +50,16 @@ std::variant<OperandView, OperandViewError> OperandView::Build(
       ? Error::kUnsupported : Error::kMismatch;
 }
 std::uint32_t OperandView::Count() const {
+  if(const auto* rest=std::get_if<ObjectRest>(&operands_))return 1+rest->count;
   if (const auto* scalar = std::get_if<ValueOperands>(&operands_)) return scalar->count;
   if (const auto* window = std::get_if<ArgumentWindow>(&operands_)) return window->Count();
   return std::get<CallOperands>(operands_).Count();
 }
 std::optional<InputOperand> OperandView::At(std::uint32_t index) const {
+  if(const auto* rest=std::get_if<ObjectRest>(&operands_)) {
+    if(index>rest->count)return {};
+    return InputOperand{index?OperandRole::kArgument:OperandRole::kBase, index?abc::RegisterId{rest->first.value+index-1}:rest->object,ReadPurpose::kOperand,index};
+  }
   if (const auto* window = std::get_if<ArgumentWindow>(&operands_)) {
     const auto slot = window->At(index);
     if (!slot) return {};
@@ -67,6 +78,7 @@ std::optional<ScalarSlot> OperandView::Write() const {
   return Accumulator{};
 }
 std::uint64_t OperandView::Work() const {
+  if (std::holds_alternative<ObjectRest>(operands_))return 1;
   if (std::holds_alternative<ArgumentWindow>(operands_)) return kSnapshotWork;
   if (const auto* call = std::get_if<CallOperands>(&operands_)) return call->Work();
   return 0;

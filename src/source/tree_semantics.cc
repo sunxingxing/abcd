@@ -102,6 +102,7 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked,*original);
     CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked);
     RetainClassInitializationPorts(graph, tree, *original, checked);
+    if(evaluation.object_rest)RetainObjectRests(graph,evaluation,tree,*flow,*original,checked);
     IndexOriginalInputs(*original,checked);
     flow->original=std::move(original);
     flow->allocated_bytes=checked.Bytes();

@@ -433,6 +433,9 @@ class ForestBuilder {
           forest_.operations[i] = Add(SuperCallExpr{arguments, call->source}, origin);
           continue;
         }
+        if(std::holds_alternative<analysis::ValueObjectRest>(op.operation)) {
+          forest_.operations[i]=Rest(op,origin);continue;
+        }
         if (std::holds_alternative<analysis::ValueArgumentSnapshot>(op.operation)) {
           const ArgumentRange slots{static_cast<std::uint32_t>(forest_.arguments.size()), op.use_count};
           for (std::uint32_t j = 0; j < op.use_count; ++j) {
@@ -752,6 +755,7 @@ class ForestBuilder {
       if (objects_[i]) forest_.operations[i] = Object(evaluation_.literals->objects[*objects_[i]], origin);
       else if (!std::holds_alternative<NoCall>(forest_.calls.operations[i]))
         forest_.operations[i] = Call(op, forest_.calls.operations[i], origin);
+      else if (std::holds_alternative<analysis::ValueObjectRest>(op.operation)) forest_.operations[i]=Rest(op,origin);
       else if (std::holds_alternative<analysis::ValueModuleRead>(op.operation)) Module(i, op, origin);
       else if (std::holds_alternative<analysis::ValueClassCreation>(op.operation)) Class(i, op, origin);
       else {
@@ -1138,6 +1142,19 @@ class ForestBuilder {
     Require(cell && cell->value < forest_.bindings.cells.size(), Error::kBinding);
     return forest_.bindings.cells[cell->value];
   }
+  ExprId Rest(const analysis::ValueOp& op,TreeOriginId origin) {
+    const auto& rest=std::get<analysis::ValueObjectRest>(op.operation);
+    Require(rest.keys<std::numeric_limits<std::uint32_t>::max()&&op.use_count==rest.keys+1,Error::kOwnership);
+    const auto source=Use(op.first_use,origin);
+    // Operand subtrees may own their own argument ranges. Collect child IDs
+    // before appending this window; never retain a range across nested growth.
+    std::vector<ExprId> keys;Reserve(keys,rest.keys);
+    for(std::uint32_t k=0;k<rest.keys;++k){Step();keys.push_back(Use({op.first_use.value+k+1},origin));}
+    Require(keys.size()<=forest_.arguments.capacity()-forest_.arguments.size(),Error::kResourceLimit);
+    const ArgumentRange range{static_cast<std::uint32_t>(forest_.arguments.size()),rest.keys};
+    for(auto key:keys){Step();forest_.arguments.push_back(key);}
+    return Add(ObjectRestExpr{source,range},origin);
+  }
   std::optional<ExprId> Lower(analysis::OpId id, const analysis::ValueOp& op,
       const std::array<ExprId, kFixedExpressionOperands>& operands, TreeOriginId origin,
       const ExpressionConstant& constant) {
@@ -1246,9 +1263,11 @@ class ForestBuilder {
         const auto* name = std::get_if<NameId>(&constant);
         Require(name && name->value < constants_.name_count, Error::kConstant);
         return Add(GlobalNameExpr{*name}, origin);
-      } else if constexpr (std::is_same_v<T, analysis::ValueReturn> ||
-                           std::is_same_v<T, analysis::ValueThrow>)
-        return operands[0];
+      } else if constexpr (std::is_same_v<T, analysis::ValueThrow>) {
+        return operation.kind==analysis::ThrowKind::kPatternNonCoercible ? Add(PatternFailureExpr{},origin) : operands[0];
+      } else if constexpr (std::is_same_v<T, analysis::ValueObjectRest>) {
+        throw Error::kOwnership; // Variadic Rest owns a separately admitted window.
+      } else if constexpr (std::is_same_v<T, analysis::ValueReturn>)return operands[0];
       else if constexpr (std::is_same_v<T, analysis::ValueJump> ||
                          std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger>)
         return {};

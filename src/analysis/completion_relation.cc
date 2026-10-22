@@ -675,14 +675,14 @@ template<bool Outcomes> class Relation {
       }
     }
     if(original.phase==ExceptionPhase::kBefore && exceptional) {
-      if(const auto* thrown=std::get_if<ThrowOperation>(&op))
+      if(const auto* thrown=std::get_if<ThrowOperation>(&op);thrown&&thrown->kind==ThrowKind::kValue)
         if(Scalar(thrown->value,original.instruction,state.environment).constant==Constant::kHole) {
           Unproved(state,CloseOutcomeGap::kSentinelPath,node);return;
         }
     }
     // Explicit THROW only transports the current payload, including a caught
     // getter/call failure. Any other exception has unproved close provenance.
-    if(exceptional && !std::holds_alternative<ThrowOperation>(op))
+    if(exceptional && !(std::get_if<ThrowOperation>(&op)&&std::get<ThrowOperation>(op).kind==ThrowKind::kValue))
       Unproved(state,CloseOutcomeGap::kOtherException,node);
   }
   // Verifier replay derives event success from the ORIGINAL edge entering a
@@ -747,7 +747,7 @@ template<bool Outcomes> class Relation {
       }
     }
     if(exceptional) {
-      if(const auto* thrown=std::get_if<ThrowOperation>(&op)) {
+      if(const auto* thrown=std::get_if<ThrowOperation>(&op);thrown&&thrown->kind==ThrowKind::kValue) {
         if(Scalar(thrown->value,node.instruction,state.environment).constant==Constant::kHole)
           Unproved(state,CloseOutcomeGap::kSentinelPath,source);
       } else Unproved(state,CloseOutcomeGap::kOtherException,source);
@@ -780,7 +780,7 @@ template<bool Outcomes> class Relation {
   }
   Value Exception(const State& state) {
     const auto node=*raw_to_flow_[state.node];const auto instruction=flow_.nodes[node.value].instruction;
-    if(const auto* thrown=std::get_if<ThrowOperation>(&flow_.instructions[instruction.value].operation))
+    if(const auto* thrown=std::get_if<ThrowOperation>(&flow_.instructions[instruction.value].operation);thrown&&thrown->kind==ThrowKind::kValue)
       return Scalar(thrown->value,instruction,state.environment);
     return {CompletionExceptionValue{node}};
   }

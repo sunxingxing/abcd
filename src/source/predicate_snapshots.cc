@@ -1,6 +1,7 @@
 #include "logical_evaluation.h"
 #include "evaluation_failure.h"
 #include "cell_evaluation.h"
+#include "object_rest_plan.h"
 
 namespace abcd::source {
 namespace {
@@ -64,6 +65,8 @@ std::vector<Candidate> Candidates(const ValueProgram& graph,
     const EvaluationPlan& plan, TreeCheckBudget& budget) {
   std::vector<Candidate> first;
   budget.Array(first, graph.ops.size());
+  std::vector<std::uint8_t> retained;
+  if (plan.object_rest) { budget.Array(retained, graph.ops.size()); PinObjectRests(graph,plan,retained,budget); }
   // The first actual eager occurrence acquires initialization; later reads
   // retain its binding. Cross-block ownership remains the documented legacy
   // fast-path gap; this change does not expand that admission condition.
@@ -88,7 +91,8 @@ std::vector<Candidate> Candidates(const ValueProgram& graph,
     if (plan.operations[owner->value].kind == EvaluationKind::kAlias) { evidence.reason = Reason::kAliasOwner; continue; }
     if (plan.cells && IsInitializedCellGuard(graph, *plan.cells, *owner)) { evidence.reason = Reason::kInitializedGuard; continue; }
     const auto placement = BeforeLogicalFusion(graph, plan, source->op.value);
-    if (placement.kind != EvaluationKind::kRoot || placement.temporary != TemporaryReason::kMultipleUses) {
+    if ((!retained.empty() && retained[source->op.value]) ||
+        placement.kind != EvaluationKind::kRoot || placement.temporary != TemporaryReason::kMultipleUses) {
       evidence.reason = Reason::kProducerPlacement; continue;
     }
     candidate.consumer = occurrence; evidence.reason = Reason::kEligible;

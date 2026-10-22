@@ -678,6 +678,7 @@ class FlowBuilder {
             case OriginalCompletionBoundary::kIntrinsicAction:break;
             case OriginalCompletionBoundary::kInvocationBinding:case OriginalCompletionBoundary::kUnmodeled:throw Error::kOwnership;
           }
+          if(operation.exceptional==analysis::ExceptionalCompletion::kAlwaysThrow)normal.reset();
           current=FlowOriginalAction{action->before,normal,action->exceptions};
         }
       }
@@ -1212,6 +1213,13 @@ class FlowBuilder {
       if(effects.exceptional==analysis::ExceptionalCompletion::kMayThrow)Link(allocation,context.thrown,FlowCompletion::kThrow);
       if(!result_.actions.empty())result_.actions[at.id.value]=FlowAction{allocation,next,{context.thrown,context.finalizer}};
       Link(start,allocation);return;
+    }
+    if(std::holds_alternative<PatternFailureExpr>(node)) {
+      const auto failed=New({FlowEventKind::kEvaluation,{},{},at.id});
+      events_[failed.value].effects=SourceEffects{analysis::LanguageEffect::kNone,analysis::LanguageEffect::kAllocation,analysis::ExceptionalCompletion::kAlwaysThrow};
+      events_[failed.value].effect=ExpressionEvaluation::kRequired;Link(failed,context.thrown,FlowCompletion::kThrow);
+      if(!result_.actions.empty())result_.actions[at.id.value]=FlowAction{failed,context.next, {context.thrown,context.finalizer}};
+      Link(start,failed);return;
     }
     if(const auto* aggregate=std::get_if<ObjectExpr>(&node)) {
       const auto effects=NormalValueEffects(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract));

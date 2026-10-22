@@ -28,6 +28,11 @@ std::variant<SourceVariables,TreeStructureError> PrepareSourceVariables(
     const auto binding_storage=BindingStorage(result.bindings);
     RequireTree(binding_storage<=result.bindings.allocated_bytes,TreeStructureError::kOwnership);
     budget.Release(result.bindings.allocated_bytes-binding_storage);
+    if(original&&!original->object_rests.empty()) {
+      VerifyObjectRestSurface(tree,*original,budget);
+      budget.Array(result.object_rests,tree.statements.size());budget.Array(result.object_rest_fields,tree.statements.size());
+      for(std::uint32_t i=0;i<original->object_rests.size();++i) {budget.Step();const auto& pattern=original->object_rests[i];result.object_rests[pattern.statement.value]=i;for(const auto& field:pattern.fields){budget.Step();result.object_rest_fields[field.statement.value]=1;}}
+    }
     result.braces=BuildBracePlan(tree,result.bindings,result.nullish,result.loops,budget);
     result.readable=BuildReadableStatements(tree,result.bindings,result.nullish,result.loops,original,budget);
     {

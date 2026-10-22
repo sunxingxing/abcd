@@ -669,7 +669,7 @@ class Derivation {
           else q_.Require(std::get_if<SpecialValue>(&ret->value) && std::get<SpecialValue>(ret->value)==SpecialValue::kUndefined,CloseEntryError::kPayload,n);
           return {{PendingCompletionKind::kReturn,payload,CompletionCaller{}},n,{},continuation};
         }
-        if(const auto* thrown=std::get_if<ThrowOperation>(&instruction.operation)) {
+        if(const auto* thrown=std::get_if<ThrowOperation>(&instruction.operation);thrown&&thrown->kind==ThrowKind::kValue) {
           const auto value=Read(n,thrown->value);q_.Require(value.has_value(),CloseEntryError::kPayload,n);
           return {{PendingCompletionKind::kThrow,Canonical(*value),CompletionCaller{}},n,{},continuation};
         }

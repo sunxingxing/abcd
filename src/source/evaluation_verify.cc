@@ -1,3 +1,4 @@
+#include "object_rest_plan.h"
 #include <bit>
 #include <new>
 #include <stdexcept>
@@ -177,13 +178,14 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const auto projected_op = [&](std::size_t i) { return !projection.owners.empty() && projection.owners[i].has_value(); };
     bool has_definitions = false, has_spread = false;
     bool has_cells = plan.cells && (!plan.cells->cells.demands.empty() || !plan.cells->cells.entry_demands.empty());
-    bool has_arguments = false;
+    bool has_arguments = false, has_object_rest=false;
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
       if (const auto failure = NameSettingRefusal(graph, {static_cast<std::uint32_t>(i)})) return *failure;
       if (const auto failure = CallSpreadRefusal(graph, {static_cast<std::uint32_t>(i)}, plan.call_spread_contract)) return *failure;
       const auto shape = op.life == analysis::ValueLife::kLive ? DescribeEvaluation(op.operation) : std::nullopt;
+      has_object_rest |= op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueObjectRest>(op.operation);
       has_arguments |= shape && shape->NeedsArgumentFrame();
       if (op.life == analysis::ValueLife::kLive && IsEnvironmentState(op.operation)) ++environment_epoch;
       environment_epochs[i] = environment_epoch;
@@ -298,6 +300,8 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     // transported through phi/copy aliases. Each original use is visited once.
     TreeCheckBudget use_budget({bytes,work});
     VerifyAssignmentValues(graph, plan, use_budget);
+    Require(plan.object_rest==has_object_rest,Error::kOwnership);
+    if(has_object_rest) { TreeCheckBudget rest_budget({bytes,work}); PinObjectRests(graph,plan,pinned,rest_budget); admit(rest_budget.Bytes(),1);step(rest_budget.Work()); }
     visible = IndexEvaluationUses(graph,plan,module_index,literal_allocations,projection.owners,
         flow == EvaluationFlow::kNormal && plan.cells ? &*plan.cells : nullptr,plan.receiver_guards,use_budget);
     admit(use_budget.Bytes(),1); step(use_budget.Work());

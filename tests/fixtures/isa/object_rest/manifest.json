@@ -1,0 +1,233 @@
+{
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "path": "rest-default.abc",
+      "sha256": "11d5b609a23c799048acc8665c7a5c86c28a7882923c74918019d357dd32e62e",
+      "source": "rest.js",
+      "source_sha256": "b5ffe8df5ac0d44c192814da5cd8c5be5343577376774519316944586654c0a3",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRest",
+        "--source-file=rest.js",
+        "--output=tests/fixtures/isa/object_rest/rest-default.abc",
+        "tests/fixtures/isa/object_rest/rest.js"
+      ],
+      "opcodes": [
+        0,
+        1,
+        5,
+        39,
+        51,
+        55,
+        62,
+        66,
+        68,
+        79,
+        81,
+        96,
+        97,
+        100,
+        101,
+        121,
+        124,
+        179,
+        766
+      ]
+    },
+    {
+      "path": "rest-o0.abc",
+      "sha256": "e5f3e14b7450bbf62e58780a3dd8013663e7b16b2cf33b98ec8cebf3d788c4f5",
+      "source": "rest.js",
+      "source_sha256": "b5ffe8df5ac0d44c192814da5cd8c5be5343577376774519316944586654c0a3",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRest",
+        "--source-file=rest.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/object_rest/rest-o0.abc",
+        "tests/fixtures/isa/object_rest/rest.js"
+      ],
+      "opcodes": [
+        0,
+        1,
+        5,
+        39,
+        51,
+        55,
+        62,
+        66,
+        68,
+        77,
+        79,
+        96,
+        97,
+        100,
+        101,
+        121,
+        124,
+        179,
+        766
+      ]
+    },
+    {
+      "path": "wide-default.abc",
+      "sha256": "8c20de8e2fabc45d8ce8a4b2e051878947b6cdc4a9b734f023e794f54257eca5",
+      "source": "wide.js",
+      "source_sha256": "05cd2bd8b890d4d82ceab1427ce4f757d55e0a386970a1f26d26c140a907e65c",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRestWide",
+        "--source-file=wide.js",
+        "--output=tests/fixtures/isa/object_rest/wide-default.abc",
+        "tests/fixtures/isa/object_rest/wide.js"
+      ],
+      "opcodes": [
+        0,
+        1,
+        39,
+        51,
+        62,
+        66,
+        77,
+        79,
+        96,
+        97,
+        100,
+        101,
+        124,
+        128,
+        143,
+        144,
+        203,
+        253,
+        766
+      ]
+    },
+    {
+      "path": "wide-o0.abc",
+      "sha256": "a222df2f3f5fde3c60f2ca1ac555f56def9ef873ea9eaf93edd166dc16c97548",
+      "source": "wide.js",
+      "source_sha256": "05cd2bd8b890d4d82ceab1427ce4f757d55e0a386970a1f26d26c140a907e65c",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRestWide",
+        "--source-file=wide.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/object_rest/wide-o0.abc",
+        "tests/fixtures/isa/object_rest/wide.js"
+      ],
+      "opcodes": [
+        0,
+        1,
+        39,
+        51,
+        62,
+        66,
+        68,
+        77,
+        79,
+        96,
+        97,
+        100,
+        101,
+        124,
+        128,
+        143,
+        144,
+        203,
+        253,
+        766
+      ]
+    },
+    {
+      "path": "createobjectwithexcludedkeys_imm8_v8_v8-dynamic1206.abc",
+      "sha256": "2debe60a13e826a85863dab84f43679a54b4e020440b484910b0160d3938dc4b",
+      "source": "constructed.js",
+      "source_sha256": "75b2ce29d974aed27ed7c1065389bdd0b68a54303016c63ac2ed8bbd116c6033",
+      "origin": "constructed",
+      "profile": "DYNAMIC1206",
+      "kind": "CREATEOBJECTWITHEXCLUDEDKEYS_IMM8_V8_V8",
+      "opcodes": [
+        179
+      ]
+    },
+    {
+      "path": "wide_createobjectwithexcludedkeys_pref_imm16_v8_v8-dynamic1206.abc",
+      "sha256": "cea53f465e6cd90a4916c930b7199f7b025d85aa417fc87dccbbb1e2b6b0c16d",
+      "source": "constructed.js",
+      "source_sha256": "75b2ce29d974aed27ed7c1065389bdd0b68a54303016c63ac2ed8bbd116c6033",
+      "origin": "constructed",
+      "profile": "DYNAMIC1206",
+      "kind": "WIDE_CREATEOBJECTWITHEXCLUDEDKEYS_PREF_IMM16_V8_V8",
+      "opcodes": [
+        253
+      ]
+    },
+    {
+      "path": "createobjectwithexcludedkeys_imm8_v8_v8-dynamic2400.abc",
+      "sha256": "f12b79fb0fa1e55beb148557574d76b8b10a100f2100c691368380c8a3dd01c6",
+      "source": "constructed.js",
+      "source_sha256": "75b2ce29d974aed27ed7c1065389bdd0b68a54303016c63ac2ed8bbd116c6033",
+      "origin": "constructed",
+      "profile": "DYNAMIC2400",
+      "kind": "CREATEOBJECTWITHEXCLUDEDKEYS_IMM8_V8_V8",
+      "opcodes": [
+        179
+      ]
+    },
+    {
+      "path": "wide_createobjectwithexcludedkeys_pref_imm16_v8_v8-dynamic2400.abc",
+      "sha256": "82f942809fd2dba4935b904baa188748c377119eb87c23100b428fd808355831",
+      "source": "constructed.js",
+      "source_sha256": "75b2ce29d974aed27ed7c1065389bdd0b68a54303016c63ac2ed8bbd116c6033",
+      "origin": "constructed",
+      "profile": "DYNAMIC2400",
+      "kind": "WIDE_CREATEOBJECTWITHEXCLUDEDKEYS_PREF_IMM16_V8_V8",
+      "opcodes": [
+        253
+      ]
+    },
+    {
+      "path": "dynamic-dynamic1206.abc",
+      "sha256": "f814cc9f92f18082075d4de6d70468e70b8c80922c6dafe873e6ddc52917a48c",
+      "source": "dynamic.js",
+      "source_sha256": "0145739761c0875cca4729ec8c058f8ff05691d0b879c71c056e9a7620dbe3a1",
+      "origin": "constructed",
+      "profile": "DYNAMIC1206",
+      "kind": "dynamic",
+      "opcodes": [
+        179
+      ]
+    },
+    {
+      "path": "dynamic-dynamic2400.abc",
+      "sha256": "5679555c75fedf748decc8b65967a12ddbaa1ae03b476faef6faf7732b8f54fb",
+      "source": "dynamic.js",
+      "source_sha256": "0145739761c0875cca4729ec8c058f8ff05691d0b879c71c056e9a7620dbe3a1",
+      "origin": "constructed",
+      "profile": "DYNAMIC2400",
+      "kind": "dynamic",
+      "opcodes": [
+        179
+      ]
+    }
+  ]
+}

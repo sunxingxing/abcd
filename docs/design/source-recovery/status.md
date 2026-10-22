@@ -10,6 +10,70 @@
 
 
 
+## ISA coverage5 — object rest; requested round unfinished (2026-10-22)
+
+**Only item 1 is implemented.** Item 2 was investigated but has no production
+change: the SDK interleaves raw/cooked private-array definitions, then defines
+a two-element carrier before GETTEMPLATEOBJECT. Its native template projection
+still needs the complete construction/event certificate. Item 3 (RegExp) has
+not been started. Neither gate is lifted and neither family gains evidence.
+No new source-language premise is assumed.
+
+The existing V7 ObjectRests premise now documents the approved Proxy unwrap in
+addition to strict Set versus CreateDataProperty. Raw normal/WIDE register
+windows, SSA effects and the intrinsic PatternNonCoercible TypeError now lift.
+That TypeError is a pending runtime exception, never a scalar throw of Undefined;
+exception/forwarding/completion consumers retain that distinction.
+
+The new ObjectRestPlan derives nullish exclusion from real edge dominance, ordered
+Gets and exact exclusion values, use ownership and real exception dispatch. Its
+independent verifier re-derives the relation. The retained source surface prints
+a native assignment pattern into existing private snapshot bindings, with rest
+last. Recovery checks original definitions and effects; the printer checks target
+scope, shadowing and capture identity. A computed String snapshot stays at its
+original event, and `[(0, snapshot)]` avoids the frontend identifier-spelling bug.
+Incorrect keys, numeric/object exclusion domains, effectful duplicate key
+evaluation, a missing guard/exception edge or an early observer stay refused.
+See [isa-object-rest.md](isa-object-rest.md).
+
+Ten registered ABC records complete (SDK default/O0 plus both historical
+profiles), including a real 260-key WIDE fixture. There are **182 registered Node
+cases**, plus default/O0 dynamic recompile/re-certification differentials and
+200/201/400/800-key source scales. C++ mutations cover guard/key/catch identity,
+missing exceptions, omitted/reordered/duplicate certificate members and exact
+resource boundaries. At 800 fields, the exact derivation budget is **164,172
+bytes / 41,438 work**; one less refuses. Both normal and Before/Commit graphs
+are exercised.
+
+Ledger: **134/62/108/28 -> 138/61/105/28** (Verified/Unverified/Unmeasured/
+NonExecutable), 912 ABCs and zero probe failures. Both excluded-key widths and
+PatternNonCoercible move Unmeasured -> Verified; CreateEmptyArray imm16 moves
+Unverified -> Verified. No backward variant/profile movement. Evidence contains
+7,289 new Node occurrences, 15 strict event matches and 7,274 unmatched null
+round-trip entries; no Ark runtime result is claimed. Generated report:
+`build/review/isa-r5/{matrix.md,matrix.json}`.
+
+Strict grouping_bytecode compilation of all ten fixture outputs at default and
+O0 reports **0 exact / 10 different / 0 unverified in each mode**, all syntax
+checks pass. Differences are retained coercibility guards, the native pattern's
+additional inert guard, the intrinsic empty-pattern TypeError arm, conservative
+key/result temporaries, and module/creation-binding metadata. They are **not**
+normalized into passes. The dynamic source oracle's es2abc identifier-key bug
+is recorded separately; emitted default/O0 ABCs independently re-certify and
+pass the differential with the actual key value. Detailed raw comparisons are
+in `build/review/isa-r5-work/rest/strict-all/`.
+
+Against wtbase **f060cb25**, cohorts remain **605/620 source / 542/620 previous**;
+no regressions, new completions or source-text changes. Full build and
+`git diff --check` pass. Final test results are recorded in
+`build/review/isa-r5-work/rest/{acceptance.json,*.xml}`: source-regression
+**65/65**, all scales **12/12**, ISA **16/16**, touched sweep **208/215**. The
+seven failures are the documented pre-existing family_source_cli, tree_structure,
+try_tree, phased_literal, class_tree_source, phased_arm_selection_source and
+try_tree_source. New object-rest tests pass. No existing printed-spelling
+expectation changes are needed: all previously complete source is identical.
+No commit/push/stash.
+
 ## ISA coverage4 — private object spread (partial, 2026-10-22)
 
 Against **fdf1152b**: **134 Verified / 62 Unverified / 108 Unmeasured / 28

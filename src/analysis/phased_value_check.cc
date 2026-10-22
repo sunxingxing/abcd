@@ -79,7 +79,7 @@ void CheckPhases(const ValueProgram& graph, const ExceptionFlow& flow,
       const auto& exception = *node.exception;
       RequirePhase(exits < graph.exceptional_exits.size() && exception.before == instruction.pc &&
           exception.completion == instruction.effects.exceptional, Error::kInputMismatch);
-      if (const auto* thrown = std::get_if<ThrowOperation>(&instruction.operation)) {
+      if (const auto* thrown = std::get_if<ThrowOperation>(&instruction.operation);thrown&&thrown->kind==ThrowKind::kValue) {
         const auto* payload = std::get_if<ThrownValue>(&exception.exception);
         RequirePhase(payload && SameThrownValue(thrown->value, payload->value), Error::kInputMismatch);
       } else RequirePhase(std::holds_alternative<PendingException>(exception.exception), Error::kInputMismatch);

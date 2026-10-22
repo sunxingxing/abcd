@@ -1,6 +1,7 @@
 #include "abcd/analysis/register_effect.h"
 #include "abcd/analysis/this_property.h"
 #include "abcd/analysis/object_spread.h"
+#include "abcd/analysis/object_rest.h"
 #include "abcd/analysis/property_delete.h"
 #include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/array_spread.h"
@@ -367,6 +368,11 @@ bool Unsupported(const EffectResult& result) {
 
 EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
                                 std::uint64_t frame_size) {
+  if(instruction.opcode==abc::Opcode::kTHROW_PATTERNNONCOERCIBLE_PREF_NONE) {
+    if(instruction.operand_count)return ScalarError::kMalformedInstruction;
+    return RegisterEffect{};
+  }
+
   // Reuse reviewed semantic lifts, never ISA may-write flags as definite defs.
   // Non-unsupported failures must survive this dispatch unchanged.
   if (auto result = Adapt(LiftScalarInstruction(instruction, frame_size));
@@ -375,6 +381,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftBranchCondition(instruction));
       !Unsupported(result))
     return result;
+  const auto object_rest=LiftObjectRest(instruction,frame_size);
+  if(const auto* op=std::get_if<ObjectRest>(&object_rest)){RegisterEffect r;r.reads[r.read_count++]=op->object;r.range=RegisterRange{op->first,op->count};r.write=Accumulator{};return r;}
+  if(std::get<ScalarError>(object_rest)!=ScalarError::kUnsupportedOpcode)return std::get<ScalarError>(object_rest);
   const auto spread=LiftCopyProperties(instruction,frame_size);
   if(const auto* p=std::get_if<CopyProperties>(&spread)){RegisterEffect r;r.reads[r.read_count++]=p->object;Read(r,p->source);r.write=Accumulator{};return r;}
   if(std::get<ScalarError>(spread)!=ScalarError::kUnsupportedOpcode)return ScalarError::kMalformedInstruction;
