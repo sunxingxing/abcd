@@ -1,4 +1,5 @@
 #include "register_value_rule.h"
+#include "abcd/analysis/this_property.h"
 #include "abcd/analysis/property_delete.h"
 #include "abcd/analysis/iterator.h"
 
@@ -204,6 +205,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
   if (const auto* error = std::get_if<ScalarError>(&effect)) return *error;
   if (!std::get<RegisterEffect>(effect).write)
     return ScalarError::kMalformedInstruction;
+  const auto implicit=LiftThisProperty(instruction,frame_size);
+  if(const auto* p=std::get_if<ThisProperty>(&implicit);p && !WritesThisProperty(p->kind))return ValueRule{ValueRuleKind::kFixed,ValueKinds::Language()};
   const auto scalar = LiftScalarInstruction(instruction, frame_size);
   if (const auto* assignment = std::get_if<ScalarAssignment>(&scalar))
     return DescribeScalarValue(*assignment, arithmetic);
@@ -250,6 +253,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       case ConstantObjectKind::kGlobalObject:
       case ConstantObjectKind::kUnmappedArguments:
       case ConstantObjectKind::kAsyncFunctionEnter:
+      case ConstantObjectKind::kNewTarget:
       case ConstantObjectKind::kCurrentFunction:
         return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
       default:

@@ -166,7 +166,7 @@ class AbiBuilder {
         }
       Step();
       if (op.life == analysis::ValueLife::kLive &&
-          std::holds_alternative<analysis::ValueFrameThis>(op.operation)) {
+          (std::holds_alternative<analysis::ValueFrameThis>(op.operation)||std::holds_alternative<analysis::ValueThisProperty>(op.operation))) {
         Require(tree_.callable == CallableKind::kFunction || tree_.callable == CallableKind::kAsyncFunction ||
             IsMethodCallable(tree_.callable) ||
             tree_.callable == CallableKind::kBaseConstructor || IsGeneratorCallable(tree_.callable),
@@ -242,7 +242,10 @@ class AbiBuilder {
     Increment(result_.receiver.operands);
   }
   void Entry(analysis::CallableEntry) { throw Error::kEntry; }
-  void Entry(analysis::NewTargetEntry) { throw Error::kEntry; }
+  void Entry(analysis::NewTargetEntry) {
+    Require(frame_.new_target && NativeNewTarget(tree_.identity.contract) && !IsArrowCallable(tree_.callable), Error::kEntry);
+    result_.new_target=AbiObservation::kFrameIdentity;
+  }
   void Entry(const analysis::UnknownEntry&) { throw Error::kEntry; }
   void Symbol(SymbolId id, bool write) {
     Require(id.value < formals_.size(), Error::kParameter);
@@ -268,6 +271,10 @@ class AbiBuilder {
     }
   }
   void Expression(SymbolExpr node) { Symbol(node.symbol, false); }
+  void Expression(NewTargetExpr node) {
+    Require(NativeNewTarget(tree_.identity.contract) && !IsArrowCallable(tree_.callable) && node.owner==tree_.owner, Error::kEntry);
+    result_.new_target=AbiObservation::kFrameIdentity;
+  }
   void Expression(ThisExpr node) {
     // LDTHIS does not need an ABI register copy. ReceiverEntry still checks
     // its optional slot separately; tree correspondence proves each origin.
@@ -291,7 +298,7 @@ class AbiBuilder {
     Symbol(node.symbol, false); Symbol(node.symbol, true);
   }
   template <class T> void Expression(const T&) {
-    static_assert(std::is_same_v<T, MemberMutationExpr> || std::is_same_v<T, BigIntExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, MemberExpr> || std::is_same_v<T, DeleteExpr> ||
+    static_assert(std::is_same_v<T, MemberMutationExpr> || std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, BigIntExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, MemberExpr> || std::is_same_v<T, DeleteExpr> ||
         std::is_same_v<T, GlobalNameExpr> ||
         std::is_same_v<T, RealmObjectExpr> ||
         std::is_same_v<T, SymbolConstructorExpr> ||

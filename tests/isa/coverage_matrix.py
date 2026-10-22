@@ -92,7 +92,7 @@ def recovery_manifest(structure, path, output, flags, digest):
     data = json.loads(manifest.read_text())
     if data['sha256'] != digest:
         raise ValueError('recovery fingerprint mismatch')
-    expected_contract = 'language_source_v6' if '--language-source' in flags else 'language_numeric_constructors_v1'
+    expected_contract = 'language_source_v7' if '--language-source' in flags else 'language_numeric_constructors_v1'
     if data.get('source_contract') != expected_contract:
         raise ValueError('recovery contract mismatch')
     return data

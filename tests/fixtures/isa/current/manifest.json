@@ -675,12 +675,30 @@
       "opcode": 73,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 5,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 5,
+        "roles": {
+          "key": null,
+          "kind": 0,
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "type": "abcd::analysis::ThisProperty"
+        },
+        "semantic_family": "abcd::analysis::ThisProperty",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": false,
@@ -715,12 +733,32 @@
       "opcode": 74,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 6,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 6,
+        "roles": {
+          "key": null,
+          "kind": 2,
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "type": "abcd::analysis::ThisProperty"
+        },
+        "semantic_family": "abcd::analysis::ThisProperty",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -755,12 +793,31 @@
       "opcode": 75,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 5,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 5,
+        "roles": {
+          "key": null,
+          "kind": 1,
+          "name": null,
+          "type": "abcd::analysis::ThisProperty"
+        },
+        "semantic_family": "abcd::analysis::ThisProperty",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -788,12 +845,35 @@
       "opcode": 76,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 6,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 6,
+        "roles": {
+          "key": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "kind": 3,
+          "name": null,
+          "type": "abcd::analysis::ThisProperty"
+        },
+        "semantic_family": "abcd::analysis::ThisProperty",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -985,12 +1065,20 @@
       "opcode": 110,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 0,
+        "exception_cause": 0,
+        "exception_exit": null,
+        "exceptional_completion": 0,
+        "inputs": [],
+        "normal_commit": {
+          "accumulator": true
         },
-        "status": "refused"
+        "normal_effects": 4096,
+        "roles": {
+          "type": "abcd::analysis::NewTargetLoad"
+        },
+        "semantic_family": "abcd::analysis::NewTargetLoad",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": false,
@@ -1732,12 +1820,30 @@
       "opcode": 147,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 5,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 5,
+        "roles": {
+          "key": null,
+          "kind": 0,
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "type": "abcd::analysis::ThisProperty"
+        },
+        "semantic_family": "abcd::analysis::ThisProperty",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": false,
@@ -1772,12 +1878,32 @@
       "opcode": 148,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 6,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 6,
+        "roles": {
+          "key": null,
+          "kind": 2,
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "type": "abcd::analysis::ThisProperty"
+        },
+        "semantic_family": "abcd::analysis::ThisProperty",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -1812,12 +1938,31 @@
       "opcode": 149,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 5,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 5,
+        "roles": {
+          "key": null,
+          "kind": 1,
+          "name": null,
+          "type": "abcd::analysis::ThisProperty"
+        },
+        "semantic_family": "abcd::analysis::ThisProperty",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -1845,12 +1990,35 @@
       "opcode": 150,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 6,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 6,
+        "roles": {
+          "key": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "kind": 3,
+          "name": null,
+          "type": "abcd::analysis::ThisProperty"
+        },
+        "semantic_family": "abcd::analysis::ThisProperty",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,

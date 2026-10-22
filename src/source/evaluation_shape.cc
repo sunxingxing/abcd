@@ -13,6 +13,8 @@ constexpr std::array kNamedRead{Role::kBase};
 constexpr std::array kPropertyRead{Role::kBase, Role::kKey};
 constexpr std::array kNamedWrite{Role::kBase, Role::kStoredValue};
 constexpr std::array kPropertyWrite{Role::kBase, Role::kKey, Role::kStoredValue};
+constexpr std::array kThisKey{Role::kKey};
+constexpr std::array kThisWrite{Role::kKey,Role::kStoredValue};
 constexpr std::array kBranch{Role::kCondition};
 constexpr std::array kReturn{Role::kReturnValue};
 constexpr std::array kThrow{Role::kThrownValue};
@@ -42,6 +44,11 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       EvaluationShape shape{kInput, true}; shape.source = SourceEvaluation::kSuspending; return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueBinary>) return EvaluationShape{kBinary, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueThisProperty>) {
+      if(!analysis::WritesThisProperty(op.kind))return EvaluationShape{analysis::NamedThisProperty(op.kind)?std::span<const Role>(kNoOperands):std::span<const Role>(kThisKey),true};
+      EvaluationShape shape{analysis::NamedThisProperty(op.kind)?std::span<const Role>(kCellStore):std::span<const Role>(kThisWrite),false};
+      shape.assignment_result=Role::kStoredValue;return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) return EvaluationShape{kNamedRead, true};
     else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueModuleRead>) return EvaluationShape{kNoOperands, true};
@@ -78,6 +85,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       EvaluationShape shape{kNoOperands, false}; shape.control = ControlEvaluation::kNormal; return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueDebugger>) return EvaluationShape{kNoOperands, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueNewTarget>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) {
       EvaluationShape shape{kNoOperands, true}; shape.receiver = ReceiverValue::kCurrent; return shape;
     }
@@ -245,9 +253,9 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                   std::is_same_v<T, analysis::ValueBinary> ||
                   std::is_same_v<T, analysis::ValueString> || std::is_same_v<T, analysis::ValueHole>) return false;
     else {
-      static_assert(std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield> || std::is_same_v<T, analysis::ValueNamedRead> ||
+      static_assert(std::is_same_v<T, analysis::ValueThisProperty> || std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield> || std::is_same_v<T, analysis::ValueNamedRead> ||
                     std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger> ||
-                    std::is_same_v<T, analysis::ValueFrameThis> ||
+                    std::is_same_v<T, analysis::ValueNewTarget> || std::is_same_v<T, analysis::ValueFrameThis> ||
                     std::is_same_v<T, analysis::ValueFrameFunction> ||
                     std::is_same_v<T, analysis::ValueGlobalObject> ||
                     std::is_same_v<T, analysis::ValueSymbolConstructor> ||

@@ -144,6 +144,8 @@ struct ValueReturn { bool operator==(const ValueReturn&) const = default; };
 struct ValueThrow { bool operator==(const ValueThrow&) const = default; };
 struct ValueNop { bool operator==(const ValueNop&) const = default; };
 struct ValueDebugger { bool operator==(const ValueDebugger&) const = default; };
+struct ValueThisProperty { ThisPropertyKind kind; std::optional<abc::PoolIndex> name; bool operator==(const ValueThisProperty&) const = default; };
+struct ValueNewTarget { bool operator==(const ValueNewTarget&) const = default; };
 struct ValueFrameThis { bool operator==(const ValueFrameThis&) const = default; };
 struct ValueFrameFunction { bool operator==(const ValueFrameFunction&) const = default; };
 // Realm identity, never a property/name lookup of mutable globalThis.
@@ -304,7 +306,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueInvoke, ValueConstruct, ValueConstructApply, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValuePropertyDelete, ValueEnumeration, ValueIteratorAcquire, ValueObjectCheck, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite, ValueConcurrentNotification>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite, ValueConcurrentNotification, ValueNewTarget, ValueThisProperty>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

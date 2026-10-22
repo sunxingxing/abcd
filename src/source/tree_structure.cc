@@ -377,6 +377,10 @@ class StructureCheck {
             RequireTree(binding.has_value(), Error::kBinding); scopes_.FreeReference(*binding);
           }
         }
+      } else if constexpr (std::is_same_v<T, NewTargetExpr>) {
+        RequireTree(NativeNewTarget(tree_.identity.contract) && !IsArrowCallable(tree_.callable) &&
+            tree_.invocation != InvocationForm::kArrowMethod && expression.owner == tree_.owner &&
+            (expression.form==NewTargetForm::kAbiEntry || expression.form==NewTargetForm::kInstruction), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, ThisExpr>) {
         RequireTree(expression.owner == tree_.owner && tree_.invocation != InvocationForm::kArrowMethod,
             Error::kBinding);
@@ -752,7 +756,7 @@ class StructureCheck {
                         std::is_same_v<T, RealmObjectExpr> ||
                         std::is_same_v<T, SymbolConstructorExpr> ||
                         std::is_same_v<T, ArgumentSnapshotExpr> ||
-                        std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
+                        std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr> || std::is_same_v<T, EmptyArrayExpr> ||
                         std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, ArrayExpr> || std::is_same_v<T, ArrayElement> || std::is_same_v<T, FunctionExpr>);
         }

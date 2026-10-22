@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-10-21。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-22。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
@@ -9,6 +9,56 @@
 
 
 
+
+## ISA coverage3 — V7 and owner-bound frame/property evidence (partial, 2026-10-22)
+
+Against **cbc9389b**: ledger **117/62/125/28 → 132/62/110/28** (Verified /
+Unverified / Unmeasured / NonExecutable), 15 promotions, no backwards movement
+at variant or profile level, 896 measured ABCs and all 332 variants observed.
+The four user-approved predicates are independently versioned in V7; V1–V6 keep
+their meanings. Only new.target recovery is consumed in this partial round.
+Tagged-template / object-spread / object-rest construction certificates remain
+unfinished. The [round note](isa-coverage-round3.md) lists all moved rows and
+remaining gates; [language-source.md](language-source.md) records the exact
+2026-10-22 approvals and pinned citations.
+
+Eight implicit-this property variants now have typed raw/value semantics and
+independent owner/key/strict-store/event verification through existing member
+Get/Set/recovery. Explicit new-target instructions and ABI entry values have
+separate owner-bound origins; unused explicit instructions retain an invocation
+frame-read event so V7 cannot be bypassed. Arrow/module contexts keep typed
+refusals. Existing LDTHIS/LDFUNCTION and four other lift-ok forms gain complete
+constructed fixtures. No production fixture/name dispatch or new premise.
+
+32 complete fixture records (30 constructed, two SDK default/O0), **244 Node
+cases**, node --check **32/32**, premise/owner/key mutations and 200/201/400/800
+exact byte/work boundaries. SDK disassembly and engine decoding both pass.
+New oracle import: **241 Node occurrences, 31 strict round-trip event matches**;
+210 unmatched events retain null, Ark runtime stays null. Strict source-reference
+versus recovered compilation, both modes: **30 exact / 2 different / 0 unverified**.
+Only the LDFUNCTION oracle's module read versus the recovered immutable self
+read differs; the latter directly matches the original frame function. All
+instructions/registers/handlers remain unnormalized. The grouping-only token
+checker rejects all 32 general recovery pairs, not counted as semantic passes.
+
+Both fresh 40-input cohorts versus wtbase cbc9389b: **605/620 source, 542/620
+previous**, no new completions, regressions or complete-source text changes.
+All 80 manifests are otherwise identical after removing only source_contract
+labels; source labels change V6→V7 and previous flags stay unchanged. Full build
+passes; source-regression **65/65**, all scale **11/11**, ISA **14/14**, focused
+**5/5** plus property-receiver **1/1**. Final sweep **166/171**: only documented
+family_source_cli, tree_structure, try_tree, class_tree_source, try_tree_source.
+The old property-receiver unsupported witness was LDNEWTARGET: it is now a
+positive alias-preserving test; an actual unsupported GETTEMPLATEOBJECT encoding
+retains the negative barrier test. No behavioral assertion was removed.
+
+At 800, new-target tree construction admits **1,127,155 bytes / 162,643 work**;
+implicit-this reads admit **1,240,855 / 177,053**, split blocks **1,511,300 /
+214,776**; each immediate smaller boundary refuses. Full recovery kernel RSS
+across 80 sequential cohort runs peaks at **40,583,168 bytes** (Darwin wait4).
+`grep -rn language_source_v6 tests tools src` is empty; the historical serializer
+in include/ intentionally preserves V6. No commit, push or stash; unrelated
+sample.tar.gz untouched. Generated large JSON remains under build/review/isa-r3/.
 
 ## ISA coverage2 — super reads, BigInt and wide oracles (partial, 2026-10-21)
 

@@ -34,7 +34,7 @@ bool CanErasePureOp(const ValueOp& op) {
     else {
       static_assert(std::is_same_v<T, ValueConcurrentNotification> || std::is_same_v<T, ValueAwait> || std::is_same_v<T, ValueYield> || std::is_same_v<T, ValueNamedRead> ||
                     std::is_same_v<T, ValueDebugger> ||
-                    std::is_same_v<T, ValueFrameThis> ||
+                    std::is_same_v<T, ValueThisProperty> || std::is_same_v<T, ValueNewTarget> || std::is_same_v<T, ValueFrameThis> ||
                     std::is_same_v<T, ValueFrameFunction> ||
                     std::is_same_v<T, ValueGlobalObject> ||
                     std::is_same_v<T, ValueSymbolConstructor> ||

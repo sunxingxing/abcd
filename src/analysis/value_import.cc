@@ -145,6 +145,10 @@ ValueOperation Operation(const SemanticOperation& operation) {
       return ValueNop{};
     } else if constexpr (std::is_same_v<T, DebuggerOperation>) {
       return ValueDebugger{};
+    } else if constexpr (std::is_same_v<T, ThisProperty>) {
+      return ValueThisProperty{op.kind,op.name};
+    } else if constexpr (std::is_same_v<T, NewTargetLoad>) {
+      return ValueNewTarget{};
     } else if constexpr (std::is_same_v<T, FrameThisLoad>) {
       return ValueFrameThis{};
     } else if constexpr (std::is_same_v<T, FrameFunctionLoad>) {

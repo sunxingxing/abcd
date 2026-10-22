@@ -54,6 +54,8 @@ class ConstantResolver {
         result_.operations[i] = NameId{static_cast<std::uint32_t>(result_.names.size())};
         result_.names.emplace_back(text.begin(), text.end());
       }
+      else if (const auto* access = std::get_if<analysis::ValueThisProperty>(&op.operation);access && access->name)
+        uses_.push_back({*access->name,id,TextUse::kMember});
       else if (const auto* read = std::get_if<analysis::ValueNamedRead>(&op.operation))
         uses_.push_back({read->name, id, TextUse::kMember});
       else if (const auto* write = std::get_if<analysis::ValueNamedWrite>(&op.operation))

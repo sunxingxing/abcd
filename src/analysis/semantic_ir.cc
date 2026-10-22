@@ -101,6 +101,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       return Fail(SemanticError::kMalformedInstruction, site.offset);
     return DebuggerOperation{};
   }
+  if (decoded.opcode == Opcode::kLDNEWTARGET) {
+    if (decoded.operand_count != 0) return Fail(SemanticError::kMalformedInstruction, site.offset);
+    return NewTargetLoad{};
+  }
   if (decoded.opcode == Opcode::kLDTHIS) {
     if (decoded.operand_count != 0)
       return Fail(SemanticError::kMalformedInstruction, site.offset);
@@ -212,6 +216,9 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   const auto deleted=LiftPropertyDelete(decoded,frame_size);
   if(const auto* op=std::get_if<PropertyDelete>(&deleted))return *op;
   if(std::get<ScalarError>(deleted)!=ScalarError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
+  const auto implicit = LiftThisProperty(decoded,frame_size);
+  if(const auto* p=std::get_if<ThisProperty>(&implicit))return *p;
+  if(std::get<ThisPropertyError>(implicit)!=ThisPropertyError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
   const auto named = LiftNamedRead(decoded);
   if (const auto* read = std::get_if<NamedRead>(&named)) return *read;
   if (std::get<NamedReadError>(named) != NamedReadError::kUnsupportedOpcode)
@@ -434,12 +441,19 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kUserCode | LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, NewTargetLoad>) {
+          // Observe the invocation frame even when unused: the V7 AOT-path
+          // premise must not disappear through pure-value elimination.
+          effects.normal = LanguageEffect::kArgumentsRead;
         } else if constexpr (std::is_same_v<T, StringLoad>) {
           if (value.kind == PoolTextKind::kBigInt) {
             effects.normal = LanguageEffect::kAllocation;
             effects.before_throw = effects.normal;
             effects.exceptional = ExceptionalCompletion::kMayThrow;
           }
+        } else if constexpr (std::is_same_v<T, ThisProperty>) {
+          effects.normal = (WritesThisProperty(value.kind)?LanguageEffect::kHeapWrite:LanguageEffect::kHeapRead)|LanguageEffect::kUserCode;
+          effects.before_throw=effects.normal;effects.exceptional=ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, NamedRead>) {
           effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kUserCode;
           effects.before_throw = effects.normal;

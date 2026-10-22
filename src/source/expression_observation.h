@@ -63,7 +63,7 @@ enum class LexicalDependency : std::uint8_t { kReferences, kCallableOwner, kEncl
 inline LexicalDependency IntrinsicLexicalDependency(const TreeExpression& expression) {
   return std::visit([](const auto& node) {
     using T=std::decay_t<decltype(node)>;
-    if constexpr(std::is_same_v<T,ThisExpr>) return LexicalDependency::kCallableOwner;
+    if constexpr(std::is_same_v<T,ThisExpr> || std::is_same_v<T,NewTargetExpr>) return LexicalDependency::kCallableOwner;
     else if constexpr(std::is_same_v<T,MemberExpr>) return node.lookup == analysis::PropertyLookup::kSuper ?
         LexicalDependency::kCallableOwner : LexicalDependency::kReferences;
     else if constexpr(std::is_same_v<T,FunctionExpr> ||
@@ -158,7 +158,7 @@ inline analysis::ValueKinds NormalValueKinds(const TreeExpression& expression,
     else {
       static_assert(std::is_same_v<T,SymbolExpr>||std::is_same_v<T,GlobalNameExpr>||
           std::is_same_v<T,RealmObjectExpr>||std::is_same_v<T,SymbolConstructorExpr>||
-          std::is_same_v<T,ThisExpr>||std::is_same_v<T,MemberExpr>||std::is_same_v<T,DeleteExpr>||std::is_same_v<T,AwaitExpr>||
+          std::is_same_v<T,NewTargetExpr>||std::is_same_v<T,ThisExpr>||std::is_same_v<T,MemberExpr>||std::is_same_v<T,DeleteExpr>||std::is_same_v<T,AwaitExpr>||
           std::is_same_v<T,YieldExpr>||std::is_same_v<T,MemberMutationExpr>||std::is_same_v<T,UpdateExpr>||std::is_same_v<T,CallExpr>||
           std::is_same_v<T,ConstructExpr>||std::is_same_v<T,EmptyArrayExpr>||std::is_same_v<T,EmptyObjectExpr>||
           std::is_same_v<T,ObjectExpr>||std::is_same_v<T,ArrayExpr>||std::is_same_v<T,ArrayElement>||std::is_same_v<T,FunctionExpr>||std::is_same_v<T,ArgumentSnapshotExpr>||
@@ -216,6 +216,7 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
   return std::visit([&](const auto& node)->SourceEffects {
     using T=std::decay_t<decltype(node)>;
     if constexpr(std::is_same_v<T,BigIntExpr>) return {L::kAllocation,L::kAllocation,X::kMayThrow};
+    else if constexpr(std::is_same_v<T,NewTargetExpr>) return {node.form==NewTargetForm::kInstruction?L::kArgumentsRead:L::kNone,L::kNone,X::kImpossible};
     else if constexpr(std::is_same_v<T,TreeLiteral>||std::is_same_v<T,SequenceExpr>||
         std::is_same_v<T,LogicalExpr>||std::is_same_v<T,ConditionalExpr>)return {};
     else if constexpr(std::is_same_v<T,UnaryExpr>) {
@@ -257,7 +258,7 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
         return {effects,effects,X::kMayThrow};
       }
       return guard;
-    } else if constexpr(std::is_same_v<T,ThisExpr>)return guard;
+    } else if constexpr(std::is_same_v<T,ThisExpr> || std::is_same_v<T,NewTargetExpr>)return guard;
     else if constexpr(std::is_same_v<T,AssignmentExpr>) {
       // Declarative PutValue has no callback; its success-only write belongs
       // to a FlowDefinition. Member PutValue may invoke a setter/proxy trap.

@@ -402,6 +402,31 @@ class OperandCheck {
               snapshot.owner == tree_.owner && operation.slots == graph_.arguments->frame.parameters,
               Error::kOperand);
           Arguments(op, snapshot.slots, 0, operation.slots);
+        } else if constexpr (std::is_same_v<T, analysis::ValueThisProperty>) {
+          RequireMeaning(!IsArrowCallable(tree_.callable)&&tree_.callable!=CallableKind::kDerivedConstructor,Error::kThisPropertyScope);
+          original_.operations[i].intrinsic_expression=expression;
+          RequireMeaning(operation.kind <= analysis::ThisPropertyKind::kWriteValue, Error::kOperator);
+          const bool write=analysis::WritesThisProperty(operation.kind);
+          RequireMeaning(operation.name.has_value()==analysis::NamedThisProperty(operation.kind),Error::kOperator);
+          ExprId base;const MemberKey* key;
+          if(write){const auto& assigned=Node<AssignmentExpr>(expression);const auto* target=std::get_if<MemberTarget>(&assigned.target);RequireMeaning(target,Error::kOperator);base=target->base;key=&target->key;RequireMeaning(tree_.strictness==Strictness::kStrict,Error::kUnsupportedOperation);InputAt(operation.name?0:1,assigned.value);}
+          else {const auto& member=Node<MemberExpr>(expression);RequireMeaning(member.lookup==analysis::PropertyLookup::kObject,Error::kOperator);base=member.base;key=&member.key;}
+          RequireMeaning(Node<ThisExpr>(base).owner==tree_.owner,Error::kSuperReceiver);
+          if(operation.name)Named(*key,constants_.operations[i]);
+          else {
+            const auto* computed=std::get_if<ComputedKey>(key);
+            RequireMeaning(computed,Error::kOperator);
+            InputAt(0,computed->expression);
+            // RuntimeLd/StObjByValue (runtime_stubs-inl.h:640,664) checks
+            // receiver coercibility before ToPropertyKey, at Get/PutValue.
+            // Native MemberTarget retains the same reference through RHS;
+            // common recovery owns these separate key/Get/Set events.
+          }
+        } else if constexpr (std::is_same_v<T, analysis::ValueNewTarget>) {
+          original_.operations[i].intrinsic_expression=expression;
+          RequireMeaning(NativeNewTarget(tree_.identity.contract), Error::kNewTargetPremise);
+          RequireMeaning(!IsArrowCallable(tree_.callable) && Node<NewTargetExpr>(expression).owner == tree_.owner &&
+              Node<NewTargetExpr>(expression).form == NewTargetForm::kInstruction, Error::kNewTargetOwner);
         } else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>) {
           original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(op.result && op.result->value < graph_.values.size() &&
@@ -1179,6 +1204,10 @@ class OperandCheck {
           } else if (std::holds_alternative<analysis::ReceiverEntry>(*entry)) {
             if (tree_.callable == CallableKind::kDerivedConstructor) static_cast<void>(Literal<UndefinedLiteral>(expression));
             else RequireMeaning(Node<ThisExpr>(expression).owner == tree_.owner, Error::kOperand);
+          } else if (std::holds_alternative<analysis::NewTargetEntry>(*entry)) {
+            RequireMeaning(NativeNewTarget(tree_.identity.contract), Error::kNewTargetPremise);
+            RequireMeaning(!IsArrowCallable(tree_.callable) && Node<NewTargetExpr>(expression).owner == tree_.owner &&
+                Node<NewTargetExpr>(expression).form == NewTargetForm::kAbiEntry, Error::kNewTargetOwner);
           } else throw Error::kOperand;
           return;
         }

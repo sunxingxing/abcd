@@ -189,6 +189,8 @@ std::variant<BindingPlan, BindingError> BuildBindings(
           }
         } else if (std::holds_alternative<ReceiverEntry>(*entry)) {
           plan.values[i] = ReceiverEntryBinding{};
+        } else if (std::holds_alternative<NewTargetEntry>(*entry) && NativeNewTarget(evaluation.call_spread_contract)) {
+          plan.values[i] = NewTargetEntryBinding{};
         } else {
           // Unused callable/new-target ABI entries need no source declaration.
           // Checked projections do not read the entry in generated source.

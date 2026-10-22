@@ -11,7 +11,7 @@ const root=mkdtempSync(join(tmpdir(),'abcd-native-arguments-'));
 try {
  const out=join(root,'source');execFileSync(engine,[join(fixtures,'entry.abc'),out,'--value-source','--language-source']);
  const manifest=JSON.parse(readFileSync(join(out,'manifest.json')));
- assert.equal(manifest.source_contract,'language_source_v6');
+ assert.equal(manifest.source_contract,'language_source_v7');
  const record=manifest.records.find(r=>r.source_status!==2);
  assert.equal(record.source_status,0,JSON.stringify(record.source_failure));
  const file=join(out,record.source);execFileSync(process.execPath,['--check',file]);

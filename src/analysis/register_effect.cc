@@ -1,4 +1,5 @@
 #include "abcd/analysis/register_effect.h"
+#include "abcd/analysis/this_property.h"
 #include "abcd/analysis/property_delete.h"
 #include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/array_spread.h"
@@ -373,6 +374,15 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (auto result = Adapt(LiftBranchCondition(instruction));
       !Unsupported(result))
     return result;
+  const auto implicit=LiftThisProperty(instruction,frame_size);
+  if(const auto* p=std::get_if<ThisProperty>(&implicit)) {
+    RegisterEffect r;
+    if(p->key)r.reads[r.read_count++]=*p->key;
+    if(WritesThisProperty(p->kind)||!NamedThisProperty(p->kind))r.reads[r.read_count++]=Accumulator{};
+    if(!WritesThisProperty(p->kind))r.write=Accumulator{};
+    return r;
+  }
+  if(std::get<ThisPropertyError>(implicit)!=ThisPropertyError::kUnsupportedOpcode)return ScalarError::kMalformedInstruction;
   if (auto result = Adapt(LiftNamedRead(instruction)); !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftNamedWrite(instruction, frame_size));
@@ -492,9 +502,10 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
     return result;
   const auto constant = LiftConstantObjectInstruction(instruction);
   if (const auto* value = std::get_if<ConstantObjectInstruction>(&constant)) {
-    // Pinned v7 LDNEWTARGET is a fatal, unimplemented handler. Do not
-    // publish a normal-path definition for an execution that cannot occur.
-    if (value->completion == ConstantCompletion::kUnimplemented)
+    // Path-dependent LDNEWTARGET is an AOT candidate, not a pinned-interpreter
+    // execution claim. The source projection must prove its V7 premise.
+    if (value->completion == ConstantCompletion::kUnimplemented &&
+        value->kind != ConstantObjectKind::kNewTarget)
       return ScalarError::kUnsupportedOpcode;
     return EffectOf(*value);
   }

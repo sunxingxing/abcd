@@ -174,3 +174,33 @@ The semantic restrictions, remaining lift-ok targets and runtime differences
 requiring decisions are in
 [isa-coverage-round2.md](../../docs/design/source-recovery/isa-coverage-round2.md).
 No new contract or LDNEWTARGET behavior is enabled.
+
+## Round 3 / LanguageSourceV7
+
+Latest measured variant display: **132 SupportedVerified / 62 SupportedUnverified /
+110 Unmeasured / 28 NonExecutable** (`build/review/isa-r3/matrix.json`). Fifteen
+variants moved forward and none backward at the variant or profile level. The
+new rows verify separately in 12.0.6 and 24.0.0; no evidence is transferred.
+
+`isa_native_frame_test` registers 30 constructed exported-function ABCs and two
+SDK default/O0 fixtures. Both the SDK disassembler and engine decoder must accept
+them. Its shared occurrence writer runs after 244 Node differential cases.
+New-target interpreter differences are explicitly excluded under V7; Ark runtime
+is null. Literal descriptors, strict receiver behavior, getter/setter/key effects,
+freshness and rest copying remain compared. Hand-written evaluation oracles are
+never engine inputs. Builder function kinds/exports are test-only typed layout.
+
+V7 has four separate approved predicates: tagged templates, object spread, object
+rest and new.target. Only new.target is consumed this round. The other three
+remain recovery gaps until their construction/event certificates exist; registry
+labels cannot authorize them. Implicit-this Get/strict Set uses ordinary member
+operations and has no new premise. The C++ owner/operand verifier tests mutate
+receiver/key/scope and exercise exact resource boundaries, including split blocks.
+
+Strict `grouping_bytecode.py` reference/recovery compilation in both modes yields
+30 exact records, two LDFUNCTION differences, zero unverified. Those differences
+are the oracle's unchanged module binding versus the actual immutable function
+self value; see the [round note](../../docs/design/source-recovery/isa-coverage-round3.md).
+The occurrence writer retains 210 unmatched events as null round-trip evidence,
+and imports 31 strict matched events. Full-file equality, event-family evidence
+and Node differential remain distinct.

@@ -118,6 +118,7 @@ class CopyExpressions {
           Require(forest_.operations[producer->op.value].has_value(), Error::kUnavailableValue);
           return *forest_.operations[producer->op.value];
         }
+        if (std::holds_alternative<NewTargetEntryBinding>(binding)) return Add(NewTargetExpr{owner_}, origin);
         Require(std::holds_alternative<ReceiverEntryBinding>(binding) ||
             std::holds_alternative<NativeReceiverBinding>(binding), Error::kUnavailableValue);
         return Add(ThisExpr{owner_}, origin);

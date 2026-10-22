@@ -58,6 +58,10 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kBase, op.object);
       Append(plan, OperandRole::kKey, Accumulator{});
       plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, ThisProperty>) {
+      if(op.key)Append(plan,OperandRole::kKey,*op.key);
+      if(WritesThisProperty(op.kind))Append(plan,OperandRole::kStoredValue,Accumulator{});
+      else {if(!NamedThisProperty(op.kind))Append(plan,OperandRole::kKey,Accumulator{});plan.write=Accumulator{};}
     } else if constexpr (std::is_same_v<T, NamedRead>) {
       Append(plan, OperandRole::kBase, Accumulator{});
       plan.write = Accumulator{};
@@ -102,7 +106,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
     } else if constexpr (std::is_same_v<T, ThrowOperation>) {
       Append(plan, OperandRole::kThrownValue, op.value);
     } else if constexpr (std::is_same_v<T, LoadHole> || std::is_same_v<T, FrameThisLoad> ||
-                         std::is_same_v<T, FrameFunctionLoad> ||
+                         std::is_same_v<T, FrameFunctionLoad> || std::is_same_v<T, NewTargetLoad> ||
                          std::is_same_v<T, GlobalObjectLoad> ||
                          std::is_same_v<T, SymbolConstructorLoad> || std::is_same_v<T, RestCopy> ||
                          std::is_same_v<T, StringLoad> || std::is_same_v<T, EmptyObjectCreation> ||

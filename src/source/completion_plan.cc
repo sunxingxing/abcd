@@ -32,7 +32,7 @@ bool CleanupOperation(const ValueOperation& operation) {
         std::is_same_v<T, ValueInvoke> || std::is_same_v<T, ValueSuperCall> || std::is_same_v<T, ValueSuperSpread> || std::is_same_v<T, ValueSuperCheck> || std::is_same_v<T, ValueConstruct> || std::is_same_v<T, ValueConstructApply> ||
         std::is_same_v<T, ValueArrayAllocation> || std::is_same_v<T, ValueObjectAllocation> ||
         std::is_same_v<T, ValueGlobalRead> || std::is_same_v<T, ValueGlobalObject> ||
-        std::is_same_v<T, ValueSymbolConstructor> || std::is_same_v<T, ValueFrameThis> ||
+        std::is_same_v<T, ValueSymbolConstructor> || std::is_same_v<T, ValueThisProperty> || std::is_same_v<T, ValueNewTarget> || std::is_same_v<T, ValueFrameThis> ||
         std::is_same_v<T, ValueFrameFunction> || std::is_same_v<T, ValueDebugger> ||
         std::is_same_v<T, ValueYield>;
   }, operation);

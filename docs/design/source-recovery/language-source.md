@@ -1,8 +1,8 @@
-# 源语言契约：LanguageSourceV1–V6
+# 源语言契约：LanguageSourceV1–V7
 
 `SourceContract::kLanguageSourceV1`（序列化名 `language_source_v1`）保留原有四项前提。
 2026-10-14 新增 `kLanguageSourceV2`（`language_source_v2`）；V2 继承 V1，并加入 §5 的独立标准迭代获取前提。
-2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），该轮 CLI 的 `--language-source` 选择 V4（当前版本见文末 V6）；
+2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），该轮 CLI 的 `--language-source` 选择 V4（当前版本见文末 V7）；
 V4 继承 V3（含 V2 与独立 Ark 输出政策），并增加文末 2026-10-16 批准的外部异常值域前提。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
 `--language-constructors` 组合。它包含 `LanguageNumericConstructorsV1` 的全部前提（numeric 算术、
 原生 super 语义），并另外加入下面四项源语言前提。默认契约 V3 以及其他已有 opt-in 都不变。
@@ -662,3 +662,49 @@ changes and missing entry correspondence; scope verification rejects any local,
 parameter or capture named `arguments`. A descendant non-arrow never substitutes
 its own carrier for an ancestor snapshot: named source storage/capture remains
 explicit. Exact host-factory output remains available under its existing ABI.
+
+## LanguageSourceV7: native Ark forms (user approval 2026-10-22)
+
+`--language-source` selects `kLanguageSourceV7` / `language_source_v7`.
+V1–V6 retain their original meanings and serialized names. V7 inherits V6 and
+adds four **independent** predicates. The previous numeric/constructor options
+enable none of them. This is explicit source-policy permission, not a statement
+that all runtime paths implement standard ECMAScript semantics.
+
+* `TaggedTemplates()`: a certified GETTEMPLATEOBJECT expression may print a
+  native tagged template. Accepted differences on standard JS engines: Ark's
+  cooked/raw indexed properties are non-enumerable, and its fresh-array lowering
+  does not implement standard per-source-site identity caching. Pinned
+  `ecmascript/template_string.cpp:22-59` caches by the supplied raw-array key;
+  `ecmascript/template_map.h:26` compares key identity. The frontend's
+  `compiler/base/literals.cpp:26` creates fresh arrays. Recovery must still prove
+  the cooked/raw arrays, escaping (including undefined cooked entries), source
+  order, substitution events and callee/receiver identity. **This round adds
+  the predicate, but does not yet consume it in tagged-template recovery.**
+* `ObjectSpreads()`: a certified COPYDATAPROPERTIES may print `{...source}`.
+  Accepted difference: pinned `ecmascript/stubs/runtime_stubs-inl.h:453`
+  copies descriptors; accessor getters are not called. Standard object spread
+  reads values instead. Recovery still must prove the private construction,
+  field ordering and null/undefined behavior. **Predicate only this round.**
+* `ObjectRests()`: certified CREATEOBJECTWITHEXCLUDEDKEYS/WIDE may print object
+  destructuring rest. Accepted difference: pinned
+  `ecmascript/stubs/runtime_stubs-inl.h:2565` writes remaining keys with
+  strict SetProperty rather than CreateDataProperty. Recovery must additionally
+  prove excluded-key identity/order, once-only computed-key evaluation and the
+  original separate null/undefined coercibility guard. **Predicate only this
+  round; no arbitrary excluded-key instruction is admitted.**
+* `NativeNewTarget()`: LDNEWTARGET and a verified ABI new-target entry may print
+  `new.target` in the owning non-arrow function/constructor. Accepted difference:
+  `ecmascript/interpreter/interpreter-inl.cpp:7047` is fatal;
+  `ecmascript/interpreter/interpreter_assembly.cpp:7799` dispatches without an
+  accumulator update, and `ecmascript/compiler/interpreter_stub.cpp:6164` is
+  a NOP. `ecmascript/compiler/bytecode_circuit_builder.cpp:903` uses the actual
+  AOT new target. Native syntax follows that AOT meaning. The independent
+  verifier checks owner, origin (ABI entry versus explicit instruction), callable
+  kind and contract. Module/arrow contexts remain refused. An unused explicit
+  instruction remains an invocation-read event, so dead-value removal cannot
+  bypass the premise gate. No Ark interpreter execution is claimed.
+
+All cited paths are below the pinned
+`references/openharmony/arkcompiler/ets_runtime/`, except the frontend path,
+which is below `references/openharmony/arkcompiler/ets_frontend/es2panda/`.

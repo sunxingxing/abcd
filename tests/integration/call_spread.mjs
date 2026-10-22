@@ -14,7 +14,7 @@ try {
  for(const opcode of metadata.opcodes) assert.ok(rows.some(x=>x.encoding.opcode===opcode));
  for(const row of rows.filter(x=>x.encoding.opcode===186)) {assert.equal(row.lift.status,'ok');assert.equal(row.lift.roles.form,1);}
  const out=join(dir,'out');run(structure,[join(fixture,'calls.abc'),out,'--value-source','--language-source']);
- const manifest=JSON.parse(readFileSync(join(out,'manifest.json')));assert.equal(manifest.source_contract,'language_source_v6');
+ const manifest=JSON.parse(readFileSync(join(out,'manifest.json')));assert.equal(manifest.source_contract,'language_source_v7');
  const record=manifest.records.find(r=>r.entity===metadata.record);assert.equal(record.source_status,0,JSON.stringify(record));
  const emitted=join(out,record.source);run(process.execPath,['--check',emitted]);
  const oracle=join(dir,'oracle.mjs');copyFileSync(join(fixture,'calls.js'),oracle);

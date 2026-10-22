@@ -33,7 +33,7 @@ FunctionEmissionResult WriteClassMethod(const ClassMethod& method,
   if (method.key != function.Name()) return FunctionEmitError::kName;
   const auto& abi = function.Abi();
   if (abi.callable != AbiObservation::kUnobserved ||
-      abi.new_target != AbiObservation::kUnobserved ||
+      (abi.new_target != AbiObservation::kUnobserved && !NativeNewTarget(function.Tree().identity.contract)) ||
       abi.arguments != AbiObservation::kUnobserved) return FunctionEmitError::kFrame;
   switch (abi.layout) {
     case ParameterLayout::kSimple:

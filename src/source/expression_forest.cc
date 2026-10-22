@@ -1026,6 +1026,7 @@ class ForestBuilder {
         const auto& binding = forest_.bindings.values[value.value];
         if (const auto* symbol = std::get_if<SymbolId>(&binding))
           return Add(SymbolExpr{*symbol}, origin);
+        if (std::holds_alternative<NewTargetEntryBinding>(binding)) return Add(NewTargetExpr{owner_}, origin);
         if (std::holds_alternative<NativeReceiverBinding>(binding)) return Add(ThisExpr{owner_}, origin);
         if (std::holds_alternative<ReceiverEntryBinding>(binding)) {
           // The VM derived entry slot contains undefined until super assigns
@@ -1256,6 +1257,15 @@ class ForestBuilder {
         }
         return Add(EmptyArrayExpr{}, origin);
       }
+      else if constexpr (std::is_same_v<T, analysis::ValueThisProperty>) {
+        const auto base=Add(ThisExpr{owner_},origin);
+        MemberKey key;
+        if(operation.name){const auto* name=std::get_if<NameId>(&constant);Require(name,Error::kConstant);key=*name;}
+        else key=ComputedKey{operands[0]};
+        if(analysis::WritesThisProperty(operation.kind))return Add(AssignmentExpr{MemberTarget{base,key},operands[operation.name?0:1]},origin);
+        return Add(MemberExpr{base,key},origin);
+      }
+      else if constexpr (std::is_same_v<T, analysis::ValueNewTarget>) return Add(NewTargetExpr{owner_, NewTargetForm::kInstruction}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>)
         return Add(ThisExpr{owner_}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueIterResult>) {

@@ -10,8 +10,9 @@ struct ForOfKeyBinding { IteratorProtocolId protocol; };
 struct ForInKeyBinding { std::uint32_t loop; };
 struct UnboundValue {};
 struct ReceiverEntryBinding {};
+struct NewTargetEntryBinding {};
 struct NativeReceiverBinding { ReceiverValue source; };
-using ValueBinding = std::variant<UnboundValue, SymbolId, ReceiverEntryBinding, NativeReceiverBinding>;
+using ValueBinding = std::variant<UnboundValue, SymbolId, ReceiverEntryBinding, NativeReceiverBinding, NewTargetEntryBinding>;
 struct InvocationRestBinding {};
 struct ParameterBinding { std::uint32_t index; };
 struct SnapshotBinding {

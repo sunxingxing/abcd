@@ -6274,6 +6274,346 @@
       "classification": "Unmeasured",
       "oracles": {},
       "note": "Only an executed occurrence oracle can promote this fixture."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldnewtarget-dynamic1206.abc",
+      "sha256": "fc5ffccc897d19a8293dca3afa9a3d2ea46ca26eb969795d97640a639e3e5a73",
+      "opcodes": [
+        110
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldnewtarget-dynamic2400.abc",
+      "sha256": "04f99ca56e86ec5c2e8a7934c23c94b7b1332ce0bf8fdd52194dac69b8ea5225",
+      "opcodes": [
+        110
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthis-dynamic1206.abc",
+      "sha256": "9cc61038a6f5ca772debe5da9e8b7ab600eca9f959a4a482bddc6e9375632905",
+      "opcodes": [
+        111
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthis-dynamic2400.abc",
+      "sha256": "a63ef567a1744b933ae301bc48da05b44d440e647a396df3a45440df7f420c9e",
+      "opcodes": [
+        111
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldfunction-dynamic1206.abc",
+      "sha256": "f308026c7d5d07a132dc6f8096f2e695083e40f7bb124fd02cb43d6e557db00d",
+      "opcodes": [
+        175
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldfunction-dynamic2400.abc",
+      "sha256": "a244176a1450c2dbbd1416dbdcfeb98e6115a62cb30ee54c695cd6198b71732d",
+      "opcodes": [
+        175
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stownbyname_imm16_id16_v8-dynamic1206.abc",
+      "sha256": "4f8d9e149b61289f847223445fc41151ae8b88253f3c4e047e89fbf618a0bdc9",
+      "opcodes": [
+        204
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stownbyname_imm16_id16_v8-dynamic2400.abc",
+      "sha256": "d1853ff016e53afc8eb5881767e5e9128734708cc3a8d1de7ab84d3018a0fc69",
+      "opcodes": [
+        204
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/wide_stownbyindex_pref_v8_imm32-dynamic1206.abc",
+      "sha256": "254b7bac60c567320efed346adfee288f1810864c41977e13231baa70004ea18",
+      "opcodes": [
+        2813
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/wide_stownbyindex_pref_v8_imm32-dynamic2400.abc",
+      "sha256": "15dbd92afddc48f969d6dfa60cc6d94047494828afa06f77bdc9d9f00708f806",
+      "opcodes": [
+        2813
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/createiterresultobj_v8_v8-dynamic1206.abc",
+      "sha256": "d30a173ac2eedae0b133d9f77161fb34864a8dea84316fd78e04dccc103c0c93",
+      "opcodes": [
+        178
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/createiterresultobj_v8_v8-dynamic2400.abc",
+      "sha256": "d9134e18e6a37bb2496e5ed8671c3558f83f4aa109601da038a7bc9b909c5227",
+      "opcodes": [
+        178
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/wide_copyrestargs_pref_imm16-dynamic1206.abc",
+      "sha256": "177f9ca2a1df8bdde3331b69cad6dcd0d3008e3a5075665980269955e9e02cd5",
+      "opcodes": [
+        3069
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/wide_copyrestargs_pref_imm16-dynamic2400.abc",
+      "sha256": "353be4623c560d2cb80e2e816068cbda0fc285a0ef4d9020378b43d09a1b7d6c",
+      "opcodes": [
+        3069
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthisbyname_imm8_id16-dynamic1206.abc",
+      "sha256": "6a2ac9b084220a4033129d5f3593dfdd6e9b20838f9052a5292d2e5c53942018",
+      "opcodes": [
+        73
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthisbyname_imm8_id16-dynamic2400.abc",
+      "sha256": "6ad3a5e751fcdabb66047583f01fb8a080edc53fd3f58b422ef9506638534200",
+      "opcodes": [
+        73
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stthisbyname_imm8_id16-dynamic1206.abc",
+      "sha256": "e41aba40800fc683e8f031611df170c61bdf545c1619f4bb4add5d927e5c154e",
+      "opcodes": [
+        74
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stthisbyname_imm8_id16-dynamic2400.abc",
+      "sha256": "b1a9f416ff8eb4dd82994075e39d65bda09276ea06b3d61ec248b4eee046dcc6",
+      "opcodes": [
+        74
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthisbyvalue_imm8-dynamic1206.abc",
+      "sha256": "5f1b2532e9ec72f18192a340357a5f073d5133f60de2ea604a3a269cb3d73ab8",
+      "opcodes": [
+        75
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthisbyvalue_imm8-dynamic2400.abc",
+      "sha256": "b06e0343405a960a6739687cadc3e7e9a77d70e4989d739794f9085474f6e381",
+      "opcodes": [
+        75
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stthisbyvalue_imm8_v8-dynamic1206.abc",
+      "sha256": "3278c8693290dc1931b589389142ad888eb15282f074a7e4a469ca3e8a6fdc2a",
+      "opcodes": [
+        76
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stthisbyvalue_imm8_v8-dynamic2400.abc",
+      "sha256": "447d289bd799b1bf94dc06645569b24e485b5a7ca10493b816a800dd20886a77",
+      "opcodes": [
+        76
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthisbyname_imm16_id16-dynamic1206.abc",
+      "sha256": "8e1a25c55fdacda689c13ba6fe6a01ae7d4e8c8ce710ea68d73d5e66bccdc7ee",
+      "opcodes": [
+        147
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthisbyname_imm16_id16-dynamic2400.abc",
+      "sha256": "d1f4ccacb60a783251c5a1c4cd0714d9e7f819dd95fc36ebb5397795e7c86ed6",
+      "opcodes": [
+        147
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stthisbyname_imm16_id16-dynamic1206.abc",
+      "sha256": "c611732affd3044b0b073e9ae32b866f6297031e82d0ec067217809dc608742f",
+      "opcodes": [
+        148
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stthisbyname_imm16_id16-dynamic2400.abc",
+      "sha256": "2aac97d8b0ec2f92a1f1e7ec092770b8002335286e83d494bc8609bf4d3bfb9d",
+      "opcodes": [
+        148
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthisbyvalue_imm16-dynamic1206.abc",
+      "sha256": "79e31646ef6b0f862ed3504e0bdbbd98be7d3f5f356f4299d5a819a92f054ddd",
+      "opcodes": [
+        149
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/ldthisbyvalue_imm16-dynamic2400.abc",
+      "sha256": "f9fc4ff51642502b737a5ccfb49a54cd4faf6b26bfb82b7da3c00ef19b7fda25",
+      "opcodes": [
+        149
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stthisbyvalue_imm16_v8-dynamic1206.abc",
+      "sha256": "2bcae5a8d70e9f600ca782ad187c203db6455d46d269787a107d2d8d678dc811",
+      "opcodes": [
+        150
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/stthisbyvalue_imm16_v8-dynamic2400.abc",
+      "sha256": "7f3500aab15f657cd6ad5dbf31f6d85b273580b6281087b4bd589d651edd4a45",
+      "opcodes": [
+        150
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/newtarget-sdk-default.abc",
+      "sha256": "a50d48d67cf720401a0e243743487e99cf6adfa3cf78f3132aff07ad6c785bca",
+      "opcodes": [
+        51,
+        53,
+        66,
+        67,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
+    },
+    {
+      "path": "tests/fixtures/isa/native_frame/newtarget-sdk-o0.abc",
+      "sha256": "ca16ad7ddc63fb5d21b38ef5ae34d66728147dc27376cd8e27b230f954760d31",
+      "opcodes": [
+        0,
+        51,
+        53,
+        66,
+        67,
+        68,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Only executed occurrence evidence can promote a fixture. new.target requires V7."
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.",
@@ -6325,6 +6665,10 @@
     {
       "test": "isa_recovery_variants_test",
       "producer": "tests/isa/recovery_variants_test.py"
+    },
+    {
+      "test": "isa_native_frame_test",
+      "producer": "tests/isa/native_frame_test.py"
     }
   ]
 }

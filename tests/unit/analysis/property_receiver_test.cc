@@ -49,8 +49,17 @@ int main() {
   Check(std::get<ReceiverError>(
             ProvePropertyReceivers(body, 3, abc::RegisterId{2}, {0})) ==
         ReceiverError::kResourceLimit);
-  auto unknown = Body({0x60, 2, 0x61, 0, 0xd5, 0xdb, 0, 0, 0, 0, 0x65});
-  unknown.instructions[2].decoded.opcode = abc::Opcode::kLDNEWTARGET;
+  // A modeled invocation-frame read changes acc, not retained register aliases.
+  auto invocation = Body({0x60, 2, 0x61, 0, 0xd5, 0xdb, 0, 0, 0, 0, 0x65});
+  invocation.instructions[2].decoded.opcode = abc::Opcode::kLDNEWTARGET;
+  result = std::get<std::vector<PropertyReceiver>>(
+      ProvePropertyReceivers(invocation, 3, abc::RegisterId{2}));
+  Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kEntryThis);
+  // Keep the unknown-instruction barrier test on a valid, still unsupported
+  // GETTEMPLATEOBJECT encoding. A future implementation must replace this
+  // witness and retain an independent unmodeled-effect test.
+  constexpr auto kTemplate = static_cast<std::uint8_t>(abc::Opcode::kGETTEMPLATEOBJECT_IMM8);
+  const auto unknown = Body({0x60, 2, 0x61, 0, kTemplate, 0, 0xdb, 0, 0, 0, 0, 0x65});
   result = std::get<std::vector<PropertyReceiver>>(
       ProvePropertyReceivers(unknown, 3, abc::RegisterId{2}));
   Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kUnknown);

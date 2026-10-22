@@ -38,6 +38,7 @@
 #include "abcd/analysis/rest_arguments.h"
 #include "abcd/analysis/array_spread.h"
 #include "abcd/analysis/scalar.h"
+#include "abcd/analysis/this_property.h"
 #include "abcd/analysis/value_write.h"
 
 namespace abcd::analysis {
@@ -123,6 +124,9 @@ struct GlobalObjectLoad {};
 // Pinned LDSYMBOL reads GlobalEnv::SymbolFunction, not the mutable global
 // object's Symbol property. Source publication requires an intrinsic binding.
 struct SymbolConstructorLoad {};
+// AOT value candidate; the C++/asm interpreter disagreement is retained in
+// this typed operation. Native source requires the independent V7 predicate.
+struct NewTargetLoad {};
 // Reads VM frame.thisObj, not the writable optional ABI register copy. Derived
 // construction can expose Hole here; source use needs callable-owner evidence.
 struct FrameThisLoad {};
@@ -169,7 +173,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck, ConcurrentNotification>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck, ConcurrentNotification, NewTargetLoad, ThisProperty>;
 // Exact VM-enumerator transport only. Does not prove acquisition identity,
 // closed use, loop advancement or source admission.
 [[nodiscard]] bool AcceptsPropertyEnumerator(const SemanticOperation& operation);
