@@ -103,6 +103,7 @@ std::optional<std::string_view> UnaryToken(UnaryOperator op) {
       return "typeof ";
     case UnaryOperator::kToNumber:
       return "+";
+    case UnaryOperator::kTemplateObject:
     case UnaryOperator::kLegacyNegate: // This legacy writer has no input/tag proof.
     case UnaryOperator::kFalseOrZero:
     case UnaryOperator::kTrueOrNonzeroNumber:

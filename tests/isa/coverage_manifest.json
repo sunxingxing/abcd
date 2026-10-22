@@ -6997,6 +6997,195 @@
       "classification": "Unmeasured",
       "oracles": {},
       "note": "RegExp runtime raw bits; only executed occurrence evidence promotes. SDK lowers literals to global RegExp construction."
+    },
+    {
+      "path": "tests/fixtures/isa/templates/templates-default.abc",
+      "sha256": "780f57d5557adee79489728617b5baaa507eb64d3fb2cf66106eb86f72a210a1",
+      "opcodes": [
+        0,
+        5,
+        41,
+        42,
+        43,
+        44,
+        47,
+        48,
+        51,
+        62,
+        63,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        118,
+        124,
+        507
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Private template construction; only occurrence-bound executed evidence promotes. V7 indexed descriptors and caching exclusions."
+    },
+    {
+      "path": "tests/fixtures/isa/templates/templates-o0.abc",
+      "sha256": "040f0d1248edf0e0e5ed7720c409592f1d187f52f21f67a13e6403b8819a14e5",
+      "opcodes": [
+        0,
+        5,
+        41,
+        42,
+        43,
+        44,
+        47,
+        48,
+        51,
+        62,
+        63,
+        66,
+        68,
+        69,
+        96,
+        97,
+        98,
+        100,
+        101,
+        118,
+        124,
+        507
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Private template construction; only occurrence-bound executed evidence promotes. V7 indexed descriptors and caching exclusions."
+    },
+    {
+      "path": "tests/fixtures/isa/templates/wide-default.abc",
+      "sha256": "e1197a73db761338d80371925714dfa85d559ebb750d23831cc8696da3817f12",
+      "opcodes": [
+        43,
+        51,
+        62,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        128,
+        144,
+        193,
+        507
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Private template construction; only occurrence-bound executed evidence promotes. V7 indexed descriptors and caching exclusions."
+    },
+    {
+      "path": "tests/fixtures/isa/templates/wide-o0.abc",
+      "sha256": "8655ef3fad614836a727f803d7433dd63a28b2833ef0006fa4cd8c7f2b34bf01",
+      "opcodes": [
+        0,
+        43,
+        51,
+        62,
+        66,
+        68,
+        69,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        128,
+        144,
+        193,
+        507
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Private template construction; only occurrence-bound executed evidence promotes. V7 indexed descriptors and caching exclusions."
+    },
+    {
+      "path": "tests/fixtures/isa/templates/gettemplateobject_imm8-dynamic1206.abc",
+      "sha256": "b15201a56d131e5c3e46bf9ffab17493580b0eccf1e1fc7a40a206b7443126f8",
+      "opcodes": [
+        5,
+        43,
+        51,
+        62,
+        96,
+        97,
+        100,
+        101,
+        118,
+        121,
+        124
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Private template construction; only occurrence-bound executed evidence promotes. V7 indexed descriptors and caching exclusions."
+    },
+    {
+      "path": "tests/fixtures/isa/templates/gettemplateobject_imm8-dynamic2400.abc",
+      "sha256": "86dfc55ec8d17d7802c03d962eb1fd14669ab325c881f2755d7987e7c40b8f70",
+      "opcodes": [
+        5,
+        43,
+        51,
+        62,
+        96,
+        97,
+        100,
+        101,
+        118,
+        121,
+        124
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Private template construction; only occurrence-bound executed evidence promotes. V7 indexed descriptors and caching exclusions."
+    },
+    {
+      "path": "tests/fixtures/isa/templates/gettemplateobject_imm16-dynamic1206.abc",
+      "sha256": "05dcefec26ac1ba9c5e00dab7d97d7ad1a50c4602be5f45433844c3beb18b798",
+      "opcodes": [
+        5,
+        43,
+        51,
+        62,
+        96,
+        97,
+        100,
+        101,
+        121,
+        124,
+        193
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Private template construction; only occurrence-bound executed evidence promotes. V7 indexed descriptors and caching exclusions."
+    },
+    {
+      "path": "tests/fixtures/isa/templates/gettemplateobject_imm16-dynamic2400.abc",
+      "sha256": "eda3612e6d9e74199412c70ed182d3e329140157cec1d2e993639ef43c7d7bc7",
+      "opcodes": [
+        5,
+        43,
+        51,
+        62,
+        96,
+        97,
+        100,
+        101,
+        121,
+        124,
+        193
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Private template construction; only occurrence-bound executed evidence promotes. V7 indexed descriptors and caching exclusions."
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.",
@@ -7064,6 +7253,10 @@
     {
       "test": "isa_regexp_source_test",
       "producer": "tests/isa/regexp_test.py"
+    },
+    {
+      "test": "isa_templates_source_test",
+      "producer": "tests/isa/templates_test.py"
     }
   ]
 }

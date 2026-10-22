@@ -275,3 +275,42 @@ occurrence attestations; 775 recompiled events match and 899 remain null.
 The two intrinsic widths are verified in profiles 4 and 6. Three already-lifted
 imm16 variants gain profile-6 Node evidence from the SDK fixtures. Tagged
 GETTEMPLATEOBJECT still has no production recovery or new oracle evidence.
+
+
+## Tagged-template construction (coverage round 7)
+
+`isa_templates_source_test` covers SDK default/O0 plain and member tags,
+String.raw, invalid escapes, nested tags, ordered/throwing substitutions and a
+throwing tag. A 140-property-site SDK function forces GETTEMPLATEOBJECT imm16.
+Four independently constructed modules cover both widths in profiles 4 and 6.
+All eight records complete and pass Node syntax and differential checks.
+The only Node exclusions are V7's indexed descriptor enumerability and repeated
+site-object identity. No Ark runtime result is claimed.
+
+`template_construction_test` independently re-derives fresh/private
+raw/cooked/carrier identities, ordered own definitions, exact first-argument
+consumption and exception dispatches. Tree/recovery tests reject raw/cooked,
+use, call-ownership, missing-event and exception mutations. Normal and phased
+variants and 200/201/400/800 quasi/string exact budgets pass. The SDK end-to-end
+scale test covers the same site counts and string lengths. A single SDK tag
+with 200+ substitutions still reaches the unrelated WIDE_CALLRANGE refusal;
+its pinned operand-offset disagreement is documented in
+[isa-template-construction.md](../../docs/design/source-recovery/isa-template-construction.md).
+
+The regenerated ledger is **149 SupportedVerified / 55 SupportedUnverified /
+100 Unmeasured / 28 NonExecutable**, with 928 ABCs, 1,358,413 instructions and
+no probe failures or backward profile moves. Both GETTEMPLATEOBJECT widths
+become verified in profiles 4/6; DEFINEFIELDBYVALUE becomes verified in profile 6.
+CALLARGS2, CALLARGS3 and CALLTHIS3 gain occurrence-bound Node evidence as well.
+The eight evidence transactions record 172 cases and 1,863 Node occurrence
+attestations: 1,074 exact ordered-event round-trip matches and 789 null entries.
+Ark runtime remains null. Raw lifting of historical GETTEMPLATEOBJECT is
+measured, without transferring current-profile Node evidence to it.
+
+Strict source-oracle/recovered-source grouping_bytecode comparisons (default and O0 separately) give six exact
+whole-record matches and two differences at each level. In those two SDK
+records all nine callable methods match exactly; only module-entry function
+installation order differs because the existing recovery emits independent
+function declarations in name order. The tool retains those as differences,
+not normalized passes. Source-declaration/export adaptation is applied on both
+sides; no register, branch, handler or instruction normalization is used.

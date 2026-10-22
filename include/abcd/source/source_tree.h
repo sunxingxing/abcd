@@ -128,6 +128,8 @@ using TreeLiteral = std::variant<UndefinedLiteral, NullLiteral, BooleanLiteral,
                                  IntegerLiteral, NumberLiteral, TextId>;
 enum class NewTargetForm : std::uint8_t { kAbiEntry, kInstruction };
 struct NewTargetExpr { FunctionOwnerId owner; NewTargetForm form = NewTargetForm::kAbiEntry; };
+struct TemplateQuasi { TextId raw; std::optional<TextId> cooked; bool operator==(const TemplateQuasi&) const = default; };
+struct TemplateObjectExpr { std::shared_ptr<const std::vector<TemplateQuasi>> quasis; };
 struct RegExpExpr { TextId text; analysis::RegExpFlags flags; };
 struct BigIntExpr { TextId text; };
 // Intrinsic carriers require the independently verified native rest projection.
@@ -273,7 +275,7 @@ using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, Rea
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr, UpdateExpr, SequenceExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr, BigIntExpr, NewTargetExpr, ObjectRestExpr, PatternFailureExpr, RegExpExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr, BigIntExpr, NewTargetExpr, ObjectRestExpr, PatternFailureExpr, RegExpExpr, TemplateObjectExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
 struct BlockStmt {

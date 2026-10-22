@@ -22,7 +22,7 @@ std::optional<OpId> Producer(const ValueProgram& graph, const EvaluationPlan& pl
 bool Inputs(const ValueOp& op, const OpEvaluation& placement) {
   const auto shape = DescribeEvaluation(op.operation);
   const bool assignment = placement.kind == EvaluationKind::kInline && shape && shape->assignment_result;
-  return op.life == ValueLife::kLive && placement.kind != EvaluationKind::kConcurrentNotification && placement.kind != EvaluationKind::kForOfEvent && placement.kind != EvaluationKind::kForInEvent && placement.kind != EvaluationKind::kAlias &&
+  return op.life == ValueLife::kLive && placement.kind != EvaluationKind::kTemplateConstruction && placement.kind != EvaluationKind::kConcurrentNotification && placement.kind != EvaluationKind::kForOfEvent && placement.kind != EvaluationKind::kForInEvent && placement.kind != EvaluationKind::kAlias &&
       placement.kind != EvaluationKind::kElidedPure &&
       (PhaseCorridors::Expression(op.operation) ||
        ((placement.kind == EvaluationKind::kRoot || assignment) && PhaseCorridors::ConsumesOperands(op.operation)));

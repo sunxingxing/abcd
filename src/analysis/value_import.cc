@@ -120,7 +120,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, DefineAccessor>) {
       return ValueDefineAccessor{};
     } else if constexpr (std::is_same_v<T, ComputedOwnWrite>) {
-      return ValueComputedOwnWrite{op.name_setting};
+      return ValueComputedOwnWrite{op.name_setting,op.kind};
     } else if constexpr (std::is_same_v<T, ArraySpread>) {
       return ValueArraySpread{};
     } else if constexpr (std::is_same_v<T, IndexedWrite>) {

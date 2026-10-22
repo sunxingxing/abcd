@@ -4,6 +4,7 @@
 #include "tree_print_trace.h"
 #include "source_variables.h"
 #include "regexp_literal.h"
+#include "template_literal.h"
 #include "tail_completion.h"
 #include "discarded_read.h"
 #include "class_names.h"
@@ -87,6 +88,8 @@ struct Indent { std::size_t depth; };
 struct PropertyKey { NameId id; bool optional = false; };
 struct SymbolName { SymbolId id; };
 struct ObjectRestCursor { const ObjectRestSurface* pattern; std::uint32_t index; };
+struct TemplateChunk { ExprId object; std::uint32_t index; };
+struct TemplateStart { ExprId object; };
 struct ArgumentCursor { ArgumentRange range; std::uint32_t index; };
 struct ArrayArgumentCursor { ExprId array; };
 struct SnapshotCursor { ArgumentRange range; std::uint32_t index; };
@@ -101,7 +104,7 @@ struct BeginFunction { bool grouped = true; };
 struct EndFunction { bool grouped = true; };
 struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
-using PrintAction = std::variant<std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectElidedOperands, ExpressionOperand, BooleanOperand, PostfixSpine,
+using PrintAction = std::variant<TemplateStart, TemplateChunk, std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectElidedOperands, ExpressionOperand, BooleanOperand, PostfixSpine,
     Statement, EndStatement, BlockCursor, Indent, PropertyKey, SymbolName, ArgumentCursor,
     ObjectCursor, ObjectRestCursor, EndProperty, BeginFunction, EndFunction, ParameterCursor, EndParameter, SnapshotCursor, DerivedClassBody, ArrayArgumentCursor, LoopHeader, LoopHeaderCursor, ElideStatement, LoopBody, LoopTransitionEnd, LoopInitializerCursor, LoopDeclarationCursor, LoopKeyword, BlockBoundary>;
 struct OwnedAction { std::size_t owner; std::size_t depth; PrintAction action; };
@@ -810,6 +813,7 @@ class TreePrinter {
     if (ModuleBody()) throw Error::kUnsupportedContext;
     Append("new.target");
   }
+  void Expression(TemplateObjectExpr) { throw Error::kUnsupportedContext; }
   void Expression(RegExpExpr node) {
     auto checked=BuildRegExpLiteral(Tree().texts[node.text.value],node.flags,remaining_);
     if(const auto* error=std::get_if<RegExpLiteralError>(&checked))throw *error==RegExpLiteralError::kResourceLimit?Error::kResourceLimit:*error==RegExpLiteralError::kWorkLimit?Error::kWorkLimit:Error::kInvalidLiteral;
@@ -1006,6 +1010,21 @@ class TreePrinter {
     return false;
   }
   void Expression(const CallExpr& node, bool statement_start = false) {
+    if(!node.array_arguments&&node.arguments.count) {
+      const auto object=Tree().arguments[node.arguments.first];
+      if(const auto* site=std::get_if<TemplateObjectExpr>(&Tree().expressions[object.value].expression)) {
+        if(!site->quasis||site->quasis->size()!=node.arguments.count||!TaggedTemplates(Tree().identity.contract))throw Error::kUnsupportedContext;
+        Push(EndExpression{object});
+        Push(std::string_view("`"));
+        for(std::size_t q=site->quasis->size();q-->0;){Step();Push(TemplateChunk{object,static_cast<std::uint32_t>(q)});if(q){Push(std::string_view("}"));Push(ExpressionOperand{Tree().arguments[node.arguments.first+q],{ExpressionGrammar::kExpression}});Push(std::string_view("${"));}}
+        Push(std::string_view("`"));
+        Push(TemplateStart{object});
+        if(node.reference==CallReference::kValue&&!PlainValueCallee(node.callee)){Push(std::string_view(")"));Push(node.callee);Push(std::string_view("(0, "));}
+        else Push(ExpressionOperand{node.callee,{PostfixContext::kCallCallee},{},ExpressionObservation::kValue,false,statement_start});
+        return;
+      }
+    }
+
     if (node.reference == CallReference::kValue && !PlainValueCallee(node.callee)) {
       Append("(0, ");
       Push(std::string_view(")"));
@@ -1389,6 +1408,16 @@ class TreePrinter {
     Push(SnapshotCursor{cursor.range, cursor.index + 1});
     Push(std::string_view(" : void 0)"));
     Push(ExpressionOperand{Tree().arguments[cursor.range.first + cursor.index], {ExpressionGrammar::kAssignmentValue}});
+  }
+  void Run(TemplateStart start) {
+    Result().expressions[start.object.value].begin = written_;
+    Result().expression_extents[start.object.value] = GeneratedExtent::kSpan;
+  }
+  void Run(TemplateChunk chunk) {
+    const auto& site=std::get<TemplateObjectExpr>(Tree().expressions[chunk.object.value].expression);
+    const auto& raw=Tree().texts[(*site.quasis)[chunk.index].raw.value];
+    for(std::size_t i=0;i<raw.size();++i){Step();std::uint32_t cp=raw[i];if(cp>=0xd800&&cp<=0xdbff){if(++i>=raw.size()||raw[i]<0xdc00||raw[i]>0xdfff)throw Error::kInvalidLiteral;cp=0x10000+((cp-0xd800)<<10)+(raw[i]-0xdc00);}else if(cp>=0xdc00&&cp<=0xdfff)throw Error::kInvalidLiteral;
+      char bytes[4];std::size_t size=0;if(cp<0x80)bytes[size++]=char(cp);else if(cp<0x800){bytes[size++]=char(0xc0|(cp>>6));bytes[size++]=char(0x80|(cp&63));}else if(cp<0x10000){bytes[size++]=char(0xe0|(cp>>12));bytes[size++]=char(0x80|((cp>>6)&63));bytes[size++]=char(0x80|(cp&63));}else{bytes[size++]=char(0xf0|(cp>>18));bytes[size++]=char(0x80|((cp>>12)&63));bytes[size++]=char(0x80|((cp>>6)&63));bytes[size++]=char(0x80|(cp&63));}Append({bytes,size});}
   }
   void Run(std::string_view token) { Append(token); }
   void Run(SymbolName symbol) { Name(symbol.id); }

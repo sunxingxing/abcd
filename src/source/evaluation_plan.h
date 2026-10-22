@@ -2,6 +2,7 @@
 #ifndef ABCD_SOURCE_EVALUATION_PLAN_H_
 #define ABCD_SOURCE_EVALUATION_PLAN_H_
 #include "for_of_evaluation_plan.h"
+#include "template_construction.h"
 #include "joint_selection_use.h"
 #include "literal_field_types.h"
 
@@ -116,6 +117,7 @@ struct EvaluationPlan {
   std::vector<OpEvaluation> operations;
   // Empty functions retain no member-update arenas or per-vector headers.
   std::shared_ptr<const MemberUpdatePlan> member_updates;
+  std::shared_ptr<const TemplateConstructions> templates;
   // Ordinary phi copies execute at incoming boundaries. Selected logical_values
   // consume both inputs in one expression instead; this table still proves
   // original values/schedules, not their eventual AST edge placement.
@@ -212,6 +214,13 @@ struct ArraySourceInput {
   std::span<const std::u16string> names;
   std::optional<ArrayInitializationError>* failure = nullptr;
 };
+inline bool TemplateOwned(const EvaluationPlan& p, analysis::OpId op) { return p.templates && p.templates->owners[op.value].has_value(); }
+inline bool TemplateHidden(const EvaluationPlan& p, analysis::UseId use) { return p.templates && p.templates->hidden[use.value]; }
+inline const TemplateConstruction* TemplateSite(const EvaluationPlan& p, analysis::OpId op) {
+  if(!p.templates)return nullptr;
+  auto i=std::lower_bound(p.templates->sites.begin(),p.templates->sites.end(),op,[](const auto& site,auto id){return site.operation<id;});
+  return i!=p.templates->sites.end()&&i->operation==op?&*i:nullptr;
+}
 inline const ArrayInitializationPlan* ArrayInitializations(const EvaluationPlan& plan) {
   return plan.literals && plan.literals->arrays ? &*plan.literals->arrays : nullptr;
 }

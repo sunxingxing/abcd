@@ -378,7 +378,7 @@ class FlowCheck {
               evaluation_.operations[id.value].kind == EvaluationKind::kLogicalLeft ||
               evaluation_.operations[id.value].kind == EvaluationKind::kNestedLiteral ||
               evaluation_.operations[id.value].kind == EvaluationKind::kInitializer ||
-              evaluation_.operations[id.value].kind == EvaluationKind::kClassProjection ||
+              (evaluation_.operations[id.value].kind == EvaluationKind::kTemplateConstruction || evaluation_.operations[id.value].kind == EvaluationKind::kClassProjection) ||
               evaluation_.operations[id.value].kind == EvaluationKind::kModuleGuard || GuardedInput(evaluation_, id) ||
               (evaluation_.operations[id.value].kind == EvaluationKind::kGuardedCellRead &&
                evaluation_.operations[GuardedPeer(evaluation_, id)->value].kind == EvaluationKind::kInline)) continue;
@@ -784,7 +784,7 @@ class FlowCheck {
           kind == EvaluationKind::kModuleGuard) continue;
       const auto& placement = tree_.operations[*placements_[id.value]].node;
       if (kind == EvaluationKind::kConcurrentNotification || IsReceiverGuard(tree_, id) || kind == EvaluationKind::kCellGuard ||
-          kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
+          (kind == EvaluationKind::kTemplateConstruction || kind == EvaluationKind::kClassProjection) || IsAbsentHeritageTransport(graph_, evaluation_, op) ||
           std::holds_alternative<analysis::ValueJump>(op.operation) || IsEnvironmentState(op.operation) ||
           kind == EvaluationKind::kElidedPure || kind == EvaluationKind::kAlias || kind == EvaluationKind::kArrayCursor) {
         const auto* anchor = std::get_if<AnchorId>(&placement);
@@ -1963,7 +1963,7 @@ class FlowCheck {
             std::holds_alternative<AnchorId>(placement), Error::kPlacement);
         continue;
       }
-      if (evaluation_.operations[i].kind == EvaluationKind::kClassProjection ||
+      if ((evaluation_.operations[i].kind == EvaluationKind::kTemplateConstruction || evaluation_.operations[i].kind == EvaluationKind::kClassProjection) ||
           evaluation_.operations[i].kind == EvaluationKind::kArrayCursor) {
         Require(std::holds_alternative<AnchorId>(placement), Error::kPlacement);
         continue;

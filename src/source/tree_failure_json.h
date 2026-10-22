@@ -68,7 +68,7 @@ inline std::optional<TreeFailureEvidence> ParseTreeFailure(const nlohmann::json&
   if (j.contains("expected_owner")) { v.expected_owner = ParseTreeLocation(j["expected_owner"]); if (!v.expected_owner) return {}; }
   if (j.contains("actual_owner")) { v.actual_owner = ParseTreeLocation(j["actual_owner"]); if (!v.actual_owner) return {}; }
   if (j.contains("ownership")) { std::uint32_t n; if (!FailureNumber(j,"ownership",n) || n > static_cast<unsigned>(ExpressionOwnershipError::kPlacement)) return {}; v.ownership = static_cast<ExpressionOwnershipError>(n); }
-  if (j.contains("placement")) { std::uint32_t n; if (!FailureNumber(j,"placement",n) || n > static_cast<unsigned>(EvaluationKind::kForOfEvent)) return {}; v.placement = static_cast<EvaluationKind>(n); }
+  if (j.contains("placement")) { std::uint32_t n; if (!FailureNumber(j,"placement",n) || n > static_cast<unsigned>(EvaluationKind::kTemplateConstruction)) return {}; v.placement = static_cast<EvaluationKind>(n); }
   if (j.contains("decision_entry")) { v.decision_entry = ParseTreeLocation(j["decision_entry"]); if (!v.decision_entry) return {}; }
   if (j.contains("decision_prefix")) { std::uint32_t n; if (!FailureNumber(j,"decision_prefix",n) || n > static_cast<unsigned>(DecisionPrefixError::kStatementExpression)) return {}; v.decision_prefix = static_cast<DecisionPrefixError>(n); }
   if (j.contains("prefix_event")) { v.prefix_event = ParseTreeLocation(j["prefix_event"]); if (!v.prefix_event) return {}; }

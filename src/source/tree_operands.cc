@@ -1,3 +1,4 @@
+#include "template_tree.h"
 #include "assignment_values.h"
 #include "native_arguments.h"
 #include "implicit_constructor.h"
@@ -223,6 +224,7 @@ class OperandCheck {
     RequireMeaning(tree_.receiver_guards.size() == constants_.receiver_guards.size() &&
         std::equal(tree_.receiver_guards.begin(), tree_.receiver_guards.end(), constants_.receiver_guards.begin()), Error::kOperand);
     VerifyMemberUpdates(graph_, evaluation_, budget_);
+    RetainTemplateInputs(graph_,evaluation_,tree_,constants_,original_,budget_);
     budget_.Admit(MemberUpdates(evaluation_).updates.size(), sizeof(OriginalMemberUpdate));
     original_.member_updates.reserve(MemberUpdates(evaluation_).updates.size());
     budget_.Admit(original_.member_updates.capacity()-MemberUpdates(evaluation_).updates.size(), sizeof(OriginalMemberUpdate));
@@ -233,7 +235,7 @@ class OperandCheck {
       if (original_.iterations && original_.iterations->operations[i]) continue;
       if ((!original_.enumeration_operations.empty() && original_.enumeration_operations[i]) ||
           (!original_.forwarded_operations.empty() && original_.forwarded_operations[i])) continue;
-      if (evaluation_.operations[i].kind == EvaluationKind::kArrayCursor || evaluation_.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
+      if (evaluation_.operations[i].kind == EvaluationKind::kTemplateConstruction || evaluation_.operations[i].kind == EvaluationKind::kArrayCursor || evaluation_.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph_, evaluation_, op) || op.life != analysis::ValueLife::kLive ||
           evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
           evaluation_.operations[i].kind == EvaluationKind::kAlias) continue;
       current_ = {static_cast<std::uint32_t>(i)};
@@ -449,7 +451,11 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueReturn>) {
           InputAt(0, expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
-          original_.operations[i].intrinsic_expression=Unary(operation.op, input(0), expression);
+          if(operation.op==analysis::UnaryOperator::kTemplateObject){
+            const auto* site=TemplateSite(evaluation_,current_);RequireMeaning(site,Error::kOperand);const auto& object=Node<TemplateObjectExpr>(expression);RequireMeaning(object.quasis&&object.quasis->size()==site->quasis.size(),Error::kConstant);
+            for(std::size_t q=0;q<site->quasis.size();++q){budget_.Step();const auto& expected=site->quasis[q];const auto* raw=std::get_if<TextId>(&constants_.operations[expected.raw.value]);RequireMeaning(raw&&(*object.quasis)[q].raw==*raw,Error::kConstant);const auto* cooked=expected.cooked?std::get_if<TextId>(&constants_.operations[expected.cooked->value]):nullptr;RequireMeaning((*object.quasis)[q].cooked==(cooked?std::optional{*cooked}:std::nullopt),Error::kConstant);}
+            original_.operations[i].intrinsic_expression=expression;
+          } else original_.operations[i].intrinsic_expression=Unary(operation.op, input(0), expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueAwait>) {
           InputAt(0, Node<AwaitExpr>(expression).operand);
           original_.operations[i].intrinsic_expression=expression;
@@ -1377,6 +1383,7 @@ class OperandCheck {
     const auto occurrence = graph_.ops[current_.value].first_use;
     using U = analysis::UnaryOperator;
     switch (operation) {
+      case U::kTemplateObject: throw Error::kUnsupportedOperation;
       case U::kLegacyNegate:
         RequireMeaning(LegacyNegationEvaluation(graph_, operand, Arithmetic(tree_.identity.contract)), Error::kOperator);
         Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return expression;

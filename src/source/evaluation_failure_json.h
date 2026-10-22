@@ -96,8 +96,8 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
     if (!c.is_object() || !FailureNumber(c,"reason",n) || n > static_cast<unsigned>(SnapshotCandidateReason::kConsumerPlacement)) return {};
     evidence.reason = static_cast<SnapshotCandidateReason>(n);
     if (!FailureOptionalId(c,"occurrence",evidence.occurrence)) return {};
-    if (c.contains("producer")) { if (!FailureNumber(c,"producer",n) || n > static_cast<unsigned>(EvaluationKind::kForOfEvent)) return {}; evidence.producer = static_cast<EvaluationKind>(n); }
-    if (c.contains("consumer")) { if (!FailureNumber(c,"consumer",n) || n > static_cast<unsigned>(EvaluationKind::kForOfEvent)) return {}; evidence.consumer = static_cast<EvaluationKind>(n); }
+    if (c.contains("producer")) { if (!FailureNumber(c,"producer",n) || n > static_cast<unsigned>(EvaluationKind::kTemplateConstruction)) return {}; evidence.producer = static_cast<EvaluationKind>(n); }
+    if (c.contains("consumer")) { if (!FailureNumber(c,"consumer",n) || n > static_cast<unsigned>(EvaluationKind::kTemplateConstruction)) return {}; evidence.consumer = static_cast<EvaluationKind>(n); }
     v.snapshot_candidate = evidence;
   }
   if (j.contains("logical_coverage")) {
@@ -115,7 +115,7 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
   if (!FailureOptionalId(j,"use",v.use) || !FailureOptionalId(j,"value",v.value) ||
       !FailureOptionalId(j,"selection_edge",v.selection_edge) || !FailureOptionalId(j,"expected_consumer",v.expected_consumer) || !FailureOptionalId(j,"actual_consumer",v.actual_consumer)) return {};
   if (j.contains("selection_exit")) { if (!FailureNumber(j,"selection_exit",n) || n > static_cast<unsigned>(SelectionExitReason::kKeepEdge)) return {}; v.selection_exit = static_cast<SelectionExitReason>(n); }
-  if (j.contains("placement")) { if (!FailureNumber(j,"placement",n) || n > static_cast<unsigned>(EvaluationKind::kForOfEvent)) return {}; v.placement = static_cast<EvaluationKind>(n); }
+  if (j.contains("placement")) { if (!FailureNumber(j,"placement",n) || n > static_cast<unsigned>(EvaluationKind::kTemplateConstruction)) return {}; v.placement = static_cast<EvaluationKind>(n); }
   if (j.contains("temporary")) { if (!FailureNumber(j,"temporary",n) || n > static_cast<unsigned>(TemporaryReason::kEnumerationKey)) return {}; v.temporary = static_cast<TemporaryReason>(n); }
   if (j.contains("expected_temporary")) { if (!FailureNumber(j,"expected_temporary",n) || n > static_cast<unsigned>(TemporaryReason::kEnumerationKey)) return {}; v.expected_temporary = static_cast<TemporaryReason>(n); }
   if (j.contains("expected_owner")) { v.expected_owner = ParseTreeLocation(j["expected_owner"]); if (!v.expected_owner) return {}; }

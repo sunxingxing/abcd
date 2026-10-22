@@ -71,6 +71,12 @@ std::optional<UnarySpec> UnaryOp(Opcode opcode) {
   // Keep its semantic identity until numeric/tag proof authorizes native minus.
   using enum UnaryInput;
   switch (opcode) {
+    // OH7 interpreter-inl.cpp:5300-5330; TemplateString::GetTemplateObject.
+    case Opcode::kGETTEMPLATEOBJECT_IMM8:
+    case Opcode::kGETTEMPLATEOBJECT_IMM16:
+      return UnarySpec{UnaryOperator::kTemplateObject, kCachedAccumulator};
+    case Opcode::kDEPRECATED_GETTEMPLATEOBJECT_PREF_V8:
+      return UnarySpec{UnaryOperator::kTemplateObject, kRegister};
     case Opcode::kINC_IMM8:
       return UnarySpec{UnaryOperator::kIncrement, kCachedAccumulator};
     case Opcode::kDEC_IMM8:

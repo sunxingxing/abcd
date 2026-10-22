@@ -117,7 +117,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     const auto& op = graph.ops[i];
     if ((evaluation.for_of && evaluation.for_of->operations[i]) || (evaluation.for_in && evaluation.for_in->operations[i]) ||
         (!flow.forwarded_operations.empty() && flow.forwarded_operations[i])) continue;
-    if (IsReceiverGuard(tree, analysis::OpId{static_cast<std::uint32_t>(i)}) || evaluation.operations[i].kind == EvaluationKind::kCellGuard || evaluation.operations[i].kind == EvaluationKind::kArrayCursor || evaluation.operations[i].kind == EvaluationKind::kClassProjection || IsAbsentHeritageTransport(graph, evaluation, op) || op.life != analysis::ValueLife::kLive ||
+    if (IsReceiverGuard(tree, analysis::OpId{static_cast<std::uint32_t>(i)}) || evaluation.operations[i].kind == EvaluationKind::kCellGuard || evaluation.operations[i].kind == EvaluationKind::kArrayCursor || evaluation.operations[i].kind == EvaluationKind::kClassProjection || evaluation.operations[i].kind == EvaluationKind::kTemplateConstruction || IsAbsentHeritageTransport(graph, evaluation, op) || op.life != analysis::ValueLife::kLive ||
         evaluation.operations[i].kind == EvaluationKind::kElidedPure ||
         evaluation.operations[i].kind == EvaluationKind::kAlias) continue;
     RequireMeaning(op.origin.value < graph.origins.size(), Error::kOrigin);

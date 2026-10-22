@@ -53,6 +53,7 @@ std::optional<bool> TruthPolarity(const ValueProgram& graph, UnaryOperator op, c
     case UnaryOperator::kTrueOrNonzeroNumber:
       if (BooleanEvaluation(graph, input)) return true;
       return {};
+    case UnaryOperator::kTemplateObject:
     case UnaryOperator::kLegacyNegate: case UnaryOperator::kNegate:
     case UnaryOperator::kBitNot: case UnaryOperator::kTypeOf:
     case UnaryOperator::kToNumber: case UnaryOperator::kToNumeric:

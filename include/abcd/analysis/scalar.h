@@ -55,7 +55,9 @@ enum class UnaryOperator {
   kDecrement,
   kFalseOrZero,
   kTrueOrNonzeroNumber,
-  kLegacyNegate
+  kLegacyNegate,
+  // VM unary intrinsic. Native syntax requires the private template certificate.
+  kTemplateObject
 };
 struct UnaryExpression {
   UnaryOperator op;

@@ -102,7 +102,7 @@ struct ValueAwait { AwaitRegion origin; bool operator==(const ValueAwait&) const
 struct ValueYield { YieldRegion origin; bool operator==(const ValueYield&) const = default; };
 struct ValueUnary { UnaryOperator op; bool operator==(const ValueUnary&) const = default; };
 struct ValueBinary { BinaryOperator op; bool operator==(const ValueBinary&) const = default; };
-struct ValueComputedOwnWrite { PropertyNameSetting name_setting = PropertyNameSetting::kNone; bool operator==(const ValueComputedOwnWrite&) const = default; };
+struct ValueComputedOwnWrite { PropertyNameSetting name_setting = PropertyNameSetting::kNone; OwnWriteKind kind = OwnWriteKind::kStore; bool operator==(const ValueComputedOwnWrite&) const = default; };
 struct ValueArraySpread { bool operator==(const ValueArraySpread&) const = default; };
 struct ValueNamedRead { abc::PoolIndex name; PropertyLookup lookup = PropertyLookup::kObject; bool operator==(const ValueNamedRead&) const = default; };
 struct ValueNamedWrite { abc::PoolIndex name; bool operator==(const ValueNamedWrite&) const = default; };

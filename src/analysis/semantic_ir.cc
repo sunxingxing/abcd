@@ -309,6 +309,12 @@ SemanticEffects Effects(const SemanticOperation& operation,
             // an allocation effect even though the scalar value is compact.
             // Never classify this as a pure copy or duplicate its evaluation.
             effects.normal = LanguageEffect::kAllocation;
+          } else if (const auto* intrinsic = std::get_if<UnaryExpression>(&value.expression);
+                     intrinsic && intrinsic->op == UnaryOperator::kTemplateObject) {
+            effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |
+                LanguageEffect::kUserCode | LanguageEffect::kAllocation;
+            effects.before_throw = effects.normal;
+            effects.exceptional = ExceptionalCompletion::kMayThrow;
           } else if (std::holds_alternative<PropertyRead>(value.expression)) {
             effects.normal = LanguageEffect::kHeapRead |
                              LanguageEffect::kUserCode;

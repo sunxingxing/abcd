@@ -8,6 +8,7 @@ bool Boolean(analysis::UnaryOperator op) {
   switch (op) {
     case U::kToBoolean: case U::kLogicalNot: case U::kFalseOrZero:
     case U::kTrueOrNonzeroNumber: return true;
+    case U::kTemplateObject:
     case U::kLegacyNegate: case U::kNegate: case U::kBitNot: case U::kTypeOf: case U::kToNumber:
     case U::kToNumeric: case U::kIncrement: case U::kDecrement: return false;
   }

@@ -1259,12 +1259,39 @@
       "opcode": 118,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 71,
+        "roles": {
+          "completion": 1,
+          "destination": {
+            "type": "abcd::analysis::Accumulator"
+          },
+          "expression": {
+            "input": {
+              "type": "abcd::analysis::Accumulator"
+            },
+            "op": 12,
+            "type": "abcd::analysis::UnaryExpression"
+          },
+          "type": "abcd::analysis::ScalarAssignment"
+        },
+        "semantic_family": "abcd::analysis::ScalarAssignment",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -2190,6 +2217,7 @@
             "type": "abcd::abc::RegisterId",
             "value": 0
           },
+          "kind": 0,
           "name_setting": 1,
           "object": {
             "type": "abcd::abc::RegisterId",
@@ -3200,12 +3228,39 @@
       "opcode": 193,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 71,
+        "roles": {
+          "completion": 1,
+          "destination": {
+            "type": "abcd::analysis::Accumulator"
+          },
+          "expression": {
+            "input": {
+              "type": "abcd::analysis::Accumulator"
+            },
+            "op": 12,
+            "type": "abcd::analysis::UnaryExpression"
+          },
+          "type": "abcd::analysis::ScalarAssignment"
+        },
+        "semantic_family": "abcd::analysis::ScalarAssignment",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -3425,6 +3480,7 @@
             "type": "abcd::abc::RegisterId",
             "value": 0
           },
+          "kind": 0,
           "name_setting": 0,
           "object": {
             "type": "abcd::abc::RegisterId",
@@ -3765,6 +3821,7 @@
             "type": "abcd::abc::RegisterId",
             "value": 0
           },
+          "kind": 0,
           "name_setting": 1,
           "object": {
             "type": "abcd::abc::RegisterId",
@@ -4186,12 +4243,43 @@
       "opcode": 507,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 71,
+        "roles": {
+          "cache_slot": 0,
+          "key": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "kind": 1,
+          "name_setting": 0,
+          "object": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::ComputedOwnWrite"
+        },
+        "semantic_family": "abcd::analysis::ComputedOwnWrite",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,

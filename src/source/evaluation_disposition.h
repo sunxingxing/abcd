@@ -18,6 +18,7 @@ constexpr EvaluationDisposition Disposition(EvaluationKind kind) {
     case EvaluationKind::kCellGuard:
     case EvaluationKind::kAlias:
     case EvaluationKind::kElidedPure: return EvaluationDisposition::kAnchor;
+    case EvaluationKind::kTemplateConstruction:
     case EvaluationKind::kClassProjection:
     case EvaluationKind::kArrayCursor: return EvaluationDisposition::kEnclosingAnchor;
     case EvaluationKind::kEnvironment: return EvaluationDisposition::kEnvironment;

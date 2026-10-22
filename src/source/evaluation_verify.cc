@@ -59,8 +59,8 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     const auto of=VerifyForOfEvaluation(graph,for_of,plan,{bytes,work});
     if(const auto* error=std::get_if<EvaluationFailure>(&of))return *error;
     step(std::get<std::uint64_t>(of));
-    bool has_notification=false;
-    for(const auto& op:graph.ops){step();has_notification|=std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);}
+    bool has_template=false, has_notification=false;
+    for(const auto& op:graph.ops){step();has_template|=IsTemplateObject(op);has_notification|=std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);}
     Require(has_notification==plan.concurrent.has_value(),Error::kOwnership);
     if(plan.concurrent) {
       auto checked=VerifyConcurrentCompletion(graph,*plan.concurrent,{bytes,work});
@@ -228,6 +228,11 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     Require(has_spread == (ArrayInitializations(plan) != nullptr), Error::kOwnership);
     std::vector<std::optional<analysis::OpId>> literal_projection;
     auto projected_literals = std::span<const std::optional<analysis::OpId>>(plan.class_projection.owners);
+    Require(has_template==bool(plan.templates),Error::kOwnership);
+    if(plan.templates){TreeCheckBudget tpl_budget({bytes,work});Require(VerifyTemplateConstructions(graph,plan.aliases,plan.call_spread_contract,*plan.templates,tpl_budget),Error::kOwnership);admit(tpl_budget.Bytes(),1);step(tpl_budget.Work());
+      admit(graph.ops.size(),sizeof(std::optional<analysis::OpId>));literal_projection.resize(graph.ops.size());
+      for(std::size_t i=0;i<graph.ops.size();++i){step();literal_projection[i]=plan.templates->owners[i]?plan.templates->owners[i]:(plan.class_projection.owners.empty()?std::nullopt:plan.class_projection.owners[i]);}projected_literals=literal_projection;
+    }
     TreeCheckBudget spread_budget({bytes,work});
     const auto spread_inputs = IndexCallSpreadInputs(graph, plan, spread_budget);
     admit(spread_budget.Bytes(),1); step(spread_budget.Work());
@@ -240,7 +245,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       admit(graph.ops.size(), sizeof(std::optional<analysis::OpId>)); literal_projection.resize(graph.ops.size());
       for (std::size_t i = 0; i < graph.ops.size(); ++i) {
         step(); literal_projection[i] = arrays->owners[i] ? arrays->owners[i] :
-            (plan.class_projection.owners.empty() ? std::nullopt : plan.class_projection.owners[i]);
+            (TemplateOwned(plan,{static_cast<std::uint32_t>(i)}) ? plan.templates->owners[i] : (plan.class_projection.owners.empty() ? std::nullopt : plan.class_projection.owners[i]));
       }
       projected_literals = literal_projection;
       for (const auto& array : arrays->arrays) {
@@ -432,6 +437,8 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
                 Error::kOwnership);
         continue;
       }
+      if(TemplateOwned(plan,{static_cast<std::uint32_t>(i)})){Require(placement.kind==EvaluationKind::kTemplateConstruction&&!placement.consumer&&!placement.temporary,Error::kOwnership);visits[i]=EvaluationVisit::kDone;continue;}
+      Require(placement.kind!=EvaluationKind::kTemplateConstruction,Error::kOwnership);
       if (IsArrayInitialization(plan, {static_cast<std::uint32_t>(i)})) {
         Require(placement.kind == (IsArrayCursor(plan, {static_cast<std::uint32_t>(i)}, graph) ?
             EvaluationKind::kArrayCursor : EvaluationKind::kInitializer) && !placement.consumer && !placement.temporary, Error::kOwnership);
@@ -571,6 +578,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       for (std::uint32_t ordinal = 0; ordinal < op.use_count; ++ordinal) {
         step();
         const auto& use = graph.uses[op.first_use.value + ordinal];
+        if(TemplateHidden(plan,{op.first_use.value+ordinal}))continue;
         if (const auto error = CheckEvaluationUse(graph, use, *shape, ordinal)) return *error;
       }
     }
@@ -589,7 +597,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
           Require(BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kModuleGuard, Error::kOrder);
           step(); ++expected; fused_guard.reset();
         }
-        while (expected < end && (graph.ops[expected].life != analysis::ValueLife::kLive ||
+        while (expected < end && (TemplateOwned(plan,{static_cast<std::uint32_t>(expected)}) || graph.ops[expected].life != analysis::ValueLife::kLive ||
                                   BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kArrayCursor ||
                                   ForInOperation(plan, {static_cast<std::uint32_t>(expected)}) || ForOfOperation(plan,{static_cast<std::uint32_t>(expected)}) ||
                                   BeforeLogicalFusion(graph,plan,expected).kind == EvaluationKind::kConcurrentNotification ||
@@ -630,7 +638,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
           if (frame.next_operand < operands) {
             const auto ordinal=frame.next_operand++;
             const analysis::UseId use_id=native?(ordinal==0?native->base:ordinal==1&&native->key?*native->key:*native->rhs):analysis::UseId{op.first_use.value+ordinal};
-            if (MemberUpdateWire(plan,use_id) || IsMemberReceiver(graph, plan, graph.uses[use_id.value]))
+            if (TemplateHidden(plan,use_id) || MemberUpdateWire(plan,use_id) || IsMemberReceiver(graph, plan, graph.uses[use_id.value]))
               continue;
             const auto result = EvaluationProducer(graph, plan, use_id);
             if (!result || MemberUpdateIntrinsic(plan,*result)) continue;

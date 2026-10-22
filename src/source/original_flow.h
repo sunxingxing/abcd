@@ -12,6 +12,7 @@
 #include "abcd/analysis/exception_regions.h"
 #include <memory>
 namespace abcd::source {
+struct OriginalTemplates;
 class ClassInnerScopeProof;
 enum class ClassInitializationPortKind : std::uint8_t {
   kClassInnerInitialize,
@@ -219,6 +220,7 @@ struct OriginalIterations {
 };
 struct OriginalMemberUpdate { ExprId expression; MemberUpdate proof; MemberMutationExpr syntax; };
 struct OriginalFlow {
+  std::shared_ptr<const OriginalTemplates> templates;
   std::vector<ObjectRestSurface> object_rests;
   std::vector<OriginalMemberUpdate> member_updates;
   std::vector<OriginalClassInitialization> class_initializations;

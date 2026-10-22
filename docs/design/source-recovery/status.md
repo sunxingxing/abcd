@@ -10,6 +10,55 @@
 
 
 
+## ISA coverage7 — tagged templates published (2026-10-22)
+
+GETTEMPLATEOBJECT imm8/imm16 now uses a fresh/private interleaved
+raw/cooked/carrier certificate, a typed source template object, and independent
+TreeFlow/operand/recovery correspondence. CALLRUNTIME_DEFINEFIELDBYVALUE reuses
+the typed own-definition family with an explicit DefineField attribute.
+The ordinary call proof preserves the saved tag, receiver, substitution order,
+exception exits and result Commit. TV/TRV agreement is independently checked;
+raw text is preserved, including invalid escapes with cooked Undefined.
+The existing V7 predicate gates publication; no new premise or literal-plan
+allocation admission is introduced. Details and pinned citations:
+[isa-template-construction.md](isa-template-construction.md).
+
+- Baseline: `da924a32`. Final fresh 40-input comparisons: **605/620 source,
+  542/620 previous flags**, no new/lost completions and no text changes to
+  previously complete records. No application-source input enters the engine.
+- Eight new ABCs complete: SDK default/O0 and forced imm16, plus both widths in
+  profiles 4/6. Node syntax/differentials pass: **172 cases**, excluding only
+  V7 descriptor enumerability and repeated-site identity. Original ABCs are
+  independently decoded by the engine and ark_disasm.
+- Ledger: **143/58/103/28 → 149/55/100/28**
+  (Verified/Unverified/Unmeasured/NonExecutable), 928 files, 1,358,413
+  instructions, no probe failure or backward verified-profile move.
+  New transactions supply 1,863 Node attestations, 1,074 exact event round-trip
+  matches and 789 null matches; Ark runtime is null.
+- Strict grouping_bytecode: **6 pass / 2 differ / 0 unverified**, separately
+  at default and O0. Every callable body in the two differing SDK modules is
+  exact; only their module-entry function installation order differs. These
+  differences remain reported and are not promoted to exact round-trip passes.
+- Full build passes. Source-regression final **65/65**; all scale **14/14**
+  (including class-self depth800); ISA **18/18**; targeted **5/5**.
+  Required touched sweep **219/231**; its 12 failures are the documented
+  family_source_cli, tree_structure, try_tree, literal_construct, mixed_literal,
+  phased_literal, class_tree_source, literal_closure(+unguarded),
+  derived_literal_receiver(+unguarded), and try_tree_source failures.
+  The first concurrent regression run had a RichText worker timeout; isolated
+  OLD and NEW checks and the full final preset pass. No test assertion was
+  weakened. The independent unknown-instruction receiver test now uses
+  DYNAMICIMPORT, since GETTEMPLATEOBJECT is modeled.
+- Exact construction budgets at 800 quasis: **438,217 bytes / 113,093 work**;
+  800 substitutions (801 quasis) use **438,763 bytes / 113,234 work**; one less
+  refuses. 200/201/400/800 string and phased-graph boundaries
+  are checked. A single SDK tag with 200+ substitutions remains refused at
+  WIDE_CALLRANGE's separate pinned execution-path disagreement; the private
+  certificate supports that size, and SDK site-count/string scaling completes.
+- Evidence: `build/review/isa-r7/`, `build/review/isa-r7-work/` (final-source,
+  final-previous, roundtrip, test logs). Updated registry measurements retain
+  original fixture hashes. No commit, push or stash.
+
 ## ISA coverage6 — RegExp complete; tagged templates unfinished (2026-10-22)
 
 **Item 1 is implemented and measured; item 2 is not implemented.** No

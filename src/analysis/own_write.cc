@@ -1,3 +1,4 @@
+#include "abcd/analysis/define_instruction.h"
 #include "abcd/analysis/own_write.h"
 
 namespace abcd::analysis {
@@ -51,6 +52,15 @@ std::variant<OwnWrite, OwnWriteError> LiftOwnWrite(
 // Pinned v7.0 interpreter STOWNBYVALUE: IC slot, destination, key, acc value.
 std::variant<ComputedOwnWrite, OwnWriteError> LiftComputedOwnWrite(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
+  // DEFINEFIELD uses CreateDataPropertyOrThrow, including enumerable class
+  // fields. Keep that identity distinct from STOWN's class non-enumerability.
+  // OH7 interpreter-inl.cpp:7639; runtime_stubs-inl.h:3450.
+  if(instruction.opcode==abc::Opcode::kCALLRUNTIME_DEFINEFIELDBYVALUE_PREF_IMM8_V8_V8){
+    auto lifted=LiftDefineInstruction(instruction,frame_size);
+    if(const auto* field=std::get_if<DefineFieldByValue>(&lifted))return ComputedOwnWrite{field->object,field->key,field->profile_slot,PropertyNameSetting::kNone,OwnWriteKind::kDefineField};
+    if(const auto* error=std::get_if<DefineError>(&lifted))return *error==DefineError::kRegisterRange?OwnWriteError::kRegisterRange:OwnWriteError::kMalformedInstruction;
+    return OwnWriteError::kMalformedInstruction;
+  }
   std::uint64_t maximum;
   auto naming = PropertyNameSetting::kNone;
   switch (instruction.opcode) {

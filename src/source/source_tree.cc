@@ -44,6 +44,7 @@ std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
     }
     return {};
   };
+  for(const auto& node:tree.expressions){if(!work)return TreeStorageError::kWorkLimit;--work;if(const auto* t=std::get_if<TemplateObjectExpr>(&node.expression);t&&t->quasis)if(!admit(1,sizeof(*t->quasis))||!arena(*t->quasis))return TreeStorageError::kResourceLimit;}
   if (const auto error = payloads(tree.names)) return *error;
   if (const auto error = payloads(tree.texts)) return *error;
   if (tree.parameter_expressions) {

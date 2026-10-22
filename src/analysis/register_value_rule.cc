@@ -39,6 +39,7 @@ bool HasLanguageResult(UnaryOperator op) {
     case UnaryOperator::kFalseOrZero:
     case UnaryOperator::kTrueOrNonzeroNumber:
       return true;
+    case UnaryOperator::kTemplateObject:
     case UnaryOperator::kLegacyNegate:
     case UnaryOperator::kNegate:
     case UnaryOperator::kToNumber:
@@ -141,6 +142,8 @@ ValueRule DescribeScalarValue(const ScalarAssignment& assignment, ArithmeticSema
     // through loop-carried SSA values; never extend it to arbitrary Language
     // inputs, whose coercions or NaN payloads need separate proofs.
     switch (unary->op) {
+      case UnaryOperator::kTemplateObject:
+        return ValueRule{ValueRuleKind::kFixed, ValueKinds::Defined()};
       case UnaryOperator::kNegate:
         return ValueRule{ValueRuleKind::kNegate, {}, arithmetic};
       case UnaryOperator::kLegacyNegate:

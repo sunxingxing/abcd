@@ -56,10 +56,10 @@ int main() {
       ProvePropertyReceivers(invocation, 3, abc::RegisterId{2}));
   Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kEntryThis);
   // Keep the unknown-instruction barrier test on a valid, still unsupported
-  // GETTEMPLATEOBJECT encoding. A future implementation must replace this
-  // witness and retain an independent unmodeled-effect test.
-  constexpr auto kTemplate = static_cast<std::uint8_t>(abc::Opcode::kGETTEMPLATEOBJECT_IMM8);
-  const auto unknown = Body({0x60, 2, 0x61, 0, kTemplate, 0, 0xdb, 0, 0, 0, 0, 0x65});
+  // DYNAMICIMPORT encoding. GETTEMPLATEOBJECT now has a modeled result;
+  // this independent unmodeled-effect witness must still erase aliases.
+  constexpr auto kImport = static_cast<std::uint8_t>(abc::Opcode::kDYNAMICIMPORT);
+  const auto unknown = Body({0x60, 2, 0x61, 0, kImport, 0xdb, 0, 0, 0, 0, 0x65});
   result = std::get<std::vector<PropertyReceiver>>(
       ProvePropertyReceivers(unknown, 3, abc::RegisterId{2}));
   Check(result.size() == 1 && result[0].origin == ReceiverOrigin::kUnknown);

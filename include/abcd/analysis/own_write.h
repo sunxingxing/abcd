@@ -20,6 +20,7 @@ struct ComputedOwnWrite {
   abc::RegisterId key;
   std::uint16_t cache_slot;
   PropertyNameSetting name_setting = PropertyNameSetting::kNone;
+  OwnWriteKind kind = OwnWriteKind::kStore;
 };
 enum class OwnWriteError {
   kUnsupportedOpcode,

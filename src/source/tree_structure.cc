@@ -2,6 +2,8 @@
 #include "tree_structure.h"
 #include "bigint_literal.h"
 #include "regexp_literal.h"
+#include "template_literal.h"
+#include "template_tree.h"
 #include "native_arguments.h"
 
 #include <algorithm>
@@ -136,6 +138,7 @@ class StructureCheck {
     for(const auto& node:tree_.expressions){budget_.Step();if(const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&node.expression))native_snapshot|=snapshot->form==ArgumentSnapshotForm::kNativeEntry;}
     if(native_snapshot)VerifyNativeArgumentsNames(tree_,budget_);
     VerifyAllSwitchSyntax(tree_, budget_);
+    VerifyTemplateCalls(tree_,budget_);
     for (const auto& issue : tree_.recovery_issues) {
       budget_.Step();
       RequireTree(!issue.end || (issue.begin && *issue.begin <= *issue.end), Error::kRange);
@@ -333,7 +336,9 @@ class StructureCheck {
     RequireTree(node.origin.value < tree_.origins.size(), Error::kOrigin);
     std::visit([&](const auto& expression) {
       using T = std::decay_t<decltype(expression)>;
-      if constexpr(std::is_same_v<T,RegExpExpr>) {
+      if constexpr(std::is_same_v<T,TemplateObjectExpr>) {
+        VerifyTemplateLiteral(expression,tree_.texts,tree_.identity.contract,budget_);
+      } else if constexpr(std::is_same_v<T,RegExpExpr>) {
         RequireTree(expression.text.value<tree_.texts.size(),Error::kRange);
         auto checked=BuildRegExpLiteral(tree_.texts[expression.text.value],expression.flags,budget_.Remaining());
         if(const auto* e=std::get_if<RegExpLiteralError>(&checked))throw *e==RegExpLiteralError::kResourceLimit?Error::kResourceLimit:*e==RegExpLiteralError::kWorkLimit?Error::kWorkLimit:*e==RegExpLiteralError::kSyntax?Error::kRegExpSyntax:*e==RegExpLiteralError::kSourceRepresentation?Error::kRegExpSource:Error::kRegExpUnproven;
@@ -768,7 +773,7 @@ class StructureCheck {
           if (const auto* member = std::get_if<MemberTarget>(&node.target)) { add(member->base); key(member->key); }
           add(node.value);
         } else {
-          static_assert(std::is_same_v<T, RegExpExpr> || std::is_same_v<T, ObjectRestExpr> || std::is_same_v<T, PatternFailureExpr> || std::is_same_v<T, BigIntExpr> || std::is_same_v<T, UpdateExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
+          static_assert((std::is_same_v<T, RegExpExpr> || std::is_same_v<T, TemplateObjectExpr>) || std::is_same_v<T, ObjectRestExpr> || std::is_same_v<T, PatternFailureExpr> || std::is_same_v<T, BigIntExpr> || std::is_same_v<T, UpdateExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
                         std::is_same_v<T, GlobalNameExpr> ||
                         std::is_same_v<T, RealmObjectExpr> ||
                         std::is_same_v<T, SymbolConstructorExpr> ||

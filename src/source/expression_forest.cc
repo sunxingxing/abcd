@@ -3,6 +3,7 @@
 #include "integer_nan.h"
 #include "staged_literal_names.h"
 #include "expression_forest.h"
+#include "recovery_scratch.h"
 #include "for_of_emission.h"
 #include "expression_copies.h"
 #include "class_tree.h"
@@ -370,8 +371,13 @@ class ForestBuilder {
         if (evaluation_.operations[i].kind == EvaluationKind::kInitializer ||
             evaluation_.operations[i].kind == EvaluationKind::kNestedLiteral) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kConcurrentNotification || evaluation_.operations[i].kind == EvaluationKind::kEnvironment ||
-            evaluation_.operations[i].kind == EvaluationKind::kClassProjection ||
+            evaluation_.operations[i].kind == EvaluationKind::kTemplateConstruction || evaluation_.operations[i].kind == EvaluationKind::kClassProjection ||
             evaluation_.operations[i].kind == EvaluationKind::kArrayCursor) continue;
+        if(const auto* site=TemplateSite(evaluation_,{static_cast<std::uint32_t>(i)})) {
+          TreeCheckBudget tpl_budget({bytes_,work_});auto quasis=std::allocate_shared<std::vector<TemplateQuasi>>(RecoveryAllocator<std::vector<TemplateQuasi>>{tpl_budget});tpl_budget.Array(*quasis,site->quasis.size());
+          for(std::size_t q=0;q<quasis->size();++q){tpl_budget.Step();const auto& source=site->quasis[q];const auto* raw=std::get_if<TextId>(&constants_.operations[source.raw.value]);Require(raw,Error::kConstant);std::optional<TextId> cooked;if(source.cooked){const auto* text=std::get_if<TextId>(&constants_.operations[source.cooked->value]);Require(text,Error::kConstant);cooked=*text;}(*quasis)[q]={*raw,cooked};}
+          Admit(tpl_budget.Bytes(),1);Step(tpl_budget.Work());forest_.operations[i]=Add(TemplateObjectExpr{std::move(quasis)},origin);continue;
+        }
         if (const auto* array = ArrayLiteralFor(evaluation_, {static_cast<std::uint32_t>(i)})) {
           forest_.operations[i] = Array(*array, origin); continue;
         }
@@ -1091,6 +1097,7 @@ class ForestBuilder {
       return Add(UnaryExpr{kind, operand}, origin);
     };
     switch (operation) {
+      case U::kTemplateObject: throw Error::kUnsupportedOperation;
       case U::kLegacyNegate:
         Require(LegacyNegationEvaluation(graph_, original, arithmetic_), Error::kUnsupportedOperation);
         return unary(TreeUnary::kNegate, input);

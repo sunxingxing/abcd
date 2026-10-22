@@ -1,4 +1,5 @@
 #include "object_rest_plan.h"
+#include "recovery_scratch.h"
 #include "evaluation_plan.h"
 
 #include <bit>
@@ -66,11 +67,12 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
     plan.flow = flow;
     plan.call_spread_contract = array_source.contract;
-    bool has_notification=false;
+    bool has_notification=false, has_template=false;
     for(std::size_t i = 0; i < graph.ops.size(); ++i) {
       step(); const auto& op = graph.ops[i];
       if (const auto failure = NameSettingRefusal(graph, {static_cast<std::uint32_t>(i)})) return *failure;
       if (const auto failure = CallSpreadRefusal(graph, {static_cast<std::uint32_t>(i)}, array_source.contract)) return *failure;
+      has_template |= IsTemplateObject(op);
       has_notification |= std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);
     }
     if(has_notification) {
@@ -310,6 +312,14 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     std::optional<ArrayInitializationPlan> arrays;
     std::vector<std::optional<analysis::OpId>> literal_projection;
     auto projected_literals = std::span<const std::optional<analysis::OpId>>(plan.class_projection.owners);
+    if(has_template) {
+      TreeCheckBudget tpl_budget({bytes,work});
+      auto proof=std::allocate_shared<TemplateConstructions>(RecoveryAllocator<TemplateConstructions>{tpl_budget},BuildTemplateConstructions(graph,plan.aliases,array_source.contract,tpl_budget));
+      plan.templates=std::move(proof);admit(tpl_budget.Bytes(),1);step(tpl_budget.Work());
+      admit(graph.ops.size(),sizeof(std::optional<analysis::OpId>));literal_projection.resize(graph.ops.size());
+      for(std::size_t i=0;i<graph.ops.size();++i){step();literal_projection[i]=plan.templates->owners[i]?plan.templates->owners[i]:(plan.class_projection.owners.empty()?std::nullopt:plan.class_projection.owners[i]);}
+      projected_literals=literal_projection;
+    }
     if (has_spread) {
       auto built = BuildArrayInitializations(graph, array_source.contract, array_source.constants, array_source.names,
           {bytes, work}, &plan);
@@ -322,7 +332,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       admit(graph.ops.size(), sizeof(std::optional<analysis::OpId>)); literal_projection.resize(graph.ops.size());
       for (std::size_t i = 0; i < graph.ops.size(); ++i) {
         step(); literal_projection[i] = arrays->owners[i] ? arrays->owners[i] :
-            (plan.class_projection.owners.empty() ? std::nullopt : plan.class_projection.owners[i]);
+            (TemplateOwned(plan,{static_cast<std::uint32_t>(i)}) ? plan.templates->owners[i] : (plan.class_projection.owners.empty() ? std::nullopt : plan.class_projection.owners[i]));
       }
       projected_literals = literal_projection;
     }
@@ -418,6 +428,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
           // Ordered protocol boundary: never an elided effect or eager expression.
           ++serial; continue;
         }
+        if(TemplateOwned(plan,{static_cast<std::uint32_t>(index)})){plan.operations[index]={EvaluationKind::kTemplateConstruction,{},{}};continue;}
         if (IsArrayInitialization(plan, {static_cast<std::uint32_t>(index)})) continue;
         if (op.life != analysis::ValueLife::kLive ||
             plan.operations[index].kind == EvaluationKind::kElidedPure ||
@@ -493,6 +504,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
           step();
           const analysis::UseId use{op.first_use.value + ordinal - 1};
           const auto& occurrence = graph.uses[use.value];
+          if(TemplateHidden(plan,use))continue;
           if (const auto error = CheckEvaluationUse(graph, occurrence, *shape, ordinal - 1)) return *error;
           const auto result = EvaluationProducer(graph, plan, use);
           if (!result || visible[result->value].first != use || visible[result->value].multiple) continue;
