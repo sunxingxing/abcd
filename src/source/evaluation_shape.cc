@@ -142,6 +142,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       }
       return {};
     } else if constexpr (std::is_same_v<T, analysis::ValueSuperCall>) {
+      if (op.callee != analysis::SuperCalleeSource::kInvocationFunction) return {};
       switch (op.source) {
         case analysis::SuperArgumentSource::kExplicit: {
           EvaluationShape shape{kNoOperands, true, op.arguments}; shape.source = SourceEvaluation::kInvocation;

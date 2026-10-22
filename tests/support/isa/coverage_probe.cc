@@ -46,6 +46,9 @@ template<class T> Json Describe(const T& value) {
     FIELD(arguments); FIELD(form); FIELD(first); FIELD(count); FIELD(values); FIELD(constructor);
     FIELD(literal); FIELD(length); FIELD(parent); FIELD(cache_slot); FIELD(mode);
     FIELD(target); FIELD(predicate); FIELD(op); FIELD(completion); FIELD(lookup);
+    if constexpr (requires { value.range_semantics; })
+      if (value.range_semantics != abcd::analysis::RangeCallSemantics::kCommon)
+        result["range_semantics"] = Describe(value.range_semantics);
     FIELD(loading); FIELD(name_setting); FIELD(domain); FIELD(operation); FIELD(scope); FIELD(id);
 #undef FIELD
     if constexpr (requires { value.First(); value.Count(); }) {

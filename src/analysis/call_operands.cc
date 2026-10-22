@@ -26,7 +26,7 @@ bool ValidArguments(const std::variant<CallRegisters, CallRange>& arguments) {
 std::uint32_t CallOperands::Count() const {
   return std::visit([](const auto& call) -> std::uint32_t {
     using T = std::decay_t<decltype(call)>;
-    if constexpr (std::is_same_v<T, SuperRange>) return call.count;
+    if constexpr (std::is_same_v<T, SuperRange>) return call.count + (call.callee == SuperCalleeSource::kAccumulator ? 1U : 0U);
     else if constexpr (std::is_same_v<T, ConstructorCall>) return call.inputs.count;
     else if constexpr (std::is_same_v<T, ReceiverCall>) return call.Count() + kReceiverPrefix;
     else return call.Count() + kCalleeOperands;
@@ -40,7 +40,9 @@ std::optional<InputOperand> CallOperands::At(std::uint32_t index) const {
       return InputOperand{role, value, ReadPurpose::kOperand, index};
     };
     if constexpr (std::is_same_v<T, SuperRange>) {
-      return operand(OperandRole::kArgument, abc::RegisterId{call.first.value + index});
+      const auto prefix = call.callee == SuperCalleeSource::kAccumulator ? 1U : 0U;
+      if (prefix && index == 0) return operand(OperandRole::kConstructor, Accumulator{});
+      return operand(OperandRole::kArgument, abc::RegisterId{call.first.value + index - prefix});
     } else if constexpr (std::is_same_v<T, ConstructorCall>) {
       if (index == 0) return operand(OperandRole::kConstructor, call.inputs.first);
       const auto argument = call.ArgumentAt(index - kCalleeOperands);

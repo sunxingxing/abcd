@@ -183,6 +183,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
       if (const auto failure = NameSettingRefusal(graph, {static_cast<std::uint32_t>(i)})) return *failure;
+      if (const auto failure = WideRangeRefusal(graph, {static_cast<std::uint32_t>(i)}, plan.call_spread_contract)) return *failure;
       if (const auto failure = CallSpreadRefusal(graph, {static_cast<std::uint32_t>(i)}, plan.call_spread_contract)) return *failure;
       const auto shape = op.life == analysis::ValueLife::kLive ? DescribeEvaluation(op.operation) : std::nullopt;
       has_object_rest |= op.life == analysis::ValueLife::kLive && std::holds_alternative<analysis::ValueObjectRest>(op.operation);

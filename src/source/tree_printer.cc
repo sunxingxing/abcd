@@ -988,7 +988,9 @@ class TreePrinter {
     if (symbol) Push(SymbolName{symbol->symbol});
     else {
       const auto& member = std::get<MemberTarget>(node.target);
-      Member(member.base, member.key, PostfixContext::kMemberBase, false, statement_start);
+      if (node.lookup == analysis::PropertyLookup::kSuper)
+        SuperMember(MemberExpr{member.base, member.key, node.lookup});
+      else Member(member.base, member.key, PostfixContext::kMemberBase, false, statement_start);
     }
   }
   bool PlainValueCallee(ExprId id) {

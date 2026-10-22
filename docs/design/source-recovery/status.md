@@ -10,6 +10,57 @@
 
 
 
+## ISA coverage8 — wide ranges and strict super stores (2026-10-22)
+
+- `LanguageSourceV8` inherits V7 and adds only the user-approved
+  `WideRangeCalls()` predicate. WIDE_CALLRANGE uses the ISA/C++/AOT start register;
+  its asm-stub byte-offset bug remains an explicitly accepted difference.
+  The six related layouts were checked separately; no other path disagrees.
+  Ordinary, receiver/named, constructor and derived-super calls reuse existing
+  lazy range operands, reference/order/exception and recovery checks.
+- Four super-store widths now retain strict super lookup in the existing write
+  operations. TreeFlow independently checks class home/receiver identity,
+  primitive computed keys and a transitive inert-RHS certificate. Recovery
+  reconstructs the same reference phases. Effectful RHS evaluation keeps
+  `kSuperStoreOrder`: Ark resolves the super reference later than native JS.
+- End-to-end fixtures: **84** complete wide-call records at
+  **200/201/256/300/400/800** arguments, including 800-substitution templates,
+  and **4** complete instance/static super-store records. **292** executed Node
+  cases; all **88** emitted records pass Node syntax. The 800-argument stress
+  constructs are separate records; no aggregate family budget was increased.
+- Ledger: **156 SupportedVerified / 55 SupportedUnverified / 93 Unmeasured /
+  28 NonExecutable**, from **149 / 55 / 100 / 28**. Seven variants moved from
+  Unmeasured to Verified in SDK profile **6**; no variant or previously verified
+  profile moved backward. The two oracle producers passed and recorded
+  occurrence evidence. Ark runtime stays null. Strict event mapping retains
+  its mismatches/resource refusals; Node evidence is not an Ark execution pass.
+- `grouping_bytecode.py`, both default and O0: **72** exact whole-record matches,
+  **16** differences, **0** unverified, per mode. Twelve derived-constructor
+  records add es2abc's return-expression undefined check when compiling native
+  `return super(...)`; it is unreachable because super commits an object.
+  Four super-store records have identical callable bodies and metadata meanings,
+  with only physical entity/string offsets shifted. No registers, branches,
+  handlers or metadata were normalized to call these passes. See the evidence
+  section of [isa-wide-range-calls.md](isa-wide-range-calls.md).
+- OLD **ccbad2ad**: both 40-input cohorts export without failures and remain
+  **605/620** source / **542/620** previous flags; **zero** regressions, new
+  completions or text changes in complete records. Only the source-contract
+  label changes to V8. Full build passed. Fixed source suite **65/65**; all
+  scale tests **16/16**; ISA **20/20**; focused units **5/5**; touched sweep
+  **155/160**, with only the documented `family_source_cli`, `tree_structure`,
+  `try_tree`, `class_tree_source`, `try_tree_source` failures. No spelling
+  expectations moved; contract-label assertions and raw-lift goldens updated.
+- Remaining scope: arrow-super is lifted with its explicit accumulator
+  constructor but remains unpublished (default CatchRegionError::kHandlerShape;
+  O0 DerivedProjectionError::kProtocol). It needs joint lexical constructor,
+  newTarget and initialized-this-cell correspondence with its parent. Object
+  literal super methods remain at ObjectBufferError::kShape;
+  class home-object evidence is not reused as proof of an object home.
+  Unknown computed keys and effectful super RHSs remain typed refusals.
+- Evidence: `build/review/isa-r8/`, `build/review/isa-r8-work/`; design:
+  [wide range calls](isa-wide-range-calls.md),
+  [super stores](isa-super-stores.md). No commit, push or stash.
+
 ## ISA coverage7 — tagged templates published (2026-10-22)
 
 GETTEMPLATEOBJECT imm8/imm16 now uses a fresh/private interleaved

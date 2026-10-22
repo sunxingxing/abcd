@@ -167,6 +167,8 @@ RegisterEffect EffectOf(const SuperForward& value) {
 }
 RegisterEffect EffectOf(const SuperRange& value) {
   RegisterEffect effect;
+  if (value.callee == SuperCalleeSource::kAccumulator)
+    effect.reads[effect.read_count++] = Accumulator{};
   effect.write = Accumulator{};
   effect.range = RegisterRange{value.first, value.count};
   return effect;

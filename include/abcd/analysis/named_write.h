@@ -2,12 +2,14 @@
 #define ABCD_ANALYSIS_NAMED_WRITE_H_
 
 #include "abcd/abc/pool_reference.h"
+#include "abcd/analysis/named_read.h"
 #include "abcd/abc/register_access.h"
 
 namespace abcd::analysis {
 struct NamedWrite {
   abc::PoolIndex name;
   abc::RegisterId object;
+  PropertyLookup lookup = PropertyLookup::kObject;
 };
 enum class NamedWriteError {
   kUnsupportedOpcode,

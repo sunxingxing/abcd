@@ -34,6 +34,19 @@ inline std::optional<EvaluationFailure> CallSpreadRefusal(
   witness.plan_cause = CallSpreadError::kPremise;
   return EvaluationFailure{EvaluationError::kUnsupportedOperation, witness};
 }
+// Only the ISA-layout ordinary wide call has the approved asm-stub deviation.
+inline std::optional<EvaluationFailure> WideRangeRefusal(
+    const analysis::ValueProgram& graph, analysis::OpId id, SourceContract contract) {
+  const auto& op = graph.ops[id.value];
+  const auto* call = std::get_if<analysis::ValueInvoke>(&op.operation);
+  if (op.life != analysis::ValueLife::kLive || !call ||
+      call->range_semantics != analysis::RangeCallSemantics::kIsaLayout ||
+      WideRangeCalls(contract)) return {};
+  EvaluationEvidence witness;
+  witness.location = OperationLocation(graph, id);
+  witness.input_check = EvaluationInputCheck::kWideRangePremise;
+  return EvaluationFailure{EvaluationError::kUnsupportedOperation, witness};
+}
 inline EvaluationEvidence EvaluationAt(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, analysis::OpId id, EvaluationObligation obligation) {
   EvaluationEvidence result; result.obligation = obligation;

@@ -71,6 +71,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     for(std::size_t i = 0; i < graph.ops.size(); ++i) {
       step(); const auto& op = graph.ops[i];
       if (const auto failure = NameSettingRefusal(graph, {static_cast<std::uint32_t>(i)})) return *failure;
+      if (const auto failure = WideRangeRefusal(graph, {static_cast<std::uint32_t>(i)}, array_source.contract)) return *failure;
       if (const auto failure = CallSpreadRefusal(graph, {static_cast<std::uint32_t>(i)}, array_source.contract)) return *failure;
       has_template |= IsTemplateObject(op);
       has_notification |= std::holds_alternative<analysis::ValueConcurrentNotification>(op.operation);

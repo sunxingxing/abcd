@@ -558,9 +558,19 @@ class StructureCheck {
         // execution order are proved separately against its Value IR operation.
       } else {
         static_assert(std::is_same_v<T, AssignmentExpr>);
-        if (const auto* symbol = std::get_if<SymbolTarget>(&expression.target))
+        if (const auto* symbol = std::get_if<SymbolTarget>(&expression.target)) {
+          RequireTree(expression.lookup==analysis::PropertyLookup::kObject,Error::kUnsupportedSyntax);
           scopes_.Reference(symbol->symbol, true);
-        else Key(std::get<MemberTarget>(expression.target).key);
+        }
+        else {
+          const auto& member=std::get<MemberTarget>(expression.target);
+          Key(member.key);
+          RequireTree(expression.lookup==analysis::PropertyLookup::kObject || expression.lookup==analysis::PropertyLookup::kSuper,Error::kUnsupportedSyntax);
+          if(expression.lookup==analysis::PropertyLookup::kSuper)
+            RequireTree(tree_.strictness==Strictness::kStrict && tree_.home_object==HomeObjectBinding::kClass &&
+                (IsMethodCallable(tree_.callable)||tree_.callable==CallableKind::kBaseConstructor||tree_.callable==CallableKind::kDerivedConstructor) &&
+                member.base.value<tree_.expressions.size() && std::holds_alternative<ThisExpr>(tree_.expressions[member.base.value].expression),Error::kUnsupportedSyntax);
+        }
       }
     }, node.expression);
   }

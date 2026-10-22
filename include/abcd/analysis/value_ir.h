@@ -105,7 +105,7 @@ struct ValueBinary { BinaryOperator op; bool operator==(const ValueBinary&) cons
 struct ValueComputedOwnWrite { PropertyNameSetting name_setting = PropertyNameSetting::kNone; OwnWriteKind kind = OwnWriteKind::kStore; bool operator==(const ValueComputedOwnWrite&) const = default; };
 struct ValueArraySpread { bool operator==(const ValueArraySpread&) const = default; };
 struct ValueNamedRead { abc::PoolIndex name; PropertyLookup lookup = PropertyLookup::kObject; bool operator==(const ValueNamedRead&) const = default; };
-struct ValueNamedWrite { abc::PoolIndex name; bool operator==(const ValueNamedWrite&) const = default; };
+struct ValueNamedWrite { abc::PoolIndex name; PropertyLookup lookup = PropertyLookup::kObject; bool operator==(const ValueNamedWrite&) const = default; };
 // Own definition is not [[Set]]. Keep the pinned operation family and IC slot
 // even when both forms target a named property; source equivalence needs an
 // allocation/descriptor proof, not just a syntactically valid assignment.
@@ -192,6 +192,7 @@ struct ValueModuleWrite {
 // Strict [[Set]] with base/key/stored-value operands, no accumulator result.
 // Own definition, fixed-index runtime operations and initialization are distinct.
 struct ValuePropertyWrite {
+  PropertyLookup lookup = PropertyLookup::kObject;
   bool operator==(const ValuePropertyWrite&) const = default;
 };
 struct ValueArrayAllocation {
@@ -259,6 +260,7 @@ struct ValueInvoke {
   InvokeReceiver receiver;
   std::uint32_t arguments;
   CallArgumentForm form = CallArgumentForm::kRegisters;
+  RangeCallSemantics range_semantics = RangeCallSemantics::kCommon;
   bool operator==(const ValueInvoke&) const = default;
 };
 // Constructor is also newTarget for these admitted NEWOBJRANGE operations.
@@ -278,6 +280,7 @@ struct ValueSuperCall {
   std::uint16_t arguments;
   std::optional<std::uint16_t> cache_slot;
   SuperArgumentSource source = SuperArgumentSource::kExplicit;
+  SuperCalleeSource callee = SuperCalleeSource::kInvocationFunction;
   bool operator==(const ValueSuperCall&) const = default;
 };
 // Explicit current constructor and aggregate argument array remain separate

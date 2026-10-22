@@ -20,6 +20,19 @@ std::optional<abc::RegisterId> OrdinaryCall::At(std::uint32_t position) const {
 
 std::variant<OrdinaryCall, CallError> LiftOrdinaryCall(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
+  // OH7 C++ interpreter:1483 and AOT bytecodes.cpp:1126 agree with ISA.
+  // The asm stub:5097 reads the count high byte; source recovery must opt in.
+  if (instruction.opcode == abc::Opcode::kWIDE_CALLRANGE_PREF_IMM16_V8) {
+    if (instruction.operand_count != 2 ||
+        instruction.operands[0].kind != abc::OperandKind::kImmediate ||
+        instruction.operands[0].raw_bits > UINT16_MAX ||
+        instruction.operands[1].kind != abc::OperandKind::kRegister ||
+        instruction.operands[1].raw_bits > UINT8_MAX) return CallError::kMalformedInstruction;
+    const auto count = instruction.operands[0].raw_bits;
+    const auto first = instruction.operands[1].raw_bits;
+    if (count && (first >= frame_size || count > frame_size - first)) return CallError::kRegisterRange;
+    return OrdinaryCall{CallRange{{static_cast<std::uint32_t>(first)},static_cast<std::uint16_t>(count)},RangeCallSemantics::kIsaLayout};
+  }
   constexpr std::size_t kCache = 0;
   constexpr std::size_t kRangeCount = 1;
   constexpr std::size_t kRangeFirst = 2;

@@ -94,6 +94,8 @@ std::optional<ReferenceCandidate> Candidate(const ValueProgram& g,
              computed =
                  std::holds_alternative<ValuePropertyWrite>(write.operation);
   if (!named && !computed) return {};
+  if ((named && std::get<ValueNamedWrite>(write.operation).lookup != PropertyLookup::kObject) ||
+      (computed && std::get<ValuePropertyWrite>(write.operation).lookup != PropertyLookup::kObject)) return {};
   Inputs(g, id, budget);
   const UseId stored{write.first_use.value + write.use_count - 1};
   const auto calc = Producer(g, p, stored);

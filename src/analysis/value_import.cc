@@ -114,9 +114,9 @@ ValueOperation Operation(const SemanticOperation& operation) {
     } else if constexpr (std::is_same_v<T, CurrentEnvironment>) {
       return ValueCurrentEnvironment{};
     } else if constexpr (std::is_same_v<T, NamedWrite>) {
-      return ValueNamedWrite{op.name};
+      return ValueNamedWrite{op.name,op.lookup};
     } else if constexpr (std::is_same_v<T, ValueWrite>) {
-      return ValuePropertyWrite{};
+      return ValuePropertyWrite{op.lookup};
     } else if constexpr (std::is_same_v<T, DefineAccessor>) {
       return ValueDefineAccessor{};
     } else if constexpr (std::is_same_v<T, ComputedOwnWrite>) {
@@ -184,13 +184,13 @@ ValueOperation Operation(const SemanticOperation& operation) {
       const auto* name = std::get_if<HoleNameSlot>(&op.name);
       return ValueGuard{name ? std::optional{ name->slot } : std::nullopt};
     } else if constexpr (std::is_same_v<T, OrdinaryCall>) {
-      return ValueInvoke{InvokeReceiver::kUndefined, op.Count()};
+      return ValueInvoke{InvokeReceiver::kUndefined, op.Count(), CallArgumentForm::kRegisters,op.range_semantics};
     } else if constexpr (std::is_same_v<T, ReceiverCall>) {
       return ValueInvoke{InvokeReceiver::kExplicit, op.Count(), op.form};
     } else if constexpr (std::is_same_v<T, SuperForward>) {
       return ValueSuperCall{0, {}, SuperArgumentSource::kInvocationFrame};
     } else if constexpr (std::is_same_v<T, SuperRange>) {
-      return ValueSuperCall{op.count, op.cache_slot};
+      return ValueSuperCall{op.count, op.cache_slot, SuperArgumentSource::kExplicit, op.callee};
     } else if constexpr (std::is_same_v<T, SuperSpread>) {
       return ValueSuperSpread{op.cache_slot};
     } else if constexpr (std::is_same_v<T, SuperCheck>) {

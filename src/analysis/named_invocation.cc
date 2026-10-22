@@ -32,6 +32,16 @@ std::variant<ReceiverCall, CallError> LiftReceiverCall(
   // names the callee in the TypeError raised for a non-callable value, which
   // the source contract does not preserve for CALLTHIS* either. The name
   // operand is validated and then ignored.
+  const bool wide_named=instruction.opcode==abc::Opcode::kWIDE_CALLTHISRANGEWITHNAME_PREF_IMM16_ID16_V8;
+  if(wide_named||instruction.opcode==abc::Opcode::kWIDE_CALLTHISRANGE_PREF_IMM16_V8){
+    const auto receiver=wide_named?2u:1u;
+    if(instruction.operand_count!=receiver+1||instruction.operands[0].kind!=abc::OperandKind::kImmediate||instruction.operands[0].raw_bits>UINT16_MAX||
+       (wide_named&&(instruction.operands[1].kind!=abc::OperandKind::kString||instruction.operands[1].raw_bits>UINT16_MAX))||
+       instruction.operands[receiver].kind!=abc::OperandKind::kRegister||instruction.operands[receiver].raw_bits>UINT8_MAX)return CallError::kMalformedInstruction;
+    const auto count=instruction.operands[0].raw_bits,base=instruction.operands[receiver].raw_bits;
+    if(base>=frame_size||count>frame_size-base-1)return CallError::kRegisterRange;
+    return ReceiverCall{{static_cast<std::uint32_t>(base)},CallRange{{static_cast<std::uint32_t>(base+1)},static_cast<std::uint16_t>(count)}};
+  }
   std::uint8_t count = 0;
   bool named = false;
   CallArgumentForm form = CallArgumentForm::kRegisters;

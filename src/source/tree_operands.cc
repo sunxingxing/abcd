@@ -1,4 +1,5 @@
 #include "template_tree.h"
+#include "super_store.h"
 #include "assignment_values.h"
 #include "native_arguments.h"
 #include "implicit_constructor.h"
@@ -44,6 +45,7 @@ class OperandCheck {
       }
       budget_.Step(std::get<std::uint64_t>(checked));
     }
+    const auto super_rhs = SuperStoreRhsSafety(tree_, budget_);
     bool native_snapshot=false;
     for(const auto& node:tree_.expressions){budget_.Step();if(const auto* snapshot=std::get_if<ArgumentSnapshotExpr>(&node.expression))native_snapshot|=snapshot->form==ArgumentSnapshotForm::kNativeEntry;}
     if(native_snapshot) {
@@ -589,6 +591,9 @@ class OperandCheck {
           const auto* member = std::get_if<MemberTarget>(&assigned.target);
           RequireMeaning(member != nullptr, Error::kOperator);
           Named(member->key, constants_.operations[i]);
+          RequireMeaning(assigned.lookup == operation.lookup, Error::kOperator);
+          if (operation.lookup == analysis::PropertyLookup::kSuper)
+            CheckSuperStore(*member, assigned.value, input(0), super_rhs);
           InputAt(0, member->base); InputAt(1, assigned.value);
         } else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>) {
           original_.operations[i].intrinsic_expression=expression;
@@ -632,6 +637,18 @@ class OperandCheck {
           RequireMeaning(member != nullptr, Error::kOperator);
           const auto* key = std::get_if<ComputedKey>(&member->key);
           RequireMeaning(key != nullptr, Error::kOperator);
+          RequireMeaning(assignment.lookup == operation.lookup, Error::kOperator);
+          if (operation.lookup == analysis::PropertyLookup::kSuper) {
+            CheckSuperStore(*member, assignment.value, input(0), super_rhs);
+            const auto operand = ResolveEvaluationOperand(evaluation_, input(1));
+            const bool primitive = std::visit([&](const auto& v) {
+              if constexpr(std::is_same_v<std::decay_t<decltype(v)>,analysis::ValueId>) {
+                const auto kinds=graph_.values[v.value].domain;
+                return kinds.IsString() || kinds.IsNumber() || kinds.IsZeroOrOnePrimitive();
+              } else return true;
+            },operand);
+            RequireMeaning(primitive,Error::kSuperKeyDomain);
+          }
           InputAt(0, member->base); InputAt(1, key->expression);
           InputAt(2, assignment.value);
         } else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>) {
@@ -710,6 +727,8 @@ class OperandCheck {
           RequireMeaning(name && name->value < constants_.name_count &&
               Node<GlobalNameExpr>(expression).name == *name, Error::kConstant);
         } else if constexpr (std::is_same_v<T, analysis::ValueInvoke>) {
+          RequireMeaning(operation.range_semantics == analysis::RangeCallSemantics::kCommon ||
+              WideRangeCalls(tree_.identity.contract), Error::kUnsupportedOperation);
           original_.operations[i].intrinsic_expression=expression;
           const auto& call = Node<CallExpr>(expression);
           InputAt(0, call.callee);
@@ -749,6 +768,8 @@ class OperandCheck {
             Arguments(op, call.arguments, kValuePrefix, operation.arguments);
           }
         } else if constexpr (std::is_same_v<T, analysis::ValueSuperCall>) {
+          RequireMeaning(operation.callee == analysis::SuperCalleeSource::kInvocationFunction,
+              Error::kUnsupportedOperation);
           RequireMeaning(tree_.callable == CallableKind::kDerivedConstructor, Error::kOperand);
           const auto& call = Node<SuperCallExpr>(expression);
           RequireMeaning(call.source == operation.source, Error::kOperand);
@@ -983,6 +1004,18 @@ class OperandCheck {
   }
 
  private:
+  void CheckSuperStore(const MemberTarget& member, ExprId rhs,
+      analysis::ValueOperand receiver, std::span<const std::uint8_t> safety) {
+    RequireMeaning(tree_.strictness==Strictness::kStrict &&
+        tree_.home_object==HomeObjectBinding::kClass, Error::kSuperHomeObject);
+    RequireMeaning(IsReceiverOperand(graph_,ResolveEvaluationOperand(evaluation_,receiver)) &&
+        member.base.value<tree_.expressions.size() &&
+        std::holds_alternative<ThisExpr>(tree_.expressions[member.base.value].expression) &&
+        std::get<ThisExpr>(tree_.expressions[member.base.value].expression).owner==tree_.owner,
+        Error::kSuperReceiver);
+    RequireMeaning(rhs.value<safety.size() && safety[rhs.value],Error::kSuperStoreOrder);
+  }
+
   // This store's cell when it is that cell's deferred TDZ initialization.
   std::optional<CellId> DeferredCell() const {
     if (!evaluation_.cells || current_.value >= evaluation_.cells->cells.operations.size()) return {};

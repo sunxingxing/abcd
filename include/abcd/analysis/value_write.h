@@ -5,11 +5,13 @@
 #include <variant>
 
 #include "abcd/analysis/scalar.h"
+#include "abcd/analysis/named_read.h"
 
 namespace abcd::analysis {
 struct ValueWrite {
   abc::RegisterId object;
   ScalarValue key;
+  PropertyLookup lookup = PropertyLookup::kObject;
 };
 enum class ValueWriteError {
   kUnsupportedOpcode,

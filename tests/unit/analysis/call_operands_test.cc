@@ -31,7 +31,7 @@ void FixedCalls() {
   Check(std::get<CallOperandError>(CallOperands::Build(instruction)) == CallOperandError::kWrite);
 }
 void Ranges() {
-  for (const std::uint16_t count : {0, 200, 201, 1024, 8192, 65535}) {
+  for (const std::uint16_t count : {0, 200, 201, 256, 300, 400, 800, 1024, 8192, 65535}) {
     SemanticInstruction instruction{{0}, OrdinaryCall{CallRange{{0}, count}}, {}};
     auto& effects = instruction.effects.normal_registers;
     effects.read_count = 1;
@@ -40,6 +40,10 @@ void Ranges() {
     effects.write = Accumulator{};
     const auto plan = std::get<CallOperands>(CallOperands::Build(instruction));
     Check(plan.Count() == count + 1U && plan.Work() == count + 1U);
+    Check(std::get<CallOperands>(CallOperands::Build(instruction,
+        {sizeof(CallOperands), count + 1U})).Count() == count + 1U);
+    Check(std::get<CallOperandError>(CallOperands::Build(instruction,
+        {sizeof(CallOperands) - 1, count + 1U})) == CallOperandError::kResourceLimit);
     if (count != 0) {
       const auto last = *plan.At(count);
       Check(last.role == OperandRole::kArgument && last.read_ordinal == count);

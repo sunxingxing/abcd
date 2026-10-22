@@ -1,0 +1,310 @@
+{
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "path": "effectful-default.abc",
+      "sha256": "bf2219a1394ac8413f7c6ac5ec7f126d319bb7222f29a1590a6ab7f7079888d7",
+      "source": "effectful.js",
+      "source_sha256": "d1460c5d1e6c4da45d2e49782993da7684d23296da894d06a4f65a030092bd51",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=effectful.js",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/effectful-default.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/effectful.js"
+      ],
+      "complete": false,
+      "opcodes": [
+        41,
+        53,
+        66,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124,
+        208
+      ]
+    },
+    {
+      "path": "effectful-o0.abc",
+      "sha256": "4ba95716dd6f38a20e73ad00f4064e49ae404d88649b052b515667a2a34732ae",
+      "source": "effectful.js",
+      "source_sha256": "d1460c5d1e6c4da45d2e49782993da7684d23296da894d06a4f65a030092bd51",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=effectful.js",
+        "--opt-level=0",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/effectful-o0.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/effectful.js"
+      ],
+      "complete": false,
+      "opcodes": [
+        0,
+        41,
+        53,
+        66,
+        68,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124,
+        208
+      ]
+    },
+    {
+      "path": "key-default.abc",
+      "sha256": "3d2ffb4dfe6ff1d07c57f7227ccd2b6cda37a1ed9d3bb2c267475965a19a1ee9",
+      "source": "key.js",
+      "source_sha256": "5e7010b33ec47167cf2cbf64347e17f63bb805db57fb64d1be970968909941e8",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=key.js",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/key-default.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/key.js"
+      ],
+      "complete": false,
+      "opcodes": [
+        53,
+        66,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124,
+        201
+      ]
+    },
+    {
+      "path": "key-o0.abc",
+      "sha256": "327760313417aa775d9af6ff45c0d3fafa80c942718802714d136232433196cc",
+      "source": "key.js",
+      "source_sha256": "5e7010b33ec47167cf2cbf64347e17f63bb805db57fb64d1be970968909941e8",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=key.js",
+        "--opt-level=0",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/key-o0.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/key.js"
+      ],
+      "complete": false,
+      "opcodes": [
+        0,
+        53,
+        66,
+        68,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124,
+        201
+      ]
+    },
+    {
+      "path": "object-default.abc",
+      "sha256": "76db802eca00927ebcf74712f22ae5a0ea9db382a6b6b679eb213fdcf5c39d77",
+      "source": "object.js",
+      "source_sha256": "4817c270b96ec9e91f0384596d2c64ad8dd5d2fcc5b203444f3c08613da9b772",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=object.js",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/object-default.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/object.js"
+      ],
+      "complete": false,
+      "opcodes": [
+        7,
+        51,
+        96,
+        100,
+        101,
+        124,
+        208
+      ]
+    },
+    {
+      "path": "object-o0.abc",
+      "sha256": "246b1e7362a61afd2d04e9e46d8a18c3a9e22b0b5690a7ea31907c10d2c786db",
+      "source": "object.js",
+      "source_sha256": "4817c270b96ec9e91f0384596d2c64ad8dd5d2fcc5b203444f3c08613da9b772",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=object.js",
+        "--opt-level=0",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/object-o0.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/object.js"
+      ],
+      "complete": false,
+      "opcodes": [
+        0,
+        7,
+        51,
+        68,
+        96,
+        97,
+        100,
+        101,
+        124,
+        208
+      ]
+    },
+    {
+      "path": "stores-default.abc",
+      "sha256": "b5071bc45df1930b9568af0601f691fba772dc42a2ba9adf0bbb264db072e9aa",
+      "source": "stores.js",
+      "source_sha256": "f00530bdc2f2254bfed2b176cb02fd86864b800741b208b42d2cabefb9064245",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=stores.js",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/stores-default.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/stores.js"
+      ],
+      "complete": true,
+      "opcodes": [
+        53,
+        62,
+        66,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124,
+        201,
+        208
+      ]
+    },
+    {
+      "path": "stores-o0.abc",
+      "sha256": "b582c23b80d0a12c0e0cf6ea25ca4dc0a548eb351b18ad1643c4bd2d1e81169d",
+      "source": "stores.js",
+      "source_sha256": "f00530bdc2f2254bfed2b176cb02fd86864b800741b208b42d2cabefb9064245",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=stores.js",
+        "--opt-level=0",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/stores-o0.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/stores.js"
+      ],
+      "complete": true,
+      "opcodes": [
+        0,
+        53,
+        62,
+        66,
+        68,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124,
+        201,
+        208
+      ]
+    },
+    {
+      "path": "wide-default.abc",
+      "sha256": "48ac5a6d9e829e78309a7a5118c6817949785f3b1170d0c3b3be3928182a0103",
+      "source": "wide.js",
+      "source_sha256": "9bf5cf93b5f40955b2f062ca72a445d27ab0c43869fbf1bc5396bdcdb4932c06",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=wide.js",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/wide-default.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/wide.js"
+      ],
+      "complete": true,
+      "opcodes": [
+        53,
+        62,
+        66,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124,
+        144,
+        202,
+        209
+      ]
+    },
+    {
+      "path": "wide-o0.abc",
+      "sha256": "a6eec6dc014408083935f4fd5fdb3aa518e0da073862800634133353b3929636",
+      "source": "wide.js",
+      "source_sha256": "9bf5cf93b5f40955b2f062ca72a445d27ab0c43869fbf1bc5396bdcdb4932c06",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaTemplates",
+        "--source-file=wide.js",
+        "--opt-level=0",
+        "--output=/Users/sun/abcd/tests/fixtures/isa/super_stores/wide-o0.abc",
+        "/Users/sun/abcd/tests/fixtures/isa/super_stores/wide.js"
+      ],
+      "complete": true,
+      "opcodes": [
+        0,
+        53,
+        62,
+        66,
+        68,
+        96,
+        97,
+        100,
+        101,
+        112,
+        124,
+        144,
+        202,
+        209
+      ]
+    }
+  ]
+}

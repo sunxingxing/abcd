@@ -23,9 +23,11 @@ std::variant<PropertyWrite, PropertyWriteError> LiftPropertyWrite(
       break;
   }
   const auto named = LiftNamedWrite(instruction, frame_size);
-  if (const auto* write = std::get_if<NamedWrite>(&named))
+  if (const auto* write = std::get_if<NamedWrite>(&named)) {
+    if (write->lookup != PropertyLookup::kObject) return PropertyWriteError::kUnsupportedOpcode;
     return PropertyWrite{PropertyWriteKind::kAssignment, write->name,
                          write->object};
+  }
   switch (std::get<NamedWriteError>(named)) {
     case NamedWriteError::kRegisterRange:
       return PropertyWriteError::kRegisterRange;

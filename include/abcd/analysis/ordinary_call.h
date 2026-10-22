@@ -17,8 +17,10 @@ struct CallRange {
   abc::RegisterId first;
   std::uint16_t count = 0;
 };
+enum class RangeCallSemantics : std::uint8_t { kCommon, kIsaLayout };
 struct OrdinaryCall {
   std::variant<CallRegisters, CallRange> arguments;
+  RangeCallSemantics range_semantics = RangeCallSemantics::kCommon;
   [[nodiscard]] std::uint32_t Count() const;
   [[nodiscard]] std::optional<abc::RegisterId> At(std::uint32_t position) const;
 };
@@ -30,9 +32,9 @@ enum class CallError {
 
 // CALLARG0/1/2/3 and narrow CALLRANGE: acc callee, undefined
 // receiver/new.target, register arguments, result replaces acc on success only.
-// No .call property access or iterator is implied. Wide range has conflicting
-// pinned interpreter offsets; explicit receiver/legacy calls need separate
-// evidence. O(1) lift and argument access, fixed storage; zero range count
+// No .call property access or iterator is implied. Wide range retains the
+// ISA/C++/AOT layout as a separate semantic predicate because the pinned asm
+// stub reads the wrong start byte. O(1) lift/access, fixed storage; zero count
 // reads no register.
 [[nodiscard]] std::variant<OrdinaryCall, CallError> LiftOrdinaryCall(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size);

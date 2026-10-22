@@ -30,9 +30,9 @@ class ImportTest(unittest.TestCase):
             'producer': self.producer, 'engine': file('engine', 'engine'),
             'probe': file('probe', 'probe'), 'abc': file('input.abc', 'abc'),
             'original': file('original.js', 'export{}'),
-            'contract': 'language_source_v7', 'records': []}
+            'contract': 'language_source_v8', 'records': []}
         self.evidence['manifest'] = file('manifest.json', json.dumps({
-            'sha256': self.evidence['abc']['sha256'], 'source_contract': 'language_source_v7',
+            'sha256': self.evidence['abc']['sha256'], 'source_contract': 'language_source_v8',
             'records': [{'entity': 1, 'source_status': 0}]}))
         self.evidence['records'] = [{'record': 1, 'emitted': file('emitted.mjs', 'export{}'),
                                      'round_trip': None}]

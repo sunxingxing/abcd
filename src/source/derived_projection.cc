@@ -224,7 +224,8 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
             classify(use.operand) == State::kConstructor, Error::kOperand);
       } else if (call) {
         const auto* current = std::get_if<ValueSuperCall>(&op.operation);
-        Require(id == result.call && current && current->source == SuperArgumentSource::kExplicit && current->arguments == call->count &&
+        Require(call->callee == SuperCalleeSource::kInvocationFunction && id == result.call && current &&
+            current->callee == SuperCalleeSource::kInvocationFunction && current->source == SuperArgumentSource::kExplicit && current->arguments == call->count &&
             current->cache_slot == call->cache_slot && op.result && op.use_count == call->count, Error::kOrigin);
       } else if (spread_call) {
         const auto* current = std::get_if<ValueSuperSpread>(&op.operation);

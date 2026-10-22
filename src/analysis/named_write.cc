@@ -8,7 +8,12 @@ std::variant<NamedWrite, NamedWriteError> LiftNamedWrite(
   constexpr std::size_t kObject = 2;
   constexpr std::size_t kOperands = 3;
   std::uint64_t cache_max;
+  auto lookup = PropertyLookup::kObject;
   switch (instruction.opcode) {
+    case abc::Opcode::kSTSUPERBYNAME_IMM8_ID16_V8:
+      lookup = PropertyLookup::kSuper; cache_max = UINT8_MAX; break;
+    case abc::Opcode::kSTSUPERBYNAME_IMM16_ID16_V8:
+      lookup = PropertyLookup::kSuper; cache_max = UINT16_MAX; break;
     case abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8:
       cache_max = UINT8_MAX;
       break;
@@ -30,6 +35,6 @@ std::variant<NamedWrite, NamedWriteError> LiftNamedWrite(
     return NamedWriteError::kRegisterRange;
   return NamedWrite{
       {static_cast<std::uint32_t>(instruction.operands[kName].raw_bits)},
-      {static_cast<std::uint32_t>(instruction.operands[kObject].raw_bits)}};
+      {static_cast<std::uint32_t>(instruction.operands[kObject].raw_bits)}, lookup};
 }
 }  // namespace abcd::analysis

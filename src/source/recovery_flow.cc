@@ -1,5 +1,6 @@
 #include "recovery_flow.h"
 #include "template_tree.h"
+#include "super_store.h"
 #include "switch_syntax.h"
 
 #include <algorithm>
@@ -81,6 +82,14 @@ class FlowBuilder {
   RecoveryFlow Run() {
     if (tree_.class_inner) VerifyClassInnerScope(tree_, budget_);
     VerifyAllSwitchSyntax(tree_, budget_);
+    const auto super_rhs = SuperStoreRhsSafety(tree_, budget_);
+    if(!super_rhs.empty()) for(const auto& node:tree_.expressions) {
+      budget_.Step();
+      if(const auto* a=std::get_if<AssignmentExpr>(&node.expression))
+        if(const auto* m=std::get_if<MemberTarget>(&a->target);m && a->lookup==analysis::PropertyLookup::kSuper)
+          RequireTree(a->value.value<super_rhs.size() && super_rhs[a->value.value],Error::kOwnership);
+    }
+
     const auto normalized=NormalizeBindingProjection(tree_.symbols.size(),projection_.aliases,projection_.storage,budget_);
     if(normalized){projection_.aliases=normalized->aliases;projection_.storage=normalized->storage;}
     result_.scopes.reset();
@@ -1433,7 +1442,7 @@ class FlowBuilder {
       Link(start,Expr(member->base,context.Operand(next)));return;
     }
     if(const auto* assignment=std::get_if<AssignmentExpr>(&node))if(const auto* member=std::get_if<MemberTarget>(&assignment->target)) {
-      auto next=Property(at.id,member->base,member->key,FlowReferenceKind::kWrite,effect,context);
+      auto next=Property(at.id,member->base,member->key,FlowReferenceKind::kWrite,effect,context,assignment->lookup);
       Link(next,Expr(assignment->value,context.Operand(result_.properties.back().receiver)));
       if(const auto* key=std::get_if<ComputedKey>(&member->key))next=Expr(key->expression,context.Operand(next));
       Link(start,Expr(member->base,context.Operand(next)));return;

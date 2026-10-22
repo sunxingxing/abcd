@@ -136,6 +136,11 @@ class Properties(unittest.TestCase):
                         self.assertEqual(rows[1]['lift']['status'],'ok')
                         self.assertEqual(rows[1]['lift']['semantic_family'],'abcd::analysis::ValueWrite')
                         self.assertIsNone(rows[1]['lift']['normal_commit'])
+                    elif entry['name'].startswith('STSUPER'):
+                        self.assertEqual(rows[1]['lift']['status'],'ok')
+                        self.assertEqual(rows[1]['lift']['roles']['lookup'],1)
+                        self.assertIsNone(rows[1]['lift']['normal_commit'])
+                        self.assertEqual(rows[1]['lift']['exceptional_completion'],1)
                     else:
                         self.assertEqual(rows[1]['lift']['status'],'refused')
                         self.assertEqual(rows[1]['lift']['cause']['value'],1)

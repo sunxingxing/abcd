@@ -94,16 +94,16 @@ int main() {
   Check(kSourceContract == SourceContract::kLanguageAndHostV3);
   Check(NativeArguments(SourceContract::kLanguageSourceV6));
   Check(!NativeArguments(SourceContract::kLanguageSourceV5));
-  for (unsigned i = 0; i <= static_cast<unsigned>(SourceContract::kLanguageSourceV7); ++i) {
+  for (unsigned i = 0; i <= static_cast<unsigned>(SourceContract::kLanguageSourceV8); ++i) {
     const auto contract = static_cast<SourceContract>(i);
-    Check(ExternalExceptionNoHole(contract) == ((contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || contract == SourceContract::kLanguageSourceV7)))
+    Check(ExternalExceptionNoHole(contract) == ((contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8))))
         ? analysis::ExternalExceptionPolicy::kNoHoleV1 : analysis::ExternalExceptionPolicy::kPinnedRuntime));
-    Check(ConcurrentOutput(contract) == ((contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || contract == SourceContract::kLanguageSourceV7)))) ? ConcurrentOutputPolicy::kArkDirectiveV1 : ConcurrentOutputPolicy::kNotEnabled));
-    Check(SendableOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || (contract==SourceContract::kLanguageSourceV4 || (contract==SourceContract::kLanguageSourceV5 || (contract==SourceContract::kLanguageSourceV6 || contract==SourceContract::kLanguageSourceV7)))) ? SendableOutputPolicy::kArkDirectiveV1 : SendableOutputPolicy::kNotEnabled));
-    Check(SharedModuleOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || (contract==SourceContract::kLanguageSourceV4 || (contract==SourceContract::kLanguageSourceV5 || (contract==SourceContract::kLanguageSourceV6 || contract==SourceContract::kLanguageSourceV7)))) ? SharedModuleOutputPolicy::kArkDirectiveV1 : SharedModuleOutputPolicy::kNotEnabled));
-    Check(IterationAcquisition(contract) == ((contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || contract == SourceContract::kLanguageSourceV7)))))
+    Check(ConcurrentOutput(contract) == ((contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8))))) ? ConcurrentOutputPolicy::kArkDirectiveV1 : ConcurrentOutputPolicy::kNotEnabled));
+    Check(SendableOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || (contract==SourceContract::kLanguageSourceV4 || (contract==SourceContract::kLanguageSourceV5 || (contract==SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8))))) ? SendableOutputPolicy::kArkDirectiveV1 : SendableOutputPolicy::kNotEnabled));
+    Check(SharedModuleOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || (contract==SourceContract::kLanguageSourceV4 || (contract==SourceContract::kLanguageSourceV5 || (contract==SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8))))) ? SharedModuleOutputPolicy::kArkDirectiveV1 : SharedModuleOutputPolicy::kNotEnabled));
+    Check(IterationAcquisition(contract) == ((contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8))))))
         ? IterationAcquisitionSemantics::kStandardV1 : IterationAcquisitionSemantics::kPinnedRuntime));
-    const bool source = (contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || contract == SourceContract::kLanguageSourceV7)))));
+    const bool source = (contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8))))));
     Check(LazyImports(contract) == (source ? LazyImportSemantics::kArkTsLazyImport : LazyImportSemantics::kPinnedRuntime));
     Check(ArraySpreads(contract) == (source ? ArraySpreadSemantics::kSourceIterator : ArraySpreadSemantics::kPinnedRuntime));
   }
@@ -284,13 +284,14 @@ int main() {
     Check(SameReceipt(receipt, *recovered));
   }
   // Every contract that can be written can be read back (dense enum range).
-  for (std::size_t raw = 0; raw <= static_cast<std::size_t>(SourceContract::kLanguageSourceV7); ++raw) {
+  for (std::size_t raw = 0; raw <= static_cast<std::size_t>(SourceContract::kLanguageSourceV8); ++raw) {
     const auto contract = static_cast<SourceContract>(raw);
-    Check(TaggedTemplates(contract)==(contract==SourceContract::kLanguageSourceV7));
-    Check(ObjectSpreads(contract)==(contract==SourceContract::kLanguageSourceV7));
-    Check(ObjectRests(contract)==(contract==SourceContract::kLanguageSourceV7));
-    Check(NativeNewTarget(contract)==(contract==SourceContract::kLanguageSourceV7));
-    Check(ConstructorForwarding(contract) == ((contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || contract == SourceContract::kLanguageSourceV7)))))
+    Check(WideRangeCalls(contract)==(contract==SourceContract::kLanguageSourceV8));
+    Check(TaggedTemplates(contract)==((contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8)));
+    Check(ObjectSpreads(contract)==((contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8)));
+    Check(ObjectRests(contract)==((contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8)));
+    Check(NativeNewTarget(contract)==((contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8)));
+    Check(ConstructorForwarding(contract) == ((contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8))))))
         ? ConstructorForwardingSemantics::kSourceRestSpread
         : ConstructorForwardingSemantics::kInvocationFrame));
     auto receipt = RefusedReceipt();

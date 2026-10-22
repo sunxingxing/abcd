@@ -418,6 +418,7 @@ class ForestBuilder {
           continue;
         }
         if (const auto* call = std::get_if<analysis::ValueSuperCall>(&op.operation)) {
+          Require(call->callee == analysis::SuperCalleeSource::kInvocationFunction, Error::kUnsupportedOperation);
           Require(op.use_count == call->arguments + (call->source == analysis::SuperArgumentSource::kInvocationFrame ? 1U : 0U) && op.result, Error::kOwnership);
           if (call->source == analysis::SuperArgumentSource::kInvocationFrame &&
               forest_.bindings.parameter_form == ParameterForm::kInvocationRest) {
@@ -1254,13 +1255,13 @@ class ForestBuilder {
         if constexpr (std::is_same_v<T, analysis::ValueNamedRead>)
           return Add(MemberExpr{operands[0], *name, operation.lookup}, origin);
         else
-          return Add(AssignmentExpr{MemberTarget{operands[0], *name}, operands[1]}, origin);
+          return Add(AssignmentExpr{MemberTarget{operands[0], *name}, operands[1], operation.lookup}, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead>)
         return Add(MemberExpr{operands[0], ComputedKey{operands[1]}, operation.lookup}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValuePropertyDelete>)
         return Add(DeleteExpr{operands[0], ComputedKey{operands[1]}}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>)
-        return Add(AssignmentExpr{MemberTarget{operands[0], ComputedKey{operands[1]}}, operands[2]}, origin);
+        return Add(AssignmentExpr{MemberTarget{operands[0], ComputedKey{operands[1]}}, operands[2], operation.lookup}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueString>) {
         const auto* text = std::get_if<TextId>(&constant);
         Require(text && text->value < constants_.text_count, Error::kConstant);

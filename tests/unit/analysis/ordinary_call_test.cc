@@ -87,8 +87,25 @@ int main() {
     Check(std::get<CallError>(LiftOrdinaryCall(decoded, count)) ==
           CallError::kRegisterRange);
   }
-  for (const auto& encoding : {std::vector<std::uint8_t>{0xfd, 4, 1, 0, 1},
-                               {0x2d, 0, 0},
+  for (const std::uint16_t count : {200, 201, 256, 300, 400, 800, 65535}) {
+    abc::DecodedInstruction decoded{};
+    decoded.opcode = abc::Opcode::kWIDE_CALLRANGE_PREF_IMM16_V8;
+    decoded.operand_count = 2;
+    decoded.operands[0].kind = abc::OperandKind::kImmediate;
+    decoded.operands[0].raw_bits = count;
+    decoded.operands[1].kind = abc::OperandKind::kRegister;
+    decoded.operands[1].raw_bits = 7;
+    const auto call = std::get<OrdinaryCall>(LiftOrdinaryCall(decoded, count + 7));
+    Check(call.Count() == count && call.At(count - 1)->value == count + 6U);
+    Check(call.range_semantics == RangeCallSemantics::kIsaLayout);
+    Check(std::get<CallError>(LiftOrdinaryCall(decoded, count + 6)) == CallError::kRegisterRange);
+    auto bad = decoded;
+    bad.operands[0].raw_bits = UINT16_MAX + 1U;
+    Check(std::get<CallError>(LiftOrdinaryCall(bad, UINT64_MAX)) == CallError::kMalformedInstruction);
+    bad = decoded; bad.operands[1].raw_bits = 256;
+    Check(std::get<CallError>(LiftOrdinaryCall(bad, UINT64_MAX)) == CallError::kMalformedInstruction);
+  }
+  for (const auto& encoding : {std::vector<std::uint8_t>{0x2d, 0, 0},
                                {0xfc, 11, 0}}) {
     const auto decoded = Body(encoding).instructions.front().decoded;
     Check(std::get<CallError>(LiftOrdinaryCall(decoded, 4)) ==

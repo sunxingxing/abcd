@@ -18,11 +18,13 @@ namespace abcd::analysis {
 struct SuperForward {
   abc::RegisterId constructor;
 };
+enum class SuperCalleeSource : std::uint8_t { kInvocationFunction, kAccumulator };
 struct SuperRange {
   abc::RegisterId first;
   std::uint16_t count;
   // Narrow form's IC metadata is retained but never printed as an argument.
   std::optional<std::uint16_t> cache_slot;
+  SuperCalleeSource callee = SuperCalleeSource::kInvocationFunction;
 };
 struct SuperSpread {
   abc::RegisterId arguments;

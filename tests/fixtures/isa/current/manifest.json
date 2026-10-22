@@ -449,6 +449,7 @@
             "type": "abcd::analysis::Float64Bits",
             "value": 0
           },
+          "lookup": 0,
           "object": {
             "type": "abcd::abc::RegisterId",
             "value": 0
@@ -1514,6 +1515,7 @@
             "type": "abcd::abc::RegisterId",
             "value": 0
           },
+          "lookup": 0,
           "object": {
             "type": "abcd::abc::RegisterId",
             "value": 0
@@ -1731,6 +1733,7 @@
             "type": "abcd::analysis::Float64Bits",
             "value": 0
           },
+          "lookup": 0,
           "object": {
             "type": "abcd::abc::RegisterId",
             "value": 0
@@ -3033,12 +3036,39 @@
       "opcode": 187,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "input_range": {
+          "count": 0,
+          "first": 0
+        },
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 71,
+        "roles": {
+          "cache_slot": 0,
+          "callee": 1,
+          "count": 0,
+          "first": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::SuperRange"
+        },
+        "semantic_family": "abcd::analysis::SuperRange",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -3531,12 +3561,41 @@
       "opcode": 201,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 6,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 6,
+        "roles": {
+          "key": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "lookup": 1,
+          "object": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::ValueWrite"
+        },
+        "semantic_family": "abcd::analysis::ValueWrite",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -3578,12 +3637,41 @@
       "opcode": 202,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 6,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 6,
+        "roles": {
+          "key": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "lookup": 1,
+          "object": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::ValueWrite"
+        },
+        "semantic_family": "abcd::analysis::ValueWrite",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -3700,12 +3788,38 @@
       "opcode": 208,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 6,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 6,
+        "roles": {
+          "lookup": 1,
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "object": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::NamedWrite"
+        },
+        "semantic_family": "abcd::analysis::NamedWrite",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -3747,12 +3861,38 @@
       "opcode": 209,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 6,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 6,
+        "roles": {
+          "lookup": 1,
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "object": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::NamedWrite"
+        },
+        "semantic_family": "abcd::analysis::NamedWrite",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -4631,12 +4771,41 @@
       "opcode": 1277,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 7,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "input_range": {
+          "count": 0,
+          "first": 0
+        },
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 7,
+        "roles": {
+          "arguments": {
+            "count": 0,
+            "first": {
+              "type": "abcd::abc::RegisterId",
+              "value": 0
+            },
+            "type": "abcd::analysis::CallRange"
+          },
+          "range_semantics": 1,
+          "type": "abcd::analysis::OrdinaryCall"
+        },
+        "semantic_family": "abcd::analysis::OrdinaryCall",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -4758,12 +4927,48 @@
       "opcode": 1533,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 7,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "input_range": {
+          "count": 0,
+          "first": 1
+        },
+        "inputs": [
+          {
+            "accumulator": true
+          },
+          {
+            "register": 0
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 7,
+        "roles": {
+          "arguments": {
+            "count": 0,
+            "first": {
+              "type": "abcd::abc::RegisterId",
+              "value": 1
+            },
+            "type": "abcd::analysis::CallRange"
+          },
+          "form": 0,
+          "receiver": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::ReceiverCall"
+        },
+        "semantic_family": "abcd::analysis::ReceiverCall",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -4857,6 +5062,7 @@
         "normal_effects": 71,
         "roles": {
           "cache_slot": null,
+          "callee": 0,
           "count": 0,
           "first": {
             "type": "abcd::abc::RegisterId",
@@ -4965,12 +5171,39 @@
       "opcode": 2045,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 71,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "input_range": {
+          "count": 0,
+          "first": 0
+        },
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 71,
+        "roles": {
+          "cache_slot": null,
+          "callee": 1,
+          "count": 0,
+          "first": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::SuperRange"
+        },
+        "semantic_family": "abcd::analysis::SuperRange",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -5173,6 +5406,7 @@
             "type": "abcd::analysis::Float64Bits",
             "value": 0
           },
+          "lookup": 0,
           "object": {
             "type": "abcd::abc::RegisterId",
             "value": 0
@@ -6034,12 +6268,48 @@
       "opcode": 5373,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 7,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "input_range": {
+          "count": 0,
+          "first": 1
+        },
+        "inputs": [
+          {
+            "accumulator": true
+          },
+          {
+            "register": 0
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 7,
+        "roles": {
+          "arguments": {
+            "count": 0,
+            "first": {
+              "type": "abcd::abc::RegisterId",
+              "value": 1
+            },
+            "type": "abcd::analysis::CallRange"
+          },
+          "form": 0,
+          "receiver": {
+            "type": "abcd::abc::RegisterId",
+            "value": 0
+          },
+          "type": "abcd::analysis::ReceiverCall"
+        },
+        "semantic_family": "abcd::analysis::ReceiverCall",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,

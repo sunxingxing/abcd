@@ -48,9 +48,13 @@ SuperInstruction LiftSuperInstruction(
         instruction.operands[0].raw_bits)}};
   }
   if (instruction.opcode == Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8 ||
-      instruction.opcode == Opcode::kWIDE_SUPERCALLTHISRANGE_PREF_IMM16_V8) {
-    const bool narrow =
-        instruction.opcode == Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8;
+      instruction.opcode == Opcode::kWIDE_SUPERCALLTHISRANGE_PREF_IMM16_V8 ||
+      instruction.opcode == Opcode::kSUPERCALLARROWRANGE_IMM8_IMM8_V8 ||
+      instruction.opcode == Opcode::kWIDE_SUPERCALLARROWRANGE_PREF_IMM16_V8) {
+    const bool arrow = instruction.opcode == Opcode::kSUPERCALLARROWRANGE_IMM8_IMM8_V8 ||
+        instruction.opcode == Opcode::kWIDE_SUPERCALLARROWRANGE_PREF_IMM16_V8;
+    const bool narrow = instruction.opcode == Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8 ||
+        instruction.opcode == Opcode::kSUPERCALLARROWRANGE_IMM8_IMM8_V8;
     const std::size_t count_slot = narrow ? 1 : 0;
     const std::size_t first_slot = narrow ? 2 : 1;
     if (instruction.operand_count != (narrow ? 3 : 2) ||
@@ -75,7 +79,8 @@ SuperInstruction LiftSuperInstruction(
         narrow ? std::optional<std::uint16_t>{
                      static_cast<std::uint16_t>(
                          instruction.operands[0].raw_bits)}
-               : std::nullopt};
+               : std::nullopt,
+        arrow ? SuperCalleeSource::kAccumulator : SuperCalleeSource::kInvocationFunction};
   }
   if (instruction.opcode == Opcode::kSUPERCALLSPREAD_IMM8_V8) {
     if (instruction.operand_count != 2 ||
@@ -180,7 +185,8 @@ DerivedConstructorResult ProveForwardingDerivedConstructor(
         continue;
       }
       if (const auto* range = std::get_if<SuperRange>(&super)) {
-        if (called || range->count > frame.parameters)
+        if (range->callee != SuperCalleeSource::kInvocationFunction ||
+            called || range->count > frame.parameters)
           return Error::kValue;
         for (std::uint32_t argument = 0; argument < range->count;
              ++argument) {

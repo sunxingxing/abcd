@@ -314,3 +314,23 @@ installation order differs because the existing recovery emits independent
 function declarations in name order. The tool retains those as differences,
 not normalized passes. Source-declaration/export adaptation is applied on both
 sides; no register, branch, handler or instruction normalization is used.
+
+## Round 8: wide argument ranges and super stores
+
+Language-source uses V8. Only WIDE_CALLRANGE needs the separately approved
+ISA/C++/AOT layout premise: the pinned asm stub reads the high count byte as the
+first register. The six related layouts have independent path citations in
+`isa-wide-range-calls.md`. Ordinary/member/named/constructor and derived-super
+fixtures cover 200/201/256/300/400/800 arguments, including templates with that
+many substitutions. Each stress construct is a separate record: combining all
+800-argument methods exceeds the existing aggregate family budget; no budget is
+raised. Raw arrow-super keeps its explicit accumulator constructor; native
+lexical-super recovery remains refused until the enclosing receiver/newTarget
+correspondence is proven.
+
+The four super-store variants retain strict super lookup and explicit receiver
+identity. `isa-super-stores.md` documents why primitive keys and an inert RHS
+are required by the current proof: Ark resolves the super reference after RHS,
+standard JS before it. No new premise is inferred. Only complete,
+differential-tested occurrences feed `isa_wide_calls_source_test` and
+`isa_super_stores_source_test` into the oracle importer; refusal fixtures do not.

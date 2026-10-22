@@ -163,7 +163,7 @@ struct ConditionalExpr { ExprId condition; ExprId consequent; ExprId alternate; 
 struct SymbolTarget { SymbolId symbol; };
 struct MemberTarget { ExprId base; MemberKey key; bool operator==(const MemberTarget&) const = default; };
 using AssignmentTarget = std::variant<SymbolTarget, MemberTarget>;
-struct AssignmentExpr { AssignmentTarget target; ExprId value; };
+struct AssignmentExpr { AssignmentTarget target; ExprId value; analysis::PropertyLookup lookup = analysis::PropertyLookup::kObject; };
 // Native syntax. Value-IR updates compute a new value without overwriting the
 // input SSA binding; their builder uses a separately owned private symbol.
 enum class UpdateDirection : std::uint8_t { kIncrement, kDecrement };

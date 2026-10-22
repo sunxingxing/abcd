@@ -27,7 +27,7 @@ enum class CallSpreadError : std::uint8_t {
 enum class EvaluationShapeError : std::uint8_t { kMissingShape };
 enum class EvaluationInputCheck : std::uint8_t {
   kHoleTransport, kHoleUse, kCellIdentity, kLiteralAllocation,
-  kLiteralRhsAvailability, kLiteralOrder, kLiteralNesting, kLiteralUse, kLiteralStagedStorage, kLiteralStagedAcyclic
+  kLiteralRhsAvailability, kLiteralOrder, kLiteralNesting, kLiteralUse, kLiteralStagedStorage, kLiteralStagedAcyclic, kWideRangePremise
 };
 struct EvaluationInputSite {
   std::optional<EvaluationInputCheck> check;

@@ -159,6 +159,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       case SourceContract::kLanguageSourceV2:
       case SourceContract::kLanguageSourceV3:
       case SourceContract::kLanguageSourceV4:
+      case SourceContract::kLanguageSourceV8:
       case SourceContract::kLanguageSourceV7:
       case SourceContract::kLanguageSourceV6:
       case SourceContract::kLanguageSourceV5: break;

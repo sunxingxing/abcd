@@ -1,8 +1,8 @@
-# 源语言契约：LanguageSourceV1–V7
+# 源语言契约：LanguageSourceV1–V8
 
 `SourceContract::kLanguageSourceV1`（序列化名 `language_source_v1`）保留原有四项前提。
 2026-10-14 新增 `kLanguageSourceV2`（`language_source_v2`）；V2 继承 V1，并加入 §5 的独立标准迭代获取前提。
-2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），该轮 CLI 的 `--language-source` 选择 V4（当前版本见文末 V7）；
+2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），该轮 CLI 的 `--language-source` 选择 V4（当前版本见文末 V8）；
 V4 继承 V3（含 V2 与独立 Ark 输出政策），并增加文末 2026-10-16 批准的外部异常值域前提。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
 `--language-constructors` 组合。它包含 `LanguageNumericConstructorsV1` 的全部前提（numeric 算术、
 原生 super 语义），并另外加入下面四项源语言前提。默认契约 V3 以及其他已有 opt-in 都不变。
@@ -713,3 +713,20 @@ that all runtime paths implement standard ECMAScript semantics.
 All cited paths are below the pinned
 `references/openharmony/arkcompiler/ets_runtime/`, except the frontend path,
 which is below `references/openharmony/arkcompiler/ets_frontend/es2panda/`.
+
+## LanguageSourceV8 — wide range calls (user approval 2026-10-22)
+
+`--language-source` now selects `kLanguageSourceV8` (`language_source_v8`). It
+inherits V7 unchanged and adds the independent `WideRangeCalls()` predicate.
+For WIDE_CALLRANGE, source calls follow isa.yaml, the C++ interpreter and AOT:
+count is bytes 2–3 and the first argument register is byte 4. The pinned asm
+stub incorrectly reads byte 3 as the starting register. The accepted difference
+is execution on that defective asm path; this is not an unconditional call or
+receiver equivalence. Saved callee/receiver, argument values and order, original
+exception exits and result Commit still require the ordinary call proofs.
+
+References: ets_runtime/ecmascript/interpreter/interpreter-inl.cpp:1483–1489;
+compiler/interpreter_stub.cpp:5091–5108 (incorrect ReadInst8_2 at 5097);
+compiler/bytecodes.cpp:1126–1132. The related receiver, named receiver,
+constructor and super range variants agree on their layouts across these paths;
+they need no new premise. Full per-variant audit: [isa-wide-range-calls.md](isa-wide-range-calls.md).

@@ -9,6 +9,7 @@ std::variant<ValueWrite, ValueWriteError> LiftValueWrite(
   // Keep own-index stores on their distinct IndexedWrite/literal proof path.
   std::uint64_t cache_max;
   bool indexed = false, wide = false;
+  auto lookup = PropertyLookup::kObject;
   switch (instruction.opcode) {
     case abc::Opcode::kSTOBJBYINDEX_IMM8_V8_IMM16:
       indexed = true; cache_max = UINT8_MAX; break;
@@ -16,6 +17,10 @@ std::variant<ValueWrite, ValueWriteError> LiftValueWrite(
       indexed = true; cache_max = UINT16_MAX; break;
     case abc::Opcode::kWIDE_STOBJBYINDEX_PREF_V8_IMM32:
       indexed = true; wide = true; cache_max = 0; break;
+    case abc::Opcode::kSTSUPERBYVALUE_IMM8_V8_V8:
+      lookup = PropertyLookup::kSuper; cache_max = UINT8_MAX; break;
+    case abc::Opcode::kSTSUPERBYVALUE_IMM16_V8_V8:
+      lookup = PropertyLookup::kSuper; cache_max = UINT16_MAX; break;
     case abc::Opcode::kSTOBJBYVALUE_IMM8_V8_V8:
       cache_max = UINT8_MAX;
       break;
@@ -57,6 +62,6 @@ std::variant<ValueWrite, ValueWriteError> LiftValueWrite(
     return ValueWriteError::kRegisterRange;
   return ValueWrite{
       {static_cast<std::uint32_t>(instruction.operands[kObject].raw_bits)},
-      abc::RegisterId{static_cast<std::uint32_t>(instruction.operands[kKey].raw_bits)}};
+      abc::RegisterId{static_cast<std::uint32_t>(instruction.operands[kKey].raw_bits)}, lookup};
 }
 }  // namespace abcd::analysis
