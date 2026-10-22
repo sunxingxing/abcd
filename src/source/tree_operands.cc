@@ -693,7 +693,8 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueString>) {
           const auto* text = std::get_if<TextId>(&constants_.operations[i]);
           RequireMeaning(text && text->value < constants_.text_count, Error::kConstant);
-          if (operation.kind == analysis::PoolTextKind::kBigInt)
+          if(operation.kind==analysis::PoolTextKind::kRegExp){const auto& literal=Node<RegExpExpr>(expression);RequireMeaning(literal.text==*text&&literal.flags==operation.flags,Error::kConstant);}
+          else if (operation.kind == analysis::PoolTextKind::kBigInt)
             RequireMeaning(Node<BigIntExpr>(expression).text == *text, Error::kConstant);
           else RequireMeaning(Literal<TextId>(expression) == *text, Error::kConstant);
         } else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {

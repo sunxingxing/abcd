@@ -256,3 +256,22 @@ and 7,274 null round-trip entries. Ark runtime remains null. Additional SDK
 200/201/400/800 and dynamic default/O0 re-certification checks are tests, not
 transferred occurrence evidence. Tagged-template and RegExp recovery are still
 unimplemented in this working-tree round.
+
+## Intrinsic RegExp evidence (coverage round 6)
+
+`isa_regexp_source_test` covers both intrinsic widths with constructed modules
+in 12.0.6 and 24.0.0, plus pinned SDK default/O0 modules. Raw runtime flag bits
+are distinct from the frontend lexer enum. The native literal validator is
+conservative: unproven syntax and source-spelling differences remain typed
+refusals. SDK literals lower to a global RegExp constructor, so the intrinsic
+round-trip event mismatch stays a null oracle. Node verifies fresh identity,
+matching, flags, source and lastIndex without suppressing observations.
+See [isa-regexp.md](../../docs/design/source-recovery/isa-regexp.md).
+
+Coverage-6 RegExp result: **143 Verified / 58 Unverified / 103 Unmeasured /
+28 NonExecutable**, 920 ABCs, no probe failures or backward verified-profile
+moves. Eight complete RegExp records provide 1,342 Node cases and 1,674
+occurrence attestations; 775 recompiled events match and 899 remain null.
+The two intrinsic widths are verified in profiles 4 and 6. Three already-lifted
+imm16 variants gain profile-6 Node evidence from the SDK fixtures. Tagged
+GETTEMPLATEOBJECT still has no production recovery or new oracle evidence.

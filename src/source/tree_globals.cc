@@ -78,6 +78,8 @@ class GlobalCheck {
         case TreeStructureError::kScope: case TreeStructureError::kBinding:
         case TreeStructureError::kName: case TreeStructureError::kTarget:
         case TreeStructureError::kOrigin: case TreeStructureError::kUnsupportedSyntax:
+        case TreeStructureError::kRegExpSyntax: case TreeStructureError::kRegExpUnproven:
+        case TreeStructureError::kRegExpSource:
           throw Error::kStructure;
       }
     }

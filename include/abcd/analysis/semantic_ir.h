@@ -1,5 +1,6 @@
 #ifndef ABCD_ANALYSIS_SEMANTIC_IR_H_
 #define ABCD_ANALYSIS_SEMANTIC_IR_H_
+#include "abcd/analysis/regexp_flags.h"
 
 #include "abcd/analysis/non_executable.h"
 #include <cstddef>
@@ -118,10 +119,11 @@ enum class NotificationOwner : std::uint8_t { kInvocationFunction };
 struct ConcurrentNotification {
   NotificationOwner owner = NotificationOwner::kInvocationFunction;
 };
-enum class PoolTextKind : std::uint8_t { kString, kBigInt };
+enum class PoolTextKind : std::uint8_t { kString, kBigInt, kRegExp };
 struct StringLoad {
   abc::PoolIndex value;
   PoolTextKind kind = PoolTextKind::kString;
+  RegExpFlags flags;
 };
 // Realm-owned object identity, not a mutable globalThis identifier lookup.
 struct GlobalObjectLoad {};

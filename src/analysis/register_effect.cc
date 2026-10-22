@@ -2,6 +2,7 @@
 #include "abcd/analysis/this_property.h"
 #include "abcd/analysis/object_spread.h"
 #include "abcd/analysis/object_rest.h"
+#include "abcd/analysis/regexp.h"
 #include "abcd/analysis/property_delete.h"
 #include "abcd/analysis/array_creation.h"
 #include "abcd/analysis/array_spread.h"
@@ -368,6 +369,9 @@ bool Unsupported(const EffectResult& result) {
 
 EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
                                 std::uint64_t frame_size) {
+  const auto regexp=LiftRegExpLiteral(instruction);
+  if(std::holds_alternative<RegExpLiteral>(regexp))return AccumulatorDefinition();
+  if(std::get<ScalarError>(regexp)!=ScalarError::kUnsupportedOpcode)return std::get<ScalarError>(regexp);
   if(instruction.opcode==abc::Opcode::kTHROW_PATTERNNONCOERCIBLE_PREF_NONE) {
     if(instruction.operand_count)return ScalarError::kMalformedInstruction;
     return RegisterEffect{};

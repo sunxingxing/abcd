@@ -6871,6 +6871,132 @@
       "classification": "Unmeasured",
       "oracles": {},
       "note": "V7 object-rest Set and Proxy-unwrap differences; promotion requires occurrence evidence."
+    },
+    {
+      "path": "tests/fixtures/isa/regexp/createregexpwithliteral_imm8_id16_imm8-dynamic1206.abc",
+      "sha256": "805ab289d4fe50a2cee48d4b3a6f88a6e0065a5aa5778eb5434659d73dc25dcc",
+      "opcodes": [
+        113
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "RegExp runtime raw bits; only executed occurrence evidence promotes. SDK lowers literals to global RegExp construction."
+    },
+    {
+      "path": "tests/fixtures/isa/regexp/createregexpwithliteral_imm8_id16_imm8-dynamic2400.abc",
+      "sha256": "99e4adf20c535807da24ca92ab5c2d85426b5b7023b61936aa8e17d22d4cf334",
+      "opcodes": [
+        113
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "RegExp runtime raw bits; only executed occurrence evidence promotes. SDK lowers literals to global RegExp construction."
+    },
+    {
+      "path": "tests/fixtures/isa/regexp/createregexpwithliteral_imm16_id16_imm8-dynamic1206.abc",
+      "sha256": "f3ef4c5ac1fe2f571b06f53e2d1a43d27003332ef084cf76dae029e6ea466182",
+      "opcodes": [
+        114
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "RegExp runtime raw bits; only executed occurrence evidence promotes. SDK lowers literals to global RegExp construction."
+    },
+    {
+      "path": "tests/fixtures/isa/regexp/createregexpwithliteral_imm16_id16_imm8-dynamic2400.abc",
+      "sha256": "6d24933be5fe9cd5ce26d7706fe4f85bce3ca62716fe7b99e9ff688b7c80ef19",
+      "opcodes": [
+        114
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "RegExp runtime raw bits; only executed occurrence evidence promotes. SDK lowers literals to global RegExp construction."
+    },
+    {
+      "path": "tests/fixtures/isa/regexp/loop-dynamic1206.abc",
+      "sha256": "2cb9332cc9b4767583d46e4e3cfd60c1b3da92f0eeb3d0fd645cd96e12337ebc",
+      "opcodes": [
+        114
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "RegExp runtime raw bits; only executed occurrence evidence promotes. SDK lowers literals to global RegExp construction."
+    },
+    {
+      "path": "tests/fixtures/isa/regexp/loop-dynamic2400.abc",
+      "sha256": "eef7085dd6b24eb8bed54fe4e9a1332b2192d1a2ad8382429231d0841750be88",
+      "opcodes": [
+        114
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "RegExp runtime raw bits; only executed occurrence evidence promotes. SDK lowers literals to global RegExp construction."
+    },
+    {
+      "path": "tests/fixtures/isa/regexp/sdk-default.abc",
+      "sha256": "2b1b3c1f04a029b6555648e7cefeac971dae10511dc11b17ec8e3bd51c983adb",
+      "opcodes": [
+        5,
+        8,
+        17,
+        30,
+        33,
+        46,
+        51,
+        62,
+        63,
+        66,
+        68,
+        77,
+        79,
+        96,
+        97,
+        98,
+        100,
+        101,
+        121,
+        124,
+        131,
+        140,
+        144
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "RegExp runtime raw bits; only executed occurrence evidence promotes. SDK lowers literals to global RegExp construction."
+    },
+    {
+      "path": "tests/fixtures/isa/regexp/sdk-o0.abc",
+      "sha256": "bb39b3c981f7ec4e69882cb131f394e61fa96326760371e8904e60ac59a69033",
+      "opcodes": [
+        0,
+        5,
+        8,
+        17,
+        30,
+        33,
+        46,
+        51,
+        62,
+        63,
+        66,
+        68,
+        69,
+        78,
+        80,
+        96,
+        97,
+        98,
+        100,
+        101,
+        121,
+        124,
+        131,
+        140,
+        144
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "RegExp runtime raw bits; only executed occurrence evidence promotes. SDK lowers literals to global RegExp construction."
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.",
@@ -6934,6 +7060,10 @@
     {
       "test": "isa_object_rest_source_test",
       "producer": "tests/isa/object_rest_test.py"
+    },
+    {
+      "test": "isa_regexp_source_test",
+      "producer": "tests/isa/regexp_test.py"
     }
   ]
 }

@@ -9,7 +9,8 @@ enum class TreePrintError : std::uint8_t {
 };
 enum class TreeStructureError : std::uint8_t {
   kRange, kOwnership, kScope, kBinding, kName, kTarget, kOrigin,
-  kUnsupportedSyntax, kResourceLimit, kWorkLimit, kGlobalShadowed
+  kUnsupportedSyntax, kResourceLimit, kWorkLimit, kGlobalShadowed,
+  kRegExpSyntax, kRegExpUnproven, kRegExpSource
 };
 enum class TreePrintBudgetKind : std::uint8_t {
   kScratchBytes, kOutputBytes, kWork, kCapacityOverflow, kHostAllocation

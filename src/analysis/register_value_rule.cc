@@ -2,6 +2,7 @@
 #include "abcd/analysis/this_property.h"
 #include "abcd/analysis/object_spread.h"
 #include "abcd/analysis/object_rest.h"
+#include "abcd/analysis/regexp.h"
 #include "abcd/analysis/property_delete.h"
 #include "abcd/analysis/iterator.h"
 
@@ -265,6 +266,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
         break;
     }
   }
+  if (std::holds_alternative<RegExpLiteral>(LiftRegExpLiteral(instruction)))return ValueRule{ValueRuleKind::kFixed,ValueKinds::Defined()};
   if (instruction.opcode == abc::Opcode::kLDBIGINT_ID16)
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Defined()};
   if (instruction.opcode == abc::Opcode::kLDA_STR_ID16)

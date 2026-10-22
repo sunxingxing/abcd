@@ -1257,6 +1257,7 @@ class ForestBuilder {
       else if constexpr (std::is_same_v<T, analysis::ValueString>) {
         const auto* text = std::get_if<TextId>(&constant);
         Require(text && text->value < constants_.text_count, Error::kConstant);
+        if(operation.kind==analysis::PoolTextKind::kRegExp)return Add(RegExpExpr{*text,operation.flags},origin);
         return operation.kind == analysis::PoolTextKind::kBigInt ? Add(BigIntExpr{*text}, origin) : Literal(*text, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
         Require(operation.lookup == analysis::GlobalLookup::kName, Error::kUnsupportedOperation);

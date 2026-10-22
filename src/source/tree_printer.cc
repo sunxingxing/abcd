@@ -3,6 +3,7 @@
 #include "concurrent_print.h"
 #include "tree_print_trace.h"
 #include "source_variables.h"
+#include "regexp_literal.h"
 #include "tail_completion.h"
 #include "discarded_read.h"
 #include "class_names.h"
@@ -808,6 +809,11 @@ class TreePrinter {
   void Expression(NewTargetExpr) {
     if (ModuleBody()) throw Error::kUnsupportedContext;
     Append("new.target");
+  }
+  void Expression(RegExpExpr node) {
+    auto checked=BuildRegExpLiteral(Tree().texts[node.text.value],node.flags,remaining_);
+    if(const auto* error=std::get_if<RegExpLiteralError>(&checked))throw *error==RegExpLiteralError::kResourceLimit?Error::kResourceLimit:*error==RegExpLiteralError::kWorkLimit?Error::kWorkLimit:Error::kInvalidLiteral;
+    const auto& literal=std::get<RegExpLiteralPlan>(checked);Admit(literal.allocated_bytes,1);Step(literal.work);Append(literal.literal);
   }
   void Expression(BigIntExpr node) {
     for (const auto ch : Tree().texts[node.text.value]) { const char c = static_cast<char>(ch); Append({&c, 1}); }

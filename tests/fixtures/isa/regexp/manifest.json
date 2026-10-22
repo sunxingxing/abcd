@@ -1,0 +1,165 @@
+{
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "path": "createregexpwithliteral_imm8_id16_imm8-dynamic1206.abc",
+      "sha256": "805ab289d4fe50a2cee48d4b3a6f88a6e0065a5aa5778eb5434659d73dc25dcc",
+      "source": "constructed.js",
+      "source_sha256": "9b0bff6b9196acfbd0685b2a115966d88b7d7f2a055b21dc04eac674a2475996",
+      "origin": "constructed",
+      "kind": "CREATEREGEXPWITHLITERAL_IMM8_ID16_IMM8",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        113
+      ]
+    },
+    {
+      "path": "createregexpwithliteral_imm8_id16_imm8-dynamic2400.abc",
+      "sha256": "99e4adf20c535807da24ca92ab5c2d85426b5b7023b61936aa8e17d22d4cf334",
+      "source": "constructed.js",
+      "source_sha256": "9b0bff6b9196acfbd0685b2a115966d88b7d7f2a055b21dc04eac674a2475996",
+      "origin": "constructed",
+      "kind": "CREATEREGEXPWITHLITERAL_IMM8_ID16_IMM8",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        113
+      ]
+    },
+    {
+      "path": "createregexpwithliteral_imm16_id16_imm8-dynamic1206.abc",
+      "sha256": "f3ef4c5ac1fe2f571b06f53e2d1a43d27003332ef084cf76dae029e6ea466182",
+      "source": "constructed.js",
+      "source_sha256": "9b0bff6b9196acfbd0685b2a115966d88b7d7f2a055b21dc04eac674a2475996",
+      "origin": "constructed",
+      "kind": "CREATEREGEXPWITHLITERAL_IMM16_ID16_IMM8",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        114
+      ]
+    },
+    {
+      "path": "createregexpwithliteral_imm16_id16_imm8-dynamic2400.abc",
+      "sha256": "6d24933be5fe9cd5ce26d7706fe4f85bce3ca62716fe7b99e9ff688b7c80ef19",
+      "source": "constructed.js",
+      "source_sha256": "9b0bff6b9196acfbd0685b2a115966d88b7d7f2a055b21dc04eac674a2475996",
+      "origin": "constructed",
+      "kind": "CREATEREGEXPWITHLITERAL_IMM16_ID16_IMM8",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        114
+      ]
+    },
+    {
+      "path": "loop-dynamic1206.abc",
+      "sha256": "2cb9332cc9b4767583d46e4e3cfd60c1b3da92f0eeb3d0fd645cd96e12337ebc",
+      "source": "loop.js",
+      "source_sha256": "a614b2c1a5784bf9ed7103538a03229ac2d78f76f005dff1a82f8585bd625257",
+      "origin": "constructed",
+      "kind": "loop",
+      "profile": "DYNAMIC1206",
+      "opcodes": [
+        114
+      ]
+    },
+    {
+      "path": "loop-dynamic2400.abc",
+      "sha256": "eef7085dd6b24eb8bed54fe4e9a1332b2192d1a2ad8382429231d0841750be88",
+      "source": "loop.js",
+      "source_sha256": "a614b2c1a5784bf9ed7103538a03229ac2d78f76f005dff1a82f8585bd625257",
+      "origin": "constructed",
+      "kind": "loop",
+      "profile": "DYNAMIC2400",
+      "opcodes": [
+        114
+      ]
+    },
+    {
+      "path": "sdk-default.abc",
+      "sha256": "2b1b3c1f04a029b6555648e7cefeac971dae10511dc11b17ec8e3bd51c983adb",
+      "source": "sdk.js",
+      "source_sha256": "a4668fe89cc7ce99bb3c3a46685459273db7117db592f07c58c92beb87114187",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRegExp",
+        "--source-file=sdk.js",
+        "--output=tests/fixtures/isa/regexp/sdk-default.abc",
+        "tests/fixtures/isa/regexp/sdk.js"
+      ],
+      "opcodes": [
+        5,
+        8,
+        17,
+        30,
+        33,
+        46,
+        51,
+        62,
+        63,
+        66,
+        68,
+        77,
+        79,
+        96,
+        97,
+        98,
+        100,
+        101,
+        121,
+        124,
+        131,
+        140,
+        144
+      ]
+    },
+    {
+      "path": "sdk-o0.abc",
+      "sha256": "bb39b3c981f7ec4e69882cb131f394e61fa96326760371e8904e60ac59a69033",
+      "source": "sdk.js",
+      "source_sha256": "a4668fe89cc7ce99bb3c3a46685459273db7117db592f07c58c92beb87114187",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRegExp",
+        "--source-file=sdk.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/regexp/sdk-o0.abc",
+        "tests/fixtures/isa/regexp/sdk.js"
+      ],
+      "opcodes": [
+        0,
+        5,
+        8,
+        17,
+        30,
+        33,
+        46,
+        51,
+        62,
+        63,
+        66,
+        68,
+        69,
+        78,
+        80,
+        96,
+        97,
+        98,
+        100,
+        101,
+        121,
+        124,
+        131,
+        140,
+        144
+      ]
+    }
+  ]
+}

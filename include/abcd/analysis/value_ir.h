@@ -164,7 +164,7 @@ struct ValueArgumentSnapshot {
   std::uint32_t slots;
   bool operator==(const ValueArgumentSnapshot&) const = default;
 };
-struct ValueString { abc::PoolIndex string; PoolTextKind kind = PoolTextKind::kString; bool operator==(const ValueString&) const = default; };
+struct ValueString { abc::PoolIndex string; PoolTextKind kind = PoolTextKind::kString; RegExpFlags flags; bool operator==(const ValueString&) const = default; };
 // Name lookup and IC-dependent var lookup have different domains. Retain the
 // opcode contract; neither denotes a source lexical declaration or pure read.
 enum class GlobalLookup : std::uint8_t { kName, kVar };

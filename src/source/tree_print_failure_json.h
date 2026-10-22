@@ -30,7 +30,7 @@ inline std::optional<TreePrintFailure> ParseTreePrintFailure(const nlohmann::jso
   if(!j.is_object()||!FailureNumber(j,"kind",kind)||kind>static_cast<unsigned>(TreePrintError::kInvalidLiteral)||
       !FailureNumber(j,"site",site)||site>static_cast<unsigned>(TreePrintSite::kPublication)||!j.contains("location"))return {};
   TreePrintFailure f{static_cast<TreePrintError>(kind)};f.site=static_cast<TreePrintSite>(site);
-  if(j.contains("structure_error")){std::uint32_t n;if(!FailureNumber(j,"structure_error",n)||n>static_cast<unsigned>(TreeStructureError::kGlobalShadowed))return {};f.cause=static_cast<TreeStructureError>(n);}
+  if(j.contains("structure_error")){std::uint32_t n;if(!FailureNumber(j,"structure_error",n)||n>static_cast<unsigned>(TreeStructureError::kRegExpSource))return {};f.cause=static_cast<TreeStructureError>(n);}
   auto location=ParseTreeLocation(j["location"]);if(!location)return {};f.location=*location;
   if(!FailureOptionalId(j,"owner",f.owner)||!FailureOptionalId(j,"anchor",f.anchor))return {};
   const auto number=[](const nlohmann::json& value,const char* key,std::uint64_t& out){

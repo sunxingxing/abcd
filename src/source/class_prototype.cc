@@ -73,7 +73,7 @@ std::variant<ClassPrototypeReads, ClassPrototypeError> FindClassPrototypeReads(
         if (use.role == OperandRole::kKey) key = producer(*value);
       }
       if (!base || !std::holds_alternative<ValueClassCreation>(graph.ops[base->value].operation)) continue;
-      if (computed && (!key || !std::holds_alternative<ValueString>(graph.ops[key->value].operation))) continue;
+      if (computed && (!key || (!std::holds_alternative<ValueString>(graph.ops[key->value].operation) || std::get<ValueString>(graph.ops[key->value].operation).kind != PoolTextKind::kString))) continue;
       result.reads.push_back({OpId{static_cast<std::uint32_t>(i)}, *base, computed ? key : std::nullopt});
     }
     result.allocated_bytes = initial.bytes - budget.bytes; result.work = initial.work - budget.work;

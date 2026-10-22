@@ -62,7 +62,7 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
         const auto key_op = producer(input(id, 1, OperandRole::kKey));
         if (!key_op) continue;
         const auto* name = std::get_if<ValueString>(&graph.ops[key_op->value].operation);
-        if (!name) continue;
+        if (!name || name->kind != PoolTextKind::kString) continue;
         key = name->string;
         const ValueOperand* flag_value = &input(id, 4, OperandRole::kNameFlag, ReadPurpose::kProtocol);
         // Protocol reads intentionally retain SSA identity during simplification.

@@ -10,6 +10,59 @@
 
 
 
+## ISA coverage6 — RegExp complete; tagged templates unfinished (2026-10-22)
+
+**Item 1 is implemented and measured; item 2 is not implemented.** No
+GETTEMPLATEOBJECT production gate is lifted and no template oracle is imported.
+The remaining event/certificate boundary is recorded in
+[isa-template-construction.md](isa-template-construction.md). This is an
+implementation gap, not a new source-language premise.
+
+Both RegExp widths now retain pool pattern identity and typed raw flags through
+lifting, SSA, allocation/exception effects and RegExpExpr. Runtime flags are
+`dgimsuy` (no `v`), with the runtime bit layout rather than the frontend enum.
+An explicit-stack, budgeted Pattern validator refuses invalid or unproven syntax
+before native publication. Empty patterns and slash escaping preserve the pinned
+source getter. Raw line terminators/lone surrogates retain a precise source-
+representation refusal; backreferences/named groups/property escapes stay
+unproven. See [isa-regexp.md](isa-regexp.md) for citations and limits.
+
+Eight registered ABCs complete: both widths in profiles 4/6, two intrinsic loop
+fixtures, and pinned SDK default/O0 fixtures. They pass Node syntax and 1,342
+Node differential cases, including independent identity/lastIndex and a replaced
+global RegExp for intrinsic fixtures. Mutated pattern/flags/tokens, malformed
+operands and receipt round trips pass. Exact 200/201/400/800 width/depth budgets
+pass; at 800 they use 4,026/8,026 admitted bytes and 1,609/4,009 work respectively.
+
+Final ledger `build/review/isa-r6`: **143 Verified / 58 Unverified / 103
+Unmeasured / 28 NonExecutable**, 920 ABCs, zero probe failures, no backward
+variant/profile moves. Both RegExp variants promote under profiles 4 and 6.
+JEQZ imm16, NewObjRange imm16 and TryLdGlobalByName imm16 additionally promote
+under profile 6. The oracle has 1,674 Node occurrence rows, 775 matched
+recompiled events and 899 null round-trip entries; Ark runtime stays null.
+
+Strict grouping_bytecode per optimization mode: 4 exact / 4 different / 0
+unverified fixture records. Factory pairs match exactly. The four loop files
+retain explicit differences: private variable/register allocation, O0 snapshots,
+number-only induction ToNumeric removal, and SDK module-entry declaration order.
+These differences are explained in the note and remain in the reports. The SDK
+lowers native regexp syntax to a mutable global RegExp lookup/construction;
+original intrinsic-to-SDK event mismatches are never counted as matches.
+
+Verification against **087cf100**:
+- Full build passes; new RegExp tests 3/3; source-regression **65/65**;
+  **all scale 13/13**; ISA/RegExp **19/19**.
+- Touched-area sweep **190/202**. All 12 failures are on the supplied known list:
+  family_source_cli, tree_structure, try_tree, literal_construct, mixed_literal,
+  phased_literal, class_tree_source, literal_closure_source and its unguarded
+  peer, derived_literal_receiver_source and its unguarded peer, try_tree_source.
+- Both 40-input cohorts remain **605/620 source** and **542/620 previous**,
+  with zero regressions, new completions or text changes to previously complete
+  records. No contract label or existing spelling expectation changed.
+- Logs, compiler/disassembler hashes, raw diffs and result summaries:
+  `build/review/isa-r6-work/regexp/`. Generated JSON remains under build/;
+  the generated Markdown ledger is refreshed. No commit/push/stash.
+
 ## ISA coverage5 — object rest; requested round unfinished (2026-10-22)
 
 **Only item 1 is implemented.** Item 2 was investigated but has no production

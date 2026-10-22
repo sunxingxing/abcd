@@ -101,7 +101,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueString>) {
-      EvaluationShape shape{kNoOperands, true}; shape.source = op.kind == analysis::PoolTextKind::kBigInt ? SourceEvaluation::kDirect : SourceEvaluation::kPure; return shape;
+      EvaluationShape shape{kNoOperands, true}; shape.source = op.kind != analysis::PoolTextKind::kString ? SourceEvaluation::kDirect : SourceEvaluation::kPure; return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueHole>) {
       EvaluationShape shape{kNoOperands, true}; shape.source = SourceEvaluation::kUnsupported; return shape;

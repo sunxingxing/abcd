@@ -10,6 +10,7 @@
 #include "abcd/analysis/coroutine.h"
 #include "abcd/analysis/constant_object.h"
 #include "semantic_lifter.h"
+#include "abcd/analysis/regexp.h"
 
 namespace abcd::analysis {
 namespace {
@@ -191,6 +192,9 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   if (const auto* value = std::get_if<ReceiverCall>(&receiver_call)) return *value;
   if (std::get<CallError>(receiver_call) != CallError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);
+  const auto regexp=LiftRegExpLiteral(decoded);
+  if(const auto* literal=std::get_if<RegExpLiteral>(&regexp))return StringLoad{literal->pattern,PoolTextKind::kRegExp,literal->flags};
+  if(std::get<ScalarError>(regexp)!=ScalarError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
   if (decoded.opcode == Opcode::kLDA_STR_ID16 || decoded.opcode == Opcode::kLDBIGINT_ID16) {
     if (!std::holds_alternative<RegisterEffect>(
             LiftRegisterEffect(decoded, frame_size)))
@@ -455,7 +459,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           // premise must not disappear through pure-value elimination.
           effects.normal = LanguageEffect::kArgumentsRead;
         } else if constexpr (std::is_same_v<T, StringLoad>) {
-          if (value.kind == PoolTextKind::kBigInt) {
+          if (value.kind != PoolTextKind::kString) {
             effects.normal = LanguageEffect::kAllocation;
             effects.before_throw = effects.normal;
             effects.exceptional = ExceptionalCompletion::kMayThrow;
