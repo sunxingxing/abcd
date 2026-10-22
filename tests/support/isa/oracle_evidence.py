@@ -97,16 +97,16 @@ def event_signature(row):
     def shape(value):
         if isinstance(value, dict):
             return {key: (item if key in ('type', 'op', 'kind', 'completion', 'lookup',
-                'mode', 'loading', 'name_setting', 'domain') else shape(item))
+                'mode', 'loading', 'name_setting', 'domain', 'operation') else shape(item))
                 for key, item in value.items() if isinstance(item, (dict, list)) or
-                key in ('type', 'op', 'kind', 'completion', 'lookup', 'mode', 'loading', 'name_setting', 'domain')}
+                key in ('type', 'op', 'kind', 'completion', 'lookup', 'mode', 'loading', 'name_setting', 'domain', 'operation')}
         if isinstance(value, list):
             return [shape(item) for item in value]
         return None
     return {'family': row['lift']['semantic_family'], 'roles': shape(row['lift']['roles'])}
 
 
-def round_trip(directory, abc, export, emitted, engine, probe):
+def round_trip(directory, abc, export, emitted, engine, probe, source_mode='module'):
     """Conservative event correspondence: unique method identity and complete
     ordered raw semantic-family sequence. Never LCS/width/name guessing. A
     differing sequence records a mismatch, never partial round-trip passes.
@@ -116,14 +116,14 @@ def round_trip(directory, abc, export, emitted, engine, probe):
     spec.loader.exec_module(sdk)
     before, after = directory / 'old.js', directory / 'input.js'
     pairs = directory / 'pairs.json'
-    pairs.write_text(json.dumps([{'id': 'oracle', 'old': str(emitted), 'new': str(emitted),
+    pairs.write_text(json.dumps([{'source_mode':source_mode, 'id': 'oracle', 'old': str(emitted), 'new': str(emitted),
                                  'adapted_old': str(before), 'adapted_new': str(after)}]))
     node_command = ['node', '--expose-internals', str(ROOT / 'tests/tools/grouping_pairs.mjs'),
                     str(pairs), str(directory / 'tokens.json')]
     if sdk.run(node_command, directory / 'tokens.log'):
         return {}, [{'kind': 'source-adaptation'}]
     output = directory / 'recompiled.abc'
-    command = [sdk.ES2ABC, '--module', '--merge-abc', '--opt-level=0',
+    command = [sdk.ES2ABC] + ([] if source_mode == 'script' else ['--module']) + ['--merge-abc', '--opt-level=0',
                '--extension=js', '--record-name=isaOracle', '--source-file=input.js',
                '--output=' + str(output), str(after)]
     if sdk.run(command, directory / 'compile.log'):
@@ -197,7 +197,7 @@ def round_trip(directory, abc, export, emitted, engine, probe):
     return matched, mismatches
 
 
-def record_node(abc, export, original, producer, cases, engine, exclusions=(), records=None):
+def record_node(abc, export, original, producer, cases, engine, exclusions=(), records=None, dependencies=()):
     destination = os.environ.get('ABCD_ISA_ORACLE_DIR')
     if not destination:
         return
@@ -226,7 +226,8 @@ def record_node(abc, export, original, producer, cases, engine, exclusions=(), r
                   'original': artifact(directory, 'original.js', original),
                   'node_version': subprocess.check_output(['node', '--version'], text=True).strip(),
                   'contract': manifest['source_contract'], 'cases': cases,
-                  'exclusions': list(exclusions), 'records': []}
+                  'exclusions': list(exclusions), 'records': [],
+                  'dependencies': [{'path':str(Path(p).resolve()),'sha256':sha(p)} for p in dependencies]}
     complete = {}
     trip = {}
     for record in manifest['records']:
@@ -234,16 +235,18 @@ def record_node(abc, export, original, producer, cases, engine, exclusions=(), r
             continue
         emitted = export / record['source']
         rid = record['entity']
-        copied = artifact(directory, f'{rid}.mjs', emitted)
+        source_mode='script' if record.get('source_language') == 'javascript-script' else 'module'
+        copied = artifact(directory, f'{rid}.js' if source_mode=='script' else f'{rid}.mjs', emitted)
         complete[rid] = copied
         subdir = directory / str(rid)
         subdir.mkdir()
         try:
-            correspondence, mismatch = round_trip(subdir, abc, export, emitted, engine, probe)
+            correspondence, mismatch = round_trip(subdir, abc, export, emitted, engine, probe,
+                source_mode)
         except OracleResourceError as error:
             correspondence, mismatch = {}, [{'kind': 'resource', 'reason': str(error)}]
         trip[rid] = correspondence
-        provenance['records'].append({'record': rid, 'emitted': copied,
+        provenance['records'].append({'record': rid, 'emitted': copied, 'source_mode':source_mode,
                                       'round_trip_mismatches': mismatch,
                                       'round_trip': artifact(directory, f'{rid}-round-trip.json', subdir/'round-trip.json')
                                           if (subdir/'round-trip.json').exists() else None})

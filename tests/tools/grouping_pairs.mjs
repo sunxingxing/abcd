@@ -16,7 +16,7 @@ for(const pair of pairs){
   // Apply only identifier-valued string export aliases. No text matching of
   // strings/comments; both sides receive the same syntax adaptation.
   function adapt(source){
-    const ast=acorn.parse(fieldTypeShadow(source,typed).source,{ecmaVersion:'latest',sourceType:'module'}),edits=[];
+    const ast=acorn.parse(fieldTypeShadow(source,typed).source,{ecmaVersion:'latest',sourceType:pair.source_mode==='script'?'script':'module'}),edits=[];
     for(const node of ast.body)if(node.type==='ExportNamedDeclaration')for(const spec of node.specifiers){
       if(spec.exported.type==='Literal' && typeof spec.exported.value==='string'){
         const name=spec.exported.value;

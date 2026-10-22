@@ -348,7 +348,9 @@ bool AbsentHeritage(const analysis::ValueProgram& graph, const analysis::ValueOp
   return std::holds_alternative<analysis::ValueClassCreation>(op.operation) && value &&
       graph.values[value->value].domain == analysis::ValueKinds::Hole();
 }
-bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::ValueOp& op, std::size_t index, Guards guards, bool property_name = false) {
+bool LiteralExpression(const analysis::ValueProgram& graph, const analysis::ValueOp& op, std::size_t index, Guards guards, SourceContract contract, bool property_name = false) {
+  const auto* global=std::get_if<analysis::ValueGlobalRead>(&op.operation);
+  if(global && global->lookup==analysis::GlobalLookup::kVar && !GlobalScripts(contract))return false;
   const auto shape = DescribeEvaluation(op.operation);
   if (!shape || !shape->expression || shape->Count() != op.use_count ||
       (shape->inputs != InputEvaluation::kEager && !(property_name && shape->inputs == InputEvaluation::kClassHeritage)) || !op.result ||
@@ -402,7 +404,7 @@ bool ReferenceReceiver(const analysis::ValueProgram& graph, analysis::UseId use,
 void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const std::vector<std::optional<analysis::OpId>>& owners, LiteralBudget& budget, Guards guards, Guards projected,
     const LiteralPath& path, const EvaluationPlan* evaluation,
-    std::span<const std::uint8_t> initialized_receivers, EvaluationInputSite* failure) {
+    std::span<const std::uint8_t> initialized_receivers, EvaluationInputSite* failure, SourceContract contract) {
   if (plan.nested.empty()) return;
   Require(plan.nested.size() == graph.ops.size(), Error::kFlow);
   std::vector<std::optional<analysis::OpId>> ends;
@@ -438,7 +440,7 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     const auto& op = graph.ops[i]; const auto use = *plan.nested[i];
     const auto* naming_parent = std::get_if<analysis::OpId>(&graph.uses[use.value].owner);
     const auto* naming = naming_parent ? std::get_if<analysis::ValueOwnWrite>(&graph.ops[naming_parent->value].operation) : nullptr;
-    Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || LiteralExpression(graph, op, i, guards,
+    Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || LiteralExpression(graph, op, i, guards, contract,
         naming && naming->name_setting == analysis::PropertyNameSetting::kPropertyKey)) && op.result &&
         use.value < graph.uses.size(), Error::kDefinition);
     const auto& occurrence = graph.uses[use.value];
@@ -791,7 +793,7 @@ struct FieldOwner { analysis::OpId allocation; analysis::OpId definition; };
 std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan* evaluation,
     analysis::SemanticBudget allowance, Guards guards, Guards projected,
-    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells, EvaluationInputSite* failure) {
+    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells, EvaluationInputSite* failure, SourceContract contract) {
   try {
     LiteralBudget budget(allowance);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
@@ -910,7 +912,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     }
     VerifyStaged(graph, plan, owners, budget, path, failure);
     const auto initialized_receivers = InitializedReceiverChecks(graph, receiver_guards, budget, evaluation);
-    VerifyNesting(graph, plan, owners, budget, guards, projected, path, evaluation, initialized_receivers, failure);
+    VerifyNesting(graph, plan, owners, budget, guards, projected, path, evaluation, initialized_receivers, failure, contract);
     {
       std::vector<std::optional<std::size_t>> objects;
       budget.Size(objects, graph.values.size());
@@ -947,7 +949,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
 
 std::variant<LiteralPlan, LiteralError> BuildLiterals(
     const analysis::ValueProgram& graph, const EvaluationPlan* evaluation, analysis::SemanticBudget allowance, Guards guards, Guards projected,
-    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells, EvaluationInputSite* failure) {
+    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells, EvaluationInputSite* failure, SourceContract contract) {
   try {
     LiteralBudget budget(allowance);
     const auto dominators = Flow(graph, budget, evaluation, cells);
@@ -1043,7 +1045,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
         const auto* value = std::get_if<analysis::ValueId>(&operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
         const auto* naming = std::get_if<analysis::ValueOwnWrite>(&definition.operation);
-        if (!result || !(Aggregate(graph.ops[result->op.value].operation) || LiteralExpression(graph, graph.ops[result->op.value], result->op.value, guards,
+        if (!result || !(Aggregate(graph.ops[result->op.value].operation) || LiteralExpression(graph, graph.ops[result->op.value], result->op.value, guards, contract,
             naming && naming->name_setting == analysis::PropertyNameSetting::kPropertyKey)) ||
             !path.Before(graph.ops[object.allocation.value], graph.ops[result->op.value])) continue;
         if (plan.nested.empty()) budget.Size(plan.nested, graph.ops.size());
@@ -1078,13 +1080,13 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
           if (!result || result->op.value < allocation[i]->value) continue;
           Require(!PredicateSnapshot(graph, op, operand), Error::kLateValue);
           Require(Aggregate(graph.ops[result->op.value].operation) ||
-              LiteralExpression(graph, graph.ops[result->op.value], result->op.value, guards), Error::kLateValue);
+              LiteralExpression(graph, graph.ops[result->op.value], result->op.value, guards, contract), Error::kLateValue);
           Require(!plan.nested[result->op.value], Error::kObserved);
           plan.nested[result->op.value] = use;
         }
       }
     }
-    const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining(), guards, projected, receiver_guards, cells, failure);
+    const auto verified = VerifyLiterals(graph, plan, evaluation, budget.Remaining(), guards, projected, receiver_guards, cells, failure, contract);
     if (const auto* error = std::get_if<Error>(&verified)) return *error;
     budget.Step(std::get<std::uint64_t>(verified));
     plan.allocated_bytes =
@@ -1105,26 +1107,26 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
 }  // namespace
 std::variant<LiteralPlan, LiteralError> BuildLiteralPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, Guards guards, Guards projected,
-    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells, EvaluationInputSite* failure) {
+    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells, EvaluationInputSite* failure, SourceContract contract) {
   if (failure) *failure = {};
-  return BuildLiterals(graph, nullptr, budget, guards, projected, receiver_guards, cells, failure);
+  return BuildLiterals(graph, nullptr, budget, guards, projected, receiver_guards, cells, failure, contract);
 }
 std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, analysis::SemanticBudget budget, Guards guards, Guards projected,
-    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells, EvaluationInputSite* failure) {
+    std::span<const analysis::OpId> receiver_guards, const CellEvaluation* cells, EvaluationInputSite* failure, SourceContract contract) {
   if (failure) *failure = {};
-  return VerifyLiterals(graph, plan, nullptr, budget, guards, projected, receiver_guards, cells, failure);
+  return VerifyLiterals(graph, plan, nullptr, budget, guards, projected, receiver_guards, cells, failure, contract);
 }
 std::variant<LiteralPlan, LiteralError> BuildPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget,
     Guards guards, Guards projected, EvaluationInputSite* failure) {
   if (failure) *failure = {};
-  return BuildLiterals(graph, &evaluation, budget, guards, projected, {}, nullptr, failure);
+  return BuildLiterals(graph, &evaluation, budget, guards, projected, {}, nullptr, failure, evaluation.call_spread_contract);
 }
 std::variant<std::uint64_t, LiteralError> VerifyPhasedLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan, const EvaluationPlan& evaluation,
     analysis::SemanticBudget budget, Guards guards, Guards projected, EvaluationInputSite* failure) {
   if (failure) *failure = {};
-  return VerifyLiterals(graph, plan, &evaluation, budget, guards, projected, {}, nullptr, failure);
+  return VerifyLiterals(graph, plan, &evaluation, budget, guards, projected, {}, nullptr, failure, evaluation.call_spread_contract);
 }
 }  // namespace abcd::source

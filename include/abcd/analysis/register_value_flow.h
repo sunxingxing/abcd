@@ -8,6 +8,7 @@
 #include "abcd/analysis/value_kinds.h"
 
 namespace abcd::analysis {
+enum class GlobalReadValues : std::uint8_t { kUnknown, kLanguage };
 struct EntryValueFact {
   SsaValueId value;
   ValueKinds kinds;
@@ -74,7 +75,8 @@ class RegisterValueFlow {
                          std::span<const SemanticInstruction> semantics = {},
                          CallResultValues calls = CallResultValues::kUnknown,
                          FrameReceiver receiver = FrameReceiver::kUnknown,
-      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
+      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime,
+      GlobalReadValues globals = GlobalReadValues::kUnknown);
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }
@@ -95,7 +97,8 @@ class RegisterValueFlow {
       IdfBudget budget, std::span<const SemanticInstruction> semantics = {},
       CallResultValues calls = CallResultValues::kUnknown,
       FrameReceiver receiver = FrameReceiver::kUnknown,
-      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
+      ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime,
+      GlobalReadValues globals = GlobalReadValues::kUnknown);
   RegisterValueFlow() = default;
   std::unique_ptr<ValueKinds[]> facts_;
   std::size_t count_ = 0;

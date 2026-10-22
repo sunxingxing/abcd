@@ -1,8 +1,8 @@
-# 源语言契约：LanguageSourceV1–V8
+# 源语言契约：LanguageSourceV1–V9
 
 `SourceContract::kLanguageSourceV1`（序列化名 `language_source_v1`）保留原有四项前提。
 2026-10-14 新增 `kLanguageSourceV2`（`language_source_v2`）；V2 继承 V1，并加入 §5 的独立标准迭代获取前提。
-2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），该轮 CLI 的 `--language-source` 选择 V4（当前版本见文末 V8）；
+2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），该轮 CLI 的 `--language-source` 选择 V4（当前版本见文末 V9）；
 V4 继承 V3（含 V2 与独立 Ark 输出政策），并增加文末 2026-10-16 批准的外部异常值域前提。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
 `--language-constructors` 组合。它包含 `LanguageNumericConstructorsV1` 的全部前提（numeric 算术、
 原生 super 语义），并另外加入下面四项源语言前提。默认契约 V3 以及其他已有 opt-in 都不变。
@@ -730,3 +730,50 @@ compiler/interpreter_stub.cpp:5091–5108 (incorrect ReadInst8_2 at 5097);
 compiler/bytecodes.cpp:1126–1132. The related receiver, named receiver,
 constructor and super range variants agree on their layouts across these paths;
 they need no new premise. Full per-variant audit: [isa-wide-range-calls.md](isa-wide-range-calls.md).
+
+## LanguageSourceV9 — native global scripts (user approval 2026-10-22)
+
+`--language-source` selects `kLanguageSourceV9` (`language_source_v9`). V9
+inherits V8 unchanged and adds the independent `GlobalScripts()` predicate;
+V1–V8 and the previous numeric/constructor flags keep their meanings. This is
+restricted to verified non-module, non-CommonJS script entries and their
+same-record functions. No module table or import/export binding is fabricated.
+
+The approved native forms are top-level `var`/function/`let`/`const`/class
+bindings and plain global reads/writes, recompiled by es2abc to the original
+global-record / checked-global / global-var operations. Two differences are
+accepted, not silently used as Node passes:
+
+1. Ark creates a global lexical record entry when its record store executes;
+   it has no pre-existing TDZ. `globalThis.x=9; typeof x; let x=1` can read 9 on
+   Ark before initialization, while native JS observes the lexical TDZ.
+2. An unresolved sloppy write throws ReferenceError on Ark, rather than
+   creating a global property. The script printer's strict directive preserves
+   checked-write and value-call semantics; it is not module syntax.
+
+Pinned evidence: `ets_frontend/es2panda/compiler/core/pandagen.cpp:361–439,
+587–595` chooses the global instructions; `compiler/base/hoisting.cpp:24–75`
+initializes hoisted declarations. `ets_runtime/ecmascript/interpreter/
+interpreter-inl.cpp:2876,3004,3209,6342–6391,6782` dispatches the global
+operations. `ecmascript/stubs/runtime_stubs-inl.h:806–848` creates lexical
+record entries at the store, `:1753–1793` reads/updates them and supplies the
+const-update TypeError text **"const variable can not be modified"**. The
+recovered const update remains a checked global assignment, never a fabricated
+throw. See [the evidence audit](isa-globals-prototype-throws.md).
+
+**Publication boundary found in round 10, not approved by these two clauses:**
+`RuntimeStGlobalVar` (`runtime_stubs-inl.h:1819`) calls
+`JSObject::GlobalSetProperty(..., true)` (`js_object.cpp:1044–1056`), which invokes
+an existing global setter even for an entry undefined store. Native global
+`var x;` does not invoke that setter, and native function declaration
+instantiation can replace a configurable accessor instead of invoking it.
+The fixture demonstrates the standard side using `vm.Script.runInThisContext`
+(the contextified sandbox has separate interception behavior). No Ark runtime
+execution is claimed. Until an explicit decision covers this additional
+observable difference, `ScriptScopeError::kHostGlobalAccessor` keeps global
+var/function declaration publication closed. Lexical/class declarations and
+checked global reads/writes are independent and implemented. This boundary
+must not be removed merely because source recompiles to the same instructions.
+
+The separate script certificate, immutable input checks, completion semantics,
+limits and tests are described in [isa-global-scripts.md](isa-global-scripts.md).

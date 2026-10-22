@@ -55,7 +55,10 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
       body = std::move(normal);
     }
     auto proven = FunctionInput::Build(identity, method.offset, method.owner_offset, body, frame, mode,
-        {bytes, budget.work}, owner, modules_input);
+        {bytes, budget.work}, owner, modules_input,
+        modules && modules->Attributes(file, method.owner_offset) &&
+            !modules->ForOwner(file, method.owner_offset) && GlobalScripts(identity.contract)
+          ? analysis::GlobalReadValues::kLanguage : analysis::GlobalReadValues::kUnknown);
     if (auto* error = std::get_if<FunctionInputFailure>(&proven)) {
       if (auto* failure = std::get_if<analysis::SemanticProofFailure>(&error->cause)) {
         failure->allocated_bytes += budget.bytes - bytes;

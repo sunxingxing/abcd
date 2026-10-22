@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "record_tree.h"
+#include "script_tree.h"
 #include "sendable_metadata.h"
 #include "shared_module.h"
 
@@ -33,7 +34,7 @@ RecordSourceResult BuildRecordSource(
     if (header.kind != abc::AbcKind::kDynamic ||
         !SupportsRecordProgramProfile(header.profile)) return fail(Error::kProfile);
     const auto module = context.ForOwner(file, record.offset);
-    if (!module) return fail_with(Error::kModule, RecordModuleProofError::kOwner);
+    if (!module && !GlobalScripts(identity.contract)) return fail_with(Error::kModule, RecordModuleProofError::kOwner);
     const auto attributes = abc::ReadMergedRecordAttributes(file, header, index,
         record, {std::min(budget.strings.bytes, budget.bytes)});
     const auto* flags = std::get_if<abc::RecordAttributes>(&attributes);
@@ -69,6 +70,7 @@ RecordSourceResult BuildRecordSource(
     if (!entry || !entry->code) return fail(Error::kEntry);
     const auto position = lookup.Find(entry->offset);
     if (!position) return fail(Error::kEntry);
+    if (!module) return BuildScriptTree(file,header,index,record,context,*position,identity,budget,lookup,roles,functions,classes);
     auto result = BuildRecordTree(file, header, index, record, context, *position, identity,
                            budget, lookup, roles, functions, classes, diagnostics);
     // Enrich a real failed occurrence only. Complete records take no extra

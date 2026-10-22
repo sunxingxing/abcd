@@ -10,6 +10,73 @@
 
 
 
+## ISA coverage10 — V9 script entry; var/function host boundary retained (2026-10-22)
+
+- Added independent `GlobalScripts()` in **LanguageSourceV9**; CLI, route
+  receipts/round-trip tests and ISA oracle expectations select V9. Historical
+  contracts retain their meanings. The required
+  `grep -rn language_source_v8 tests tools src` is empty; the historical V8
+  serialization name remains in the public contract definition.
+- New `script_tree` route and `ScriptScopeProof` own actual same-file script
+  entry, declarations and global accesses independently of module enclosure.
+  Raw global writes now lift through the production effect/operand adapters;
+  ValueGlobalWrite preserves original input/name, effects and exception exit.
+  The verifier freshly checks original graph facts and TreeSemantics. Printer
+  preflight requires the seal and actual method ownership. Private root locals,
+  unsupported activation/phase and unowned var accesses retain typed refusals.
+- **Partial, not full global-script completion:** eight lexical/class/closure/
+  error SDK ABCs and two sloppy-write ABCs complete; eight var/function ABCs
+  remain at **ScriptScopeError::kHostGlobalAccessor (10)**. Pinned STGLOBALVAR
+  invokes an existing global setter during entry instantiation; native var /
+  function declaration instantiation does not. The two approved differences
+  do not expressly include it. The additional decision was requested; publication
+  stays closed for those declarations until supplied. No refusal counts as
+  support. Existing historical script probes retain exact current refusal
+  boundaries. Standard-side hostile-accessor behavior is tested without claiming
+  Ark VM execution.
+- All 18 new ABCs retain metadata-only status with previous flags. Eight
+  positive V9 oracle artifacts attest **16 executed Node cases**. Script/module
+  compilation mode and differential runner dependencies are now hashed and
+  independently checked; the event signature distinguishes global operation
+  kinds. The two approved script differences are explicit exclusions, and the
+  sloppy difference fixture emits no successful Node oracle.
+- Strict original-ABC/es2abc comparisons at matching default/O0 modes: **4 exact /
+  6 differ / 0 unverified** across the ten completed fixtures. Every difference
+  is retained and explained: inert O0 self-register copies/value-call zero loads,
+  explicit undefined script completion/directive loads, and physical pool
+  offsets. No register/branch/handler normalization or false equality pass.
+  All ten emitted fixture files pass `node --check` and their intended Node
+  differential assertions. SDK 200/201/400/800 script stress fixtures complete;
+  C++ mutations cover owner/entry/name/value/kind, missing commits and exception
+  correspondence. Exact derivation admission at 800: **63,209 bytes / 24,603
+  work**, with one-less limits refused.
+- Ledger **159/54/91/28 → 164/53/87/28**
+  (Verified/Unverified/Unmeasured/NonExecutable), **1,074 ABCs / 1,572,511
+  instructions**, zero probe failures and no backward variant/verified-profile
+  move. The 2,148 sequential production recovery reports peak at
+  **119,947,264 bytes RSS** (below the 1,000,000,000-byte process limit). New Verified profile-6 rows: TRYSTGLOBALBYNAME both widths,
+  STTOGLOBALRECORD, STCONSTTOGLOBALRECORD and STOBJBYNAME_IMM16. LDGLOBALVAR /
+  STGLOBALVAR stay unverified at the pending var-declaration boundary.
+- OLD **22b9a31a**: fresh 40-input comparisons are **605/620 → 605/620** source
+  and **542/620 → 542/620** previous flags, with **zero regressions, new
+  completions or completed text changes**. Only V9 manifest labels change.
+  There are zero executable script entries in the exploration cohort (387
+  no-module records are metadata without func_main_0). Across the measured
+  fixture manifests, 34 records select script entry: 12 complete / 22 refused.
+- Full build passes; source-regression **65/65**, all scale **19/19**, ISA
+  **25/25**, touched sweep **192/197**. Its five failures are the documented
+  pre-existing family_source_cli, tree_structure, try_tree, class_tree_source,
+  try_tree_source. Final focused legacy/source/route/oracle tests pass; no
+  existing printed-spelling assertion was weakened or changed (only version
+  labels and historical script status assertions). New oracle mutation suite
+  passes **13/13** Python cases. Source expectations were searched for affected
+  contract labels; no previous completed source spelling changed.
+- Evidence: `build/review/isa-r10/`, `build/review/isa-r10-work/`,
+  [isa-global-scripts.md](isa-global-scripts.md),
+  [language-source.md](language-source.md). Generated matrix JSON stays under
+  build; the Markdown report is refreshed. No commit, push or stash;
+  user-owned `sample.tar.gz` untouched.
+
 ## ISA coverage9 — private prototype literals; globals/throws remain partial (2026-10-22)
 
 - Both SETOBJECTWITHPROTO widths now retain a typed literal-mutation effect,

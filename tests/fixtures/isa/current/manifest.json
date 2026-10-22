@@ -499,12 +499,31 @@
       "opcode": 64,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 20,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 20,
+        "roles": {
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "operation": 2,
+          "type": "abcd::analysis::GlobalAccess"
+        },
+        "semantic_family": "abcd::analysis::GlobalAccess",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -596,12 +615,31 @@
       "opcode": 71,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 20,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 20,
+        "roles": {
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "operation": 4,
+          "type": "abcd::analysis::GlobalAccess"
+        },
+        "semantic_family": "abcd::analysis::GlobalAccess",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -636,12 +674,31 @@
       "opcode": 72,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 20,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 20,
+        "roles": {
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "operation": 5,
+          "type": "abcd::analysis::GlobalAccess"
+        },
+        "semantic_family": "abcd::analysis::GlobalAccess",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -1420,12 +1477,31 @@
       "opcode": 127,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 20,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 20,
+        "roles": {
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "operation": 3,
+          "type": "abcd::analysis::GlobalAccess"
+        },
+        "semantic_family": "abcd::analysis::GlobalAccess",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -1810,12 +1886,31 @@
       "opcode": 141,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 20,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "normal_effects": 20,
+        "roles": {
+          "name": {
+            "type": "abcd::abc::PoolIndex",
+            "value": 1
+          },
+          "operation": 2,
+          "type": "abcd::analysis::GlobalAccess"
+        },
+        "semantic_family": "abcd::analysis::GlobalAccess",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,

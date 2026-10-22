@@ -103,7 +103,8 @@ inline bool IsStagedLiteral(const LiteralPlan* plan, analysis::OpId id) {
     std::span<const std::optional<analysis::OpId>> module_guards = {},
     std::span<const std::optional<analysis::OpId>> class_projection = {},
     std::span<const analysis::OpId> receiver_guards = {},
-    const CellEvaluation* cells = nullptr, EvaluationInputSite* failure = nullptr);
+    const CellEvaluation* cells = nullptr, EvaluationInputSite* failure = nullptr,
+    SourceContract contract = kSourceContract);
 // Checks supplied groups against use chains and fresh flow, without regrouping.
 [[nodiscard]] std::variant<std::uint64_t, LiteralError> VerifyLiteralPlan(
     const analysis::ValueProgram& graph, const LiteralPlan& plan,
@@ -111,7 +112,8 @@ inline bool IsStagedLiteral(const LiteralPlan* plan, analysis::OpId id) {
     std::span<const std::optional<analysis::OpId>> module_guards = {},
     std::span<const std::optional<analysis::OpId>> class_projection = {},
     std::span<const analysis::OpId> receiver_guards = {},
-    const CellEvaluation* cells = nullptr, EvaluationInputSite* failure = nullptr);
+    const CellEvaluation* cells = nullptr, EvaluationInputSite* failure = nullptr,
+    SourceContract contract = kSourceContract);
 // Same initializer model across unique normal phase corridors. The original
 // phase graph stays intact; copy aliases must have their independent proof.
 // No observations (including exceptional snapshots) before the last define,

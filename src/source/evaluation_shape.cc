@@ -60,7 +60,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else if constexpr (std::is_same_v<T, analysis::ValueNamedRead>) return EvaluationShape{kNamedRead, true};
     else if constexpr (std::is_same_v<T, analysis::ValueLexicalLoad>) return EvaluationShape{kNoOperands, true};
     else if constexpr (std::is_same_v<T, analysis::ValueModuleRead>) return EvaluationShape{kNoOperands, true};
-    else if constexpr (std::is_same_v<T, analysis::ValueModuleWrite>) return EvaluationShape{kCellStore, false};
+    else if constexpr (std::is_same_v<T, analysis::ValueModuleWrite> || std::is_same_v<T, analysis::ValueGlobalWrite>) return EvaluationShape{kCellStore, false};
     else if constexpr (std::is_same_v<T, analysis::ValueLexicalStore>) return EvaluationShape{kCellStore, false};
     else if constexpr (std::is_same_v<T, analysis::ValuePropertyRead> || std::is_same_v<T, analysis::ValuePropertyDelete>) return EvaluationShape{kPropertyRead, true};
     else if constexpr (std::is_same_v<T, analysis::ValuePropertyWrite>) {
@@ -133,11 +133,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       switch (op.lookup) {
         case analysis::GlobalLookup::kName:
           return EvaluationShape{kNoOperands, true};
-        case analysis::GlobalLookup::kVar: {
-          // IC-dependent var lookup has no equivalent GlobalNameExpr lowering.
-          // Scheduling this event is not permission to print a lexical read.
-          EvaluationShape shape{kNoOperands, true}; shape.source = SourceEvaluation::kUnsupported; return shape;
-        }
+        case analysis::GlobalLookup::kVar: return EvaluationShape{kNoOperands, true};
       }
       return {};
     }
@@ -271,6 +267,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                     std::is_same_v<T, analysis::ValueRestArguments> ||
                     std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
                     std::is_same_v<T, analysis::ValueModuleRead> ||
+                    std::is_same_v<T, analysis::ValueGlobalWrite> ||
                     std::is_same_v<T, analysis::ValueModuleWrite> ||
                     std::is_same_v<T, analysis::ValueFunctionCreation> || std::is_same_v<T, analysis::ValueClassCreation> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||

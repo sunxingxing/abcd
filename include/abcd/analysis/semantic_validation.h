@@ -215,6 +215,7 @@ using SemanticProofResult = std::variant<SemanticProof,
     CallResultValues calls = CallResultValues::kUnknown,
     FrameReceiver receiver = FrameReceiver::kUnknown,
     const ArgumentFrameFact* arguments = nullptr,
-    ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
+    ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime,
+      GlobalReadValues globals = GlobalReadValues::kUnknown);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_SEMANTIC_VALIDATION_H_

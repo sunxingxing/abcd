@@ -6,13 +6,13 @@
 
 namespace abcd::analysis::detail {
 std::variant<ValueRule, ScalarError> DescribeRegisterValue(
-    const SemanticInstruction& instruction, CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
+    const SemanticInstruction& instruction, CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic, GlobalReadValues globals) {
   if (!instruction.effects.normal_registers.write)
     return ScalarError::kMalformedInstruction;
   // This is the typed counterpart of the decoded rule boundary. Preserve its
   // conservative facts; adding a new IR alternative must require review here,
   // not default to Language or silently re-read its original opcode.
-  return std::visit([calls, receiver, arithmetic](const auto& operation)
+  return std::visit([calls, receiver, arithmetic, globals](const auto& operation)
       -> std::variant<ValueRule, ScalarError> {
     using T = std::decay_t<decltype(operation)>;
     if constexpr (std::is_same_v<T, ScalarAssignment>) {
@@ -87,7 +87,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
         case GlobalOp::kReadName:
           return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
         case GlobalOp::kReadVar:
-          return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+          return ValueRule{ValueRuleKind::kFixed, globals == GlobalReadValues::kLanguage ? ValueKinds::Language() : ValueKinds::Unknown()};
         case GlobalOp::kWriteName:
         case GlobalOp::kWriteVar:
         case GlobalOp::kInitConst:

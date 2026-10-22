@@ -344,11 +344,16 @@ int Export(const std::filesystem::path& input,
         if (const auto* ready =
                 std::get_if<source::RecordModuleContext>(&context)) {
           const auto module = ready->ForOwner(file, record.offset);
-          if (!module) {
+          const bool script_entry = !module && source::GlobalScripts(identity.contract) &&
+              record.first_method <= index->methods.size() && record.method_count <= index->methods.size()-record.first_method &&
+              std::any_of(index->methods.begin()+record.first_method,index->methods.begin()+record.first_method+record.method_count,
+                  [](const auto& method){return method.name=="func_main_0";});
+          if (!module && !script_entry) {
             record_manifest["source_status"] =
                 static_cast<unsigned>(SourceStatus::kNoModule);
           } else {
-            const bool arkts = source::LazyImports(identity.contract) == source::LazyImportSemantics::kArkTsLazyImport && std::find(module->request_phases.begin(), module->request_phases.end(),
+            if(script_entry){source_path=source_stem.string()+".js";record_manifest["planned_source"]=source_path;record_manifest["source_language"]="javascript-script";}
+            const bool arkts = module && source::LazyImports(identity.contract) == source::LazyImportSemantics::kArkTsLazyImport && std::find(module->request_phases.begin(), module->request_phases.end(),
                 abc::ModuleRequestPhase::kLazy) != module->request_phases.end();
             if (arkts) {
               source_path = source_stem.string() + ".ets";
@@ -512,7 +517,7 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
   const auto numeric_contract = numeric ? source::SourceContract::kLanguageNumericV1 : language ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
-  const auto contract = source ? source::SourceContract::kLanguageSourceV8
+  const auto contract = source ? source::SourceContract::kLanguageSourceV9
       : constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract;
   tools::InstallAllocationFailureMonitor();
   const auto limit = tools::EstablishProcessLimit();

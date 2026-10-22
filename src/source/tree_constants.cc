@@ -64,6 +64,8 @@ class ConstantResolver {
         uses_.push_back({write->name, id, TextUse::kMember});
       else if (const auto* string = std::get_if<analysis::ValueString>(&op.operation))
         uses_.push_back({string->string, id, TextUse::kLiteral});
+      else if (const auto* store = std::get_if<analysis::ValueGlobalWrite>(&op.operation))
+        uses_.push_back({store->name, id, TextUse::kMember});
       else if (const auto* global = std::get_if<analysis::ValueGlobalRead>(&op.operation))
         uses_.push_back({global->name, id, TextUse::kMember});
       else {

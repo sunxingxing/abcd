@@ -725,10 +725,18 @@ class OperandCheck {
           else RequireMeaning(Literal<TextId>(expression) == *text, Error::kConstant);
         } else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
           original_.operations[i].intrinsic_expression=expression;
-          RequireMeaning(operation.lookup == analysis::GlobalLookup::kName, Error::kUnsupportedOperation);
+          RequireMeaning(operation.lookup == analysis::GlobalLookup::kName || GlobalScripts(tree_.identity.contract), Error::kUnsupportedOperation);
           const auto* name = std::get_if<NameId>(&constants_.operations[i]);
           RequireMeaning(name && name->value < constants_.name_count &&
-              Node<GlobalNameExpr>(expression).name == *name, Error::kConstant);
+              Node<GlobalNameExpr>(expression).name == *name && !Node<GlobalNameExpr>(expression).value &&
+              Node<GlobalNameExpr>(expression).operation == (operation.lookup == analysis::GlobalLookup::kName ? analysis::GlobalOp::kReadName : analysis::GlobalOp::kReadVar), Error::kConstant);
+        } else if constexpr (std::is_same_v<T, analysis::ValueGlobalWrite>) {
+          RequireMeaning(GlobalScripts(tree_.identity.contract), Error::kUnsupportedOperation);
+          original_.operations[i].intrinsic_expression=expression;
+          const auto& store=Node<GlobalNameExpr>(expression);
+          const auto* name=std::get_if<NameId>(&constants_.operations[i]);
+          RequireMeaning(name && *name==store.name && store.operation==operation.operation && store.value, Error::kConstant);
+          InputAt(0,*store.value);
         } else if constexpr (std::is_same_v<T, analysis::ValueInvoke>) {
           RequireMeaning(operation.range_semantics == analysis::RangeCallSemantics::kCommon ||
               WideRangeCalls(tree_.identity.contract), Error::kUnsupportedOperation);

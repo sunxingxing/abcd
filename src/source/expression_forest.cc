@@ -1271,10 +1271,18 @@ class ForestBuilder {
         if(operation.kind==analysis::PoolTextKind::kRegExp)return Add(RegExpExpr{*text,operation.flags},origin);
         return operation.kind == analysis::PoolTextKind::kBigInt ? Add(BigIntExpr{*text}, origin) : Literal(*text, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValueGlobalRead>) {
-        Require(operation.lookup == analysis::GlobalLookup::kName, Error::kUnsupportedOperation);
+        Require(operation.lookup == analysis::GlobalLookup::kName ||
+            GlobalScripts(evaluation_.call_spread_contract), Error::kUnsupportedOperation);
+        // Actual global scope is separately checked by the script certificate.
         const auto* name = std::get_if<NameId>(&constant);
         Require(name && name->value < constants_.name_count, Error::kConstant);
-        return Add(GlobalNameExpr{*name}, origin);
+        return Add(GlobalNameExpr{*name, {}, operation.lookup == analysis::GlobalLookup::kName ? analysis::GlobalOp::kReadName : analysis::GlobalOp::kReadVar}, origin);
+      } else if constexpr (std::is_same_v<T, analysis::ValueGlobalWrite>) {
+        Require(GlobalScripts(evaluation_.call_spread_contract), Error::kUnsupportedOperation);
+        // Scheduling a global commit does not establish its script scope.
+        const auto* name = std::get_if<NameId>(&constant);
+        Require(name && name->value < constants_.name_count, Error::kConstant);
+        return Add(GlobalNameExpr{*name, operands[0], operation.operation}, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValueThrow>) {
         return operation.kind==analysis::ThrowKind::kPatternNonCoercible ? Add(PatternFailureExpr{},origin) : operands[0];
       } else if constexpr (std::is_same_v<T, analysis::ValueObjectRest>) {

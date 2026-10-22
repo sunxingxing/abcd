@@ -159,6 +159,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       case SourceContract::kLanguageSourceV2:
       case SourceContract::kLanguageSourceV3:
       case SourceContract::kLanguageSourceV4:
+      case SourceContract::kLanguageSourceV9:
       case SourceContract::kLanguageSourceV8:
       case SourceContract::kLanguageSourceV7:
       case SourceContract::kLanguageSourceV6:
@@ -305,7 +306,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     // them to initialized cells and complete-family writes close that premise.
     auto values = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
         value_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
-        NormalCallResults(context.Identity().contract), receiver, Arithmetic(context.Identity().contract)), Error::kValues);
+        NormalCallResults(context.Identity().contract), receiver, Arithmetic(context.Identity().contract), ExceptionThrowRefinement::kNone,
+        binding && context.Position().value < binding->index.methods.size() && binding->index.methods[context.Position().value].owner_offset == binding->record.record() && binding->record.Attributes(binding->file,binding->record.record()) && !binding->record.ForOwner(binding->file,binding->record.record()) && GlobalScripts(context.Identity().contract) ? GlobalReadValues::kLanguage : GlobalReadValues::kUnknown), Error::kValues);
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
     auto verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,
@@ -322,7 +324,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       auto refined = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
           refined_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
           NormalCallResults(context.Identity().contract), receiver, Arithmetic(context.Identity().contract),
-          ExceptionThrowRefinement::kGuardedNonHole), Error::kValues);
+          ExceptionThrowRefinement::kGuardedNonHole,
+          binding && context.Position().value < binding->index.methods.size() && binding->index.methods[context.Position().value].owner_offset == binding->record.record() && binding->record.Attributes(binding->file,binding->record.record()) && !binding->record.ForOwner(binding->file,binding->record.record()) && GlobalScripts(context.Identity().contract) ? GlobalReadValues::kLanguage : GlobalReadValues::kUnknown), Error::kValues);
       quota.Admit(refined.AllocatedBytes()); quota.Step(refined_work.Consumed());
       values = std::move(refined);
       verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,

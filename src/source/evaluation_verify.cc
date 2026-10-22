@@ -263,7 +263,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       EvaluationInputSite failure;
       const auto checked = flow == EvaluationFlow::kPhased ?
           VerifyPhasedLiteralPlan(graph, *plan.literals, plan, {bytes, work}, module_index.peers, projected_literals, &failure) :
-          VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr, &failure);
+          VerifyLiteralPlan(graph, *plan.literals, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr, &failure, plan.call_spread_contract);
       if (const auto* error = std::get_if<LiteralError>(&checked)) {
         witness.plan_cause = *error;
         witness.input_check = failure.check; witness.use = failure.use; witness.value = failure.value;

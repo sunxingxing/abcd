@@ -137,7 +137,13 @@ struct PatternFailureExpr {};
 struct SymbolExpr { SymbolId symbol; analysis::ModuleLoading loading = analysis::ModuleLoading::kOrdinary; analysis::ModuleDomain domain = analysis::ModuleDomain::kOrdinary; };
 // Free global-name lookup, not a lexical Symbol or globalThis property read.
 // Publication additionally requires an unshadowed enclosing source context.
-struct GlobalNameExpr { NameId name; };
+enum class GlobalDeclaration : std::uint8_t { kNone, kVar, kLet, kConst, kFunction };
+struct GlobalNameExpr {
+  NameId name;
+  std::optional<ExprId> value;
+  analysis::GlobalOp operation = analysis::GlobalOp::kReadName;
+  GlobalDeclaration declaration = GlobalDeclaration::kNone;
+};
 // Original realm identity; the publication destination supplies its binding.
 struct RealmObjectExpr {};
 struct SymbolConstructorExpr {};
@@ -424,6 +430,7 @@ struct SendableConstructorDirective {
   abc::PoolIndex constructor, literal;
   bool operator==(const SendableConstructorDirective&)const=default;
 };
+class ScriptScopeProof;
 class ParameterExpressionSource;
 struct FunctionTree {
   struct ClassScope {
@@ -505,6 +512,8 @@ struct FunctionTree {
   std::optional<SendableConstructorDirective> sendable;
   analysis::ModuleDomain module_domain = analysis::ModuleDomain::kOrdinary;
   std::shared_ptr<const ParameterExpressionSource> parameter_expressions;
+  std::optional<abc::EntityOffset> script_record;
+  std::shared_ptr<const ScriptScopeProof> script_scope;
 };
 // FunctionTree is the direct printer input, not a source-publication token.
 // Structural safety checks do not imply complete recovery or IR equivalence.

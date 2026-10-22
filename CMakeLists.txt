@@ -257,7 +257,7 @@ target_sources(abcd_source PRIVATE src/source/module_guards.cc src/source/module
 target_sources(abcd_source PRIVATE src/source/phase_evaluation.cc src/source/phase_corridor.cc src/source/phase_composition.cc src/source/literal_event_view.cc src/source/literal_arm_view.cc src/source/constructor_event_view.cc src/source/member_update.cc)
 target_sources(abcd_source PRIVATE src/source/phased_module_guards.cc)
 target_sources(abcd_source PRIVATE src/source/module_evaluation.cc)
-target_sources(abcd_source PRIVATE src/source/record_tree.cc)
+target_sources(abcd_source PRIVATE src/source/record_tree.cc src/source/script_tree.cc src/source/script_scope.cc)
 target_sources(abcd_source PRIVATE src/source/module_aliases.cc)
 target_sources(abcd_source PRIVATE src/source/module_alias_tree.cc)
 target_sources(abcd_source PRIVATE src/source/object_constants.cc)
@@ -418,6 +418,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/object_proto_test.py)
     add_test(NAME isa_throw_evidence_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/throw_evidence_test.py)
+    add_test(NAME isa_global_scripts_scale_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/global_scripts_test.py Scripts.test_scale)
+    add_test(NAME isa_global_scripts_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/global_scripts_test.py)
     add_test(NAME isa_global_evidence_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/global_evidence_test.py)
     add_test(NAME isa_object_spread_source_test COMMAND ${Python3_EXECUTABLE}
@@ -618,6 +622,10 @@ if(BUILD_TESTING)
   add_executable(tree_print_failure_test tests/unit/source/tree_print_failure_test.cc tools/record_failure_json.cc)
   target_link_libraries(tree_print_failure_test PRIVATE abcd_source abcd_json)
   add_test(NAME tree_print_failure_test COMMAND tree_print_failure_test)
+  add_executable(script_scope_test tests/unit/source/script_scope_test.cc)
+  target_link_libraries(script_scope_test PRIVATE abcd_source)
+  add_test(NAME script_scope_test COMMAND script_scope_test)
+  add_test(NAME script_scope_scale_test COMMAND script_scope_test)
   add_executable(source_route_test tests/unit/source/source_route_test.cc)
   add_executable(value_operands_test tests/unit/analysis/value_operands_test.cc)
   target_include_directories(value_operands_test PRIVATE src/analysis)

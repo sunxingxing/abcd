@@ -1,0 +1,293 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "fixtures": [
+    {
+      "source": "tests/fixtures/isa/global_scripts/bindings.js",
+      "path": "tests/fixtures/isa/global_scripts/bindings-default.abc",
+      "sha256": "36168c10938f48de91d234df4000c48e54e5eac2820950d3d41b9b59252a653f",
+      "source_sha256": "df7fe7df034f4a2702ea6ddd70de16f1e844e91c34efeac4ce99d203571c0e75",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=bindings.js",
+        "--output=tests/fixtures/isa/global_scripts/bindings-default.abc",
+        "tests/fixtures/isa/global_scripts/bindings.js"
+      ],
+      "refusal": "host-global-accessor"
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/bindings.js",
+      "path": "tests/fixtures/isa/global_scripts/bindings-O0.abc",
+      "sha256": "ecf61f62c85aadcac1fab55a3c52669b54158a2133082a16c380a6f89b852d56",
+      "source_sha256": "df7fe7df034f4a2702ea6ddd70de16f1e844e91c34efeac4ce99d203571c0e75",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=bindings.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/global_scripts/bindings-O0.abc",
+        "tests/fixtures/isa/global_scripts/bindings.js"
+      ],
+      "refusal": "host-global-accessor"
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/closures.js",
+      "path": "tests/fixtures/isa/global_scripts/closures-default.abc",
+      "sha256": "b76da253484a6e8581c9deac4e954fb83ce7e7ddb1e5d811ee29e9344c282fbe",
+      "source_sha256": "fd8752e46ed7d0867fcceb9d80a82ec91b082d878aa612e7f71809060bb20e9d",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=closures.js",
+        "--output=tests/fixtures/isa/global_scripts/closures-default.abc",
+        "tests/fixtures/isa/global_scripts/closures.js"
+      ],
+      "refusal": "host-global-accessor"
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/closures.js",
+      "path": "tests/fixtures/isa/global_scripts/closures-O0.abc",
+      "sha256": "28933894f2aa99ae10904c6bc33cf9272196a5b8c79a6da456494cae8f9dc4e8",
+      "source_sha256": "fd8752e46ed7d0867fcceb9d80a82ec91b082d878aa612e7f71809060bb20e9d",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=closures.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/global_scripts/closures-O0.abc",
+        "tests/fixtures/isa/global_scripts/closures.js"
+      ],
+      "refusal": "host-global-accessor"
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/errors.js",
+      "path": "tests/fixtures/isa/global_scripts/errors-default.abc",
+      "sha256": "8a9f2eea6044042f9b2c551970381b01f6bcebd09f446fdb5997c6e81e9a815c",
+      "source_sha256": "042e0ec59f891f977fc7871327d1bf2f1fef41dc4258d6515784ddd5828128a7",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=errors.js",
+        "--output=tests/fixtures/isa/global_scripts/errors-default.abc",
+        "tests/fixtures/isa/global_scripts/errors.js"
+      ],
+      "refusal": "host-global-accessor"
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/errors.js",
+      "path": "tests/fixtures/isa/global_scripts/errors-O0.abc",
+      "sha256": "a750c62a3da8fe92d528e60d6a5ddce4427a054f79bdde3818bfe31030c449c0",
+      "source_sha256": "042e0ec59f891f977fc7871327d1bf2f1fef41dc4258d6515784ddd5828128a7",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=errors.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/global_scripts/errors-O0.abc",
+        "tests/fixtures/isa/global_scripts/errors.js"
+      ],
+      "refusal": "host-global-accessor"
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/sloppy.js",
+      "path": "tests/fixtures/isa/global_scripts/sloppy-default.abc",
+      "sha256": "e4a9e366cb530b089a5aa071cb1c4a12447a44b6aea80339d91aefac6cc499dd",
+      "source_sha256": "3dd1f7a6cac9c439d72551dc1b587351399494e265eb384e8f68dd92cc58d38b",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=sloppy.js",
+        "--output=tests/fixtures/isa/global_scripts/sloppy-default.abc",
+        "tests/fixtures/isa/global_scripts/sloppy.js"
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/sloppy.js",
+      "path": "tests/fixtures/isa/global_scripts/sloppy-O0.abc",
+      "sha256": "350045040fd4fea58977180c458f8d565282efc84843b5addd93826fd1914496",
+      "source_sha256": "3dd1f7a6cac9c439d72551dc1b587351399494e265eb384e8f68dd92cc58d38b",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=sloppy.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/global_scripts/sloppy-O0.abc",
+        "tests/fixtures/isa/global_scripts/sloppy.js"
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/wide.js",
+      "path": "tests/fixtures/isa/global_scripts/wide-default.abc",
+      "sha256": "c0138bd2ce84e848929ac2e0e6e9fbb507f40a218480a16748d78a1a16579101",
+      "source_sha256": "af105d1244e8cdec1b8ba5465b513775ae2feaffa77311f2f16a3f851a8822f2",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=wide.js",
+        "--output=tests/fixtures/isa/global_scripts/wide-default.abc",
+        "tests/fixtures/isa/global_scripts/wide.js"
+      ],
+      "refusal": "host-global-accessor"
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/wide.js",
+      "path": "tests/fixtures/isa/global_scripts/wide-O0.abc",
+      "sha256": "c3d8c6b75e3a9a1a2656ec2e423e7ed4f157d77d196cc6e5abce735281791365",
+      "source_sha256": "af105d1244e8cdec1b8ba5465b513775ae2feaffa77311f2f16a3f851a8822f2",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=wide.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/global_scripts/wide-O0.abc",
+        "tests/fixtures/isa/global_scripts/wide.js"
+      ],
+      "refusal": "host-global-accessor"
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/lexical_closures.js",
+      "path": "tests/fixtures/isa/global_scripts/lexical_closures-default.abc",
+      "sha256": "73f557b6bc66452d7bc239f695f077660c5fe34bbbe915d1cbc1d46262fb6041",
+      "source_sha256": "ef8d2b07ae70de621543a63e740fddcf2a74b63da6d6431ab88f2807457f9613",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=lexical_closures.js",
+        "--output=tests/fixtures/isa/global_scripts/lexical_closures-default.abc",
+        "tests/fixtures/isa/global_scripts/lexical_closures.js"
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/lexical_closures.js",
+      "path": "tests/fixtures/isa/global_scripts/lexical_closures-O0.abc",
+      "sha256": "5dae4ad2c92b8cf195a814f8ae8448d81ee9e37058bcc482616a7a8ec9831c6e",
+      "source_sha256": "ef8d2b07ae70de621543a63e740fddcf2a74b63da6d6431ab88f2807457f9613",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=lexical_closures.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/global_scripts/lexical_closures-O0.abc",
+        "tests/fixtures/isa/global_scripts/lexical_closures.js"
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/lexical_errors.js",
+      "path": "tests/fixtures/isa/global_scripts/lexical_errors-default.abc",
+      "sha256": "1974df41491c272491aae2da67169ec24ec1f55ec23adda56371d42a418af3a6",
+      "source_sha256": "0a2b8a980122dafd1767caba0c9dc2c4ecfb16d5878bc05afa331e809d28d044",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=lexical_errors.js",
+        "--output=tests/fixtures/isa/global_scripts/lexical_errors-default.abc",
+        "tests/fixtures/isa/global_scripts/lexical_errors.js"
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/lexical_errors.js",
+      "path": "tests/fixtures/isa/global_scripts/lexical_errors-O0.abc",
+      "sha256": "a42e5f4ac819076fa7906f9bdc7614d2c3c52955c1da3c37e21389317913ebc6",
+      "source_sha256": "0a2b8a980122dafd1767caba0c9dc2c4ecfb16d5878bc05afa331e809d28d044",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=lexical_errors.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/global_scripts/lexical_errors-O0.abc",
+        "tests/fixtures/isa/global_scripts/lexical_errors.js"
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/lexical_wide.js",
+      "path": "tests/fixtures/isa/global_scripts/lexical_wide-default.abc",
+      "sha256": "fe7584ee3c2af8cc92078f0a046398caef9d7d2d4e9c6cac062d35a32b2cdc18",
+      "source_sha256": "1a647ec77c61c0f41a9e5cf0f1ad39255d4f282dadbc2e25cfec7f9d5ca05cd9",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=lexical_wide.js",
+        "--output=tests/fixtures/isa/global_scripts/lexical_wide-default.abc",
+        "tests/fixtures/isa/global_scripts/lexical_wide.js"
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/lexical_wide.js",
+      "path": "tests/fixtures/isa/global_scripts/lexical_wide-O0.abc",
+      "sha256": "371269ec68b27de05a9f9b1a7ab6b5de7d0012481fd0ea7637a4005bc3d9be53",
+      "source_sha256": "1a647ec77c61c0f41a9e5cf0f1ad39255d4f282dadbc2e25cfec7f9d5ca05cd9",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=lexical_wide.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/global_scripts/lexical_wide-O0.abc",
+        "tests/fixtures/isa/global_scripts/lexical_wide.js"
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/lexicals.js",
+      "path": "tests/fixtures/isa/global_scripts/lexicals-default.abc",
+      "sha256": "8143816ab8955825600946937e39802193b1e7c2f660e4429926bfc47a4b8313",
+      "source_sha256": "867e1e5a1284545e15976620c57075e074ba744d362990d0f160684decc27baf",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=lexicals.js",
+        "--output=tests/fixtures/isa/global_scripts/lexicals-default.abc",
+        "tests/fixtures/isa/global_scripts/lexicals.js"
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/global_scripts/lexicals.js",
+      "path": "tests/fixtures/isa/global_scripts/lexicals-O0.abc",
+      "sha256": "f14c6844b58ba1f8e58b5e86345bb49e60fa11905cf7d1b2bb37d6acccf69d49",
+      "source_sha256": "867e1e5a1284545e15976620c57075e074ba744d362990d0f160684decc27baf",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=globalScripts",
+        "--source-file=lexicals.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/global_scripts/lexicals-O0.abc",
+        "tests/fixtures/isa/global_scripts/lexicals.js"
+      ]
+    }
+  ]
+}

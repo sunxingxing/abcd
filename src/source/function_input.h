@@ -54,7 +54,8 @@ class FunctionInput {
       RouteInputIdentity identity, abc::EntityOffset method, abc::EntityOffset record,
       const abc::MethodBody& body, const abc::FrameLayout& frame,
       InputCaptureMode mode, analysis::SemanticBudget budget = {},
-      const FunctionContext* owner = nullptr, const ParentModuleInput* modules = nullptr);
+      const FunctionContext* owner = nullptr, const ParentModuleInput* modules = nullptr,
+      analysis::GlobalReadValues globals = analysis::GlobalReadValues::kUnknown);
   bool HasOwner() const { return owner_.has_value(); }
   bool MatchesOwner(const FunctionContext& owner) const;
   const RouteInputIdentity& Identity() const { return identity_; }

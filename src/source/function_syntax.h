@@ -55,6 +55,7 @@ struct FunctionSyntax {
   std::optional<ConcurrentDirective> concurrent;
   std::optional<SendableConstructorDirective> sendable;
   analysis::ModuleDomain module_domain = analysis::ModuleDomain::kOrdinary;
+  std::optional<abc::EntityOffset> script_record;
 };
 }  // namespace abcd::source
 #endif

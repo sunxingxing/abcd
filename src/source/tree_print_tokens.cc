@@ -117,6 +117,7 @@ ExpressionPrecedence TreeExpressionPrecedence(const TreeExpression& node) {
     using T = std::decay_t<decltype(value)>;
     if constexpr (std::is_same_v<T, BinaryExpr>) return TreeBinarySyntax(value.operation).precedence;
     else if constexpr (std::is_same_v<T, LogicalExpr>) return LogicalPrecedence(value.operation);
+    else if constexpr (std::is_same_v<T, GlobalNameExpr>) return value.value ? P::kAssignment : P::kPrimary;
     else if constexpr (std::is_same_v<T, SequenceExpr>) return P::kSequence;
     else if constexpr (std::is_same_v<T, AssignmentExpr> || std::is_same_v<T, YieldExpr> ||
                        std::is_same_v<T, FunctionExpr> || std::is_same_v<T, ClassExpr>) return P::kAssignment;

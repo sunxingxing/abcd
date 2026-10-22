@@ -373,6 +373,9 @@ class StructureCheck {
         }
       } else if constexpr (std::is_same_v<T, GlobalNameExpr>) {
         RequireTree(expression.name.value < tree_.names.size(), Error::kRange);
+        if (expression.operation != analysis::GlobalOp::kReadName)
+          RequireTree(GlobalScripts(tree_.identity.contract) && tree_.script_record, Error::kBinding);
+        RequireTree(expression.value.has_value() == !analysis::ReadsGlobal(expression.operation), Error::kOwnership);
         // Publication resolves the actual active lexical scopes, including
         // TDZ. Sibling/body-only names cannot shadow this occurrence. Outer
         // destination bindings remain the responsibility of TreeGlobals.
@@ -778,7 +781,8 @@ class StructureCheck {
       }
       std::visit([&](const auto& node) {
         using T = std::decay_t<decltype(node)>;
-        if constexpr (std::is_same_v<T, MemberExpr> || std::is_same_v<T, DeleteExpr>) { add(node.base); key(node.key); }
+        if constexpr (std::is_same_v<T, GlobalNameExpr>) { if(node.value)add(*node.value); }
+        else if constexpr (std::is_same_v<T, MemberExpr> || std::is_same_v<T, DeleteExpr>) { add(node.base); key(node.key); }
         else if constexpr (std::is_same_v<T, UnaryExpr> || std::is_same_v<T, AwaitExpr> || std::is_same_v<T, YieldExpr>) add(node.operand);
         else if constexpr (std::is_same_v<T, BinaryExpr> || std::is_same_v<T, LogicalExpr> || std::is_same_v<T, SequenceExpr>) {
           add(node.left); add(node.right);

@@ -183,8 +183,15 @@ struct ValueModuleRead {
   ModuleDomain domain = ModuleDomain::kOrdinary;
   bool operator==(const ValueModuleRead&) const = default;
 };
-// Store to this record's live local module cell. The stored-value operand is
-// explicit; no accumulator result or permission to emit a declaration follows.
+// Original global storage kind and key; declaration authority belongs to a
+// source script-scope proof. Every store preserves the accumulator.
+struct ValueGlobalWrite {
+  GlobalOp operation;
+  abc::PoolIndex name;
+  bool operator==(const ValueGlobalWrite&) const = default;
+};
+// Store to this record's live module cell. No accumulator result or
+// permission to emit a declaration follows.
 struct ValueModuleWrite {
   ModuleSlot slot;
   bool operator==(const ValueModuleWrite&) const = default;
@@ -311,7 +318,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueInvoke, ValueConstruct, ValueConstructApply, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValuePropertyDelete, ValueEnumeration, ValueIteratorAcquire, ValueObjectCheck, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite, ValueConcurrentNotification, ValueNewTarget, ValueThisProperty, ValueCopyProperties, ValueObjectRest>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite, ValueConcurrentNotification, ValueNewTarget, ValueThisProperty, ValueCopyProperties, ValueObjectRest, ValueGlobalWrite>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

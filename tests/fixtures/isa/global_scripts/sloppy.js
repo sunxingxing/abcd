@@ -1,0 +1,1 @@
+missingGlobalForScript = 4;

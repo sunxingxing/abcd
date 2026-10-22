@@ -366,3 +366,39 @@ Commands/hashes, runtime citations, the native prototype certificate and all
 remaining obligations are in
 [isa-globals-prototype-throws.md](../../docs/design/source-recovery/isa-globals-prototype-throws.md).
 Generated JSON and full acceptance logs remain under `build/review/isa-r9*`.
+
+
+## ISA round 10: V9 script entry (partial)
+
+The ledger is **164 SupportedVerified / 53 SupportedUnverified / 87 Unmeasured /
+28 NonExecutable**, from 1,074 ABCs and 1,572,511 instructions. Forward moves
+are TRYSTGLOBALBYNAME (both widths), STTOGLOBALRECORD,
+STCONSTTOGLOBALRECORD, and STOBJBYNAME_IMM16 (SDK profile 6). No variant or
+verified profile moves backward. Raw lifting now reaches all five global-write
+encodings through the production register-effect/operand adapter; constructed
+fixture snapshots record this measured change rather than stale refusals.
+
+`--language-source` selects V9 and the independent `GlobalScripts()` predicate;
+old contracts retain their meanings. Script entry is a separate source route,
+with a fresh original-graph declaration/scope certificate, common semantic and
+family verification, and a printer ownership seal. It never fabricates a module.
+Eight lexical/class/error/closure SDK fixtures and two sloppy-write fixtures
+complete (default/O0); the latter assert the approved difference and supply no
+successful Node oracle. Eight var/function SDK fixtures remain at the precise
+`ScriptScopeError::kHostGlobalAccessor` gate: entry STGLOBALVAR invokes a host
+setter, unlike native global declaration instantiation. This additional
+difference is awaiting a user decision, not silently included in V9.
+
+The 40-input cohort contains **zero executable script entries**, so its counts
+stay 605/620 and 542/620, with no completed text changes. Across all measured
+fixtures there are 34 records selected as script entries: 12 complete, 22
+refused; these include historical and constructed probes. No Ark runtime pass
+is claimed. The machine-readable oracle now binds script/module source mode to
+record identity and verifies runner dependency hashes. Strict original-ABC
+round trips report 4 exact / 6 differ / 0 unverified; differences remain visible
+and are explained in [isa-global-scripts.md](../../docs/design/source-recovery/isa-global-scripts.md).
+
+Full evidence and the pending boundary are in that note and
+[language-source.md](../../docs/design/source-recovery/language-source.md).
+The new CTests are `script_scope_test`, `script_scope_scale_test`,
+`isa_global_scripts_source_test`, and `isa_global_scripts_scale_test`.

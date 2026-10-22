@@ -264,6 +264,7 @@ class TreeBuilder {
       }
       Admit(tree_.receiver_guards.capacity() - tree_.receiver_guards.size(), sizeof(analysis::OpId));
     }
+    tree_.script_record = syntax_.script_record;
     tree_.strictness = syntax_.strictness;
     tree_.inferred_name = syntax_.inferred_name;
     tree_.value_revision = graph_.revision;

@@ -340,7 +340,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     if (has_definitions || has_spread) {
       EvaluationInputSite failure;
       auto built = flow == EvaluationFlow::kPhased ? BuildPhasedLiteralPlan(graph, plan, {bytes, work}, module_index.peers, projected_literals, &failure) :
-          BuildLiteralPlan(graph, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr, &failure);
+          BuildLiteralPlan(graph, {bytes, work}, module_index.peers, projected_literals, plan.receiver_guards, plan.cells ? &*plan.cells : nullptr, &failure, plan.call_spread_contract);
       const auto* error = std::get_if<LiteralError>(&built);
       if (error) {
         witness.plan_cause = *error;

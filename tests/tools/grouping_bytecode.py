@@ -70,9 +70,38 @@ def changed_methods(old, new, classes):
     return [{'method':name,'approved_rewrite_classes':[k for k,v in classes.items() if v]}
             for name in sorted(a.keys()|b.keys()) if a.get(name)!=b.get(name)]
 
+def compare_abc_source(original, source, destination, record_name, source_file, script=False, modes=('default','O0')):
+    """Original ABC versus emitted syntax. No source is fed to the engine and
+    no registers, edges, handler ranges, or literal metadata are normalized.
+    This mode reports differences; a caller must explain them semantically.
+    """
+    destination.mkdir(parents=True,exist_ok=False)
+    original_pa=destination/'original.pa'
+    if run([DISASM,str(original),str(original_pa)],destination/'original.log'):
+        raise RuntimeError('original disassembly failed')
+    old=assembly(original_pa)
+    result={'original_sha256':sha(original),'source_sha256':sha(source),
+            'compiler_sha256':sha(ES2ABC),'disassembler_sha256':sha(DISASM),'modes':{}}
+    for mode in modes:
+        if mode not in ('default','O0'):raise ValueError('unknown compiler mode')
+        abc=destination/(mode+'.abc');pa=destination/(mode+'.pa')
+        command=[ES2ABC]+([] if script else ['--module'])+['--merge-abc','--extension=js',
+            '--record-name='+record_name,'--source-file='+source_file,'--output='+str(abc),str(source)]
+        if mode=='O0':command+=['--opt-level=0']
+        code=run(command,destination/(mode+'.compile.log'))
+        if not code:code=run([DISASM,str(abc),str(pa)],destination/(mode+'.disasm.log'))
+        row={'command':command,'exit':code,'status':'unverified'}
+        if not code:
+            new=assembly(pa);row['status']='pass' if old==new else 'differ'
+            row['changed_methods']=changed_methods(old,new,{})
+            (destination/(mode+'.diff')).write_text(''.join(difflib.unified_diff(old.splitlines(True),new.splitlines(True),fromfile='original',tofile='recompiled')))
+        result['modes'][mode]=row
+    (destination/'comparison.json').write_text(json.dumps(result,indent=2)+'\n')
+    return result
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--old',type=pathlib.Path,required=True);p.add_argument('--new',type=pathlib.Path,required=True);p.add_argument('--out',type=pathlib.Path,required=True)
-    p.add_argument('--readable-statements',action='store_true');p.add_argument('--negated-equality',action='store_true');p.add_argument('--changed-only',action='store_true');p.add_argument('--include-incomplete',action='store_true');p.add_argument('--braces',action='store_true');p.add_argument('--value-calls',action='store_true');p.add_argument('--es2abc',default=ES2ABC);p.add_argument('--disasm',default=DISASM);a=p.parse_args()
+    p.add_argument('--script',action='store_true',help='compile both sides as scripts, never modules');p.add_argument('--readable-statements',action='store_true');p.add_argument('--negated-equality',action='store_true');p.add_argument('--changed-only',action='store_true');p.add_argument('--include-incomplete',action='store_true');p.add_argument('--braces',action='store_true');p.add_argument('--value-calls',action='store_true');p.add_argument('--es2abc',default=ES2ABC);p.add_argument('--disasm',default=DISASM);a=p.parse_args()
     a.out.mkdir(parents=True,exist_ok=False)
     old,new=records(a.old,a.include_incomplete),records(a.new,a.include_incomplete)
     result={'old_complete':sum(v[1]['source_status']==0 for v in old.values()),'new_complete':sum(v[1]['source_status']==0 for v in new.values()),'lost':sorted(old.keys()-new.keys()),'added':sorted(new.keys()-old.keys()),
@@ -85,7 +114,7 @@ def main():
         dest=a.out/str(len(pairs));dest.mkdir(exist_ok=False)
         for side in ('old','new'):(dest/side).mkdir(exist_ok=False)
         extension='.ts' if before.suffix=='.ets' else '.js'
-        pair={'id':key,'old':str(before),'new':str(after),'adapted_old':str((dest/'old'/('input'+extension)).resolve()),'adapted_new':str((dest/'new'/('input'+extension)).resolve())}
+        pair={'source_mode':'script' if a.script else 'module','id':key,'old':str(before),'new':str(after),'adapted_old':str((dest/'old'/('input'+extension)).resolve()),'adapted_new':str((dest/'new'/('input'+extension)).resolve())}
         if before.suffix=='.ets':pair['adapted_node']=str((dest/'node-shadow.mjs').resolve())
         if a.readable_statements:
             (dest/'readable').mkdir();pair['adapted_readable']=str((dest/'readable'/('input'+extension)).resolve())
@@ -124,7 +153,7 @@ def main():
             for side in ('old','new'):
                 source=pathlib.Path(pair['adapted_'+side]);abc=dest/side/(mode+'.abc');pa=dest/side/(mode+'.pa')
                 # Explicit record/source identity is identical on both sides.
-                cmd=[a.es2abc,'--module','--merge-abc','--record-name=grouping_acceptance','--source-file=input'+source.suffix,
+                cmd=[a.es2abc]+([] if a.script else ['--module'])+['--merge-abc','--record-name=grouping_acceptance','--source-file=input'+source.suffix,
                      '--extension='+('ts' if source.suffix=='.ts' else 'js'),'--output='+str(abc)]
                 if mode=='O0':cmd+=['--opt-level=0']
                 cmd+=[str(source)];cmds[side]=cmd

@@ -12,7 +12,7 @@ try {
  for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
   const out=join(dir,label);run(structure,[input,out,'--value-source',...flags]);
   const manifest=JSON.parse(readFileSync(join(out,'manifest.json')));
-  assert.equal(manifest.source_contract,label==='source'?'language_source_v8':'language_numeric_constructors_v1');
+  assert.equal(manifest.source_contract,label==='source'?'language_source_v9':'language_numeric_constructors_v1');
   for(const [entity,method,creator,pc,count] of cases) {
    const record=manifest.records.find(r=>r.entity===entity);
    if(label==='source' && [10719,18164,31477,25688].includes(entity)) {

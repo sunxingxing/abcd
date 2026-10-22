@@ -114,7 +114,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     RouteInputIdentity identity, abc::EntityOffset method, abc::EntityOffset record,
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     InputCaptureMode mode, analysis::SemanticBudget budget, const FunctionContext* owner,
-    const ParentModuleInput* module_input) {
+    const ParentModuleInput* module_input, analysis::GlobalReadValues globals) {
   try {
     if (owner && (owner->Identity() != identity || owner->Target() != method ||
         owner->Frame() != frame)) return FunctionInputFailure{Error::kOwner};
@@ -242,7 +242,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     }
     auto verified = analysis::VerifySemanticSource(body, *input, frame.registers, frame.locals,
         quota.Remaining(), captures, loads, writes, {}, NormalCallResults(identity.contract), receiver,
-        arguments ? &*arguments : nullptr, Arithmetic(identity.contract));
+        arguments ? &*arguments : nullptr, Arithmetic(identity.contract), globals);
     auto* proof = std::get_if<analysis::SemanticProof>(&verified);
     if (!proof) {
       auto failure = std::get<analysis::SemanticProofFailure>(verified);

@@ -95,6 +95,9 @@ class FamilyTrees {
                     : (function.Normal().values.environments
                            ? &*function.Normal().values.environments
                            : nullptr)));
+      if (modules_ && !modules_->ForOwner(file_, index_.methods[context.Position().value].owner_offset) &&
+          modules_->Attributes(file_, index_.methods[context.Position().value].owner_offset) && GlobalScripts(context.Identity().contract))
+        syntax.syntax.script_record = index_.methods[context.Position().value].owner_offset;
       Account(syntax);
       auto& normal_aliases = normal_aliases_[i];
       const ModuleAliases* aliases = phase ? phase->Phases().Modules() : nullptr;

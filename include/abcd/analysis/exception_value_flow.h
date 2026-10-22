@@ -52,7 +52,8 @@ class ExceptionValueFlow {
       ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime,
       // Optional fallback, only after ordinary input validation refused. Derive
       // and independently recheck full-CFG edge constraints on explicit throws.
-      ExceptionThrowRefinement throws = ExceptionThrowRefinement::kNone);
+      ExceptionThrowRefinement throws = ExceptionThrowRefinement::kNone,
+      GlobalReadValues globals = GlobalReadValues::kUnknown);
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }

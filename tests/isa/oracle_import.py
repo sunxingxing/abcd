@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sqlite3
 
-CONTRACTS = {'language_source_v8': 'v4',
+CONTRACTS = {'language_source_v9': 'v4',
              'language_numeric_constructors_v1': 'previous'}
 MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_OCCURRENCE_BYTES = 1024 * 1024
@@ -64,6 +64,8 @@ class OracleIndex:
             raise ValueError('unregistered oracle producer')
         for key in ('writer', 'producer', 'engine', 'probe', 'abc', 'manifest', 'original', 'occurrences'):
             self.check_artifact(evidence[key])
+        for dependency in evidence.get('dependencies', []):
+            self.check_artifact(dependency)
         if evidence['writer']['sha256'] != sha(Path(__file__).resolve().parents[1]/'support/isa/oracle_evidence.py'):
             raise ValueError('stale oracle writer')
         if evidence['engine']['sha256'] != self.engine_hash or evidence['probe']['sha256'] != self.probe_hash:
@@ -73,12 +75,16 @@ class OracleIndex:
         manifest = read_json(evidence['manifest']['path'])
         if manifest['sha256'] != evidence['abc']['sha256'] or manifest['source_contract'] != evidence['contract']:
             raise ValueError('oracle manifest identity')
+        source_modes = {r['entity']: ('script' if r.get('source_language')=='javascript-script' else 'module') for r in manifest['records']}
         complete = {r['entity'] for r in manifest['records'] if r.get('source_status') == 0}
         sources = {}
         correspondences = {}
         for record in evidence['records']:
             if record['record'] not in complete:
                 raise ValueError('oracle has incomplete record')
+            expected_mode=source_modes[record['record']]
+            if record.get('source_mode','module')!=expected_mode:
+                raise ValueError('oracle script/module mode mismatch')
             self.check_artifact(record['emitted'])
             sources[record['record']] = record['emitted']
             receipt = record.get('round_trip')

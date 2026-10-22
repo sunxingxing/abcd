@@ -171,7 +171,7 @@ ValueOperation Operation(const SemanticOperation& operation) {
         case GlobalOp::kReadVar: return ValueGlobalRead{GlobalLookup::kVar, op.name};
         case GlobalOp::kWriteName: case GlobalOp::kWriteVar:
         case GlobalOp::kInitConst: case GlobalOp::kInitMutable:
-          throw ValueImportFailure{Error::kUnsupportedOperation, {}};
+          return ValueGlobalWrite{op.operation, op.name};
       }
       throw ValueImportFailure{Error::kUnsupportedOperation, {}};
     } else if constexpr (std::is_same_v<T, LoadHole>) {

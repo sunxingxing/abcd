@@ -132,7 +132,7 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
   output << ']';
   const auto completion = printed.fragment == FunctionFragment::kStaticFields ||
       printed.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);
-  const auto completion_label = printed.fragment == FunctionFragment::kModuleBody ? "module_completion" : "tail_completion";
+  const auto completion_label = printed.fragment == FunctionFragment::kModuleBody ? "module_completion" : printed.fragment == FunctionFragment::kScriptBody ? "script_completion" : "tail_completion";
   const auto nodes = [&](std::string_view label, const auto& syntax, const auto& spans, const auto& extents) {
     output << ",\"" << label << "\":[";
     for (std::size_t i = 0; i < syntax.size(); ++i) {

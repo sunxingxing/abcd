@@ -10,7 +10,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).parent))
 from oracle_import import OracleIndex, sha
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"support/isa"))
-from oracle_evidence import EventBudget, OracleResourceError
+from oracle_evidence import EventBudget, OracleResourceError, event_signature
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -30,9 +30,9 @@ class ImportTest(unittest.TestCase):
             'producer': self.producer, 'engine': file('engine', 'engine'),
             'probe': file('probe', 'probe'), 'abc': file('input.abc', 'abc'),
             'original': file('original.js', 'export{}'),
-            'contract': 'language_source_v8', 'records': []}
+            'contract': 'language_source_v9', 'records': []}
         self.evidence['manifest'] = file('manifest.json', json.dumps({
-            'sha256': self.evidence['abc']['sha256'], 'source_contract': 'language_source_v8',
+            'sha256': self.evidence['abc']['sha256'], 'source_contract': 'language_source_v9',
             'records': [{'entity': 1, 'source_status': 0}]}))
         self.evidence['records'] = [{'record': 1, 'emitted': file('emitted.mjs', 'export{}'),
                                      'round_trip': None}]
@@ -60,6 +60,13 @@ class ImportTest(unittest.TestCase):
         return {**self.row, 'encoding': {'opcode': self.row['opcode']},
                 'lift': {'status': 'ok', 'semantic_family': self.row['semantic_family']},
                 'recovery': {'v4': {'record_status': 0}}}
+
+    def test_global_operation_is_part_of_event(self):
+        def row(operation):
+            return {'lift': {'semantic_family': 'typed::GlobalAccess',
+                'roles': {'type': 'typed::GlobalAccess', 'operation': operation}}}
+        self.assertNotEqual(event_signature(row(0)), event_signature(row(2)))
+        self.assertNotEqual(event_signature(row(4)), event_signature(row(5)))
 
     def test_exact_event_budget(self):
         for n in (200, 201, 400, 800):
@@ -94,6 +101,26 @@ class ImportTest(unittest.TestCase):
     def test_stale_artifact(self):
         Path(self.evidence['original']['path']).write_text('changed')
         with self.assertRaises(ValueError): self.index().import_file(self.path)
+
+    def test_script_mode_is_bound_to_record(self):
+        self.evidence['records'][0]['source_mode'] = 'script'
+        self.persist()
+        with self.assertRaisesRegex(ValueError, 'script/module'):
+            self.index().import_file(self.path)
+        manifest = json.loads(Path(self.evidence['manifest']['path']).read_text())
+        manifest['records'][0]['source_language'] = 'javascript-script'
+        Path(self.evidence['manifest']['path']).write_text(json.dumps(manifest))
+        self.evidence['manifest']['sha256'] = sha(self.evidence['manifest']['path'])
+        self.persist()
+        index = self.index(); index.import_file(self.path)
+        self.assertEqual(index.lookup(self.lookup())['node']['status'], 'pass')
+
+    def test_stale_runner_dependency(self):
+        runner = self.directory/'runner.mjs'; runner.write_text('original')
+        self.evidence['dependencies'] = [{'path': str(runner), 'sha256': sha(runner)}]
+        self.persist(); runner.write_text('changed')
+        with self.assertRaisesRegex(ValueError, 'stale oracle artifact'):
+            self.index().import_file(self.path)
 
     def test_skipped_node(self):
         self.row['node']['skipped'] = True; self.persist()

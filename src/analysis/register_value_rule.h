@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_REGISTER_VALUE_RULE_H_
 
 #include "abcd/analysis/register_effect.h"
+#include "abcd/analysis/register_value_flow.h"
 #include "abcd/analysis/arithmetic_semantics.h"
 #include "abcd/analysis/call_result.h"
 #include "abcd/analysis/frame_receiver.h"
@@ -195,6 +196,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     const SemanticInstruction& instruction,
     CallResultValues calls = CallResultValues::kUnknown,
     FrameReceiver receiver = FrameReceiver::kUnknown,
-    ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime);
+    ArithmeticSemantics arithmetic = ArithmeticSemantics::kPinnedRuntime,
+    GlobalReadValues globals = GlobalReadValues::kUnknown);
 }  // namespace abcd::analysis::detail
 #endif  // ABCD_ANALYSIS_REGISTER_VALUE_RULE_H_

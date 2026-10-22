@@ -38,6 +38,9 @@ struct PrintedFamilyDraft {
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {},
     const GlobalScope* scope = nullptr,
     std::optional<ModuleDefaultExport> default_export = {});
+std::variant<PrintedFamilyDraft, TreePrintFailure> PrintScriptFamilyDraft(
+    const ConstructedFamily&, std::ostream&, EmitBudget = {}, analysis::SemanticBudget = {},
+    const GlobalScope* = nullptr);
 // Root is an actual class-body member; descendants remain ordinary/arrow
 // expressions. This is not an object-literal method or standalone function.
 [[nodiscard]] std::variant<PrintedFamilyDraft, TreePrintFailure> PrintClassFamilyDraft(

@@ -15,7 +15,7 @@ struct GeneratedRange {
   std::size_t end = 0;
   auto operator<=>(const GeneratedRange&) const = default;
 };
-enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression, kFunctionExpression, kModuleBody, kStaticFields, kImplicitConstructor };
+enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpression, kFunctionExpression, kModuleBody, kStaticFields, kImplicitConstructor, kScriptBody };
 // Source recovery decides whether an occurrence is represented by text or by
 // an omission boundary. Publication validates that decision's coordinates; it
 // must not independently re-run syntax recovery to rediscover omissions.

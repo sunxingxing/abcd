@@ -460,6 +460,9 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (const auto* access = std::get_if<GlobalAccess>(&global)) {
     if (ReadsGlobal(access->operation))
       return AccumulatorDefinition();
+    RegisterEffect effect;
+    effect.reads[effect.read_count++] = Accumulator{};
+    return effect;
   } else if (std::get<GlobalAccessError>(global) ==
              GlobalAccessError::kMalformedInstruction) {
     return ScalarError::kMalformedInstruction;

@@ -38,9 +38,9 @@ RegisterValueFlow::BuildWithLanguageLoads(
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
     IdfBudget budget, std::span<const SemanticInstruction> semantics,
-    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
+    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic, GlobalReadValues globals) {
   return Analyze(body, ssa, frame_size, entries, loads, quota,
-                 budget, semantics, calls, receiver, arithmetic);
+                 budget, semantics, calls, receiver, arithmetic, globals);
 }
 
 std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
@@ -48,7 +48,7 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
     std::uint64_t frame_size, std::span<const EntryValueFact> entries,
     std::span<const LanguageLoadFact> loads, IdfQuota& quota,
     IdfBudget budget, std::span<const SemanticInstruction> semantics,
-    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic) {
+    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic, GlobalReadValues globals) {
   using Kind = detail::ValueRuleKind;
   using Error = ValueFlowError;
   try {
@@ -142,7 +142,7 @@ std::variant<RegisterValueFlow, ValueFlowFailure> RegisterValueFlow::Analyze(
         const auto lifted = semantics.empty()
             ? detail::DescribeRegisterValue(
                   body.instructions[instruction.value].decoded, frame_size, arithmetic)
-            : detail::DescribeRegisterValue(semantics[instruction.value], calls, receiver, arithmetic);
+            : detail::DescribeRegisterValue(semantics[instruction.value], calls, receiver, arithmetic, globals);
         if (const auto* error = std::get_if<ScalarError>(&lifted))
           return ValueFlowFailure{Error::kInstruction, instruction, *error};
         const auto rule = std::get<detail::ValueRule>(lifted);

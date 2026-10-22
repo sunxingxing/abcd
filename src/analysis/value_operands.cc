@@ -147,7 +147,8 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
           break;
         case GlobalOp::kWriteName: case GlobalOp::kWriteVar:
         case GlobalOp::kInitConst: case GlobalOp::kInitMutable:
-          return false;
+          Append(plan, OperandRole::kStoredValue, Accumulator{});
+          break;
         default: return false;
       }
     } else if constexpr (std::is_same_v<T, SuperForward>) {

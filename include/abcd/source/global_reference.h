@@ -10,6 +10,7 @@
 
 namespace abcd::source {
 class ModuleEnclosure;
+class ScriptScopeProof;
 enum class NameEvidence : std::uint8_t;
 // Embedding-host trust boundary, not evidence inferred from a name or ABC.
 // Host supplies an initialized immutable lexical binding to this ABC realm's
@@ -71,6 +72,9 @@ struct GlobalScope {
   // Native record lexical layer, separate from intervening wrappers. Local
   // module aliases refer into this layer; free globals must still avoid it.
   std::span<const std::string_view> record_bindings{};
+  // Actual non-module entry/namespace certificate, borrowed by descendants.
+  // A script marker or a language flag alone cannot authorize global stores.
+  const ScriptScopeProof* script_scope = nullptr;
 };
 
 struct RealmBindingView {
