@@ -216,6 +216,9 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   const auto deleted=LiftPropertyDelete(decoded,frame_size);
   if(const auto* op=std::get_if<PropertyDelete>(&deleted))return *op;
   if(std::get<ScalarError>(deleted)!=ScalarError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
+  const auto copied=LiftCopyProperties(decoded,frame_size);
+  if(const auto* p=std::get_if<CopyProperties>(&copied))return *p;
+  if(std::get<ScalarError>(copied)!=ScalarError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
   const auto implicit = LiftThisProperty(decoded,frame_size);
   if(const auto* p=std::get_if<ThisProperty>(&implicit))return *p;
   if(std::get<ThisPropertyError>(implicit)!=ThisPropertyError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
@@ -451,6 +454,9 @@ SemanticEffects Effects(const SemanticOperation& operation,
             effects.before_throw = effects.normal;
             effects.exceptional = ExceptionalCompletion::kMayThrow;
           }
+        } else if constexpr (std::is_same_v<T, CopyProperties>) {
+          effects.normal=LanguageEffect::kHeapRead|LanguageEffect::kHeapWrite|LanguageEffect::kUserCode|LanguageEffect::kAllocation;
+          effects.before_throw=effects.normal;effects.exceptional=ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, ThisProperty>) {
           effects.normal = (WritesThisProperty(value.kind)?LanguageEffect::kHeapWrite:LanguageEffect::kHeapRead)|LanguageEffect::kUserCode;
           effects.before_throw=effects.normal;effects.exceptional=ExceptionalCompletion::kMayThrow;

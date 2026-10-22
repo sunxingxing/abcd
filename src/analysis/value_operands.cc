@@ -58,6 +58,8 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kBase, op.object);
       Append(plan, OperandRole::kKey, Accumulator{});
       plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, CopyProperties>) {
+      Append(plan,OperandRole::kBase,op.object);Append(plan,OperandRole::kStoredValue,op.source);plan.write=Accumulator{};
     } else if constexpr (std::is_same_v<T, ThisProperty>) {
       if(op.key)Append(plan,OperandRole::kKey,*op.key);
       if(WritesThisProperty(op.kind))Append(plan,OperandRole::kStoredValue,Accumulator{});

@@ -625,13 +625,24 @@ class OperandCheck {
           const auto& property = tree_.properties[flow_.initializers[i]->value];
           original_.operations[i].intrinsic_property=flow_.initializers[i];
           const auto expected = std::to_string(operation.index);
-          RequireMeaning(property.key.value < tree_.names.size() &&
-              tree_.names[property.key.value] == std::u16string(expected.begin(), expected.end()), Error::kConstant);
+          RequireMeaning(property.key && property.key->value < tree_.names.size() &&
+              tree_.names[property.key->value] == std::u16string(expected.begin(), expected.end()), Error::kConstant);
           const auto previous = edge_input_;
           edge_input_ = !IsStagedLiteral(
               evaluation_.literals ? &*evaluation_.literals : nullptr,
               current_);
           InputAt(1, property.value); edge_input_ = previous;
+        } else if constexpr (std::is_same_v<T, analysis::ValueCopyProperties>) {
+          RequireMeaning(ObjectSpreads(tree_.identity.contract) && flow_.initializers[i],Error::kUnsupportedOperation);
+          const auto& property=tree_.properties[flow_.initializers[i]->value];
+          RequireMeaning(!property.key && property.name_setting==analysis::PropertyNameSetting::kNone,Error::kOperator);
+          const auto target=ResolveEvaluationOperand(evaluation_,input(0));
+          const auto result=op.result?ResolveEvaluationOperand(evaluation_,analysis::ValueOperand{*op.result}):analysis::ValueOperand{analysis::SpecialValue::kUndefined};
+          const auto* target_id=std::get_if<analysis::ValueId>(&target);
+          const auto* result_id=std::get_if<analysis::ValueId>(&result);
+          RequireMeaning(target_id && result_id && *target_id==*result_id,Error::kOperand);
+          original_.operations[i].intrinsic_property=flow_.initializers[i];
+          const auto previous=edge_input_;edge_input_=true;InputAt(1,property.value);edge_input_=previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
           if (IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_) &&
               evaluation_.operations[i].kind != EvaluationKind::kInitializer) {
@@ -847,7 +858,8 @@ class OperandCheck {
               const auto& actual = tree_.properties[object.properties.first + p];
               RequireMeaning(source.key.value < constants_.name_count, Error::kConstant);
               const auto& source_name = tree_.names[source.key.value];
-              const auto& actual_name = tree_.names[actual.key.value];
+              RequireMeaning(actual.key && actual.key->value < tree_.names.size(),Error::kConstant);
+              const auto& actual_name = tree_.names[actual.key->value];
               budget_.Step(source_name.size()); budget_.Step(actual_name.size());
               RequireMeaning(actual_name == source_name, Error::kConstant);
               if (!flow_.defined_properties[object.properties.first + p])
@@ -936,7 +948,8 @@ class OperandCheck {
           throw Error::kUnsupportedOperation;
         }
       }, op.operation);
-      if(op.result&&(original_.action_region_members.empty()||!original_.action_region_members[i]))
+      if(op.result && !std::holds_alternative<analysis::ValueCopyProperties>(op.operation) &&
+          (original_.action_region_members.empty()||!original_.action_region_members[i]))
         original_.operations[i].result_expression=expression;
     }
     RequireMeaning(next_function == evaluation_.functions.size(), Error::kOperand);

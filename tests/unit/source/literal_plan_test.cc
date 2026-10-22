@@ -1122,8 +1122,97 @@ void PredicateLiterals(bool print = false) {
     Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(graph)));
   }
 }
+
+ValueProgram SpreadGraph(std::uint32_t count, bool split=false) {
+  Fixture f;
+  f.graph.values.push_back({EntryDefinition{ParameterEntry{0}}, ValueKinds::Language(), {}});
+  f.Add(ValueObjectAllocation{}, true, {});
+  const auto object = *f.graph.ops.back().result;
+  f.graph.ops.back().normal = f.graph.ops.back().before_throw = LanguageEffect::kAllocation;
+  f.graph.ops.back().exceptional = ExceptionalCompletion::kMayThrow;
+  auto base = object;
+  for (std::uint32_t i=0; i<count; ++i) {
+    f.Add(ValueCopyProperties{}, true, {{OperandRole::kBase, base}, {OperandRole::kStoredValue, ValueId{0}}});
+    auto& op=f.graph.ops.back();
+    op.normal=op.before_throw=LanguageEffect::kHeapRead|LanguageEffect::kHeapWrite|LanguageEffect::kUserCode|LanguageEffect::kAllocation;
+    op.exceptional=ExceptionalCompletion::kMayThrow;
+    base=*op.result;
+    if(split) {
+      f.Add(ValueCopy{},true,{{OperandRole::kInput,base}});
+      base=*f.graph.ops.back().result;
+    }
+  }
+  f.Add(ValueReturn{},false,{{OperandRole::kReturnValue,base}});
+  f.graph.blocks={{{0},static_cast<std::uint32_t>(f.graph.ops.size()),{0},0}};
+  if(split) {
+    auto& g=f.graph;g.blocks.clear();
+    for(std::uint32_t i=0;i<g.ops.size();++i) {
+      const bool successor=i+1<g.ops.size();
+      g.blocks.push_back({{i},1,{static_cast<std::uint32_t>(g.edges.size())},static_cast<std::uint8_t>(successor)});
+      if(successor)g.edges.push_back({{i},{i+1},FlowEdgeKind::kFallthrough,0});
+      g.ops[i].block={i};g.ops[i].order=0;
+    }
+  }
+  return std::move(f.graph);
+}
+void ObjectSpreads() {
+  std::uint64_t previous=0;
+  for (const auto count : {1U,200U,201U,400U,800U}) for(const bool split:{false,true}) {
+    auto graph=SpreadGraph(count,split);
+    Check(std::holds_alternative<ValueFlowProof>(VerifyValueFlow(graph)));
+    const auto built=BuildLiteralPlan(graph);
+    Check(std::holds_alternative<LiteralPlan>(built));
+    const auto& plan=std::get<LiteralPlan>(built);
+    Check(plan.objects.size()==1 && plan.definitions.size()==count);
+    const auto checked=VerifyLiteralPlan(graph,plan);
+    Check(std::holds_alternative<std::uint64_t>(checked));
+    Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph,{64*1024*1024,plan.work})));
+    Check(std::get<LiteralError>(BuildLiteralPlan(graph,{64*1024*1024,plan.work-1}))==LiteralError::kWorkLimit);
+    const auto work=std::get<std::uint64_t>(checked);
+    Check(std::holds_alternative<std::uint64_t>(VerifyLiteralPlan(graph,plan,{64*1024*1024,work})));
+    Check(std::get<LiteralError>(VerifyLiteralPlan(graph,plan,{64*1024*1024,work-1}))==LiteralError::kWorkLimit);
+    std::size_t lo=0,hi=64*1024*1024;
+    while(lo<hi){ const auto mid=lo+(hi-lo)/2; if(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph,{mid,100000000})))hi=mid;else lo=mid+1; }
+    Check(lo && std::holds_alternative<LiteralPlan>(BuildLiteralPlan(graph,{lo,100000000})));
+    Check(std::get<LiteralError>(BuildLiteralPlan(graph,{lo-1,100000000}))==LiteralError::kResourceLimit);
+    if(count>201 && !split)Check(plan.work<previous*3);
+    previous=plan.work;
+    auto bad=plan; bad.definitions.pop_back();
+    Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(graph,bad)));
+    if(count>1){bad=plan;std::swap(bad.definitions[0],bad.definitions[1]);Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(graph,bad)));}
+    // A malformed destination, an observed partial target and a missing result
+    // may not acquire native object-spread ownership from the event's name.
+    auto changed=graph;
+    changed.uses[0].operand=ValueId{0};
+    Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(changed,plan)));
+    changed=graph;changed.ops[1].result.reset();
+    Check(std::holds_alternative<LiteralError>(VerifyLiteralPlan(changed,plan)));
+    constexpr auto contract=SourceContract::kLanguageSourceV7;
+    const std::vector<ExpressionConstant> constants(graph.ops.size());
+    const ExpressionConstants resolved{constants,1};
+    const auto planned=BuildEvaluationPlan(graph,{},IncomingCells::kReject,{},{},{},{},
+        ClosureWrites::kUnknown,{},{},{},nullptr,{}, {contract,resolved,{}});
+    Check(std::holds_alternative<EvaluationPlan>(planned));
+    const auto& evaluation=std::get<EvaluationPlan>(planned);
+    const auto control=std::get<ControlPlan>(BuildControlPlan(graph));
+    FunctionSyntax syntax{};syntax.callable=CallableKind::kFunction;
+    syntax.strictness=Strictness::kStrict;syntax.identity.contract=contract;
+    syntax.names={u"input"};syntax.parameters={{NameId{0},NameEvidence::kDebugRange}};
+    const auto built_tree=BuildFunctionTree(graph,control,evaluation,syntax,resolved);
+    if(const auto* e=std::get_if<FunctionTreeFailure>(&built_tree))std::cerr<<"spread tree "<<unsigned(e->kind)<<'\n';
+    Check(std::holds_alternative<ConstructedFunction>(built_tree));
+    const auto& tree=std::get<ConstructedFunction>(built_tree).tree;
+    const auto reject=[&](FunctionTree changed){Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph,control,evaluation,changed,resolved)));};
+    auto forged=tree;forged.properties[0].key=NameId{0};reject(std::move(forged));
+    forged=tree;forged.identity.contract=SourceContract::kLanguageSourceV6;reject(std::move(forged));
+    forged=tree;forged.properties[0].value=forged.properties.back().value;
+    if(count>1){forged.properties[0].origin=forged.properties.back().origin;reject(std::move(forged));}
+    if(count==800)std::cout<<"object_spread800 split="<<split<<" retained="<<plan.allocated_bytes<<" work="<<plan.work<<" admission="<<lo<<'\n';
+  }
+}
 }  // namespace
 int main(int argc, char** argv) {
+  if(argc==2 && std::string_view(argv[1])=="--object-spreads"){ObjectSpreads();return 0;}
   if (argc == 2 && std::string_view(argv[1]) == "--indexed-activations") {
     IndexedActivations();
     return 0;

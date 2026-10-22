@@ -39,6 +39,7 @@
 #include "abcd/analysis/array_spread.h"
 #include "abcd/analysis/scalar.h"
 #include "abcd/analysis/this_property.h"
+#include "abcd/analysis/object_spread.h"
 #include "abcd/analysis/value_write.h"
 
 namespace abcd::analysis {
@@ -173,7 +174,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck, ConcurrentNotification, NewTargetLoad, ThisProperty>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck, ConcurrentNotification, NewTargetLoad, ThisProperty, CopyProperties>;
 // Exact VM-enumerator transport only. Does not prove acquisition identity,
 // closed use, loop advancement or source admission.
 [[nodiscard]] bool AcceptsPropertyEnumerator(const SemanticOperation& operation);

@@ -818,13 +818,14 @@ class ForestBuilder {
     for (std::uint32_t i = 0; i < object.count; ++i) {
       Step(); const auto id = evaluation_.literals->definitions[object.first + i];
       const auto* name = std::get_if<NameId>(&constants_.operations[id.value]);
-      Require(name && name->value < constants_.name_count, Error::kConstant);
+      const bool spread=std::holds_alternative<analysis::ValueCopyProperties>(graph_.ops[id.value].operation);
+      Require(spread || (name && name->value < constants_.name_count), Error::kConstant);
       std::size_t destination = writes.size();
       if (array) {
         const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&graph_.ops[id.value].operation);
         Require(indexed && indexed->index >= next && indexed->index <= writes.size(), Error::kConstant);
         destination = indexed->index;
-      } else if (!order.empty()) {
+      } else if (!spread && !order.empty()) {
         Require(name->value < names_.size(), Error::kConstant);
         const std::u16string_view sought = names_[name->value];
         const auto found = std::upper_bound(order.begin(), order.end(), sought,
@@ -851,7 +852,8 @@ class ForestBuilder {
         continue;
       }
       const auto id = *writes[i]; const auto& op = graph_.ops[id.value];
-      const auto name = std::get<NameId>(constants_.operations[id.value]);
+      const bool spread=std::holds_alternative<analysis::ValueCopyProperties>(op.operation);
+      const auto name = spread?std::optional<NameId>{}:std::optional{std::get<NameId>(constants_.operations[id.value])};
       const TreeOriginId field_origin{op.origin.value};
       auto value = Operand(graph_.uses[op.first_use.value + 1].operand, field_origin);
       if(id.value<evaluation_.literal_fields.fields.size()) {
@@ -1319,7 +1321,7 @@ class ForestBuilder {
         return Add(FieldDefinitionExpr{operands[0], *name, operands[1]}, origin);
       }
       else {
-        static_assert(std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueClassCreation> ||
+        static_assert(std::is_same_v<T, analysis::ValueCopyProperties> || std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueClassCreation> ||
                       std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
                       std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                       std::is_same_v<T, analysis::ValueModuleRead> ||

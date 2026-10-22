@@ -10,6 +10,52 @@
 
 
 
+## ISA coverage4 — private object spread (partial, 2026-10-22)
+
+Against **fdf1152b**: **134 Verified / 62 Unverified / 108 Unmeasured / 28
+NonExecutable**, from **132 / 62 / 110 / 28**. Only current and deprecated
+COPYDATAPROPERTIES move, independently in profiles 12.0.6 and 24.0.0; no
+variant/profile moves backwards. The ledger measures 902 ABCs with no probe
+failures. See [the round note](isa-coverage-round4.md).
+
+V7 object spread now consumes the existing private LiteralPlan through raw/value
+IR, normal-result identity, source syntax, TreeFlow and joint recovery. Copying
+retains a distinct effect/Commit/exception action; it is not a pure alias.
+Discarded spreads retain callbacks. Unknown/escaping targets and previous
+contracts keep typed refusals. No new source-language premise is introduced.
+
+Six complete fixture records (two SDK default/O0, four constructed), **118 Node
+cases**, syntax **6/6**, fresh/protocol/premise mutations and 200/201/400/800
+copy/block-split exact budget tests. The new evidence producer imports **230 Node
+occurrences**, **120** matched round-trip occurrences and **110** null round-trip
+entries. Ark runtime remains null. Approved accessor/descriptor differences are
+explicit provenance exclusions, not runtime passes.
+
+`grouping_bytecode.py` in each compiler mode reports **4 exact / 2 different /
+0 unverified**. All **48/48 per-method comparisons** across both modes are exact;
+the two SDK records differ only in literal-table ordering/offsets. No instruction,
+register, branch or handler normalization is used. Recovery changes declarations
+and names, so the grouping-only token checker correctly rejects all six pairs;
+these are not claimed as grouping passes.
+
+Final full build passed. Fixed source regression **65/65** (rerun after fixture
+setup), all scale **11/11**, ISA **15/15**, new spread targets **3/3**. Required
+area sweep **209/221**: the 12 failures are the documented family CLI,
+tree/try, class-tree, literal construction/closure/receiver and phased/mixed
+literal failures. An extra all-source sweep was stopped at its unrelated slow
+navigation-graph shards after the required area sweep completed; it is not
+counted as a completed suite. Both cohort
+complete counts stay **605/620** and **542/620**; all complete text and all 80
+manifests are byte-identical. Peak decompiler RSS across 80 runs is **42,434,560
+bytes** (Darwin wait4). Artifacts: `build/review/isa-r4` and
+`build/review/isa-r4-work`.
+
+Remaining: tagged-template construction/recovery, object rest, the super-store,
+RegExp/proto/throw and remaining lift-ok families, and generator expansion. The
+object-rest runtime additionally unwraps Proxy targets (`runtime_stubs-inl.h:
+2642–2648`), which is outside the approved Set/CreateDataProperty difference;
+arbitrary Proxy sources stay refused. No claim of full round-4 completion.
+
 ## ISA coverage3 — V7 and owner-bound frame/property evidence (partial, 2026-10-22)
 
 Against **cbc9389b**: ledger **117/62/125/28 → 132/62/110/28** (Verified /

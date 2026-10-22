@@ -204,3 +204,29 @@ self value; see the [round note](../../docs/design/source-recovery/isa-coverage-
 The occurrence writer retains 210 unmatched events as null round-trip evidence,
 and imports 31 strict matched events. Full-file equality, event-family evidence
 and Node differential remain distinct.
+
+## Round 4 private object spread
+
+`isa_object_spread_source_test` produces occurrence evidence for current and
+historical `COPYDATAPROPERTIES`, in both 12.0.6 and 24.0.0 profiles. Two pinned
+SDK default/O0 records and four constructed records must complete under V7.
+Node checks field/overwrite order, nullish and primitive sources, symbols,
+throwing operands, inherited setters and discarded spreads. The approved
+accessor-descriptor copy difference is explicitly excluded from the Ark
+claim; no Ark runtime evidence is invented. All other compared effects remain
+asserted. Previous contracts retain a typed refusal.
+
+The construction certificate is the existing LiteralPlan, extended with typed
+copy definitions and normal destination-result identities. `object_spread_test`
+checks its independent verifier, source/recovery mutations and 200/201/400/800
+copy/block-split variants with exact admitted budgets. The raw semantic test
+also checks that the result inherits destination facts rather than assuming a
+Language result. Refreshed current/deprecated measurement rows retain their
+original ABC hashes.
+
+The ledger in `build/review/isa-r4` has 134 SupportedVerified, 62
+SupportedUnverified, 108 Unmeasured and 28 NonExecutable rows. Only the two
+CopyDataProperties variants move, with independent evidence in profiles 4 and 6.
+Tagged-template construction and object-rest recovery are still gated. See
+[the round note](../../docs/design/source-recovery/isa-coverage-round4.md) for the
+additional, unapproved Proxy-unwrapping difference in the object-rest runtime.

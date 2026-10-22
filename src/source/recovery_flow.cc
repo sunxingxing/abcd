@@ -1235,7 +1235,13 @@ class FlowBuilder {
       for(std::uint32_t i=aggregate->properties.count;i>0;--i) {
         budget_.Step();const auto property=aggregate->properties.first+i-1;
         RequireTree(property<tree_.properties.size()&&!result_.property_initializers[property],Error::kOwnership);
-        const auto define=action(FlowEventKind::kAggregateDefinition,next);
+        const bool spread=!tree_.properties[property].key;
+        const auto define=action(spread?FlowEventKind::kObjectSpread:FlowEventKind::kAggregateDefinition,next);
+        if(spread){
+          const auto spread_effects=CallbackEffects();
+          events_[define.value].effects=spread_effects;events_[define.value].effect=ExpressionEvaluation::kRequired;
+          if(!required)Link(define,context.thrown,FlowCompletion::kThrow);
+        }
         result_.property_initializers[property]=FlowAction{define,next,{context.thrown,context.finalizer}};
         next=Expr(tree_.properties[property].value,context.Operand(define));
       }
@@ -2076,6 +2082,11 @@ FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const Functio
     return {flow.definitions[event.definition->value].effect==FlowWriteEffect::kObservable?
         ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert,event.effects};
   }
+  // A spread's action belongs to one property, not to the aggregate's inert
+  // fresh allocation. Its descriptor/proxy effects cannot be refined away
+  // using the ObjectExpr's allocation-only normal-value rule.
+  if(event.kind==FlowEventKind::kObjectSpread)
+    return {ExpressionEvaluation::kRequired,CallbackEffects()};
   if(!event.expression||event.kind==FlowEventKind::kTruthBranch||event.kind==FlowEventKind::kNullishBranch)
     return {event.effect,event.effects};
   const auto kinds=input.normal_kinds.empty()?std::span<const analysis::ValueKinds>(flow.normal_kinds):input.normal_kinds;

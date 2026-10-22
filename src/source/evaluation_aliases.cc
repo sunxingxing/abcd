@@ -126,7 +126,8 @@ std::variant<EvaluationAliasCost, EvaluationFailure> BuildEvaluationAliases(
       // The equation index certifies actual pure copies, including first
       // materializations of a collapsed phi. Real mutable phi/catch roots keep
       // their original first snapshot; later ordinary aliases still compress.
-      plan.aliases[i] = root; plan.operations[result->op.value].kind = EvaluationKind::kAlias;
+      plan.aliases[i] = root;
+      if(!std::holds_alternative<ValueCopyProperties>(graph.ops[result->op.value].operation))plan.operations[result->op.value].kind = EvaluationKind::kAlias;
     }
     // Functional-graph compression, as in value_simplify.cc. Each unresolved
     // vertex is visited once; no per-use/per-call walk down a copy chain.
@@ -176,7 +177,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationAliases(
         Require(!result || plan.operations[result->op.value].kind != EvaluationKind::kAlias, Error::kOwnership);
         continue;
       }
-      Require(result && plan.operations[result->op.value].kind == EvaluationKind::kAlias, Error::kOwnership);
+      Require(result && (plan.operations[result->op.value].kind == EvaluationKind::kAlias || std::holds_alternative<ValueCopyProperties>(graph.ops[result->op.value].operation)), Error::kOwnership);
       const auto& op = graph.ops[result->op.value];
       const auto source = AliasInput(graph, op);
       Require(op.result == ValueId{static_cast<std::uint32_t>(i)} &&

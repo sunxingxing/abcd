@@ -679,7 +679,9 @@ class StructureCheck {
         const auto slot = object->properties.first + frame.next_child++;
         const auto& property = tree_.properties[slot];
         RequireTree(!properties_[slot], Error::kOwnership); properties_[slot] = 1;
-        RequireTree(property.key.value < tree_.names.size() && property.origin.value < tree_.origins.size(), Error::kRange);
+        RequireTree(property.origin.value < tree_.origins.size(), Error::kRange);
+        if(property.key)RequireTree(property.key->value < tree_.names.size(),Error::kRange);
+        else RequireTree(object->kind==AggregateKind::kObject && ObjectSpreads(tree_.identity.contract) && property.name_setting==analysis::PropertyNameSetting::kNone,Error::kUnsupportedSyntax);
         switch (property.name_setting) {
           case analysis::PropertyNameSetting::kNone: break;
           case analysis::PropertyNameSetting::kPropertyKey: {
@@ -694,8 +696,9 @@ class StructureCheck {
           default: RequireTree(false, Error::kUnsupportedSyntax);
         }
         if (object->kind == AggregateKind::kArray) {
+          RequireTree(property.key.has_value(),Error::kUnsupportedSyntax);
           const auto index = std::to_string(frame.next_child - 1);
-          RequireTree(tree_.names[property.key.value] == std::u16string(index.begin(), index.end()), Error::kUnsupportedSyntax);
+          RequireTree(tree_.names[property.key->value] == std::u16string(index.begin(), index.end()), Error::kUnsupportedSyntax);
         }
         return property.value;
       }

@@ -257,7 +257,7 @@ struct ObjectExpr {
 // Array aggregates reuse the ordered property arena with canonical decimal keys;
 // keys must equal element ordinals and are implicit in native array syntax.
 struct DataProperty {
-  NameId key; ExprId value; TreeOriginId origin;
+  std::optional<NameId> key; ExprId value; TreeOriginId origin;
   // An ordered own definition with native anonymous NamedEvaluation; verified
   // against the original store, private construction and creation identity.
   analysis::PropertyNameSetting name_setting = analysis::PropertyNameSetting::kNone;

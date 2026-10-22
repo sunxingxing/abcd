@@ -24,8 +24,8 @@ ConstructedFamily Make(CallableKind kind,unsigned place) {
   auto add=[&](TreeExpression e) { ExprId id{static_cast<std::uint32_t>(root.expressions.size())}; root.expressions.push_back({std::move(e),{0}}); return id; };
   auto result=add(FunctionExpr{{1},{0,0}});
   if(place==1) { root.arguments={result}; result=add(CallExpr{add(SymbolExpr{{0}}),{0,1},CallReference::kValue}); }
-  if(place==2) { root.arguments={result}; result=add(ObjectExpr{{0,1},AggregateKind::kArray}); root.names.push_back(u"0"); root.properties={{{4},{0},{0}}}; root.arguments.clear(); }
-  if(place==3) { root.properties={{{1},result,{0}}}; result=add(ObjectExpr{{0,1}}); }
+  if(place==2) { root.arguments={result}; result=add(ObjectExpr{{0,1},AggregateKind::kArray}); root.names.push_back(u"0"); root.properties={{NameId{4},{0},{0}}}; root.arguments.clear(); }
+  if(place==3) { root.properties={{NameId{1},result,{0}}}; result=add(ObjectExpr{{0,1}}); }
   if(place==4) {
     root.symbols.push_back({{1},{2},BindingKind::kLocal,DeclarationKind::kLet,NameEvidence::kSynthesized,{}});
     root.statements.push_back({DeclarationStmt{{1},result},{0}}); root.children.insert(root.children.begin(),{2});

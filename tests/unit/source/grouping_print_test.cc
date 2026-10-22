@@ -29,7 +29,7 @@ FunctionTree Make(std::string_view form,unsigned count=1){
        form=="sign" ? UpdateResult::kPrefix : UpdateResult::kPostfix});
    if(form=="sign") update=add(UnaryExpr{TreeUnary::kPlus,update});
    if(form=="updatebase") update=add(MemberExpr{update,NameId{3}});
-   const auto property=static_cast<std::uint32_t>(t.properties.size());t.properties.push_back({{3},update,{0}});
+   const auto property=static_cast<std::uint32_t>(t.properties.size());t.properties.push_back({NameId{3},update,{0}});
    const auto object=add(ObjectExpr{{property,1}});
    const auto plus=add(BinaryExpr{analysis::BinaryOperator::kAdd,read(2),add(TreeLiteral{IntegerLiteral{1}})});
    const auto assignment=add(AssignmentExpr{SymbolTarget{{2}},plus});
@@ -75,7 +75,7 @@ FunctionTree Head(std::string_view form) {
    std::get<BlockStmt>(t.statements[0].statement).child_count=2;return t;
  }
  const auto value=add(SymbolExpr{{2}});
- t.properties.push_back({{3},value,{0}});
+ t.properties.push_back({NameId{3},value,{0}});
  const auto object=add(ObjectExpr{{0,1}});
  auto result=add(MemberExpr{object,NameId{3}});
  if(form=="objectstatement") {

@@ -252,7 +252,7 @@ void NameScale() {
       root.names.emplace_back(index.begin(), index.end());
       const FunctionOwnerId owner{i + 100};
       root.expressions.push_back({FunctionExpr{owner, {0,0}}, {0}});
-      root.properties.push_back({{i}, {i}});
+      root.properties.push_back({NameId{i}, {i}});
       auto child = Naming(CallableKind::kFunction, NamingPlace::kReturn, "", "key").members[0].tree;
       child.owner = owner; child.identity.contract = SourceContract::kLanguageAndHostV1;
       family.members[i + 1].tree = std::move(child);

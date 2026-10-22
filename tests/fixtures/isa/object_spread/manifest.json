@@ -1,0 +1,119 @@
+{
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "path": "spread-default.abc",
+      "sha256": "f2fc4a33dc289a71692809dbc593d6afb9427aaaf7552bf0eebb0beca4dc6944",
+      "source": "spread.js",
+      "source_sha256": "d7c93392003daed259f3450ec142277cfcdd152e7edc3619a2860a13d07cab06",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaSpread",
+        "--source-file=spread.js",
+        "--output=tests/fixtures/isa/object_spread/spread-default.abc",
+        "tests/fixtures/isa/object_spread/spread.js"
+      ],
+      "opcodes": [
+        4,
+        7,
+        41,
+        51,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        197,
+        220
+      ]
+    },
+    {
+      "path": "spread-o0.abc",
+      "sha256": "9dece7da3a4b594613d85bed05af4f309a4a5eda179284fbe7ad5d24e59b6cc7",
+      "source": "spread.js",
+      "source_sha256": "d7c93392003daed259f3450ec142277cfcdd152e7edc3619a2860a13d07cab06",
+      "origin": "es2abc",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaSpread",
+        "--source-file=spread.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/object_spread/spread-o0.abc",
+        "tests/fixtures/isa/object_spread/spread.js"
+      ],
+      "opcodes": [
+        0,
+        4,
+        7,
+        41,
+        51,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        197,
+        220
+      ]
+    },
+    {
+      "path": "copydataproperties_v8-dynamic1206.abc",
+      "sha256": "e70344bcb1e3ec526a37e50bf2675cc376aac654f7774664ab433a51bc032f04",
+      "source": "constructed.js",
+      "source_sha256": "727b1f337dc1c9106b1a7c45076a740260d18a9a4fda9e47aa519be3b94d5f6c",
+      "origin": "constructed",
+      "profile": "DYNAMIC1206",
+      "kind": "COPYDATAPROPERTIES_V8",
+      "opcodes": [
+        197
+      ]
+    },
+    {
+      "path": "deprecated_copydataproperties_pref_v8_v8-dynamic1206.abc",
+      "sha256": "24da30e8b901e77df2bdc8b6f799c56404906613409f969f2765c99ea966dcc3",
+      "source": "constructed.js",
+      "source_sha256": "727b1f337dc1c9106b1a7c45076a740260d18a9a4fda9e47aa519be3b94d5f6c",
+      "origin": "constructed",
+      "profile": "DYNAMIC1206",
+      "kind": "DEPRECATED_COPYDATAPROPERTIES_PREF_V8_V8",
+      "opcodes": [
+        6652
+      ]
+    },
+    {
+      "path": "copydataproperties_v8-dynamic2400.abc",
+      "sha256": "0c3a40d92947d366fcb0bd96ea0c8a6d2db3deeb4ee1db7f72c41409141d5a22",
+      "source": "constructed.js",
+      "source_sha256": "727b1f337dc1c9106b1a7c45076a740260d18a9a4fda9e47aa519be3b94d5f6c",
+      "origin": "constructed",
+      "profile": "DYNAMIC2400",
+      "kind": "COPYDATAPROPERTIES_V8",
+      "opcodes": [
+        197
+      ]
+    },
+    {
+      "path": "deprecated_copydataproperties_pref_v8_v8-dynamic2400.abc",
+      "sha256": "d2bc21c799b233e56fc2a78cc551ddf8ce52a2b99dd9e36fe76c3d5c1e909af4",
+      "source": "constructed.js",
+      "source_sha256": "727b1f337dc1c9106b1a7c45076a740260d18a9a4fda9e47aa519be3b94d5f6c",
+      "origin": "constructed",
+      "profile": "DYNAMIC2400",
+      "kind": "DEPRECATED_COPYDATAPROPERTIES_PREF_V8_V8",
+      "opcodes": [
+        6652
+      ]
+    }
+  ]
+}

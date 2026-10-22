@@ -157,6 +157,16 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
     }
     const auto equation=ProjectedRecoveryEquation(input,id);
     auto evaluation = NormalValueEvaluation(node,facts.kinds,ResourceFailures(tree.identity.contract));
+    if (const auto* object=std::get_if<ObjectExpr>(&node)) {
+      // Spread copying owns callbacks even when its result is discarded and
+      // the source expression is an inert binding read. Count each owned
+      // property once; do not infer effects from a child's value expression.
+      for(std::uint32_t p=0;p<object->properties.count;++p) {
+        budget.Step();
+        if(!tree.properties[object->properties.first+p].key)
+          evaluation=ExpressionEvaluation::kRequired;
+      }
+    }
     auto lexical=IntrinsicLexicalDependency(node);
     if (const auto* read = std::get_if<SymbolExpr>(&node)) {
       literal=input.bindings.ReadLiteral(id,read->symbol);

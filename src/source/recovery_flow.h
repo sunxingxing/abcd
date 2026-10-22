@@ -131,7 +131,7 @@ enum class FlowDefinitionKind : std::uint8_t {
   kIterationCopy,
   kClassInner
 };
-enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kAggregateDefinition, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment, kCopyInput, kEnterIterationEnvironment, kLeaveLoopEnvironment, kEnumerationAcquire, kEnumerationNext, kEnumerationBind, kConcurrentNotification };
+enum class FlowEventKind : std::uint8_t { kControl, kTruthBranch, kNullishBranch, kRead, kEvaluation, kAggregateDefinition, kEnterScope, kLeaveScope, kDefinition, kSuspend, kPropertyReference, kEnterLoopEnvironment, kCopyInput, kEnterIterationEnvironment, kLeaveLoopEnvironment, kEnumerationAcquire, kEnumerationNext, kEnumerationBind, kConcurrentNotification, kObjectSpread };
 enum class FlowValueUse : std::uint8_t { kUnmodeled, kDiscarded, kObserved };
 enum class FlowWriteEffect : std::uint8_t { kObservable, kInert };
 enum class FlowBindingExposure : std::uint8_t { kObservable, kPrivate };

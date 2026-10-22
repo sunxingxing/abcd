@@ -162,7 +162,7 @@ class LiteralPath {
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step(); const auto& op = graph.ops[i];
       if (op.life != analysis::ValueLife::kLive || op.use_count != 2 ||
-          !(std::holds_alternative<analysis::ValueOwnWrite>(op.operation) ||
+          !(std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) ||
             std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
       const auto base = Resolve(graph.uses[op.first_use.value].operand);
       const auto* value = std::get_if<analysis::ValueId>(&base);
@@ -294,12 +294,13 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
   Require(id.value < graph.ops.size(), Error::kDefinition);
   const auto& op = graph.ops[id.value];
   const auto* write = std::get_if<analysis::ValueOwnWrite>(&op.operation);
+  const bool spread=std::holds_alternative<analysis::ValueCopyProperties>(op.operation);
   const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation);
-  Require(op.life == analysis::ValueLife::kLive && (write || indexed) && !op.result && op.use_count == 2,
+  Require(op.life == analysis::ValueLife::kLive && (write || indexed || spread) && (spread == op.result.has_value()) && op.use_count == 2,
       Error::kDefinition);
   if (indexed) Require(indexed->kind == analysis::IndexedDefinition::kOwnStore ||
       indexed->kind == analysis::IndexedDefinition::kDefineField, Error::kDefinition);
-  Require(indexed || write->kind == analysis::OwnWriteKind::kStore ||
+  Require(spread || indexed || write->kind == analysis::OwnWriteKind::kStore ||
       write->kind == analysis::OwnWriteKind::kDefineField, Error::kDefinition);
   const auto& base = graph.uses[op.first_use.value];
   const auto& stored = graph.uses[op.first_use.value + 1];
@@ -904,7 +905,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const bool own = (projected.empty() || !projected[i]) && graph.ops[i].life == analysis::ValueLife::kLive && !IsReceiverField(graph, graph.ops[i]) &&
-          (std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
+          (std::holds_alternative<analysis::ValueCopyProperties>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
       Require(owners[i].has_value() == own && (!IsStagedLiteral(&plan, {static_cast<std::uint32_t>(i)}) || own), Error::kCoverage);
     }
     VerifyStaged(graph, plan, owners, budget, path, failure);
@@ -962,7 +963,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     std::size_t count = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step(); const auto& op = graph.ops[i];
-      count += (projected.empty() || !projected[i]) && op.life == analysis::ValueLife::kLive && !IsReceiverField(graph, op) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
+      count += (projected.empty() || !projected[i]) && op.life == analysis::ValueLife::kLive && !IsReceiverField(graph, op) && (std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
     }
     std::vector<FieldOwner> fields;
     LiteralPlan plan{graph.revision, graph.cfg_revision};
@@ -971,7 +972,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const auto& op = graph.ops[i];
-      if ((!projected.empty() && projected[i]) || op.life != analysis::ValueLife::kLive || IsReceiverField(graph, op) || !(std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
+      if ((!projected.empty() && projected[i]) || op.life != analysis::ValueLife::kLive || IsReceiverField(graph, op) || !(std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
       const analysis::OpId id{static_cast<std::uint32_t>(i)};
       fields[next++] = {Allocation(graph, id, path, false, failure), id};
     }

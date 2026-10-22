@@ -72,12 +72,22 @@ class ValueIdentityIndex {
       const auto* origin = std::get_if<OpResult>(&value.origin);
       if (!origin) continue;
       const auto& op = graph_.ops[origin->op.value];
-      if (op.life != ValueLife::kLive || !std::holds_alternative<ValueCopy>(op.operation) ||
-          !CanErasePureOp(op) || op.result != ValueId{static_cast<std::uint32_t>(i)} || op.use_count != 1) continue;
+      const bool spread = std::holds_alternative<ValueCopyProperties>(op.operation);
+      if (op.life != ValueLife::kLive ||
+          !(spread || (std::holds_alternative<ValueCopy>(op.operation) && CanErasePureOp(op))) ||
+          op.result != ValueId{static_cast<std::uint32_t>(i)} || op.use_count != (spread ? 2U : 1U))
+        continue;
       const auto& use = graph_.uses[op.first_use.value];
       const auto* source = std::get_if<ValueId>(&use.operand);
-      if (source && use.role == OperandRole::kInput && use.purpose == ReadPurpose::kOperand)
-        equations_[i] = 1;
+      if (!source || use.role != (spread ? OperandRole::kBase : OperandRole::kInput) ||
+          use.purpose != ReadPurpose::kOperand)
+        continue;
+      // CopyDataProperties returns its target only on normal Commit. This is
+      // a value equation, never a pure-operation/elision certificate. Do not
+      // replace an independently refined result with a broader base domain.
+      if (spread && graph_.values[source->value].domain.Join(value.domain) != value.domain)
+        continue;
+      equations_[i] = 1;
     }
     for (std::size_t i = 0; i < graph_.uses.size(); ++i) {
       quota_.Work();
@@ -87,6 +97,10 @@ class ValueIdentityIndex {
       if (const auto* phi = std::get_if<ValueId>(&use.owner)) owner = *phi;
       else if (const auto* op = std::get_if<OpId>(&use.owner)) owner = graph_.ops[op->value].result;
       if (!owner || !equations_[owner->value]) continue;
+      if (const auto* op = std::get_if<OpId>(&use.owner);
+          op && std::holds_alternative<ValueCopyProperties>(graph_.ops[op->value].operation) &&
+          use.role != OperandRole::kBase)
+        continue;
       next_[i] = head_[owner->value];
       head_[owner->value] = UseId{static_cast<std::uint32_t>(i)};
     }

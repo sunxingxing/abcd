@@ -1973,7 +1973,7 @@ class FlowCheck {
         Require(expression != nullptr, Error::kPlacement);
         flow_.expressions[i] = *expression; continue;
       }
-      if (!IsReceiverField(graph_, op) && (!IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, {static_cast<std::uint32_t>(i)}) || evaluation_.operations[i].kind == EvaluationKind::kInitializer) && (std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
+      if (!IsReceiverField(graph_, op) && (!IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, {static_cast<std::uint32_t>(i)}) || evaluation_.operations[i].kind == EvaluationKind::kInitializer) && (std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
         const auto* property = std::get_if<PropertyId>(&placement);
         Require(property != nullptr, Error::kPlacement);
         Require(!flow_.defined_properties[property->value], Error::kPlacement);

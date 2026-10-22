@@ -498,8 +498,8 @@ class TreePrinter {
         if (const auto* object = std::get_if<ObjectExpr>(&expression)) {
           for (std::uint32_t p = 0; p < object->properties.count; ++p) {
             const auto& property = Tree().properties[object->properties.first + p];
-            push(property.value, object->kind == AggregateKind::kObject ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
-                NameContext{PropertyInferredName{property.key}} : NameContext{property.key}) : NameContext{});
+            push(property.value, object->kind == AggregateKind::kObject && property.key ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
+                NameContext{PropertyInferredName{*property.key}} : NameContext{*property.key}) : NameContext{});
           }
         } else VisitExpressionChildren(Tree(), expression, [&](ExprId child) {
           NameContext name;
@@ -1334,8 +1334,9 @@ class TreePrinter {
     const PropertyId id{cursor.range.first + cursor.index};
     const auto& property = Tree().properties[id.value];
     Result().properties[id.value].begin = written_;
-    if (cursor.kind == AggregateKind::kObject) {
-      const auto& name = Tree().names[property.key.value];
+    if(!property.key)Append("...");
+    else if (cursor.kind == AggregateKind::kObject) {
+      const auto& name = Tree().names[property.key->value];
       Step(name.size());
       // Ordinary IdentifierName keys keep native object syntax. __proto__ must
       // remain computed: a colon definition otherwise mutates the prototype.
@@ -1347,8 +1348,8 @@ class TreePrinter {
     }
     Push(ObjectCursor{cursor.range, cursor.index + 1, cursor.kind, cursor.multiline});
     Push(EndProperty{id}); Push(ExpressionOperand{property.value, {ExpressionGrammar::kAssignmentValue},
-        cursor.kind == AggregateKind::kObject ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
-                NameContext{PropertyInferredName{property.key}} : NameContext{property.key}) : NameContext{}});
+        cursor.kind == AggregateKind::kObject && property.key ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
+                NameContext{PropertyInferredName{*property.key}} : NameContext{*property.key}) : NameContext{}});
   }
   void Run(EndProperty property) { Result().properties[property.id.value].end = written_; }
   void Run(ArgumentCursor cursor) {
