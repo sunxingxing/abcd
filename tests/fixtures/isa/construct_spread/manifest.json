@@ -1,0 +1,253 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "fixtures": [
+    {
+      "source": "tests/fixtures/isa/construct_spread/basic.js",
+      "path": "tests/fixtures/isa/construct_spread/basic-default.abc",
+      "sha256": "498f7d48b8c67b15a1c7d871f221cdfbcb6c1b94ec8ec988369a2767d4d50bf1",
+      "source_sha256": "1d28196a27253072a362cbd0abc550da3e7e863e6901bf3f4a812ef78a80238e",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=constructSpread",
+        "--source-file=basic.js",
+        "--output=tests/fixtures/isa/construct_spread/basic-default.abc",
+        "tests/fixtures/isa/construct_spread/basic.js"
+      ],
+      "opcodes": [
+        5,
+        6,
+        33,
+        51,
+        53,
+        66,
+        67,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        120,
+        124,
+        180,
+        198,
+        207,
+        254
+      ],
+      "profile": 6
+    },
+    {
+      "source": "tests/fixtures/isa/construct_spread/basic.js",
+      "path": "tests/fixtures/isa/construct_spread/basic-O0.abc",
+      "sha256": "a17e781ff40878392d276dffa3deaa4d51bbe6abb5b3703dfb7e8a2e6214ac2c",
+      "source_sha256": "1d28196a27253072a362cbd0abc550da3e7e863e6901bf3f4a812ef78a80238e",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=constructSpread",
+        "--source-file=basic.js",
+        "--output=tests/fixtures/isa/construct_spread/basic-O0.abc",
+        "tests/fixtures/isa/construct_spread/basic.js",
+        "--opt-level=0"
+      ],
+      "opcodes": [
+        0,
+        5,
+        6,
+        33,
+        51,
+        53,
+        66,
+        67,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        120,
+        124,
+        180,
+        198,
+        207,
+        254
+      ],
+      "profile": 6
+    },
+    {
+      "source": "tests/fixtures/isa/construct_spread/refusal.js",
+      "path": "tests/fixtures/isa/construct_spread/refusal-default.abc",
+      "sha256": "bbfdcd610e3a06f5ba5c65b1230a21f0a3de2ac3f5242d9204db8109489acf9b",
+      "source_sha256": "0005a8c4de7207c40de50d71b16c14e0ef7f3551757df9a30f82238481496a3f",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=constructSpread",
+        "--source-file=refusal.js",
+        "--output=tests/fixtures/isa/construct_spread/refusal-default.abc",
+        "tests/fixtures/isa/construct_spread/refusal.js"
+      ],
+      "opcodes": [
+        5,
+        51,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        180,
+        198
+      ],
+      "profile": 6,
+      "refusal": [
+        {
+          "domain": "abcd::source::FunctionTreeError",
+          "value": 1
+        },
+        {
+          "domain": "abcd::source::ExpressionError",
+          "value": 4
+        },
+        {
+          "domain": "abcd::source::CallPlanError",
+          "value": 9
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/construct_spread/refusal.js",
+      "path": "tests/fixtures/isa/construct_spread/refusal-O0.abc",
+      "sha256": "ebb10f1f1d751bdccf143a1787750f849516b93840968dd07da4fd8fe0483f48",
+      "source_sha256": "0005a8c4de7207c40de50d71b16c14e0ef7f3551757df9a30f82238481496a3f",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=constructSpread",
+        "--source-file=refusal.js",
+        "--output=tests/fixtures/isa/construct_spread/refusal-O0.abc",
+        "tests/fixtures/isa/construct_spread/refusal.js",
+        "--opt-level=0"
+      ],
+      "opcodes": [
+        0,
+        5,
+        51,
+        66,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        180,
+        198
+      ],
+      "profile": 6,
+      "refusal": [
+        {
+          "domain": "abcd::source::FunctionTreeError",
+          "value": 1
+        },
+        {
+          "domain": "abcd::source::ExpressionError",
+          "value": 4
+        },
+        {
+          "domain": "abcd::source::CallPlanError",
+          "value": 9
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/construct_spread/wide.js",
+      "path": "tests/fixtures/isa/construct_spread/wide-default.abc",
+      "sha256": "e96d465075c150fc0c6565de3bee028a969f264faeb269749691481378291ee4",
+      "source_sha256": "4c5e6cb415d0b7ed729f8d12bf8d77d1c562e9fcca94b438b894e86a4c3d85da",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=constructSpread",
+        "--source-file=wide.js",
+        "--output=tests/fixtures/isa/construct_spread/wide-default.abc",
+        "tests/fixtures/isa/construct_spread/wide.js"
+      ],
+      "opcodes": [
+        33,
+        51,
+        66,
+        67,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        117,
+        124,
+        129,
+        144,
+        181,
+        198,
+        200,
+        207
+      ],
+      "profile": 6
+    },
+    {
+      "source": "tests/fixtures/isa/construct_spread/wide.js",
+      "path": "tests/fixtures/isa/construct_spread/wide-O0.abc",
+      "sha256": "02d4aa8c708163364942ef360d171f56c2fd0e7c75d9490ef4610f7048fe19bf",
+      "source_sha256": "4c5e6cb415d0b7ed729f8d12bf8d77d1c562e9fcca94b438b894e86a4c3d85da",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=constructSpread",
+        "--source-file=wide.js",
+        "--output=tests/fixtures/isa/construct_spread/wide-O0.abc",
+        "tests/fixtures/isa/construct_spread/wide.js",
+        "--opt-level=0"
+      ],
+      "opcodes": [
+        0,
+        33,
+        51,
+        66,
+        67,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        117,
+        124,
+        129,
+        144,
+        181,
+        198,
+        200,
+        207
+      ],
+      "profile": 6
+    }
+  ]
+}

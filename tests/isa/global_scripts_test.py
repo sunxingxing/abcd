@@ -18,14 +18,12 @@ class Scripts(unittest.TestCase):
      export=scratch/str(i);subprocess.run([BUILD/'abc_structure',abc,export,'--value-source','--language-source'],check=True,capture_output=True)
      manifest=json.loads((export/'manifest.json').read_text());records=[r for r in manifest['records'] if r.get('source_language')=='javascript-script']
      self.assertEqual(len(records),1);record=records[0]
-     if e.get('refusal'):
-      self.assertNotEqual(record['source_status'],0);self.assertIn({'domain':'abcd::source::ScriptScopeError','value':10},record.get('source_causes',record.get('source_failure',{}).get('causes',[])));continue
      self.assertEqual(record['source_status'],0,record);self.assertEqual(manifest['source_contract'],'language_source_v9')
      emitted=export/record['source'];self.assertEqual(emitted.suffix,'.js');subprocess.run(['node','--check',emitted],check=True,capture_output=True)
      observed=json.loads(subprocess.check_output(['node',ROOT/'tests/integration/global_scripts.mjs',original,emitted,kind],text=True))
      previous=scratch/(str(i)+'-previous');subprocess.run([BUILD/'abc_structure',abc,previous,'--value-source','--language-numeric','--language-constructors'],check=True,capture_output=True)
      self.assertTrue(all(r['source_status']==2 for r in json.loads((previous/'manifest.json').read_text())['records']))
-     if kind!='sloppy':record_node(abc,export,original,__file__,observed['cases'],BUILD/'abc_structure',exclusions=['ark-late-global-lexical-activation','ark-sloppy-unresolved-write'],dependencies=[ROOT/'tests/integration/global_scripts.mjs'])
+     if kind!='sloppy':record_node(abc,export,original,__file__,observed['cases'],BUILD/'abc_structure',exclusions=['ark-late-global-lexical-activation','ark-sloppy-unresolved-write','ark-entry-global-accessor-set'],dependencies=[ROOT/'tests/integration/global_scripts.mjs'])
  def test_host_accessor_boundary(self):
   # Node establishes the standard side only. The pinned Ark SetProperty path
   # is cited in isa-global-scripts.md; this is not an Ark-runtime oracle.

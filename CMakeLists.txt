@@ -377,6 +377,7 @@ if(BUILD_TESTING)
   add_executable(call_spread_test tests/unit/source/call_spread_test.cc)
   target_link_libraries(call_spread_test PRIVATE abcd_source)
   add_test(NAME call_spread_test COMMAND call_spread_test)
+  add_test(NAME construct_spread_scale_test COMMAND call_spread_test)
   add_executable(name_setting_literal_test tests/unit/source/name_setting_literal_test.cc)
   target_link_libraries(name_setting_literal_test PRIVATE abcd_source)
   add_test(NAME name_setting_literal_test COMMAND name_setting_literal_test)
@@ -418,6 +419,12 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/object_proto_test.py)
     add_test(NAME isa_throw_evidence_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/throw_evidence_test.py)
+    add_test(NAME isa_construct_spread_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/construct_spread_test.py)
+    add_test(NAME isa_construct_spread_scale_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/construct_spread_test.py Constructs.test_scale)
+    add_test(NAME isa_misc_evidence_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/misc_evidence_test.py)
     add_test(NAME isa_global_scripts_scale_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/global_scripts_test.py Scripts.test_scale)
     add_test(NAME isa_global_scripts_source_test COMMAND ${Python3_EXECUTABLE}

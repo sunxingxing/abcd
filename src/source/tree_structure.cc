@@ -30,6 +30,7 @@ namespace abcd::source {
 namespace {
 using Error = TreeStructureError;
 using SyntaxNode = std::variant<ExprId, StmtId>;
+enum class ArrayRole : std::uint8_t { kUnowned, kElement, kArgumentCarrier };
 struct SyntaxFrame {
   SyntaxNode node;
   ScopeId scope;
@@ -494,7 +495,10 @@ class StructureCheck {
           const auto& child = tree_.expressions[array.value].expression;
           const auto* aggregate = std::get_if<ObjectExpr>(&child);
           RequireTree(std::holds_alternative<EmptyArrayExpr>(child) ||
+              std::holds_alternative<ArrayExpr>(child) ||
               (aggregate && aggregate->kind == AggregateKind::kArray), Error::kUnsupportedSyntax);
+          if (std::holds_alternative<ArrayExpr>(child))
+            array_elements_[array.value] = ArrayRole::kArgumentCarrier;
         }
       } else if constexpr (std::is_same_v<T, SuperCallExpr>) {
         RequireTree(tree_.callable == CallableKind::kDerivedConstructor, Error::kUnsupportedSyntax);
@@ -525,16 +529,8 @@ class StructureCheck {
           const auto* array = std::get_if<ObjectExpr>(&child);
           RequireTree(std::holds_alternative<ArrayExpr>(child) || std::holds_alternative<EmptyArrayExpr>(child) ||
               (array && array->kind == AggregateKind::kArray), Error::kUnsupportedSyntax);
-          if (const auto* elements = std::get_if<ArrayExpr>(&child)) {
-            RequireTree(elements->elements.first <= tree_.arguments.size() &&
-                elements->elements.count <= tree_.arguments.size() - elements->elements.first, Error::kRange);
-            for (std::uint32_t i=0; i<elements->elements.count; ++i) {
-              budget_.Step(); const auto id=tree_.arguments[elements->elements.first+i];
-              RequireTree(id.value<tree_.expressions.size(),Error::kRange);
-              const auto* element=std::get_if<ArrayElement>(&tree_.expressions[id.value].expression);
-              RequireTree(element && !std::holds_alternative<ArrayElision>(element->element),Error::kUnsupportedSyntax);
-            }
-          }
+          if (std::holds_alternative<ArrayExpr>(child))
+            array_elements_[expression.array_arguments->value] = ArrayRole::kArgumentCarrier;
         }
         RequireTree(expression.arguments.first <= tree_.arguments.size() &&
             expression.arguments.count <= tree_.arguments.size() - expression.arguments.first, Error::kRange);
@@ -550,7 +546,7 @@ class StructureCheck {
             expression.elements.count <= tree_.arguments.size() - expression.elements.first &&
             expression.buffered <= expression.elements.count, Error::kRange);
       } else if constexpr (std::is_same_v<T, ArrayElement>) {
-        RequireTree(array_elements_[id.value], Error::kOwnership);
+        RequireTree(array_elements_[id.value] == ArrayRole::kElement, Error::kOwnership);
       } else if constexpr (std::is_same_v<T, ObjectExpr>) {
         RequireTree(expression.kind == AggregateKind::kObject || expression.kind == AggregateKind::kArray,
             Error::kUnsupportedSyntax);
@@ -698,7 +694,14 @@ class StructureCheck {
         const auto child = tree_.arguments[slot];
         RequireTree(child.value < tree_.expressions.size() &&
             std::holds_alternative<ArrayElement>(tree_.expressions[child.value].expression), Error::kOwnership);
-        RequireTree(!array_elements_[child.value], Error::kOwnership); array_elements_[child.value] = 1;
+        RequireTree(array_elements_[child.value] == ArrayRole::kUnowned, Error::kOwnership);
+        array_elements_[child.value] = ArrayRole::kElement;
+        // Check each owned element on the single DFS traversal, not by a
+        // subtree scan for each enclosing constructor/call. Shared malformed
+        // trees are rejected before a second traversal of that element.
+        if (array_elements_[expression->value] == ArrayRole::kArgumentCarrier)
+          RequireTree(!std::holds_alternative<ArrayElision>(
+              std::get<ArrayElement>(tree_.expressions[child.value].expression).element), Error::kUnsupportedSyntax);
         return child;
       }
       if (const auto* element = std::get_if<ArrayElement>(&syntax)) {
@@ -939,7 +942,8 @@ class StructureCheck {
   std::vector<std::uint8_t> statements_;
   std::vector<std::uint8_t> children_;
   std::vector<std::uint8_t> arguments_;
-  std::vector<std::uint8_t> properties_, array_elements_;
+  std::vector<std::uint8_t> properties_;
+  std::vector<ArrayRole> array_elements_;
   std::vector<SyntaxFrame> stack_;
   std::vector<FunctionOwnerId> functions_;
   std::vector<std::uint8_t> capture_edges_;

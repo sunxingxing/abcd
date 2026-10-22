@@ -10360,6 +10360,382 @@
         121
       ],
       "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/construct_spread/basic-default.abc",
+      "sha256": "498f7d48b8c67b15a1c7d871f221cdfbcb6c1b94ec8ec988369a2767d4d50bf1",
+      "profile": 6,
+      "opcodes": [
+        5,
+        6,
+        33,
+        51,
+        53,
+        66,
+        67,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        120,
+        124,
+        180,
+        198,
+        207,
+        254
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/construct_spread/basic-O0.abc",
+      "sha256": "a17e781ff40878392d276dffa3deaa4d51bbe6abb5b3703dfb7e8a2e6214ac2c",
+      "profile": 6,
+      "opcodes": [
+        0,
+        5,
+        6,
+        33,
+        51,
+        53,
+        66,
+        67,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        120,
+        124,
+        180,
+        198,
+        207,
+        254
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/construct_spread/refusal-default.abc",
+      "sha256": "bbfdcd610e3a06f5ba5c65b1230a21f0a3de2ac3f5242d9204db8109489acf9b",
+      "profile": 6,
+      "opcodes": [
+        5,
+        51,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        180,
+        198
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/construct_spread/refusal-O0.abc",
+      "sha256": "ebb10f1f1d751bdccf143a1787750f849516b93840968dd07da4fd8fe0483f48",
+      "profile": 6,
+      "opcodes": [
+        0,
+        5,
+        51,
+        66,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        180,
+        198
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/construct_spread/wide-default.abc",
+      "sha256": "e96d465075c150fc0c6565de3bee028a969f264faeb269749691481378291ee4",
+      "profile": 6,
+      "opcodes": [
+        33,
+        51,
+        66,
+        67,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        117,
+        124,
+        129,
+        144,
+        181,
+        198,
+        200,
+        207
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/construct_spread/wide-O0.abc",
+      "sha256": "02d4aa8c708163364942ef360d171f56c2fd0e7c75d9490ef4610f7048fe19bf",
+      "profile": 6,
+      "opcodes": [
+        0,
+        33,
+        51,
+        66,
+        67,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        117,
+        124,
+        129,
+        144,
+        181,
+        198,
+        200,
+        207
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/namespace-default.abc",
+      "sha256": "6f08342222dea73639d732027725c5f0b7f00308a495f31ccd502245c9149b3e",
+      "profile": 6,
+      "opcodes": [
+        9,
+        51,
+        60,
+        61,
+        66,
+        96,
+        97,
+        100,
+        101,
+        123,
+        124,
+        2558
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/namespace-O0.abc",
+      "sha256": "153fd33c8d009914d1e0f1b55cead58962fd3ded5a3bd8032ef7c6bd45d30e66",
+      "profile": 6,
+      "opcodes": [
+        0,
+        9,
+        51,
+        60,
+        61,
+        66,
+        68,
+        96,
+        97,
+        100,
+        101,
+        123,
+        124,
+        2558
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/dynamic-default.abc",
+      "sha256": "2b17dfd54d2d849ef6890502a54dad1d27bc939eddebe60d8955b4078702ddf3",
+      "profile": 6,
+      "opcodes": [
+        51,
+        96,
+        100,
+        101,
+        124,
+        189
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/dynamic-O0.abc",
+      "sha256": "d165864c091cd6a89608a959aea3bd5533a415478d56d4424affa496881cabae",
+      "profile": 6,
+      "opcodes": [
+        0,
+        51,
+        68,
+        96,
+        100,
+        101,
+        124,
+        189
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/array_pattern-default.abc",
+      "sha256": "e0dfe32f258b8d98f3cf0e8afe1397317e4171d15a5a12edfc693f0755771bc5",
+      "profile": 6,
+      "opcodes": [
+        0,
+        2,
+        3,
+        15,
+        16,
+        45,
+        51,
+        66,
+        68,
+        77,
+        79,
+        81,
+        96,
+        97,
+        100,
+        101,
+        103,
+        112,
+        124,
+        155,
+        213,
+        254,
+        1534,
+        5115,
+        5371
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/array_pattern-O0.abc",
+      "sha256": "307a46fade8e290243f3d740ec245a0ac4dd50a25fff28af0a3ceeab7b945d71",
+      "profile": 6,
+      "opcodes": [
+        0,
+        2,
+        3,
+        15,
+        16,
+        45,
+        51,
+        66,
+        68,
+        69,
+        77,
+        79,
+        81,
+        96,
+        97,
+        100,
+        101,
+        103,
+        112,
+        124,
+        155,
+        254,
+        1534,
+        5115,
+        5371
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/symbol-default.abc",
+      "sha256": "59980255da0807762cfe8532f3bc9916c99a8aaa345dfd7f291832cd27a3b64e",
+      "profile": 6,
+      "opcodes": [
+        51,
+        63,
+        100,
+        101,
+        124
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/symbol-O0.abc",
+      "sha256": "09abd62d1e16330ab2e21591084f539601eb1844fa8057cdf96259d966407105",
+      "profile": 6,
+      "opcodes": [
+        0,
+        51,
+        63,
+        68,
+        100,
+        101,
+        124
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/nameset-default.abc",
+      "sha256": "1d98137413e5d175ee61b66bc23787e9080eb649b312f5ec79c5aef15cd48245",
+      "profile": 6,
+      "opcodes": [
+        4,
+        51,
+        96,
+        97,
+        100,
+        101,
+        124,
+        153
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/nameset-O0.abc",
+      "sha256": "6bbe005688737e81c3b2ad43e170022abec0cdee4658908b54ff42e868940adf",
+      "profile": 6,
+      "opcodes": [
+        0,
+        4,
+        51,
+        68,
+        96,
+        97,
+        100,
+        101,
+        124,
+        153
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/property_key-default.abc",
+      "sha256": "468d82461a7e778a7c5337541a20a5a6e3e4661c16c72cb20024e63ae11cd706",
+      "profile": 6,
+      "opcodes": [
+        51,
+        52,
+        53,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        124,
+        153,
+        1019
+      ]
+    },
+    {
+      "path": "tests/fixtures/isa/misc_evidence/property_key-O0.abc",
+      "sha256": "24c6ee8e60090b9a3effc1c2cf44f26f9fcb89bfb26ed577fbbd3c3aed6e52c5",
+      "profile": 6,
+      "opcodes": [
+        0,
+        51,
+        52,
+        53,
+        66,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        124,
+        153,
+        1019
+      ]
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.",
@@ -10451,6 +10827,10 @@
     {
       "test": "isa_global_scripts_source_test",
       "producer": "tests/isa/global_scripts_test.py"
+    },
+    {
+      "test": "isa_construct_spread_source_test",
+      "producer": "tests/isa/construct_spread_test.py"
     }
   ]
 }

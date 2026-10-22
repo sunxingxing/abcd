@@ -449,15 +449,9 @@ ScriptScopeProof::Verify(const analysis::ValueProgram& graph,
         return E::kOrder;
       global->declaration = declaration.kind;
     }
-    // Pending user decision: STGLOBALVAR invokes a pre-existing global
-    // accessor even for an entry undefined store. Native declaration
-    // instantiation does not. V9's two approved differences do not cover it.
-    for (const auto& declaration : scope.declarations) {
-      ledger.Step();
-      if (declaration.kind == GlobalDeclaration::kVar ||
-          declaration.kind == GlobalDeclaration::kFunction)
-        return E::kHostGlobalAccessor;
-    }
+    // V9 GlobalScripts explicitly accepts entry [[Set]] through a host
+    // accessor (user extension 2026-10-22). All ownership/order checks above
+    // remain necessary; the premise changes no declaration certificate fact.
     return std::shared_ptr<const ScriptScopeProof>(std::move(proof));
   } catch (E e) {
     return e;

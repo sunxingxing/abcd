@@ -402,3 +402,45 @@ Full evidence and the pending boundary are in that note and
 [language-source.md](../../docs/design/source-recovery/language-source.md).
 The new CTests are `script_scope_test`, `script_scope_scale_test`,
 `isa_global_scripts_source_test`, and `isa_global_scripts_scale_test`.
+
+
+## ISA round 11: global hoisting and constructor argument carriers
+
+The V9 GlobalScripts predicate now includes the user-approved entry accessor
+[[Set]] difference. All 18 registered script ABCs complete, including the eight
+previous var/function gates, while previous flags continue refusing script
+recovery. Node evidence lists all three approved differences; no Ark execution
+is inferred from these Node runs.
+
+`isa_construct_spread_source_test` covers both NEWOBJAPPLY widths and a wide
+STOWNBYVALUE cursor commit with complete SDK records. The existing independently
+verified dense private-array plan now supplies a native constructor argument
+carrier. It uses V1 for the inner spread, not the V5 APPLY-only premise.
+Unknown constructors retain kConstructorIdentity. Elisions and forged cursor /
+owner / constructor evidence are rejected; 200/201/400/800 exact budgets and SDK
+stress cases are registered as scale tests.
+
+`isa_misc_evidence_test` registers real default/O0 source-emission probes for
+namespace imports, dynamic imports, array patterns, Symbol, computed anonymous
+property stores and computed class keys. It asserts actual decoding, SDK
+disassembly and current source causes, without supplying successful oracles for
+refusals. These families are not all implemented: CLOSEITERATOR still needs a
+whole array-pattern completion proof; computed class-key conversion still needs
+its definition-time ownership; namespace request/type and captured binding
+correspondence remain unimplemented. Arbitrary dynamic-import coercion, mutable
+Symbol replacement, numeric name-setting and native/CJS namespace replacement
+have documented runtime differences and are not admitted.
+
+See [isa-misc-constructors.md](../../docs/design/source-recovery/isa-misc-constructors.md)
+for citations, exact scope, remaining obligations and round-trip explanations.
+
+The round-11 ledger is **171 Verified / 51 Unverified / 82 Unmeasured /
+28 NonExecutable**, from 1,092 ABCs and 1,574,098 decoded instructions. Seven
+profile-6 promotions are LDGLOBALVAR/STGLOBALVAR, NEWOBJAPPLY both widths,
+STOWNBYVALUE both widths and CREATEARRAYWITHBUFFER_IMM16. No prior verified
+profile moves backward. Global scripts supply 16 evidence artifacts / 44 Node
+cases; constructor spreads supply four / 64. Strict original-ABC comparisons
+are 7 exact / 15 reported differences / 0 unverified after the documented
+export-alias adaptation. Detailed differences and unfinished misc obligations
+remain in the design note; neither a refusal nor an unexplained comparison is
+counted as support.

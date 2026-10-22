@@ -1,0 +1,496 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "source": "tests/fixtures/isa/misc_evidence/namespace.js",
+      "path": "tests/fixtures/isa/misc_evidence/namespace-default.abc",
+      "sha256": "6f08342222dea73639d732027725c5f0b7f00308a495f31ccd502245c9149b3e",
+      "source_sha256": "8ece5baa8373ce9f440fbcbf8641081b1af60919714cec4ba203b76ec463a371",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=namespace.js",
+        "--output=tests/fixtures/isa/misc_evidence/namespace-default.abc",
+        "tests/fixtures/isa/misc_evidence/namespace.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        9,
+        51,
+        60,
+        61,
+        66,
+        96,
+        97,
+        100,
+        101,
+        123,
+        124,
+        2558
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::analysis::SemanticError",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/namespace.js",
+      "path": "tests/fixtures/isa/misc_evidence/namespace-O0.abc",
+      "sha256": "153fd33c8d009914d1e0f1b55cead58962fd3ded5a3bd8032ef7c6bd45d30e66",
+      "source_sha256": "8ece5baa8373ce9f440fbcbf8641081b1af60919714cec4ba203b76ec463a371",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=namespace.js",
+        "--output=tests/fixtures/isa/misc_evidence/namespace-O0.abc",
+        "tests/fixtures/isa/misc_evidence/namespace.js",
+        "--opt-level=0"
+      ],
+      "profile": 6,
+      "opcodes": [
+        0,
+        9,
+        51,
+        60,
+        61,
+        66,
+        68,
+        96,
+        97,
+        100,
+        101,
+        123,
+        124,
+        2558
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::analysis::SemanticError",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/dynamic.js",
+      "path": "tests/fixtures/isa/misc_evidence/dynamic-default.abc",
+      "sha256": "2b17dfd54d2d849ef6890502a54dad1d27bc939eddebe60d8955b4078702ddf3",
+      "source_sha256": "298743059791385bffcbaad85a5302482515c8cf812a38b33e8bb8a05b8be431",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=dynamic.js",
+        "--output=tests/fixtures/isa/misc_evidence/dynamic-default.abc",
+        "tests/fixtures/isa/misc_evidence/dynamic.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        51,
+        96,
+        100,
+        101,
+        124,
+        189
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::analysis::SemanticError",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/dynamic.js",
+      "path": "tests/fixtures/isa/misc_evidence/dynamic-O0.abc",
+      "sha256": "d165864c091cd6a89608a959aea3bd5533a415478d56d4424affa496881cabae",
+      "source_sha256": "298743059791385bffcbaad85a5302482515c8cf812a38b33e8bb8a05b8be431",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=dynamic.js",
+        "--output=tests/fixtures/isa/misc_evidence/dynamic-O0.abc",
+        "tests/fixtures/isa/misc_evidence/dynamic.js",
+        "--opt-level=0"
+      ],
+      "profile": 6,
+      "opcodes": [
+        0,
+        51,
+        68,
+        96,
+        100,
+        101,
+        124,
+        189
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::analysis::SemanticError",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/array_pattern.js",
+      "path": "tests/fixtures/isa/misc_evidence/array_pattern-default.abc",
+      "sha256": "e0dfe32f258b8d98f3cf0e8afe1397317e4171d15a5a12edfc693f0755771bc5",
+      "source_sha256": "e4a992081b90cf5d60058890bfacba36ef22d7d2e84d7b5d335c3a614e3534ce",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=array_pattern.js",
+        "--output=tests/fixtures/isa/misc_evidence/array_pattern-default.abc",
+        "tests/fixtures/isa/misc_evidence/array_pattern.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        0,
+        2,
+        3,
+        15,
+        16,
+        45,
+        51,
+        66,
+        68,
+        77,
+        79,
+        81,
+        96,
+        97,
+        100,
+        101,
+        103,
+        112,
+        124,
+        155,
+        213,
+        254,
+        1534,
+        5115,
+        5371
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::source::PhasedMethodError",
+          "value": 5
+        },
+        {
+          "domain": "abcd::source::ExceptionPlanError",
+          "value": 2
+        },
+        {
+          "domain": "abcd::analysis::CatchRegionError",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/array_pattern.js",
+      "path": "tests/fixtures/isa/misc_evidence/array_pattern-O0.abc",
+      "sha256": "307a46fade8e290243f3d740ec245a0ac4dd50a25fff28af0a3ceeab7b945d71",
+      "source_sha256": "e4a992081b90cf5d60058890bfacba36ef22d7d2e84d7b5d335c3a614e3534ce",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=array_pattern.js",
+        "--output=tests/fixtures/isa/misc_evidence/array_pattern-O0.abc",
+        "tests/fixtures/isa/misc_evidence/array_pattern.js",
+        "--opt-level=0"
+      ],
+      "profile": 6,
+      "opcodes": [
+        0,
+        2,
+        3,
+        15,
+        16,
+        45,
+        51,
+        66,
+        68,
+        69,
+        77,
+        79,
+        81,
+        96,
+        97,
+        100,
+        101,
+        103,
+        112,
+        124,
+        155,
+        254,
+        1534,
+        5115,
+        5371
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::source::PhasedMethodError",
+          "value": 5
+        },
+        {
+          "domain": "abcd::source::ExceptionPlanError",
+          "value": 2
+        },
+        {
+          "domain": "abcd::analysis::CatchRegionError",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/symbol.js",
+      "path": "tests/fixtures/isa/misc_evidence/symbol-default.abc",
+      "sha256": "59980255da0807762cfe8532f3bc9916c99a8aaa345dfd7f291832cd27a3b64e",
+      "source_sha256": "3692a82e7e818ad6a5ae4f8619ea488b330ed77d239109b03a3988832fae239e",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=symbol.js",
+        "--output=tests/fixtures/isa/misc_evidence/symbol-default.abc",
+        "tests/fixtures/isa/misc_evidence/symbol.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        51,
+        63,
+        100,
+        101,
+        124
+      ],
+      "source_status": 0,
+      "causes": []
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/symbol.js",
+      "path": "tests/fixtures/isa/misc_evidence/symbol-O0.abc",
+      "sha256": "09abd62d1e16330ab2e21591084f539601eb1844fa8057cdf96259d966407105",
+      "source_sha256": "3692a82e7e818ad6a5ae4f8619ea488b330ed77d239109b03a3988832fae239e",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=symbol.js",
+        "--output=tests/fixtures/isa/misc_evidence/symbol-O0.abc",
+        "tests/fixtures/isa/misc_evidence/symbol.js",
+        "--opt-level=0"
+      ],
+      "profile": 6,
+      "opcodes": [
+        0,
+        51,
+        63,
+        68,
+        100,
+        101,
+        124
+      ],
+      "source_status": 0,
+      "causes": []
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/nameset.js",
+      "path": "tests/fixtures/isa/misc_evidence/nameset-default.abc",
+      "sha256": "1d98137413e5d175ee61b66bc23787e9080eb649b312f5ec79c5aef15cd48245",
+      "source_sha256": "58015e75960ef9e98ee7164c51b280703d542f5fb372c9bfa7d5485380a88067",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=nameset.js",
+        "--output=tests/fixtures/isa/misc_evidence/nameset-default.abc",
+        "tests/fixtures/isa/misc_evidence/nameset.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        4,
+        51,
+        96,
+        97,
+        100,
+        101,
+        124,
+        153
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::source::EvaluationError",
+          "value": 2
+        },
+        {
+          "domain": "abcd::source::EvaluationObligation",
+          "value": 0
+        },
+        {
+          "domain": "abcd::source::LiteralError",
+          "value": 10
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/nameset.js",
+      "path": "tests/fixtures/isa/misc_evidence/nameset-O0.abc",
+      "sha256": "6bbe005688737e81c3b2ad43e170022abec0cdee4658908b54ff42e868940adf",
+      "source_sha256": "58015e75960ef9e98ee7164c51b280703d542f5fb372c9bfa7d5485380a88067",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=nameset.js",
+        "--output=tests/fixtures/isa/misc_evidence/nameset-O0.abc",
+        "tests/fixtures/isa/misc_evidence/nameset.js",
+        "--opt-level=0"
+      ],
+      "profile": 6,
+      "opcodes": [
+        0,
+        4,
+        51,
+        68,
+        96,
+        97,
+        100,
+        101,
+        124,
+        153
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::source::EvaluationError",
+          "value": 2
+        },
+        {
+          "domain": "abcd::source::EvaluationObligation",
+          "value": 0
+        },
+        {
+          "domain": "abcd::source::LiteralError",
+          "value": 10
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/property_key.js",
+      "path": "tests/fixtures/isa/misc_evidence/property_key-default.abc",
+      "sha256": "468d82461a7e778a7c5337541a20a5a6e3e4661c16c72cb20024e63ae11cd706",
+      "source_sha256": "c32c0005e4cbeb7748091c44dccfe989c1b2709e2357eaee27fb213006ddcc7a",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=property_key.js",
+        "--output=tests/fixtures/isa/misc_evidence/property_key-default.abc",
+        "tests/fixtures/isa/misc_evidence/property_key.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        51,
+        52,
+        53,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        124,
+        153,
+        1019
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::analysis::SemanticError",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/misc_evidence/property_key.js",
+      "path": "tests/fixtures/isa/misc_evidence/property_key-O0.abc",
+      "sha256": "24c6ee8e60090b9a3effc1c2cf44f26f9fcb89bfb26ed577fbbd3c3aed6e52c5",
+      "source_sha256": "c32c0005e4cbeb7748091c44dccfe989c1b2709e2357eaee27fb213006ddcc7a",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=miscEvidence",
+        "--source-file=property_key.js",
+        "--output=tests/fixtures/isa/misc_evidence/property_key-O0.abc",
+        "tests/fixtures/isa/misc_evidence/property_key.js",
+        "--opt-level=0"
+      ],
+      "profile": 6,
+      "opcodes": [
+        0,
+        51,
+        52,
+        53,
+        66,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        124,
+        153,
+        1019
+      ],
+      "source_status": 3,
+      "causes": [
+        {
+          "domain": "abcd::analysis::SemanticError",
+          "value": 1
+        }
+      ]
+    }
+  ]
+}

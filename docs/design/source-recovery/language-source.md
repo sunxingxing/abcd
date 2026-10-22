@@ -741,7 +741,7 @@ same-record functions. No module table or import/export binding is fabricated.
 
 The approved native forms are top-level `var`/function/`let`/`const`/class
 bindings and plain global reads/writes, recompiled by es2abc to the original
-global-record / checked-global / global-var operations. Two differences are
+global-record / checked-global / global-var operations. Three differences are
 accepted, not silently used as Node passes:
 
 1. Ark creates a global lexical record entry when its record store executes;
@@ -750,6 +750,11 @@ accepted, not silently used as Node passes:
 2. An unresolved sloppy write throws ReferenceError on Ark, rather than
    creating a global property. The script printer's strict directive preserves
    checked-write and value-call semantics; it is not module syntax.
+3. The entry STGLOBALVAR for a global var/function declaration uses [[Set]]
+   and can invoke a pre-existing accessor's setter (including undefined
+   initialization). Standard declaration instantiation does not; a function
+   declaration can replace a configurable accessor. This extension was approved
+   on 2026-10-22 in ISA round 11, under the same V9 predicate.
 
 Pinned evidence: `ets_frontend/es2panda/compiler/core/pandagen.cpp:361–439,
 587–595` chooses the global instructions; `compiler/base/hoisting.cpp:24–75`
@@ -761,7 +766,7 @@ const-update TypeError text **"const variable can not be modified"**. The
 recovered const update remains a checked global assignment, never a fabricated
 throw. See [the evidence audit](isa-globals-prototype-throws.md).
 
-**Publication boundary found in round 10, not approved by these two clauses:**
+**Entry accessor difference, identified in round 10 and approved in round 11:**
 `RuntimeStGlobalVar` (`runtime_stubs-inl.h:1819`) calls
 `JSObject::GlobalSetProperty(..., true)` (`js_object.cpp:1044–1056`), which invokes
 an existing global setter even for an entry undefined store. Native global
@@ -769,11 +774,21 @@ an existing global setter even for an entry undefined store. Native global
 instantiation can replace a configurable accessor instead of invoking it.
 The fixture demonstrates the standard side using `vm.Script.runInThisContext`
 (the contextified sandbox has separate interception behavior). No Ark runtime
-execution is claimed. Until an explicit decision covers this additional
-observable difference, `ScriptScopeError::kHostGlobalAccessor` keeps global
-var/function declaration publication closed. Lexical/class declarations and
-checked global reads/writes are independent and implemented. This boundary
-must not be removed merely because source recompiles to the same instructions.
+execution is claimed. This observation is now explicitly covered by the third
+clause above. The `kHostGlobalAccessor` gate is lifted; ownership, original event
+correspondence, scope and order proofs remain required.
 
 The separate script certificate, immutable input checks, completion semantics,
 limits and tests are described in [isa-global-scripts.md](isa-global-scripts.md).
+
+**2026-10-22 extension (ISA round 11, user approved).** The same V9
+`GlobalScripts()` predicate additionally accepts entry `STGLOBALVAR` using
+`[[Set]]` for hoisted global var/function declarations. It invokes a pre-existing
+global accessor's setter, including for the initial undefined value; standard
+var declaration instantiation does not invoke it, and a standard function
+declaration can replace a configurable accessor instead. The runtime citations
+above (`RuntimeStGlobalVar:1819`, `JSObject::GlobalSetProperty:1044–1056`) apply.
+The temporary `kHostGlobalAccessor` publication refusal is now lifted under V9;
+its enum value is retained for diagnostic compatibility. The independent entry,
+order, private scope, value and exception checks remain unchanged. No contract
+version is added, and previous flags still refuse executable script recovery.

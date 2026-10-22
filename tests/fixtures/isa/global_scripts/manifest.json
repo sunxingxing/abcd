@@ -15,8 +15,7 @@
         "--source-file=bindings.js",
         "--output=tests/fixtures/isa/global_scripts/bindings-default.abc",
         "tests/fixtures/isa/global_scripts/bindings.js"
-      ],
-      "refusal": "host-global-accessor"
+      ]
     },
     {
       "source": "tests/fixtures/isa/global_scripts/bindings.js",
@@ -32,8 +31,7 @@
         "--opt-level=0",
         "--output=tests/fixtures/isa/global_scripts/bindings-O0.abc",
         "tests/fixtures/isa/global_scripts/bindings.js"
-      ],
-      "refusal": "host-global-accessor"
+      ]
     },
     {
       "source": "tests/fixtures/isa/global_scripts/closures.js",
@@ -48,8 +46,7 @@
         "--source-file=closures.js",
         "--output=tests/fixtures/isa/global_scripts/closures-default.abc",
         "tests/fixtures/isa/global_scripts/closures.js"
-      ],
-      "refusal": "host-global-accessor"
+      ]
     },
     {
       "source": "tests/fixtures/isa/global_scripts/closures.js",
@@ -65,8 +62,7 @@
         "--opt-level=0",
         "--output=tests/fixtures/isa/global_scripts/closures-O0.abc",
         "tests/fixtures/isa/global_scripts/closures.js"
-      ],
-      "refusal": "host-global-accessor"
+      ]
     },
     {
       "source": "tests/fixtures/isa/global_scripts/errors.js",
@@ -81,8 +77,7 @@
         "--source-file=errors.js",
         "--output=tests/fixtures/isa/global_scripts/errors-default.abc",
         "tests/fixtures/isa/global_scripts/errors.js"
-      ],
-      "refusal": "host-global-accessor"
+      ]
     },
     {
       "source": "tests/fixtures/isa/global_scripts/errors.js",
@@ -98,8 +93,7 @@
         "--opt-level=0",
         "--output=tests/fixtures/isa/global_scripts/errors-O0.abc",
         "tests/fixtures/isa/global_scripts/errors.js"
-      ],
-      "refusal": "host-global-accessor"
+      ]
     },
     {
       "source": "tests/fixtures/isa/global_scripts/sloppy.js",
@@ -145,8 +139,7 @@
         "--source-file=wide.js",
         "--output=tests/fixtures/isa/global_scripts/wide-default.abc",
         "tests/fixtures/isa/global_scripts/wide.js"
-      ],
-      "refusal": "host-global-accessor"
+      ]
     },
     {
       "source": "tests/fixtures/isa/global_scripts/wide.js",
@@ -162,8 +155,7 @@
         "--opt-level=0",
         "--output=tests/fixtures/isa/global_scripts/wide-O0.abc",
         "tests/fixtures/isa/global_scripts/wide.js"
-      ],
-      "refusal": "host-global-accessor"
+      ]
     },
     {
       "source": "tests/fixtures/isa/global_scripts/lexical_closures.js",

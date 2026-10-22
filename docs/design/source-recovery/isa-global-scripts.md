@@ -1,5 +1,11 @@
 # ISA round 10: separate script entry and global scope
 
+**Round 11 update:** the user approved the entry accessor difference on
+2026-10-22 under V9. The temporary gate is removed and all 18 script fixtures
+complete; earlier round-10 results below remain historical evidence. See
+[isa-misc-constructors.md](isa-misc-constructors.md) for current acceptance.
+
+
 This is a partial implementation of the user-approved GlobalScripts predicate
 (2026-10-22), not an expansion of module routing. V9 adds the predicate; historical
 contracts remain unchanged. Global lexical/class declarations, checked name

@@ -59,6 +59,23 @@ int main() {
       return BuildScriptScope(input.graph, input.constants, {7}, {42},
                               SourceContract::kLanguageSourceV9, budget);
     };
+    // Hoisted var initialization uses the same declaration/effect certificate;
+    // the approved accessor difference must not weaken its use/order census.
+    auto vars = input;
+    for (auto& op : vars.graph.ops)
+      std::get<ValueGlobalWrite>(op.operation).operation = GlobalOp::kWriteVar;
+    auto hoisted = BuildScriptScope(vars.graph, vars.constants, {7}, {42},
+                                    SourceContract::kLanguageSourceV9);
+    Check(std::holds_alternative<ScriptScope>(hoisted));
+    const auto& var_scope = std::get<ScriptScope>(hoisted);
+    for (const auto& declaration : var_scope.declarations)
+      Check(declaration.kind == GlobalDeclaration::kVar);
+    Check(std::holds_alternative<std::uint64_t>(VerifyScriptScope(
+        vars.graph, vars.constants, var_scope, {7}, SourceContract::kLanguageSourceV9)));
+    auto wrong_var = var_scope;
+    wrong_var.declarations.back().kind = GlobalDeclaration::kLet;
+    Check(std::get<ScriptScopeError>(VerifyScriptScope(vars.graph, vars.constants,
+        wrong_var, {7}, SourceContract::kLanguageSourceV9)) == ScriptScopeError::kCorrespondence);
     auto result = build();
     Check(std::holds_alternative<ScriptScope>(result));
     auto scope = std::get<ScriptScope>(std::move(result));
@@ -124,6 +141,12 @@ int main() {
                          build({low, kDefaultSemanticWork})));
     Check(std::get<ScriptScopeError>(build({low - 1, kDefaultSemanticWork})) ==
           ScriptScopeError::kResourceLimit);
+    Check(std::holds_alternative<ScriptScope>(BuildScriptScope(vars.graph, vars.constants,
+        {7}, {42}, SourceContract::kLanguageSourceV9, {low, var_scope.work})));
+    Check(std::get<ScriptScopeError>(BuildScriptScope(vars.graph, vars.constants,
+        {7}, {42}, SourceContract::kLanguageSourceV9, {low-1, var_scope.work})) == ScriptScopeError::kResourceLimit);
+    Check(std::get<ScriptScopeError>(BuildScriptScope(vars.graph, vars.constants,
+        {7}, {42}, SourceContract::kLanguageSourceV9, {low, var_scope.work-1})) == ScriptScopeError::kWorkLimit);
     auto work = scope.work;
     Check(std::holds_alternative<ScriptScope>(build({1u << 24, work})));
     Check(std::get<ScriptScopeError>(build({1u << 24, work - 1})) ==

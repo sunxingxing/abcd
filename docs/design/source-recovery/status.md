@@ -10,6 +10,79 @@
 
 
 
+## ISA coverage11 — global hoisting; private constructor spreads (2026-10-22)
+
+- Consumed the user-approved V9 extension for entry STGLOBALVAR through [[Set]]
+  and a pre-existing global accessor. Removed only the temporary accessor
+  publication gate; original declaration/order/owner/input/exception checks
+  remain. All eight previously gated SDK var/function ABCs complete. All 18
+  script fixtures now complete under V9; previous flags retain metadata-only
+  refusal. The predicate/version is unchanged. The enum value is retained for
+  old diagnostic compatibility; no synthetic const throw was added.
+- NEWOBJAPPLY both widths now consume the existing independently verified
+  private dense array/cursor proof as a native constructor argument carrier.
+  Only direct fresh function/class identities qualify; unknown host constructors
+  still refuse with kConstructorIdentity. Indexed extraction cannot observe the
+  private own data properties, so this does not widen the V5 APPLY premise.
+  Inner spreads use V1. Evaluation, CallPlan, TreeFlow and recovery recheck their
+  existing original event/consumer/catch correspondence. Array elisions refuse;
+  syntax checking uses the ownership DFS and existing role storage, avoiding
+  per-parent subtree scans. No index allocation occurs without an actual array
+  initialization proof. Previously successful output is unchanged.
+- Four complete SDK constructor ABCs cover both widths, mixed spreads and wide
+  cursor stores; two negative ABCs retain exact constructor-identity causes.
+  Node traces include custom iterator acquisition/next/value, sparse/string
+  sources, throws in each iterator stage and a throwing constructor, plus
+  constructor name/length and result arguments. C++ mutations recheck missing /
+  forged constructor/array bindings, owners, cursor equations and elisions;
+  copies/block splits and 200/201/400/800 exact byte/work admission are tested.
+  At 800 spread+element steps: **2,755,918 bytes / 1,743,850 CallPlan work**;
+  split/copy **5,167,024 bytes / 3,572,184 work**. No budget was raised.
+- The misc list is **not all recovered**. Twelve new SDK default/O0 emitter
+  probes are independently disassembled, decoded and refusal-tested.
+  TOPROPERTYKEY is emitted for computed class fields/methods. LDSYMBOL has a
+  dynamic PandaGen case but no found caller; ordinary Symbol source uses a
+  global lookup. CLOSEITERATOR is not emitted by the observed dynamic SDK array
+  pattern, which expands close explicitly. Its arbitrary acquisition difference
+  is outside V2's for-of-only approval. Namespace imports need request/type and
+  lexical initialization correspondence (native/CJS returns raw exports);
+  arbitrary dynamic import defers ToString to a job; numeric name-setting fast
+  paths differ from native string names. These stay refused and supply no
+  successful oracle. Computed class-key and complete array-pattern certificates
+  remain unimplemented; no NonExecutable claim is made for them.
+- Ledger **164/53/87/28 → 171/51/82/28**
+  (Verified/Unverified/Unmeasured/NonExecutable), **1,092 ABCs / 1,574,098
+  instructions**, zero probe failures and no backward verified-profile moves.
+  Seven profile-6 promotions: LDGLOBALVAR, STGLOBALVAR, NEWOBJAPPLY both widths,
+  STOWNBYVALUE both widths, CREATEARRAYWITHBUFFER_IMM16. The two new/extended
+  oracle producers attest **108 executed Node cases in 20 artifacts**; Ark
+  runtime stays null. The 2,184 sequential production recovery RSS reports peak
+  at **119,963,648 bytes**, below the 1,000,000,000-byte process limit.
+- Original ABC / emitted source round trips at matching default/O0 modes:
+  **7 exact / 15 differ / 0 unverified** after the existing lexer export-alias
+  adaptation. Initial unadapted constructor compilation had four string-export
+  parser failures, retained separately. Differences remain reported: prior
+  script completion/inert O0 loads and pool offsets; existing inferred-function-
+  name private wrappers; inert fresh-class prototype reads/IC renumbering;
+  independent function installation ordinal names/registers. No normalization
+  or grouping-token equivalence claim for full source recovery. Every emitted
+  positive fixture passes Node syntax and its intended differential assertions.
+- Final full build passes; source-regression **65/65**, all scale **21/21**,
+  ISA **28/28**, touched sweep **258/264**. The six failures are documented
+  pre-existing family_source_cli, tree_structure, try_tree, literal_construct,
+  class_tree_source and try_tree_source; literal_construct also reproduces at
+  wtbase (`tests/integration/literal_construct.cc:143`). No existing source
+  spelling assertion was weakened; only historical refusal-to-completion
+  expectations changed, with differentials.
+- OLD **85452c0a**: fresh 40-input comparisons remain **605/620** source and
+  **542/620** previous flags, with zero regressions, new cohort completions,
+  completed text changes or contract-label changes. Fixture completions are
+  separate from these unchanged cohort totals.
+- Docs/evidence: [isa-misc-constructors.md](isa-misc-constructors.md),
+  [language-source.md](language-source.md), `build/review/isa-r11/`,
+  `build/review/isa-r11-work/`. Generated Markdown is refreshed; JSON remains
+  under build. No commit, push or stash; `sample.tar.gz` is untouched.
+
 ## ISA coverage10 — V9 script entry; var/function host boundary retained (2026-10-22)
 
 - Added independent `GlobalScripts()` in **LanguageSourceV9**; CLI, route

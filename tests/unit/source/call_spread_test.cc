@@ -1,6 +1,7 @@
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/call_plan.h"
 #include "../../../src/source/tree_semantics.h"
+#include "../../../src/source/tree_structure.h"
 #include "abcd/source/tree_printer.h"
 #include <sstream>
 #include "abcd/analysis/value_simplify.h"
@@ -49,9 +50,14 @@ struct Sample {
   std::vector<std::u16string> names{u"length"};
   ExpressionConstants Constants() const { return {constants, names.size()}; }
 };
-Sample Make(unsigned count, bool copies=false, bool split=false, bool expose=false, bool late=false) {
+Sample Make(unsigned count, bool copies=false, bool split=false, bool expose=false, bool late=false, bool construct=false) {
   Fixture f;
   f.graph.values.push_back({EntryDefinition{ParameterEntry{0}},ValueKinds::Language(),{}});
+  ValueId callee{0};
+  if (construct) {
+    f.Add(ValueFunctionCreation{CreationKind::kFunction,{0},0,HomeObjectInput::kCurrentFunction,0},true,{});
+    callee=*f.graph.ops.back().result;f.graph.ops.back().normal=LanguageEffect::kAllocation;
+  }
   f.Add(ValueArrayAllocation{},true,{}); const auto array=*f.graph.ops.back().result;
   f.graph.ops.back().normal=LanguageEffect::kAllocation;
   ValueOperand cursor=abcd::analysis::IntegerLiteral{0};
@@ -87,7 +93,9 @@ Sample Make(unsigned count, bool copies=false, bool split=false, bool expose=fal
     f.Add(ValueUnary{UnaryOperator::kIncrement},true,{{OperandRole::kInput,cursor}});
     cursor=*f.graph.ops.back().result;
   }
-  f.Add(ValueInvoke{InvokeReceiver::kExplicit,1,CallArgumentForm::kApplyArray},true,
+  if (construct) f.Add(ValueConstructApply{},true,
+      {{OperandRole::kConstructor,callee},{OperandRole::kInput,expose?cursor:ValueOperand{array}}});
+  else f.Add(ValueInvoke{InvokeReceiver::kExplicit,1,CallArgumentForm::kApplyArray},true,
       {{OperandRole::kCallee,ValueId{0}}, {OperandRole::kReceiver,SpecialValue::kUndefined},
        {OperandRole::kArgument,expose?cursor:ValueOperand{array}}});
   f.graph.ops.back().normal=f.graph.ops.back().before_throw=LanguageEffect::kUserCode|LanguageEffect::kHeapRead|LanguageEffect::kHeapWrite|LanguageEffect::kAllocation;
@@ -110,7 +118,43 @@ Sample Make(unsigned count, bool copies=false, bool split=false, bool expose=fal
   return sample;
 }
 
+void Constructors() {
+  for (unsigned n : {1U,200U,201U,400U,800U}) for (bool split : {false,true}) {
+    auto sample=Make(n,true,split,false,false,true);
+    const FunctionBinding function{{0},{1},{}};
+    const auto build=[&](SemanticBudget budget=SemanticBudget{}) {
+      return BuildEvaluationPlan(sample.graph,budget,IncomingCells::kReject,{&function,1},{},{},{},ClosureWrites::kUnknown,
+          {},{},{},nullptr,{}, {SourceContract::kLanguageSourceV1,sample.Constants(),sample.names});
+    };
+    const auto evaluated=build();if(const auto* e=std::get_if<EvaluationFailure>(&evaluated))std::cerr<<"construct evaluation "<<unsigned(e->kind)<<" check="<<(e->evaluation.input_check?unsigned(*e->evaluation.input_check):999u)<<"\n";Check(std::holds_alternative<EvaluationPlan>(evaluated));
+    const auto& evaluation=std::get<EvaluationPlan>(evaluated);
+    const auto calls=BuildCallPlan(sample.graph,evaluation);
+    Check(std::holds_alternative<CallPlan>(calls));
+    const auto& plan=std::get<CallPlan>(calls);const auto call=sample.graph.ops.size()-2;
+    Check(std::get<ConstructCall>(plan.operations[call]).array.has_value());
+    auto wrong=plan;std::get<ConstructCall>(wrong.operations[call]).constructor.reset();
+    Check(std::holds_alternative<CallPlanFailure>(VerifyCallPlan(sample.graph,evaluation,wrong)));
+    wrong=plan;std::get<ConstructCall>(wrong.operations[call]).array.reset();
+    Check(std::holds_alternative<CallPlanFailure>(VerifyCallPlan(sample.graph,evaluation,wrong)));
+    if (n == 1) {
+      auto forged=evaluation;Check(forged.literals && forged.literals->arrays);
+      ++forged.literals->arrays->steps.front().after.offset;
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(sample.graph,forged)));
+      forged=evaluation;forged.literals->arrays->owners.front()=OpId{0};
+      Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(sample.graph,forged)));
+    }
+    std::size_t low=0,high=1u<<25;
+    while(low<high){auto mid=low+(high-low)/2;
+      if(std::holds_alternative<EvaluationPlan>(build({mid})))high=mid;else low=mid+1;}
+    Check(low>0&&std::holds_alternative<EvaluationPlan>(build({low})));
+    Check(std::get<EvaluationFailure>(build({low-1})).kind==EvaluationError::kResourceLimit);
+    Check(std::holds_alternative<CallPlan>(BuildCallPlan(sample.graph,evaluation,{1u<<25,plan.work})));
+    Check(std::get<CallPlanFailure>(BuildCallPlan(sample.graph,evaluation,{1u<<25,plan.work-1}))==CallPlanError::kWorkLimit);
+    std::cout<<"construct "<<n<<" split="<<split<<" bytes="<<low<<" call_work="<<plan.work<<'\n';
+  }
+}
 int main() {
+  Constructors();
   for (unsigned raw=0; raw<=static_cast<unsigned>(SourceContract::kLanguageSourceV5); ++raw) {
     const auto c=static_cast<SourceContract>(raw);
     Check(CallSpread(c)==(c==SourceContract::kLanguageSourceV5 ? CallSpreadSemantics::kPrivateArgumentsV1 : CallSpreadSemantics::kPinnedRuntime));
@@ -173,6 +217,15 @@ int main() {
     Check(std::holds_alternative<PrintedFunction>(PrintFunctionTree(std::get<ConstructedFunction>(tree).tree,output)));
     Check(output.str().find("...input")!=std::string::npos);
     Check(output.str().find("[...")==std::string::npos);
+    auto dense=std::get<ConstructedFunction>(tree).tree;
+    for(auto& node:dense.expressions) if(const auto* call=std::get_if<CallExpr>(&node.expression);call && call->array_arguments) {
+      node.expression=ConstructExpr{call->callee,ArrayArguments{*call->array_arguments}};break;
+    }
+    Check(std::holds_alternative<TreeStructure>(VerifyTreeStructure(dense)));
+    for(auto& node:dense.expressions) if(auto* element=std::get_if<ArrayElement>(&node.expression)) {
+      element->element=ArrayElision{};break;
+    }
+    Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(dense)));
     auto changed=std::get<ConstructedFunction>(tree).tree;
     for(auto& node:changed.expressions) if(auto* call=std::get_if<CallExpr>(&node.expression);call && call->array_arguments) {
       call->array_arguments.reset(); break;
