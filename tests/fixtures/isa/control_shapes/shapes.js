@@ -75,3 +75,14 @@ export function bareFinallyInIf(s) {
     }
   }
 }
+export function guardThenBranch(s) {
+  if (s.a) {
+    if (s.b || s.c) {
+      return 'early';
+    }
+  }
+  if (s.d) {
+    s.log('d');
+  }
+  return s.run();
+}

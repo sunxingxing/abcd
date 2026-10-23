@@ -175,6 +175,16 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
         (static_cast<std::uint16_t>(instruction->effects.before_throw) & ~static_cast<std::uint16_t>(kCreationReads)) == 0 &&
         abc::GetControlTransfer(sites[enter].decoded.opcode) == abc::ControlTransfer::kFallthrough;
     if (hoisted) { ++enter; continue; }
+    // GETUNMAPPEDARGS likewise: Ark snapshots the actual argument slots before
+    // the promise, the spec in FunctionDeclarationInstantiation after it. It
+    // runs no user code; its only throw is the same excluded allocation failure.
+    constexpr auto kSnapshotReads = analysis::LanguageEffect::kArgumentsRead | analysis::LanguageEffect::kAllocation;
+    const bool arguments = instruction && std::holds_alternative<analysis::ArgumentSnapshot>(instruction->operation) &&
+        AllowsLexicalPrelude(profile, resources) &&
+        (static_cast<std::uint16_t>(instruction->effects.normal) & ~static_cast<std::uint16_t>(kSnapshotReads)) == 0 &&
+        (static_cast<std::uint16_t>(instruction->effects.before_throw) & ~static_cast<std::uint16_t>(kSnapshotReads)) == 0 &&
+        abc::GetControlTransfer(sites[enter].decoded.opcode) == abc::ControlTransfer::kFallthrough;
+    if (arguments) { ++enter; continue; }
     if (!instruction || instruction->effects.exceptional != analysis::ExceptionalCompletion::kImpossible ||
         abc::GetControlTransfer(sites[enter].decoded.opcode) != abc::ControlTransfer::kFallthrough)
       return fail(Check::kPreludeEffects, enter);

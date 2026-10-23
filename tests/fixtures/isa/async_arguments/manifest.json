@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/async_arguments/arguments.js",
+   "path": "tests/fixtures/isa/async_arguments/arguments-O0.abc",
+   "sha256": "c3be4c40f82e8696aa66782553c99141214a14798979dc82eb0a8cdf68cf0616",
+   "source_sha256": "4e896e97ef3d4320e1c2f33b72b2cf67044e41e899a54dd01f3187037297342f",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=async_arguments",
+    "--source-file=arguments.js",
+    "--output=tests/fixtures/isa/async_arguments/arguments-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/async_arguments/arguments.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only."
+}

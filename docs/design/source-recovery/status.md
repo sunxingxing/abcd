@@ -10,6 +10,21 @@
 
 
 
+## Async `arguments` prelude; refined shared-terminal follows (2026-10-23)
+
+- Async prelude: GETUNMAPPEDARGS before ASYNCFUNCTIONENTER is admitted like a
+  hoisted function creation (effects only kArgumentsRead|kAllocation; Ark
+  snapshots before the promise, the spec inside FunctionDeclarationInstantiation
+  after it; only allocation failure differs, excluded by the contract).
+- Control planning: a refined shared terminal is skipped as an early abrupt
+  arm only when the sibling arm does not itself fall into it (postdominance);
+  otherwise it is the join (`if (a) { if (b || c) return; } if (d) {…}`). The
+  refined pass only runs after a first-pass conflict.
+- Evidence: fixtures async_arguments (Node 4) and control_shapes
+  guardThenBranch (Node 224 total). Cohorts unchanged (609/545); o32/58223 now
+  reaches m58646's for-in catch state (shared with o32/21089). Sweep: only
+  known failures.
+
 ## for-of bodies with nested user try statements (2026-10-23)
 
 - Close-entry loop discovery follows exception arcs into live Catch nodes; a

@@ -280,8 +280,13 @@ class ControlBuilder {
       for (std::uint8_t e = 0; e < block.arc_count; ++e) {
         quota_.Work();
         const auto target = graph_.Arc({block.first_arc.value + e}).target.value;
+        // A refined shared terminal is an early arm only when the sibling arm
+        // does not itself fall into it; otherwise it is simply the join.
+        const auto sibling = block.arc_count == analysis::kMaxNormalSuccessors ?
+            graph_.Arc({block.first_arc.value + (1U - e)}).target.value : target;
         if (block.arc_count == analysis::kMaxNormalSuccessors &&
-            (straight_terminal_[target] || (refined_ && shared_terminal_[target]))) continue;
+            (straight_terminal_[target] || (refined_ && shared_terminal_[target] &&
+             TreeCommon(sibling, target, post_depth_, post_up_) != target))) continue;
         join = continuing++ == 0 ? target : Common(join, target);
       }
       // When both arms are abrupt, retain their real common ancestry. They

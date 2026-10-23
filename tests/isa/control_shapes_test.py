@@ -20,6 +20,6 @@ class Shapes(unittest.TestCase):
     subprocess.run(['node','--check',emitted],check=True,capture_output=True)
     self.assertIn('try',text)
     observed=json.loads(subprocess.check_output(['node',HARNESS,source,emitted],text=True))
-    self.assertGreaterEqual(observed['cases'],192)
+    self.assertGreaterEqual(observed['cases'],224)
     record_node(abc,out,source,__file__,observed['cases'],BUILD/'abc_structure',dependencies=[HARNESS])
 if __name__=='__main__':unittest.main()
