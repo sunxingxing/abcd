@@ -7,7 +7,10 @@ namespace abcd::source {
 struct ControlNodeId { std::uint32_t value = 0; auto operator<=>(const ControlNodeId&) const = default; };
 struct ControlArcId { std::uint32_t value = 0; auto operator<=>(const ControlArcId&) const = default; };
 enum class ControlViewKind : std::uint8_t { kNormal, kProjection };
-enum class ControlTermination : std::uint8_t { kNormal, kAbrupt };
+// kExitless: a try wrapper with no continuation port (body and handler only
+// return/throw/diverge). Layout treats it as kNormal, so planning is unchanged;
+// verification knows it cannot fall through to an enclosing continuation.
+enum class ControlTermination : std::uint8_t { kNormal, kAbrupt, kExitless };
 // Source return remains abrupt. A normalized completion owner can additionally
 // require its exact terminal to stay outside a cleanup loop, regardless of PCs.
 enum class ControlCompletion : std::uint8_t { kOrdinary, kPreserving };

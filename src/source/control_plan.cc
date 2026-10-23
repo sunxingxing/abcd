@@ -569,13 +569,27 @@ class ControlBuilder {
       while (cursor != task.stop && cursor != exit_) {
         quota_.Work();
         const auto decision_join = decisions_[cursor] ? DecisionJoin(cursor, task) : 0;
+        // A continuation join equal to the shared target leaves the decision
+        // with an empty shared arm, which the decision form cannot express.
+        // Plan it as an ordinary conditional: an arm reaching the join is
+        // omitted and the evaluated branch is planned as its own region.
+        // Likewise when the join is the private terminal fallback but the
+        // shared arm is not all-abrupt: its normal ports (a try's normal exit)
+        // could only end inside a bounded arm, which is never a valid region.
+        // Only when the shared target is the lexical follow does the ordinary
+        // conditional own it exactly once, as its continuation.
+        const auto shared_target = decisions_[cursor] ? graph_.Arc({graph_.Node({cursor}).first_arc.value +
+            (decisions_[cursor]->evaluate_on_taken ? 1U : 0U)}).target.value : 0;
+        const bool decision = decisions_[cursor] && decision_join != shared_target &&
+            !(graph_.Kind() == ControlViewKind::kProjection && shared_target == parent_[cursor] &&
+              decision_join == decision_tails_[cursor].fallback.value && !all_abrupt_[shared_target]);
         if (const auto failure = Own(cursor, task, incoming)) return failure;
         ++covered;
         auto& node = plan_.nodes[cursor];
         const auto& block = graph_.Node({cursor});
         if (block.arc_count == analysis::kMaxNormalSuccessors) {
           auto join = parent_[cursor];
-          if (decisions_[cursor]) {
+          if (decision) {
             join = decision_join;
             auto part = cursor;
             const auto& first = *decisions_[cursor];

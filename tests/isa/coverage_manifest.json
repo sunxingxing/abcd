@@ -10983,6 +10983,18 @@
     {
       "test": "isa_async_generators_source_test",
       "producer": "tests/isa/async_generators_test.py"
+    },
+    {
+      "test": "isa_for_of_scopes_source_test",
+      "producer": "tests/isa/for_of_scopes_test.py"
+    },
+    {
+      "test": "isa_inherited_modules_source_test",
+      "producer": "tests/isa/inherited_modules_test.py"
+    },
+    {
+      "test": "isa_control_shapes_source_test",
+      "producer": "tests/isa/control_shapes_test.py"
     }
   ]
 }

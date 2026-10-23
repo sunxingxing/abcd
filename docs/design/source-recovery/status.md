@@ -10,6 +10,24 @@
 
 
 
+## Control planning: exitless try wrappers and empty decision arms (2026-10-23)
+
+- `ControlTermination::kExitless`: a try wrapper with no exit port (body and
+  handler only return/throw/diverge) cannot fall through to an enclosing arm's
+  continuation. Planning treats it like kNormal (no layout change); the region
+  verifier no longer refuses it inside a bounded arm (`if (a && b) return;
+  try {…}`).
+- The planner falls back from a short-circuit decision to an ordinary
+  conditional when the continuation join equals the shared target (an empty
+  shared arm, e.g. `else if (c) { if (d) return; }`), and, in projection views
+  only, when the join is the private terminal fallback while the shared arm,
+  which is the lexical follow, is not all-abrupt (a try's normal exit port).
+- Evidence: o15/37098 KikaInput KeyboardController completes (607/620 source;
+  previous unchanged 543/620); o36/11209's m12194 completes and the record
+  now stops at a class creation in a phased method (kPhasedSite, shared with
+  o36/19453). No other text changes. Fixture control_shapes: Node 128 cases
+  (baseline refuses). Sweep 484: only known failures.
+
 ## Phased creators hand on initialized module slots (2026-10-23)
 
 - Children of a phased creator inherit the creator's own creation-time
