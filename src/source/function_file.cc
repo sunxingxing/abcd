@@ -10,7 +10,8 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     abc::MethodPosition position, RouteInputIdentity identity, InputCaptureMode mode,
     analysis::SemanticBudget budget, const RecordModuleContext* modules, const FunctionContext* owner,
-    const ParentModuleInput* modules_input, FunctionBodyMode body_mode) {
+    const ParentModuleInput* modules_input, FunctionBodyMode body_mode,
+    const InheritedModuleInput* inherited) {
   using Error = FunctionFileError;
   try {
     auto bytes = budget.bytes;
@@ -58,7 +59,7 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
         {bytes, budget.work}, owner, modules_input,
         modules && modules->Attributes(file, method.owner_offset) &&
             !modules->ForOwner(file, method.owner_offset) && GlobalScripts(identity.contract)
-          ? analysis::GlobalReadValues::kLanguage : analysis::GlobalReadValues::kUnknown);
+          ? analysis::GlobalReadValues::kLanguage : analysis::GlobalReadValues::kUnknown, inherited);
     if (auto* error = std::get_if<FunctionInputFailure>(&proven)) {
       if (auto* failure = std::get_if<analysis::SemanticProofFailure>(&error->cause)) {
         failure->allocated_bytes += budget.bytes - bytes;

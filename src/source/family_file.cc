@@ -225,8 +225,12 @@ class FamilyReader {
       Require(index_.methods[target.value].code.has_value(), Error::kMethod);
       const auto module_input = !parent.Phase()
           ? std::optional<ParentModuleInput>{{parent.Normal().input, site}} : std::nullopt;
+      // A phased creator hands on only its own creation-time slot set.
+      const auto inherited = parent.Phase() && !parent.Phase()->EntryModules().Empty()
+          ? std::optional<InheritedModuleInput>{{parent.Phase()->EntryModules(), identity_,
+                index_.methods[target.value].owner_offset, *parent_, *pc_}} : std::nullopt;
       auto child = ReadMethod(target, &context, InputCaptureMode::kConditional,
-          module_input ? &*module_input : nullptr);
+          module_input ? &*module_input : nullptr, inherited ? &*inherited : nullptr);
       const auto child_work = child.Capture();
       auto captured = parent.Phase() ? BindPhasedCaptureCells(index_, lookup_, parent.Phase()->Phases(),
           parent.Body(), parent.Phase()->Locals(), *phase_creation, child_work, context, Remaining()) :
@@ -394,7 +398,8 @@ class FamilyReader {
     return body && analysis::EraseTransparentRethrowRegions(*body) && body->tries.empty();
   }
   FamilyFunction ReadMethod(abc::MethodPosition position, const FunctionContext* owner,
-      InputCaptureMode mode = InputCaptureMode::kClosed, const ParentModuleInput* modules_input = nullptr) {
+      InputCaptureMode mode = InputCaptureMode::kClosed, const ParentModuleInput* modules_input = nullptr,
+      const InheritedModuleInput* inherited = nullptr) {
     Require(position.value < index_.methods.size() && index_.methods[position.value].code, Error::kMethod);
     // Regions that only rethrow are semantically absent: such a method stays
     // on the normal route, which erases them identically on its own decode.
@@ -408,7 +413,7 @@ class FamilyReader {
           owner->Identity() == identity_, Error::kOccurrence);
       std::optional<PhasedModuleBinding> modules;
       if (modules_) modules.emplace(PhasedModuleBinding{file_, header_, index_, *modules_, module_owner_});
-      auto read = FilePhasedFunction::Read(file_, header_, index_, *owner, Remaining(), modules ? &*modules : nullptr, mode, modules_input);
+      auto read = FilePhasedFunction::Read(file_, header_, index_, *owner, Remaining(), modules ? &*modules : nullptr, mode, modules_input, inherited);
       if (auto* error = std::get_if<PhasedFileFailure>(&read)) {
         if (auto* failed = std::get_if<PhasedInputFailure>(error)) {
           failed->allocated_bytes += budget_.bytes - bytes_;
@@ -425,7 +430,7 @@ class FamilyReader {
     }
     auto read = ReadFunctionValues(file_, header_, index_, position, identity_,
         InputCaptureMode::kConditional, Remaining(), modules_, owner, modules_input,
-        cleanup_entry ? FunctionBodyMode::kCleanupEntry : FunctionBodyMode::kOriginal);
+        cleanup_entry ? FunctionBodyMode::kCleanupEntry : FunctionBodyMode::kOriginal, inherited);
     if (auto* error = std::get_if<FunctionFileFailure>(&read)) {
       if (auto* input = std::get_if<FunctionInputFailure>(error))
         if (auto* failed = std::get_if<analysis::SemanticProofFailure>(&input->cause)) {

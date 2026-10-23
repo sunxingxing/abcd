@@ -10,6 +10,18 @@
 
 
 
+## Phased creators hand on initialized module slots (2026-10-23)
+
+- Children of a phased creator inherit the creator's own creation-time
+  initialized module slots (no parent-local stores), so unguarded local module
+  reads in their closures are proved. See module-reads.md "Phased creators
+  hand on their entry set".
+- Evidence: o8/10284 KeyboardController completes under both flag sets
+  (cohorts 605→606/620 source, 542→543/620 previous; zero regressions, no
+  other text changes). Fixture inherited_modules Node differential 7 traces;
+  class_omissions_cli / evaluation_failure_cli expectations move from partial
+  to complete. Sweep 458: only known failures.
+
 ## for-of body scope cleanup and sequential loops (2026-10-23)
 
 - for-of bodies with a captured block binding (a `poplexenv; throw` cleanup

@@ -437,6 +437,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/generators_test.py)
     add_test(NAME isa_for_of_scopes_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/for_of_scopes_test.py)
+    add_test(NAME isa_inherited_modules_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/inherited_modules_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/derived_test.py)
     add_test(NAME isa_wide_ops_source_test COMMAND ${Python3_EXECUTABLE}

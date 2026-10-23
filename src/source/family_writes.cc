@@ -98,9 +98,9 @@ class WriteCheck {
             normal_child && (!normal_child->input.InitializedModuleReads().empty() || normal_child->input.HasInheritedModules())) {
           const auto* normal_parent = std::get_if<CaptureFunction>(&parent.function);
           const auto* normal_edge = std::get_if<NormalWriteEdge>(&edge.occurrence);
-          Require(normal_parent && normal_edge, Error::kOwner);
-          const auto modules = VerifyInitializedModuleReads(normal_parent->input, normal_edge->site,
-              normal_child->input, left_);
+          const auto modules = normal_parent && normal_edge
+              ? VerifyInitializedModuleReads(normal_parent->input, normal_edge->site, normal_child->input, left_)
+              : Inherited(parent, edge.occurrence, normal_child->input.EntryModules(), normal_child->input.InitializedModuleReads());
           if (const auto* error = std::get_if<FunctionInputError>(&modules))
             Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit :
                 *error == FunctionInputError::kResourceLimit ? Error::kResourceLimit : Error::kOwner);
@@ -111,9 +111,9 @@ class WriteCheck {
                 !phase_child->owner->EntryModules().Empty())) {
           const auto* normal_parent = std::get_if<CaptureFunction>(&parent.function);
           const auto* normal_edge = std::get_if<NormalWriteEdge>(&edge.occurrence);
-          Require(normal_parent && normal_edge, Error::kOwner);
-          const auto modules = VerifyInitializedModuleReads(normal_parent->input, normal_edge->site,
-              *phase_child->owner, left_);
+          const auto modules = normal_parent && normal_edge
+              ? VerifyInitializedModuleReads(normal_parent->input, normal_edge->site, *phase_child->owner, left_)
+              : Inherited(parent, edge.occurrence, phase_child->owner->EntryModules(), phase_child->owner->InitializedModuleReads());
           if (const auto* error = std::get_if<FunctionInputError>(&modules))
             Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit : Error::kOwner);
           Step(std::get<std::uint64_t>(modules));
@@ -241,6 +241,20 @@ class WriteCheck {
       }
       Mark(owner, obligation.site, Barrier::kClass);
     }
+  }
+  // A phased parent certifies only its own creation-time slot set; the child
+  // must carry exactly that set and premises naming this creation.
+  std::variant<std::uint64_t, FunctionInputError> Inherited(const FamilyWriteInput& parent,
+      const std::variant<NormalWriteEdge, PhasedWriteEdge>& occurrence,
+      const ModuleSlotSet& child_entry, std::span<const InputModuleRead> premises) {
+    const auto* phased = std::get_if<PhasedFamilyInput>(&parent.function);
+    const auto* edge = std::get_if<PhasedWriteEdge>(&occurrence);
+    Require(phased && phased->owner && edge, Error::kOwner);
+    // Original creation identity comes from the actual edge context (async
+    // bodies are normalized; working offsets are not original PCs).
+    const auto [creator, pc] = InheritedModuleInput::Origin(edge->owner);
+    Require(creator == phased->function.Target(), Error::kOwner);
+    return VerifyInheritedModuleReads(phased->owner->EntryModules(), creator, pc, child_entry, premises, left_);
   }
   FamilyWriteInput Member(std::size_t i) const {
     if (const auto* file = std::get_if<const FileFamily*>(&inputs_)) {

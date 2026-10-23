@@ -27,6 +27,15 @@ try{
    assert.equal(cli.source,readFileSync(join(out,row.source),'utf8'));
    assert.ok(cli.source.includes('aboutToAppear() {'));continue;
   }
+  if(cohort===8) {
+   // Since 2026-10-23 a phased creator (registerListener has a try region)
+   // hands its creation-time initialized module slots to its closures, so the
+   // unguarded enum read in the setSubtype arrow is proved and the class completes.
+   assert.equal(row.source_status,0);assert.equal(cli.source_complete,true);
+   assert.equal(row.source_omitted_members,undefined);assert.equal(cli.source_omitted_members,undefined);
+   assert.equal(cli.source,readFileSync(join(out,row.source),'utf8'));
+   assert.ok(cli.source.includes('CustomInputMethodSubtype.english'));continue;
+  }
   const internal_value={domains:[0,1,2,3,4],observer_instruction:20,producer_instruction:19,
    producer_kind:1,read_ordinal:0,reason:6,value:53};
   const expected=[{...witness,internal_value,causes:[{domain:'abcd::analysis::SemanticProofError',value:3},{domain:'abcd::analysis::InternalValueReason',value:6}]}];
@@ -38,5 +47,5 @@ try{
   const dis=run(semantic,[abc,String(witness.method),'--instructions']);
   assert.ok(dis.stdout.trim().split('\n').map(JSON.parse).some(i=>i.pc===witness.pc));
  }
- console.log('class_omissions_cli_test: 2 partial records preserve typed member/descendant locations; 2 formerly partial records complete');
+ console.log('class_omissions_cli_test: both formerly partial records complete');
 }finally{rmSync(dir,{recursive:true,force:true});}

@@ -11,6 +11,7 @@
 
 namespace abcd::source {
 struct ParentModuleInput;
+struct InheritedModuleInput;
 enum class InputCaptureMode : std::uint8_t { kClosed, kConditional };
 enum class FunctionInputError : std::uint8_t {
   kMode, kCapture, kResourceLimit, kWorkLimit, kOwner, kModuleOwner
@@ -55,7 +56,8 @@ class FunctionInput {
       const abc::MethodBody& body, const abc::FrameLayout& frame,
       InputCaptureMode mode, analysis::SemanticBudget budget = {},
       const FunctionContext* owner = nullptr, const ParentModuleInput* modules = nullptr,
-      analysis::GlobalReadValues globals = analysis::GlobalReadValues::kUnknown);
+      analysis::GlobalReadValues globals = analysis::GlobalReadValues::kUnknown,
+      const InheritedModuleInput* inherited = nullptr);
   bool HasOwner() const { return owner_.has_value(); }
   bool MatchesOwner(const FunctionContext& owner) const;
   const RouteInputIdentity& Identity() const { return identity_; }
@@ -100,6 +102,7 @@ class FunctionInput {
     bool operator==(const Owner&) const = default;
   };
   static Owner DescribeOwner(const FunctionContext& owner);
+  friend struct InheritedModuleInput;
   FunctionInput(RouteInputIdentity identity, abc::EntityOffset method,
       abc::EntityOffset record, InputCaptureMode mode,
       analysis::SemanticMethod&& input, analysis::SemanticProof&& proof,
@@ -133,12 +136,31 @@ struct ParentModuleInput {
   const FunctionInput& parent;
   analysis::InstructionId creation;
 };
+// A phased creator cannot prove its own module stores before a creation. It
+// passes only the slot set certified at ITS OWN creation: a module slot never
+// returns to Hole once a verified Language value is stored, so that set still
+// holds at every later child creation. Premises carry no store backlink.
+struct InheritedModuleInput {
+  const ModuleSlotSet& slots;
+  RouteInputIdentity identity;
+  abc::EntityOffset record, creator;
+  abc::CodeOffset pc;
+  bool Matches(const FunctionContext& owner, abc::EntityOffset record) const;
+  // The original creator method and creation PC of an owner context.
+  static std::pair<abc::EntityOffset, abc::CodeOffset> Origin(const FunctionContext& owner);
+};
 // Independent family edge check before publication. A root needs its actual
 // external creation edge supplied by the class adapter. Rechecks the persistent
 // prefix identity and original local reads/stores; never grants value snapshots.
 std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
     const FunctionInput& parent, analysis::InstructionId creation,
     const FunctionInput& child, analysis::SemanticBudget budget = {});
+// Phased-parent edge: the child's entry set equals the parent's own entry set
+// and every premise names this parent creation with no store backlink.
+std::variant<std::uint64_t, FunctionInputError> VerifyInheritedModuleReads(
+    const ModuleSlotSet& parent_entry, abc::EntityOffset creator, abc::CodeOffset pc,
+    const ModuleSlotSet& child_entry, std::span<const InputModuleRead> premises,
+    analysis::SemanticBudget budget = {});
 enum class InputBindingError : std::uint8_t { kIdentity, kTarget, kMode };
 using InputBindingResult = std::variant<CapturePlan, CaptureFailure, InputBindingError>;
 // The unchanged index and genuine BindCreation result belong to these inputs'

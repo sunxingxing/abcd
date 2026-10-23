@@ -29,7 +29,8 @@ class FilePhasedFunction {
   [[nodiscard]] static std::variant<FilePhasedFunction, PhasedFileFailure> Read(
       const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
       const FunctionContext& context, analysis::SemanticBudget budget = {},
-      const PhasedModuleBinding* modules = nullptr, InputCaptureMode mode = InputCaptureMode::kClosed, const ParentModuleInput* parent_modules = nullptr);
+      const PhasedModuleBinding* modules = nullptr, InputCaptureMode mode = InputCaptureMode::kClosed, const ParentModuleInput* parent_modules = nullptr,
+      const InheritedModuleInput* inherited = nullptr);
   const abc::MethodBody& Body() const;
   const abc::MethodBody& OriginalBody() const;
   const PhasedBody& Phases() const;

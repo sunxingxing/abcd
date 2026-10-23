@@ -98,7 +98,7 @@ template<class T, class... E> T Take(std::variant<T, E...> result) {
 std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
     const FunctionContext& context, analysis::SemanticBudget budget, const PhasedModuleBinding* modules,
-    InputCaptureMode mode, const ParentModuleInput* parent_modules) {
+    InputCaptureMode mode, const ParentModuleInput* parent_modules, const InheritedModuleInput* inherited) {
   try {
     auto left = budget;
     const auto admit = [&](std::size_t count, std::size_t width = 1) {
@@ -190,11 +190,18 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     ModuleSlotSet entry_modules;
     std::vector<analysis::LanguageLoadFact> initialized;
     std::vector<InputModuleRead> module_reads;
-    if (parent_modules) {
-      Require(mode == InputCaptureMode::kConditional &&
-          parent_modules->parent.IsCreatorOf(context, method.owner_offset, parent_modules->creation), Error::kIdentity);
-      step(parent_modules->parent.ModuleInitializationWork());
-      entry_modules = parent_modules->parent.InitializedModulesBefore(parent_modules->creation);
+    Require(!(parent_modules && inherited), Error::kIdentity);
+    if (inherited) {
+      Require(mode == InputCaptureMode::kConditional && inherited->Matches(context, method.owner_offset), Error::kIdentity);
+      entry_modules = inherited->slots;
+    }
+    if (parent_modules || inherited) {
+      if (parent_modules) {
+        Require(mode == InputCaptureMode::kConditional &&
+            parent_modules->parent.IsCreatorOf(context, method.owner_offset, parent_modules->creation), Error::kIdentity);
+        step(parent_modules->parent.ModuleInitializationWork());
+        entry_modules = parent_modules->parent.InitializedModulesBefore(parent_modules->creation);
+      }
       std::size_t count = 0;
       const auto candidate = [&](std::size_t i) {
         const auto lifted = analysis::LiftModuleLoad(body.instructions[i].decoded);
@@ -216,6 +223,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
         const auto slot = candidate(i); if (!slot) continue;
         const analysis::InstructionId site{static_cast<std::uint32_t>(i)};
         initialized.push_back({site});
+        if (inherited) { module_reads.push_back({site, *slot, inherited->creator, inherited->pc, std::nullopt}); continue; }
         step(parent_modules->parent.ModuleInitializationWork());
         module_reads.push_back({site, *slot, parent_modules->parent.Method(),
             parent_modules->parent.Input().instructions[parent_modules->creation.value].pc,

@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/inherited_modules/inherited.js",
+   "path": "tests/fixtures/isa/inherited_modules/inherited-O0.abc",
+   "sha256": "fa20e7e25fea621ff12608bfa2798de05e13e669d9366bfa230e20f6071a0476",
+   "source_sha256": "9f1df52699c88955e2858015fb136f1fb79dec37b0433b6ac7250b4a81f10576",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=inherited_modules",
+    "--source-file=inherited.js",
+    "--output=tests/fixtures/isa/inherited_modules/inherited-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/inherited_modules/inherited.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only. The default-optimized build refuses earlier (CatchRegionError::kHandlerShape on the try/finally lowering), unchanged by this slice."
+}

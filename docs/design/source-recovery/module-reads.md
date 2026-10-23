@@ -398,3 +398,23 @@ TDZ, name/arity, receiver, value/error identity and no coercion. First source RE
 was the actual family refusal, not reference-source output or INCOMPLETE success.
 Record declaration placement, host/numeric proofs and stage-one whole-corpus
 acceptance remain distinct gates.
+
+## Phased creators hand on their entry set (2026-10-23)
+
+A phased parent (try regions, async, generator) cannot yet prove its own module
+stores before a creation, so its children previously received no premise and
+an unguarded local read refused as a possible Hole (`InternalValueReason::kMixed`).
+The parent's own creation-time initialized set is still sound at every later
+child creation: a module slot holds Hole only between instantiation and its
+first store, and every family write is verified Language-valued, so a slot
+never returns to Hole. `InheritedModuleInput` carries exactly that set plus
+the original creator method and creation PC; both readers check them against
+the child's owner context. Premises have no store backlink. Publication
+(`VerifyInheritedModuleReads`) takes the creator/PC from the actual edge
+context (async working bodies are normalized; their offsets are not original
+PCs), requires the creator to be the phased parent, the child's entry set to
+equal the parent's entry set, and every premise to name that creation.
+Parent-local stores before the creation remain unproved (not inherited).
+Fixture `tests/fixtures/isa/inherited_modules` (try/finally, async, generator
+and class-method creators; live `var` writes); KikaInputMethod record 10284
+completes.

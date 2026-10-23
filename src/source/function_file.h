@@ -45,6 +45,7 @@ enum class FunctionBodyMode : std::uint8_t { kOriginal, kCleanupEntry };
     abc::MethodPosition method, RouteInputIdentity identity, InputCaptureMode mode,
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
     const FunctionContext* owner = nullptr, const ParentModuleInput* modules_input = nullptr,
-    FunctionBodyMode body_mode = FunctionBodyMode::kOriginal);
+    FunctionBodyMode body_mode = FunctionBodyMode::kOriginal,
+    const InheritedModuleInput* inherited = nullptr);
 }  // namespace abcd::source
 #endif

@@ -11,7 +11,7 @@ const cases=[
  ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket',22901,24302,212,93,4,'complete'],
  ['DocsSample/NetWork_Kit/NetWorkKit_Datatransmission/Socket',38531,39900,212,93,4,'complete'],
  ['DocsSample/Media/AVPlayer/AVPlayerArkTSSubtitle',4775,5424,58,28,4,'complete'],
- ['DocsSample/InputMethod/KikaInputMethod',10284,11969,null,null,3,'partial'],
+ ['DocsSample/InputMethod/KikaInputMethod',10284,11969,null,null,3,'complete'],
  ['Solutions/InputMethod/KikaInputMethod',10155,11285,null,null,3,'complete'],
  ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo',28894,29074,174,65,17,'complete'],
  ['DocsSample/ArkTS/NodeAPI/NodeAPIClassicUseCases/NodeAPILoadModuleWithInfo',41871,42137,26,13,4,'complete'],
@@ -31,8 +31,8 @@ try{
   // Round 61 completes both orphan logical-route cases; require full source
   // equality across the manifest and semantic CLI, not merely a changed leaf.
   if(expected==='complete'||expected==='partial') {
-   // Round 62 consumes the verified selected prefix. DocsSample retains a
-   // pre-existing class-member omission; Solutions is fully recovered.
+   // Round 62 consumes the verified selected prefix. Both Kika records are
+   // complete since the 2026-10-23 phased-creator module premise.
    assert.equal(row.source_status,expected==='complete'?0:4);assert.equal(p.status,0);assert.equal(report.source_complete,expected==='complete');
    assert.equal(report.source_failure,undefined);
    assert.equal(report.record,record);assert.equal(report.source,readFileSync(join(dest,row.source||row.incomplete_source),'utf8'));
@@ -53,5 +53,5 @@ try{
   const instructions=run(semantic,[abc,String(method),'--instructions']);assert.equal(instructions.status,0);
   assert.ok(instructions.stdout.trim().split('\n').map(JSON.parse).some(i=>i.pc===pc));
  }
- console.log('evaluation_failure_cli_test: 8 complete records and 1 explicit partial class agree across publication paths');
+ console.log('evaluation_failure_cli_test: 9 complete records agree across publication paths');
 }finally{rmSync(dir,{recursive:true,force:true});}
