@@ -92,13 +92,13 @@ for source in sorted(fixtures.glob('*.js')):
         expected = refusals.get(name)
         if mode == 'default' and name in {'inner_outer','reentry','outer_reassigned','instance_base','instance_derived'}:
             expected = [('abcd::source::CleanupError', 1)]
-        if name == 'public_tdz' and mode == 'default':
-            expected = [('abcd::analysis::SemanticProofError', 3), ('abcd::analysis::InternalValueReason', 6)]
+        # public_tdz: with copy-separated module guards paired, the default
+        # build reaches the same record-program refusal as O0.
         if expected is not None:
             assert record['source_status']==3,(name,record)
             causes=record.get('source_failure',{}).get('causes',record.get('source_causes',[]))
             assert [(c['domain'],c['value']) for c in causes]==expected,(name,record)
-            if name == 'public_tdz' and mode == 'O0':
+            if name == 'public_tdz':
                 assert record['source_failure_domain']=='record_program' and record['source_error']==7
             result['refusal']=causes
             row['compilations'].append(result)

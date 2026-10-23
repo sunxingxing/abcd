@@ -10,6 +10,21 @@
 #include "tree_checks.h"
 
 namespace abcd::source {
+bool CopyOnlyModuleGuardInterval(const analysis::ValueProgram& graph,
+                                 analysis::OpId read, analysis::OpId guard) {
+  if (guard.value <= read.value || guard.value >= graph.ops.size()) return false;
+  const auto& load = graph.ops[read.value];
+  const auto& check = graph.ops[guard.value];
+  if (load.block != check.block || check.order <= load.order ||
+      std::uint64_t{check.order} - load.order != std::uint64_t{guard.value} - read.value) return false;
+  for (auto k = read.value + 1; k < guard.value; ++k) {
+    const auto& op = graph.ops[k];
+    if (op.block != load.block || !std::holds_alternative<analysis::ValueCopy>(op.operation) ||
+        op.normal != analysis::LanguageEffect::kNone || op.before_throw != analysis::LanguageEffect::kNone ||
+        op.exceptional != analysis::ExceptionalCompletion::kImpossible) return false;
+  }
+  return true;
+}
 namespace {
 using Error = ModuleGuardError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
@@ -58,8 +73,9 @@ class Correspondence {
       case analysis::ModuleReadProof::kCatchGuarded: throw Error::kUnsupportedProof;
     }
     const auto read = Operation(fact.instruction);
-    Require(fact.instruction.value + std::uint64_t{1} < input_.Input().instructions.size(), Error::kGuard);
-    const analysis::InstructionId guard_site{fact.instruction.value + 1};
+    Require(fact.guard && fact.guard->value > fact.instruction.value &&
+        fact.guard->value < input_.Input().instructions.size(), Error::kGuard);
+    const analysis::InstructionId guard_site = *fact.guard;
     const auto guard = Operation(guard_site);
     const auto& load = graph_.ops[read.value];
     const auto& check = graph_.ops[guard.value];
@@ -81,8 +97,9 @@ class Correspondence {
         std::get_if<analysis::ValueId>(&use.operand) && std::get<analysis::ValueId>(use.operand) == *load.result, Error::kGuard);
     // Exact adjacency forbids observing pre-check Hole state, introducing a
     // branch/handler boundary, or moving any effect into the future fused read.
-    Require(load.block == check.block && std::uint64_t{load.order} + 1 == check.order &&
-        std::uint64_t{read.value} + 1 == guard.value, Error::kOrder);
+    Require(work_ >= std::uint64_t{guard.value} - read.value, Error::kWorkLimit);
+    work_ -= std::uint64_t{guard.value} - read.value;
+    Require(CopyOnlyModuleGuardInterval(graph_, read, guard), Error::kOrder);
     return {read, guard};
   }
   ModuleReadSite Namespace(const analysis::ModuleReadFact& fact) {

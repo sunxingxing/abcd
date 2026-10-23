@@ -1,3 +1,4 @@
+#include "module_guards.h"
 #include "object_rest_plan.h"
 #include <bit>
 #include <new>
@@ -696,10 +697,14 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
                 } else {
                   // Consume the second original event at this same root, not by
                   // trusting a Language result domain or skipping arbitrary guards.
-                  Require(expected < end && !module_index.peers.empty() &&
-                      module_index.peers[frame.op.value] == analysis::OpId{static_cast<std::uint32_t>(expected)} &&
-                      BeforeLogicalFusion(graph, plan, expected).kind == EvaluationKind::kModuleGuard, Error::kOrder);
-                  ++expected;
+                  // Only pure register copies may separate the pair; they are
+                  // not ordered events, so the guard is the next ordered event.
+                  const auto guard = module_index.peers[frame.op.value];
+                  Require(guard && guard->value >= expected && guard->value < end &&
+                      CopyOnlyModuleGuardInterval(graph, frame.op, *guard) &&
+                      BeforeLogicalFusion(graph, plan, guard->value).kind == EvaluationKind::kModuleGuard, Error::kOrder);
+                  step(guard->value - expected);
+                  expected = guard->value + 1;
                 }
               }
             }

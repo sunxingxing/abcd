@@ -201,14 +201,27 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
         continue;
       }
       const auto& region = method.flow.blocks[block];
-      const auto* guard = i + 1 < std::size_t(region.first_instruction) + region.instruction_count
-          ? std::get_if<HoleGuard>(&method.instructions[i + 1].operation) : nullptr;
+      const std::size_t region_end = std::size_t(region.first_instruction) + region.instruction_count;
+      // Skip pure acc->register copies; each is visited once by this scan
+      // before the outer loop passes it, so the total remains linear.
+      std::size_t at = i + 1;
+      while (at < region_end) {
+        const auto* copy = std::get_if<ScalarAssignment>(&method.instructions[at].operation);
+        const auto* from = copy ? std::get_if<ScalarValue>(&copy->expression) : nullptr;
+        if (!copy || copy->completion != CompletionEffect::kNormal ||
+            !std::holds_alternative<abc::RegisterId>(copy->destination) || !from ||
+            !std::holds_alternative<Accumulator>(*from)) break;
+        ++at;
+      }
+      const auto* guard = at < region_end
+          ? std::get_if<HoleGuard>(&method.instructions[at].operation) : nullptr;
       if (guard && std::holds_alternative<Accumulator>(guard->value) &&
           std::holds_alternative<HoleNameSlot>(guard->name)) {
         // Preserve the existing whole load/guard pair; an initialization
         // witness does not authorize orphaning or deleting an encoded guard.
         language_loads[i] = 1;
-        modules.push_back({site, ModuleReadProof::kGuarded});
+        modules.push_back({site, ModuleReadProof::kGuarded, std::nullopt,
+                           InstructionId{static_cast<std::uint32_t>(at)}});
         continue;
       }
       if (load->space != ModuleSpace::kLocal) continue;

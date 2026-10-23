@@ -1,4 +1,5 @@
 #include "module_evaluation.h"
+#include "module_guards.h"
 #include "assignment_values.h"
 #include "phase_evaluation.h"
 #include "evaluation_aliases.h"
@@ -94,8 +95,13 @@ std::variant<ModuleEvaluationIndex, EvaluationFailure> IndexModuleEvaluations(
             op.exceptional == analysis::ExceptionalCompletion::kMayThrow, Error::kOwnership);
         continue;
       }
-      require(std::uint64_t{i} + 1 == entry.pair.guard->value &&
-          entry.pair.guard->value < graph.ops.size(), Error::kOwnership);
+      require(entry.pair.guard->value > i && entry.pair.guard->value < graph.ops.size(), Error::kOwnership);
+      require(entry.pair.guard->value - i <= work, Error::kWorkLimit);
+      work -= entry.pair.guard->value - i;
+      // Phased owners keep exact adjacency; normal flow admits only pure
+      // register copies between the read and its guard.
+      require(graph.phases.empty() ? CopyOnlyModuleGuardInterval(graph, entry.pair.read, *entry.pair.guard)
+                                   : std::uint64_t{i} + 1 == entry.pair.guard->value, Error::kOwnership);
       const auto& guard = graph.ops[entry.pair.guard->value];
       const auto* check = std::get_if<analysis::ValueGuard>(&guard.operation);
       require(guard.life == analysis::ValueLife::kLive && check && check->name && !guard.result &&
@@ -110,7 +116,7 @@ std::variant<ModuleEvaluationIndex, EvaluationFailure> IndexModuleEvaluations(
           std::get_if<analysis::ValueId>(&use.operand) && std::get<analysis::ValueId>(use.operand) == *op.result,
           Error::kOwnership);
       if (graph.phases.empty())
-        require(op.block == guard.block && std::uint64_t{op.order} + 1 == guard.order, Error::kOrder);
+        require(CopyOnlyModuleGuardInterval(graph, entry.pair.read, *entry.pair.guard), Error::kOrder);
       // Exact imported effects. Original input correspondence is a separate
       // prerequisite; malformed effect tables cannot erase the second event.
       require(op.normal == analysis::ModuleReadEffects(read->loading) && op.before_throw == op.normal &&

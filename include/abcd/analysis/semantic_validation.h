@@ -43,6 +43,10 @@ struct ModuleReadFact {
   // input verification discharges every store's Language obligation. Never
   // forward its value: reads retain live-binding semantics after calls.
   std::optional<InstructionId> store;
+  // kGuarded: the HoleGuard instruction. It follows the load in the same
+  // block, separated only by accumulator-to-register copies (`sta vN`), which
+  // neither change acc nor have effects; the guard still checks the load.
+  std::optional<InstructionId> guard;
 };
 enum class LocalAccessKind : std::uint8_t { kLoad, kStore };
 struct LocalAccessFact {

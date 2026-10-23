@@ -14,6 +14,12 @@ struct ModuleReadSite {
   std::optional<analysis::OpId> guard;
   bool operator==(const ModuleReadSite&) const = default;
 };
+// The ops strictly between a module read and its Hole guard, if any, are pure
+// register copies (ValueCopy without effects or throw) in the same block, with
+// contiguous orders. Such copies observe nothing and cannot throw, so the guard
+// still checks the read's value at the read's position. Cost is the gap length.
+[[nodiscard]] bool CopyOnlyModuleGuardInterval(const analysis::ValueProgram&,
+                                               analysis::OpId read, analysis::OpId guard);
 struct ModuleGuards {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;

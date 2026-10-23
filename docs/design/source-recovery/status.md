@@ -10,6 +10,29 @@
 
 
 
+## Copy-separated module read guards (2026-10-23)
+
+- Default-optimized es2abc can emit `ldlocalmodulevar k; sta vN;
+  throw.undefinedifholewithname "x"`, where `sta` moves before the guard.
+  Module-read facts now find the HoleGuard after accumulator-to-register copies
+  in the same block (`ModuleReadFact::guard`). `CopyOnlyModuleGuardInterval`
+  admits only pure, non-throwing ValueCopy ops between the read and its guard,
+  with contiguous orders. module_guards, module_evaluation (ownership/order)
+  and the evaluation verifier's ordered walk accept that interval. Phased owners
+  keep exact adjacency. The copies observe nothing and cannot throw, so the
+  guard still checks the read's value at the read's position; this is linear
+  in the gap.
+- Effects: the default-optimized SDK recovery fixtures module-external,
+  module-lazy, module-local and module-sendable now complete and pass their
+  Node differentials. super-computed and super-named default builds, and the
+  implicit derived constructor (`class D extends B {}`), now stop at the
+  zero-length catchall handler (CatchRegionError::kHandlerShape), a separate
+  gap. Expectation updates: public_tdz default now matches the O0 refusal, and
+  guarded_captures `branch` refuses at FunctionTree instead of EvaluationShape.
+  module_evaluation_test's guard-identity mutation still yields kOwnership.
+- Cohorts unchanged (605/620 source, 542/620 previous flags; zero regressions
+  and zero text changes).
+
 ## ISA coverage15 — wide-encoding occurrence oracle (2026-10-23)
 
 - Test-only. `tests/fixtures/isa/wide_ops`: TYPEOF_IMM16 (more than 256 IC

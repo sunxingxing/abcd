@@ -266,17 +266,8 @@
     },
     {
       "recovery": {
-        "status": 3,
-        "causes": [
-          {
-            "domain": "abcd::analysis::SemanticProofError",
-            "value": 3
-          },
-          {
-            "domain": "abcd::analysis::InternalValueReason",
-            "value": 6
-          }
-        ]
+        "status": 0,
+        "causes": []
       },
       "path": "module-external-default.abc",
       "sha256": "48ac27690a310023563e9d745f03245d5bbd4fef93b681407371f9c6019d03d8",
@@ -346,17 +337,8 @@
     },
     {
       "recovery": {
-        "status": 3,
-        "causes": [
-          {
-            "domain": "abcd::analysis::SemanticProofError",
-            "value": 3
-          },
-          {
-            "domain": "abcd::analysis::InternalValueReason",
-            "value": 6
-          }
-        ]
+        "status": 0,
+        "causes": []
       },
       "path": "module-lazy-default.abc",
       "sha256": "823003eaa70a752f1f1b73e4934e3300fa64e67b35c75f8fee423b032c164b9d",
@@ -426,17 +408,8 @@
     },
     {
       "recovery": {
-        "status": 3,
-        "causes": [
-          {
-            "domain": "abcd::analysis::SemanticProofError",
-            "value": 3
-          },
-          {
-            "domain": "abcd::analysis::InternalValueReason",
-            "value": 6
-          }
-        ]
+        "status": 0,
+        "causes": []
       },
       "path": "module-local-default.abc",
       "sha256": "d5cbad0fc066e1b0a50999d973a7e3b1f58b258140cb42d2dc4ca87e2dd291ac",
@@ -500,13 +473,8 @@
     },
     {
       "recovery": {
-        "status": 3,
-        "causes": [
-          {
-            "domain": "abcd::source::SendableError",
-            "value": 1
-          }
-        ]
+        "status": 0,
+        "causes": []
       },
       "path": "module-sendable-default.abc",
       "sha256": "6aa77d0cece2f87948c16c2627334bbc867f2d651fa431a7289c1339f31670cd",
@@ -648,16 +616,16 @@
         "status": 3,
         "causes": [
           {
-            "domain": "abcd::source::EvaluationError",
+            "domain": "abcd::source::PhasedMethodError",
+            "value": 5
+          },
+          {
+            "domain": "abcd::source::ExceptionPlanError",
             "value": 2
           },
           {
-            "domain": "abcd::source::EvaluationObligation",
-            "value": 0
-          },
-          {
-            "domain": "abcd::source::EvaluationShapeError",
-            "value": 0
+            "domain": "abcd::analysis::CatchRegionError",
+            "value": 1
           }
         ]
       },
@@ -749,16 +717,16 @@
         "status": 3,
         "causes": [
           {
-            "domain": "abcd::source::EvaluationError",
+            "domain": "abcd::source::PhasedMethodError",
+            "value": 5
+          },
+          {
+            "domain": "abcd::source::ExceptionPlanError",
             "value": 2
           },
           {
-            "domain": "abcd::source::EvaluationObligation",
-            "value": 0
-          },
-          {
-            "domain": "abcd::source::EvaluationShapeError",
-            "value": 0
+            "domain": "abcd::analysis::CatchRegionError",
+            "value": 1
           }
         ]
       },

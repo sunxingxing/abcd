@@ -23,9 +23,10 @@ const refused = {
   // Round 68 proves the earlier allocation dominates this creation. The
   // owner still fails evaluation; no source is published. Round 75 preserves
   // the actual missing evaluation-shape leaf instead of collapsing it.
-  branch: [{domain: 'abcd::source::EvaluationError', value: 2},
-    {domain: 'abcd::source::EvaluationObligation', value: 0},
-    {domain: 'abcd::source::EvaluationShapeError', value: 0}],
+  // Since copy-separated module guards pair (2026-10-23), evaluation passes
+  // and the function tree stage refuses instead; still no source.
+  branch: [{domain: 'abcd::source::FunctionTreeError', value: 2},
+    {domain: 'abcd::source::TreeObligation', value: 6}],
 };
 const runner = `
 const show = v => typeof v === 'function' ? 'function' : Array.isArray(v) ? '[' + v.map(show) + ']' : String(v);
