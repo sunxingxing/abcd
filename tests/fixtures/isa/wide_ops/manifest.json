@@ -1,0 +1,78 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/wide_ops/typeof.js",
+   "path": "tests/fixtures/isa/wide_ops/typeof-default.abc",
+   "sha256": "82f48697b408eb6ebcb1dc937cc862d1b6c795ea6875fe428e440d5bf09ba002",
+   "source_sha256": "397d87ade2e42f9fbbaaa62afbe92bf8c1d556d773e9cb01474d484f3cf869ee",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=wideOps",
+    "--source-file=typeof.js",
+    "--output=tests/fixtures/isa/wide_ops/typeof-default.abc",
+    "tests/fixtures/isa/wide_ops/typeof.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/wide_ops/typeof.js",
+   "path": "tests/fixtures/isa/wide_ops/typeof-O0.abc",
+   "sha256": "98b01321d0d9fd454b54b4edb47eb56f203cf9431521d82ff04aff14d7fd5576",
+   "source_sha256": "397d87ade2e42f9fbbaaa62afbe92bf8c1d556d773e9cb01474d484f3cf869ee",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=wideOps",
+    "--source-file=typeof.js",
+    "--output=tests/fixtures/isa/wide_ops/typeof-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/wide_ops/typeof.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/wide_ops/if.js",
+   "path": "tests/fixtures/isa/wide_ops/if-default.abc",
+   "sha256": "ca40f71a0f1772fbd00496d9bd99deb4354bde2e1028ecd4f91a9fc28bd81955",
+   "source_sha256": "8b8c10f1080cff2bd2c0a865a8d109ccc4dea55f9a52859bf3f31496b95f2ca4",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=wideOps",
+    "--source-file=if.js",
+    "--output=tests/fixtures/isa/wide_ops/if-default.abc",
+    "tests/fixtures/isa/wide_ops/if.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/wide_ops/else.js",
+   "path": "tests/fixtures/isa/wide_ops/else-default.abc",
+   "sha256": "c931e605373d6a539fc40b96dc874480b63297f285b681fe3b2451fe9c533e2a",
+   "source_sha256": "a11f8ad5f350285f9359eb7d09551f6361d403f819842f1a57778d615db4e68c",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=wideOps",
+    "--source-file=else.js",
+    "--output=tests/fixtures/isa/wide_ops/else-default.abc",
+    "tests/fixtures/isa/wide_ops/else.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "if/else O0 builds exceed the existing per-function printer budget at 2000 statements and are omitted; JMP_IMM32 appears only there."
+}

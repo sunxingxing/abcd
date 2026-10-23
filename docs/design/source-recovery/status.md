@@ -10,6 +10,19 @@
 
 
 
+## ISA coverage15 — wide-encoding occurrence oracle (2026-10-23)
+
+- Test-only. `tests/fixtures/isa/wide_ops`: TYPEOF_IMM16 (more than 256 IC
+  slots, default/O0), JNEZ_IMM32 (a 2000-statement `if`, default) and
+  JEQZ_IMM32 (a 2000-statement `else`, default), with a Proxy-traced Node
+  differential (`tests/integration/wide_ops.mjs`, including throwing reads).
+- JMP_IMM32 is emitted only by the O0 if/else build, which exceeds the existing
+  per-function memory budget. Function memory grows linearly (about 31 KB per
+  statement: 25/38/69 MB RSS at 500/1000/2000 statements), so this is a budget
+  limit, not super-linear growth. It stays unverified.
+- Ledger (`build/review/isa-cc15`): SupportedVerified 200 → **203**,
+  SupportedUnverified 27 → 24.
+
 ## ISA coverage14 — operator/call occurrence oracle (2026-10-23)
 
 - Test-only. New `tests/fixtures/isa/operators` (default/O0 SDK ABCs, both

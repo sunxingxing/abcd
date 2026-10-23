@@ -10967,6 +10967,10 @@
     {
       "test": "isa_operators_source_test",
       "producer": "tests/isa/operators_test.py"
+    },
+    {
+      "test": "isa_wide_ops_source_test",
+      "producer": "tests/isa/wide_ops_test.py"
     }
   ]
 }
