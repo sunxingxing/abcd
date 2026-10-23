@@ -313,7 +313,18 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       Require(Op(code[exit + kResolveExit], Opcode::kASYNCGENERATORRESOLVE_V8_V8_V8) && Reg(code[exit + kResolveExit]) == state &&
           Reg(code[exit + kResolveExit], 1) == value && Reg(code[exit + kResolveExit], 2) == flag && Op(code[exit + kExitReturn], Opcode::kRETURN));
     } else Require(Op(code.back(), Opcode::kTHROW_PREF_NONE));
-    Require(HasAsyncCompletionCatch(body, code[enter + (asynchronous ? 2 : 0)].offset, code[handler].offset,
+    // The completion catch may also cover the non-throwing prefix (fresh
+    // environment, frame copies, fresh-cell copies; allocation failure is
+    // excluded above): this SDK opens it at PC 0. Covering instructions that
+    // cannot throw changes nothing, so accept a start anywhere in that prefix.
+    auto catch_begin = code[enter + (asynchronous ? 2 : 0)].offset;
+    if (!asynchronous && !body.tries.empty() && body.tries.back().offset < catch_begin) {
+      const auto start = std::lower_bound(code.begin(), code.end(), body.tries.back().offset,
+          [](const auto& site, auto pc) { return site.offset < pc; });
+      if (start != code.end() && start->offset == body.tries.back().offset)
+        catch_begin = body.tries.back().offset;
+    }
+    Require(HasAsyncCompletionCatch(body, catch_begin, code[handler].offset,
             std::uint64_t(code.back().offset.value) + code.back().decoded.size));
     // RETURN cleanup stays in the common graph; tree composition must route it
     // on native RETURN. Do not erase it or treat it as a normal resume effect.

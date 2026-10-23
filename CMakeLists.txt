@@ -431,6 +431,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/dynamic_import_test.py Imports.test_sources)
     add_test(NAME isa_dynamic_import_scale_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/dynamic_import_test.py Imports.test_scale)
+    add_test(NAME isa_generators_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/generators_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/derived_test.py)
     add_test(NAME isa_wide_ops_source_test COMMAND ${Python3_EXECUTABLE}
@@ -465,7 +467,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/coverage_matrix_test.py
       $<TARGET_FILE:isa_coverage_probe>
       ${CMAKE_CURRENT_BINARY_DIR}/generated/abcd/abc/generated_isa.h
-      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/await_catch_flow/flow.abc)
+      # CREATEGENERATOROBJ is still refused raw; the following coroutine and
+      # ordinary instructions in the same method continue (await opcodes now
+      # lift through the typed coroutine lifter, so flow.abc has no refusal).
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/generators/basic-O0.abc)
   endif()
   add_executable(isa_catalog_test tests/unit/analysis/isa_catalog_test.cc)
   target_include_directories(isa_catalog_test PRIVATE tests/support)

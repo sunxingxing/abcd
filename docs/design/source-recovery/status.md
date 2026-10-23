@@ -10,6 +10,31 @@
 
 
 
+## Synchronous generators complete (O0); coroutine ledger rows (2026-10-23)
+
+- generator_completion: this SDK opens the generator's completion catch at
+  PC 0, before the frame copies, not at CREATEGENERATOROBJ. NormalizeGenerator
+  now accepts a catch start anywhere in the non-throwing prefix (fresh
+  environment, frame copies and fresh-cell copies, with allocation failure
+  excluded). Simple generators, generators with sent values in loops, and
+  `yield*` delegation now complete at O0. Default-optimized generator lowering
+  (hoisted constants, register mode compare, sta/lda rethrow) and try/finally
+  generators still refuse.
+- New `tests/fixtures/isa/generators` (O0) with `tests/integration/generators.mjs`
+  (42 cases: next/throw/return plans, sent values, yield* to traced iterators
+  with and without return/throw, arrays). throw-evidence `delegate-o0` now
+  completes and passes a 9-case differential for THROW_NOTEXISTS. The
+  isa_coverage_matrix_test fixture moves to the generator ABC, which still has
+  a raw refusal (CREATEGENERATOROBJ).
+- Probe (test-only): coroutine protocol instructions refused as
+  kUnsupportedInstruction under a supported profile report their typed
+  LiftCoroutineInstruction result; profile refusals are never overridden.
+  Pinned specimen expectations are refreshed for exactly those rows: 4 current
+  and 16 deprecated (supported profiles only).
+- Ledger (`build/review/isa-cc20`): SupportedVerified 206 → **210**
+  (RESUMEGENERATOR, GETRESUMEMODE, SUSPENDGENERATOR, ASYNCFUNCTIONAWAITUNCAUGHT),
+  Unmeasured 77 → 73. Cohorts unchanged (605/620, 542/620).
+
 ## Async preludes, deferred cells, cleanup handler moves (2026-10-23)
 
 - Async prelude (async_completion.cc): a hoisted function declaration

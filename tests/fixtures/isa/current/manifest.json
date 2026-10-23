@@ -3364,12 +3364,21 @@
       "opcode": 191,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "exception_exit": null,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
         },
-        "status": "refused"
+        "roles": {
+          "kind": 0,
+          "type": "abcd::analysis::CoroutineRead"
+        },
+        "semantic_family": "abcd::analysis::Coroutine",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -3389,12 +3398,21 @@
       "opcode": 192,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "exception_exit": null,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
         },
-        "status": "refused"
+        "roles": {
+          "kind": 1,
+          "type": "abcd::analysis::CoroutineRead"
+        },
+        "semantic_family": "abcd::analysis::Coroutine",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -3474,12 +3492,22 @@
       "opcode": 195,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "exception_exit": null,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "roles": {
+          "kind": 1,
+          "type": "abcd::analysis::CoroutineTransfer"
         },
-        "status": "refused"
+        "semantic_family": "abcd::analysis::Coroutine",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,
@@ -3507,12 +3535,22 @@
       "opcode": 196,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "exception_exit": null,
+        "inputs": [
+          {
+            "register": 0
+          },
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": null,
+        "roles": {
+          "kind": 0,
+          "type": "abcd::analysis::CoroutineTransfer"
         },
-        "status": "refused"
+        "semantic_family": "abcd::analysis::Coroutine",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,

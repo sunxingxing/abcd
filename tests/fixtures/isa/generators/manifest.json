@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/generators/basic.js",
+   "path": "tests/fixtures/isa/generators/basic-O0.abc",
+   "sha256": "c2e4b0977c2e0b12b35349b5c33b70dcf8a155a722bc5a4c510e9221eeaa31ef",
+   "source_sha256": "c4de27fe92e3307809542881128e5eef87cc3344e8ff2188eea26928b9ed6024",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=generators",
+    "--source-file=basic.js",
+    "--output=tests/fixtures/isa/generators/basic-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/generators/basic.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "Default-optimized generator lowering (hoisted constants, register mode compare, sta/lda rethrow) and try/finally generators are not yet admitted."
+}

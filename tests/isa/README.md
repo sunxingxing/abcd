@@ -39,6 +39,15 @@ method result or a per-instruction semantic oracle.
 * `profile_rows` contains the separate `(profile, opcode)` measurements. The
   variant display's `profiles` embeds these same rows. Never transfer success
   from one profile to another.
+* Raw lift is the per-instruction semantic lifter. Coroutine protocol
+  instructions (await/suspend/resume/settle and their deprecated forms) have
+  their own typed production lifter, `LiftCoroutineInstruction`, which is
+  consumed by async/generator normalization. When the semantic lifter refuses
+  one of them as kUnsupportedInstruction under a supported profile, the probe
+  reports that typed coroutine result (`semantic_family`
+  `abcd::analysis::Coroutine`). A profile refusal is never overridden.
+  CREATEGENERATOROBJ and SETGENERATORSTATE have no per-instruction lifter and
+  stay refused here.
 * `SupportedUnverified` means at least one raw lift succeeded and that occurrence
   belongs to a complete record. This is partial evidence, not universal opcode
   support or execution coverage. The per-profile lift distribution remains.

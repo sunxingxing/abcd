@@ -9,6 +9,7 @@
 #include <map>
 #include <sstream>
 #include <nlohmann/json.hpp>
+#include "abcd/analysis/coroutine.h"
 #include "abcd/abc/call_type.h"
 #include "abcd/abc/frame_layout.h"
 #include "abcd/analysis/isa_catalog.h"
@@ -209,6 +210,32 @@ int Probe(const char* path, const char* previous, const char* v4) {
             if (edge->target) result["exception_exit"]["try_id"]=edge->target->region.value;
           }
         } else result["dispatch_failure"]={{"domain","DispatchError"},{"value",unsigned(std::get<analysis::DispatchFailure>(dispatched).kind)}};
+        row["lift"]=std::move(result);
+      } else if (const auto coroutine = std::get<analysis::SemanticFailure>(lifted).kind ==
+                         analysis::SemanticError::kUnsupportedInstruction
+                     ? analysis::LiftCoroutineInstruction(site.decoded, frame->registers)
+                     : analysis::CoroutineResult{analysis::CoroutineError::kUnsupportedOpcode};
+                 !std::holds_alternative<analysis::CoroutineError>(coroutine)) {
+        // Only an instruction-level refusal under a supported profile; a
+        // profile refusal (kUnsupportedProfile) is never overridden.
+        // Coroutine protocol instructions have their own typed production
+        // lifter (consumed by async/generator normalization, not by the
+        // per-instruction semantic lifter). Report that typed result.
+        Json result{{"status","ok"},{"semantic_family","abcd::analysis::Coroutine"}};
+        result["inputs"]=Json::array();
+        if (const auto* t = std::get_if<analysis::CoroutineTransfer>(&coroutine)) {
+          result["roles"]={{"type","abcd::analysis::CoroutineTransfer"},{"kind",unsigned(t->kind)}};
+          result["inputs"].push_back(Slot(t->state)); result["inputs"].push_back(Slot(t->value));
+          // A transfer leaves or settles the activation; it commits no value.
+          result["normal_commit"]=nullptr;
+        } else {
+          const auto& r = std::get<analysis::CoroutineRead>(coroutine);
+          result["roles"]={{"type","abcd::analysis::CoroutineRead"},{"kind",unsigned(r.kind)}};
+          result["inputs"].push_back(Slot(r.state));
+          result["normal_commit"]=Slot(analysis::ScalarSlot{analysis::Accumulator{}});
+        }
+        // Resumption and settlement exits belong to the coroutine protocol.
+        result["exception_exit"]=nullptr;
         row["lift"]=std::move(result);
       } else {
         const auto& f=std::get<analysis::SemanticFailure>(lifted);

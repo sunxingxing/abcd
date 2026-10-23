@@ -12742,12 +12742,21 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
             },
-            "status": "refused"
+            "roles": {
+              "kind": 0,
+              "type": "abcd::analysis::CoroutineRead"
+            },
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -12853,12 +12862,21 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
             },
-            "status": "refused"
+            "roles": {
+              "kind": 0,
+              "type": "abcd::analysis::CoroutineRead"
+            },
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -12964,12 +12982,21 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
             },
-            "status": "refused"
+            "roles": {
+              "kind": 0,
+              "type": "abcd::analysis::CoroutineRead"
+            },
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -13075,12 +13102,21 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
             },
-            "status": "refused"
+            "roles": {
+              "kind": 0,
+              "type": "abcd::analysis::CoroutineRead"
+            },
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -13442,12 +13478,21 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
             },
-            "status": "refused"
+            "roles": {
+              "kind": 1,
+              "type": "abcd::analysis::CoroutineRead"
+            },
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -13553,12 +13598,21 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
             },
-            "status": "refused"
+            "roles": {
+              "kind": 1,
+              "type": "abcd::analysis::CoroutineRead"
+            },
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -13664,12 +13718,21 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
             },
-            "status": "refused"
+            "roles": {
+              "kind": 1,
+              "type": "abcd::analysis::CoroutineRead"
+            },
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -13775,12 +13838,21 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": {
+              "accumulator": true
             },
-            "status": "refused"
+            "roles": {
+              "kind": 1,
+              "type": "abcd::analysis::CoroutineRead"
+            },
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -15538,12 +15610,22 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              },
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": null,
+            "roles": {
+              "kind": 1,
+              "type": "abcd::analysis::CoroutineTransfer"
             },
-            "status": "refused"
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -15657,12 +15739,22 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              },
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": null,
+            "roles": {
+              "kind": 1,
+              "type": "abcd::analysis::CoroutineTransfer"
             },
-            "status": "refused"
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -15776,12 +15868,22 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              },
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": null,
+            "roles": {
+              "kind": 1,
+              "type": "abcd::analysis::CoroutineTransfer"
             },
-            "status": "refused"
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -15895,12 +15997,22 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              },
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": null,
+            "roles": {
+              "kind": 1,
+              "type": "abcd::analysis::CoroutineTransfer"
             },
-            "status": "refused"
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -16295,12 +16407,22 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              },
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": null,
+            "roles": {
+              "kind": 0,
+              "type": "abcd::analysis::CoroutineTransfer"
             },
-            "status": "refused"
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -16414,12 +16536,22 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              },
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": null,
+            "roles": {
+              "kind": 0,
+              "type": "abcd::analysis::CoroutineTransfer"
             },
-            "status": "refused"
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -16533,12 +16665,22 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              },
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": null,
+            "roles": {
+              "kind": 0,
+              "type": "abcd::analysis::CoroutineTransfer"
             },
-            "status": "refused"
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {
@@ -16652,12 +16794,22 @@
             0
           ],
           "lift": {
-            "cause": {
-              "domain": "SemanticError",
-              "pc": 3,
-              "value": 1
+            "exception_exit": null,
+            "inputs": [
+              {
+                "register": 0
+              },
+              {
+                "register": 0
+              }
+            ],
+            "normal_commit": null,
+            "roles": {
+              "kind": 0,
+              "type": "abcd::analysis::CoroutineTransfer"
             },
-            "status": "refused"
+            "semantic_family": "abcd::analysis::Coroutine",
+            "status": "ok"
           },
           "recovery": {
             "previous": {

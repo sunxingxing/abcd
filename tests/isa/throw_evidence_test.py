@@ -21,6 +21,18 @@ class Throws(unittest.TestCase):
      if source.stem=='const':self.assertIn('throw.constassignment',text)
      if source.stem=='delete_super':self.assertNotIn('throw.deletesuperproperty',text);self.assertIn('delobjprop',text)
      out=root/str(i);subprocess.run([BUILD/'abc_structure',abc,out,'--value-source','--language-source'],check=True,capture_output=True);record=next(r for r in json.loads((out/'manifest.json').read_text())['records'] if r.get('source_status')!=2)
+     if source.stem=='delegate' and e['path'].endswith('-o0.abc'):
+      # Since 2026-10-23 the O0 synchronous generator lowering normalizes;
+      # yield* to an iterator without throw() reaches THROW_NOTEXISTS.
+      self.assertEqual(record['source_status'],0,record);emitted=out/record['source'];subprocess.run(['node','--check',emitted],check=True,capture_output=True)
+      subprocess.run(['node','--input-type=module','-e',r'''
+import assert from 'node:assert/strict';const a=await import(process.argv[1]),b=await import(process.argv[2]);let cases=0;
+const run=(m,mode,plan)=>{const log=[];const it={[Symbol.iterator](){return this;},n:0,next(v){log.push('next:'+v);return {value:++this.n,done:this.n>3};}};
+ if(mode!=='no-return')it.return=v=>{log.push('return:'+v);return {done:true,value:'r'};};if(mode==='throw')it.throw=v=>{log.push('throw:'+v);return {done:true,value:'t'};};
+ const g=m.delegate(it);const out=[];for(const [k,v] of plan){try{const r=g[k](v);out.push([r.value,r.done]);}catch(e){out.push(['throw',e.constructor.name]);}}return [out,log];};
+for(const mode of ['throw','no-throw','no-return'])for(const plan of [[['next'],['throw',1],['next']],[['next'],['next'],['next'],['next']],[['next'],['return',2]]]){assert.deepEqual(run(b,mode,plan),run(a,mode,plan));cases++;}
+console.log(cases);''',source.as_uri(),emitted.as_uri()],check=True,capture_output=True)
+      record_node(abc,out,source,__file__,9,BUILD/'abc_structure');continue
      if source.stem not in ['super','delete_super']:
       self.assertNotEqual(record['source_status'],0,record);self.assertTrue(record.get('source_failure'),record);continue
      # Default builds complete since 2026-10-23 (copy-separated module guards
