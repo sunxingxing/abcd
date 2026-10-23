@@ -6,6 +6,16 @@
 
 namespace abcd::source {
 using namespace analysis;
+namespace {
+// Leaving a lexical scope on the exception path is not a source effect: cell
+// identities are resolved statically and the pending value is unchanged, so a
+// cleanup handler (`poplexenv; throw`) forwards exactly like an empty one.
+bool ScopePop(const ValueOp& op) {
+  return std::holds_alternative<ValueEnvironmentPop>(op.operation) &&
+      op.exceptional == ExceptionalCompletion::kImpossible &&
+      op.before_throw == LanguageEffect::kNone;
+}
+}  // namespace
 std::variant<ExceptionForwarding, ForInFailure> AnalyzeExceptionForwarding(
     const ValueProgram& graph, SemanticBudget budget) {
   detail::ForInQuota quota{budget};
@@ -54,7 +64,7 @@ std::variant<ExceptionForwarding, ForInFailure> AnalyzeExceptionForwarding(
             result.blocks[b] = ForwardedException{identities.canonical[value->value], exits[id.value]->handler};
             terminal[b] = 1;
           } else possible[b] = 0;
-        } else if (!detail::Inert(op) || terminal[b]) possible[b] = 0;
+        } else if (!(detail::Inert(op) || ScopePop(op)) || terminal[b]) possible[b] = 0;
       }
       if (!possible[b]) result.blocks[b].reset();
       if (terminal[b] || pending[b] == 0) queue.push_back({b});
@@ -87,7 +97,8 @@ std::variant<ExceptionForwarding, ForInFailure> AnalyzeExceptionForwarding(
 }
 std::variant<ProtocolForwarding, ForInFailure> AnalyzeProtocolForwarding(
     const ValueProgram& g,const ExceptionPlan& plan,std::span<const std::uint8_t> owned,
-    std::span<const std::uint8_t> close,SemanticBudget budget,std::span<const std::uint8_t> retained) {
+    std::span<const std::uint8_t> close,SemanticBudget budget,std::span<const std::uint8_t> retained,
+    std::span<const std::uint8_t> entered) {
   detail::ForInQuota q(budget);
   try {
     q.Require(owned.size()==plan.regions.size() && close.size()==g.blocks.size());
@@ -105,6 +116,11 @@ std::variant<ProtocolForwarding, ForInFailure> AnalyzeProtocolForwarding(
     std::pmr::vector<std::optional<TryId>> handlers(g.blocks.size(),{},&q.memory);
     std::pmr::vector<std::uint8_t> terminal(g.blocks.size(),0,&q.memory);
     if(!retained.empty())for(std::uint32_t r=0;r<retained.size();++r){q.Step();if(retained[r]){q.Require(owned[r] && plan.regions[r].binding);terminal[plan.regions[r].binding->block.value]=1;}}
+    // A forward may also end in a protocol-owned handler whose every entry the
+    // caller's close boundary has proved (entry coverage), e.g. a loop-body
+    // scope cleanup rethrowing into the for-of close.
+    q.Require(entered.empty() || entered.size()==plan.regions.size());
+    if(!entered.empty())for(std::uint32_t r=0;r<entered.size();++r){q.Step();if(entered[r] && plan.regions[r].binding){q.Require(owned[r]);terminal[plan.regions[r].binding->block.value]=1;}}
     std::pmr::vector<WorkBlockId> queue(&q.memory);queue.reserve(g.blocks.size());
     for(std::uint32_t r=0;r<plan.regions.size();++r) {
       q.Step();if(owned[r] || plan.layout.regions[r].inactive)continue;

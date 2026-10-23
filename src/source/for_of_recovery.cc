@@ -172,11 +172,16 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
     handlers[b]=owner;f.original_phases[b]=FlowIterationPhase{owner,WorkBlockId{b}};
   }
   for(std::uint32_t e=0;e<raw.exceptional_exits.size();++e){budget.Step();const auto& exit=raw.exceptional_exits[e];if(!exit.handler||!native.view.close_blocks[exit.handler->entry.value])continue;
+    // A forwarded cleanup rethrow is owned by the protocol forwarding proof.
+    if(!native.view.forwarding.operations.empty() && native.view.forwarding.operations[exit.op.value])continue;
     auto owner=handlers[exit.handler->entry.value];if(!owner&&native.operations[exit.op.value])owner=native.operations[exit.op.value]->protocol;
     Need(owner);const auto statement=native.statements[owner->value];const auto& p=*f.iterations[statement.value];const auto& close=f.iteration_closes[p.throw_close];
     const auto member=native.operations[exit.op.value];
     if(!member) {
-      if(raw.operations[exit.op.value].number_identity) {
+      if(f.original_exceptions[e] && std::holds_alternative<FlowExcludedResourceFailure>(*f.original_exceptions[e])) {
+        // Projection proved the cause (e.g. a body scope's environment
+        // allocation) and the contract excludes it; no action is asserted.
+      } else if(raw.operations[exit.op.value].number_identity) {
         const auto input=FindFlowOriginalNumberIdentity(f,exit.op);Need(input);
         f.original_exceptions[e]=FlowExcludedNumberFailure{input->expression,input->input,close.entry};
       } else if(raw.operations[exit.op.value].initialized_guard) {

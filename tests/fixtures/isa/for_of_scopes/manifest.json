@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/for_of_scopes/scopes.js",
+   "path": "tests/fixtures/isa/for_of_scopes/scopes-O0.abc",
+   "sha256": "ae28a7db5d7375cb0478362b54d04f093e89bca5f5aa46bd4825b8b34c764a20",
+   "source_sha256": "2cb3df576a52634952eeca3b9b24be1652e63e454b11702a04a772db61d9f83b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=for_of_scopes",
+    "--source-file=scopes.js",
+    "--output=tests/fixtures/isa/for_of_scopes/scopes-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/for_of_scopes/scopes.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only. A break out of an environment-scoped body (PhasedMethodError::kEnvironment), truly nested for-of (CloseObligation::kNested), user try in a for-of body and a captured loop binding itself are not yet admitted."
+}

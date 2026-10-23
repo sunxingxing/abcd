@@ -10,6 +10,27 @@
 
 
 
+## for-of body scope cleanup and sequential loops (2026-10-23)
+
+- for-of bodies with a captured block binding (a `poplexenv; throw` cleanup
+  try forwarding into the close handler) and sequential for-of loops in one
+  method now complete. Body proof admits trys wholly inside the wrapper body;
+  forwarding admits scope pops and ends in protocol-owned handlers whose entry
+  coverage is certified; recovery resolves such forwards to the throw-close
+  entry and keeps typed exclusions (resource, number identity, guards). The
+  blanket multi-acquisition gate is now true nesting via derived loop bodies.
+  Details: for-of-remaining-close.md "Body scope cleanup and sequential loops".
+- Evidence: fixture tests/fixtures/isa/for_of_scopes (O0) Node differential
+  274 cases (`isa_for_of_scopes_source_test`); for-of tests 47/47;
+  source-regression 65/65; broad sweep 261 tests with only known failures
+  plus async_failure_cli_test, whose o32/58223 expectation moves forward
+  (m61706 completes under --language-source; next stop m61057 PC192).
+  Cohorts unchanged (605/620, 542/620), zero text changes.
+- Remaining gates on the o32 cluster: 15324 FunctionAbiError 7 (m16026);
+  42397 true nesting; 46008 captured loop binding (declaration-form for-of);
+  58223 m61057 async for-of exits; break out of a scoped body
+  (kEnvironment); user try in a for-of body.
+
 ## Readable slice 4: loop headers (2026-10-23)
 
 - Loop header pieces were each wrapped in their own `(` `)` / `(…, true)`

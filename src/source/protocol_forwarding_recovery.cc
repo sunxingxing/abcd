@@ -38,7 +38,7 @@ void VerifyProtocolForwardingRecovery(const FunctionTree&,RecoveryFlow& flow,Tre
     budget.Step();if(!f.blocks[b])continue;const auto r=*f.blocks[b];Need(r.value<f.regions.size() && f.regions[r.value] && !raw.iterations->view.close_blocks[b]);
     const auto& route=*f.regions[r.value];const auto& block=raw.blocks[b];
     for(std::uint32_t n=0;n<block.op_count;++n){budget.Step();const auto o=block.first_op.value+n;const auto& op=raw.operations[o];if(op.life!=ValueLife::kLive)continue;
-      Need(f.operations[o]==r && !terminal[b] && op.normal==LanguageEffect::kNone && op.before_throw==LanguageEffect::kNone);
+      Need(f.operations[o]==r && !terminal[b] && (op.normal==LanguageEffect::kNone || op.scope_pop) && op.before_throw==LanguageEffect::kNone);
       if(op.forwarding_throw){Need(op.use_count==1 && op.exceptional==ExceptionalCompletion::kAlwaysThrow && exits[o]);const auto& use=raw.uses[op.first_use.value];const auto* value=std::get_if<ValueId>(&use.operand);
         Need(value && use.role==OperandRole::kThrownValue && raw.canonical_values[value->value]==route.payload && raw.exceptional_exits[*exits[o]].handler==route.destination);terminal[b]=1;
       }else Need(op.exceptional==ExceptionalCompletion::kImpossible);
@@ -75,6 +75,14 @@ void VerifyProtocolForwardingRecovery(const FunctionTree&,RecoveryFlow& flow,Tre
   for(std::uint32_t r=0;r<f.regions.size();++r){budget.Step();if(!f.regions[r])continue;
     if(const auto d=f.regions[r]->destination){Need(d->entry.value<handlers.size());
       if(handlers[d->entry.value]){degrees[r]=1;++parents[handlers[d->entry.value]->value+1];}
+      else if(raw.iterations->view.close_blocks[d->entry.value]) {
+        // A cleanup forward ending in a for-of body wrapper: the pending throw
+        // enters that loop's throw close (its entry coverage is certified).
+        Need(raw.iterations->close_members[d->entry.value]);const auto owner=raw.iterations->close_members[d->entry.value]->protocol;
+        Need(owner.value<raw.iterations->statements.size());const auto statement=raw.iterations->statements[owner.value];
+        Need(statement.value<flow.iterations.size() && flow.iterations[statement.value]);const auto& port=*flow.iterations[statement.value];
+        Need(port.throw_close<flow.iteration_closes.size());targets[r]=flow.iteration_closes[port.throw_close].entry;ready.push_back(r);
+      }
       else {Need(ordinary[d->entry.value]);targets[r]=ordinary[d->entry.value];ready.push_back(r);}
     }else {targets[r]=flow.terminal;ready.push_back(r);}}
 
@@ -88,6 +96,21 @@ void VerifyProtocolForwardingRecovery(const FunctionTree&,RecoveryFlow& flow,Tre
     if(f.operations[exit.op.value]){const auto r=*f.operations[exit.op.value];Need(raw.operations[exit.op.value].forwarding_throw);flow.original_exceptions[e]=FlowForwardedTryDispatch{e,r};}
     else if(f.exits[e]) {
       const auto r=*f.exits[e];Need(exit.handler && targets[r.value]);
+      const auto& op=raw.operations[exit.op.value];
+      // Completions without a source action keep their own typed exclusion,
+      // as on the unforwarded route; the target is the forward's resolution.
+      if(flow.original_exceptions[e] && std::holds_alternative<FlowExcludedResourceFailure>(*flow.original_exceptions[e]))continue;
+      if(op.number_identity) {
+        const auto input=FindFlowOriginalNumberIdentity(flow,exit.op);Need(input);
+        flow.original_exceptions[e]=FlowExcludedNumberFailure{input->expression,input->input,*targets[r.value]};continue;
+      }
+      if(op.initialized_guard) {
+        const auto input=FindFlowOriginalGuard(flow,exit.op);Need(input);
+        Need(input->expression.value<flow.actions.size() && flow.actions[input->expression.value]);
+        const auto& action=*flow.actions[input->expression.value];
+        Need(action.exceptions.thrown==*targets[r.value] && !action.exceptions.finalizer);
+        flow.original_exceptions[e]=FlowExcludedGuardFailure{input->expression,input->entry,*targets[r.value]};continue;
+      }
       FlowPoint before;
       if (flow.original_actions[exit.op.value]) {
         const auto& a=*flow.original_actions[exit.op.value];

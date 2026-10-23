@@ -111,6 +111,7 @@ std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& g
         op.before_throw,op.exceptional,op.life,op.origin,flow.expressions[i],flow.statements[i]};
     if (const auto* enumeration=std::get_if<analysis::ValueEnumeration>(&op.operation)) result->operations[i].enumeration=enumeration->action;
     result->operations[i].forwarding_throw=(std::get_if<analysis::ValueThrow>(&op.operation) && std::get<analysis::ValueThrow>(op.operation).kind==analysis::ThrowKind::kValue);
+    result->operations[i].scope_pop=std::holds_alternative<analysis::ValueEnvironmentPop>(op.operation);
     if(op.life==analysis::ValueLife::kLive&&flow.statements[i] &&
         (!flow.for_of || (!flow.for_of->view.close_blocks[op.block.value] && (flow.for_of->view.forwarding.operations.empty() || !flow.for_of->view.forwarding.operations[i]))) &&
         (result->forwarded_operations.empty() || !result->forwarded_operations[i])) {

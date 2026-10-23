@@ -55,8 +55,12 @@ try{
    if(record===58223){
     // Since 2026-10-23 the hoisted `done` creation before ASYNCFUNCTIONENTER is
     // an admitted prelude and its multi-store `timer` capture has a dominating
-    // declaring store; the record now stops at a later method's for-of exits.
-    const f=r.source_failure;assert.equal(f.class,'unproved');assert.equal(f.method,61706);assert.equal(f.pc,643);
+    // declaring store. Since the for-of body-scope slice (also 2026-10-23)
+    // m61706 completes under --language-source (the for-of route needs the
+    // external-exception premise); the record then stops at async m61057.
+    const f=r.source_failure;assert.equal(f.class,'unproved');
+    if(label==='source'){assert.equal(f.method,61057);assert.equal(f.pc,192);assert.equal(f.working_pc,168);}
+    else {assert.equal(f.method,61706);assert.equal(f.pc,643);}
     assert.deepEqual(f.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
     const rows=run(semantic,[inputs.get(n),String(method),'--instructions']).trim().split('\n').map(JSON.parse);
     const actual=rows.find(r=>r.pc===pc);assert.ok(actual);assert.equal(actual.opcode,0x33);assert.equal(actual.operands[1].method_entity,59227);

@@ -249,3 +249,40 @@ all newly publishing fixtures. Maximum CLI OS peak RSS across80 runs is
 **44,269,568 bytes**; four CLI processes plus their wrappers have a conservative
 **246,546,432-byte** bound. Logs, exact SDK diffs, cohort comparisons and the
 unpublished experimental routes are under `build/review/o32-groupb/`.
+
+## Body scope cleanup and sequential loops (2026-10-23)
+
+A loop body that declares a captured block binding gets its own environment.
+es2abc protects it with a `poplexenv; throw` cleanup try nested inside the
+body wrapper; the cleanup rethrow enters the wrapper's handler (the throw
+close). Previously this refused at the body proof (`kBodyDispatch`), then at
+forwarding (pops were not inert, and a forward could not end in a
+protocol-owned handler), and finally at ordinary control (`kMultipleExits`).
+
+- `ProveCloseLoopBody`: a try whose body AND handler lie inside the wrapper's
+  protected body is ordinary loop-body control. Its Catch joins the derived
+  body; whatever escapes still needs a proved wrapper Throw entry.
+- `AnalyzeExceptionForwarding`: a `ValueEnvironmentPop` (no exception, no
+  before-throw effect) is a scope exit, not a source effect; cell identities
+  are static and the payload is unchanged.
+- `AnalyzeProtocolForwarding(…, entered)`: a forward may end in a
+  protocol-owned region's catch. Both the seal and the control projection pass
+  the boundary-owned regions; entry coverage of that close already certifies
+  every edge into the handler. The for-in route passes nothing (unchanged).
+- Recovery: forwarded blocks admit typed `scope_pop` ops; a forward ending in
+  a close handler resolves to that loop's throw-close entry; forwarded rethrows
+  are owned by `FlowForwardedTryDispatch`, not the for-of verifier. Exits with
+  no source action keep their typed exclusion on both verifiers (projected
+  resource exhaustion — the body's environment allocation —, number identity,
+  initialized guards).
+- The blanket nested gate (`candidates.size()==1`) becomes true nesting: a
+  protocol is nested only if its acquisition is in another protocol's derived
+  loop-body node set. Sequential loops verify separately; any missing body
+  proof keeps every protocol nested.
+
+Still refused: truly nested loops (m42717; CURRENT-completion chaining), a
+captured loop binding itself (m47128 second loop; needs a declaration-form
+`for (const x of …)`), a break out of a scope-protected body
+(`PhasedMethodError::kEnvironment`, also on the baseline) and user trys in a
+for-of body. Fixture `tests/fixtures/isa/for_of_scopes` (captured, nested
+block, sequential) is a Node differential over 274 cases.

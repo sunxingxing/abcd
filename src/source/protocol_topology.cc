@@ -43,11 +43,11 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
   }
   const auto& forwarding=ownership.Forwarding();
   if(!forwarding.regions.empty()) {
-    std::vector<std::uint8_t> owned,retained,close;q.Size(owned,plan.regions.size());q.Size(retained,plan.regions.size());q.Size(close,g.blocks.size());
-    for(std::size_t r=0;r<owned.size();++r){q.Work();owned[r]=t.mapping.region_roles[r]==ExceptionRegionRole::kProtocolOwned;}
+    std::vector<std::uint8_t> owned,retained,entered,close;q.Size(owned,plan.regions.size());q.Size(retained,plan.regions.size());q.Size(entered,plan.regions.size());q.Size(close,g.blocks.size());
+    for(std::size_t r=0;r<owned.size();++r){q.Work();owned[r]=entered[r]=t.mapping.region_roles[r]==ExceptionRegionRole::kProtocolOwned;}
     for(std::size_t b=0;b<close.size();++b){q.Work();close[b]=members[g.phases[b].input.value];}
     for(const auto& region:summary.regions)for(const auto id:region.boundary->enclosures){q.Work();owned[id.value]=true;retained[id.value]=true;}
-    const auto verified=AnalyzeProtocolForwarding(g,plan,owned,close,q.Remaining(),retained);
+    const auto verified=AnalyzeProtocolForwarding(g,plan,owned,close,q.Remaining(),retained,entered);
     if(const auto* f=std::get_if<ForInFailure>(&verified))throw f->kind==ForInError::kResourceLimit?ExceptionControlError::kResourceLimit:f->kind==ForInError::kWorkLimit?ExceptionControlError::kWorkLimit:ExceptionControlError::kStructure;
     const auto& actual=std::get<ProtocolForwarding>(verified);q.Admit(actual.allocated_bytes,1);q.Work(actual.work);
     q.Work(actual.regions.size()+actual.blocks.size()+actual.operations.size()+actual.exits.size());

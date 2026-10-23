@@ -49,6 +49,7 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
       quota.Work(); if(regions[i-1]==regions[i])return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
     }
     for(std::size_t b=0;b<graph.phases.size();++b){quota.Work();close_blocks[b]=close_nodes[graph.phases[b].input.value];}
+    std::vector<std::uint8_t> entered;quota.Size(entered,owned.size());std::copy(owned.begin(),owned.end(),entered.begin());
     for(std::uint32_t r=0;r<owned.size();++r){
       quota.Work();
       if(owned[r] && retained[r]) {
@@ -59,7 +60,7 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
     ProtocolForwarding forwarding;
     bool ordinary=false;for(std::size_t r=0;r<owned.size();++r){quota.Work();ordinary|=!excluded[r] && !plan.layout.regions[r].inactive;}
     if(ordinary){
-    auto forwarded=AnalyzeProtocolForwarding(graph,plan,excluded,close_blocks,quota.Remaining(),retained);
+    auto forwarded=AnalyzeProtocolForwarding(graph,plan,excluded,close_blocks,quota.Remaining(),retained,entered);
     if(const auto* f=std::get_if<ForInFailure>(&forwarded)){
       CloseCompletionFailure failure{f->kind==ForInError::kWorkLimit?CloseCompletionError::kWorkLimit:f->kind==ForInError::kResourceLimit?CloseCompletionError::kResourceLimit:CloseCompletionError::kOwnership};
       if(f->block)for(std::uint32_t r=0;r<plan.regions.size();++r){quota.Work();if(plan.regions[r].handler==*f->block || (plan.regions[r].binding && plan.regions[r].binding->block==*f->block)){failure.region=TryId{r};break;}}

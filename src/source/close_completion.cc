@@ -90,16 +90,44 @@ class Proof {
     Sort(body_ports_);Sort(body_members_);
     body_ports_.erase(std::unique(body_ports_.begin(),body_ports_.end()),body_ports_.end());
     body_members_.erase(std::unique(body_members_.begin(),body_members_.end()),body_members_.end());
+    std::pmr::vector<CloseObligationResult> ownerships(&q_.memory);ownerships.reserve(entries_.closes.size());
+    for(std::size_t r=0;r<entries_.closes.size();++r){q_.Step();ownerships.push_back(Ownership(entries_.closes[r],out.regions[r]));}
+    // True nesting, not acquisition count: a protocol is nested when its
+    // acquisition lies in another protocol's independently derived loop body.
+    // Sequential loops verify separately; nested CURRENT-completion chaining
+    // is not certified, so nested protocols keep the obligation missing.
+    std::pmr::vector<std::uint8_t> nested(scan_.candidates.size(),0,&q_.memory);
+    if(scan_.candidates.size()>1) {
+      std::pmr::vector<std::pair<ExceptionNodeId,std::uint32_t>> acquisitions(&q_.memory);acquisitions.reserve(scan_.candidates.size());
+      for(std::uint32_t p=0;p<scan_.candidates.size();++p){q_.Step();acquisitions.push_back({scan_.candidates[p].acquisition.before,p});}
+      Sort(acquisitions);
+      bool derived=true;
+      for(std::size_t r=0;r<entries_.closes.size();++r) {
+        q_.Step();const auto& region=out.regions[r];const auto owner=entries_.closes[r].protocol.value;
+        if(!region.boundary){derived=false;continue;}
+        bool body=false;
+        for(const auto& range:region.boundary->protected_ranges) {
+          q_.Step();if(range.role!=ProtectedRangeRole::kLoopBody)continue;body=true;
+          for(const auto node:range.ordinary) {
+            q_.Step(1+std::bit_width(acquisitions.size()));
+            auto it=std::lower_bound(acquisitions.begin(),acquisitions.end(),std::pair{node,0u});
+            for(;it!=acquisitions.end() && it->first==node;++it){q_.Step();if(it->second!=owner){nested[it->second]=1;nested[owner]=1;}}
+          }
+        }
+        derived&=body;
+      }
+      if(!derived)std::fill(nested.begin(),nested.end(),1);
+    }
     for(std::size_t r=0;r<entries_.closes.size();++r) {
       const auto& c=entries_.closes[r];auto& region=out.regions[r];
-      const auto ownership=Ownership(c,region);
+      const auto& ownership=ownerships[r];
       for(std::uint32_t i=0;i<c.entries.size();++i) {
         q_.Step();CloseCompletionEntry e{c.protocol,c.read,c.entries[i].entry.edge,c.entries[i].entry.pending};
         At(e,CloseObligation::kGuard)={CloseProofState::kVerified,{}};
         At(e,CloseObligation::kReference)=references[r];
         At(e,CloseObligation::kPriority)=Priority(c,i,region);
         At(e,CloseObligation::kOwnership)=ownership;
-        if(scan_.candidates.size()==1)At(e,CloseObligation::kNested)={CloseProofState::kVerified,{}};
+        if(!nested[c.protocol.value])At(e,CloseObligation::kNested)={CloseProofState::kVerified,{}};
         else At(e,CloseObligation::kNested)=Missing(c,CloseCompletionError::kNested,{},i);
         out.entries.push_back(std::move(e));
       }

@@ -61,8 +61,9 @@ class Body {
         Step();const auto e=static_cast<std::uint8_t>(reverse_?node.successor_count-j-1:j);
         const auto& arc=node.successors[e];const CompletionEdge edge{id,e};
         if(arc.kind==ExceptionArcKind::kException) {
-          if(!ThrowEntry(edge))Missing(CloseOwnershipGap::kBodyDispatch,id,edge);
-          else dispatch.push_back(edge);
+          if(ThrowEntry(edge))dispatch.push_back(edge);
+          else if(Nested(arc.target)){if(body_.insert(arc.target).second)todo.push_back(arc.target);}
+          else Missing(CloseOwnershipGap::kBodyDispatch,id,edge);
           continue;
         }
         if(Port(edge)) {exits.push_back(edge);continue;}
@@ -102,8 +103,8 @@ class Body {
       if(dom_->nodes[id.value].begin!=0 && Node(id).exception) {
         bool found=false;
         for(std::uint8_t e=0;e<Node(id).successor_count;++e)if(Node(id).successors[e].kind==ExceptionArcKind::kException) {
-          Step();const CompletionEdge edge{id,e};found|=ThrowEntry(edge);
-          if(!ThrowEntry(edge))Missing(CloseOwnershipGap::kBodyDispatch,id,edge);
+          Step();const CompletionEdge edge{id,e};const bool accepted=ThrowEntry(edge) || Nested(Node(id).successors[e].target);found|=accepted;
+          if(!accepted)Missing(CloseOwnershipGap::kBodyDispatch,id,edge);
         }
         if(!found)Missing(CloseOwnershipGap::kBodyDispatch,id);
       }
@@ -162,6 +163,13 @@ class Body {
     // be THIS wrapper's handler and the pending Throw belongs to this source.
     Step(1+std::bit_width(entries_.size()));return std::binary_search(entries_.begin(),entries_.end(),edge);
   }
+  bool Nested(ExceptionNodeId target) {
+    // A try wholly inside this wrapper's protected body (body and handler) is
+    // ordinary loop-body control: its Catch is internal flow. Whatever escapes
+    // its handler must still reach this wrapper through a proved Throw entry.
+    Step(1+std::bit_width(nested_.size()));const auto& node=Node(target);
+    return node.phase==ExceptionPhase::kCatch && std::binary_search(nested_.begin(),nested_.end(),node.instruction);
+  }
   void Dominance(const CloseBodyIndex* shared) {
     if(shared) {dom_=shared->dominance;Require(dom_ && dom_->nodes.size()==flow_.nodes.size());}
     else {
@@ -179,6 +187,12 @@ class Body {
         entries_.push_back(e.entry.edge);
     }
     Sort(entries_);
+    const auto& wrapper=plan_.layout.regions[region_.value].body;
+    for(std::uint32_t t=0;t<plan_.layout.regions.size();++t) {
+      Step();if(t==region_.value)continue;const auto& r=plan_.layout.regions[t];
+      if(wrapper.begin<=r.body.begin && r.body.end<=wrapper.end && wrapper.begin<=r.handler.begin && r.handler.end<=wrapper.end)nested_.push_back(r.handler.begin);
+    }
+    Sort(nested_);
   }
   void Suffix(const std::pmr::vector<ExceptionNodeId>& members,const std::pmr::vector<CompletionEdge>& exits) {
     std::pmr::vector<std::pair<ExceptionNodeId,ExceptionNodeId>> pred(&memory_);
@@ -199,6 +213,7 @@ class Body {
   std::span<const CloseBodyMember> members_;
   std::pmr::set<ExceptionNodeId,NodeLess> body_,prefix_,suffix_;
   std::pmr::vector<CompletionEdge> entries_{&memory_};
+  std::pmr::vector<InstructionId> nested_{&memory_};
   DominatorTree owned_dom_;const DominatorTree* dom_=nullptr;bool reverse_;CloseProtectedRange* out_=nullptr;
 };
 }

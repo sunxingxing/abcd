@@ -169,6 +169,9 @@ struct OriginalOperation {
   // save has a definition correspondence but is not the conversion's write.
   std::optional<OriginalWriteSite> write;
   bool forwarding_throw = false;
+  // Lexical scope exit (poplexenv). Inside a forwarded cleanup handler it is
+  // not a source effect; anywhere else its environment write stays ordinary.
+  bool scope_pop = false;
   std::optional<analysis::EnumerationAction> enumeration;
 
 };
