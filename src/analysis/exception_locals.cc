@@ -224,16 +224,36 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
       charge();
       return std::tie(a.cell.value, a.instruction.value) < std::tie(b.cell.value, b.instruction.value);
     });
-    // A deferred capture does not read the cell at creation. Keep a unique
-    // store only when it belongs to the same allocated activation on every
-    // original exceptional path. The source owner must separately prove its
-    // lexical declaration scope and TDZ lifetime; no initialized load is added.
+    // A deferred capture does not read the cell at creation. Keep the
+    // initializing store only when it belongs to the same allocated activation
+    // on every original exceptional path. With several direct stores, the
+    // initializing one must dominate all the others (they are assignments);
+    // Language writes exclude a later reset to Hole. The source owner must
+    // separately prove its lexical declaration scope and TDZ lifetime; no
+    // initialized load is added.
     reserve(result.deferred_initializations, plan.cells.size());
     for (std::size_t i = 0; i < plan.stores.size();) {
       charge(); const auto first = i++;
       while (i < plan.stores.size() && plan.stores[i].cell.value == plan.stores[first].cell.value) { charge(); ++i; }
-      if (i - first != 1 || writes != ClosureWrites::kLanguage) continue;
-      const auto& store = plan.stores[first];
+      if (writes != ClosureWrites::kLanguage) continue;
+      std::size_t chosen = first;
+      bool committed = true;
+      for (std::size_t k = first; k < i; ++k) {
+        charge();
+        if (!commits[plan.stores[k].instruction.value]) { committed = false; break; }
+        if (dominance->nodes[commits[plan.stores[k].instruction.value]->value].begin <
+            dominance->nodes[commits[plan.stores[chosen].instruction.value]->value].begin) chosen = k;
+      }
+      if (!committed) continue;
+      bool dominates_all = true;
+      for (std::size_t k = first; k < i && dominates_all; ++k) {
+        charge();
+        if (k != chosen && !dominance->Dominates({commits[plan.stores[chosen].instruction.value]->value},
+                                                  {commits[plan.stores[k].instruction.value]->value}))
+          dominates_all = false;
+      }
+      if (!dominates_all) continue;
+      const auto& store = plan.stores[chosen];
       const auto owner = plan.cells[store.cell.value].environment.value;
       if (!allocations[owner] || !commits[store.instruction.value]) continue;
       const auto a = allocations[owner]->value, c = commits[store.instruction.value]->value;

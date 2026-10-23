@@ -200,6 +200,7 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
           switch (node.kind) {
             case CleanupInstructionKind::kPop: entry["cleanup"] = "pop"; break;
             case CleanupInstructionKind::kRethrow: entry["cleanup"] = "rethrow"; break;
+            case CleanupInstructionKind::kMove: entry["cleanup"] = "move"; break;
           }
         } else {
           GeneratedRange range;

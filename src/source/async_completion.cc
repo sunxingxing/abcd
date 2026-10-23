@@ -159,14 +159,30 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
          sites[enter].decoded.opcode != Opcode::kASYNCFUNCTIONENTER) {
     const auto lifted = analysis::LiftSemanticInstruction(sites[enter], profile, frame.registers, &frame);
     const auto* instruction = std::get_if<analysis::SemanticInstruction>(&lifted);
+    // A hoisted function declaration (DEFINEFUNC) is created before the
+    // promise in Ark, after it in the spec (EvaluateAsyncFunctionBody runs
+    // FunctionDeclarationInstantiation after NewPromiseCapability). Creation
+    // runs no user code and its only throw is allocation failure, which the
+    // same excluded-resource contract as the NEWLEXENV prelude covers; its
+    // reads are of the method/module/environment being closed over.
+    constexpr auto kCreationReads = analysis::LanguageEffect::kHeapRead | analysis::LanguageEffect::kModuleRead |
+        analysis::LanguageEffect::kAllocation | analysis::LanguageEffect::kEnvironmentRead;
+    const auto* creation = instruction ? std::get_if<analysis::FunctionCreation>(&instruction->operation) : nullptr;
+    const bool hoisted = creation && creation->kind == analysis::CreationKind::kFunction &&
+        creation->home_object == analysis::HomeObjectInput::kCurrentFunction &&
+        AllowsLexicalPrelude(profile, resources) &&
+        (static_cast<std::uint16_t>(instruction->effects.normal) & ~static_cast<std::uint16_t>(kCreationReads)) == 0 &&
+        (static_cast<std::uint16_t>(instruction->effects.before_throw) & ~static_cast<std::uint16_t>(kCreationReads)) == 0 &&
+        abc::GetControlTransfer(sites[enter].decoded.opcode) == abc::ControlTransfer::kFallthrough;
+    if (hoisted) { ++enter; continue; }
     if (!instruction || instruction->effects.exceptional != analysis::ExceptionalCompletion::kImpossible ||
         abc::GetControlTransfer(sites[enter].decoded.opcode) != abc::ControlTransfer::kFallthrough)
       return fail(Check::kPreludeEffects, enter);
     const auto& operation = instruction->operation;
     const auto* store = std::get_if<analysis::LexicalStore>(&operation);
     // A depth-0 store writes the fresh environment's own cell: its lexical
-    // write and environment read are unobservable here, because no closure
-    // can exist yet (any creation lifts with kAllocation and is refused).
+    // write and environment read are unobservable here, because no code runs
+    // before the promise: a hoisted closure may exist, but no call is admitted.
     constexpr auto kFreshCellStore = analysis::LanguageEffect::kLexicalWrite | analysis::LanguageEffect::kEnvironmentRead;
     const bool cell = store && lexical_prelude && store->address.depth.value == 0 &&
         (static_cast<std::uint16_t>(instruction->effects.normal) & ~static_cast<std::uint16_t>(kFreshCellStore)) == 0;
@@ -235,13 +251,20 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
     }
   } catch (const std::bad_alloc&) { return FunctionEmitError::kResourceLimit;
   } catch (const std::length_error&) { return FunctionEmitError::kResourceLimit; }
-  const auto handler = sites.size() - 3;
-  abc::RegisterId caught, resolved, rejected;
+  // Completion catch: `sta caught; [lda caught;] asyncfunctionreject p;
+  // return`. The optimizer's optional reload of the same register leaves acc
+  // unchanged (still the caught value), so the rejection reason is the same.
+  abc::RegisterId caught, resolved, rejected, reloaded, saved;
+  const bool reload = sites.size() >= 4 &&
+      IsRegister(sites[sites.size() - 3], Opcode::kLDA_V8, &reloaded) &&
+      IsRegister(sites[sites.size() - 4], Opcode::kSTA_V8, &saved) && reloaded == saved;
+  const auto handler = sites.size() - (reload ? 4 : 3);
+  const auto reject_at = handler + (reload ? 2 : 1);
   if (handler <= enter + 4) return fail(Check::kInput, handler);
   if (!IsRegister(sites[handler], Opcode::kSTA_V8, &caught)) return fail(Check::kCatchStore, handler);
   if (caught == promise || caught.value >= frame.locals) return fail(Check::kCatchRegister, handler);
-  if (!IsRegister(sites[handler + 1], Opcode::kASYNCFUNCTIONREJECT_V8, &rejected)) return fail(Check::kReject, handler + 1);
-  if (!IsReturn(sites[handler + 2])) return fail(Check::kRejectReturn, handler + 2);
+  if (!IsRegister(sites[reject_at], Opcode::kASYNCFUNCTIONREJECT_V8, &rejected)) return fail(Check::kReject, reject_at);
+  if (!IsReturn(sites[reject_at + 1])) return fail(Check::kRejectReturn, reject_at + 1);
   if (!IsRegister(sites[handler - 2], Opcode::kASYNCFUNCTIONRESOLVE_V8, &resolved)) return fail(Check::kResolve, handler - 2);
   if (!IsReturn(sites[handler - 1])) return fail(Check::kResolveReturn, handler - 1);
   if (resolved != promise || rejected != promise) return fail(Check::kPromiseIdentity, handler);

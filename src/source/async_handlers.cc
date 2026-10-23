@@ -30,7 +30,9 @@ bool HasAsyncCompletionCatch(const abc::MethodBody& body,
       outer.first_handler != user_handlers ||
       outer.handler_count != kCompletionHandlerCount || caught.type ||
       caught.offset != handler ||
-      std::uint64_t(caught.offset.value) + caught.length != code_end)
+      // es2abc may record the completion catch with code_size 0; the pinned
+      // interpreter uses only its start, and it is the last code anyway.
+      (caught.length != 0 && std::uint64_t(caught.offset.value) + caught.length != code_end))
     return false;
   for (std::size_t i = 0; i + kCompletionRegionCount < body.tries.size(); ++i) {
     const auto& region = body.tries[i];

@@ -90,8 +90,11 @@ for source in sorted(fixtures.glob('*.js')):
         record=records[0]
         result={'mode':mode,'command':command,'abc_sha256':sdk.sha(abc),'published':record['source_status']==0}
         expected = refusals.get(name)
-        if mode == 'default' and name in {'inner_outer','reentry','outer_reassigned','instance_base','instance_derived'}:
-            expected = [('abcd::source::CleanupError', 1)]
+        # The default builds' `sta; poplexenv; lda; throw` cleanup handlers
+        # (code_size 0) are accepted since 2026-10-23: inner_outer, reentry
+        # and outer_reassigned complete and take the differentials below.
+        if mode == 'default' and name in {'instance_base','instance_derived'}:
+            expected = [('abcd::source::CreationContextError', 3)]
         # public_tdz: with copy-separated module guards paired, the default
         # build reaches the same record-program refusal as O0.
         if expected is not None:

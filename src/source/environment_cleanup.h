@@ -34,12 +34,15 @@ class EnvironmentCleanup {
       analysis::SemanticBudget = {});
   std::span<const CleanupHandler> Handlers() const { return handlers_; }
   std::span<const CleanupPop> Pops() const { return pops_; }
+  // Handler acc<->register moves around the pops (optimizer form).
+  std::span<const analysis::InstructionId> Moves() const { return moves_; }
   std::size_t AllocatedBytes() const { return bytes_; }
   std::uint64_t Work() const { return work_; }
  private:
   EnvironmentCleanup() = default;
   std::vector<CleanupHandler> handlers_;
   std::vector<CleanupPop> pops_;
+  std::vector<analysis::InstructionId> moves_;
   std::size_t bytes_ = 0;
   std::uint64_t work_ = 0;
 };

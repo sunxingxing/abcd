@@ -47,8 +47,11 @@ try {
    if(mode==='default'){
     assert.equal(record.source_status,3,JSON.stringify(record));
     const domains=record.source_failure.causes.map(c=>c.domain);
-    assert.ok(domains.includes(name==='sync'?'abcd::analysis::CatchRegionError':'abcd::source::AsyncCompletionCheck'),JSON.stringify(record));
-    assert.equal(record.source_failure.causes.at(-1).value,name==='sync'?1:11);++refused;continue;
+    // Since the optimizer's `sta c; lda c` completion catch and code_size-0
+    // completion handler are accepted (2026-10-23), async/nested default
+    // builds reach the same zero-length user handler shape as sync.
+    assert.ok(domains.includes('abcd::analysis::CatchRegionError'),JSON.stringify(record));
+    assert.equal(record.source_failure.causes.at(-1).value,1);++refused;continue;
    }
    if(contract==='previous' && name==='async'){
     // Scope/activation is admitted; this fixture's guarded array-return value

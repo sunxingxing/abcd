@@ -414,6 +414,7 @@ int Export(const std::filesystem::path& input,
                 switch (site.kind) {
                   case source::CleanupInstructionKind::kPop: cleanup["kind"] = "pop"; break;
                   case source::CleanupInstructionKind::kRethrow: cleanup["kind"] = "rethrow"; break;
+                  case source::CleanupInstructionKind::kMove: cleanup["kind"] = "move"; break;
                 }
                 cleanup["allocation_pc"] = site.allocation ? nlohmann::json(site.allocation->value) : nlohmann::json(nullptr);
                 positions << cleanup;

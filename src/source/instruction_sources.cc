@@ -28,6 +28,8 @@ class SourceIndex {
         Require(!before[i], Error::kPlacement);
         if (*kind == CleanupInstructionKind::kPop)
           Require(std::holds_alternative<analysis::PopEnvironment>(instructions[i].operation), Error::kOrigin);
+        else if (*kind == CleanupInstructionKind::kMove)
+          Require(std::holds_alternative<analysis::ScalarAssignment>(instructions[i].operation), Error::kOrigin);
         else {
           const auto* thrown = std::get_if<analysis::ThrowOperation>(&instructions[i].operation);
           Require(thrown && thrown->kind==analysis::ThrowKind::kValue && std::holds_alternative<analysis::Accumulator>(thrown->value), Error::kOrigin);

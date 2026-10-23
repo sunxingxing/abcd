@@ -169,7 +169,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     std::vector<EnvironmentCleanupSite> cleanup_sites;
     if (function->cleanup) {
       const auto& cleanup = *function->cleanup;
-      const auto count = cleanup.Proof().Pops().size() + cleanup.Proof().Handlers().size();
+      const auto count = cleanup.Proof().Pops().size() + cleanup.Proof().Handlers().size() + cleanup.Proof().Moves().size();
       if (count > budget.bytes / sizeof(EnvironmentCleanupSite)) return fail(Error::kRecordBudget);
       retain(count*sizeof(EnvironmentCleanupSite)); cleanup_sites.reserve(count);
       retain((cleanup_sites.capacity()-count)*sizeof(EnvironmentCleanupSite));
@@ -179,6 +179,9 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       for (const auto& handler : cleanup.Proof().Handlers())
         cleanup_sites.push_back({cleanup.Original().instructions[handler.rethrow.value].offset,
             CleanupInstructionKind::kRethrow,{}});
+      for (const auto move : cleanup.Proof().Moves())
+        cleanup_sites.push_back({cleanup.Original().instructions[move.value].offset,
+            CleanupInstructionKind::kMove,{}});
       std::sort(cleanup_sites.begin(),cleanup_sites.end(),[](const auto& a,const auto& b) { return a.pc < b.pc; });
     }
     auto controlled = BuildControlPlan(graph, {budget.bytes});

@@ -10,6 +10,37 @@
 
 
 
+## Async preludes, deferred cells, cleanup handler moves (2026-10-23)
+
+- Async prelude (async_completion.cc): a hoisted function declaration
+  (DEFINEFUNC, CreationKind::kFunction, home kCurrentFunction) before
+  ASYNCFUNCTIONENTER is admitted when allocation failures are excluded (same
+  contract as the NEWLEXENV prelude). Its effects must be within heap, module
+  and environment reads plus allocation. The spec runs
+  FunctionDeclarationInstantiation after NewPromiseCapability; creation runs no
+  user code and no call is admitted before the promise, so only OOM timing can
+  differ.
+- Completion catch: an optimizer reload `sta c; lda c;` before
+  ASYNCFUNCTIONREJECT is accepted (acc unchanged), and a code_size-0
+  completion catch (es2abc) is accepted as extending to the end of code.
+- Deferred initialization (exception_locals.cc): a captured cell with several
+  direct stores now has a deferred initialization when one store dominates all
+  the others (that store is the declaration; the rest are assignments). The
+  existing conditions are unchanged: Language closure writes (no reset to
+  Hole) and allocation dominance.
+- Environment cleanup (environment_cleanup.cc): a handler may contain
+  `sta vR`/`lda vR` moves around POPLEXENV (each `lda` reads a register saved
+  in the same handler; the THROW leaves the method). A code_size-0 handler
+  extends linearly to its first THROW. The moves are reported as a new
+  CleanupInstructionKind::kMove ("move" in positions and instruction sources).
+- Effects: o32/58223 (hypium service.mjs) passes the async prelude and the
+  `done`/`timer` capture, and now stops at a different method's
+  ExceptionControlError::kMultipleExits. The class-field sample passes cleanup
+  and stops at the stored instance initializer (CreationContextError::kKind).
+  Default-optimized async fixtures expose further gaps (promise identity,
+  zero-length user handlers, await regions); these were not pursued, because
+  cohort builds do not use that shape. Cohorts unchanged (605/620, 542/620).
+
 ## CALLRUNTIME_CALLINIT lifted as CALLTHIS0 (2026-10-23)
 
 - interpreter-inl.cpp:1499 implements CALLINIT as "same as callthis0":

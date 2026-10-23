@@ -4,7 +4,8 @@
 #include "abcd/abc/method_body.h"
 
 namespace abcd::source {
-enum class CleanupInstructionKind : std::uint8_t { kPop, kRethrow };
+// kMove: a handler `sta vR`/`lda vR` that keeps the pending exception in acc.
+enum class CleanupInstructionKind : std::uint8_t { kPop, kRethrow, kMove };
 // An original entry instruction implemented by native scope unwinding. It has
 // no fabricated generated-text range and is not globally unreachable.
 struct EnvironmentCleanupSite {

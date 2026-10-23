@@ -39,6 +39,11 @@ std::variant<CleanupBody, CleanupFailure> CleanupBody::Build(const abc::MethodBo
       if (pop.instruction.value >= kinds.size() || kinds[pop.instruction.value]) throw Error::kHandler;
       kinds[pop.instruction.value] = CleanupInstructionKind::kPop;
     }
+    for (const auto move : proof->Moves()) {
+      work(1);
+      if (move.value >= kinds.size() || kinds[move.value]) throw Error::kHandler;
+      kinds[move.value] = CleanupInstructionKind::kMove;
+    }
     for (const auto& handler : proof->Handlers()) {
       work(1);
       if (handler.rethrow.value >= kinds.size() || kinds[handler.rethrow.value]) throw Error::kHandler;

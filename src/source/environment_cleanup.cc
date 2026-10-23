@@ -86,15 +86,28 @@ std::variant<EnvironmentCleanup, CleanupFailure> EnvironmentCleanup::Build(
     };
     EnvironmentCleanup result;
     quota.Reserve(result.handlers_,body.handlers.size()); quota.Reserve(result.pops_,body.instructions.size());
+    quota.Reserve(result.moves_,body.instructions.size());
     for (std::size_t h = 0; h < body.handlers.size(); ++h) {
       quota.Step(); const auto& handler = body.handlers[h];
-      Require(referenced[h] && !handler.type && handler.length != 0,Error::kHandler);
+      Require(referenced[h] && !handler.type,Error::kHandler);
       const auto start = boundary(handler.offset.value);
-      const auto end_pc = std::uint64_t(handler.offset.value) + handler.length;
-      const auto end = boundary(end_pc);
-      Require(start != flow.instructions.end() && start->pc == handler.offset && start != end,Error::kHandler);
+      Require(start != flow.instructions.end() && start->pc == handler.offset,Error::kHandler);
       const auto first = static_cast<std::size_t>(start-flow.instructions.begin());
-      const auto last = static_cast<std::size_t>(end-flow.instructions.begin())-1;
+      std::size_t last;
+      if (handler.length != 0) {
+        const auto end = boundary(std::uint64_t(handler.offset.value) + handler.length);
+        Require(start != end,Error::kHandler);
+        last = static_cast<std::size_t>(end-flow.instructions.begin())-1;
+      } else {
+        // es2abc may record code_size 0; the pinned interpreter uses only the
+        // start. The handler then extends linearly to its first THROW.
+        last = first;
+        while (last < flow.instructions.size() &&
+               !std::holds_alternative<ThrowOperation>(flow.instructions[last].operation)) { quota.Step(); ++last; }
+        Require(last < flow.instructions.size(),Error::kHandler);
+      }
+      std::vector<std::uint64_t> stored;
+      quota.Reserve(stored, last - first + 1);
       const auto first_pop = static_cast<std::uint32_t>(result.pops_.size());
       for (auto i = first; i <= last; ++i) {
         quota.Step(); const auto& instruction = flow.instructions[i];
@@ -105,6 +118,25 @@ std::variant<EnvironmentCleanup, CleanupFailure> EnvironmentCleanup::Build(
           Require(rethrow && rethrow->kind==ThrowKind::kValue && std::holds_alternative<Accumulator>(rethrow->value) && node.exception &&
               !node.exception->target && instruction.effects.exceptional == ExceptionalCompletion::kAlwaysThrow,
               Error::kRethrow);
+          continue;
+        }
+        if (const auto* move = std::get_if<ScalarAssignment>(&instruction.operation)) {
+          // `sta vR` saves the pending exception; `lda vR` restores it from a
+          // register saved here. Neither throws nor has effects; THROW leaves
+          // the method below, so the registers are dead afterwards.
+          const auto* from = std::get_if<ScalarValue>(&move->expression);
+          Require(from && move->completion == CompletionEffect::kNormal &&
+              instruction.effects.exceptional == ExceptionalCompletion::kImpossible &&
+              instruction.effects.normal == LanguageEffect::kNone &&
+              instruction.effects.before_throw == LanguageEffect::kNone,Error::kHandler);
+          if (const auto* reg = std::get_if<abc::RegisterId>(&move->destination)) {
+            Require(std::holds_alternative<Accumulator>(*from),Error::kHandler);
+            stored.push_back(reg->value);
+          } else {
+            const auto* source = std::get_if<abc::RegisterId>(&*from);
+            Require(source && std::find(stored.begin(),stored.end(),source->value) != stored.end(),Error::kHandler);
+          }
+          result.moves_.push_back(InstructionId{static_cast<std::uint32_t>(i)});
           continue;
         }
         Require(std::holds_alternative<PopEnvironment>(instruction.operation) &&
@@ -134,7 +166,8 @@ std::variant<EnvironmentCleanup, CleanupFailure> EnvironmentCleanup::Build(
         Require(owners[node.instruction.value] == owner && arc.kind != ExceptionArcKind::kException,Error::kEntry);
       }
     }
-    result.bytes_ = sizeof(EnvironmentCleanup) + result.handlers_.capacity()*sizeof(CleanupHandler) + result.pops_.capacity()*sizeof(CleanupPop);
+    result.bytes_ = sizeof(EnvironmentCleanup) + result.handlers_.capacity()*sizeof(CleanupHandler) + result.pops_.capacity()*sizeof(CleanupPop) +
+        result.moves_.capacity()*sizeof(InstructionId);
     result.work_ = quota.Work(); return result;
   } catch (const CleanupFailure& failure) { return failure;
   } catch (Error error) { return CleanupFailure{error};

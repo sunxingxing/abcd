@@ -58,8 +58,12 @@ int main() {
   test::Check(!zero.async.location.working_pc);RoundTrip(zero);
   input=Body();input.instructions[4].decoded.opcode=abc::Opcode::kNOP;
   test::Check(std::get<AsyncCompletionFailure>(Run(input)).async.check==AsyncCompletionCheck::kResolveReturn);
-  input=Body();input.handlers.back().length=0;
+  // A wrong nonzero extent still refuses; es2abc's code_size 0 (start only,
+  // which is all the interpreter uses) is accepted for the trailing catch.
+  input=Body();input.handlers.back().length=1;
   test::Check(std::get<AsyncCompletionFailure>(Run(input)).async.check==AsyncCompletionCheck::kCompletionCatch);
+  input=Body();input.handlers.back().length=0;
+  test::Check(std::holds_alternative<abc::MethodBody>(Run(input)));
   // Actual lower-stage failures distinguish missing locations from real PC0.
   const auto raw_await = test::Body({static_cast<std::uint8_t>(abc::Opcode::kASYNCFUNCTIONAWAITUNCAUGHT_V8), 0});
   const auto budget = std::get<AwaitRegionFailure>(FindAwaitRegions(raw_await, abc::ProfileId::kDynamic1206, 4, 0));

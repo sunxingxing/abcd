@@ -211,5 +211,13 @@ int main() {
   Native(1, false, true); Native(1, true, true);
   auto reset = Make(1, false, true);
   const auto locals = std::get<ExceptionLocals>(ProveExceptionLocals(reset.flow, reset.environments, {}, {}, ClosureWrites::kLanguage));
-  test::Check(locals.deferred_initializations.empty());
+  // Two direct stores: the first dominates the second, so it is the
+  // declaring store and the later one is an assignment (Language writes, no
+  // reset to Hole). Before 2026-10-23 a unique store was required.
+  test::Check(locals.deferred_initializations.size() == 1);
+  const auto& deferred = locals.deferred_initializations[0];
+  std::uint32_t first_store = UINT32_MAX;
+  for (const auto& store : locals.plan.stores)
+    if (store.cell.value == deferred.cell.value) first_store = std::min(first_store, store.instruction.value);
+  test::Check(deferred.store.value == first_store);
 }
