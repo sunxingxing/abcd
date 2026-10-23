@@ -10,6 +10,16 @@
 
 
 
+## Readable yield spelling (2026-10-23)
+
+- YieldExpr printed its own parentheses, `(yield x)`, in every context. It now
+  prints `yield x` / `yield* x` with an assignment-value operand. Its
+  assignment-level precedence (TreeExpressionPrecedence) lets the enclosing
+  operand context add grouping where the grammar needs it (operand of a binary
+  operator, conditional test, and so on). Generator fixtures still pass (42 +
+  21 Node cases). file_async_generator_yield counts `\byield` instead of
+  `(yield`. No complete cohort record changes (605/620, 542/620).
+
 ## Async generators: entry resume slot liveness (2026-10-23)
 
 - NormalizeGenerator refused any user touch of the async generator's entry

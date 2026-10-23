@@ -939,11 +939,13 @@ class TreePrinter {
     Push(ExpressionOperand{node.operand, {ExpressionPrecedence::kUnary}});
   }
   void Expression(YieldExpr node) {
+    // YieldExpression is assignment-level (TreeExpressionPrecedence); the
+    // enclosing operand context adds grouping where the grammar needs it.
     switch (node.form) {
-      case YieldForm::kDirect: Append("(yield "); break;
-      case YieldForm::kDelegate: Append("(yield* "); break;
+      case YieldForm::kDirect: Append("yield "); break;
+      case YieldForm::kDelegate: Append("yield* "); break;
     }
-    Push(std::string_view(")")); Push(node.operand);
+    Push(ExpressionOperand{node.operand, {ExpressionGrammar::kAssignmentValue}});
   }
   void Expression(UnaryExpr node) {
     Append(TreeUnaryToken(node.operation));

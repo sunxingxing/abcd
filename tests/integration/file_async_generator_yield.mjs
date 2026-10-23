@@ -19,7 +19,7 @@ const rejectAs = (promise, reason) => promise.then(() => assert.fail('request mu
 for (const fixture of fixtures.filter(f => !f.rejected)) {
   assert.ok(!fixture.source.includes('INCOMPLETE'));
   assert.ok(fixture.source.includes('async function*'));
-  assert.equal((fixture.source.match(/\(yield /g) ?? []).length, fixture.count);
+  assert.equal((fixture.source.match(/\byield /g) ?? []).length, fixture.count);
   assert.equal(sourceAwaitSites(fixture.source).length, fixture.awaited ? fixture.count : 0);
   const {capture} = await import(`data:text/javascript;base64,${Buffer.from(`export const capture = ${fixture.source};`).toString('base64')}`);
   let entered = false, get, set;
