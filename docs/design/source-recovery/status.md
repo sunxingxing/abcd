@@ -10,6 +10,19 @@
 
 
 
+## CALLRUNTIME_CALLINIT lifted as CALLTHIS0 (2026-10-23)
+
+- interpreter-inl.cpp:1499 implements CALLINIT as "same as callthis0":
+  accumulator callee, explicit this register, no arguments, result in acc.
+  named_invocation lifts it on the same ReceiverCall path; there is no new
+  semantics. Records with class field initializers still refuse in the
+  initializer projection and environment cleanup (the instance initializer
+  stored in a lexical slot and called by CALLINIT; the default build's
+  `sta; poplexenv; lda; throw` cleanup handler with code_size 0). That
+  projection is the next class-field step. Cohorts unchanged. The
+  current-variant lift expectation is refreshed, and isa_coverage_test's
+  unsupported sample is now CREATEGENERATOROBJ.
+
 ## Transparent sta/lda rethrow handlers; derived fixture (2026-10-23)
 
 - `EraseTransparentRethrowRegions` admits a handler sequence of

@@ -51,6 +51,9 @@ std::variant<ReceiverCall, CallError> LiftReceiverCall(
     case abc::Opcode::kCALLTHIS0WITHNAME_IMM8_ID16_V8:
       named = true;
       [[fallthrough]];
+    // interpreter-inl.cpp:1499 CALLRUNTIME_CALLINIT: "same as callthis0"
+    // (accumulator callee, explicit this, no arguments, result in acc).
+    case abc::Opcode::kCALLRUNTIME_CALLINIT_PREF_IMM8_V8:
     case abc::Opcode::kCALLTHIS0_IMM8_V8:
       break;
     case abc::Opcode::kCALLTHIS1WITHNAME_IMM8_ID16_V8_V8:

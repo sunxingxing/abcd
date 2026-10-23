@@ -20,7 +20,7 @@ int main() {
   test::Check(seen.size()==332);
   // A refusal in one instruction must not prevent lifting the following one.
   abc::BodyInstruction unsupported{{0},{}};
-  unsupported.decoded.opcode=abc::Opcode::kCALLRUNTIME_CALLINIT_PREF_IMM8_V8;
+  unsupported.decoded.opcode=abc::Opcode::kCREATEGENERATOROBJ_V8;
   test::Check(std::holds_alternative<analysis::SemanticFailure>(analysis::LiftSemanticInstruction(unsupported,abc::ProfileId::kDynamic1206,0)));
   abc::BodyInstruction next{{1},{}}; next.decoded.opcode=abc::Opcode::kLDUNDEFINED;
   const auto lifted=analysis::LiftSemanticInstruction(next,abc::ProfileId::kDynamic1206,0);
