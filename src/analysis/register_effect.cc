@@ -374,8 +374,15 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   const auto regexp=LiftRegExpLiteral(instruction);
   if(std::holds_alternative<RegExpLiteral>(regexp))return AccumulatorDefinition();
   if(std::get<ScalarError>(regexp)!=ScalarError::kUnsupportedOpcode)return std::get<ScalarError>(regexp);
-  if(instruction.opcode==abc::Opcode::kTHROW_PATTERNNONCOERCIBLE_PREF_NONE) {
+  if(instruction.opcode==abc::Opcode::kTHROW_PATTERNNONCOERCIBLE_PREF_NONE ||
+     instruction.opcode==abc::Opcode::kTHROW_NOTEXISTS_PREF_NONE) {
     if(instruction.operand_count)return ScalarError::kMalformedInstruction;
+    return RegisterEffect{};
+  }
+  // The name register only feeds the (unpreserved) TypeError message.
+  if(instruction.opcode==abc::Opcode::kTHROW_CONSTASSIGNMENT_PREF_V8) {
+    if(instruction.operand_count!=1 || instruction.operands[0].kind!=abc::OperandKind::kRegister ||
+       instruction.operands[0].raw_bits>=frame_size)return ScalarError::kMalformedInstruction;
     return RegisterEffect{};
   }
 

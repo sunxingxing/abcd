@@ -10,6 +10,10 @@
 #include <sstream>
 #include <nlohmann/json.hpp>
 #include "abcd/analysis/coroutine.h"
+#include "abcd/abc/method_attributes.h"
+#include "../../../src/source/generator_completion.h"
+#include "abcd/source/source_contract.h"
+#include <algorithm>
 #include "abcd/abc/call_type.h"
 #include "abcd/abc/frame_layout.h"
 #include "abcd/analysis/isa_catalog.h"
@@ -181,6 +185,28 @@ int Probe(const char* path, const char* previous, const char* v4) {
       if (const auto* f = std::get_if<abc::FrameLayout>(&layout)) frame = *f;
       else frame_failure={{"domain","FrameError"},{"value",unsigned(std::get<abc::FrameError>(layout))}};
     } else frame_failure={{"domain","MetadataError"},{"value",unsigned(std::get<abc::MetadataError>(call))}};
+    // Generator/async-generator protocol instructions are consumed by the
+    // production NormalizeGenerator projection, never by per-instruction
+    // lifting. A successful normalization's removed original PCs are reported
+    // with that typed producer; a failed one leaves the raw refusal.
+    std::vector<std::uint32_t> normalized_pcs;
+    bool normalized = false;
+    if (frame) {
+      const auto attributes = abc::DecodeMethodAttributes(method.access_flags, header->profile);
+      const auto* kind = std::get_if<abc::MethodAttributes>(&attributes);
+      if (kind && (kind->kind == abc::FunctionKind::kGenerator || kind->kind == abc::FunctionKind::kAsyncGenerator)) {
+        const source::GeneratorNames names{file, *header, *index, method.offset};
+        const auto result = source::NormalizeGenerator(*body, *frame, header->profile,
+            source::ResourceFailures(source::SourceContract::kLanguageSourceV10), 64 * 1024 * 1024, &names,
+            kind->kind == abc::FunctionKind::kAsyncGenerator ? source::GeneratorExecution::kAsynchronous
+                                                             : source::GeneratorExecution::kSynchronous);
+        if (const auto* g = std::get_if<source::GeneratorBody>(&result)) {
+          normalized = true;
+          for (const auto pc : g->source_pcs) normalized_pcs.push_back(pc.value);
+          std::sort(normalized_pcs.begin(), normalized_pcs.end());
+        }
+      }
+    }
     const auto dispatched = analysis::BuildExceptionDispatch(*body, header->profile, {16 * 1024 * 1024});
     const auto* dispatch = std::get_if<analysis::ExceptionDispatch>(&dispatched);
     for (const auto& site : body->instructions) {
@@ -236,6 +262,14 @@ int Probe(const char* path, const char* previous, const char* v4) {
         }
         // Resumption and settlement exits belong to the coroutine protocol.
         result["exception_exit"]=nullptr;
+        row["lift"]=std::move(result);
+      } else if (normalized && std::get<analysis::SemanticFailure>(lifted).kind ==
+                     analysis::SemanticError::kUnsupportedInstruction &&
+                 !std::binary_search(normalized_pcs.begin(), normalized_pcs.end(), site.offset.value)) {
+        // Removed by the verified generator normalization of this very body.
+        Json result{{"status","ok"},{"semantic_family","abcd::source::GeneratorNormalization"}};
+        result["roles"]={{"type","abcd::source::GeneratorNormalization"}};
+        result["inputs"]=Json::array(); result["normal_commit"]=nullptr; result["exception_exit"]=nullptr;
         row["lift"]=std::move(result);
       } else {
         const auto& f=std::get<analysis::SemanticFailure>(lifted);

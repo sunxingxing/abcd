@@ -1308,7 +1308,7 @@ class ForestBuilder {
         Require(name && name->value < constants_.name_count, Error::kConstant);
         return Add(GlobalNameExpr{*name, operands[0], operation.operation}, origin);
       } else if constexpr (std::is_same_v<T, analysis::ValueThrow>) {
-        return operation.kind==analysis::ThrowKind::kPatternNonCoercible ? Add(PatternFailureExpr{},origin) : operands[0];
+        return analysis::ThrowsIntrinsicTypeError(operation.kind) ? Add(PatternFailureExpr{},origin) : operands[0];
       } else if constexpr (std::is_same_v<T, analysis::ValueObjectRest>) {
         throw Error::kOwnership; // Variadic Rest owns a separately admitted window.
       } else if constexpr (std::is_same_v<T, analysis::ValueReturn>)return operands[0];

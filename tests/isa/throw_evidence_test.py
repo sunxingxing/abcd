@@ -33,6 +33,15 @@ const run=(m,mode,plan)=>{const log=[];const it={[Symbol.iterator](){return this
 for(const mode of ['throw','no-throw','no-return'])for(const plan of [[['next'],['throw',1],['next']],[['next'],['next'],['next'],['next']],[['next'],['return',2]]]){assert.deepEqual(run(b,mode,plan),run(a,mode,plan));cases++;}
 console.log(cases);''',source.as_uri(),emitted.as_uri()],check=True,capture_output=True)
       record_node(abc,out,source,__file__,9,BUILD/'abc_structure');continue
+     if source.stem=='const':
+      # Since 2026-10-24 THROW_CONSTASSIGNMENT is an intrinsic TypeError: the
+      # right-hand side runs, then a realm TypeError is thrown.
+      self.assertEqual(record['source_status'],0,record);emitted=out/record['source'];subprocess.run(['node','--check',emitted],check=True,capture_output=True)
+      subprocess.run(['node','--input-type=module','-e',r"""
+import assert from 'node:assert/strict';const a=await import(process.argv[1]),b=await import(process.argv[2]);
+const run=(m,rhs)=>{const log=[];try{m.assign(()=>{log.push('rhs');return rhs();});return ['ok',log];}catch(e){return [e.constructor.name,e instanceof TypeError,log];}};
+for(const rhs of [()=>1,()=>{throw new RangeError('r');}])assert.deepEqual(run(b,rhs),run(a,rhs));""",source.as_uri(),emitted.as_uri()],check=True,capture_output=True)
+      record_node(abc,out,source,__file__,2,BUILD/'abc_structure');continue
      if source.stem not in ['super','delete_super']:
       self.assertNotEqual(record['source_status'],0,record);self.assertTrue(record.get('source_failure'),record);continue
      # Default builds complete since 2026-10-23 (copy-separated module guards

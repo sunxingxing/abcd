@@ -11029,6 +11029,10 @@
       "producer": "tests/isa/instance_fields_test.py"
     },
     {
+      "test": "isa_const_assignment_source_test",
+      "producer": "tests/isa/const_assignment_test.py"
+    },
+    {
       "test": "isa_loop_corridors_source_test",
       "producer": "tests/isa/loop_corridors_test.py"
     }

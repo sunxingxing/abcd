@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/const_assignment/assign.js",
+   "path": "tests/fixtures/isa/const_assignment/assign-O0.abc",
+   "sha256": "b9380026480aee127d363d576b653854f5aa40a8532bce6cc78e544aacc807fb",
+   "source_sha256": "c51f8309184d842d4bcf983aa022518b8a1c76d03ed0d75263460379908de3f5",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=const_assignment",
+    "--source-file=assign.js",
+    "--output=tests/fixtures/isa/const_assignment/assign-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/const_assignment/assign.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only."
+}

@@ -61,6 +61,12 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
     case ControlTransfer::kThrow:
       if(decoded.opcode==Opcode::kTHROW_PATTERNNONCOERCIBLE_PREF_NONE && !decoded.operand_count)
         return ThrowOperation{ScalarValue{SpecialValue::kUndefined},ThrowKind::kPatternNonCoercible};
+      // The const-assignment register only names the binding in the message.
+      if(decoded.opcode==Opcode::kTHROW_NOTEXISTS_PREF_NONE && !decoded.operand_count)
+        return ThrowOperation{ScalarValue{SpecialValue::kUndefined},ThrowKind::kIntrinsicTypeError};
+      if(decoded.opcode==Opcode::kTHROW_CONSTASSIGNMENT_PREF_V8 && decoded.operand_count==1 &&
+         decoded.operands[0].kind==abc::OperandKind::kRegister && decoded.operands[0].raw_bits<frame_size)
+        return ThrowOperation{ScalarValue{SpecialValue::kUndefined},ThrowKind::kIntrinsicTypeError};
       if (decoded.opcode == Opcode::kTHROW_PREF_NONE) {
         if (decoded.operand_count != 0)
           return Fail(SemanticError::kMalformedInstruction, site.offset);
@@ -441,7 +447,7 @@ SemanticEffects Effects(const SemanticOperation& operation,
           // Pinned interpreter THROW_PREF_NONE passes acc to Throw and jumps
           // directly to exception dispatch. No coercion, normal destination,
           // or fallthrough may be invented; SSA still checks the value read.
-          if(value.kind==ThrowKind::kPatternNonCoercible)effects.before_throw=LanguageEffect::kAllocation;
+          if(ThrowsIntrinsicTypeError(value.kind))effects.before_throw=LanguageEffect::kAllocation;
           effects.exceptional = ExceptionalCompletion::kAlwaysThrow;
         } else if constexpr (std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
           effects.normal = LanguageEffect::kSuspension |

@@ -10,6 +10,21 @@
 
 
 
+## Intrinsic TypeError throws; generator-normalized ledger rows (2026-10-24)
+
+- THROW_CONSTASSIGNMENT and THROW_NOTEXISTS lift as
+  `ThrowKind::kIntrinsicTypeError` (v7 `RuntimeThrowConstAssignment` /
+  `ThrowThrowNotExists` create a fresh realm TypeError, no user code; the
+  const-assignment name register only feeds the unpreserved message). They
+  print like the pattern-coercibility throw, `throw ({} = null)`, a native
+  intrinsic TypeError without a global lookup.
+- ISA probe (test-only): in a generator/async-generator method that the
+  production `NormalizeGenerator` accepts, an instruction refused by raw
+  lifting and removed by that normalization is reported with producer
+  `abcd::source::GeneratorNormalization` (rows also carry `roles`).
+- Evidence: fixture const_assignment (Node 4); throw evidence const fixtures now take a Node differential. Ledger (`build/review/isa-cc19`): SupportedVerified 211 → **218** (generator/async-generator creation, state and settlement, THROW_NOTEXISTS, THROW_CONSTASSIGNMENT), Unmeasured 72 → 65. Cohorts unchanged (613 / 547),
+  no text changes (`build/review/csr76`).
+
 ## Native instance fields; gap regions (2026-10-24)
 
 - Stored instance initializers (`instance_initializer` + private slot +

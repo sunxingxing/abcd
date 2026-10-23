@@ -103,7 +103,14 @@ struct JumpOperation {
 struct ReturnOperation {
   ScalarValue value;
 };
-enum class ThrowKind : std::uint8_t { kValue, kPatternNonCoercible };
+// kIntrinsicTypeError: pinned THROW_CONSTASSIGNMENT / THROW_NOTEXISTS create a
+// fresh realm TypeError (runtime_stubs-inl.h RuntimeThrowConstAssignment,
+// ThrowThrowNotExists); no user code runs and the message is not preserved.
+enum class ThrowKind : std::uint8_t { kValue, kPatternNonCoercible, kIntrinsicTypeError };
+// Both non-value kinds throw an intrinsic TypeError object.
+constexpr bool ThrowsIntrinsicTypeError(ThrowKind kind) {
+  return kind == ThrowKind::kPatternNonCoercible || kind == ThrowKind::kIntrinsicTypeError;
+}
 struct ThrowOperation {
   ScalarValue value;
   ThrowKind kind = ThrowKind::kValue;

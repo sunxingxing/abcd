@@ -14,7 +14,7 @@ bool SameSlot(const ScalarSlot& a,const ScalarSlot& b) {
 bool RuntimeError(const SemanticOperation& op) {
   return std::holds_alternative<ObjectCheck>(op) || std::holds_alternative<HoleGuard>(op) ||
       std::holds_alternative<SuperCheck>(op) ||
-      (std::get_if<ThrowOperation>(&op)&&std::get<ThrowOperation>(op).kind==ThrowKind::kPatternNonCoercible);
+      (std::get_if<ThrowOperation>(&op)&&ThrowsIntrinsicTypeError(std::get<ThrowOperation>(op).kind));
 }
 bool External(const SemanticInstruction& instruction) {
   // The shared effect model owns which instructions may execute user code,

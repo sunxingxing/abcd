@@ -451,7 +451,7 @@ class OperandCheck {
           InputAt(0,rest.source);
           for(std::uint32_t k=0;k<operation.keys;++k){budget_.Step();InputAt(k+1,tree_.arguments[rest.keys.first+k]);}
         } else if constexpr (std::is_same_v<T, analysis::ValueThrow>) {
-          if(operation.kind==analysis::ThrowKind::kPatternNonCoercible){Node<PatternFailureExpr>(expression);original_.operations[i].intrinsic_expression=expression;}
+          if(analysis::ThrowsIntrinsicTypeError(operation.kind)){Node<PatternFailureExpr>(expression);original_.operations[i].intrinsic_expression=expression;}
           else InputAt(0,expression);
         } else if constexpr (std::is_same_v<T, analysis::ValueReturn>) {
           InputAt(0, expression);

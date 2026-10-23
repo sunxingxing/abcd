@@ -395,7 +395,7 @@ if(BUILD_TESTING)
   if(ABCD_BUILD_TOOLS)
     add_executable(isa_coverage_probe tests/support/isa/coverage_probe.cc)
     target_include_directories(isa_coverage_probe PRIVATE tools)
-    target_link_libraries(isa_coverage_probe PRIVATE abcd_analysis abcd_corpus abcd_json abcd_process)
+    target_link_libraries(isa_coverage_probe PRIVATE abcd_source abcd_analysis abcd_corpus abcd_json abcd_process)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME grouping_bytecode_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/grouping_bytecode_test.py)
@@ -457,6 +457,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/object_methods_test.py)
     add_test(NAME isa_instance_fields_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/instance_fields_test.py)
+    add_test(NAME isa_const_assignment_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/const_assignment_test.py)
     add_test(NAME isa_loop_corridors_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/loop_corridors_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}
@@ -493,10 +495,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/coverage_matrix_test.py
       $<TARGET_FILE:isa_coverage_probe>
       ${CMAKE_CURRENT_BINARY_DIR}/generated/abcd/abc/generated_isa.h
-      # CREATEGENERATOROBJ is still refused raw; the following coroutine and
-      # ordinary instructions in the same method continue (await opcodes now
-      # lift through the typed coroutine lifter, so flow.abc has no refusal).
-      ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/generators/basic-O0.abc)
+      # The non-executable JEQ variant is refused raw; the following ordinary
+      # instructions in the same method continue. (Generator protocol
+      # instructions are now accounted for by NormalizeGenerator.)
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/branches/jeq_v8_imm8.abc)
   endif()
   add_executable(isa_catalog_test tests/unit/analysis/isa_catalog_test.cc)
   target_include_directories(isa_catalog_test PRIVATE tests/support)
