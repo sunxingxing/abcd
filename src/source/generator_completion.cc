@@ -2,6 +2,9 @@
 #include "abcd/abc/profile_capabilities.h"
 
 #include <algorithm>
+#include <array>
+#include <optional>
+#include <vector>
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -221,6 +224,72 @@ std::vector<std::uint8_t> ValidateCleanup(const abc::MethodBody& body, std::size
     }
   }
   return retained;
+}
+// True when a path from `from` may read one of the entry resume slots before
+// overwriting it. Forward may-hold-initial masks (two bits) over normal
+// successors (a suspend resumes at the next instruction) and, for user
+// regions, catch handlers with the pre-instruction mask. Masks only grow, so
+// each instruction is processed at most three times.
+bool InitialSlotsObserved(const abc::MethodBody& body, std::size_t from, std::size_t end,
+                          std::array<abc::RegisterId, 2> slots, const abc::FrameLayout& frame,
+                          std::size_t bytes) {
+  const auto& code = body.instructions;
+  // Mask byte plus at most three worklist entries per instruction, charged
+  // before allocation.
+  constexpr auto kPer = sizeof(std::uint8_t) + 3 * sizeof(std::size_t);
+  if (code.size() > bytes / kPer) throw Error::kResourceLimit;
+  std::vector<std::uint8_t> mask(code.size(), 0);
+  std::vector<std::size_t> pending;
+  pending.reserve(3 * code.size());
+  const auto index_of = [&](abc::CodeOffset pc) -> std::optional<std::size_t> {
+    const auto found = std::lower_bound(code.begin(), code.end(), pc,
+        [](const auto& site, auto value) { return site.offset < value; });
+    if (found == code.end() || found->offset != pc) return std::nullopt;
+    return static_cast<std::size_t>(found - code.begin());
+  };
+  const auto push = [&](std::optional<std::size_t> at, std::uint8_t bits) {
+    Require(at.has_value());
+    if (*at >= end || (mask[*at] | bits) == mask[*at]) return;
+    mask[*at] |= bits; pending.push_back(*at);
+  };
+  push(from, 3);
+  while (!pending.empty()) {
+    const auto i = pending.back(); pending.pop_back();
+    const auto in = mask[i];
+    const auto access = abc::GetRegisterAccesses(code[i].decoded, frame.registers);
+    const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
+    std::uint8_t out = in;
+    for (std::size_t w = 0; w < known->count; ++w) {
+      const auto& window = known->windows[w];
+      for (std::size_t s = 0; s < slots.size(); ++s) {
+        const bool covered = slots[s].value >= window.first.value &&
+            slots[s].value - window.first.value < window.count;
+        if (!covered) continue;
+        if (window.access != abc::OperandAccess::kWrite && (in & (1u << s))) return true;
+        if (window.access == abc::OperandAccess::kWrite) out &= static_cast<std::uint8_t>(~(1u << s));
+      }
+    }
+    for (std::size_t t = 0; t + 1 < body.tries.size(); ++t) {
+      const auto& region = body.tries[t];
+      if (code[i].offset.value < region.offset.value ||
+          code[i].offset.value - region.offset.value >= region.length) continue;
+      for (std::uint32_t h = 0; h < region.handler_count; ++h)
+        push(index_of(body.handlers[region.first_handler + h].offset), in);
+    }
+    const auto control = abc::GetControlTransfer(code[i].decoded.opcode);
+    Require(control.has_value());
+    switch (*control) {
+      case abc::ControlTransfer::kReturn:
+      case abc::ControlTransfer::kThrow: break;
+      case abc::ControlTransfer::kJump: push(index_of(*code[i].branch_target), out); break;
+      case abc::ControlTransfer::kBranch:
+        push(index_of(*code[i].branch_target), out);
+        if (i + 1 < end) push(i + 1, out);
+        break;
+      default: if (i + 1 < end) push(i + 1, out); break;
+    }
+  }
+  return false;
 }
 }  // namespace
 std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGenerator(
@@ -525,6 +594,8 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
         boundary(std::uint64_t(body.handlers[h].offset.value) + body.handlers[h].length);
       }
     }
+    const bool initial_observed = asynchronous &&
+        InitialSlotsObserved(body, first, handler, {initial.result, initial.mode}, frame, bytes);
     std::size_t next_protocol = 0;
     for (std::size_t i = 0; i < handler; ++i) {
       if (!retained[i]) continue;
@@ -536,10 +607,10 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
         for (std::size_t j = 0; j < known->count; ++j) {
           const auto& window = known->windows[j];
           Require(state.value < window.first.value || state.value - window.first.value >= window.count);
-          if (asynchronous && i >= first && i < handler - kAsyncExitSize) {
+          if (asynchronous && initial_observed && i >= first && i < handler - kAsyncExitSize) {
             // Initial resumed values/mode have no source counterpart. Reuse
-            // of these locals needs a proved overwrite before observation;
-            // that later capability is not silently admitted in this slice.
+            // of these locals is admitted only when no path reads them before
+            // an overwrite (InitialSlotsObserved); otherwise refuse.
             for (const auto slot : {initial.result, initial.mode})
               Require(slot.value < window.first.value || slot.value - window.first.value >= window.count);
           }

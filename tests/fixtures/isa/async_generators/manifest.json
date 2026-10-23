@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/async_generators/basic.js",
+   "path": "tests/fixtures/isa/async_generators/basic-O0.abc",
+   "sha256": "c0f11e111176c41a870a2414a39002666b0008c989e4d27f5c28b4f58abf1df5",
+   "source_sha256": "25a9773bf5652d1f101c6451c14668338521bf91e798d8c5f04d83f3f4481e9d",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=asyncGenerators",
+    "--source-file=basic.js",
+    "--output=tests/fixtures/isa/async_generators/basic-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/async_generators/basic.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "Async generators whose yield return-route reuses resume registers (yield in loops) are not yet admitted."
+}

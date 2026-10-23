@@ -10,6 +10,25 @@
 
 
 
+## Async generators: entry resume slot liveness (2026-10-23)
+
+- NormalizeGenerator refused any user touch of the async generator's entry
+  resume result/mode registers. It now refuses only when they are observed:
+  InitialSlotsObserved runs a forward two-bit may-hold-entry-value analysis
+  over normal successors (a suspend resumes at the next instruction) and user
+  catch handlers. Masks grow monotonically, so each instruction is processed
+  at most three times; the mask and worklist are charged before allocation.
+  A read before an overwrite still refuses.
+- Simple async generators now complete at O0 (`yield await x`, sequential
+  yields): `tests/fixtures/isa/async_generators` with
+  `tests/integration/async_generators.mjs` (21 cases: next/throw/return plans,
+  sent values, for-await). Yields in loops still refuse at
+  AwaitCatchError::kObservedRegister: the async return-at-yield route reuses a
+  resume mode register as its resolve value, which is the documented
+  unsupported injected-return case. The ledger is unchanged (210 verified),
+  because CREATEASYNCGENERATOROBJ and the async generator settle instructions
+  have no per-instruction lifter. Cohorts unchanged.
+
 ## Synchronous generators complete (O0); coroutine ledger rows (2026-10-23)
 
 - generator_completion: this SDK opens the generator's completion catch at

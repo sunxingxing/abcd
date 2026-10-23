@@ -431,6 +431,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/dynamic_import_test.py Imports.test_sources)
     add_test(NAME isa_dynamic_import_scale_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/dynamic_import_test.py Imports.test_scale)
+    add_test(NAME isa_async_generators_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/async_generators_test.py)
     add_test(NAME isa_generators_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/generators_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}

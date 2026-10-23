@@ -10979,6 +10979,10 @@
     {
       "test": "isa_generators_source_test",
       "producer": "tests/isa/generators_test.py"
+    },
+    {
+      "test": "isa_async_generators_source_test",
+      "producer": "tests/isa/async_generators_test.py"
     }
   ]
 }
