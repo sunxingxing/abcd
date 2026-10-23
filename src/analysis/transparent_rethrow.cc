@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -25,9 +26,35 @@ bool FallsThrough(const abc::BodyInstruction& instruction) {
 }
 }  // namespace
 
+// A rethrow sequence: optional `sta vR` / `lda vR` moves, then THROW, where
+// every `lda vR` reads a register this sequence stored from acc. acc thus still
+// holds the caught exception at THROW, and the written registers are dead
+// because THROW leaves the method (checked below). Returns the instruction
+// indexes [entry, throw] or nothing. es2abc's optimizer emits `sta v; lda v;
+// throw` for the same implicit super-call check handler.
+std::optional<std::pair<std::size_t, std::size_t>> RethrowSequence(
+    const abc::MethodBody& body, abc::CodeOffset pc) {
+  const auto* entry = At(body, pc);
+  if (!entry) return std::nullopt;
+  const auto first = static_cast<std::size_t>(entry - body.instructions.data());
+  std::vector<std::uint64_t> stored;
+  for (std::size_t i = first; i < body.instructions.size() && i - first < 16; ++i) {
+    const auto& decoded = body.instructions[i].decoded;
+    if (decoded.opcode == abc::Opcode::kTHROW_PREF_NONE) return std::pair{first, i};
+    const bool sta = decoded.opcode == abc::Opcode::kSTA_V8, lda = decoded.opcode == abc::Opcode::kLDA_V8;
+    if ((!sta && !lda) || decoded.operand_count != 1 ||
+        decoded.operands[0].kind != abc::OperandKind::kRegister) return std::nullopt;
+    const auto reg = decoded.operands[0].raw_bits;
+    if (sta) stored.push_back(reg);
+    else if (std::find(stored.begin(), stored.end(), reg) == stored.end()) return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 bool EraseTransparentRethrowRegions(abc::MethodBody& body) {
   if (body.tries.empty()) return false;
   std::vector<abc::CodeOffset> handler_pcs;
+  std::vector<std::pair<std::size_t, std::size_t>> sequences;
   handler_pcs.reserve(body.handlers.size());
   for (const auto& region : body.tries) {
     if (region.handler_count == 0 ||
@@ -36,10 +63,28 @@ bool EraseTransparentRethrowRegions(abc::MethodBody& body) {
       return false;
     for (std::uint32_t i = 0; i < region.handler_count; ++i) {
       const auto& handler = body.handlers[region.first_handler + i];
-      const auto* entry = At(body, handler.offset);
-      if (!entry || entry->decoded.opcode != abc::Opcode::kTHROW_PREF_NONE) return false;
+      const auto sequence = RethrowSequence(body, handler.offset);
+      if (!sequence) return false;
       handler_pcs.push_back(handler.offset);
+      sequences.push_back(*sequence);
     }
+  }
+  // A multi-instruction sequence is admitted only in the trailing chain of
+  // handler sequences that end the method, which the cleanup below removes
+  // completely. Elsewhere (e.g. a for-in acquisition handler before later
+  // code) the region is kept for the protocol recognizers, as before.
+  {
+    std::vector<std::pair<std::size_t, std::size_t>> ordered(sequences);
+    std::sort(ordered.begin(), ordered.end());
+    ordered.erase(std::unique(ordered.begin(), ordered.end()), ordered.end());
+    std::size_t tail = body.instructions.size();
+    std::vector<std::uint8_t> trailing(ordered.size());
+    for (std::size_t k = ordered.size(); k-- > 0;) {
+      if (ordered[k].second + 1 != tail) break;
+      trailing[k] = 1; tail = ordered[k].first;
+    }
+    for (std::size_t k = 0; k < ordered.size(); ++k)
+      if (ordered[k].first != ordered[k].second && !trailing[k]) return false;
   }
   // A rethrow re-enters exception dispatch at the handler PC (ets_runtime
   // Method::FindCatchBlock, first covering try in file order). Erasure is
@@ -65,21 +110,27 @@ bool EraseTransparentRethrowRegions(abc::MethodBody& body) {
         std::pair<std::uint64_t, std::uint64_t>{pc.value, UINT64_MAX});
     if (after != covered.begin() && pc.value < std::prev(after)->second) return false;
   }
-  body.tries.clear();
-  body.handlers.clear();
-  std::sort(handler_pcs.begin(), handler_pcs.end());
-  // Drop trailing handler-only instructions that no normal edge can reach.
+  // A handler instruction must not be a normal branch target; otherwise a
+  // normal path could run the moves and THROW, which the erasure keeps anyway.
   std::vector<abc::CodeOffset> targets;
   for (const auto& instruction : body.instructions)
     if (instruction.branch_target) targets.push_back(*instruction.branch_target);
   std::sort(targets.begin(), targets.end());
-  while (body.instructions.size() > 1) {
-    const auto& last = body.instructions.back();
-    if (!std::binary_search(handler_pcs.begin(), handler_pcs.end(), last.offset) ||
-        std::binary_search(targets.begin(), targets.end(), last.offset) ||
-        FallsThrough(body.instructions[body.instructions.size() - 2]))
-      break;
-    body.instructions.pop_back();
+  body.tries.clear();
+  body.handlers.clear();
+  // Drop trailing whole rethrow sequences that no normal edge can reach.
+  std::sort(sequences.begin(), sequences.end());
+  sequences.erase(std::unique(sequences.begin(), sequences.end()), sequences.end());
+  while (!sequences.empty() && body.instructions.size() > 1) {
+    const auto [first, last] = sequences.back();
+    if (last + 1 != body.instructions.size() || first == 0 ||
+        FallsThrough(body.instructions[first - 1])) break;
+    bool reached = false;
+    for (std::size_t i = first; i <= last; ++i)
+      reached |= std::binary_search(targets.begin(), targets.end(), body.instructions[i].offset);
+    if (reached) break;
+    body.instructions.erase(body.instructions.begin() + static_cast<std::ptrdiff_t>(first), body.instructions.end());
+    sequences.pop_back();
   }
   return true;
 }

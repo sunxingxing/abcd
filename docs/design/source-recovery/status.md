@@ -10,6 +10,35 @@
 
 
 
+## Transparent sta/lda rethrow handlers; derived fixture (2026-10-23)
+
+- `EraseTransparentRethrowRegions` admits a handler sequence of
+  `sta vR`/`lda vR` moves followed by THROW, where each `lda` reads a register
+  stored from acc in the same sequence. acc still holds the caught exception
+  and the registers are dead because THROW leaves the method; the original
+  "no region covers a handler" condition is unchanged. Multi-instruction
+  sequences are admitted only in the trailing chain of handler sequences that
+  end the method, which the cleanup removes whole. Mid-method sequences (such
+  as the for-in acquisition handler) keep their regions as before, because the
+  protocol recognizers depend on them. Without that restriction three o32
+  records regressed; with it, both cohorts are unchanged (605/620 source,
+  542/620 previous; zero regressions and zero text changes). This is the
+  optimizer's form of PandaGen::AddCatchBlockForImplicitSuperCallChecks.
+- Effects: default-optimized implicit derived constructors and explicit
+  `super(...)` constructors complete. Recovery fixtures super-computed and
+  super-named, and throw-evidence super and delete_super default builds,
+  complete and pass their checks. The delete_super check keeps asserting
+  that the SDK's delete-this lowering differs from the source. The wide-call
+  arrow-super refusal is now DerivedProjectionError::kProtocol at both
+  optimization levels. A zero-length catch handler extent (es2abc code_size 0)
+  was explored and is not needed for these cases; it is not committed.
+- New test-only `tests/fixtures/isa/derived` (Base, implicit and explicit
+  derived constructors, `extends Array`, empty bases; default/O0) with
+  `tests/integration/derived.mjs` (63 cases: `new` and Reflect.construct with a
+  subclass new.target, prototypes, lengths, names, calls without new).
+- Ledger (`build/review/isa-cc16`): SupportedVerified 203 → **206**,
+  SupportedUnverified 24 → 21.
+
 ## Copy-separated module read guards (2026-10-23)
 
 - Default-optimized es2abc can emit `ldlocalmodulevar k; sta vN;

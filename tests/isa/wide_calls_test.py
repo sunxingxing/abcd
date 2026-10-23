@@ -31,7 +31,9 @@ class WideCalls(unittest.TestCase):
      rows=probe(abc);self.assertTrue(all(r['lift']['status']=='ok' for r in rows))
      if not e.get('complete',True):
       r=recover(abc,root/str(i));self.assertNotEqual(r['source_status'],0)
-      expected=('abcd::source::DerivedProjectionError',1) if e['path'].endswith('-o0.abc') else ('abcd::analysis::CatchRegionError',1)
+      # Arrow super still lacks the lexical constructor correspondence; since
+      # sta/lda rethrow handlers are transparent, default builds refuse there too.
+      expected=('abcd::source::DerivedProjectionError',1)
       self.assertIn(expected,[(c['domain'],c['value']) for c in r['source_failure']['causes']]);continue
      n=int(source.stem.split("-")[0][5:]);ops={r['encoding']['opcode'] for r in rows}
      if n>=256 and any(k in source.stem for k in ['direct','template']):self.assertIn(catalog()['WIDE_CALLRANGE_PREF_IMM16_V8']['opcode'],ops)

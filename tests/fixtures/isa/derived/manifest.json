@@ -1,0 +1,43 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/derived/basic.js",
+   "path": "tests/fixtures/isa/derived/basic-default.abc",
+   "sha256": "106e2fa4c6c44446951d31374a1f21df5516aba388c174666915d4b58beb8c26",
+   "source_sha256": "aa6673e7697588df41484be7b9f365bc9da8d1b1430d582398878859d0a5a62b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=derived",
+    "--source-file=basic.js",
+    "--output=tests/fixtures/isa/derived/basic-default.abc",
+    "tests/fixtures/isa/derived/basic.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/derived/basic.js",
+   "path": "tests/fixtures/isa/derived/basic-O0.abc",
+   "sha256": "499d9108a0b94875beb1131b73cc665472b4a5794fbe571418d91b3449a0da88",
+   "source_sha256": "aa6673e7697588df41484be7b9f365bc9da8d1b1430d582398878859d0a5a62b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=derived",
+    "--source-file=basic.js",
+    "--output=tests/fixtures/isa/derived/basic-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/derived/basic.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

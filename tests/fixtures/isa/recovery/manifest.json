@@ -613,21 +613,8 @@
     },
     {
       "recovery": {
-        "status": 3,
-        "causes": [
-          {
-            "domain": "abcd::source::PhasedMethodError",
-            "value": 5
-          },
-          {
-            "domain": "abcd::source::ExceptionPlanError",
-            "value": 2
-          },
-          {
-            "domain": "abcd::analysis::CatchRegionError",
-            "value": 1
-          }
-        ]
+        "status": 0,
+        "causes": []
       },
       "path": "super-computed-default.abc",
       "sha256": "ef3cc518787cfdbc45d196f37ccf4c3217a13e83c6cbf102859b4b11075694c3",
@@ -714,21 +701,8 @@
     },
     {
       "recovery": {
-        "status": 3,
-        "causes": [
-          {
-            "domain": "abcd::source::PhasedMethodError",
-            "value": 5
-          },
-          {
-            "domain": "abcd::source::ExceptionPlanError",
-            "value": 2
-          },
-          {
-            "domain": "abcd::analysis::CatchRegionError",
-            "value": 1
-          }
-        ]
+        "status": 0,
+        "causes": []
       },
       "path": "super-named-default.abc",
       "sha256": "e28904d8d4ee36c11e390cab91da2c192c34a5cc246bb379fff934227a43df72",

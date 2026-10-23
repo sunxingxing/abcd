@@ -23,8 +23,8 @@ class Throws(unittest.TestCase):
      out=root/str(i);subprocess.run([BUILD/'abc_structure',abc,out,'--value-source','--language-source'],check=True,capture_output=True);record=next(r for r in json.loads((out/'manifest.json').read_text())['records'] if r.get('source_status')!=2)
      if source.stem not in ['super','delete_super']:
       self.assertNotEqual(record['source_status'],0,record);self.assertTrue(record.get('source_failure'),record);continue
-     if e['path'].endswith('-default.abc'):
-      self.assertNotEqual(record['source_status'],0,record);self.assertEqual(record['source_failure']['causes'][-1],{'domain':'abcd::analysis::CatchRegionError','value':1});continue
+     # Default builds complete since 2026-10-23 (copy-separated module guards
+     # and sta/lda rethrow handlers); they take the same checks as O0.
      self.assertEqual(record['source_status'],0,record);emitted=out/record['source'];subprocess.run(['node','--check',emitted],check=True,capture_output=True)
      if source.stem=='delete_super':
       # The two observations MUST differ. The SDK lowers delete-super as
