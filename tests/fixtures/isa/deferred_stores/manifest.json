@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/deferred_stores/deferred.js",
+   "path": "tests/fixtures/isa/deferred_stores/deferred-O0.abc",
+   "sha256": "8ec9f24bbaa3015c1a50c02e3265f2c778d4820e42b2b34033fbea0a246a6dc7",
+   "source_sha256": "dfb78ac881fa599589bf51089908539d438c261c5628aeae1f27fedbd3ab0dbe",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=deferred_stores",
+    "--source-file=deferred.js",
+    "--output=tests/fixtures/isa/deferred_stores/deferred-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/deferred_stores/deferred.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only."
+}

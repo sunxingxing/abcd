@@ -141,8 +141,17 @@ bool DeferredStore(const analysis::ValueProgram& graph, const CellPlan& plan, Ce
   if (graph.ops[local->allocation.value].block != op.block) {
     // The only store of this cell: count stores among its sorted accesses.
     work += entry.count;
-    return std::count_if(first, last, [](const CellAccess& access) { return access.kind == CellAccessKind::kStore; }) == 1 &&
-        activation.Before(graph, local->allocation, store, work);
+    if (!activation.Before(graph, local->allocation, store, work)) return false;
+    if (std::count_if(first, last, [](const CellAccess& access) { return access.kind == CellAccessKind::kStore; }) == 1)
+      return true;
+    // Several stores: the declaring store dominates every other access of the
+    // cell, so it is the first execution of each path (`let t = null; …
+    // t = later;`). Each check is one dominance query.
+    for (auto it = first; it != last; ++it) {
+      if (it->operation == store) continue;
+      if (!activation.Before(graph, store, it->operation, work)) return false;
+    }
+    return true;
   }
   // Same block: accesses are sorted by operation and one block owns a
   // contiguous range, so the access just before this store must precede the

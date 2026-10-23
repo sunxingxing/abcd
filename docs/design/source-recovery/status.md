@@ -10,6 +10,17 @@
 
 
 
+## Deferred declarations with several stores (2026-10-24)
+
+- A deferred cell's declaring store in another block than its allocation was
+  admitted only as the cell's single store. It is now also admitted when it
+  dominates every other access of the cell (`let timer = null; function
+  done() { … timer … } … timer = later;`), one dominance query per access.
+- Evidence: fixture deferred_stores (Node 4; baseline refuses). Cohorts
+  unchanged (611/546); o32/58223 moves from refusal to partial (status 4):
+  only member m60551 asyncRunSpecs (an array-destructuring for-of nested in
+  a for-of) is omitted. Sweep: only known failures.
+
 ## Captured for-of/for-in loop variables (2026-10-24)
 
 - es2abc stores the iteration value into a fresh per-iteration environment

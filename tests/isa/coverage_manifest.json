@@ -11017,6 +11017,10 @@
       "producer": "tests/isa/captured_loop_bindings_test.py"
     },
     {
+      "test": "isa_deferred_stores_source_test",
+      "producer": "tests/isa/deferred_stores_test.py"
+    },
+    {
       "test": "isa_loop_corridors_source_test",
       "producer": "tests/isa/loop_corridors_test.py"
     }

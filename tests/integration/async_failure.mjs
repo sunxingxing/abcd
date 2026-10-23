@@ -43,6 +43,11 @@ try{
     }
     continue;
    }
+   if(record===58223 && label==='source'){
+    // Since 2026-10-24 the root m58418's multi-store deferred `timer` binds;
+    // only member m60551 (asyncRunSpecs: destructuring for-of in a for-of) is omitted.
+    assert.equal(r.source_status,4);assert.deepEqual(r.source_omitted_members.map(o=>o.method),[60551]);continue;
+   }
    assert.equal(r.source_status,3);assert.equal(r.source,undefined);
    // The input-register proof authorizes no effectful IteratorClose projection.
    if(record===23058){
