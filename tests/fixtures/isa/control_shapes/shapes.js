@@ -54,3 +54,24 @@ export function chainInsideTry(s) {
   }
   return 'end';
 }
+export function finallyInIf(s) {
+  if (s.a) {
+    try {
+      s.run();
+    } catch (e) {
+      s.log('caught:' + e.message);
+    } finally {
+      s.log(s.b ? 'fin-b' : 'fin');
+    }
+  }
+  return s.c;
+}
+export function bareFinallyInIf(s) {
+  if (s.a && s.d) {
+    try {
+      s.run();
+    } finally {
+      s.log('fin');
+    }
+  }
+}

@@ -353,7 +353,14 @@ class ControlBuilder {
       std::optional<ControlId> child;
       bool entered = false;
       std::array<std::optional<ControlId>, analysis::kMaxNormalSuccessors> previous{};
+      std::array<std::size_t, analysis::kMaxNormalSuccessors> previous_level{};
+      std::optional<std::size_t> previous_statement;
     };
+    // A statement-only unit (try wrapper/exit, protocol close) between the
+    // evaluated node and its predicate cannot be a condition prefix: the
+    // query keeps no regional predicate and planning stays ordinary.
+    std::vector<std::size_t> nearest_level; quota_.Size(nearest_level, exit_);
+    std::optional<std::size_t> statement_level;
     std::vector<Frame> stack; quota_.Size(stack, exit_ + 1);
     std::size_t depth = 1;
     stack[0] = {ControlId{static_cast<std::uint32_t>(exit_)}, first_child[exit_]};
@@ -361,18 +368,23 @@ class ControlBuilder {
       quota_.Work(); auto& frame = stack[depth - 1]; const auto id = frame.node.value;
       if (!frame.entered) {
         frame.entered = true;
+        frame.previous_statement = statement_level;
         if (id < exit_) {
           const auto node = graph_.Node({id});
+          if (node.statement) statement_level = depth - 1;
           if (node.arc_count == analysis::kMaxNormalSuccessors) {
             for (std::uint8_t e = 0; e < node.arc_count; ++e) {
               quota_.Work(); const auto target = graph_.Arc({node.first_arc.value + e}).target.value;
               frame.previous[e] = nearest[target]; nearest[target] = frame.node;
+              frame.previous_level[e] = nearest_level[target]; nearest_level[target] = depth - 1;
             }
           }
           for (auto query = first_query[id]; query; query = next_query[query->value]) {
             quota_.Work(); const auto edge = graph_.Arc(*query); const auto source = graph_.Node(edge.source);
             const auto shared = graph_.Arc({source.first_arc.value + (1U - edge.successor)}).target.value;
             result[query->value] = nearest[shared];
+            if (nearest[shared] && statement_level && *statement_level > nearest_level[shared])
+              result[query->value].reset();
           }
         }
       }
@@ -385,10 +397,12 @@ class ControlBuilder {
           const auto node = graph_.Node({id});
           if (node.arc_count == analysis::kMaxNormalSuccessors) {
             for (auto e = node.arc_count; e != 0; --e) {
-              quota_.Work(); nearest[graph_.Arc({node.first_arc.value + e - 1}).target.value] = frame.previous[e - 1];
+              quota_.Work(); const auto target = graph_.Arc({node.first_arc.value + e - 1}).target.value;
+              nearest[target] = frame.previous[e - 1]; nearest_level[target] = frame.previous_level[e - 1];
             }
           }
         }
+        statement_level = frame.previous_statement;
         --depth;
       }
     }

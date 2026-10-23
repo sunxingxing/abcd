@@ -106,6 +106,7 @@ class Projection {
       planned = {wrapper, Target(original.body, ControlScope{region, CatchPart::kProtected}),
           {original.binding->block.value}, {}};
       result_.blocks[wrapper.value].first_arc = {edge_count_};
+      result_.blocks[wrapper.value].statement = true;
       // No exit port: every path through body and handler returns, throws or
       // diverges, so the wrapper never falls through to an enclosing arm's
       // continuation. Layout keeps treating it as ordinary (kExitless).
@@ -120,7 +121,7 @@ class Projection {
       result_.entries[root_count++] = planned.handler;
     }
     for (std::size_t u = wrapper_end_; u < unit_count_; ++u) {
-      quota_.Work(); result_.blocks[u].first_arc = {edge_count_};
+      quota_.Work(); result_.blocks[u].first_arc = {edge_count_}; result_.blocks[u].statement = true;
     }
     for (const auto block : result_.mapping.inactive_phases) {
       quota_.Work(); result_.entries[root_count++] = {block.value};

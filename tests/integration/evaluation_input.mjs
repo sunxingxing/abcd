@@ -33,6 +33,12 @@ try {
     assert.deepEqual(row.source_causes,[{domain:'abcd::source::ModuleEnclosureError',value:10}]);
     assert.deepEqual(report.source_causes,row.source_causes);continue;
    }
+   if(ci===3) {
+    // Since 2026-10-23 a try/finally inside an if is never folded into a
+    // short-circuit condition prefix; releaseCamera (m38116) completes.
+    assert.equal(s.status,0,s.stdout);assert.equal(row.source_complete,true);assert.equal(report.source_complete,true);
+    assert.equal(report.source,readFileSync(join(out,row.source),'utf8'));continue;
+   }
    if(ci<3) {
     assert.equal(s.status,0,s.stdout); assert.equal(row.source_complete,true);
     assert.equal(report.source_complete,true); assert.equal(row.source_failure,undefined);
@@ -56,5 +62,5 @@ try {
 
   }
  }
- console.log('evaluation_input_cli_test: three staged-array completions, both contracts, retained module/decision refusals and CLI/manifest agreement');
+ console.log('evaluation_input_cli_test: three staged-array completions and releaseCamera, both contracts, retained module refusal and CLI/manifest agreement');
 } finally {rmSync(dir,{recursive:true,force:true});}

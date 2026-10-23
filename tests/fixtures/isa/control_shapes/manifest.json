@@ -7,8 +7,8 @@
   {
    "source": "tests/fixtures/isa/control_shapes/shapes.js",
    "path": "tests/fixtures/isa/control_shapes/shapes-O0.abc",
-   "sha256": "ad8b929f56989c76d7830e0cc1fc4c7427021b6e9aa6d496359d9f7749fa1cb4",
-   "source_sha256": "5a081a40f5539181f6f24dfe413d89dac58f43fad159880643593c669e753fd0",
+   "sha256": "e61e8634d5963b4a84938bdd630e3e54d816d7d6a7cd23ff36fc027a38fc5836",
+   "source_sha256": "d10a3cb55786965f9179b38b9432e5f4f193f47095905b220cc7a748fc419dc0",
    "command": [
     "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
     "--module",

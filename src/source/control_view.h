@@ -22,6 +22,9 @@ struct ControlVertex {
   std::uint8_t arc_count;
   ControlTermination termination = ControlTermination::kNormal;
   ControlCompletion completion = ControlCompletion::kOrdinary;
+  // Statement-only unit (try wrapper/exit, protocol close): it can never be
+  // part of a short-circuit condition prefix. Layout is otherwise unaffected.
+  bool statement = false;
 };
 // Like the adjacency view, this borrows an already-checked ValueProgram.
 inline ControlTermination BlockTermination(const analysis::ValueProgram& graph,

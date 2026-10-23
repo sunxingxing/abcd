@@ -130,7 +130,7 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
         else {Require(phase[original.target.value].has_value());add({n},*phase[original.target.value],original.kind,id);}
       }
     } else {
-      const auto& unit=std::get<ProtocolCloseUnit>(t.mapping.units[n]);
+      const auto& unit=std::get<ProtocolCloseUnit>(t.mapping.units[n]);node.statement=true;
       switch(unit.pending.kind) {
         case PendingCompletionKind::kReturn:case PendingCompletionKind::kThrow:
           node.termination=ControlTermination::kAbrupt;break;

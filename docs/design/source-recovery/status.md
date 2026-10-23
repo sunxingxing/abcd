@@ -10,6 +10,18 @@
 
 
 
+## Statement units never enter a condition prefix (2026-10-23)
+
+- `ControlVertex::statement` marks try wrappers, try exits and protocol close
+  units. Regional decision discovery refuses a prefix whose follow chain from
+  the evaluated node to its predicate contains such a unit (e.g. the finally
+  pending-throw check of `if (c) { try {…} finally {…} }` sharing the `if`'s
+  join); planning then stays ordinary. Layout is otherwise unchanged.
+- Evidence: o24/37520 Camera_js CameraService (releaseCamera) completes under
+  both flag sets (609/620 source, 545/620 previous); no other text changes.
+  control_shapes gains finally-in-if cases (Node 192). evaluation_input_cli
+  expectation moves to completion. Sweep 504: only known failures.
+
 ## Split loop-exit corridors; local-class capture requirements (2026-10-23)
 
 - Loop exit corridors: es2abc's shared `jmp` to a for-update block is split
