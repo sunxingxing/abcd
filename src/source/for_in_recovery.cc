@@ -172,7 +172,7 @@ void VerifyForInRecovery(const FunctionTree& tree, RecoveryFlow& flow, TreeCheck
       budget.Step(); const auto id=block.first_op.value+j; const auto& op=raw.operations[id];
       if(op.life!=ValueLife::kLive)continue;
       Need(raw.forwarded_operations[id]==l && !terminal[b]);
-      Need(op.normal==LanguageEffect::kNone && op.before_throw==LanguageEffect::kNone);
+      Need((op.normal==LanguageEffect::kNone || op.scope_pop) && op.before_throw==LanguageEffect::kNone);
       if(op.forwarding_throw) {
         Need(op.exceptional==ExceptionalCompletion::kAlwaysThrow && op.use_count==1 && exits[id]);
         const auto& use=raw.uses[op.first_use.value]; const auto* v=std::get_if<ValueId>(&use.operand);

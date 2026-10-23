@@ -244,8 +244,12 @@ class Proof {
     std::pmr::vector<WorkBlockId> preds(arcs.size(), {}, &q.memory), queue(&q.memory); queue.reserve(count);
     const auto barrier = [&](OpId id) {
       const auto& op = g.ops[id.value];
+      // Leaving a lexical scope (the for-in head's TDZ scope) cannot throw and
+      // observes nothing: it does not separate the acquisition from next.
+      const bool scope_pop = std::holds_alternative<ValueEnvironmentPop>(op.operation) &&
+          op.exceptional == ExceptionalCompletion::kImpossible && op.before_throw == LanguageEffect::kNone;
       return op.life == ValueLife::kLive && ((branches && std::holds_alternative<ValueBranch>(op.operation)) ||
-          (!detail::Inert(op) && !inert_tests[id.value]));
+          (!detail::Inert(op) && !inert_tests[id.value] && !scope_pop));
     };
     for (const auto& edge : arcs) { q.Step(); ++pending[edge.source.value]; ++offsets[edge.target.value + 1]; }
     for (std::size_t b = 1; b < offsets.size(); ++b) { q.Step(); offsets[b] += offsets[b - 1]; }

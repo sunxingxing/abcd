@@ -165,6 +165,14 @@ class StoreCheck {
       declarations_[binding.declaration->value] =
           CellId{static_cast<std::uint32_t>(c)};
     }
+    Array(protocol_inputs_, graph_.uses.size());
+    const auto protocol_input = [&](analysis::UseId use, ExprId expression) {
+      Step(); Require(use.value < protocol_inputs_.size(), Error::kStore);
+      auto& slot = protocol_inputs_[use.value];
+      Require(!slot || *slot == expression, Error::kStore); slot = expression;
+    };
+    if (original->iterations) for (const auto& p : original->iterations->inputs) protocol_input(p.use, p.expression);
+    for (const auto& p : original->enumeration_inputs) protocol_input(p.use, p.expression);
     Array(inputs_, graph_.uses.size());
     for (const auto& input : original->inputs) {
       Step();
@@ -317,13 +325,17 @@ class StoreCheck {
             Error::kStore);
     const auto& use = graph_.uses[op.first_use.value];
     const auto* input = inputs_[op.first_use.value];
+    // A stored loop binding (for-of/for-in value copied into a per-iteration
+    // cell) is recorded by its protocol input, already verified as a read of
+    // the loop variable; it is never an ordinary input occurrence.
+    const bool protocol = !input && op.first_use.value < protocol_inputs_.size() &&
+        protocol_inputs_[op.first_use.value] && *protocol_inputs_[op.first_use.value] == rhs;
     Require(
         use.owner ==
                 std::variant<analysis::OpId, analysis::ValueId>{operation} &&
             use.role == analysis::OperandRole::kStoredValue &&
-            use.purpose == analysis::ReadPurpose::kOperand && input &&
-            input->expression == rhs &&
-            SameOperand(input->operand, use.operand),
+            use.purpose == analysis::ReadPurpose::kOperand &&
+            ((input && input->expression == rhs && SameOperand(input->operand, use.operand)) || protocol),
         Error::kStore);
     const auto& definitions = [&]() -> const auto& {
       if constexpr (std::is_same_v<Site, ExprId>)
@@ -415,6 +427,7 @@ class StoreCheck {
   std::vector<std::optional<analysis::OpId>> input_allocations_,
       output_allocations_;
   std::vector<const OriginalInput*> inputs_;
+  std::vector<std::optional<ExprId>> protocol_inputs_;
   std::vector<std::optional<CellId>> declarations_;
   bool indexed_ = false;
   std::optional<abc::CodeOffset> pc_;

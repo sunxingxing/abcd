@@ -10,6 +10,26 @@
 
 
 
+## Captured for-of/for-in loop variables (2026-10-24)
+
+- es2abc stores the iteration value into a fresh per-iteration environment
+  when a closure captures the loop variable. The lexical-store verifier now
+  accepts a stored value whose use is a verified protocol input (for-of
+  iteration input / for-in enumeration input, indexed once by use) whose
+  expression is the store's right-hand side. Output: `for ($k of xs) { let
+  $local = $k; … }`, a fresh binding per iteration.
+- for-in head scope: a non-throwing environment pop does not separate the
+  acquisition from `next` in the order proof; forwarded handler blocks admit
+  typed `scope_pop` operations in for-in recovery.
+- Evidence: o32/46008 hypium configService completes (611/620 source;
+  previous unchanged 546/620); no other text changes. Fixture
+  captured_loop_bindings (Node: deferred closures per iteration); baseline
+  refuses it. for_in_plan_test's `captured` case moves from refusal to a
+  proved plan (its context-free evaluation/emission checks skip cell graphs).
+  o32/58223 returns to its root m58418 (deferred cell for child m59227).
+  Remaining: a captured `let` loop variable reassigned in the body
+  (variable projection) and for (let i…) per-iteration copies.
+
 ## for-in keys as method-call receivers (2026-10-24)
 
 - A for-in key value (`kNextResult`, incl. copies) is the loop variable for its

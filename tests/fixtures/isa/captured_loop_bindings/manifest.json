@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/captured_loop_bindings/bindings.js",
+   "path": "tests/fixtures/isa/captured_loop_bindings/bindings-O0.abc",
+   "sha256": "1c775c2b0c3dec1f4edea6d5193bf3210071f822055eae722968fc614d6b0282",
+   "source_sha256": "9f134c8017ee3be06391c76663c55d2a79109bf653a170fbb3f7a2c9ab1c9f29",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=captured_loop_bindings",
+    "--source-file=bindings.js",
+    "--output=tests/fixtures/isa/captured_loop_bindings/bindings-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/captured_loop_bindings/bindings.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only. A captured `let` loop variable reassigned in the body still refuses at variable projection (TreePrintError::kUnsupportedContext); for (let i\u2026) per-iteration copies refuse at environment flow."
+}
