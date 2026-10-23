@@ -457,7 +457,9 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
     test::Check(std::holds_alternative<FamilyFileFailure>(family_result) == family_refuses);
     if (object == CallerObject::kMethod && count != 0) {
       const auto& failure = std::get<FamilyFileFailure>(family_result);
-      test::Check(std::get<BodyEmitFailure>(failure.cause).object_error == ObjectBufferError::kValue &&
+      // METHOD without METHOD_AFFILIATE is not a v7 ExtractObjectDatas method
+      // entry: the methods-enabled buffer reader refuses its shape.
+      test::Check(std::get<BodyEmitFailure>(failure.cause).object_error == ObjectBufferError::kShape &&
           failure.creation_pc == abc::CodeOffset{0});
       const auto rejected = CreationTreeContext::Resolve(
           file, header, index, lookup, roles, sites, range.first, identity);

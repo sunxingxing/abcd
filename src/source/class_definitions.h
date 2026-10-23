@@ -76,6 +76,7 @@ struct ClassDefinitionProjection {
 ProjectClassDefinitions(const analysis::ValueProgram&,
                         std::span<const ClassDefinitionSite>,
                         analysis::SemanticBudget = {},
-                        const ClassSelfOrder* = nullptr);
+                        const ClassSelfOrder* = nullptr,
+    std::span<const analysis::OpId> home_consumers = {});
 }
 #endif

@@ -1,5 +1,7 @@
 #include "class_initializers.h"
 #include "../analysis/value_flow.h"
+#include <algorithm>
+#include <bit>
 #include <new>
 #include <stdexcept>
 namespace abcd::source {
@@ -86,6 +88,62 @@ std::variant<ClassInitializerCalls, ClassInitializerError> FindClassInitializerC
       if (!callee || *callee != *op.result || !receiver || *receiver != *home ||
           graph.values[call.result->value].first_use) continue;
       result.calls.push_back({origin->op, id, *call_id, *home});
+    }
+    // Stored instance initializers: home is an actual prototype read of a
+    // class creation, and the method's only use is one lexical store.
+    if (methods) {
+      auto reads = FindClassPrototypeReads(graph, budget);
+      if (const auto* error = std::get_if<ClassPrototypeError>(&reads))
+        return *error == ClassPrototypeError::kResourceLimit ? Error::kResourceLimit :
+            *error == ClassPrototypeError::kWorkLimit ? Error::kWorkLimit : Error::kFlow;
+      const auto& prototypes = std::get<ClassPrototypeReads>(reads);
+      admit(prototypes.allocated_bytes, 1); step(prototypes.work);
+      std::size_t count = 0;
+      const auto candidate = [&](std::uint32_t i) -> std::optional<ClassInstanceInitializer> {
+        const OpId id{i}; const auto& op = graph.ops[i];
+        const auto* method = std::get_if<ValueFunctionCreation>(&op.operation);
+        if (op.life != ValueLife::kLive || !method || method->kind != CreationKind::kMethod ||
+            method->home_object != HomeObjectInput::kAccumulator || method->length || !op.result) return {};
+        const auto* home = std::get_if<ValueId>(&operand(id, 0, OperandRole::kHomeObject, ReadPurpose::kProtocol));
+        if (!home) return {};
+        const auto* origin = std::get_if<OpResult>(&graph.values[home->value].origin);
+        // v7 RuntimeDefineGetterSetterByValue returns its object: a home that is
+        // an accessor definition's result is that definition's base object.
+        // es2abc may also leave a preceding member method in acc; that home is
+        // not the prototype and is admitted only for super-free bodies.
+        bool prototype_home = true;
+        for (std::size_t hops = 0; origin && hops < graph.ops.size(); ++hops) {
+          step(); const auto& definer = graph.ops[origin->op.value];
+          if (definer.life != ValueLife::kLive) break;
+          const ValueId* base = nullptr;
+          if (std::holds_alternative<ValueDefineAccessor>(definer.operation)) {
+            base = std::get_if<ValueId>(&operand(origin->op, 0, OperandRole::kBase, ReadPurpose::kOperand));
+          } else if (const auto* member = std::get_if<ValueFunctionCreation>(&definer.operation);
+                     member && member->kind == CreationKind::kMethod && member->home_object == HomeObjectInput::kAccumulator) {
+            base = std::get_if<ValueId>(&operand(origin->op, 0, OperandRole::kHomeObject, ReadPurpose::kProtocol));
+            prototype_home = false;
+          } else break;
+          origin = base ? std::get_if<OpResult>(&graph.values[base->value].origin) : nullptr;
+        }
+        if (!origin) return {};
+        step(std::bit_width(prototypes.reads.size()) + 1);
+        const auto read = std::lower_bound(prototypes.reads.begin(), prototypes.reads.end(), origin->op,
+            [](const auto& item, OpId wanted) { return item.read < wanted; });
+        if (read == prototypes.reads.end() || read->read != origin->op) return {};
+        const auto first = graph.values[op.result->value].first_use;
+        if (!first) return {};
+        const auto& use = graph.uses[first->value];
+        const auto* store_id = std::get_if<OpId>(&use.owner);
+        if (use.next || !store_id || use.role != OperandRole::kStoredValue) return {};
+        const auto& store = graph.ops[store_id->value];
+        const auto* lexical = std::get_if<ValueLexicalStore>(&store.operation);
+        if (store.life != ValueLife::kLive || !lexical) return {};
+        return ClassInstanceInitializer{read->creation, read->read, id, *store_id, lexical->address, prototype_home};
+      };
+      for (std::uint32_t i = 0; i < graph.ops.size(); ++i) { step(); count += candidate(i).has_value(); }
+      admit(count, sizeof(ClassInstanceInitializer)); result.instances.reserve(count);
+      admit(result.instances.capacity() - count, sizeof(ClassInstanceInitializer));
+      for (std::uint32_t i = 0; i < graph.ops.size(); ++i) { step(); if (auto found = candidate(i)) result.instances.push_back(*found); }
     }
     result.allocated_bytes = initial.bytes - budget.bytes;
     result.work = initial.work - budget.work;

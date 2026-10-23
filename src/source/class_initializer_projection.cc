@@ -21,8 +21,22 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       require(n <= budget.bytes / width, Error::kResourceLimit); budget.bytes -= n * width;
     };
     ClassProjection result;
+    // Stored instance initializers are discovered from this same graph, so
+    // every projection consumer sees them; class syntax must then print them.
+    std::optional<ClassInitializerCalls> discovered;
+    if (graph.phases.empty()) {
+      auto scanned = FindClassInitializerCalls(graph, budget);
+      if (const auto* error = std::get_if<Error>(&scanned)) return *error;
+      discovered.emplace(std::get<ClassInitializerCalls>(std::move(scanned)));
+      admit(discovered->allocated_bytes, 1); step(discovered->work);
+    }
+    const std::span<const ClassInstanceInitializer> instances =
+        discovered ? std::span<const ClassInstanceInitializer>(discovered->instances) : std::span<const ClassInstanceInitializer>{};
+    std::vector<OpId> home_consumers;
+    admit(instances.size(), sizeof(OpId)); home_consumers.reserve(instances.size());
+    for (const auto& instance : instances) { step(); home_consumers.push_back(instance.method); }
     auto member_result =
-        ProjectClassDefinitions(graph, definitions, budget, self_order);
+        ProjectClassDefinitions(graph, definitions, budget, self_order, home_consumers);
     if (const auto* error = std::get_if<ClassDefinitionError>(&member_result)) {
       switch (*error) {
         case ClassDefinitionError::kInput: return Error::kInput;
@@ -76,7 +90,7 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       result.allocated_bytes = initial.bytes - budget.bytes; result.work = initial.work - budget.work;
       return std::move(result);
     };
-    if (requested.empty()) {
+    if (requested.empty() && instances.empty()) {
       return finish();
     }
     const auto available = BuildEffectOrder(graph,budget);
@@ -150,6 +164,42 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
       step();
       if (result.owners[i] && HasOrderedEffect(graph.ops[i]))
         effects[i] = result.owners[i];
+    }
+    // Stored instance initializers: the prototype read (if otherwise unused),
+    // the method and its single slot store join the creation's private
+    // corridor. A store of the class value itself (its own binding slot) is a
+    // retained cell write inside that corridor, never projected away.
+    std::optional<OpId> last_instance;
+    for (const auto& instance : instances) {
+      step(); require(!last_instance || *last_instance < instance.method); last_instance = instance.method;
+      require(instance.creation.value < graph.ops.size() && instance.prototype.value < graph.ops.size() &&
+          instance.method.value < graph.ops.size() && instance.store.value < graph.ops.size());
+      const auto& creation = graph.ops[instance.creation.value];
+      require(std::holds_alternative<ValueClassCreation>(creation.operation) && creation.result, Error::kInput);
+      const auto project = [&](OpId id) {
+        const auto& op = graph.ops[id.value];
+        require(order.Before(graph, instance.creation, op.block, op.order), Error::kFlow);
+        require(!result.owners[id.value] || *result.owners[id.value] == instance.creation, Error::kFlow);
+        result.owners[id.value] = instance.creation;
+        if (HasOrderedEffect(op)) effects[id.value] = instance.creation;
+      };
+      const auto& read = graph.ops[instance.prototype.value];
+      require(read.result.has_value());
+      const auto first = graph.values[read.result->value].first_use;
+      if (first && !graph.uses[first->value].next && graph.uses[first->value].owner == decltype(graph.uses[first->value].owner){instance.method}) {
+        if (!result.owners[instance.prototype.value]) { project(instance.prototype); result.prototypes.push_back(instance.prototype); }
+      }
+      project(instance.method); project(instance.store);
+      for (auto use = graph.values[creation.result->value].first_use; use; use = graph.uses[use->value].next) {
+        step(); const auto* owner = std::get_if<OpId>(&graph.uses[use->value].owner);
+        if (!owner || graph.uses[use->value].role != OperandRole::kStoredValue) continue;
+        const auto& op = graph.ops[owner->value];
+        if (std::holds_alternative<ValueLexicalStore>(op.operation) && !result.owners[owner->value] &&
+            !effects[owner->value] && order.Before(graph, instance.creation, op.block, op.order) &&
+            order.Before(graph, *owner, graph.ops[instance.store.value].block, graph.ops[instance.store.value].order))
+          effects[owner->value] = instance.creation;
+      }
+      require(HasOrderedEffect(creation), Error::kFlow);
     }
     std::optional<OpId> previous;
     for (const auto& call : requested) {

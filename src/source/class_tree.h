@@ -19,6 +19,15 @@ struct ClassStaticFields {
   abc::EntityOffset record;
   TreeFlow flow;
 };
+// Native instance fields from a certified stored instance initializer. Its
+// constructor event is consumed by the constructor's entry projection.
+struct ClassInstanceFields {
+  ClassInstanceInitializer site;
+  FunctionContext context;
+  FunctionTree tree;
+  abc::EntityOffset record;
+  TreeFlow flow;
+};
 // Actual unpublished syntax, not another raw-analysis diagnostic. In particular
 // ordinary captured cells remain unresolved requirements, never fake aliases.
 struct ClassSelfClassDraft {
@@ -132,6 +141,7 @@ struct ClassTree {
   std::vector<ClassMemberOmission> omissions; // Ordered by original property.
   std::vector<ClassDefinitionTree> definitions;
   std::optional<ClassStaticFields> initializer;
+  std::optional<ClassInstanceFields> instance_fields;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
   [[nodiscard]] bool BodiesPrepared() const;
@@ -201,6 +211,7 @@ struct PrintedClassTree {
   struct Member { std::size_t offset; PrintedFamilyDraft positions; };
   std::vector<Member> members; // Constructor first.
   std::optional<PrintedFunction> initializer;
+  std::optional<PrintedFunction> instance_fields;
   std::size_t bytes = 0;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;

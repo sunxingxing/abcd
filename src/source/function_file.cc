@@ -38,6 +38,14 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
     // Exception-transparent rethrow regions are semantically absent; the
     // method then takes the normal route (analysis/transparent_rethrow.h).
     static_cast<void>(analysis::EraseTransparentRethrowRegions(body));
+    // A certified stored instance initializer runs as native class fields:
+    // its base-constructor entry event becomes class syntax, not a statement.
+    if (const auto* context = owner ? owner->ClassContext() : nullptr;
+        context && context->Constructor() && context->InstanceInitializer()) {
+      if (owner->Callable() != CallableKind::kBaseConstructor) return FunctionFileFailure{InstanceInitializationError::kCall};
+      const auto projected = ProjectInstanceInitialization(body, frame, *context->InstanceInitializer());
+      if (const auto* error = std::get_if<InstanceInitializationError>(&projected)) return FunctionFileFailure{*error};
+    }
     arena(body.instructions); arena(body.tries); arena(body.handlers);
     std::optional<CleanupBody> cleanup;
     if (body_mode == FunctionBodyMode::kCleanupEntry) {

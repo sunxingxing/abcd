@@ -75,8 +75,13 @@ class ClassTreeContext {
   [[nodiscard]] Strictness Mode() const { return Strictness::kStrict; }
   [[nodiscard]] std::size_t AllocatedBytes() const { return sizeof(*this) + (name_.capacity() + 1) * sizeof(char16_t); }
   [[nodiscard]] std::uint64_t Work() const { return work_; }
+  // Constructor only: the creator's stored instance initializer occupies this
+  // slot of the class-creation environment (depth 0 at constructor entry).
+  // The slot's privacy is a separate class-tree obligation.
+  [[nodiscard]] std::optional<analysis::LexicalSlot> InstanceInitializer() const { return instance_initializer_; }
  private:
   ClassTreeContext() = default;
+  std::optional<analysis::LexicalSlot> instance_initializer_;
   RouteInputIdentity identity_;
   std::variant<analysis::ClassMethodSite, ClassConstructorSite, ClassDefinedMember> site_;
   abc::MethodPosition position_;

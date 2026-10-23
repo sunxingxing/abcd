@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/instance_fields/fields.js",
+   "path": "tests/fixtures/isa/instance_fields/fields-O0.abc",
+   "sha256": "4535f6c9b55b957130b73ff629046afb940cc41b9aa0bfc2150d8ea0c5f20a73",
+   "source_sha256": "2c65b5f14285d58ad916db8d12474b5691ac47be4b22d0934411ad05d80ad8a3",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=instance_fields",
+    "--source-file=fields.js",
+    "--output=tests/fixtures/isa/instance_fields/fields-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/instance_fields/fields.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only."
+}

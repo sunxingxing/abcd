@@ -32,7 +32,7 @@ class SuperStores(unittest.TestCase):
      rows=probe(abc);self.assertTrue(all(r['lift']['status']=='ok' for r in rows));out=root/str(i);r=recover(abc,out)
      if not e['complete']:
       self.assertNotEqual(r['source_status'],0,r)
-      expected={'effectful':('abcd::source::TreeSemanticError',15),'key':('abcd::source::TreeSemanticError',11),'object':('abcd::source::ObjectBufferError',0)}[source.stem]
+      expected={'effectful':('abcd::source::TreeSemanticError',15),'key':('abcd::source::TreeSemanticError',11),'object':('abcd::source::FamilyCreationCheck',21)}[source.stem]
       self.assertIn(expected,[(c['domain'],c['value']) for c in r['source_failure']['causes']]);continue
      self.assertEqual(r['source_status'],0,r);seen|={r['encoding']['opcode'] for r in rows};emitted=out/r['source'];subprocess.run(['node','--check',emitted],check=True,capture_output=True)
      result=json.loads(subprocess.check_output(['node',ROOT/'tests/integration/isa_super_stores.mjs',source,emitted],text=True));record_node(abc,out,source,__file__,result['cases'],BUILD/'abc_structure')

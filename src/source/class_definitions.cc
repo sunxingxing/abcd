@@ -1,4 +1,6 @@
 #include "class_definitions.h"
+#include "class_initializers.h"
+#include <algorithm>
 #include "effect_order.h"
 #include "../analysis/value_edits.h"
 #include <new>
@@ -21,6 +23,19 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
     step(graph.ops.size()); step(graph.values.size()); step(graph.uses.size());
     admit(graph.uses.size(), sizeof(std::uint8_t));
     require(!VerifyValueUses(graph, graph.uses.size()));
+    // es2abc may leave a member function in acc as a stored instance
+    // initializer's home object: that one extra use is not an escape.
+    std::vector<OpId> instance_methods;
+    if (graph.phases.empty()) {
+      auto found = FindClassInitializerCalls(graph, budget);
+      if (const auto* error = std::get_if<ClassInitializerError>(&found))
+        return *error == ClassInitializerError::kResourceLimit ? Error::kResourceLimit :
+            *error == ClassInitializerError::kWorkLimit ? Error::kWorkLimit : Error::kFlow;
+      const auto& calls = std::get<ClassInitializerCalls>(found);
+      admit(calls.allocated_bytes, 1); step(calls.work);
+      admit(calls.instances.size(), sizeof(OpId)); instance_methods.reserve(calls.instances.size());
+      for (const auto& instance : calls.instances) { step(); instance_methods.push_back(instance.method); }
+    }
     const auto input = [&](OpId id, std::uint32_t ordinal, OperandRole role, ReadPurpose purpose = ReadPurpose::kOperand) -> const ValueOperand& {
       require(id.value < graph.ops.size()); const auto& op = graph.ops[id.value];
       require(ordinal < op.use_count);
@@ -97,10 +112,18 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
             (accessor && creation->length != n) || method.use_count != 1 ||
             producer(input(*method_id, 0, OperandRole::kHomeObject, ReadPurpose::kProtocol)) != producer(base)) { valid = false; break; }
         require(method.result.has_value());
-        const auto use = graph.values[method.result->value].first_use;
         // Simplification has removed register copies. The function object must
-        // be consumed exactly once by this definition, not escape or be reused.
-        if (!use || use->value != op.first_use.value + ordinal || graph.uses[use->value].next) { valid = false; break; }
+        // be consumed exactly once by this definition, not escape or be reused,
+        // apart from serving as a stored instance initializer's home object.
+        std::size_t defining = 0;
+        for (auto use = graph.values[method.result->value].first_use; use; use = graph.uses[use->value].next) {
+          step(); const auto& occurrence = graph.uses[use->value];
+          const auto* consumer = std::get_if<OpId>(&occurrence.owner);
+          if (use->value == op.first_use.value + ordinal) { ++defining; continue; }
+          if (!consumer || occurrence.role != OperandRole::kHomeObject ||
+              !std::binary_search(instance_methods.begin(), instance_methods.end(), *consumer)) { defining = 2; break; }
+        }
+        if (defining != 1) { valid = false; break; }
         methods[n] = method_id;
       }
       if (!valid || (!methods[0] && !methods[1])) continue;

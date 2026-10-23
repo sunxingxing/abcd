@@ -159,8 +159,18 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
         charge();
         stack.pop_back();
       }
-      if (!stack.empty()) {
-        const auto parent_id = stack.back();
+      // A region wholly between an open region's protected body and its later
+      // handler (e.g. a normal-completion close after the protected elements)
+      // is not nested in it; its parent is further down. Keep the skipped
+      // regions open: later regions may still nest in their handlers.
+      auto top = stack.size();
+      while (top != 0) {
+        const auto& open = result.regions[stack[top - 1].value];
+        if (region.body.begin < open.body.end || region.handler.end > open.handler.begin) break;
+        charge(); --top;
+      }
+      if (top != 0) {
+        const auto parent_id = stack[top - 1];
         const auto& parent = result.regions[parent_id.value];
         CatchScope scope{parent_id, CatchPart::kProtected};
         if (region.body.begin >= parent.handler.begin) scope.part = CatchPart::kHandler;

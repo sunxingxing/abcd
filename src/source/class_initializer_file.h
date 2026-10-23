@@ -25,5 +25,13 @@ using ClassInitializerReadFailure = std::variant<ClassInitializerError, Creation
     const abc::MethodLookup&, const analysis::MethodRoleIndex&,
     const analysis::FunctionCreationSites&, const FileFunction&, const ClassInitializerCall&,
     analysis::SemanticBudget = {}, const RecordModuleContext* modules = nullptr);
+// Stored instance initializer occurrence (class creation, prototype home,
+// single slot store): the same genuine DEFINEMETHOD binding and Closed body
+// read as above. Field placement and the constructor event are separate.
+[[nodiscard]] std::variant<ClassInitializerFunction, ClassInitializerReadFailure> ReadClassInstanceInitializer(
+    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
+    const abc::MethodLookup&, const analysis::MethodRoleIndex&,
+    const analysis::FunctionCreationSites&, const FileFunction&, const ClassInstanceInitializer&,
+    analysis::SemanticBudget = {}, const RecordModuleContext* modules = nullptr);
 }
 #endif

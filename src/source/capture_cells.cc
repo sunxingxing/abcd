@@ -185,7 +185,8 @@ CaptureParent Parent(CaptureFunction function) {
       function.values.environments ? &*function.values.environments : nullptr,
       CaptureChild(function).Cells(), function.input.Input().instructions,
       function.input.Proof().locals.allocations, ScopeFacts(function.input.Input(), function.input.Proof(),
-          Prefixes(function), CaptureReads(function.input.Identity().contract) == CaptureReadSemantics::kSourceTdz)};
+          Prefixes(function), CaptureReads(function.input.Identity().contract) == CaptureReadSemantics::kSourceTdz),
+      function.values.initializers.instances};
 }
 void Owner(const CaptureParent& parent, Quota& quota) {
   quota.Step();
@@ -310,6 +311,16 @@ CaptureTarget Rebase(const CaptureParent& parent, analysis::OpId creation, Incom
   const auto resolved = flow.environments.ResolveCapture(*flow.before[creation.value], incoming.depth, incoming.slot);
   const auto* binding = std::get_if<analysis::LexicalBinding>(&resolved);
   Require(binding != nullptr, Error::kBinding);
+  // A certified instance-initializer slot of this class has no source binding:
+  // its only reader is the constructor entry event consumed by class syntax.
+  for (const auto& instance : parent.instances) {
+    quota.Step();
+    if (instance.creation != creation) continue;
+    const auto slot = flow.environments.ResolveCapture(*flow.before[creation.value], analysis::CapturedDepth{0}, instance.slot.slot);
+    const auto* private_slot = std::get_if<analysis::LexicalBinding>(&slot);
+    Require(private_slot && !(private_slot->environment == binding->environment &&
+        private_slot->slot.value == binding->slot.value), Error::kBinding);
+  }
   if (const auto* outer = std::get_if<analysis::CapturedDepth>(&binding->environment))
     return Target(parent, IncomingCell{*outer, binding->slot}, quota);
   const auto environment = std::get<analysis::EnvironmentId>(binding->environment);

@@ -71,7 +71,7 @@ struct PrintedFunction {
     const FunctionTree& tree, std::ostream& output,
     EmitBudget output_budget = {}, analysis::SemanticBudget scratch = {}, std::size_t indent = 0,
     const GlobalScope* scope = nullptr, std::optional<abc::EntityOffset> record = {},
-    const OriginalFlow* original = nullptr);
+    const OriginalFlow* original = nullptr, bool instance = false);
 
 // Optional original facts must belong to this exact unchanged checked tree and
 // outlive printing. They refine analysis, never authorize publication.

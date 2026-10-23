@@ -150,3 +150,38 @@ partial write order. A valid-JS mutation replacing the observed-cell assignment
 with Object.defineProperty must fail this independent contract. This accepts the
 tested record's constructor/body integration, without turning its setter-capable
 assignments into declarations or closing every class's structural gate.
+
+## Stored instance initializers → native fields (2026-10-24)
+
+es2panda compiles instance fields into a zero-length `instance_initializer`
+method: the creator DEFINEMETHODs it with the class prototype (or, after
+member installation, another member function left in acc) as home object and
+STLEXVARs it into a private slot of the class-creation environment; the base
+constructor loads that slot at entry and runs `callruntime.callinit` on its
+instance (es2panda `function.cpp:219-233`; v7 `interpreter-inl.cpp:1499`,
+CALLTHIS0 semantics). The initializer body DEFINEs each field on `this`.
+
+- `FindClassInitializerCalls` also records `ClassInstanceInitializer`
+  (creation, prototype read, method, single lexical store, slot). The home is
+  traced through accessor definitions (v7 `RuntimeDefineGetterSetterByValue`
+  returns its object) and member method creations; a non-prototype home is
+  admitted only for an initializer body without super lookups.
+- `ProjectClassMembers` projects the method, store and an otherwise unused
+  prototype read into the class's private effect corridor (no observable
+  effect between creation and the store, so no construction can precede it).
+  Member definitions accept exactly that extra home use of an accessor
+  result or member function.
+- `ResolveConstructor` certifies the slot when the store's environment is the
+  one before class creation; `ProjectInstanceInitialization` then requires the
+  base constructor's entry prefix to be register moves, `LDLEXVAR 0, slot;
+  CALLINIT imm, vThis`, an accumulator-free successor, no branch/handler at or
+  before the call and no other load of the slot, and replaces both by NOPs:
+  native field initialization occurs at exactly this point of [[Construct]].
+- Capture binding refuses any class member capturing the private slot.
+- The class tree reads the body (Closed captures) like a static initializer
+  and prints it as native fields; a class whose creation owns an initializer
+  is refused rather than printed without it.
+
+Derived constructors (CALLINIT after super), capturing initializers and
+private names remain refused. Evidence: fixture `instance_fields` (Node 8;
+a dropped-field mutant fails), o32 ArgumentMatchers complete.

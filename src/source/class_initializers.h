@@ -13,9 +13,30 @@ struct ClassInitializerCall {
   analysis::ValueId receiver;
   bool operator==(const ClassInitializerCall&) const = default;
 };
+// es2abc instance fields: a zero-length DEFINEMETHOD whose home object is the
+// class's own prototype read, stored once into a lexical slot. The class
+// constructor loads that slot and CALLINITs it on its instance. This records
+// the creator occurrence only; the slot's privacy, the constructor event and
+// the body's field definitions are separate obligations.
+struct ClassInstanceInitializer {
+  analysis::OpId creation;
+  analysis::OpId prototype;
+  analysis::OpId method;
+  analysis::OpId store;
+  analysis::LexicalAddress slot;
+  // The home object is the prototype read itself; otherwise it is another
+  // member function, observable only through super, which the body must lack.
+  bool prototype_home = true;
+  bool operator==(const ClassInstanceInitializer& other) const {
+    return creation == other.creation && prototype == other.prototype && method == other.method &&
+        prototype_home == other.prototype_home &&
+        store == other.store && slot.depth.value == other.slot.depth.value && slot.slot.value == other.slot.slot.value;
+  }
+};
 struct ClassInitializerCalls {
   analysis::IrRevision revision;
   std::vector<ClassInitializerCall> calls;
+  std::vector<ClassInstanceInitializer> instances;  // Sorted by method.
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

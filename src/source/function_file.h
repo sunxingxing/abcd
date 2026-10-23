@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_FUNCTION_FILE_H_
 #define ABCD_SOURCE_FUNCTION_FILE_H_
 
+#include "instance_initialization.h"
 #include <memory>
 
 #include "abcd/source/record_module_context.h"
@@ -29,7 +30,7 @@ struct FileFunction {
 enum class FunctionFileError : std::uint8_t { kIdentity, kMethod, kChanged, kResourceLimit };
 using FunctionFileFailure = std::variant<FunctionFileError, abc::BodyFailure,
     abc::MetadataError, abc::FrameError, FunctionInputFailure, FunctionValueFailure,
-    ModuleReadFailure, CleanupFailure>;
+    ModuleReadFailure, CleanupFailure, InstanceInitializationError>;
 enum class FunctionBodyMode : std::uint8_t { kOriginal, kCleanupEntry };
 // Same unchanged file/header/index/identity, with a validated method position.
 // Reads the ABI and body itself and retains original input alongside working

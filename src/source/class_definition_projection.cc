@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <new>
 #include <stdexcept>
 
@@ -11,7 +12,8 @@ std::variant<ClassDefinitionProjection, ClassDefinitionError>
 ProjectClassDefinitions(const analysis::ValueProgram& graph,
                         std::span<const ClassDefinitionSite> requested,
                         analysis::SemanticBudget budget,
-                        const ClassSelfOrder* self_order) {
+                        const ClassSelfOrder* self_order,
+                        std::span<const analysis::OpId> home_consumers) {
   using namespace analysis;
   using Error = ClassDefinitionError;
   const auto initial = budget;
@@ -76,8 +78,15 @@ ProjectClassDefinitions(const analysis::ValueProgram& graph,
       if (site.prototype) claim(*site.prototype, true);
       // An accessor definition returns its home object. Until alias correspondence is
       // established, even a later use must not disappear with the definition.
+      // The single exception: the home operand of a stored instance initializer
+      // (sorted home_consumers), which the caller then projects into this class.
       const auto value = graph.ops[site.definition.value].result;
-      require(!value || !graph.values[value->value].first_use, Error::kFlow);
+      if (value) for (auto use = graph.values[value->value].first_use; use; use = graph.uses[use->value].next) {
+        step(); const auto& occurrence = graph.uses[use->value];
+        const auto* consumer = std::get_if<OpId>(&occurrence.owner);
+        require(consumer && occurrence.role == OperandRole::kHomeObject &&
+            std::binary_search(home_consumers.begin(), home_consumers.end(), *consumer), Error::kFlow);
+      }
     }
     std::vector<std::optional<OpId>> private_stores;
     if (self_order && !self_order->Installations(graph).empty()) {

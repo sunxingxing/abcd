@@ -271,6 +271,19 @@ class FamilyReader {
                 index_.methods[target.value].owner_offset, *parent_, *pc_}} : std::nullopt;
       auto child = ReadMethod(target, &context, InputCaptureMode::kConditional,
           module_input ? &*module_input : nullptr, inherited ? &*inherited : nullptr);
+      // The literal home object has no source binding yet: super lookups in an
+      // object-literal method stay a typed refusal at its creation.
+      if (literal_method)
+        for (const auto& op : child.Graph().ops) {
+          Step();
+          const auto super_lookup = std::visit([](const auto& operation) {
+            if constexpr (requires { { operation.lookup == analysis::PropertyLookup::kSuper } -> std::convertible_to<bool>; })
+              return operation.lookup == analysis::PropertyLookup::kSuper;
+            else return false;
+          }, op.operation);
+          RequireCreation(op.life != analysis::ValueLife::kLive || !super_lookup,
+              FamilyCreationCheck::kLiteralMethod, parent, cursor.member, site);
+        }
       const auto child_work = child.Capture();
       auto captured = parent.Phase() ? BindPhasedCaptureCells(index_, lookup_, parent.Phase()->Phases(),
           parent.Body(), parent.Phase()->Locals(), *phase_creation, child_work, context, Remaining()) :

@@ -239,7 +239,7 @@ target_sources(abcd_source PRIVATE src/source/capture_aliases.cc)
 target_sources(abcd_source PRIVATE src/source/function_family.cc)
 target_sources(abcd_source PRIVATE src/source/family_enclosure.cc src/source/class_names.cc)
 target_sources(abcd_source PRIVATE src/source/family_writes.cc src/source/lexical_stores.cc)
-target_sources(abcd_source PRIVATE src/source/function_file.cc)
+target_sources(abcd_source PRIVATE src/source/function_file.cc src/source/instance_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/phased_function_file.cc src/source/guarded_stores.cc)
 target_sources(abcd_source PRIVATE src/source/family_file.cc)
 target_sources(abcd_source PRIVATE src/source/family_cells.cc)
@@ -455,6 +455,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/deferred_stores_test.py)
     add_test(NAME isa_object_methods_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/object_methods_test.py)
+    add_test(NAME isa_instance_fields_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/instance_fields_test.py)
     add_test(NAME isa_loop_corridors_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/loop_corridors_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}

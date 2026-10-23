@@ -10,6 +10,19 @@
 
 
 
+## Native instance fields; gap regions (2026-10-24)
+
+- Stored instance initializers (`instance_initializer` + private slot +
+  constructor-entry `callruntime.callinit`) become native class fields for
+  base classes; design in [instance-fields.md](../instance-fields.md). Derived
+  classes, capturing initializers and private names stay refused.
+- Exception regions: a try region lying wholly between an open region's
+  protected body and its handler (array-destructuring normal close) nests in
+  the next enclosing region instead of failing `kCrossingScopes`.
+- Evidence: fixture instance_fields (Node 8; dropped-field mutant fails).
+  Cohorts 612→613 / 547 (o32 ArgumentMatchers), no regressions, no text
+  changes (`build/review/csr74`).
+
 ## Object-literal methods (2026-10-24)
 
 - `CREATEOBJECTWITHBUFFER` method entries (`key + METHOD* + METHOD_AFFILIATE`)

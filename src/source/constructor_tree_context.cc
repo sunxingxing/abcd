@@ -96,6 +96,19 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveCon
     context.callable_ = derived ? CallableKind::kDerivedConstructor : CallableKind::kBaseConstructor;
     context.name_ = u"constructor";
     admit(context.name_.capacity() + 1, sizeof(char16_t));
+    // A stored instance initializer of THIS creation, written in the very
+    // environment the constructor closes over (its depth-0 slot at entry).
+    for (const auto& instance : creator.values.initializers.instances) {
+      step(1);
+      if (instance.creation != operation) continue;
+      const auto& environments = creator.values.environments;
+      if (context.instance_initializer_ || instance.slot.depth.value != 0 || !environments ||
+          instance.store.value >= environments->flow.before.size() ||
+          !environments->flow.before[instance.store.value] || !environments->flow.before[operation.value] ||
+          *environments->flow.before[instance.store.value] != *environments->flow.before[operation.value])
+        return fail(Error::kSite);
+      context.instance_initializer_ = instance.slot.slot;
+    }
     context.work_ = initial.work - budget.work;
     if (file.CheckUnchanged()) return ClassContextFailure{abc::MetadataError::kFileChanged};
     return context;

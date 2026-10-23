@@ -209,8 +209,9 @@ class TreePrinter {
     return std::move(result_);
   }
   PrintedFunction Direct(bool module = false, bool fields = false, std::size_t indent = 0,
-      std::optional<ModuleDefaultExport> default_export = {}) {
+      std::optional<ModuleDefaultExport> default_export = {}, bool instance = false) {
     default_export_ = default_export;
+    instance_fields_ = instance;
     module_body_ = module || fields;
     static_fields_ = fields;
     if (Tree().class_scope && !fields) throw Error::kUnsupportedContext;
@@ -258,6 +259,8 @@ class TreePrinter {
           }
         }
       }
+      // Instance initializers have no block form: every statement is a field.
+      if (static_block_ && instance_fields_) throw Error::kUnsupportedContext;
       if (static_block_) {
         const auto tail = ImplicitTailCompletion(Tree());
         for (std::size_t s = 0; s < Tree().statements.size(); ++s) {
@@ -1042,7 +1045,7 @@ class TreePrinter {
     const auto* receiver = std::get_if<ThisExpr>(&Tree().expressions[node.receiver.value].expression);
     if (!receiver || receiver->owner != Tree().owner) throw Error::kUnsupportedContext;
     const auto& name = Tree().names[node.name.value];
-    Append("static ");
+    if (!instance_fields_) Append("static ");
     if (ClassifyObjectKey(name) == MemberKeySyntax::kIdentifier && name != u"prototype" && name != u"constructor")
       Identifier(name);
     else { Append("["); Quoted(name); Append("]"); }
@@ -2479,6 +2482,7 @@ class TreePrinter {
   std::optional<ModuleDefaultExport> default_export_;
   bool static_fields_ = false;
   bool static_block_ = false;
+  bool instance_fields_ = false;
   std::vector<LocatedAnchor> located_;
   std::vector<std::vector<LocatedAnchor>> locations_;
   std::vector<OwnerTree> owners_;
@@ -2494,7 +2498,7 @@ class TreePrinter {
 
 std::variant<PrintedFunction, TreePrintFailure> PrintStaticFields(
     const FunctionTree& tree, std::ostream& output, EmitBudget limit, analysis::SemanticBudget budget, std::size_t indent,
-    const GlobalScope* scope, std::optional<abc::EntityOffset> record,const OriginalFlow* original) {
+    const GlobalScope* scope, std::optional<abc::EntityOffset> record,const OriginalFlow* original, bool instance) {
   TreePrintTrace trace;
   TreePrintLocationScope location(tree);
   try {
@@ -2509,7 +2513,7 @@ std::variant<PrintedFunction, TreePrintFailure> PrintStaticFields(
       return Error::kUnsupportedContext;
     }
     budget.work -= verified->work;
-    auto result = TreePrinter(tree, output, limit, budget, scope,original).Direct(false, true, indent);
+    auto result = TreePrinter(tree, output, limit, budget, scope,original).Direct(false, true, indent, {}, instance);
     result.work += verified->work;
     if (!tree.modules.empty()) result.module_binding = PrintedFunction::ModuleBinding{*record, scope->module_enclosure->Owner()};
     return result;
@@ -2879,6 +2883,33 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
       budget.bytes -= positions.allocated_bytes; budget.work -= positions.work;
       positions.enclosing_offset = result.bytes; result.bytes += positions.bytes;
       result.initializer = std::move(positions);
+    }
+    if (tree.instance_fields) {
+      const auto& fields = *tree.instance_fields;
+      const auto* site = fields.context.CreationSite();
+      if (!site || fields.tree.identity != tree.identity || fields.tree.method != site->target ||
+          site->creator != tree.creation.creator || fields.context.Callable() != CallableKind::kMethod ||
+          fields.site.creation != tree.operation || !tree.constructor)
+        throw Failure::kUnsupportedContext;
+      const auto globals_check = VerifyTreeGlobals(fields.tree, globals, budget);
+      const auto* checked = std::get_if<TreeGlobals>(&globals_check);
+      if (!checked) {
+        const auto error = std::get<TreeGlobalError>(globals_check);
+        if (error == TreeGlobalError::kResourceLimit) throw Failure::kResourceLimit;
+        if (error == TreeGlobalError::kWorkLimit) throw Failure::kWorkLimit;
+        throw Failure::kUnsupportedContext;
+      }
+      if (checked->allocated_bytes > budget.bytes) {PrintByteCharge(checked->allocated_bytes,1,budget.bytes,initial.bytes,initial.bytes-budget.bytes);throw Failure::kResourceLimit;}
+      if (checked->work > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,checked->work,budget.work,initial.work);throw trace.Capture(Failure::kWorkLimit);}
+      budget.bytes -= checked->allocated_bytes; budget.work -= checked->work;
+      auto printed = PrintStaticFields(fields.tree, output, {limit.bytes - result.bytes}, budget, indent + 1, globals, fields.record, fields.flow.original.get(), true);
+      if (const auto* error = std::get_if<TreePrintFailure>(&printed)) throw *error;
+      auto positions = std::get<PrintedFunction>(std::move(printed));
+      if (positions.allocated_bytes > budget.bytes) {PrintByteCharge(positions.allocated_bytes,1,budget.bytes,initial.bytes,initial.bytes-budget.bytes);throw Failure::kResourceLimit;}
+      if (positions.work > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,positions.work,budget.work,initial.work);throw trace.Capture(Failure::kWorkLimit);}
+      budget.bytes -= positions.allocated_bytes; budget.work -= positions.work;
+      positions.enclosing_offset = result.bytes; result.bytes += positions.bytes;
+      result.instance_fields = std::move(positions);
     }
     for (std::size_t i = 0; i < indent; ++i) append("  ");
     append("}");
