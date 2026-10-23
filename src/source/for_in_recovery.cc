@@ -186,9 +186,25 @@ void VerifyForInRecovery(const FunctionTree& tree, RecoveryFlow& flow, TreeCheck
     budget.Step(); if(!raw.forwarded_blocks[edge.target.value] && !raw.forwarded_blocks[edge.source.value])continue;
     if(!raw.forwarded_blocks[edge.source.value]) {
       Need(edge.kind==FlowEdgeKind::kException);
-      const auto op=raw.phases[edge.source.value].operation; Need(op&&acquire[op->value]);
-      const auto& route=std::get<ForwardedExceptionRoute>(raw.enumerations[*acquire[op->value]].acquisition);
-      Need(route.handler==edge.target); continue;
+      const auto op=raw.phases[edge.source.value].operation; Need(op.has_value());
+      if(acquire[op->value]) {
+        const auto& route=std::get<ForwardedExceptionRoute>(raw.enumerations[*acquire[op->value]].acquisition);
+        Need(route.handler==edge.target); continue;
+      }
+      // Another operation protected by the same transparent region (the RHS
+      // read). The forward re-raises the same payload to its destination (an
+      // ordinary catch) or the caller, so the operation's own source action
+      // must already throw exactly there, without finalizer.
+      const auto l=*raw.forwarded_blocks[edge.target.value]; Need(l<raw.enumerations.size());
+      const auto& route=std::get<ForwardedExceptionRoute>(raw.enumerations[l].acquisition);
+      Need(route.handler==edge.target && exits[op->value]);
+      std::optional<FlowPoint> target=flow.terminal;
+      if(route.destination) target=FindOriginalPhase(flow,route.destination->entry,ExceptionPhase::kCatch);
+      Need(target.has_value());
+      const auto& action=flow.original_actions[op->value];
+      Need(action && action->exceptions.thrown==*target && !action->exceptions.finalizer);
+      flow.original_exceptions[*exits[op->value]]=FlowForwardedException{action->before,*target,{*exits[op->value]},route.handler,route.payload};
+      continue;
     }
     Need(edge.kind!=FlowEdgeKind::kException && raw.forwarded_blocks[edge.target.value] && !terminal[edge.source.value]);
     Need(raw.forwarded_blocks[edge.source.value]==raw.forwarded_blocks[edge.target.value]);

@@ -14,7 +14,8 @@ try {
     const out=join(temp,i);run(structure,[abc,out,'--value-source',...flags]);
     const rows=JSON.parse(readFileSync(join(out,'manifest.json'),'utf8')).records;
     for(const [record,method,pc,causes] of [
-      [21089,21280,599,[['FunctionTreeError',0],['EvaluationError',2],['EvaluationObligation',0],['ForInError',8],['TreeObligation',14]]],
+      // 21089 completes since 2026-10-23: its for-in RHS read shares the
+      // acquisition's transparent region (see the completion list below).
       // Private declaration-prefix rest proof now passes. Keep each contract's
       // real next refusal and the strict CLI/manifest correspondence.
       [53454,i==='old'?54291:undefined,undefined,
@@ -31,7 +32,7 @@ try {
     // Round 60 discharges Filter's later decision-edge phi transfer; the record
     // now publishes its native loops. Keep strict CLI/manifest source correspondence
     // instead of the obsolete m44496 PC252 DecisionEdgeCopies refusal.
-    for(const [entity,method] of [[29268,29450],[43537,44496],...(i==='source'?[[53454,53795],[52417,52655]]:[])]) {
+    for(const [entity,method] of [[29268,29450],[43537,44496],[21089,21280],...(i==='source'?[[53454,53795],[52417,52655]]:[])]) {
       const complete=rows.find(r=>r.entity===entity);assert.equal(complete.source_complete,true);
       const report=JSON.parse(run(semantic,[abc,String(method),'--record-source','--value-source',...flags]));
       assert.equal(report.source_complete,true);assert.equal(report.source,readFileSync(join(out,complete.source),'utf8'));

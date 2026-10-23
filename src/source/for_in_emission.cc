@@ -92,7 +92,14 @@ ForInEmissionView Build(const ValueProgram& g, const ExceptionPlan& regions,
     const auto scope = regions.layout.scopes[site];
     if (scope && result.forwarded_regions[scope->region.value]) {
       q.witness.operation = exit.op;
-      q.Require(acquisitions[exit.op.value] == result.forwarded_regions[scope->region.value], ForInError::kCatchState);
+      // Another throwing operation protected by the same transparent region
+      // (e.g. the RHS property read) is re-raised unchanged to the forward's
+      // destination (or the caller): exactly its route without the region.
+      // Recovery checks its source action against that destination.
+      const auto i = *result.forwarded_regions[scope->region.value];
+      const auto& route = std::get<ForwardedExceptionRoute>(result.loops[i].acquisition);
+      q.Require(acquisitions[exit.op.value] == result.forwarded_regions[scope->region.value] ||
+          (exit.handler && exit.handler->entry == route.handler), ForInError::kCatchState);
     }
   }
   // Each physical handler entry is visited once. Shared entries must agree on
@@ -145,7 +152,10 @@ ForInEmissionView Build(const ValueProgram& g, const ExceptionPlan& regions,
     q.Step(); if (!result.forwarded_blocks[edge.target.value] || result.forwarded_blocks[edge.source.value]) continue;
     q.Require(edge.kind == FlowEdgeKind::kException, ForInError::kExceptionCorrespondence);
     const auto& phase = g.phases[edge.source.value];
-    q.Require(phase.operation && acquisitions[phase.operation->value], ForInError::kCatchState);
+    const auto i = *result.forwarded_blocks[edge.target.value];
+    const auto& route = std::get<ForwardedExceptionRoute>(result.loops[i].acquisition);
+    q.Require(phase.operation && (acquisitions[phase.operation->value] || edge.target == route.handler),
+        ForInError::kCatchState);
   }
   result.allocated_bytes = q.memory.Peak(); result.work = q.initial - q.remaining;
   return result;

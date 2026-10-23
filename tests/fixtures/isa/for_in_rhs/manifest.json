@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/for_in_rhs/rhs.js",
+   "path": "tests/fixtures/isa/for_in_rhs/rhs-O0.abc",
+   "sha256": "c9cd6e9a623b58de953928efab3d8e90c9cef99a7e98be3ce3f9e28eed2a7003",
+   "source_sha256": "c33158904c499268fdb1ca11ea05fb4fef7ab399333a57d8869e6c0b61f209ff",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=for_in_rhs",
+    "--source-file=rhs.js",
+    "--output=tests/fixtures/isa/for_in_rhs/rhs-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/for_in_rhs/rhs.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only. A for-in whose advance is itself inside a user try still refuses (ForInError::kCatchState)."
+}

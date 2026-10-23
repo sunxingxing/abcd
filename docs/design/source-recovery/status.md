@@ -10,6 +10,21 @@
 
 
 
+## for-in with a protected right-hand side (2026-10-23)
+
+- es2abc protects the for-in RHS (property read/call) and the acquisition by
+  one transparent rethrow region. The emission view now admits other throwing
+  operations in that forwarded region; recovery maps each to a forwarded
+  exception whose target is the forward's destination catch (or the caller),
+  and requires the operation's own source action to throw exactly there with
+  no finalizer.
+- Evidence: o32/21089 hypium core completes under both flag sets (610/620
+  source, 546/620 previous); no other text changes. Fixture for_in_rhs (Node
+  12: RHS getter/call throws, break, order); baseline refuses it.
+  for_in_evaluation_cli moves 21089 to the completion list; async_failure
+  follows 58223 to m58646's later call plan. A for-in whose advance is itself
+  inside a user try still refuses. Sweep: only known failures.
+
 ## Async `arguments` prelude; refined shared-terminal follows (2026-10-23)
 
 - Async prelude: GETUNMAPPEDARGS before ASYNCFUNCTIONENTER is admitted like a
