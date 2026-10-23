@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/local_classes/classes.js",
+   "path": "tests/fixtures/isa/local_classes/classes-O0.abc",
+   "sha256": "316816dd863c54cd602160a492b93159b93c4637eaf86c2bfd47164b5ce67a8f",
+   "source_sha256": "123a148f07e1299668c713ed3517ebad2a185a51327e9db70b81ed9e5059d5fb",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=local_classes",
+    "--source-file=classes.js",
+    "--output=tests/fixtures/isa/local_classes/classes-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/local_classes/classes.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only. A class reading a later-declared let (deferred declaration) and a class in an inner function capturing an outer function's binding still refuse."
+}

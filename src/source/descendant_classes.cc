@@ -141,8 +141,8 @@ class Preparation {
       if(next>UINT32_MAX)throw FamilyTreeFailure{owner,FamilyTreeError::kResourceLimit};
       Account(Take<CreatorClassCost>(PrepareCreatorClasses(input,plan,globals,{static_cast<std::uint32_t>(next)},recovery,left,ClassRootBinding::kRequirements)));
       auto summary=Take<CreatorClassDemands>(CollectCreatorClassDemands(input,plan,owner,left));Account(summary);
-      // This increment does not mutate creator declarations. A nonempty class
-      // requirement must wait for the unified deferred-declaration scheduler.
+      // Creator declarations are never mutated here: a requirement is admitted
+      // only when the existing creator storage binds it unchanged.
       if(!summary.demands.empty())operation=summary.demands.front().demand.creation;
       auto binding=BindCreatorClasses(file,header,index,lookup,input.creator,input.storage,plan,left);
       if(const auto* error=std::get_if<CreatorClassFailure>(&binding)){
@@ -156,7 +156,10 @@ class Preparation {
           Require(!p->RootCapture() || p->RootCapture()->deferred.empty(),FamilyCreationCheck::kClassDeferredDeclaration);
         }
       }
-      Require(summary.demands.empty(),FamilyCreationCheck::kClassCaptureRequirements);
+      // Nonempty demands are admitted only after BindCreatorClasses has bound
+      // every class member against the creator's actual storage (above) and no
+      // body needs a deferred declaration (checked just before). A demand the
+      // creator cannot satisfy still fails binding as kClassCaptureRequirements.
       for(const auto& task:plan.tasks)for(const auto& body:task.preparation->bodies)
         if(const auto* prepared=std::get_if<FamilyPreparation>(&body))References(result,*prepared);
       Account(Take<CreatorClassCost>(VerifyCreatorClassOwners(plan,{static_cast<std::uint32_t>(next)},left)));

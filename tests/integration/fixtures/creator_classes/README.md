@@ -79,7 +79,8 @@ mutating [[Set]] into [[Define]] or removing the throw must change the trace.
 The engine never reads the JS oracle. The new files use the same pinned compiler
 and command as above; generate.py reproduces them.
 
-`member` remains refused for capture requirements; `deferred` requires a late
+`member` completes since 2026-10-23: its capture requirement binds to the
+creator's existing parameter storage unchanged. `deferred` requires a late
 declaration and stays refused separately. `heritage` stays refused by the new
 creator scheduler. `nested` is a class member which itself creates another
 class: requirements-only discovery retains a located nested-preparation gap,

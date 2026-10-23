@@ -10995,6 +10995,14 @@
     {
       "test": "isa_control_shapes_source_test",
       "producer": "tests/isa/control_shapes_test.py"
+    },
+    {
+      "test": "isa_local_classes_source_test",
+      "producer": "tests/isa/local_classes_test.py"
+    },
+    {
+      "test": "isa_loop_corridors_source_test",
+      "producer": "tests/isa/loop_corridors_test.py"
     }
   ]
 }

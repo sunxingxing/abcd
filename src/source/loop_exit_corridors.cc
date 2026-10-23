@@ -185,6 +185,32 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
       for (std::uint8_t e = 0; e < node.arc_count; ++e)
         pending[count++] = {node.first_arc.value + e};
     }
+    // The retained continuation may itself be a private linear corridor into
+    // the very node the absorbed corridors now reach (split copies of one
+    // shared jump). Two distinct exits are never structurable, so converge
+    // them by absorbing that corridor too. Loops already exiting to a single
+    // target are untouched. O(exits + absorbed arcs) for this loop.
+    if (!following) continue;
+    const auto retained = graph.Arc(*following).target;
+    const auto& corridor = graph.Node(retained);
+    if (loops.owners[retained.value] == loop || root[retained.value] || incoming[retained.value] != 1 ||
+        preserving[retained.value] || corridor.arc_count != 1 ||
+        !outside(loop, loops.owners[retained.value]))
+      continue;
+    const auto converged = graph.Arc(corridor.first_arc).target;
+    std::optional<ControlNodeId> other;
+    bool single = true;
+    const auto visit = [&](ControlArcId id) {
+      quota.Work();
+      const auto edge = graph.Arc(id);
+      if (loops.owners[edge.source.value] != loop || !outside(loop, loops.owners[edge.target.value]) ||
+          edge.target == retained) return;
+      if (other && *other != edge.target) single = false;
+      other = edge.target;
+    };
+    for (auto seed = seeds[l]; seed; seed = next[seed->value]) visit(*seed);
+    for (std::size_t first = begin; first < count; ++first) visit(pending[first]);
+    if (single && other && *other == converged) loops.owners[retained.value] = loop;
   }
 }
 }  // namespace abcd::source

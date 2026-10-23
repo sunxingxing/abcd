@@ -441,6 +441,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/inherited_modules_test.py)
     add_test(NAME isa_control_shapes_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/control_shapes_test.py)
+    add_test(NAME isa_local_classes_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/local_classes_test.py)
+    add_test(NAME isa_loop_corridors_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/loop_corridors_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/derived_test.py)
     add_test(NAME isa_wide_ops_source_test COMMAND ${Python3_EXECUTABLE}

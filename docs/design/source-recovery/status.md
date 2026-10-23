@@ -10,6 +10,25 @@
 
 
 
+## Split loop-exit corridors; local-class capture requirements (2026-10-23)
+
+- Loop exit corridors: es2abc's shared `jmp` to a for-update block is split
+  per incoming edge. When a loop's retained continuation is itself a private
+  one-arc corridor into the node the absorbed exits now reach, absorb it too
+  so all exits converge (only loops that would otherwise refuse with
+  `ControlError::kLoopExits` are affected).
+- Descendant classes: the blanket `kClassCaptureRequirements` gate is lifted
+  once `BindCreatorClasses` has bound every member against the creator's
+  actual storage and no body needs a deferred declaration. Unsatisfiable
+  demands (e.g. a grandparent binding the intermediate function never
+  captures) still fail binding as kClassCaptureRequirements; late `let`
+  declarations still refuse as kClassDeferredDeclaration.
+- Evidence: o1/3011 CardCalc completes under both flag sets (608/620 source,
+  544/620 previous); no other text changes. Fixtures loop_corridors (Node 329
+  cases) and local_classes (live captures, shared mutation, module binding);
+  creator_classes_cli_test now publishes `member` with a Node differential.
+  Sweep 500: only known failures.
+
 ## Control planning: exitless try wrappers and empty decision arms (2026-10-23)
 
 - `ControlTermination::kExitless`: a try wrapper with no exit port (body and

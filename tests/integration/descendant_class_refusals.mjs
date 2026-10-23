@@ -7,7 +7,7 @@ const [structure,semantic,fixtures]=process.argv.slice(2);
 const run=(tool,args,status=0)=>{const p=spawnSync(tool,args,{encoding:'utf8',timeout:120000});assert.ifError(p.error);assert.equal(p.status,status,p.stderr);return p.stdout;};
 const dir=mkdtempSync(join(tmpdir(),'abcd-class-refusals-'));
 try{
- for(const [name,reason] of [['member',15],['deferred',16],['heritage',17],['nested',19]]){
+ for(const [name,reason] of [['deferred',16],['heritage',17],['nested',19]]){ // member completes (creator_classes_cli_test)
   for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
    const abc=join(fixtures,name+'.abc'),out=join(dir,name+'-'+label);
    run(structure,[abc,out,'--value-source',...flags]);
@@ -20,5 +20,5 @@ try{
    assert.ok(instructions.some(i=>i.pc===f.pc && i.class_creation));
   }
  }
- console.log('descendant_class_refusals_cli_test: capture/deferred/heritage/nested obligations, real locations, both JSON paths');
+ console.log('descendant_class_refusals_cli_test: deferred/heritage/nested obligations, real locations, both JSON paths');
 }finally{rmSync(dir,{recursive:true,force:true});}
