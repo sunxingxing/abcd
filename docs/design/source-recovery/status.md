@@ -10,6 +10,22 @@
 
 
 
+## ISA coverage14 — operator/call occurrence oracle (2026-10-23)
+
+- Test-only. New `tests/fixtures/isa/operators` (default/O0 SDK ABCs, both
+  complete under V10) and `tests/integration/operators.mjs`: 524 Node cases per
+  ABC over `% <= > >= << >> >>> & |`, unary `+ ! - ~ typeof`, truthiness,
+  `in`/`instanceof` (including Symbol.hasInstance and non-callable RHS),
+  NaN/Infinity, spread calls, 6-argument range and this-range calls, named
+  object-literal functions and `debugger`, with traced valueOf/toString order,
+  BigInt mixing and Symbol coercion errors. Registered as an oracle producer.
+- Ledger (`build/review/isa-cc14`): SupportedVerified 182 → **200**,
+  SupportedUnverified 45 → 27; Unmeasured 77 unchanged. Notes: es2abc drops
+  `debugger` in these builds (DEBUGGER stays unverified), and conditions use
+  `callruntime.istrue`, not plain ISTRUE. Class field initializers
+  (CALLINIT) and `super(...xs)` at default optimization (PhasedMethodError 5)
+  still refuse and were left out of the fixture.
+
 ## ISA coverage13 — namespace imports (GETMODULENAMESPACE) (2026-10-23)
 
 - Implemented by Claude after the switch to Claude-independent development.

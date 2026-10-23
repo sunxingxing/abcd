@@ -10963,6 +10963,10 @@
     {
       "test": "isa_module_namespace_source_test",
       "producer": "tests/isa/module_namespace_test.py"
+    },
+    {
+      "test": "isa_operators_source_test",
+      "producer": "tests/isa/operators_test.py"
     }
   ]
 }
