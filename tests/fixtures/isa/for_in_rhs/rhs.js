@@ -17,3 +17,9 @@ export function computed(o, s) {
     s.log(k);
   }
 }
+export function receivers(o, s) {
+  for (let k in o) {
+    s.log(k.toUpperCase());
+    s.log(k.charAt(0));
+  }
+}

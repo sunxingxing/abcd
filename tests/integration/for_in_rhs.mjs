@@ -10,7 +10,8 @@ for (const throwRhs of [false, true]) for (const stopAt of [null, 'x', 'z']) for
   const run = m => { const log = [];
     const s = {shuffle() { log.push('shuffle'); return shuffle; }, stop(k) { log.push(['stop', k]); return k === stopAt; }, log(t) { log.push(['log', t]); }, key() { log.push('key'); if (throwRhs) throw new RangeError('key'); return 'specs'; }};
     const o = {get specs() { log.push('get'); if (throwRhs) throw new TypeError('rhs'); return {x: 1, y: 2, z: 3}; }};
-    log.push(settle(() => m.specs(o, s))); log.push(settle(() => m.computed(o, s))); return log; };
+    log.push(settle(() => m.specs(o, s))); log.push(settle(() => m.computed(o, s)));
+    log.push(settle(() => m.receivers({ab: 1, cd: 2}, s))); return log; };
   assert.deepEqual(run(b), run(a)); cases++;
 }
 console.log(JSON.stringify({cases}));

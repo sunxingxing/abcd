@@ -75,6 +75,9 @@ bool StableReceiver(const ValueProgram& graph, const EvaluationPlan& evaluation,
   const auto* id = std::get_if<ValueId>(&operand);
   if (!id) return true; // Primitive literal, with no property-key coercion here.
   if (HasRetainedEvaluationValue(graph, evaluation, *id)) return true;
+  // A for-in key read is the loop variable itself (bound per iteration).
+  if (evaluation.for_in && id->value < evaluation.for_in->values.size() && evaluation.for_in->values[id->value] &&
+      evaluation.for_in->values[id->value]->role == ForInRole::kNextResult) return true;
   const auto& definition = graph.values[id->value];
   const auto* result = std::get_if<OpResult>(&definition.origin);
   if (!result) return false;

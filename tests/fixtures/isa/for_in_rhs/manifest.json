@@ -7,8 +7,8 @@
   {
    "source": "tests/fixtures/isa/for_in_rhs/rhs.js",
    "path": "tests/fixtures/isa/for_in_rhs/rhs-O0.abc",
-   "sha256": "c9cd6e9a623b58de953928efab3d8e90c9cef99a7e98be3ce3f9e28eed2a7003",
-   "source_sha256": "c33158904c499268fdb1ca11ea05fb4fef7ab399333a57d8869e6c0b61f209ff",
+   "sha256": "3deefe43c011291e3090fb8116d9cf041e4614b4f04ea372a62715d94e3bf9da",
+   "source_sha256": "87291fb4dd1a1cfc85e67a7300298627ac45ddbb6afd1be1e61df2e23d52ff96",
    "command": [
     "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
     "--module",

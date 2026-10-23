@@ -1179,6 +1179,8 @@ class OperandCheck {
       if (const auto* producer = std::get_if<analysis::OpResult>(&definition.origin)) {
         const auto& base = evaluation_.operations[producer->op.value];
         RequireMeaning((evaluation_.for_of && evaluation_.for_of->bindings[id->value]) ||
+            (evaluation_.for_in && id->value < evaluation_.for_in->values.size() && evaluation_.for_in->values[id->value] &&
+             evaluation_.for_in->values[id->value]->role == ForInRole::kNextResult) ||
             ((base.kind == EvaluationKind::kRoot || base.kind == EvaluationKind::kPredicateSnapshot) &&
                 (flow_.snapshots[producer->op.value].has_value() || flow_.receivers[producer->op.value] != ReceiverValue::kNone)) ||
             ((base.kind == EvaluationKind::kInline || base.kind == EvaluationKind::kNestedLiteral) && base.consumer == property.first_use), Error::kOperand);

@@ -61,9 +61,10 @@ try{
     const f=r.source_failure;assert.equal(f.class,'unproved');
     // m61057's for-of with a nested user try, m59447's async `arguments`
     // prelude and m60061's refined follows complete as well; the record then
-    // stops at m58646 (its for-in RHS now completes; a later call plan stops).
-    if(label==='source'){assert.equal(f.method,58646);
-      assert.deepEqual(f.causes.slice(0,3),[{domain:'abcd::source::FunctionTreeError',value:1},{domain:'abcd::source::ExpressionError',value:4},{domain:'abcd::source::CallPlanError',value:3}]);continue;}
+    // stops at m61403: a for-in whose loop variable is captured per iteration
+    // (m58646's for-in RHS and key receivers complete).
+    if(label==='source'){assert.equal(f.method,61403);
+      assert.equal(f.causes.find(c=>c.domain==='abcd::source::ForInError').value,2);continue;}
     else {assert.equal(f.method,61706);assert.equal(f.pc,643);}
     assert.deepEqual(f.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
     const rows=run(semantic,[inputs.get(n),String(method),'--instructions']).trim().split('\n').map(JSON.parse);

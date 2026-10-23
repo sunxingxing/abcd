@@ -10,6 +10,18 @@
 
 
 
+## for-in keys as method-call receivers (2026-10-24)
+
+- A for-in key value (`kNextResult`, incl. copies) is the loop variable for its
+  iteration: the call plan's stable-receiver check and the tree operand
+  receiver check accept it, as they already do for for-of bindings
+  (`for (k in o) k.run(c)`).
+- Evidence: for_in_rhs gains receiver cases (Node 12). Cohorts unchanged
+  (610/546), no text changes; o32/58223 advances to m61403, a for-in whose
+  loop variable is captured per iteration (same family as for-of 46008).
+  property_receiver_test (abcd_analysis unit) aborts identically at the
+  session-start commit 76f52498; recorded as pre-existing.
+
 ## for-in with a protected right-hand side (2026-10-23)
 
 - es2abc protects the for-in RHS (property read/call) and the acquisition by
