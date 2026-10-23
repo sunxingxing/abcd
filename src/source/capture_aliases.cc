@@ -39,9 +39,9 @@ std::variant<CaptureAliases, CaptureTreeError> BindCaptureAliases(
     } else {
       Require(cells.creation.value < flow.expressions.size() && flow.expressions[cells.creation.value], Error::kCreation);
       const auto expression = *flow.expressions[cells.creation.value];
-      Require(expression.value < tree.expressions.size(), Error::kCreation);
-      const auto* creation = std::get_if<FunctionExpr>(&tree.expressions[expression.value].expression);
-      Require(creation && creation->child == child, Error::kCreation);
+      std::uint64_t examined = 0;
+      const auto* creation = CreationFunctionExpr(tree, expression, child, &examined);
+      step(examined); Require(creation != nullptr, Error::kCreation);
       range = creation->captures;
       Require(range.first <= tree.closure_captures.size() && range.count <= tree.closure_captures.size() - range.first &&
           range.count == cells.targets.size(), Error::kCoverage);

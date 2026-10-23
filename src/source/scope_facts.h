@@ -17,6 +17,21 @@ using CaptureSite = std::variant<analysis::CreationBinding, ClassCaptureSite>;
 [[nodiscard]] std::optional<abc::CodeOffset> CapturePc(const CaptureSite& site);
 [[nodiscard]] abc::MethodPosition CapturePosition(const CaptureSite& site);
 [[nodiscard]] const analysis::ClassCreation* CaptureClassCreation(const ClassCaptureSite& site);
+// The semantic instruction is this binding's creation: the exact DEFINEFUNC/
+// DEFINEMETHOD, or the CREATEOBJECTWITHBUFFER of an object-literal method.
+[[nodiscard]] inline bool CreatesBinding(const analysis::SemanticOperation& instruction,
+                                         const analysis::CreationBinding& creation) {
+  if (creation.target.attributes.sendable) return false;
+  if (creation.property != analysis::kNoLiteralProperty)
+    return creation.creation.home_object == analysis::HomeObjectInput::kLiteralObject &&
+        std::holds_alternative<analysis::BufferedObjectCreation>(instruction);
+  const auto* operation = std::get_if<analysis::FunctionCreation>(&instruction);
+  return operation && operation->kind == creation.creation.kind &&
+      operation->method == creation.creation.method &&
+      operation->length.value == creation.creation.length.value &&
+      operation->home_object == creation.creation.home_object &&
+      operation->cache_slot == creation.creation.cache_slot;
+}
 using CaptureCell = std::variant<analysis::LocalCell, analysis::CapturedSlot>;
 enum class ScopeError : std::uint8_t {
   kSite, kEnvironment, kCell, kInitialization, kWrites, kDomain

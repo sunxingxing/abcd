@@ -1,4 +1,5 @@
 #include "cell_plan.h"
+#include "function_object.h"
 
 #include <algorithm>
 #include <bit>
@@ -77,9 +78,7 @@ CellStorage DemandStorage(const analysis::ValueProgram& graph,
   quota.Step(std::numeric_limits<std::uint32_t>::digits);
   Require(demand.creation.value < graph.ops.size(), Error::kAccess);
   const auto& op = graph.ops[demand.creation.value];
-  Require(op.life == analysis::ValueLife::kLive &&
-      (std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) ||
-       std::holds_alternative<analysis::ValueClassCreation>(op.operation)) &&
+  Require(op.life == analysis::ValueLife::kLive && CapturesEnvironment(op.operation) &&
       demand.creation.value < environments.flow.before.size() &&
       environments.flow.before[demand.creation.value], Error::kAccess);
   const auto resolved = environments.flow.environments.ResolveCapture(
@@ -101,9 +100,7 @@ std::optional<CellId> FindDemandCell(const analysis::ValueProgram& graph,
   if (demand.creation.value >= graph.ops.size() || demand.creation.value >= environments.flow.before.size() ||
       !environments.flow.before[demand.creation.value]) return {};
   const auto& op = graph.ops[demand.creation.value];
-  if (op.life != analysis::ValueLife::kLive ||
-      (!std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) &&
-       !std::holds_alternative<analysis::ValueClassCreation>(op.operation)))
+  if (op.life != analysis::ValueLife::kLive || !CapturesEnvironment(op.operation))
     return {};
   const auto resolved = environments.flow.environments.ResolveCapture(
       *environments.flow.before[demand.creation.value], demand.captured.depth, demand.captured.slot);

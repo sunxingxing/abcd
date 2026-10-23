@@ -1,4 +1,5 @@
 #include "family_cells.h"
+#include "function_object.h"
 #include "capture_requirement.h"
 
 #include <bit>
@@ -43,9 +44,7 @@ std::variant<FamilyCellCost, CaptureCellFailure> PlanFamilyCells(
         const auto& graph = family.members[entry.creator.value].function.Graph();
         require(entry.demand.creation.value < graph.ops.size(), Error::kCreation);
         const auto& op = graph.ops[entry.demand.creation.value];
-        require(op.life == analysis::ValueLife::kLive &&
-            (std::holds_alternative<analysis::ValueClassCreation>(op.operation) ||
-             std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)), Error::kCreation);
+        require(op.life == analysis::ValueLife::kLive && CapturesEnvironment(op.operation), Error::kCreation);
         require(counts[entry.creator.value] < std::numeric_limits<std::size_t>::max(), Error::kResourceLimit);
         ++counts[entry.creator.value];
       }

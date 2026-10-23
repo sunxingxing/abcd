@@ -83,8 +83,13 @@ std::variant<ConstructedFamily, FamilyError> BuildFunctionFamily(
       Require(member.incoming.has_value(), Error::kCapture);
       const auto& outer = result.members[parent->function.value];
       const auto creation = member.incoming->creation;
-      Require(creation.value < outer.flow.expressions.size() &&
-          outer.flow.expressions[creation.value] == parent->expression, Error::kCapture);
+      Require(creation.value < outer.flow.expressions.size() && outer.flow.expressions[creation.value], Error::kCapture);
+      std::uint64_t examined = 0;
+      const auto* created = CreationFunctionExpr(outer.tree, *outer.flow.expressions[creation.value],
+          member.tree.owner, &examined);
+      quota.Step(examined);
+      Require(created && created == std::get_if<FunctionExpr>(
+          &outer.tree.expressions[parent->expression.value].expression), Error::kCapture);
       if (!member.tree.recovery_issues.empty()) {
         // A capture-free incomplete leaf needs the actual creation identity,
         // but has no complete child flow to certify. Do not invent one merely

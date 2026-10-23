@@ -13,7 +13,8 @@ struct CreationContextFailure {
   std::variant<CreationContextError, abc::MetadataError, abc::FrameError> error;
   std::optional<ConcurrentFailure> concurrent;
 };
-enum class CreationContextMode : std::uint8_t { kFunction, kMethodBody };
+// kObjectMethod: an indexed object-literal buffer method (shorthand syntax).
+enum class CreationContextMode : std::uint8_t { kFunction, kMethodBody, kObjectMethod };
 // Actual DEFINEFUNC occurrence, not a class-buffer member or a proof that
 // captures/home-object obligations are closed. Factory body verification
 // remains mandatory; no arbitrary caller-supplied tree can acquire this owner.

@@ -44,6 +44,7 @@ class ObjectWriter {
 
   BodyEmitResult Write(const abc::LiteralArray& literal,
                        const std::vector<std::u16string>& keys,
+                       const std::vector<std::uint32_t>& values,
                        const MethodConstants& constants,
                        std::size_t string_bytes,
                        std::optional<std::size_t> array_field) {
@@ -66,7 +67,7 @@ class ObjectWriter {
         }
         Text(": ");
         if (array_field == i) Text("[]");
-        else Value(literal.entries[i * kPairEntries + 1], constants, string_bytes);
+        else Value(literal.entries[values[i]], constants, string_bytes);
       }
       Text("})");
       if (error_) return *error_;
@@ -164,7 +165,7 @@ class ObjectWriter {
 ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& creation,
                                  abc::CodeOffset offset,
                                  const MethodConstants& constants,
-                                 ObjectBufferBudget scratch_budget) {
+                                 ObjectBufferBudget scratch_budget, bool methods) {
   const auto fail = [&](ObjectBufferError error) -> ObjectBufferResult {
     BodyEmitFailure failure{
         error == ObjectBufferError::kResourceLimit
@@ -201,9 +202,26 @@ ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& crea
     return failure;
   }
   const auto& literal = std::get<abc::LiteralArray>(read);
-  if (literal.entries.size() % kPairEntries != 0)
-    return fail(ObjectBufferError::kShape);
-  const auto count = literal.entries.size() / kPairEntries;
+  const auto method_tag = [](abc::LiteralTag tag) {
+    return tag == abc::LiteralTag::kMethod || tag == abc::LiteralTag::kGeneratorMethod ||
+        tag == abc::LiteralTag::kAsyncGeneratorMethod;
+  };
+  std::size_t count = 0;
+  if (!methods) {
+    if (literal.entries.size() % kPairEntries != 0)
+      return fail(ObjectBufferError::kShape);
+    count = literal.entries.size() / kPairEntries;
+  } else {
+    for (std::size_t at = 0; at < literal.entries.size(); ++count) {
+      if (at + 1 >= literal.entries.size()) return fail(ObjectBufferError::kShape);
+      if (!method_tag(literal.entries[at + 1].tag)) { at += kPairEntries; continue; }
+      if (at + 2 >= literal.entries.size() ||
+          literal.entries[at + 2].tag != abc::LiteralTag::kMethodAffiliate)
+        return fail(ObjectBufferError::kShape);
+      at += kPairEntries + 1;
+    }
+  }
+  if (literal.entries.size() > UINT32_MAX) return fail(ObjectBufferError::kResourceLimit);
   std::size_t remaining = scratch_budget.bytes;
   const auto charge = [&](std::size_t items, std::size_t width) {
     if (items > remaining / width) return false;
@@ -225,14 +243,28 @@ ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& crea
     keys.reserve(count);
     if (!charge(keys.capacity(), sizeof(std::u16string)))
       return fail(ObjectBufferError::kResourceLimit);
-    for (std::size_t i = 0; i < count; ++i) {
+    if (count > remaining / sizeof(std::uint32_t))
+      return fail(ObjectBufferError::kResourceLimit);
+    std::vector<std::uint32_t> values;
+    values.reserve(count);
+    if (!charge(values.capacity(), sizeof(std::uint32_t)))
+      return fail(ObjectBufferError::kResourceLimit);
+    for (std::size_t i = 0, at = 0; i < count; ++i) {
       step();
-      const auto& key = literal.entries[i * kPairEntries];
-      const auto& value = literal.entries[i * kPairEntries + 1];
+      const auto& key = literal.entries[at];
+      const bool method = methods && method_tag(literal.entries[at + 1].tag);
+      const auto value_at = at + (method ? 2 : 1);
+      const auto& value = literal.entries[value_at];
+      at = value_at + 1;
       if (key.tag != abc::LiteralTag::kString ||
           !std::holds_alternative<abc::EntityOffset>(key.value))
         return fail(ObjectBufferError::kKey);
-      if (!DataValue(value)) return fail(ObjectBufferError::kValue);
+      if (method) {
+        if (!std::holds_alternative<abc::EntityOffset>(literal.entries[value_at - 1].value) ||
+            !std::holds_alternative<abc::LiteralBits>(value.value))
+          return fail(ObjectBufferError::kValue);
+      } else if (!DataValue(value)) return fail(ObjectBufferError::kValue);
+      values.push_back(static_cast<std::uint32_t>(value_at));
       auto name = abc::ReadStringEntity(
           constants.file, constants.header,
           std::get<abc::EntityOffset>(key.value),
@@ -270,7 +302,7 @@ ObjectBufferResult ReadObjectBuffer(const analysis::BufferedObjectCreation& crea
         return fail(ObjectBufferError::kDuplicateKey);
     }
     return ObjectBuffer{std::move(std::get<abc::LiteralArray>(read)),
-                        std::move(keys), std::move(order),
+                        std::move(keys), std::move(values), std::move(order),
                         scratch_budget.bytes - remaining, scratch_budget.work - work};
   } catch (ObjectBufferError error) {
     return fail(error);
@@ -315,7 +347,7 @@ BodyEmitResult WriteObjectBuffer(const analysis::BufferedObjectCreation& creatio
     array_field = *found;
   }
   return ObjectWriter(output, output_budget, offset).Write(
-      buffer.literal, buffer.keys, constants,
+      buffer.literal, buffer.keys, buffer.values, constants,
       scratch_budget.bytes - buffer.allocated_bytes, array_field);
 }
 }  // namespace abcd::source

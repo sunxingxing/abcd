@@ -278,6 +278,10 @@ struct DataProperty {
   ObjectPropertyEffect effect = ObjectPropertyEffect::kDefine;
   // Evaluated exactly once before the anonymous value and own definition.
   std::optional<ExprId> computed_key;
+  // Object-literal method definition: value is the FunctionExpr of a
+  // non-constructor method child with this literal as home object. Prints as
+  // native method shorthand only; never as a data property.
+  bool method = false;
 };
 // This operation is not [[Set]]. Only a field-definition destination may
 // print it; ordinary function expression output must refuse it.

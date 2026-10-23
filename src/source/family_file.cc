@@ -34,7 +34,8 @@ template<class T> struct ActiveAllocator {
   void deallocate(T* p,std::size_t n){std::allocator<T>{}.deallocate(p,n);}
   template<class U>bool operator==(const ActiveAllocator<U>& a)const{return bytes==a.bytes;}
 };
-struct FamilyCursor { FamilyId member; abc::MethodPosition method; std::size_t next = 0; };
+// literal: next object-literal method of the current object site (Children()[next]).
+struct FamilyCursor { FamilyId member; abc::MethodPosition method; std::size_t next = 0; std::uint32_t literal = 0; };
 class FamilyReader {
  public:
   FamilyReader(const corpus::AbcFile& file, const abc::Header& header,
@@ -81,12 +82,23 @@ class FamilyReader {
         Step(2*(std::bit_width(active_.size())+1));active_.erase(cursor.method); stack_.pop_back(); continue;
       }
       const auto site = parent.Children()[cursor.next];
-      ++stack_.back().next;
       RequireCreation(site.value < parent.Body().instructions.size(), FamilyCreationCheck::kBodySite, parent, cursor.member, site);
       parent_ = parent.Method(); pc_ = parent.Body().instructions[site.value].offset;
       RequireCreation(site.value < parent.Instructions().size(), FamilyCreationCheck::kSemanticSite, parent, cursor.member, site);
       pc_ = parent.Instructions()[site.value].origin.value_or(*pc_);
       const auto& operation = parent.Instructions()[site.value].operation;
+      // An object site stays current until each indexed literal method has
+      // been read as its own occurrence, in key order; the DFS is unchanged.
+      const auto* buffered = std::get_if<analysis::BufferedObjectCreation>(&operation);
+      std::optional<analysis::FunctionSiteId> literal_method;
+      if (buffered && cursor.literal != 0) {
+        Step(std::bit_width(sites_.Size()) + 1);
+        const auto methods = sites_.FindLiteral(*parent_, *pc_);
+        if (cursor.literal - 1 == methods.size()) {
+          ++stack_.back().next; stack_.back().literal = 0; continue;
+        }
+        literal_method = methods[cursor.literal - 1]; ++stack_.back().literal;
+      } else if (!buffered) ++stack_.back().next;
       auto& member = result_.members[cursor.member.value];
       const bool prepared_record_root=cursor.member==FileFamily::kRoot && class_mode_==FamilyClassMode::kRetainRoot;
       // The existing explicit family DFS owns the creator occurrence. Discover
@@ -155,18 +167,32 @@ class FamilyReader {
           continue;
         }
       }
-      if (const auto* object = std::get_if<analysis::BufferedObjectCreation>(&operation)) {
+      if (buffered && !literal_method) {
         // Capture barriers are not all function edges. The shared literal
-        // reader refuses methods/accessors and validates every key/value.
+        // reader validates every key/value; method entries must match the
+        // file's indexed literal occurrences exactly, then each is read below.
         // Keep the original barrier intact and retain its discharge evidence.
         const MethodConstants constants(file_, header_, index_, *parent_, {bytes_});
-        auto parsed = ReadObjectBuffer(*object, *pc_, constants, {bytes_, work_});
+        auto parsed = ReadObjectBuffer(*buffered, *pc_, constants, {bytes_, work_}, true);
         if (const auto* error = std::get_if<BodyEmitFailure>(&parsed)) Fail(*error);
         auto buffer = std::get<ObjectBuffer>(std::move(parsed));
         Admit(buffer.allocated_bytes, 1); Step(buffer.work);
+        Step(std::bit_width(sites_.Size()) + 1);
+        const auto methods = sites_.FindLiteral(*parent_, *pc_);
+        std::size_t matched = 0;
+        for (std::size_t key = 0; key < buffer.keys.size(); ++key) {
+          Step(); if (!IsBufferMethod(buffer, key)) continue;
+          const auto* indexed = matched < methods.size() ? sites_.At(methods[matched]) : nullptr;
+          RequireCreation(indexed && indexed->property == key &&
+              std::get<abc::EntityOffset>(buffer.literal.entries[buffer.values[key] - 1].value) == indexed->target,
+              FamilyCreationCheck::kLiteralMethod, parent, cursor.member, site);
+          ++matched;
+        }
+        RequireCreation(matched == methods.size(), FamilyCreationCheck::kLiteralMethod, parent, cursor.member, site);
         auto& objects = result_.members[cursor.member.value].objects;
         AppendRoom(objects);
-        objects.push_back({site, *object, std::move(buffer)});
+        objects.push_back({site, *buffered, std::move(buffer)});
+        if (matched == 0) ++stack_.back().next; else stack_.back().literal = 1;
         continue;
       }
       if (const auto* array = std::get_if<analysis::BufferedArrayCreation>(&operation)) {
@@ -189,13 +215,26 @@ class FamilyReader {
         auto& creations = result_.members[cursor.member.value].phase_creations;
         RequireCreation(creations.has_value(), FamilyCreationCheck::kPhasedIndex, parent, cursor.member, site);
         Step(std::bit_width(creations->sites.size()) + 1);
-        auto found = std::lower_bound(creations->sites.begin(), creations->sites.end(), site,
-            [](const auto& creation, auto sought) { return creation.instruction < sought; });
-        RequireCreation(found != creations->sites.end() && found->instruction == site, FamilyCreationCheck::kPhasedSite, parent, cursor.member, site);
+        const auto property = literal_method ? sites_.At(*literal_method)->property : analysis::kNoLiteralProperty;
+        auto found = std::lower_bound(creations->sites.begin(), creations->sites.end(), std::pair{site, property},
+            [](const auto& creation, auto sought) {
+              return std::pair{creation.instruction, creation.binding.property} < sought;
+            });
+        RequireCreation(found != creations->sites.end() && found->instruction == site &&
+            found->binding.property == property, FamilyCreationCheck::kPhasedSite, parent, cursor.member, site);
         phase_creation = &*found;
       } else {
-        auto resolved = analysis::BindCreation(file_, header_, index_, lookup_, parent.Method(),
-            parent.Body(), parent.Normal().input.Proof().environments, site.value);
+        // The index names the original PC; bind at this working instruction.
+        std::optional<analysis::FunctionCreationSite> located;
+        if (literal_method) {
+          located = *sites_.At(*literal_method);
+          located->pc = parent.Body().instructions[site.value].offset;
+        }
+        auto resolved = located
+            ? analysis::BindLiteralCreation(parent.Body(), parent.Normal().input.Proof().environments,
+                  site.value, *located)
+            : analysis::BindCreation(file_, header_, index_, lookup_, parent.Method(),
+                  parent.Body(), parent.Normal().input.Proof().environments, site.value);
         if (!std::holds_alternative<analysis::CreationBinding>(resolved)) {
           auto failure = CreationFailure(FamilyCreationCheck::kFunctionBinding, parent, cursor.member, site);
           std::visit([&](const auto& cause) {
@@ -212,11 +251,12 @@ class FamilyReader {
       method_ = index_.methods[target.value].offset;
       Step(2*(std::bit_width(active_.size())+1));Require(!active_.contains(target), Error::kRecursiveCreation);
       Step(std::bit_width(sites_.Size()) + 1);
-      const auto occurrence = sites_.FindOccurrence(*method_, *parent_, *pc_);
+      const auto occurrence = literal_method ? literal_method : sites_.FindOccurrence(*method_, *parent_, *pc_);
       Require(occurrence.has_value(), Error::kOccurrence);
       const auto resolve = [&]() -> CreationTreeContext {
         if (phase_creation) return std::move(phase_creation->context);
-        auto result = CreationTreeContext::Resolve(file_, header_, index_, lookup_, roles_, sites_, *occurrence, identity_, Remaining());
+        auto result = CreationTreeContext::Resolve(file_, header_, index_, lookup_, roles_, sites_, *occurrence, identity_, Remaining(),
+            literal_method ? CreationContextMode::kObjectMethod : CreationContextMode::kFunction);
         if (const auto* error = std::get_if<CreationContextFailure>(&result)) Fail(*error);
         auto context = std::get<CreationTreeContext>(std::move(result));
         Admit(context.AllocatedBytes(), 1); Step(context.Work()); return context;
@@ -321,7 +361,8 @@ class FamilyReader {
       if (const auto* error = std::get_if<CaptureEvaluationFailure>(&evaluated)) Fail(*error);
       auto evaluation = std::get<CapturedFunctionBinding>(std::move(evaluated));
       Admit(evaluation.allocated_bytes, 1); Step(evaluation.work);
-      RequireCreation(parent.children.empty() || parent.children.back().creation < evaluation.binding.creation, FamilyCreationCheck::kChildOrder, parent.function, edge.parent, edge.site);
+      evaluation.binding.property = edge.creation.property;
+      RequireCreation(parent.children.empty() || parent.children.back().Key() < evaluation.binding.Key(), FamilyCreationCheck::kChildOrder, parent.function, edge.parent, edge.site);
       parent.children.push_back(std::move(evaluation.binding));
     }
   }
@@ -522,7 +563,19 @@ class FamilyReader {
     AppendRoom(result_.members); AppendRoom(stack_);
     const FamilyId id{static_cast<std::uint32_t>(result_.members.size())};
     FileFamilyMember member{std::move(function), std::move(context), std::move(incoming)};
-    Grow(member.children, member.function.Children().size());
+    // Each indexed object-literal method is one more creation at its site.
+    std::size_t creations = member.function.Children().size();
+    for (const auto child : member.function.Children()) {
+      Step();
+      if (child.value >= member.function.Instructions().size() ||
+          !std::holds_alternative<analysis::BufferedObjectCreation>(member.function.Instructions()[child.value].operation) ||
+          child.value >= member.function.Body().instructions.size()) continue;
+      const auto& instruction = member.function.Instructions()[child.value];
+      Step(std::bit_width(sites_.Size()) + 1);
+      creations += sites_.FindLiteral(member.function.Method(),
+          instruction.origin.value_or(member.function.Body().instructions[child.value].offset)).size();
+    }
+    Grow(member.children, creations);
     if (id == FileFamily::kRoot && class_mode_ == FamilyClassMode::kRetainRoot) {
       Require(!member.function.Phase(), Error::kUnsupportedFlow);
       SelfOrder(member.function.Normal(),id);

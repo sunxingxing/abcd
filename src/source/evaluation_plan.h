@@ -53,6 +53,9 @@ struct FunctionBinding {
   // Parent mutable CellIds, in the child's incoming-cell order. Input/work
   // CaptureCells evidence must independently justify every edge at publication.
   std::vector<CellId> captures;
+  // Object-literal key ordinal when creation is a buffered object allocation.
+  std::uint32_t property = analysis::kNoLiteralProperty;
+  [[nodiscard]] std::pair<analysis::OpId, std::uint32_t> Key() const { return {creation, property}; }
 };
 // Conditional source-module obligation. Original ModuleGuards and metadata
 // binding must independently justify each entry before publishing any source.

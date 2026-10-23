@@ -11,7 +11,8 @@ enum class FamilyCreationCheck : std::uint8_t {
   kPhasedSite, kFunctionBinding, kCaptureFlow, kChildOrder, kSelfInitializer,
   kClassPreparationInput, kClassPreparationGate,
   kClassCaptureRequirements, kClassDeferredDeclaration, kClassHeritage,
-  kClassStaticInitialization, kClassNestedPreparation, kClassCompletion
+  kClassStaticInitialization, kClassNestedPreparation, kClassCompletion,
+  kLiteralMethod
 };
 enum class FamilyCreationKind : std::uint8_t { kFunction, kMethod, kClass, kOther };
 struct FamilyOccurrenceId {

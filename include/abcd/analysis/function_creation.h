@@ -6,7 +6,9 @@
 
 namespace abcd::analysis {
 enum class CreationKind { kFunction, kMethod };
-enum class HomeObjectInput { kCurrentFunction, kAccumulator };
+// kLiteralObject: an object-literal buffer method; CloneObjectLiteral installs
+// the freshly created literal object as home object. Never an instruction input.
+enum class HomeObjectInput { kCurrentFunction, kAccumulator, kLiteralObject };
 struct FunctionLength {
   std::uint8_t value = 0;
   bool operator==(const FunctionLength&) const = default;

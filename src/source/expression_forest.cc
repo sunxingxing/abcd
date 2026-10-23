@@ -781,15 +781,35 @@ class ForestBuilder {
     }
     Require(ready.size() == count, Error::kOwnership);
   }
-  PropertyRange BufferedProperties(const ExpressionConstant& constant, TreeOriginId origin) {
+  // A buffered key's value: its literal, or the FunctionExpr of the verified
+  // child bound to this allocation and key ordinal (object-literal method).
+  DataProperty BufferedProperty(analysis::OpId allocation, std::uint32_t ordinal,
+                                const ConstantProperty& property, TreeOriginId origin) {
+    Require(property.key.value < constants_.name_count, Error::kConstant);
+    if (!property.method) return {property.key, Add(property.value, origin), origin};
+    const std::pair key{allocation, ordinal};
+    const auto found = std::lower_bound(evaluation_.functions.begin(), evaluation_.functions.end(), key,
+        [&](const FunctionBinding& binding, const auto& sought) { Step(); return binding.Key() < sought; });
+    Require(found != evaluation_.functions.end() && found->Key() == key && found->child != owner_, Error::kOwnership);
+    ++built_functions_;
+    const CaptureRange captures{static_cast<std::uint32_t>(forest_.closure_captures.size()),
+        static_cast<std::uint32_t>(found->captures.size())};
+    for (const auto cell : found->captures) {
+      Step(); Require(cell.value < forest_.bindings.cells.size(), Error::kBinding);
+      forest_.closure_captures.push_back(forest_.bindings.cells[cell.value]);
+    }
+    DataProperty result{property.key, Add(FunctionExpr{found->child, captures}, origin), origin};
+    result.method = true;
+    return result;
+  }
+  PropertyRange BufferedProperties(analysis::OpId allocation, const ExpressionConstant& constant, TreeOriginId origin) {
     const auto* object = std::get_if<AggregateConstant>(&constant);
     Require(object != nullptr, Error::kConstant);
     const PropertyRange properties{static_cast<std::uint32_t>(forest_.properties.size()), object->count};
     for (std::uint32_t i = 0; i < object->count; ++i) {
       Step(); const auto& property = constants_.properties[object->first + i];
-      Require(property.key.value < constants_.name_count, Error::kConstant);
-      const auto value = Add(property.value, origin);
-      forest_.properties.push_back({property.key, value, origin});
+      Require(!property.method || object->kind == AggregateKind::kObject, Error::kConstant);
+      forest_.properties.push_back(BufferedProperty(allocation, i, property, origin));
     }
     return properties;
   }
@@ -858,11 +878,12 @@ class ForestBuilder {
       Step();
       if (!writes[i]) {
         const auto& property = constants_.properties[buffer->first + i];
-        Require(property.key.value < constants_.name_count, Error::kConstant);
-        const auto value = Add(property.value, origin);
-        forest_.properties.push_back({property.key, value, origin});
+        forest_.properties.push_back(BufferedProperty(object.allocation, static_cast<std::uint32_t>(i), property, origin));
         continue;
       }
+      // A later own definition replacing a buffered method would drop that
+      // method child from the literal; keep the original refusal instead.
+      Require(i >= prefix || !constants_.properties[buffer->first + i].method, Error::kOwnership);
       const auto id = *writes[i]; const auto& op = graph_.ops[id.value];
       const bool spread=std::holds_alternative<analysis::ValueCopyProperties>(op.operation);
       const bool computed=std::holds_alternative<analysis::ValueComputedOwnWrite>(op.operation);
@@ -1296,7 +1317,7 @@ class ForestBuilder {
         return {};
       else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation>) {
         if (operation.literal) {
-          const auto properties = BufferedProperties(constant, origin);
+          const auto properties = BufferedProperties(id, constant, origin);
           return Add(ObjectExpr{properties, AggregateKind::kArray, properties.count}, origin);
         }
         return Add(EmptyArrayExpr{}, origin);
@@ -1331,7 +1352,7 @@ class ForestBuilder {
         return Add(SymbolConstructorExpr{}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueObjectAllocation>) {
         if (operation.literal) {
-          const auto properties = BufferedProperties(constant, origin);
+          const auto properties = BufferedProperties(id, constant, origin);
           return Add(ObjectExpr{properties, AggregateKind::kObject, properties.count}, origin);
         }
         return Add(EmptyObjectExpr{}, origin);

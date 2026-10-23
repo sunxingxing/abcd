@@ -23,5 +23,10 @@ using MethodTargetResult = std::variant<MethodTarget, MethodTargetError,
     const corpus::AbcFile& file, const Header& header,
     const MetadataIndex& index, const MethodLookup& lookup, EntityOffset caller,
     PoolIndex slot);
+// Literal-buffer METHOD entries name a method entity directly, not a pool
+// slot. Same caller/target membership and attribute decoding as above.
+[[nodiscard]] MethodTargetResult ResolveLiteralMethodTarget(
+    const MetadataIndex& index, const Header& header, const MethodLookup& lookup,
+    EntityOffset caller, EntityOffset target);
 }  // namespace abcd::abc
 #endif  // ABCD_ABC_METHOD_TARGET_H_

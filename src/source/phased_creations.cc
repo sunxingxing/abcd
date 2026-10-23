@@ -31,10 +31,21 @@ std::variant<PhasedCreations, PhasedCreationFailure> BindPhasedCreations(
         index.methods[position->value].offset == parent.Target(), Error::kIdentity);
     const auto& graph = parent.Graph();
     require(graph.input.sites.size() == body.instructions.size(), Error::kOrigin);
+    // Object-literal methods of a live buffered allocation are one occurrence
+    // each, keyed by the original instruction PC and ordered by key ordinal.
+    const auto literal_methods = [&](const analysis::ValueOp& op) -> std::span<const analysis::FunctionSiteId> {
+      const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
+      if (op.life != analysis::ValueLife::kLive || !object || !object->literal) return {};
+      require(op.origin.value < graph.origins.size(), Error::kOrigin);
+      const auto& origin = graph.origins[op.origin.value];
+      step(std::bit_width(sites.Size()) + 1);
+      return sites.FindLiteral(parent.Target(), origin.original.value_or(origin.pc));
+    };
     std::size_t count = 0;
     for (const auto& op : graph.ops) {
       step(); count += op.life == analysis::ValueLife::kLive &&
           std::holds_alternative<analysis::ValueFunctionCreation>(op.operation);
+      count += literal_methods(op).size();
     }
     PhasedCreations result;
     admit(1, sizeof(result)); admit(count, sizeof(PhasedCreation));
@@ -42,6 +53,38 @@ std::variant<PhasedCreations, PhasedCreationFailure> BindPhasedCreations(
     const auto input = parent.TreeInput(body);
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       step(); const auto& op = graph.ops[i];
+      if (const auto methods = literal_methods(op); !methods.empty()) {
+        current = analysis::OpId{static_cast<std::uint32_t>(i)};
+        const auto& origin = graph.origins[op.origin.value];
+        const auto site = origin.site.value;
+        require(site < body.instructions.size() && graph.input.sites[site] == current &&
+            body.instructions[site].offset == origin.pc, Error::kOrigin);
+        const auto& phase = graph.phases[op.block.value];
+        require(phase.phase == analysis::ExceptionPhase::kBefore && phase.operation == current &&
+            phase.instruction == origin.site, Error::kOrigin);
+        for (const auto id : methods) {
+          step(); const auto* indexed = sites.At(id);
+          require(indexed != nullptr, Error::kOccurrence);
+          // The index names the original PC; bind at this working instruction.
+          auto located = *indexed; located.pc = origin.pc;
+          auto bound = analysis::BindExceptionLiteralCreation(body, input.input.flow,
+              input.input.environments, phase.input, located);
+          if (!std::holds_alternative<analysis::CreationBinding>(bound))
+            std::visit([&](const auto& error) {
+              if constexpr (!std::is_same_v<std::decay_t<decltype(error)>, analysis::CreationBinding>)
+                throw PhasedCreationFailure{current, error};
+            }, bound);
+          auto resolved = CreationTreeContext::Resolve(file, header, index, lookup, roles,
+              sites, id, parent.Identity(), left, CreationContextMode::kObjectMethod);
+          if (const auto* error = std::get_if<CreationContextFailure>(&resolved))
+            throw PhasedCreationFailure{current, *error};
+          auto context = std::get<CreationTreeContext>(std::move(resolved));
+          admit(context.AllocatedBytes(), 1); step(context.Work());
+          result.sites.push_back({{*current, {site}, std::get<analysis::CreationBinding>(std::move(bound))},
+                                  std::move(context)});
+        }
+        continue;
+      }
       const auto* creation = std::get_if<analysis::ValueFunctionCreation>(&op.operation);
       if (op.life != analysis::ValueLife::kLive || !creation) continue;
       current = analysis::OpId{static_cast<std::uint32_t>(i)};

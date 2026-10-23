@@ -80,7 +80,7 @@ int main() {
     f.cause=FamilyFileError::kCreation;
     e.location.pc.reset();e.location.working_pc.reset();e.descendant_source.reset();RoundTrip(f);
     auto j=nlohmann::json::parse(FamilyCreationJson(e).dump());
-    j["reason"]=static_cast<unsigned>(FamilyCreationCheck::kClassCompletion)+1;Check(!ParseFamilyCreation(j));
+    j["reason"]=static_cast<unsigned>(FamilyCreationCheck::kLiteralMethod)+1;Check(!ParseFamilyCreation(j));
     j=nlohmann::json::parse(FamilyCreationJson(e).dump());j["kind"]=99U;Check(!ParseFamilyCreation(j));
     j=nlohmann::json::parse(FamilyCreationJson(e).dump());j["constructor_pool"]=UINT64_MAX;Check(!ParseFamilyCreation(j));
     j=nlohmann::json::parse(FamilyCreationJson(e).dump());j.erase("literal_pool");Check(!ParseFamilyCreation(j));

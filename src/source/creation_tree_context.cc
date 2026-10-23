@@ -33,10 +33,17 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
         occurrence->resolved.position == *position, Error::kSite);
     const auto& method = index.methods[position->value];
     Require(method.code.has_value() && method.owner_offset == index.methods[caller->value].owner_offset, Error::kSite);
+    const auto& creation = occurrence->creation;
+    const bool literal = occurrence->property != analysis::kNoLiteralProperty;
+    Require(literal == (mode == CreationContextMode::kObjectMethod), Error::kKind);
     // Shared MethodLiteral kinds can be refined by class materialization.
     // Require an unambiguous non-class role for ordinary, arrow and async targets.
-    Require(roles.At(*position) == analysis::MethodRole::kUnseen, Error::kRole);
-    const auto& creation = occurrence->creation;
+    // A literal method's single recorded literal role must match its own tag:
+    // v7 DefineMethodInLiteral installs the tag's kind only on a NONE literal.
+    if (!literal) Require(roles.At(*position) == analysis::MethodRole::kUnseen, Error::kRole);
+    else Require(roles.At(*position) == (occurrence->tag == abc::LiteralTag::kMethod
+        ? analysis::MethodRole::kOrdinary : occurrence->tag == abc::LiteralTag::kGeneratorMethod
+        ? analysis::MethodRole::kGenerator : analysis::MethodRole::kConflict), Error::kRole);
     Require(!occurrence->resolved.attributes.sendable, Error::kKind);
     std::optional<ConcurrentMetadata> concurrent;
     if (occurrence->resolved.attributes.kind == abc::FunctionKind::kConcurrent) {
@@ -68,7 +75,24 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
       }
     }
     CallableKind callable;
-    if (mode == CreationContextMode::kMethodBody) {
+    if (mode == CreationContextMode::kObjectMethod) {
+      Require(!concurrent,Error::kKind);
+      // v7 CreateJSFunctionInLiteral: NORMAL (tag METHOD on a NONE literal)
+      // uses the no-prototype function class; a recorded ASYNC_FUNCTION kind
+      // wins. Both match native method-definition shorthand. Async generator
+      // methods have no callable form here and stay refused.
+      Require(creation.kind == analysis::CreationKind::kMethod &&
+          creation.home_object == analysis::HomeObjectInput::kLiteralObject, Error::kKind);
+      const auto kind = occurrence->resolved.attributes.kind;
+      if (occurrence->tag == abc::LiteralTag::kMethod && kind == abc::FunctionKind::kNone)
+        callable = CallableKind::kMethod;
+      else if (occurrence->tag == abc::LiteralTag::kMethod && kind == abc::FunctionKind::kAsync)
+        callable = CallableKind::kAsyncMethod;
+      else if (occurrence->tag == abc::LiteralTag::kGeneratorMethod &&
+               (kind == abc::FunctionKind::kNone || kind == abc::FunctionKind::kGenerator))
+        callable = CallableKind::kGeneratorMethod;
+      else throw CreationContextFailure{Error::kKind};
+    } else if (mode == CreationContextMode::kMethodBody) {
       Require(!concurrent,Error::kKind);
       // OH7 ObjectFactory::NewJSFunctionForDefineMethod selects AsyncFunction
       // for ASYNC_FUNCTION, the no-prototype class for NONE, and installs the

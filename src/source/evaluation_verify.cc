@@ -11,6 +11,7 @@
 #include "evaluation_failure.h"
 #include "evaluation_flow.h"
 #include "evaluation_plan.h"
+#include "function_object.h"
 #include "for_in_evaluation.h"
 #include "for_of_evaluation.h"
 #include "integer_nan.h"
@@ -199,7 +200,17 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
           (IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && !projected_op(i) && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
-        Require(next_function < plan.functions.size() && plan.functions[next_function++].creation.value == i, Error::kOwnership);
+        Require(next_function < plan.functions.size() && plan.functions[next_function].property == analysis::kNoLiteralProperty &&
+            plan.functions[next_function++].creation.value == i, Error::kOwnership);
+      } else if (const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
+                 op.life == analysis::ValueLife::kLive && !projected_op(i) && object && object->literal) {
+        // Zero or more object-literal methods, in strictly increasing key order.
+        for (std::optional<std::uint32_t> last; next_function < plan.functions.size() &&
+             plan.functions[next_function].creation.value == i; ++next_function) {
+          step(); const auto property = plan.functions[next_function].property;
+          Require(property != analysis::kNoLiteralProperty && (!last || *last < property), Error::kOwnership);
+          last = property;
+        }
       }
     }
     Require(next_function == plan.functions.size(), Error::kOwnership);
@@ -681,8 +692,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
             witness = EvaluationAt(graph, plan, frame.op, EvaluationObligation::kPlan);
             // Check the final expression root, not only the immediate
             // consumer: a pure wrapper must not carry a closure past pop/push.
-            if (std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) ||
-                std::holds_alternative<analysis::ValueClassCreation>(op.operation))
+            if (CapturesEnvironment(op.operation))
               Require(environment_epochs[frame.op.value] == environment_epochs[i], Error::kOrder);
             if (OrderedEvaluation(op) && !cross(frame.op.value)) {
               skip_pure();

@@ -20,5 +20,14 @@ enum class FunctionObjectKind : std::uint8_t { kClass, kFunction };
     return FunctionObjectKind::kFunction;
   return {};
 }
+// Operations whose occurrence may install the current lexical environment in a
+// family child: function/class creation, and a literal object buffer whose
+// METHOD entries CloneObjectLiteral binds. Capture permission is still proved.
+[[nodiscard]] inline bool CapturesEnvironment(const analysis::ValueOperation& operation) {
+  if (std::holds_alternative<analysis::ValueFunctionCreation>(operation) ||
+      std::holds_alternative<analysis::ValueClassCreation>(operation)) return true;
+  const auto* object = std::get_if<analysis::ValueObjectAllocation>(&operation);
+  return object && object->literal.has_value();
+}
 }  // namespace abcd::source
 #endif

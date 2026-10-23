@@ -26,13 +26,7 @@ bool ExceptionScopeFacts::Matches(analysis::InstructionId site,
   const auto* ordinary = std::get_if<analysis::OrdinaryCapture>(&creation.capture);
   if (!ordinary || !Before(*this, site)) return false;
   const auto& instruction = flow.instructions[site.value];
-  const auto* operation = std::get_if<analysis::FunctionCreation>(&instruction.operation);
-  return operation && operation->kind == creation.creation.kind &&
-      operation->method == creation.creation.method &&
-      operation->length.value == creation.creation.length.value &&
-      operation->home_object == creation.creation.home_object &&
-      operation->cache_slot == creation.creation.cache_slot && !creation.target.attributes.sendable &&
-      instruction.pc == creation.offset && *environments.before[before.value] == ordinary->environment;
+  return CreatesBinding(instruction.operation, creation) && instruction.pc == creation.offset && *environments.before[before.value] == ordinary->environment;
 }
 bool ExceptionScopeFacts::Matches(analysis::InstructionId site, const ClassCaptureSite& creation) const {
   const auto* expected = CaptureClassCreation(creation);

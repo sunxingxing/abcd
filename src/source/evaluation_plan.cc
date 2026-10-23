@@ -169,6 +169,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       step();
       admit(function.captures.size(), sizeof(CellId));
       FunctionBinding owned{function.creation, function.child};
+      owned.property = function.property;
       owned.captures.reserve(function.captures.size());
       admit(owned.captures.capacity() - function.captures.size(), sizeof(CellId));
       for (const auto cell : function.captures) { step(); owned.captures.push_back(cell); }
@@ -207,7 +208,14 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
           (IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && !projected_op(i) && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
-        Require(next_function < functions.size() && functions[next_function++].creation.value == i, Error::kOwnership);
+        Require(next_function < functions.size() && functions[next_function].property == analysis::kNoLiteralProperty &&
+            functions[next_function++].creation.value == i, Error::kOwnership);
+      } else if (const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
+                 op.life == analysis::ValueLife::kLive && !projected_op(i) && object && object->literal) {
+        // Zero or more object-literal methods, in key order.
+        while (next_function < functions.size() && functions[next_function].creation.value == i) {
+          step(); Require(functions[next_function++].property != analysis::kNoLiteralProperty, Error::kOwnership);
+        }
         // Creation is ordered, not intrinsically a statement. Environment
         // fences below prevent its subtree from crossing implicit scope state.
       }

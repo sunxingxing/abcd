@@ -454,7 +454,8 @@ class FamilyTrees {
       // Naming evidence is creation-specific and must survive arena growth and
       // capture/module alias insertion. The runtime name stays creation-proven
       // even when a private self binding has a distinct synthetic spelling.
-      if (context.CreationSite() && !IsMethodCallable(context.Callable())) {
+      if (context.CreationSite() && (!IsMethodCallable(context.Callable()) ||
+          context.CreationSite()->property != analysis::kNoLiteralProperty)) {
         const auto name = constructed.tree.inferred_name;
         Require(name && name->value < constructed.tree.names.size(), FamilyTreeError::kContext);
         Step(context.Name().size());
@@ -867,7 +868,8 @@ class FamilyTrees {
               child_work, edge.site, edge.creation, cells, family.Owner(edge.parent), family.Owner(member_), left_));
       Account(evaluation);
       Require(parent.children.size() < parent.children.capacity(), FamilyTreeError::kParent);
-      Require(parent.children.empty() || parent.children.back().creation < evaluation.binding.creation, FamilyTreeError::kParent);
+      evaluation.binding.property = edge.creation.property;
+      Require(parent.children.empty() || parent.children.back().Key() < evaluation.binding.Key(), FamilyTreeError::kParent);
       parent.children.push_back(std::move(evaluation.binding));
       edge.cells = std::move(cells);
     }

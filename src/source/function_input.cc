@@ -91,6 +91,11 @@ bool FunctionInput::IsCreatorOf(const FunctionContext& child, abc::EntityOffset 
       !proof_.environments.before[creation.value]) return false;
   const auto& instruction = input_.instructions[creation.value];
   if (instruction.pc != owner.pc) return false;
+  // An object-literal method is created by its CREATEOBJECTWITHBUFFER.
+  if (const auto* function = std::get_if<analysis::FunctionCreation>(&owner.creation);
+      function && function->home_object == analysis::HomeObjectInput::kLiteralObject)
+    return owner.property.has_value() &&
+        std::holds_alternative<analysis::BufferedObjectCreation>(instruction.operation);
   return std::visit([&](const auto& expected) {
     const auto* actual = std::get_if<std::decay_t<decltype(expected)>>(&instruction.operation);
     return actual && *actual == expected;
@@ -103,7 +108,9 @@ FunctionInput::Owner FunctionInput::DescribeOwner(const FunctionContext& owner) 
   if (const auto* site = owner.ConstructorSite())
     return {site->creator, site->pc, {}, owner.Callable(), owner.Mode(), owner.Frame(), site->creation};
   const auto* site = owner.CreationSite();
-  return {site->creator, site->pc, {}, owner.Callable(), owner.Mode(), owner.Frame(), site->creation};
+  const auto property = site->property == analysis::kNoLiteralProperty
+      ? std::nullopt : std::optional<std::uint32_t>{site->property};
+  return {site->creator, site->pc, property, owner.Callable(), owner.Mode(), owner.Frame(), site->creation};
 }
 bool FunctionInput::MatchesOwner(const FunctionContext& owner) const {
   return owner_ && identity_ == owner.Identity() && method_ == owner.Target() &&

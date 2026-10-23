@@ -15,6 +15,32 @@ struct CaptureTree {
   const FunctionTree& tree;
   const TreeFlow& flow;
 };
+// The FunctionExpr creating child at a creation operation's own expression:
+// that expression itself, or one method property of its object literal (the
+// literal evaluates its methods at the same position). Adds the properties
+// examined to *examined; null if no such single expression exists.
+[[nodiscard]] inline const FunctionExpr* CreationFunctionExpr(const FunctionTree& tree,
+    ExprId expression, FunctionOwnerId child, std::uint64_t* examined) {
+  if (expression.value >= tree.expressions.size()) return nullptr;
+  const auto& node = tree.expressions[expression.value].expression;
+  if (const auto* function = std::get_if<FunctionExpr>(&node))
+    return function->child == child ? function : nullptr;
+  const auto* object = std::get_if<ObjectExpr>(&node);
+  if (!object || object->kind != AggregateKind::kObject ||
+      object->properties.first > tree.properties.size() ||
+      object->properties.count > tree.properties.size() - object->properties.first) return nullptr;
+  const FunctionExpr* found = nullptr;
+  for (std::uint32_t p = 0; p < object->properties.count; ++p) {
+    ++*examined;
+    const auto& property = tree.properties[object->properties.first + p];
+    if (!property.method || property.value.value >= tree.expressions.size()) continue;
+    const auto* function = std::get_if<FunctionExpr>(&tree.expressions[property.value.value].expression);
+    if (!function || function->child != child) continue;
+    if (found) return nullptr;
+    found = function;
+  }
+  return found;
+}
 // A genuine class-root occurrence projected into this actual ClassExpr.
 // Borrowed for synchronous construction only; original cell binding and the
 // eventual enclosing-scope/write checks remain independent obligations.

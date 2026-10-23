@@ -82,8 +82,11 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
     syntax.home_object = context.ClassContext() ? HomeObjectBinding::kClass : HomeObjectBinding::kNone;
     syntax.names = std::move(constants.names);
     syntax.texts = std::move(constants.texts);
-    // Method runtime names do not introduce a named-function self binding.
-    if (context.CreationSite() && !IsMethodCallable(context.Callable())) {
+    // Method runtime names do not introduce a named-function self binding. An
+    // object-literal method keeps its runtime name only so shorthand printing
+    // can require it to equal the key (no self binding is derived from it).
+    if (context.CreationSite() && (!IsMethodCallable(context.Callable()) ||
+        context.CreationSite()->property != analysis::kNoLiteralProperty)) {
       Require(syntax.names.size() < std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
       reserve(syntax.names, syntax.names.size() + 1);
       const auto name = context.Name();

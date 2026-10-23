@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-10-23。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-24。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
@@ -9,6 +9,21 @@
 
 
 
+
+## Object-literal methods (2026-10-24)
+
+- `CREATEOBJECTWITHBUFFER` method entries (`key + METHOD* + METHOD_AFFILIATE`)
+  are indexed creation occurrences with a key ordinal, bound at the object
+  instruction (normal and phased parents), read as family children and
+  printed as native shorthand `[async ][*]key(params) { … }` (v7
+  `CreateJSFunctionInLiteral`: no-prototype non-constructor; `CloneObjectLiteral`
+  sets env and home object). Bindings are keyed by (operation, ordinal); family
+  writes require one child edge per method entry. Accessor placeholders and
+  async generator methods stay refused. Design: [object-buffer-source.md](../object-buffer-source.md).
+- Evidence: fixture object_methods (Node 9 cases: captures through try,
+  receivers, key order, name/length, non-constructability, async/generator).
+  Cohorts 611→612 / 546→547 (o12 query_auth complete), no regressions, no
+  text changes (`build/review/csr71`).
 
 ## Deferred declarations with several stores (2026-10-24)
 

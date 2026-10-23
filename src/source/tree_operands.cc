@@ -923,8 +923,26 @@ class OperandCheck {
               const auto& actual_name = tree_.names[actual.key->value];
               budget_.Step(source_name.size()); budget_.Step(actual_name.size());
               RequireMeaning(actual_name == source_name, Error::kConstant);
-              if (!flow_.defined_properties[object.properties.first + p])
+              RequireMeaning(actual.method == source.method, Error::kConstant);
+              if (source.method) {
+                // The next verified binding is this allocation's key ordinal.
+                RequireMeaning(!flow_.defined_properties[object.properties.first + p] &&
+                    next_function < evaluation_.functions.size(), Error::kOperand);
+                const auto& function = evaluation_.functions[next_function++];
+                const auto& created = Node<FunctionExpr>(actual.value);
+                RequireMeaning(function.creation == current_ && function.property == p &&
+                    function.child != tree_.owner && created.child == function.child &&
+                    created.captures.count == function.captures.size(), Error::kOperand);
+                for (std::size_t c = 0; c < function.captures.size(); ++c) {
+                  budget_.Step(); const auto cell = function.captures[c];
+                  RequireMeaning(cell.value < flow_.cells.size() && flow_.cells[cell.value] &&
+                      tree_.closure_captures[created.captures.first + c] == *flow_.cells[cell.value], Error::kOperand);
+                }
+              } else if (!flow_.defined_properties[object.properties.first + p])
                 BufferedLiteral(source.value, actual.value);
+            }
+            for (auto p = expected->count; p < object.properties.count; ++p) {
+              budget_.Step(); RequireMeaning(!tree_.properties[object.properties.first + p].method, Error::kConstant);
             }
             if constexpr (array) return;
             // A folded own definition may replace only the last buffered
@@ -957,7 +975,8 @@ class OperandCheck {
           RequireMeaning(next_function < evaluation_.functions.size(), Error::kOperand);
           const auto& function = evaluation_.functions[next_function++];
           const auto& created = Node<FunctionExpr>(expression);
-          RequireMeaning(function.creation == current_ && function.child != tree_.owner &&
+          RequireMeaning(function.creation == current_ && function.property == analysis::kNoLiteralProperty &&
+              function.child != tree_.owner &&
               created.child == function.child && created.captures.count == function.captures.size(), Error::kOperand);
           for (std::size_t c = 0; c < function.captures.size(); ++c) {
             budget_.Step(); const auto cell = function.captures[c];

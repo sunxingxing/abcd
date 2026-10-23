@@ -260,10 +260,17 @@ analysis::OpId Creation(const CaptureParent& parent, analysis::InstructionId sit
     const CaptureSite& creation, Quota& quota) {
   const auto id = Operation(parent, site, quota);
   if (const auto* function = std::get_if<analysis::CreationBinding>(&creation)) {
-    const auto* operation = std::get_if<analysis::ValueFunctionCreation>(&parent.graph.ops[id.value].operation);
-    Require(operation && operation->kind == function->creation.kind && operation->method == function->creation.method &&
-        operation->length == function->creation.length.value && operation->home_object == function->creation.home_object &&
-        operation->cache_slot == function->creation.cache_slot, Error::kCreation);
+    if (function->property != analysis::kNoLiteralProperty) {
+      // CloneObjectLiteral installs the creating env on each buffer method.
+      const auto* object = std::get_if<analysis::ValueObjectAllocation>(&parent.graph.ops[id.value].operation);
+      Require(object && object->literal &&
+          function->creation.home_object == analysis::HomeObjectInput::kLiteralObject, Error::kCreation);
+    } else {
+      const auto* operation = std::get_if<analysis::ValueFunctionCreation>(&parent.graph.ops[id.value].operation);
+      Require(operation && operation->kind == function->creation.kind && operation->method == function->creation.method &&
+          operation->length == function->creation.length.value && operation->home_object == function->creation.home_object &&
+          operation->cache_slot == function->creation.cache_slot, Error::kCreation);
+    }
   } else {
     const auto* expected = CaptureClassCreation(std::get<ClassCaptureSite>(creation));
     const auto* operation = std::get_if<analysis::ValueClassCreation>(&parent.graph.ops[id.value].operation);

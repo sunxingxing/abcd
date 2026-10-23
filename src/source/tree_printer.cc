@@ -107,8 +107,10 @@ struct ObjectCursor {
   bool multiline = false;
 };
 struct EndProperty { PropertyId id; };
-struct BeginFunction { bool grouped = true; std::optional<std::u16string_view> declaration; };
-struct EndFunction { bool grouped = true; };
+// method: object-literal method shorthand; the object cursor already printed
+// any async/generator prefix and the key in the creating function's context.
+struct BeginFunction { bool grouped = true; std::optional<std::u16string_view> declaration; bool method = false; };
+struct EndFunction { bool grouped = true; bool method = false; };
 struct ParameterCursor { std::uint32_t index; };
 struct EndParameter { std::uint32_t index; };
 using PrintAction = std::variant<TemplateStart, TemplateChunk, std::string_view, ExprId, EndExpression, ProjectedExpression, ProjectElidedOperands, ExpressionOperand, BooleanOperand, PostfixSpine,
@@ -348,7 +350,9 @@ class TreePrinter {
         throw Error::kUnsupportedContext;
       // Only the actual class root is a class member. An arrow method carrier
       // retains its original callable kind and cannot observe its home object.
-      if ((IsMethodCallable(Tree().callable) || Tree().callable == CallableKind::kBaseConstructor || Tree().callable == CallableKind::kDerivedConstructor) && !ClassRoot())
+      // Elsewhere a method callable is printable only as object-literal method
+      // shorthand; BeginFunction refuses every other occurrence form.
+      if ((Tree().callable == CallableKind::kBaseConstructor || Tree().callable == CallableKind::kDerivedConstructor) && !ClassRoot())
         throw Error::kUnsupportedContext;
       owners_[i] = {Tree().owner, i};
       Result().identity = Tree().identity; Result().method = Tree().method;
@@ -1327,6 +1331,15 @@ class TreePrinter {
         Append(accessor->kind == abc::ClassMethodKind::kGetter ? "get " : "set ");
       }
       Key(class_root_->Name()); Append("(");
+    } else if (IsMethodCallable(Tree().callable) != start.method) {
+      throw Error::kUnsupportedContext;
+    } else if (start.method) {
+      // Native shorthand names the method by its key; NamedEvaluation of the
+      // same key produced the runtime name, so no naming envelope remains.
+      if (!NativeName() || Tree().self || Tree().invocation != InvocationForm::kDeclared ||
+          (Tree().callable != CallableKind::kMethod && Tree().callable != CallableKind::kAsyncMethod &&
+           Tree().callable != CallableKind::kGeneratorMethod)) throw Error::kUnsupportedContext;
+      Append("(");
     } else if (start.declaration) {
       if(Tree().callable!=CallableKind::kFunction || !Tree().inferred_name ||
           Tree().names[Tree().inferred_name->value]!=*start.declaration ||
@@ -1370,7 +1383,7 @@ class TreePrinter {
           Tree().callable == CallableKind::kGenerator ? "function*(" :
           Tree().callable == CallableKind::kAsyncFunction ? "async function(" : "function(");
     }
-    Push(EndFunction{start.grouped}); Push(Statement{Tree().body, depth_});
+    Push(EndFunction{start.grouped, start.method}); Push(Statement{Tree().body, depth_});
     Push(std::string_view(IsArrowCallable(Tree().callable) &&
         Tree().invocation == InvocationForm::kDeclared ? ") => " : ") "));
     Push(ParameterCursor{0});
@@ -1386,7 +1399,7 @@ class TreePrinter {
       Step(); if (std::holds_alternative<FunctionExit>(Tree().anchors[i].position)) Result().anchors[i] = written_;
     }
     // Class-body syntax closes with the block itself, not an expression wrap.
-    if (!ClassRoot() && !ProgramBody()) {
+    if (!ClassRoot() && !ProgramBody() && !end.method) {
       if (Tree().inferred_name && !NativeName() && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding)) {
         Append(end.grouped || Tree().self ? "})[" : "}["); Quoted(Tree().names[Tree().inferred_name->value]); Append("]");
         if (Tree().self) { Append("; return "); Name(*Tree().self); Append("; })()"); }
@@ -1443,6 +1456,28 @@ class TreePrinter {
     const PropertyId id{cursor.range.first + cursor.index};
     const auto& property = Tree().properties[id.value];
     Result().properties[id.value].begin = written_;
+    if (property.method) {
+      const auto* function = std::get_if<FunctionExpr>(&Tree().expressions[property.value.value].expression);
+      if (!family_ || !function || cursor.kind != AggregateKind::kObject || !property.key ||
+          property.computed_key || property.effect != ObjectPropertyEffect::kDefine)
+        throw Error::kUnsupportedContext;
+      const auto child = std::lower_bound(owners_.begin(), owners_.end(), function->child,
+          [&](const auto& item, FunctionOwnerId owner) { Step(); return item.owner < owner; });
+      if (child == owners_.end() || child->owner != function->child) throw Error::kUnsupportedContext;
+      const auto callable = family_->members[child->member].tree.callable;
+      Push(ObjectCursor{cursor.range, cursor.index + 1, cursor.kind, cursor.multiline});
+      Push(EndProperty{id});
+      BeginExpression(property.value);
+      if (callable == CallableKind::kAsyncMethod) Append("async ");
+      if (callable == CallableKind::kGeneratorMethod) Append("*");
+      const auto& name = Tree().names[property.key->value];
+      Step(name.size());
+      if (ClassifyObjectKey(name) == MemberKeySyntax::kIdentifier) Identifier(name);
+      else { Append("["); Quoted(name); Append("]"); }
+      const auto parent = current_; current_ = child->member;
+      Push(BeginFunction{false, std::nullopt, true}); current_ = parent;
+      return;
+    }
     if(property.effect == ObjectPropertyEffect::kSetPrototype)Append("__proto__: ");
     else if(property.computed_key)Append("[");
     else if(!property.key)Append("...");

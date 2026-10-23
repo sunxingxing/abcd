@@ -63,7 +63,7 @@ class Resolver {
       ObjectBuffer object_buffer;
       abc::LiteralArray array_buffer;
       if (kind == AggregateKind::kObject) {
-        auto read = ReadObjectBuffer({uses[first].slot}, graph.origins[origin.value].pc, context, {left_.bytes, left_.work});
+        auto read = ReadObjectBuffer({uses[first].slot}, graph.origins[origin.value].pc, context, {left_.bytes, left_.work}, true);
         const auto* buffer = std::get_if<ObjectBuffer>(&read);
         if (!buffer) {
           const auto& failure = std::get<BodyEmitFailure>(read);
@@ -109,8 +109,12 @@ class Resolver {
           for (std::size_t digit = 0; digit < length; ++digit) key_text[digit] = digits[digit];
           Text(out_.names, {key_text, length});
         }
-        const auto& entry = kind == AggregateKind::kObject ? object_buffer.literal.entries[i * kPairEntries + 1] : array_buffer.entries[i];
+        const auto& entry = kind == AggregateKind::kObject ? object_buffer.literal.entries[object_buffer.values[i]] : array_buffer.entries[i];
         TreeLiteral value;
+        if (kind == AggregateKind::kObject && IsBufferMethod(object_buffer, i)) {
+          out_.properties.push_back({key, NullLiteral{}, true});
+          continue;
+        }
         if (entry.tag == abc::LiteralTag::kString) {
           auto decoded = abc::ReadStringEntity(file, header, std::get<abc::EntityOffset>(entry.value), {left_.bytes});
           const auto* text = std::get_if<std::u16string>(&decoded);

@@ -10,7 +10,9 @@
 namespace abcd::source {
 namespace {
 using Error = FamilyWriteError;
-enum class Barrier : std::uint8_t { kMissing, kFunction, kPrimitiveObject, kPrimitiveArray, kClass, kConsumed };
+// kMethodObject: a literal object site whose METHOD entries are each one
+// child edge; methods_ counts the edges still owed at that site.
+enum class Barrier : std::uint8_t { kMissing, kFunction, kPrimitiveObject, kPrimitiveArray, kClass, kConsumed, kMethodObject };
 using Inputs = std::variant<const FileFamily*, std::span<const FamilyWriteInput>>;
 class WriteCheck {
  public:
@@ -78,7 +80,7 @@ class WriteCheck {
       Step(std::get<std::uint64_t>(aliases));
     }
     std::visit([&](auto input) { ClosedRoot(input); }, root.function);
-    Array(barriers_, sites); Array(signature_, sites);
+    Array(barriers_, sites); Array(signature_, sites); Array(methods_, sites);
     for (std::size_t i = 0; i < count; ++i) {
       member_ = {static_cast<std::uint32_t>(i)}; pc_.reset();
       const auto source = Member(i);
@@ -130,11 +132,15 @@ class WriteCheck {
         Step(std::get<std::uint64_t>(captured)); ++facts_.creations;
       }
       for (const auto& object : source.objects) {
-        Step(); Mark(i, object.site, Barrier::kPrimitiveObject);
+        Step(); std::uint32_t methods = 0;
+        for (std::size_t key = 0; key < object.buffer.keys.size(); ++key) { Step(); methods += IsBufferMethod(object.buffer, key); }
+        Mark(i, object.site, methods ? Barrier::kMethodObject : Barrier::kPrimitiveObject);
+        methods_[offsets_[i] + object.site.value] = methods;
         const auto* actual = std::get_if<analysis::BufferedObjectCreation>(&instructions[object.site.value].operation);
         Require(actual && actual->literal == object.creation.literal, Error::kCoverage);
-        // The retained ReadObjectBuffer result already rejects callable values;
-        // it is consumed unchanged, not permission to erase this allocation.
+        // The retained ReadObjectBuffer result validated every data value; each
+        // method entry must be discharged by exactly one child creation edge.
+        // It is consumed unchanged, not permission to erase this allocation.
         ++facts_.primitive_objects;
       }
       for (const auto& array : source.arrays) {
@@ -336,14 +342,16 @@ class WriteCheck {
       const NormalWriteEdge& edge, const CaptureCells& cells, std::size_t parent) {
     const auto* normal = std::get_if<CaptureFunction>(&source.function);
     Require(normal != nullptr, Error::kCapture);
-    Mark(parent, edge.site, Barrier::kFunction);
+    if (edge.creation.property != analysis::kNoLiteralProperty) MarkMethod(parent, edge.site);
+    else Mark(parent, edge.site, Barrier::kFunction);
     return VerifyCaptureCells(index_, *normal, child, edge.site, edge.creation, cells, left_);
   }
   std::variant<std::uint64_t, CaptureCellFailure> Capture(const FamilyWriteInput& source, CaptureChild child,
       const PhasedWriteEdge& edge, const CaptureCells& cells, std::size_t parent) {
     const auto* phase = std::get_if<PhasedFamilyInput>(&source.function);
     Require(phase != nullptr, Error::kCapture);
-    Mark(parent, edge.creation.instruction, Barrier::kFunction);
+    if (edge.creation.binding.property != analysis::kNoLiteralProperty) MarkMethod(parent, edge.creation.instruction);
+    else Mark(parent, edge.creation.instruction, Barrier::kFunction);
     return VerifyPhasedCaptureCells(index_, phase->lookup, phase->function, phase->body,
         phase->locals, edge.creation, child, edge.owner, cells, left_, phase->storage ? &phase->storage->cells : nullptr);
   }
@@ -352,7 +360,8 @@ class WriteCheck {
     Require(site.value < instructions.size(), Error::kCoverage); pc_ = instructions[site.value].pc;
     auto& barrier = barriers_[offsets_[owner] + site.value];
     Require(barrier == Barrier::kFunction || barrier == Barrier::kPrimitiveObject ||
-        barrier == Barrier::kPrimitiveArray || barrier == Barrier::kClass, Error::kCoverage);
+        barrier == Barrier::kPrimitiveArray || barrier == Barrier::kClass ||
+        (barrier == Barrier::kMethodObject && methods_[offsets_[owner] + site.value] == 0), Error::kCoverage);
     barrier = Barrier::kConsumed;
   }
   void Barriers(CaptureFunction source, std::size_t owner) {
@@ -410,6 +419,14 @@ class WriteCheck {
     auto& slot = barriers_[offsets_[owner] + site.value];
     Require(slot == Barrier::kMissing, Error::kCoverage); slot = proof;
   }
+  void MarkMethod(std::size_t owner, analysis::InstructionId site) {
+    pc_.reset(); const auto instructions = Instructions(Member(owner));
+    Require(site.value < instructions.size(), Error::kCoverage);
+    pc_ = instructions[site.value].pc;
+    const auto at = offsets_[owner] + site.value;
+    Require(barriers_[at] == Barrier::kMethodObject && methods_[at] > 0, Error::kCoverage);
+    --methods_[at];
+  }
   void Step(std::uint64_t count = 1) { Require(count <= left_.work, Error::kWorkLimit); left_.work -= count; }
   void Admit(std::size_t count, std::size_t width) {
     Require(count <= left_.bytes / width, Error::kResourceLimit); left_.bytes -= count * width;
@@ -430,6 +447,7 @@ class WriteCheck {
   FamilyWriteFacts facts_;
   std::vector<std::size_t> offsets_;
   std::vector<Barrier> barriers_;
+  std::vector<std::uint32_t> methods_;
   std::vector<std::uint8_t> signature_;
 };
 }  // namespace

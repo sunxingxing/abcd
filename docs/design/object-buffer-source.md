@@ -68,3 +68,46 @@ intervening calls and throws, field-plan budget exhaustion, name collision,
 key order, `__proto__`, accumulator preservation and alias rejection.
 This remains a guarded subset, not complete class-field or object-initializer
 recovery.
+
+## Method entries (object-literal method shorthand)
+
+`ExtractObjectDatas` reads a key followed by either one data entry or a
+`METHOD`/`GENERATORMETHOD`/`ASYNCGENERATORMETHOD` entry plus its
+`METHOD_AFFILIATE` length; only the affiliate produces the property value.
+`DefineMethodInLiteral` installs the tag's kind only on a `NONE` method
+literal (otherwise the recorded kind, e.g. `ASYNC_FUNCTION`, wins), and
+`CreateJSFunctionInLiteral` uses the no-prototype function class for
+`NORMAL_FUNCTION`. `CloneObjectLiteral` clones each method per evaluation
+and sets the creating lexical environment and the fresh literal as home
+object. Native shorthand `key(params) { … }` has exactly these properties:
+non-constructor, no `prototype`, name from the key, home object = literal.
+
+- `FunctionCreationSites` also indexes each method entry of a modern
+  `CREATEOBJECTWITHBUFFER` as an occurrence (target, creator, original PC,
+  key ordinal, tag). Its creation is `kMethod` with
+  `HomeObjectInput::kLiteralObject`, the affiliate length (≤ 255) and no
+  pool slot. `FindLiteral(creator, pc)` returns the occurrences of one site
+  in key order in O(log S). Unreadable or malformed literals are not indexed;
+  the object reader refuses them at the creation.
+- `BindLiteralCreation`/`BindExceptionLiteralCreation` bind an occurrence at
+  its own working instruction with the ordinary environment before it (no
+  sendable branch). `CreationContextMode::kObjectMethod` requires the method's
+  single literal role to match its tag and maps `METHOD` + `NONE` →
+  `kMethod`, `METHOD` + `ASYNC` → `kAsyncMethod`, generator tag →
+  `kGeneratorMethod`; async generator methods stay refused.
+- The family reader keeps an object site current until every indexed method
+  has been read as its own child; the buffer's method keys must equal the
+  indexed occurrences exactly. `FunctionBinding` keys are (operation, key
+  ordinal); evaluation, tree-semantics and capture checks consume them in
+  that order. Family writes mark the site `kMethodObject` and require one
+  child edge per method entry before the barrier is consumed.
+- The tree binds each method key to the child's `FunctionExpr`
+  (`DataProperty::method`). Printing requires the child's runtime name to
+  equal the key and prints `[async ][*]key(params) { … }`; a later own
+  definition replacing a method key is refused. A method callable outside a
+  class root is printable only through this shorthand path.
+
+Accessor placeholders (`ACCESSOR` + `DEFINEGETTERSETTERBYVALUE`) remain
+refused by the data-value reader. Evidence: fixture `object_methods` (Node
+differential: captures through try, receivers, key order, names, lengths,
+non-constructability, async and generator kinds).

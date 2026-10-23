@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/object_methods/methods.js",
+   "path": "tests/fixtures/isa/object_methods/methods-O0.abc",
+   "sha256": "49005a28ccde0c22a594f1167de914491fd42e3da2a83690f4475babd647e4ff",
+   "source_sha256": "d567cd38461e2fb14ddedcb211293fe956656a731144cc3ed9cd69cf6cf60b5d",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=object_methods",
+    "--source-file=methods.js",
+    "--output=tests/fixtures/isa/object_methods/methods-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/object_methods/methods.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only."
+}

@@ -81,6 +81,9 @@ std::variant<FunctionValues, FunctionValueFailure> BuildFunctionValues(
         std::holds_alternative<analysis::ValueCurrentEnvironment>(op.operation) ||
         std::holds_alternative<analysis::ValueFunctionCreation>(op.operation) ||
         std::holds_alternative<analysis::ValueClassCreation>(op.operation);
+    // A literal buffer may create methods capturing this environment.
+    if (const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation))
+      needs_environments |= object->literal.has_value();
   }
   std::optional<analysis::ValueEnvironments> environments;
   std::optional<CellPlan> cells;

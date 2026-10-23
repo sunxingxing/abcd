@@ -170,7 +170,9 @@ class StructureCheck {
       RequireTree(tree_.inferred_name->value < tree_.names.size(), Error::kName);
       RequireTree((tree_.callable == CallableKind::kFunction ||
           IsArrowCallable(tree_.callable) || tree_.callable == CallableKind::kAsyncFunction ||
-          tree_.callable == CallableKind::kGenerator || tree_.callable == CallableKind::kAsyncGenerator), Error::kUnsupportedSyntax);
+          tree_.callable == CallableKind::kGenerator || tree_.callable == CallableKind::kAsyncGenerator ||
+          // Object-literal method runtime name; printable only as its key.
+          (IsMethodCallable(tree_.callable) && !tree_.self)), Error::kUnsupportedSyntax);
     }
     RequireTree(tree_.parameter_scope.value < tree_.scopes.size() &&
                 tree_.body_scope.value < tree_.scopes.size() &&

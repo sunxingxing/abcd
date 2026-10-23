@@ -20,12 +20,7 @@ bool NormalScopeFacts::Matches(analysis::InstructionId site,
     const analysis::CreationBinding& creation) const {
   const auto* ordinary = std::get_if<analysis::OrdinaryCapture>(&creation.capture);
   if (!ordinary || site.value >= method_.instructions.size()) return false;
-  const auto* operation = std::get_if<analysis::FunctionCreation>(&method_.instructions[site.value].operation);
-  return operation && operation->kind == creation.creation.kind &&
-      operation->method == creation.creation.method &&
-      operation->length.value == creation.creation.length.value &&
-      operation->home_object == creation.creation.home_object &&
-      operation->cache_slot == creation.creation.cache_slot && !creation.target.attributes.sendable &&
+  return CreatesBinding(method_.instructions[site.value].operation, creation) &&
       site.value < environments_.before.size() && environments_.before[site.value] &&
       method_.instructions[site.value].pc == creation.offset &&
       *environments_.before[site.value] == ordinary->environment;

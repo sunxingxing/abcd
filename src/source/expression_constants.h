@@ -24,7 +24,9 @@ struct AggregateConstant {
   std::uint32_t count;
   AggregateKind kind = AggregateKind::kObject;
 };
-struct ConstantProperty { NameId key; TreeLiteral value; };
+// method: an object-literal METHOD entry. Its value is no literal; the tree
+// binds that key's verified family child (FunctionBinding by op and ordinal).
+struct ConstantProperty { NameId key; TreeLiteral value; bool method = false; };
 // Language-defined keys for input-backed intrinsic records. Resolve these
 // once per method, like buffered keys; no pool ID reaches executable syntax.
 struct IterResultConstant {

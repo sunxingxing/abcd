@@ -101,9 +101,9 @@ std::variant<std::uint64_t, CaptureTreeError> VerifyCaptureTree(
       Require(cells.creation.value < parent.flow.expressions.size() &&
           parent.flow.expressions[cells.creation.value], Error::kCreation);
       const auto expression = *parent.flow.expressions[cells.creation.value];
-      Require(expression.value < outer.expressions.size(), Error::kCreation);
-      const auto* creation = std::get_if<FunctionExpr>(&outer.expressions[expression.value].expression);
-      Require(creation && creation->child == inner.owner, Error::kCreation);
+      std::uint64_t examined = 0;
+      const auto* creation = CreationFunctionExpr(outer, expression, inner.owner, &examined);
+      step(examined); Require(creation != nullptr, Error::kCreation);
       range = creation->captures;
       Require(range.first <= outer.closure_captures.size() &&
           range.count <= outer.closure_captures.size() - range.first && range.count == cells.targets.size(), Error::kCoverage);

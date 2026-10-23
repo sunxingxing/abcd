@@ -4,6 +4,7 @@
 #include "abcd/abc/method_target.h"
 #include "abcd/analysis/environment_flow.h"
 #include "abcd/analysis/function_creation.h"
+#include "abcd/analysis/function_creation_sites.h"
 #include "abcd/analysis/exception_phase.h"
 
 namespace abcd::analysis {
@@ -50,6 +51,8 @@ struct CreationBinding {
   FunctionCreation creation;
   abc::MethodTarget target;
   CreationCapture capture;
+  // Object-literal key ordinal of a buffer method; kNoLiteralProperty otherwise.
+  std::uint32_t property = kNoLiteralProperty;
 };
 enum class CreationBindingError {
   kInstructionRange,
@@ -83,5 +86,17 @@ using CreationBindingResult =
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     abc::EntityOffset caller, const abc::MethodBody& body, const ExceptionFlow& flow,
     const EnvironmentFlow& environments, ExceptionNodeId before);
+// One indexed object-literal method occurrence at its unchanged modern
+// CREATEOBJECTWITHBUFFER instruction. v7 CloneObjectLiteral installs the
+// current ordinary lexical env on every cloned method (no sendable branch) and
+// the fresh literal as home object. The site must name this exact instruction.
+[[nodiscard]] CreationBindingResult BindLiteralCreation(
+    const abc::MethodBody& body, const EnvironmentFlow& flow, std::size_t instruction,
+    const FunctionCreationSite& site);
+// Exception-node form; only the creation's own Before node is valid.
+[[nodiscard]] CreationBindingResult BindExceptionLiteralCreation(
+    const abc::MethodBody& body, const ExceptionFlow& flow,
+    const EnvironmentFlow& environments, ExceptionNodeId before,
+    const FunctionCreationSite& site);
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_CREATION_BINDING_H_

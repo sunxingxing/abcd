@@ -28,8 +28,13 @@ std::variant<CheckedSite, CaptureFailure, InputBindingError> CheckSite(
   if (creation.operation.value >= graph.ops.size() || creation.instruction.value >= graph.input.sites.size() ||
       graph.input.sites[creation.instruction.value] != creation.operation) return CaptureError::kCreation;
   const auto& op = graph.ops[creation.operation.value];
+  const auto* object = std::get_if<analysis::ValueObjectAllocation>(&op.operation);
+  const bool literal = creation.binding.property != analysis::kNoLiteralProperty;
   if (op.life != analysis::ValueLife::kLive || op.block.value >= graph.phases.size() ||
-      !std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) return CaptureError::kCreation;
+      literal != (occurrence->property == creation.binding.property && literal) ||
+      (literal ? !(object && object->literal)
+               : !std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)))
+    return CaptureError::kCreation;
   if (op.origin.value >= graph.origins.size()) return CaptureError::kCreation;
   const auto& origin = graph.origins[op.origin.value];
   if (origin.pc != creation.binding.offset ||

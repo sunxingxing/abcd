@@ -8,6 +8,8 @@
 #include "abcd/analysis/exception_captures.h"
 #include "module_aliases.h"
 
+#include "function_object.h"
+
 namespace abcd::source {
 struct PhasedBody::Storage {
   RouteInputIdentity identity;
@@ -370,8 +372,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
           std::holds_alternative<ValueEnvironmentPop>(op.operation) ||
           std::holds_alternative<ValueLexicalLoad>(op.operation) ||
           std::holds_alternative<ValueLexicalStore>(op.operation) ||
-          std::holds_alternative<ValueFunctionCreation>(op.operation) ||
-          std::holds_alternative<ValueClassCreation>(op.operation);
+          CapturesEnvironment(op.operation);
     }
     std::optional<ValueEnvironments> cell_environments;
     std::optional<CellPlan> cells;
