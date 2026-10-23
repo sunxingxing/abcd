@@ -77,10 +77,15 @@ struct PostfixSpine { ExprId expression; ExprId access; ExprId base; };
 enum class BlockForm : std::uint8_t { kBraced, kList, kElseIf };
 struct Statement { StmtId id; std::size_t depth; BlockForm block = BlockForm::kBraced; };
 struct EndStatement { StmtId id; };
-struct LoopHeader { StmtId id; std::optional<StmtId> retained; bool discarded = false; };
-struct LoopHeaderCursor { StmtId block; std::uint32_t index; std::uint32_t count; std::optional<StmtId> retained; bool discarded = false; };
+// top: the piece fills a whole for/while slot (a full Expression context);
+// its own outer grouping is then redundant.
+struct LoopHeader { StmtId id; std::optional<StmtId> retained; bool discarded = false; bool top = false; };
+struct LoopHeaderCursor { StmtId block; std::uint32_t index; std::uint32_t count; std::optional<StmtId> retained; bool discarded = false; bool top = false; };
 struct LoopTransitionEnd { StmtId block; std::uint32_t first; };
-struct LoopInitializerCursor { std::uint32_t index; std::uint32_t end; bool emitted = false; };
+// grouped: items sit inside an already parenthesized prefix statement, so
+// each needs no grouping of its own. The for-init slot keeps item grouping
+// (Expression[~In] there).
+struct LoopInitializerCursor { std::uint32_t index; std::uint32_t end; bool emitted = false; bool grouped = false; };
 struct LoopDeclarationCursor { std::uint32_t index; std::uint32_t end; bool emitted = false; };
 struct LoopKeyword { std::optional<LabelId> label; };
 struct ElideStatement { StmtId id; };
@@ -2051,11 +2056,11 @@ class TreePrinter {
       if (native_for) {
         if (transition) {
           Push(LoopTransitionEnd{transition->block, transition->end});
-          Push(LoopHeaderCursor{transition->block, transition->first, transition->end, {}, true});
+          Push(LoopHeaderCursor{transition->block, transition->first, transition->end, {}, true, true});
         }
         Push(std::string_view("; "));
       }
-      Push(LoopHeaderCursor{node.body, 0, syntax->header_count, syntax->body});
+      Push(LoopHeaderCursor{node.body, 0, syntax->header_count, syntax->body, false, true});
       if (native_for) {
         Push(std::string_view("; "));
         if (initializer) {
@@ -2066,7 +2071,7 @@ class TreePrinter {
               // Prefix effects execute once, before the new lexical loop scope.
               // Keeping them outside the RHS also preserves NamedEvaluation.
               Push(Indent{at.depth}); Push(std::string_view(");\n"));
-              Push(LoopInitializerCursor{initializer->first, *declarations}); Append("(");
+              Push(LoopInitializerCursor{initializer->first, *declarations, false, true}); Append("(");
             }
           } else Push(LoopInitializerCursor{initializer->first, initializer->end});
         }
@@ -2092,7 +2097,12 @@ class TreePrinter {
     const auto& node = Tree().statements[at.id.value].statement;
     if(const auto value=Initializers().statement_values[at.id.value]) {
       StatementChildren(Tree(),at.id,[&](StmtId child){Push(ElideStatement{child});});
-      ProjectDeclarationOrigins(at.id,value);Append("(");Push(std::string_view(at.discarded?")":", true)"));
+      ProjectDeclarationOrigins(at.id,value);
+      if(at.top) {
+        if(!at.discarded) Push(std::string_view(", true"));
+        Push(ExpressionOperand{*value,{ExpressionGrammar::kAssignmentValue}, {},ExpressionObservation::kDiscarded});return;
+      }
+      Append("(");Push(std::string_view(at.discarded?")":", true)"));
       Push(ExpressionOperand{*value,{}, {},ExpressionObservation::kDiscarded});return;
     }
     if(const auto& completion=Initializers().declaration_completions[at.id.value]) {
@@ -2100,7 +2110,8 @@ class TreePrinter {
     }
     if(const auto& value=Initializers().declaration_values[at.id.value]) {
       ProjectDeclarationOrigins(at.id,value->value);
-      Append("(");Push(std::string_view(at.discarded ? ")" : ", true)"));
+      if(at.top) { if(!at.discarded) Push(std::string_view(", true")); }
+      else { Append("(");Push(std::string_view(at.discarded ? ")" : ", true)")); }
       if(value->target) {
         Name(*value->target);Append(" = ");
         Push(ExpressionOperand{value->value,{ExpressionGrammar::kAssignmentValue},
@@ -2109,12 +2120,13 @@ class TreePrinter {
       return;
     }
     if (const auto* effect = std::get_if<ExpressionStmt>(&node)) {
-      Append("("); Push(std::string_view(at.discarded ? ")" : ", true)"));
+      if (at.top) { if (!at.discarded) Push(std::string_view(", true")); }
+      else { Append("("); Push(std::string_view(at.discarded ? ")" : ", true)")); }
       Push(ExpressionOperand{effect->expression, {ExpressionGrammar::kAssignmentValue}, {}, ExpressionObservation::kDiscarded});
     } else if (std::holds_alternative<BreakStmt>(node) || std::holds_alternative<ContinueStmt>(node)) Append("false");
     else if (const auto* block = std::get_if<BlockStmt>(&node)) {
-      Append("("); Push(std::string_view(")"));
-      Push(LoopHeaderCursor{at.id, 0, block->child_count, at.retained, at.discarded});
+      if (!at.top) { Append("("); Push(std::string_view(")")); }
+      Push(LoopHeaderCursor{at.id, 0, block->child_count, at.retained, at.discarded, at.top});
     } else {
       const auto& branch = std::get<IfStmt>(node);
       const auto literal = [&](std::optional<StmtId> arm) -> std::optional<bool> {
@@ -2126,7 +2138,7 @@ class TreePrinter {
         if (branch.consequent != at.retained) Push(ElideStatement{branch.consequent});
         if (branch.alternate && branch.alternate != at.retained) Push(ElideStatement{*branch.alternate});
         if (*yes != *no) {
-          Append("("); Push(std::string_view(")"));
+          if (!at.top) { Append("("); Push(std::string_view(")")); }
           Push(BooleanOperand{{branch.condition, {ExpressionGrammar::kExpression}, {}, ExpressionObservation::kTruthiness}, !*yes});
         }
         else {
@@ -2153,24 +2165,24 @@ class TreePrinter {
     }
     const auto child = Tree().children[block.first_child + at.index];
     if (Initializers().omitted[child.value]) {
-      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded});
+      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded, at.top});
       Push(ElideStatement{child});return;
     }
     const auto& meaning = Loops().meanings[child.value];
     const bool follows = counts[block.first_child + at.index + 1] != counts[block.first_child + at.count];
     if (follows) {
       if (meaning.exit) Push(std::string_view(")"));
-      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded});
+      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded, at.top});
       Push(std::string_view(meaning.exit ? " && (" : ", "));
     } else {
       // Walk remaining elided roots as well: they emit no separator, but their
       // source identities still need omission events at the predicate boundary.
-      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded});
+      Push(LoopHeaderCursor{at.block, at.index + 1, at.count, at.retained, at.discarded, at.top});
     }
     if (const auto* effect = std::get_if<ExpressionStmt>(&Tree().statements[child.value].statement); effect && follows) {
       Result().statements[child.value].begin = written_; Push(EndStatement{child});
       Push(ExpressionOperand{effect->expression, {ExpressionGrammar::kAssignmentValue}, {}, ExpressionObservation::kDiscarded});
-    } else Push(LoopHeader{child, at.retained, at.discarded && !follows});
+    } else Push(LoopHeader{child, at.retained, at.discarded && !follows, at.top && !follows});
   }
   void Run(LoopTransitionEnd at) {
     const auto& block = std::get<BlockStmt>(Tree().statements[at.block.value].statement);
@@ -2200,10 +2212,10 @@ class TreePrinter {
     Boundary(root.boundary);
     const BlockBoundary after{root.boundary.block, root.boundary.index + 1};
     const bool omitted = Initializers().omitted[root.statement.value];
-    Push(LoopInitializerCursor{at.index + 1,at.end,at.emitted || !omitted});Push(after);
+    Push(LoopInitializerCursor{at.index + 1,at.end,at.emitted || !omitted,at.grouped});Push(after);
     if (omitted) { Push(ElideStatement{root.statement});return; }
     if (at.emitted) Append(", ");
-    Push(LoopHeader{root.statement, {}, true});
+    Push(LoopHeader{root.statement, {}, true, at.grouped});
   }
   void Run(LoopKeyword at) {
     if (at.label) { Label(*at.label); Append(": "); }

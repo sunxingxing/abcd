@@ -10,6 +10,23 @@
 
 
 
+## Readable slice 4: loop headers (2026-10-23)
+
+- Loop header pieces were each wrapped in their own `(` `)` / `(…, true)`
+  because they may compose inside conditional arms. A piece that fills a whole
+  for/while slot (a full Expression context) now prints without that outer
+  grouping (LoopHeader/LoopHeaderCursor `top`). The last item of a comma list
+  prints at assignment level; nested compositions (the `&& (` exits and
+  conditional arms) keep their parentheses. The prefix initializer statement
+  `( … );` no longer double-wraps its items (LoopInitializerCursor `grouped`).
+  The for-init slot keeps item grouping (Expression[~In]).
+- Effect: `(($phi = 0));` → `($phi = 0);`, `for (…; ($i < n); …, (++$i))` →
+  `for (…; $i < n; …, ++$i)`. 66 / 43 complete files change (source /
+  previous flags). grouping_bytecode.py --changed-only: 66/66 and 43/43
+  bytecode-identical at default and O0, with Node 66/66 and 43/43. Completion
+  unchanged (605/620, 542/620). source-regression 65/65; the broad sweep
+  failures are only the known list.
+
 ## Readable yield spelling (2026-10-23)
 
 - YieldExpr printed its own parentheses, `(yield x)`, in every context. It now
