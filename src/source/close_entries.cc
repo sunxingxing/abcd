@@ -213,15 +213,29 @@ class Derivation {
         if(!live[a.target.value]){live[a.target.value]=true;queue.push_back(a.target);}
       }
     }
+    // Loop containment only: a user Catch inside a loop body rejoins it. As
+    // an independent root it would enter the loop away from its header, so
+    // the forest also follows exception arcs into live Catch nodes, and a
+    // Catch is a forest entry only when no live node raises into it. Close
+    // handlers that only exit never reach a latch and stay outside loops.
+    std::pmr::vector<bool> raised(in_.flow.nodes.size(),false,&q_.memory);
+    for(std::uint32_t n=0;n<live.size();++n) {
+      q_.Step();if(!live[n])continue;const auto& node=Node({n});
+      for(std::uint8_t e=0;e<node.successor_count;++e) {
+        q_.Step();const auto& a=node.successors[e];
+        if(a.kind==ExceptionArcKind::kException && live[a.target.value] && Node(a.target).phase==ExceptionPhase::kCatch)raised[a.target.value]=true;
+      }
+    }
     normal_.resize(in_.flow.nodes.size());
     for(std::uint32_t n=0;n<live.size();++n) {q_.Step();if(live[n]){normal_[n]=ControlNodeId{static_cast<std::uint32_t>(original_.size())};original_.push_back({n});}}
     std::pmr::vector<ControlVertex> nodes(&q_.memory);std::pmr::vector<ControlLink> arcs(&q_.memory);
     std::pmr::vector<ControlNodeId> entries(&q_.memory);
-    for(auto root:roots)entries.push_back(*normal_[root.value]);
+    for(auto root:roots)if(root.value==0 || !raised[root.value])entries.push_back(*normal_[root.value]);
     for(std::uint32_t n=0;n<original_.size();++n) {
       q_.Step();const auto& raw=Node(original_[n]);ControlVertex v{{static_cast<std::uint32_t>(arcs.size())},0};
       for(std::uint8_t e=0;e<raw.successor_count;++e) {
-        q_.Step();const auto& a=raw.successors[e];if(a.kind==ExceptionArcKind::kException)continue;
+        q_.Step();const auto& a=raw.successors[e];
+        if(a.kind==ExceptionArcKind::kException && !(normal_[a.target.value] && Node(a.target).phase==ExceptionPhase::kCatch))continue;
         q_.Require(normal_[a.target.value].has_value());
         arcs.push_back({{n},*normal_[a.target.value],a.kind==ExceptionArcKind::kTaken?FlowEdgeKind::kTaken:FlowEdgeKind::kFallthrough,v.arc_count++});
       }

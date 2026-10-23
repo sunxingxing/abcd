@@ -59,7 +59,10 @@ try{
     // m61706 completes under --language-source (the for-of route needs the
     // external-exception premise); the record then stops at async m61057.
     const f=r.source_failure;assert.equal(f.class,'unproved');
-    if(label==='source'){assert.equal(f.method,61057);assert.equal(f.pc,192);assert.equal(f.working_pc,168);}
+    // m61057's for-of with a nested user try completes as well; the record
+    // then stops at m59447's async completion check.
+    if(label==='source'){assert.equal(f.method,59447);assert.equal(f.pc,6);
+      assert.deepEqual(f.causes,[{domain:'abcd::source::FunctionEmitError',value:1},{domain:'abcd::source::AsyncCompletionCheck',value:1}]);continue;}
     else {assert.equal(f.method,61706);assert.equal(f.pc,643);}
     assert.deepEqual(f.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
     const rows=run(semantic,[inputs.get(n),String(method),'--instructions']).trim().split('\n').map(JSON.parse);

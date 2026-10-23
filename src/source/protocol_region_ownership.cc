@@ -60,7 +60,10 @@ std::variant<VerifiedProtocolRegionOwnership, CloseCompletionFailure> VerifyProt
     ProtocolForwarding forwarding;
     bool ordinary=false;for(std::size_t r=0;r<owned.size();++r){quota.Work();ordinary|=!excluded[r] && !plan.layout.regions[r].inactive;}
     if(ordinary){
-    auto forwarded=AnalyzeProtocolForwarding(graph,plan,excluded,close_blocks,quota.Remaining(),retained,entered);
+    std::vector<TryId> bodies;
+    {std::size_t count=0;for(const auto& r:summary.regions){quota.Work();for(const auto& range:r.boundary->protected_ranges)count+=range.role==ProtectedRangeRole::kLoopBody;}
+     quota.Size(bodies,count);count=0;for(const auto& r:summary.regions)for(const auto& range:r.boundary->protected_ranges)if(range.role==ProtectedRangeRole::kLoopBody)bodies[count++]=range.region;}
+    auto forwarded=AnalyzeProtocolForwarding(graph,plan,excluded,close_blocks,quota.Remaining(),retained,entered,bodies);
     if(const auto* f=std::get_if<ForInFailure>(&forwarded)){
       CloseCompletionFailure failure{f->kind==ForInError::kWorkLimit?CloseCompletionError::kWorkLimit:f->kind==ForInError::kResourceLimit?CloseCompletionError::kResourceLimit:CloseCompletionError::kOwnership};
       if(f->block)for(std::uint32_t r=0;r<plan.regions.size();++r){quota.Work();if(plan.regions[r].handler==*f->block || (plan.regions[r].binding && plan.regions[r].binding->block==*f->block)){failure.region=TryId{r};break;}}

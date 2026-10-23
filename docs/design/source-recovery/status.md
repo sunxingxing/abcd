@@ -10,6 +10,24 @@
 
 
 
+## for-of bodies with nested user try statements (2026-10-23)
+
+- Close-entry loop discovery follows exception arcs into live Catch nodes; a
+  Catch is a forest root only when nothing raises into it (a user catch that
+  rejoins the loop no longer makes it irreducible).
+- Protocol forwarding leaves a non-forwarding try that lies wholly inside a
+  protocol loop body as an ordinary user try (merged wrapper intervals,
+  O((W+R) log W)); both the seal and the control projection pass the
+  loop-body wrapper regions.
+- The for-of iteration proof's loop forest gives ordinary try wrappers
+  fan-out arcs to their body and handler (back edges mapped to topology arc
+  ids); counts and activation states propagate from a wrapper into those
+  entries instead of seeding them as fresh roots.
+- Evidence: fixture for_of_user_try (catch with effects, continue, rethrow,
+  replacement throw, async awaits): Node 60 cases incl. iterator return.
+  Cohorts unchanged (609/545); o32/58223 now reaches m59447 (async completion
+  check). Still refused: break from a catch and try/finally in a for-of body.
+
 ## Statement units never enter a condition prefix (2026-10-23)
 
 - `ControlVertex::statement` marks try wrappers, try exits and protocol close

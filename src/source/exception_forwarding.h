@@ -42,6 +42,7 @@ struct ProtocolForwarding {
     const analysis::ValueProgram&, const ExceptionPlan&,
     std::span<const std::uint8_t> owned_regions, std::span<const std::uint8_t> close_blocks,
     analysis::SemanticBudget = {}, std::span<const std::uint8_t> retained_regions = {},
-    std::span<const std::uint8_t> entered_regions = {});
+    std::span<const std::uint8_t> entered_regions = {},
+    std::span<const analysis::TryId> loop_bodies = {});
 }  // namespace abcd::source
 #endif

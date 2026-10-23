@@ -1,6 +1,7 @@
 #include "exception_forwarding.h"
 #include "for_in_quota.h"
 #include "../analysis/value_phi.h"
+#include <algorithm>
 #include <new>
 #include <stdexcept>
 
@@ -98,7 +99,7 @@ std::variant<ExceptionForwarding, ForInFailure> AnalyzeExceptionForwarding(
 std::variant<ProtocolForwarding, ForInFailure> AnalyzeProtocolForwarding(
     const ValueProgram& g,const ExceptionPlan& plan,std::span<const std::uint8_t> owned,
     std::span<const std::uint8_t> close,SemanticBudget budget,std::span<const std::uint8_t> retained,
-    std::span<const std::uint8_t> entered) {
+    std::span<const std::uint8_t> entered, std::span<const TryId> loop_bodies) {
   detail::ForInQuota q(budget);
   try {
     q.Require(owned.size()==plan.regions.size() && close.size()==g.blocks.size());
@@ -122,9 +123,28 @@ std::variant<ProtocolForwarding, ForInFailure> AnalyzeProtocolForwarding(
     q.Require(entered.empty() || entered.size()==plan.regions.size());
     if(!entered.empty())for(std::uint32_t r=0;r<entered.size();++r){q.Step();if(entered[r] && plan.regions[r].binding){q.Require(owned[r]);terminal[plan.regions[r].binding->block.value]=1;}}
     std::pmr::vector<WorkBlockId> queue(&q.memory);queue.reserve(g.blocks.size());
+    // A try wholly inside a protocol loop body (body and handler) may remain an
+    // ordinary user try when its handler is not a transparent forward. Merged
+    // wrapper intervals (nested bodies collapse) and binary search keep this
+    // O((W+R) log W).
+    std::pmr::vector<std::pair<std::uint32_t,std::uint32_t>> bodies(&q.memory);bodies.reserve(loop_bodies.size());
+    for(const auto t:loop_bodies){q.Step();q.Require(t.value<plan.layout.regions.size());const auto& range=plan.layout.regions[t.value].body;bodies.push_back({range.begin.value,range.end.value});}
+    std::sort(bodies.begin(),bodies.end(),[&](const auto& a,const auto& b){q.Step();return a<b;});
+    std::size_t merged=0;
+    for(const auto& b:bodies){q.Step();if(merged && b.first<bodies[merged-1].second)bodies[merged-1].second=std::max(bodies[merged-1].second,b.second);else bodies[merged++]=b;}
+    bodies.resize(merged);
+    const auto nested=[&](std::uint32_t r) {
+      const auto& layout=plan.layout.regions[r];
+      const auto begin=std::min(layout.body.begin.value,layout.handler.begin.value),end=std::max(layout.body.end.value,layout.handler.end.value);
+      auto it=std::upper_bound(bodies.begin(),bodies.end(),std::pair{begin,UINT32_MAX},[&](const auto& a,const auto& b){q.Step();return a<b;});
+      if(it==bodies.begin())return false;--it;return it->first<=begin && end<=it->second;
+    };
     for(std::uint32_t r=0;r<plan.regions.size();++r) {
       q.Step();if(owned[r] || plan.layout.regions[r].inactive)continue;
       const auto& region=plan.regions[r];q.witness.block=region.handler;
+      if(!loop_bodies.empty() && nested(r) && !(region.binding && region.binding->block.value<summary.blocks.size() &&
+          summary.blocks[region.binding->block.value] && region.binding->value.value<ids.canonical.size() &&
+          ids.canonical[region.binding->value.value]==summary.blocks[region.binding->block.value]->payload))continue;
       q.Require(region.binding,ForInError::kExceptionCorrespondence);
       const auto handler=region.binding->block;
       q.Require(handler.value<summary.blocks.size() && summary.blocks[handler.value],ForInError::kExceptionCorrespondence);

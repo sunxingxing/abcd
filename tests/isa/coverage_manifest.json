@@ -11001,6 +11001,10 @@
       "producer": "tests/isa/local_classes_test.py"
     },
     {
+      "test": "isa_for_of_user_try_source_test",
+      "producer": "tests/isa/for_of_user_try_test.py"
+    },
+    {
       "test": "isa_loop_corridors_source_test",
       "producer": "tests/isa/loop_corridors_test.py"
     }

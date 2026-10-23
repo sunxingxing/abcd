@@ -47,7 +47,10 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
     for(std::size_t r=0;r<owned.size();++r){q.Work();owned[r]=entered[r]=t.mapping.region_roles[r]==ExceptionRegionRole::kProtocolOwned;}
     for(std::size_t b=0;b<close.size();++b){q.Work();close[b]=members[g.phases[b].input.value];}
     for(const auto& region:summary.regions)for(const auto id:region.boundary->enclosures){q.Work();owned[id.value]=true;retained[id.value]=true;}
-    const auto verified=AnalyzeProtocolForwarding(g,plan,owned,close,q.Remaining(),retained,entered);
+    std::vector<TryId> bodies;
+    {std::size_t count=0;for(const auto& r:summary.regions){q.Work();for(const auto& range:r.boundary->protected_ranges)count+=range.role==ProtectedRangeRole::kLoopBody;}
+     q.Size(bodies,count);count=0;for(const auto& r:summary.regions)for(const auto& range:r.boundary->protected_ranges)if(range.role==ProtectedRangeRole::kLoopBody)bodies[count++]=range.region;}
+    const auto verified=AnalyzeProtocolForwarding(g,plan,owned,close,q.Remaining(),retained,entered,bodies);
     if(const auto* f=std::get_if<ForInFailure>(&verified))throw f->kind==ForInError::kResourceLimit?ExceptionControlError::kResourceLimit:f->kind==ForInError::kWorkLimit?ExceptionControlError::kWorkLimit:ExceptionControlError::kStructure;
     const auto& actual=std::get<ProtocolForwarding>(verified);q.Admit(actual.allocated_bytes,1);q.Work(actual.work);
     q.Work(actual.regions.size()+actual.blocks.size()+actual.operations.size()+actual.exits.size());

@@ -51,9 +51,50 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
     std::pmr::vector<ControlNodeId> roots(&q.memory);
     roots.reserve(topology.entries.size());
     for(auto e:topology.entries){q.Step();roots.push_back({e.value});}
-    auto discovered=BuildLoopForest(ControlGraphView{ControlProjection{g.revision,g.cfg_revision,topology.blocks,topology.edges}},roots,q.Remaining());
+    // Like exception-loop discovery, an ordinary try wrapper reaches its body
+    // and handler entries (through one fan-out node; two arcs per node). A try
+    // left only by a continue/back edge still closes its loop. Back edges are
+    // mapped back to the topology's own arc ids; the fan-out arcs are none.
+    std::size_t wrappers=0;
+    for(const auto& unit:topology.mapping.units){q.Step();wrappers+=std::holds_alternative<TryControlUnit>(unit);}
+    std::pmr::vector<ControlVertex> nodes(&q.memory);std::pmr::vector<ControlLink> links(&q.memory);
+    std::pmr::vector<std::optional<std::uint32_t>> original(&q.memory);
+    q.Require(topology.blocks.size()<=UINT32_MAX-wrappers && topology.edges.size()<=UINT32_MAX-3*wrappers,ForOfIterationError::kResourceLimit);
+    nodes.reserve(topology.blocks.size()+wrappers);links.reserve(topology.edges.size()+3*wrappers);original.reserve(topology.edges.size()+3*wrappers);
+    std::uint32_t fan=static_cast<std::uint32_t>(topology.blocks.size());
+    std::pmr::vector<std::pair<ControlId,ControlId>> fans(&q.memory);fans.reserve(wrappers);
+    for(std::uint32_t n=0;n<topology.blocks.size();++n) {
+      q.Step();auto v=topology.blocks[n];const auto first=v.first_arc.value;v.first_arc={static_cast<std::uint32_t>(links.size())};v.arc_count=0;
+      for(std::uint32_t e=first;e<first+topology.blocks[n].arc_count;++e){q.Step();auto link=topology.edges[e];link.successor=v.arc_count++;links.push_back(link);original.push_back(e);}
+      if(const auto* t=std::get_if<TryControlUnit>(&topology.mapping.units[n]);t && t->region.value<topology.mapping.regions.size() && topology.mapping.regions[t->region.value]) {
+        q.Require(v.arc_count<analysis::kMaxNormalSuccessors,ForOfIterationError::kCorrespondence);
+        links.push_back({{n},{fan},analysis::FlowEdgeKind::kTaken,v.arc_count++});original.push_back(std::nullopt);
+        const auto& planned=*topology.mapping.regions[t->region.value];fans.push_back({planned.body,planned.handler});++fan;
+      }
+      nodes.push_back(v);
+    }
+    for(const auto& [body_entry,handler_entry]:fans) {
+      q.Step();const ControlNodeId self{static_cast<std::uint32_t>(nodes.size())};
+      nodes.push_back({{static_cast<std::uint32_t>(links.size())},2});
+      links.push_back({self,{body_entry.value},analysis::FlowEdgeKind::kTaken,0});original.push_back(std::nullopt);
+      links.push_back({self,{handler_entry.value},analysis::FlowEdgeKind::kFallthrough,1});original.push_back(std::nullopt);
+    }
+    // Fanned body/handler entries are reached from their wrapper, not roots.
+    // The activation proof below keeps every original root.
+    std::pmr::vector<ControlNodeId> forest_roots(&q.memory);forest_roots.reserve(roots.size());
+    {
+      std::pmr::vector<std::uint8_t> fanned(nodes.size(),0,&q.memory);
+      for(const auto& [body_entry,handler_entry]:fans){q.Step();fanned[body_entry.value]=1;fanned[handler_entry.value]=1;}
+      for(const auto root:roots){q.Step();if(!fanned[root.value])forest_roots.push_back(root);}
+    }
+    auto discovered=BuildLoopForest(ControlGraphView{ControlProjection{g.revision,g.cfg_revision,nodes,links}},forest_roots,q.Remaining());
     if(const auto* e=std::get_if<LoopError>(&discovered))q.Fail(*e==LoopError::kResourceLimit?ForOfIterationError::kResourceLimit:*e==LoopError::kWorkLimit?ForOfIterationError::kWorkLimit:ForOfIterationError::kAdvance);
     auto loops=std::get<LoopForest>(std::move(discovered));q.memory.Retain(loops.allocated_bytes);q.Step(loops.work);
+    {
+      std::vector<std::optional<LoopId>> backedges(topology.edges.size());q.Step(topology.edges.size());
+      for(std::size_t e=0;e<original.size();++e){q.Step();if(original[e])backedges[*original[e]]=loops.backedges[e];}
+      loops.backedges=std::move(backedges);
+    }
     std::pmr::vector<std::optional<ControlNodeId>> phase(g.blocks.size(),{},&q.memory),raw(input.flow.nodes.size(),{},&q.memory);
     for(std::uint32_t n=0;n<topology.mapping.units.size();++n){q.Step();if(const auto* p=std::get_if<PhaseControlUnit>(&topology.mapping.units[n])){q.Require(p->block.value<phase.size());phase[p->block.value]=ControlNodeId{n};raw[g.phases[p->block.value].input.value]=ControlNodeId{n};}}
     std::pmr::vector<std::optional<WorkBlockId>> commit(g.ops.size(),{},&q.memory);
@@ -128,6 +169,16 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
           const auto& site=g.phases[unit->block.value];if(site.phase==ExceptionPhase::kBefore && site.operation)q.Require(g.ops[site.operation->value].exceptional==ExceptionalCompletion::kImpossible,ForOfIterationError::kAdvance);
         }
       }
+      // An ordinary user try nested in this iteration runs its protected body
+      // (and, on a throw, its handler) exactly when its wrapper is reached:
+      // those entries carry the wrapper's state, not a fresh root state.
+      if(const auto* nested=std::get_if<TryControlUnit>(&topology.mapping.units[n.value]);
+          nested && !(bits&kUnadvanced) && proof.loop && inside(proof.loop,n)) {
+        q.Require(nested->region.value<topology.mapping.regions.size() && topology.mapping.regions[nested->region.value],ForOfIterationError::kCorrespondence);
+        const auto& planned=*topology.mapping.regions[nested->region.value];
+        q.Require(planned.wrapper.value==n.value,ForOfIterationError::kCorrespondence);
+        add({key.first,planned.body.value},bits);add({key.first,planned.handler.value},bits);
+      }
       for(std::uint32_t e=b.first_arc.value;e<b.first_arc.value+b.arc_count;++e){q.Step();q.witness.edge=ControlArcId{e};const auto to=topology.edges[e].target;
         if(ControlArcId{e}==proof.exhausted)continue;
         // A pre-advance cycle would diverge without calling next; read-free
@@ -150,7 +201,9 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
       constexpr std::uint8_t kAbsent=1,kFresh=2,kCached=4;
       std::pmr::map<Query,Count> activation(&q.memory);std::pmr::deque<Query> pending(&q.memory);
       const auto offer=[&](Query key,std::uint8_t bits){q.Step();auto f=activation.find(key);if(f==activation.end()){q.Require(activation.size()<max_states,ForOfIterationError::kResourceLimit);f=activation.emplace(key,Count{}).first;}if((f->second.bits|bits)!=f->second.bits){f->second.bits|=bits;pending.push_back(key);}};
-      for(const auto& l:identity.loops)for(const auto root:roots){q.Step();offer({l.protocol.value,root.value},kAbsent);}
+      // Nested try entries inherit their wrapper's activation state below;
+      // only independent roots start without an acquisition.
+      for(const auto& l:identity.loops)for(const auto root:forest_roots){q.Step();offer({l.protocol.value,root.value},kAbsent);}
       while(!pending.empty()){
         q.Step();const auto key=reverse?pending.back():pending.front();if(reverse)pending.pop_back();else pending.pop_front();
         const auto& l=identity.loops[key.first];const ControlNodeId node{key.second};q.witness={ForOfIterationError::kIdentity,l.protocol,{},node};
@@ -162,6 +215,9 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
         if(node==*phase[commit[l.next.value]->value])bits=kCached;
         if(node==out.iterations[key.first].advance)q.Require(bits==kCached,ForOfIterationError::kIdentity);
         const auto& b=topology.blocks[node.value];for(std::uint32_t e=b.first_arc.value;e<b.first_arc.value+b.arc_count;++e){q.Step();offer({key.first,topology.edges[e].target.value},bits);}
+        if(const auto* t=std::get_if<TryControlUnit>(&topology.mapping.units[node.value]);t && t->region.value<topology.mapping.regions.size() && topology.mapping.regions[t->region.value]) {
+          const auto& planned=*topology.mapping.regions[t->region.value];offer({key.first,planned.body.value},bits);offer({key.first,planned.handler.value},bits);
+        }
       }
     }
     // Dynamic reference proof. Walk the actual SSA operand backwards to its

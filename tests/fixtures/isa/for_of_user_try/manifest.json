@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/for_of_user_try/user_try.js",
+   "path": "tests/fixtures/isa/for_of_user_try/user_try-O0.abc",
+   "sha256": "5151438df0a4a95205fb6dfc3198220276463100351a8de96b576231f69af3c7",
+   "source_sha256": "7fa3cbd7dcee985f79292df842d13b1152f6315046ba22fd605d4e6dcdc6b367",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=for_of_user_try",
+    "--source-file=user_try.js",
+    "--output=tests/fixtures/isa/for_of_user_try/user_try-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/for_of_user_try/user_try.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only. break from a catch and try/finally in a for-of body still refuse."
+}
