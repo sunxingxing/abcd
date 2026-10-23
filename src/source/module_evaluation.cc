@@ -84,7 +84,9 @@ std::variant<ModuleEvaluationIndex, EvaluationFailure> IndexModuleEvaluations(
             definition->commit->value < graph.phases.size() &&
             graph.phases[definition->commit->value].phase == analysis::ExceptionPhase::kCommit &&
             graph.phases[definition->commit->value].operation == entry.pair.read;
-        require((normal || phased) && read->space == analysis::ModuleSpace::kLocal &&
+        // Unguarded reads are proven-initialized locals or namespace reads,
+        // whose runtime result is never Hole (GetModuleNamespaceInternal).
+        require((normal || phased) && (read->space == analysis::ModuleSpace::kLocal || read->request_namespace) &&
             definition && definition->op == entry.pair.read &&
             graph.values[op.result->value].life == analysis::ValueLife::kLive &&
             graph.values[op.result->value].domain.IsLanguage() &&

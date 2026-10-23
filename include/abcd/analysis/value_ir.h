@@ -181,6 +181,7 @@ struct ValueModuleRead {
   ModuleSlot slot;
   ModuleLoading loading = ModuleLoading::kOrdinary;
   ModuleDomain domain = ModuleDomain::kOrdinary;
+  bool request_namespace = false;  // see ModuleLoad::request_namespace
   bool operator==(const ValueModuleRead&) const = default;
 };
 // Original global storage kind and key; declaration authority belongs to a

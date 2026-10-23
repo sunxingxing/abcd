@@ -190,6 +190,12 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
       const auto* load = std::get_if<ModuleLoad>(&method.instructions[i].operation);
       if (!load || !bound->before[i]) continue;
       const InstructionId site{static_cast<std::uint32_t>(i)};
+      if (load->request_namespace) {
+        if (language_loads[i]) return Fail(SemanticProofError::kModulePremise, method.instructions[i].pc);
+        language_loads[i] = 1;
+        modules.push_back({site, ModuleReadProof::kNamespace});
+        continue;
+      }
       if (language_loads[i]) {
         modules.push_back({site, ModuleReadProof::kInitialized});
         continue;

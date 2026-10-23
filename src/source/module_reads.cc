@@ -44,7 +44,9 @@ class ReadResolver {
       const auto* read = std::get_if<analysis::ValueModuleRead>(&op.operation);
       if (!read) continue;
       try {
-        result_.bindings.push_back({{static_cast<std::uint32_t>(i)}, *read, Target(*read)});
+        auto canonical = *read;
+        auto target = Target(canonical);
+        result_.bindings.push_back({{static_cast<std::uint32_t>(i)}, *read, std::move(target), canonical.slot});
       } catch (Error error) {
         const auto pc = op.origin.value < graph_.origins.size()
             ? std::optional{graph_.origins[op.origin.value].pc} : std::nullopt;
@@ -121,7 +123,41 @@ class ReadResolver {
     if (lazy != (read.loading == analysis::ModuleLoading::kLazy)) throw Error::kBinding;
     if (lazy && LazyImports(contract_) != LazyImportSemantics::kArkTsLazyImport) throw Error::kContract;
   }
-  ModuleReadTarget Target(analysis::ValueModuleRead read) const {
+  // GETMODULENAMESPACE names a module request. Map it once to the unique
+  // namespace import entry for that request; an absent or repeated entry has
+  // no single source binding. The canonical read is the appended external
+  // slot that ModuleDataAccessor::EnumerateImportEntry assigns to the entry.
+  void NamespaceRequests() {
+    if (namespace_ready_) return;
+    namespace_ready_ = true;
+    constexpr std::uint32_t kAbsent = std::numeric_limits<std::uint32_t>::max(),
+                            kRepeated = kAbsent - 1;
+    if (module_->namespace_imports.size() >= kRepeated) throw Error::kResourceLimit;
+    Admit(module_->requests.size(), sizeof(std::uint32_t));
+    namespace_by_request_.assign(module_->requests.size(), kAbsent);
+    for (std::size_t i = 0; i < module_->namespace_imports.size(); ++i) {
+      Step();
+      const auto request = module_->namespace_imports[i].request.value;
+      if (request >= namespace_by_request_.size()) throw Error::kRequest;
+      auto& entry = namespace_by_request_[request];
+      entry = entry == kAbsent ? static_cast<std::uint32_t>(i) : kRepeated;
+    }
+  }
+  ModuleReadTarget Target(analysis::ValueModuleRead& read) {
+    if (read.request_namespace) {
+      if (!ModuleNamespaces(contract_)) throw Error::kContract;
+      if (read.space != analysis::ModuleSpace::kExternal ||
+          read.loading != analysis::ModuleLoading::kOrdinary ||
+          read.domain != analysis::ModuleDomain::kOrdinary) throw Error::kBinding;
+      NamespaceRequests();
+      if (read.slot.value >= namespace_by_request_.size()) throw Error::kRequest;
+      const auto index = namespace_by_request_[read.slot.value];
+      if (index >= module_->namespace_imports.size()) throw Error::kBinding;
+      const auto canonical = module_->imports.size() + index;
+      if (canonical > std::numeric_limits<std::uint16_t>::max()) throw Error::kSlot;
+      read.slot = {static_cast<std::uint16_t>(canonical)};
+      read.request_namespace = false;
+    }
     const std::size_t slot = read.slot.value;
     switch (read.domain) {
       case analysis::ModuleDomain::kOrdinary: break;
@@ -161,6 +197,8 @@ class ReadResolver {
   SourceContract contract_;
   ModuleReads result_;
   std::vector<abc::EntityOffset> locals_;
+  std::vector<std::uint32_t> namespace_by_request_;
+  bool namespace_ready_ = false;
 };
 }  // namespace
 std::variant<ModuleReads, ModuleReadFailure> ResolveModuleReads(

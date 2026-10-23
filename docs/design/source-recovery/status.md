@@ -10,6 +10,35 @@
 
 
 
+## ISA coverage13 — namespace imports (GETMODULENAMESPACE) (2026-10-23)
+
+- Implemented by Claude after the switch to Claude-independent development.
+  GETMODULENAMESPACE imm8 and WIDE (es2abc uses WIDE from index 0x80) lift as
+  an external module read whose slot is the module-request index
+  (`request_namespace`). Source resolution maps that request to its unique
+  namespace import entry and the canonical external binding slot
+  (`ModuleReadBinding::binding_slot`; the original read is retained for
+  correspondence). New `ModuleReadProof::kNamespace` covers the unguarded,
+  never-Hole read; the value rule is Language. V10 `ModuleNamespaces()` is
+  required. Phased owners refuse.
+- Output: `import * as ns from "m";` plus the entry's captured lexical copy
+  `let $localN = ns;` at its original initialization point. A readability
+  alias (using `ns` directly) is a later printer step.
+- Fixtures: `tests/fixtures/isa/module_namespace` (basic and wide, default and
+  O0, SDK es2abc). Node traces cover value reads, a method call, live binding
+  updates, keys, identity, toStringTag, default, strict write failure and
+  extensibility; they match the original in a separate process per side.
+  Scale: 200/201/400/800 namespace imports. A single function capturing 800
+  lexical bindings hits the pre-existing printer storage limit (also on plain
+  captured lets at baseline), so the scale source splits the reads across
+  functions of 100.
+- The misc_evidence namespace fixtures now complete (expectations updated),
+  and the current-variant lift expectations for both opcodes are refreshed.
+- Ledger (`build/review/isa-cc13`): SupportedVerified 175 → **182**,
+  SupportedUnverified 50 → 45, Unmeasured 79 → 77; no backward moves. Cohorts
+  vs 36b395f9 unchanged: 605/620 and 542/620, zero regressions and zero text
+  changes. source-regression 65/65; sweep failures are only the known list.
+
 ## ISA coverage12 — V10 contract; computed function names; dynamic import (2026-10-23)
 
 - `LanguageSourceV10` = V9 plus four separately versioned user-approved

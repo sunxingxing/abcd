@@ -18,8 +18,11 @@ struct CapturedReadFact {
 // kLanguage preserves the value domain, NOT identity, non-undefinedness or
 // immutability. Every transitive child write must discharge this premise.
 enum class ClosureWrites : std::uint8_t { kUnknown, kLanguage };
+// kNamespace: a GETMODULENAMESPACE read. GetModuleNamespaceInternal returns
+// the requested module's namespace (or native/CJS exports), never Hole, so no
+// initialization guard exists or is needed.
 enum class ModuleReadProof : std::uint8_t {
-  kGuarded, kInitialized, kCallerGuarded, kCatchGuarded, kStored
+  kGuarded, kInitialized, kCallerGuarded, kCatchGuarded, kStored, kNamespace
 };
 constexpr bool IsGuardedModuleRead(ModuleReadProof proof) {
   switch (proof) {
@@ -27,7 +30,8 @@ constexpr bool IsGuardedModuleRead(ModuleReadProof proof) {
     case ModuleReadProof::kCallerGuarded:
     case ModuleReadProof::kCatchGuarded: return true;
     case ModuleReadProof::kInitialized:
-    case ModuleReadProof::kStored: return false;
+    case ModuleReadProof::kStored:
+    case ModuleReadProof::kNamespace: return false;
   }
   return false;
 }

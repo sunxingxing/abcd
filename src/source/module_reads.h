@@ -26,6 +26,10 @@ struct ModuleReadBinding {
   // nonadjacent groups must never coalesce these bindings.
   analysis::ValueModuleRead read;
   ModuleReadTarget target;
+  // Binding slot within read.space. Equal to read.slot except for a
+  // request_namespace read, whose slot is a request index; then this is the
+  // appended external slot of its unique namespace import entry.
+  analysis::ModuleSlot binding_slot;
 };
 struct ModuleReads {
   analysis::IrRevision revision;

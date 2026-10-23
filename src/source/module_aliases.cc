@@ -83,9 +83,9 @@ class AliasBinder {
       // encounter order or name equality. Equal names in different VM slots
       // remain distinct bindings; source scope verification may refuse them.
       const auto base = read.read.space == analysis::ModuleSpace::kLocal ? external : 0;
-      Require(read.read.slot.value <= kMaxId - base, Error::kResourceLimit);
+      Require(read.binding_slot.value <= kMaxId - base, Error::kResourceLimit);
       result_.evaluations.push_back({pair, read.read,
-          {result_.owner, {static_cast<std::uint32_t>(base + read.read.slot.value)}}});
+          {result_.owner, {static_cast<std::uint32_t>(base + read.binding_slot.value)}}});
     }
     ResolveWrites(external);
     ResolveGuardNames();

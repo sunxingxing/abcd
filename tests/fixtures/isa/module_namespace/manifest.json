@@ -1,0 +1,82 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/module_namespace/basic.js",
+   "path": "tests/fixtures/isa/module_namespace/basic-default.abc",
+   "sha256": "313c6fd9abb4215fb2b31a07f76375ae9ea953fcde27be990db371361c64f392",
+   "source_sha256": "4cf5b8a33ffb7aa0dce799e9bde19e65fd88650d0417508a19a9a9acb16f244d",
+   "kind": "basic",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=moduleNamespace",
+    "--source-file=basic.js",
+    "--output=tests/fixtures/isa/module_namespace/basic-default.abc",
+    "tests/fixtures/isa/module_namespace/basic.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/module_namespace/basic.js",
+   "path": "tests/fixtures/isa/module_namespace/basic-O0.abc",
+   "sha256": "0f38672ccd611f70729c7f20636fcc61a33d71e3b68d59f0b7b4e7b62c2b9e63",
+   "source_sha256": "4cf5b8a33ffb7aa0dce799e9bde19e65fd88650d0417508a19a9a9acb16f244d",
+   "kind": "basic",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=moduleNamespace",
+    "--source-file=basic.js",
+    "--output=tests/fixtures/isa/module_namespace/basic-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/module_namespace/basic.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/module_namespace/wide.js",
+   "path": "tests/fixtures/isa/module_namespace/wide-default.abc",
+   "sha256": "4f6e7ae2050297cbdda1aa4b064418c6d8ef5145f5e9ba2f3d69ab32293bc3ac",
+   "source_sha256": "78ec98ebff1f15969fc6df7592bff99a179aca4d71bda191fd0beb6850fc3813",
+   "kind": "wide",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=moduleNamespace",
+    "--source-file=wide.js",
+    "--output=tests/fixtures/isa/module_namespace/wide-default.abc",
+    "tests/fixtures/isa/module_namespace/wide.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/module_namespace/wide.js",
+   "path": "tests/fixtures/isa/module_namespace/wide-O0.abc",
+   "sha256": "3a057a180ede8153ecc86ba6abcf9e42edc57a9cbdfddc35679662902e069312",
+   "source_sha256": "78ec98ebff1f15969fc6df7592bff99a179aca4d71bda191fd0beb6850fc3813",
+   "kind": "wide",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=moduleNamespace",
+    "--source-file=wide.js",
+    "--output=tests/fixtures/isa/module_namespace/wide-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/module_namespace/wide.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

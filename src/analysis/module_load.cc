@@ -7,7 +7,17 @@ std::variant<ModuleLoad, ModuleLoadError> LiftModuleLoad(
   ModuleLoading loading = ModuleLoading::kOrdinary;
   ModuleDomain domain = ModuleDomain::kOrdinary;
   std::uint64_t limit = UINT8_MAX;
+  bool request_namespace = false;
   switch (instruction.opcode) {
+    // ModuleValueAccessor::GetModuleNamespaceInternal resolves
+    // requestedModules[index] of the current module and returns its namespace.
+    case abc::Opcode::kWIDE_GETMODULENAMESPACE_PREF_IMM16:
+      limit = UINT16_MAX;
+      [[fallthrough]];
+    case abc::Opcode::kGETMODULENAMESPACE_IMM8:
+      space = ModuleSpace::kExternal;
+      request_namespace = true;
+      break;
     case abc::Opcode::kCALLRUNTIME_WIDELDSENDABLEEXTERNALMODULEVAR_PREF_IMM16:
       limit = UINT16_MAX;
       [[fallthrough]];
@@ -44,6 +54,7 @@ std::variant<ModuleLoad, ModuleLoadError> LiftModuleLoad(
     return ModuleLoadError::kMalformedInstruction;
   return ModuleLoad{
       space,
-      {static_cast<std::uint16_t>(instruction.operands[kSlot].raw_bits)}, loading, domain};
+      {static_cast<std::uint16_t>(instruction.operands[kSlot].raw_bits)}, loading, domain,
+      request_namespace};
 }
 }  // namespace abcd::analysis

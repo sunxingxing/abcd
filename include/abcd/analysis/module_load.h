@@ -18,6 +18,10 @@ struct ModuleLoad {
   ModuleSlot slot;
   ModuleLoading loading = ModuleLoading::kOrdinary;
   ModuleDomain domain = ModuleDomain::kOrdinary;
+  // GETMODULENAMESPACE: `slot` is the module-request index (requestedModules),
+  // not a binding slot. Source resolution maps it to the unique namespace
+  // import entry of that request; the runtime reads the same namespace object.
+  bool request_namespace = false;
 };
 enum class ModuleLoadError { kUnsupportedOpcode, kMalformedInstruction };
 // Pinned v7.0 local/external module value reads. Slot is NOT a string pool or

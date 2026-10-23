@@ -57,7 +57,8 @@ class PhasePairs {
         return {read, {}};
       }
       case analysis::ModuleReadProof::kGuarded:
-      case analysis::ModuleReadProof::kStored: throw Error::kUnsupportedProof;
+      case analysis::ModuleReadProof::kStored:
+      case analysis::ModuleReadProof::kNamespace: throw Error::kUnsupportedProof;
     }
     const auto site = fact.instruction.value;
     Require(std::uint64_t{site} + 1 < graph_.input.sites.size() &&

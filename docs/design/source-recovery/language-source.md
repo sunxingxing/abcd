@@ -818,6 +818,16 @@ ownership, order, scope, completion or exception proof:
   `module_value_accessor.cpp:343–376` selects the original module request, then
   returns an ESM namespace or raw native/CJS exports. Both encoding widths still
   require the original request/type and lexical-capture correspondence.
+  Consumed (2026-10-23): GETMODULENAMESPACE imm8/WIDE lift as an external
+  `ModuleLoad` with `request_namespace` (slot = request index). `module_reads`
+  maps the request to its unique `namespace_imports` entry (absent or repeated
+  entries refuse) and binds the appended external slot that
+  `ModuleDataAccessor::EnumerateImportEntry` assigns. The read is unguarded with
+  `ModuleReadProof::kNamespace` (never Hole), and its result domain is Language.
+  The entry's lexical copy prints as an ordinary captured `let` initialized from
+  the import binding at the original point, so the V1 captured-TDZ premise
+  covers early calls. Older contracts refuse at `ModuleReadError::kContract`.
+  Phased (exceptional) owners still refuse.
 - `ArrayPatternAcquisition()`: array declarations, assignments and parameter
   patterns may use native acquisition. The accepted difference is the step of
   the TypeError for a non-callable `@@iterator`/`next`: `RuntimeGetIterator`

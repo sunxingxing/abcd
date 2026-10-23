@@ -105,8 +105,13 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
           return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
       }
       return ScalarError::kMalformedInstruction;
-    } else if constexpr (std::is_same_v<T, ModuleLoad> ||
-                         std::is_same_v<T, LexicalLoad> ||
+    } else if constexpr (std::is_same_v<T, ModuleLoad>) {
+      // GetModuleNamespaceInternal returns the module namespace (or, for a
+      // native/CJS request, its exports object): never Hole or internal.
+      if (operation.request_namespace)
+        return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
+      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
+    } else if constexpr (std::is_same_v<T, LexicalLoad> ||
                          std::is_same_v<T, CurrentEnvironment>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Unknown()};
     } else {

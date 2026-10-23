@@ -34,13 +34,8 @@
         124,
         2558
       ],
-      "source_status": 3,
-      "causes": [
-        {
-          "domain": "abcd::analysis::SemanticError",
-          "value": 1
-        }
-      ]
+      "source_status": 0,
+      "causes": []
     },
     {
       "source": "tests/fixtures/isa/misc_evidence/namespace.js",
@@ -75,13 +70,8 @@
         124,
         2558
       ],
-      "source_status": 3,
-      "causes": [
-        {
-          "domain": "abcd::analysis::SemanticError",
-          "value": 1
-        }
-      ]
+      "source_status": 0,
+      "causes": []
     },
     {
       "source": "tests/fixtures/isa/misc_evidence/dynamic.js",

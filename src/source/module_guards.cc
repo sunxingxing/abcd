@@ -53,6 +53,7 @@ class Correspondence {
       case analysis::ModuleReadProof::kGuarded: break;
       case analysis::ModuleReadProof::kInitialized:
       case analysis::ModuleReadProof::kStored: return Initialized(fact);
+      case analysis::ModuleReadProof::kNamespace: return Namespace(fact);
       case analysis::ModuleReadProof::kCallerGuarded:
       case analysis::ModuleReadProof::kCatchGuarded: throw Error::kUnsupportedProof;
     }
@@ -83,6 +84,20 @@ class Correspondence {
     Require(load.block == check.block && std::uint64_t{load.order} + 1 == check.order &&
         std::uint64_t{read.value} + 1 == guard.value, Error::kOrder);
     return {read, guard};
+  }
+  ModuleReadSite Namespace(const analysis::ModuleReadFact& fact) {
+    const auto read = Operation(fact.instruction);
+    const auto* load = std::get_if<analysis::ModuleLoad>(&input_.Input().instructions[fact.instruction.value].operation);
+    const auto& op = graph_.ops[read.value];
+    const auto* current = std::get_if<analysis::ValueModuleRead>(&op.operation);
+    Require(!fact.store && load && current && load->request_namespace && current->request_namespace &&
+        load->space == analysis::ModuleSpace::kExternal && current->space == load->space &&
+        current->slot == load->slot && current->loading == load->loading && current->domain == load->domain &&
+        !op.use_count && op.result && op.result->value < graph_.values.size(), Error::kRead);
+    const auto* result = std::get_if<analysis::OpResult>(&graph_.values[op.result->value].origin);
+    Require(result && result->op == read && graph_.values[op.result->value].domain.IsLanguage() &&
+        graph_.values[op.result->value].life == analysis::ValueLife::kLive, Error::kRead);
+    return {read, std::nullopt};
   }
   ModuleReadSite Initialized(const analysis::ModuleReadFact& fact) {
     const auto read = Operation(fact.instruction);

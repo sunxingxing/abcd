@@ -10959,6 +10959,10 @@
     {
       "test": "isa_dynamic_import_source_test",
       "producer": "tests/isa/dynamic_import_test.py"
+    },
+    {
+      "test": "isa_module_namespace_source_test",
+      "producer": "tests/isa/module_namespace_test.py"
     }
   ]
 }
