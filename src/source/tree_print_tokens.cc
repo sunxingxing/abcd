@@ -59,7 +59,7 @@ ExpressionPrecedence Precedence(const TreeExpression& node) {
   if (const auto* binary = std::get_if<BinaryExpr>(&node)) return TreeBinarySyntax(binary->operation).precedence;
   if (std::holds_alternative<UnaryExpr>(node)) return ExpressionPrecedence::kUnary;
   if (const auto* logical = std::get_if<LogicalExpr>(&node)) return LogicalPrecedence(logical->operation);
-  if (std::holds_alternative<MemberExpr>(node) || std::holds_alternative<CallExpr>(node) ||
+  if (std::holds_alternative<DynamicImportExpr>(node) || std::holds_alternative<MemberExpr>(node) || std::holds_alternative<CallExpr>(node) ||
       std::holds_alternative<ConstructExpr>(node) || std::holds_alternative<SuperCallExpr>(node))
     return ExpressionPrecedence::kPostfix;
   // Other composite forms still print their own grouping. Primary leaves
@@ -92,7 +92,7 @@ bool TreeOperandGrouping(const TreeExpression& child, const TreeOperatorContext&
       return child_precedence < precedence || (child_precedence == precedence && context.side == OperandSide::kRight);
     } else if constexpr (std::is_same_v<T, PostfixContext>) {
       if (parent == PostfixContext::kConstructor &&
-          (std::holds_alternative<CallExpr>(child) || std::holds_alternative<SuperCallExpr>(child))) return true;
+          (std::holds_alternative<DynamicImportExpr>(child) || std::holds_alternative<CallExpr>(child) || std::holds_alternative<SuperCallExpr>(child))) return true;
       // An integer's decimal dot belongs to NumericLiteral (1.value is not a
       // member access). Group numeric bases regardless of current formatting.
       if (parent != PostfixContext::kCallCallee) if (const auto* literal = std::get_if<TreeLiteral>(&child);
@@ -130,7 +130,7 @@ ExpressionPrecedence TreeExpressionPrecedence(const TreeExpression& node) {
     }
     else if constexpr (std::is_same_v<T, UpdateExpr>) return value.result == UpdateResult::kPostfix ? P::kPostfix : P::kUnary;
     else if constexpr (std::is_same_v<T, MemberExpr> || std::is_same_v<T, CallExpr> ||
-                       std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr>) return P::kPostfix;
+                       std::is_same_v<T, DynamicImportExpr> || std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr>) return P::kPostfix;
     else if constexpr (std::is_same_v<T, FieldDefinitionExpr> || std::is_same_v<T, ArrayElement>) return P::kLowest;
     else {
       static_assert((std::is_same_v<T, RegExpExpr> || std::is_same_v<T, TemplateObjectExpr>) || std::is_same_v<T, ObjectRestExpr> || std::is_same_v<T, PatternFailureExpr> || std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, BigIntExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||
@@ -183,7 +183,7 @@ bool ReadableOperandGrouping(const TreeExpression& child, const TreeOperatorCont
       // UpdateExpression is not a MemberExpression/CallExpression base.
       if (std::holds_alternative<UpdateExpr>(child)||std::holds_alternative<MemberMutationExpr>(child)) return true;
       if(parent==PostfixContext::kConstructor &&
-          (std::holds_alternative<CallExpr>(child)||std::holds_alternative<SuperCallExpr>(child))) return true;
+          (std::holds_alternative<DynamicImportExpr>(child)||std::holds_alternative<CallExpr>(child)||std::holds_alternative<SuperCallExpr>(child))) return true;
       if(parent!=PostfixContext::kCallCallee) if(const auto* literal=std::get_if<TreeLiteral>(&child);literal &&
           (std::holds_alternative<IntegerLiteral>(*literal)||std::holds_alternative<NumberLiteral>(*literal))) return true;
       return precedence<ExpressionPrecedence::kPostfix;

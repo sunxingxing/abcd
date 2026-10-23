@@ -38,7 +38,7 @@ class Fixture {
   ValueProgram graph;
 };
 enum class ClosureHazard { kNone, kShared, kEnvironment, kHomeObject, kEscape };
-ValueProgram ClosureLiteral(std::uint32_t fields, ClosureHazard hazard = ClosureHazard::kNone) {
+ValueProgram ClosureLiteral(std::uint32_t fields, ClosureHazard hazard = ClosureHazard::kNone, bool computed = false, bool copies = false) {
   Fixture fixture;
   fixture.Add(ValueObjectAllocation{}, true, {});
   fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kAllocation;
@@ -51,7 +51,11 @@ ValueProgram ClosureLiteral(std::uint32_t fields, ClosureHazard hazard = Closure
     creation.normal = creation.before_throw = LanguageEffect::kAllocation | LanguageEffect::kEnvironmentRead |
         LanguageEffect::kHeapRead | LanguageEffect::kModuleRead;
     creation.exceptional = ExceptionalCompletion::kMayThrow;
-    const auto callback = *creation.result;
+    auto callback = *creation.result;
+    if (copies) {
+      fixture.Add(ValueCopy{}, true, {{OperandRole::kInput, callback}});
+      callback = *fixture.graph.ops.back().result;
+    }
     if (!first) first = callback;
     if (hazard == ClosureHazard::kEscape) {
       fixture.Add(ValueNamedRead{{0}}, true, {{OperandRole::kBase, ValueId{0}}});
@@ -62,7 +66,10 @@ ValueProgram ClosureLiteral(std::uint32_t fields, ClosureHazard hazard = Closure
       fixture.Add(ValueEnvironmentPop{}, false, {});
       fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kEnvironmentWrite;
     }
-    fixture.Add(ValueOwnWrite{OwnWriteKind::kStore, {i}, 0, PropertyNameSetting::kPropertyKey}, false,
+    if (computed) fixture.Add(ValueComputedOwnWrite{PropertyNameSetting::kPropertyKey}, false,
+        {{OperandRole::kBase, ValueId{0}}, {OperandRole::kKey, abcd::analysis::IntegerLiteral{static_cast<std::int32_t>(i)}},
+         {OperandRole::kStoredValue, hazard == ClosureHazard::kShared ? *first : callback}});
+    else fixture.Add(ValueOwnWrite{OwnWriteKind::kStore, {i}, 0, PropertyNameSetting::kPropertyKey}, false,
         {{OperandRole::kBase, ValueId{0}}, {OperandRole::kStoredValue,
           hazard == ClosureHazard::kShared ? *first : callback}});
     fixture.graph.ops.back().normal = fixture.graph.ops.back().before_throw = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite | LanguageEffect::kUserCode | LanguageEffect::kAllocation;
@@ -104,6 +111,48 @@ void Proof() {
     Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(ClosureLiteral(2, hazard))));
 
 }
+void ComputedProof() {
+  constexpr auto contract = SourceContract::kLanguageSourceV10;
+  for (const auto count : {1U, 200U, 201U, 400U, 800U}) {
+    auto graph = ClosureLiteral(count, ClosureHazard::kNone, true);
+    auto split = ClosureLiteral(count, ClosureHazard::kNone, true, true);
+    split.blocks.clear();
+    for (std::uint32_t i=0; i<split.ops.size(); ++i) {
+      const auto last=i+1==split.ops.size();split.ops[i].block={i};split.ops[i].order=0;
+      split.blocks.push_back({{i},1,{i},static_cast<std::uint8_t>(last?0:1)});
+      if(!last)split.edges.push_back({{i},{i+1},FlowEdgeKind::kFallthrough,0});
+    }
+    Check(std::holds_alternative<LiteralPlan>(BuildLiteralPlan(split, {}, {}, {}, {}, nullptr, nullptr, contract)));
+    const auto build = [&](SemanticBudget budget = {}) {
+      return BuildLiteralPlan(graph, budget, {}, {}, {}, nullptr, nullptr, contract);
+    };
+    const auto built = build(); Check(std::holds_alternative<LiteralPlan>(built));
+    const auto& plan = std::get<LiteralPlan>(built);
+    const auto verify = [&](const ValueProgram& g, const LiteralPlan& p) {
+      return VerifyLiteralPlan(g, p, {}, {}, {}, {}, nullptr, nullptr, contract);
+    };
+    Check(std::holds_alternative<std::uint64_t>(verify(graph, plan)));
+    Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(graph)));
+    auto wrong = graph;
+    std::get<ValueComputedOwnWrite>(wrong.ops[2].operation).name_setting = PropertyNameSetting::kNone;
+    Check(std::holds_alternative<LiteralError>(verify(wrong, plan)));
+    wrong = graph; wrong.uses[wrong.ops[2].first_use.value+1].role = OperandRole::kStoredValue;
+    Check(std::holds_alternative<LiteralError>(verify(wrong, plan)));
+    wrong = graph; wrong.ops[2].operation = ValuePropertyWrite{};
+    Check(std::holds_alternative<LiteralError>(verify(wrong, plan)));
+    auto missing = plan; missing.nested[1].reset();
+    Check(std::holds_alternative<LiteralError>(verify(graph, missing)));
+    for (const bool work : {false, true}) {
+      std::size_t lo=0, hi=64*1024*1024;
+      const auto run=[&](std::size_t n) { SemanticBudget b; if(work)b.work=n;else b.bytes=n;return build(b); };
+      while(lo<hi) {const auto mid=lo+(hi-lo)/2; if(std::holds_alternative<LiteralPlan>(run(mid)))hi=mid;else lo=mid+1;}
+      Check(lo && std::holds_alternative<LiteralPlan>(run(lo)));
+      Check(std::holds_alternative<LiteralError>(run(lo-1)));
+      Check(std::get<LiteralError>(run(lo-1)) == (work ? LiteralError::kWorkLimit : LiteralError::kResourceLimit));
+      if(count==800) std::cout << "computed 800 " << (work?"work":"bytes") << '=' << lo << '\n';
+    }
+  }
+}
 void TreeProof() {
   const auto graph = ClosureLiteral(2);
   const std::vector<FunctionBinding> functions{{OpId{1}, {1}}, {OpId{3}, {2}}};
@@ -124,7 +173,25 @@ void TreeProof() {
   Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, resolved)));
   wrong = tree; std::swap(wrong.properties[0].value, wrong.properties[1].value);
   Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, wrong, resolved)));
+  const auto computed_graph = ClosureLiteral(2, ClosureHazard::kNone, true);
+  ArraySourceInput source; source.contract=SourceContract::kLanguageSourceV10;
+  const auto computed_evaluation = BuildEvaluationPlan(computed_graph, {}, IncomingCells::kReject, functions,
+      {}, {}, {}, ClosureWrites::kUnknown, {}, {}, {}, nullptr, {}, source);
+  Check(std::holds_alternative<EvaluationPlan>(computed_evaluation));
+  syntax.identity.contract=source.contract;
+  const auto computed_tree=BuildFunctionTree(computed_graph,control,std::get<EvaluationPlan>(computed_evaluation),syntax,resolved);
+  Check(std::holds_alternative<ConstructedFunction>(computed_tree));
+  const auto& actual=std::get<ConstructedFunction>(computed_tree).tree;
+  const auto verify_tree=[&](const FunctionTree& t) {return VerifyTreeSemantics(computed_graph,control,std::get<EvaluationPlan>(computed_evaluation),t,resolved);};
+  Check(std::holds_alternative<TreeSemantics>(verify_tree(actual)));
+  wrong=actual; wrong.properties[0].computed_key.reset();
+  Check(std::holds_alternative<TreeSemanticError>(verify_tree(wrong)));
+  wrong=actual; std::swap(wrong.properties[0].computed_key,wrong.properties[1].computed_key);
+  Check(std::holds_alternative<TreeSemanticError>(verify_tree(wrong)));
+  wrong=actual; wrong.properties[0].name_setting=PropertyNameSetting::kNone;
+  Check(std::holds_alternative<TreeSemanticError>(verify_tree(wrong)));
+
 }
 
 }
-int main() { Proof(); TreeProof(); }
+int main() { Proof(); ComputedProof(); TreeProof(); }

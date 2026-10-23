@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-10-22。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-23。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
@@ -9,6 +9,28 @@
 
 
 
+
+## ISA coverage12 — V10 contract; computed function names; dynamic import (2026-10-23)
+
+- `LanguageSourceV10` = V9 plus four separately versioned user-approved
+  predicates (2026-10-23): array-destructuring acquisition, dynamic import,
+  computed function names, and module namespace. V1–V9 keep their meanings.
+  Accepted differences and citations are in [language-source.md](language-source.md);
+  the design note is [isa-v10-recovery.md](isa-v10-recovery.md).
+- Consumed so far: STOWNBYVALUEWITHNAMESET (both widths) → `{[k]: function(){}}`
+  with LiteralPlan key/value ownership and independent verification, and
+  DYNAMICIMPORT → `import(x)` with typed semantics and original-event
+  correspondence. Module namespace and array-pattern recovery are not yet
+  implemented (the predicates exist; refusals stay closed).
+- `isa_coverage_test` used DYNAMICIMPORT as its "unsupported" sample; it now
+  uses CALLRUNTIME_CALLINIT, which is still unsupported.
+- Ledger (rerun into `build/review/isa-cc12`): SupportedVerified 171 → **175**,
+  SupportedUnverified 51 → 50, Unmeasured 82 → 79, NonExecutable 28; no
+  backward moves. Both cohorts vs 602a4a1e: **605/620** source and **542/620**
+  previous flags, with zero regressions and zero completed-text changes.
+  source-regression 65/65. The touched sweep failures are the known
+  family_source_cli, tree_structure, try_tree, class_tree_source and
+  try_tree_source.
 
 ## ISA coverage11 — global hoisting; private constructor spreads (2026-10-22)
 

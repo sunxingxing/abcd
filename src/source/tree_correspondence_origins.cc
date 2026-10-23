@@ -143,7 +143,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
             analysis::OpId{static_cast<std::uint32_t>(i)})) continue;
     if (evaluation.operations[i].kind == EvaluationKind::kInitializer && !IsArrayInitialization(evaluation, {static_cast<std::uint32_t>(i)}) && evaluation.literals &&
         !evaluation.literals->nested.empty()) {
-      const analysis::UseId rhs{op.first_use.value + 1};
+      const analysis::UseId rhs{op.first_use.value + (std::holds_alternative<analysis::ValueComputedOwnWrite>(op.operation) ? 2U : 1U)};
       const auto operand = ResolveEvaluationOperand(evaluation, graph.uses[rhs.value].operand);
       const auto* value = std::get_if<analysis::ValueId>(&operand);
       const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;

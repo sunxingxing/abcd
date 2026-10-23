@@ -740,7 +740,7 @@ class ForestBuilder {
           target = *arrays->owners[target.value];
         } else {
           const auto& definition = graph_.ops[target.value];
-          Require(definition.use_count == 2, Error::kOwnership);
+          Require(definition.use_count == (std::holds_alternative<analysis::ValueComputedOwnWrite>(definition.operation) ? 3 : 2), Error::kOwnership);
           const auto operand = ResolveEvaluationOperand(evaluation_, graph_.uses[definition.first_use.value].operand);
           const auto* base = std::get_if<analysis::ValueId>(&operand);
           const auto* allocation = base ? std::get_if<analysis::OpResult>(&graph_.values[base->value].origin) : nullptr;
@@ -830,13 +830,14 @@ class ForestBuilder {
       Step(); const auto id = evaluation_.literals->definitions[object.first + i];
       const auto* name = std::get_if<NameId>(&constants_.operations[id.value]);
       const bool spread=std::holds_alternative<analysis::ValueCopyProperties>(graph_.ops[id.value].operation);
-      Require(spread || (name && name->value < constants_.name_count), Error::kConstant);
+      const bool computed=std::holds_alternative<analysis::ValueComputedOwnWrite>(graph_.ops[id.value].operation);
+      Require(spread || computed || (name && name->value < constants_.name_count), Error::kConstant);
       std::size_t destination = writes.size();
       if (array) {
         const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&graph_.ops[id.value].operation);
         Require(indexed && indexed->index >= next && indexed->index <= writes.size(), Error::kConstant);
         destination = indexed->index;
-      } else if (!spread && !order.empty()) {
+      } else if (!spread && !computed && !order.empty()) {
         Require(name->value < names_.size(), Error::kConstant);
         const std::u16string_view sought = names_[name->value];
         const auto found = std::upper_bound(order.begin(), order.end(), sought,
@@ -864,9 +865,11 @@ class ForestBuilder {
       }
       const auto id = *writes[i]; const auto& op = graph_.ops[id.value];
       const bool spread=std::holds_alternative<analysis::ValueCopyProperties>(op.operation);
-      const auto name = spread?std::optional<NameId>{}:std::optional{std::get<NameId>(constants_.operations[id.value])};
+      const bool computed=std::holds_alternative<analysis::ValueComputedOwnWrite>(op.operation);
+      const auto name = (spread || computed)?std::optional<NameId>{}:std::optional{std::get<NameId>(constants_.operations[id.value])};
       const TreeOriginId field_origin{op.origin.value};
-      auto value = Operand(graph_.uses[op.first_use.value + 1].operand, field_origin);
+      const auto computed_key = computed ? std::optional{Operand(graph_.uses[op.first_use.value+1].operand, field_origin)} : std::nullopt;
+      auto value = Operand(graph_.uses[op.first_use.value + (computed ? 2 : 1)].operand, field_origin);
       if(id.value<evaluation_.literal_fields.fields.size()) {
         const auto range=evaluation_.literal_fields.fields[id.value];
         for(std::size_t p=range.count;p;--p){
@@ -885,10 +888,10 @@ class ForestBuilder {
       const PropertyId property{static_cast<std::uint32_t>(forest_.properties.size())};
       const auto* own = std::get_if<analysis::ValueOwnWrite>(&op.operation);
       forest_.properties.push_back({name, value, field_origin,
-          own ? own->name_setting : analysis::PropertyNameSetting::kNone,
+          own ? own->name_setting : computed ? std::get<analysis::ValueComputedOwnWrite>(op.operation).name_setting : analysis::PropertyNameSetting::kNone,
           std::get_if<analysis::ValueCopyProperties>(&op.operation) &&
           std::get<analysis::ValueCopyProperties>(op.operation).kind == analysis::ObjectMutationKind::kSetPrototype ?
-          ObjectPropertyEffect::kSetPrototype : ObjectPropertyEffect::kDefine});
+          ObjectPropertyEffect::kSetPrototype : ObjectPropertyEffect::kDefine, computed_key});
       forest_.initializers[id.value] = property; forest_.operations[id.value] = value;
     }
     return Add(ObjectExpr{range, kind, prefix}, origin);
@@ -1306,6 +1309,7 @@ class ForestBuilder {
         if(analysis::WritesThisProperty(operation.kind))return Add(AssignmentExpr{MemberTarget{base,key},operands[operation.name?0:1]},origin);
         return Add(MemberExpr{base,key},origin);
       }
+      else if constexpr (std::is_same_v<T, analysis::ValueDynamicImport>) return Add(DynamicImportExpr{operands[0]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueNewTarget>) return Add(NewTargetExpr{owner_, NewTargetForm::kInstruction}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>)
         return Add(ThisExpr{owner_}, origin);

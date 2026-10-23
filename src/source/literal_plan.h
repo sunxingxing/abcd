@@ -7,6 +7,10 @@
 #include "array_initialization.h"
 
 namespace abcd::source {
+inline bool IsComputedNamedDefinition(const analysis::ValueOperation& operation) {
+  const auto* own = std::get_if<analysis::ValueComputedOwnWrite>(&operation);
+  return own && own->name_setting == analysis::PropertyNameSetting::kPropertyKey;
+}
 struct EvaluationPlan;
 struct CellEvaluation;
 // Typed receiver sources in a freshly verified, simplified owner graph. The

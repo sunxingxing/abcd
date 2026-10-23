@@ -276,15 +276,18 @@ struct DataProperty {
   // against the original store, private construction and creation identity.
   analysis::PropertyNameSetting name_setting = analysis::PropertyNameSetting::kNone;
   ObjectPropertyEffect effect = ObjectPropertyEffect::kDefine;
+  // Evaluated exactly once before the anonymous value and own definition.
+  std::optional<ExprId> computed_key;
 };
 // This operation is not [[Set]]. Only a field-definition destination may
 // print it; ordinary function expression output must refuse it.
 struct FieldDefinitionExpr { ExprId receiver; NameId name; ExprId value; };
+struct DynamicImportExpr { ExprId specifier; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr, UpdateExpr, SequenceExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr, BigIntExpr, NewTargetExpr, ObjectRestExpr, PatternFailureExpr, RegExpExpr, TemplateObjectExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr, BigIntExpr, NewTargetExpr, ObjectRestExpr, PatternFailureExpr, RegExpExpr, TemplateObjectExpr, DynamicImportExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
 struct BlockStmt {

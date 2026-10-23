@@ -83,6 +83,9 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kBase, op.object);
       Append(plan, OperandRole::kKey, op.key);
       Append(plan, OperandRole::kStoredValue, Accumulator{});
+    } else if constexpr (std::is_same_v<T, DynamicImport>) {
+      Append(plan, OperandRole::kInput, Accumulator{});
+      plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, ArraySpread>) {
       Append(plan, OperandRole::kDestination, op.destination);
       Append(plan, OperandRole::kIndex, op.index);

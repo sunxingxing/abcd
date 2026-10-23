@@ -37,6 +37,7 @@ void VisitExpressionChildren(const FunctionTree& tree, const TreeExpression& exp
       if (const auto* range = std::get_if<ArgumentRange>(&node.arguments)) arguments(*range);
       else visit(std::get<SpreadArguments>(node.arguments).iterable);
     }
+    else if constexpr (std::is_same_v<T, DynamicImportExpr>) visit(node.specifier);
     else if constexpr (std::is_same_v<T, ObjectRestExpr>) { visit(node.source); arguments(node.keys); }
     else if constexpr (std::is_same_v<T, ArgumentSnapshotExpr>) arguments(node.slots);
     else if constexpr (std::is_same_v<T, ArrayExpr>) arguments(node.elements);
@@ -45,7 +46,11 @@ void VisitExpressionChildren(const FunctionTree& tree, const TreeExpression& exp
       else if (const auto* spread = std::get_if<ArraySpreadElement>(&node.element)) visit(spread->iterable);
     }
     else if constexpr (std::is_same_v<T, ObjectExpr>) {
-      for (std::uint32_t i = 0; i < node.properties.count; ++i) visit(tree.properties[node.properties.first + i].value);
+      for (std::uint32_t i = 0; i < node.properties.count; ++i) {
+        const auto& property = tree.properties[node.properties.first+i];
+        if (property.computed_key) visit(*property.computed_key);
+        visit(property.value);
+      }
     } else if constexpr (std::is_same_v<T, ClassExpr>) { if (node.heritage) visit(*node.heritage); }
     else {
       static_assert((std::is_same_v<T, RegExpExpr> || std::is_same_v<T, TemplateObjectExpr>) || std::is_same_v<T, PatternFailureExpr> || std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, BigIntExpr> || std::is_same_v<T, TreeLiteral> || std::is_same_v<T, SymbolExpr> ||

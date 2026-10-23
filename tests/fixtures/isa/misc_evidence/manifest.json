@@ -107,13 +107,8 @@
         124,
         189
       ],
-      "source_status": 3,
-      "causes": [
-        {
-          "domain": "abcd::analysis::SemanticError",
-          "value": 1
-        }
-      ]
+      "source_status": 0,
+      "causes": []
     },
     {
       "source": "tests/fixtures/isa/misc_evidence/dynamic.js",
@@ -142,13 +137,8 @@
         124,
         189
       ],
-      "source_status": 3,
-      "causes": [
-        {
-          "domain": "abcd::analysis::SemanticError",
-          "value": 1
-        }
-      ]
+      "source_status": 0,
+      "causes": []
     },
     {
       "source": "tests/fixtures/isa/misc_evidence/array_pattern.js",
@@ -350,21 +340,8 @@
         124,
         153
       ],
-      "source_status": 3,
-      "causes": [
-        {
-          "domain": "abcd::source::EvaluationError",
-          "value": 2
-        },
-        {
-          "domain": "abcd::source::EvaluationObligation",
-          "value": 0
-        },
-        {
-          "domain": "abcd::source::LiteralError",
-          "value": 10
-        }
-      ]
+      "source_status": 0,
+      "causes": []
     },
     {
       "source": "tests/fixtures/isa/misc_evidence/nameset.js",
@@ -395,21 +372,8 @@
         124,
         153
       ],
-      "source_status": 3,
-      "causes": [
-        {
-          "domain": "abcd::source::EvaluationError",
-          "value": 2
-        },
-        {
-          "domain": "abcd::source::EvaluationObligation",
-          "value": 0
-        },
-        {
-          "domain": "abcd::source::LiteralError",
-          "value": 10
-        }
-      ]
+      "source_status": 0,
+      "causes": []
     },
     {
       "source": "tests/fixtures/isa/misc_evidence/property_key.js",

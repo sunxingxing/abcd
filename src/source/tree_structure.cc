@@ -338,7 +338,11 @@ class StructureCheck {
     RequireTree(node.origin.value < tree_.origins.size(), Error::kOrigin);
     std::visit([&](const auto& expression) {
       using T = std::decay_t<decltype(expression)>;
-      if constexpr(std::is_same_v<T,TemplateObjectExpr>) {
+      if constexpr(std::is_same_v<T,DynamicImportExpr>) {
+        // The import job also exposes native/CJS exports. Both independently
+        // approved V10 differences apply; neither is inferred from spelling.
+        RequireTree(DynamicImports(tree_.identity.contract) && ModuleNamespaces(tree_.identity.contract), Error::kUnsupportedSyntax);
+      } else if constexpr(std::is_same_v<T,TemplateObjectExpr>) {
         VerifyTemplateLiteral(expression,tree_.texts,tree_.identity.contract,budget_);
       } else if constexpr(std::is_same_v<T,RegExpExpr>) {
         RequireTree(expression.text.value<tree_.texts.size(),Error::kRange);
@@ -710,14 +714,20 @@ class StructureCheck {
         if (const auto* spread = std::get_if<ArraySpreadElement>(&element->element)) return spread->iterable;
         return {};
       }
+      if (const auto* dynamic = std::get_if<DynamicImportExpr>(&syntax)) {
+        if(frame.next_child++)return {};
+        return dynamic->specifier;
+      }
       if (const auto* object = std::get_if<ObjectExpr>(&syntax)) {
-        if (frame.next_child == object->properties.count) return {};
-        const auto slot = object->properties.first + frame.next_child++;
+        if (frame.next_child == object->properties.count * std::uint64_t{2}) return {};
+        const auto slot = object->properties.first + frame.next_child / 2;
+        const auto key_phase = (frame.next_child++ % 2) == 0;
+        if (!key_phase) return tree_.properties[slot].value;
         const auto& property = tree_.properties[slot];
         RequireTree(!properties_[slot], Error::kOwnership); properties_[slot] = 1;
         RequireTree(property.origin.value < tree_.origins.size(), Error::kRange);
         if(property.key)RequireTree(property.key->value < tree_.names.size(),Error::kRange);
-        else RequireTree(object->kind==AggregateKind::kObject &&
+        else if (!property.computed_key) RequireTree(object->kind==AggregateKind::kObject &&
             (property.effect == ObjectPropertyEffect::kSetPrototype || ObjectSpreads(tree_.identity.contract)) &&
             property.name_setting==analysis::PropertyNameSetting::kNone,Error::kUnsupportedSyntax);
         RequireTree(property.effect == ObjectPropertyEffect::kDefine ||
@@ -741,11 +751,17 @@ class StructureCheck {
           }
           default: RequireTree(false, Error::kUnsupportedSyntax);
         }
+        if (property.computed_key) {
+          RequireTree(!property.key && object->kind == AggregateKind::kObject && ComputedFunctionNames(tree_.identity.contract) &&
+              property.effect == ObjectPropertyEffect::kDefine && property.name_setting == analysis::PropertyNameSetting::kPropertyKey, Error::kUnsupportedSyntax);
+          return *property.computed_key;
+        }
         if (object->kind == AggregateKind::kArray) {
           RequireTree(property.key.has_value(),Error::kUnsupportedSyntax);
-          const auto index = std::to_string(frame.next_child - 1);
+          const auto index = std::to_string((frame.next_child - 1) / 2);
           RequireTree(tree_.names[property.key->value] == std::u16string(index.begin(), index.end()), Error::kUnsupportedSyntax);
         }
+        ++frame.next_child;
         return property.value;
       }
       if (const auto* call = std::get_if<CallExpr>(&syntax)) {
@@ -806,7 +822,7 @@ class StructureCheck {
                         std::is_same_v<T, RealmObjectExpr> ||
                         std::is_same_v<T, SymbolConstructorExpr> ||
                         std::is_same_v<T, ArgumentSnapshotExpr> ||
-                        std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
+                        std::is_same_v<T, DynamicImportExpr> || std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr> || std::is_same_v<T, EmptyArrayExpr> ||
                         std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, ArrayExpr> || std::is_same_v<T, ArrayElement> || std::is_same_v<T, FunctionExpr>);
         }

@@ -59,7 +59,8 @@ struct ProjectElidedOperands { ExprId expression, retained; };
 struct NoInferredName {};
 struct DefaultInferredName {};
 struct PropertyInferredName { NameId key; };
-using NameContext = std::variant<NoInferredName, NameId, DefaultInferredName, PropertyInferredName>;
+struct ComputedPropertyInferredName {};
+using NameContext = std::variant<NoInferredName, NameId, DefaultInferredName, PropertyInferredName, ComputedPropertyInferredName>;
 enum class ExpressionObservation : std::uint8_t { kValue, kTruthiness, kDiscarded };
 struct ExpressionOperand {
   ExprId id;
@@ -447,7 +448,7 @@ class TreePrinter {
       const auto expected = ContextName(context);
       if (target.inferred_name)
         Step(std::min(target.names[target.inferred_name->value].size(), expected.size()) + 1);
-      const bool property = std::holds_alternative<PropertyInferredName>(context);
+      const bool property = std::holds_alternative<PropertyInferredName>(context) || std::holds_alternative<ComputedPropertyInferredName>(context);
       if (property && (!target.inferred_name || target.self ||
           !target.names[target.inferred_name->value].empty() || target.invocation != InvocationForm::kDeclared))
         throw Error::kUnsupportedContext;
@@ -505,7 +506,8 @@ class TreePrinter {
         if (const auto* object = std::get_if<ObjectExpr>(&expression)) {
           for (std::uint32_t p = 0; p < object->properties.count; ++p) {
             const auto& property = Tree().properties[object->properties.first + p];
-            push(property.value, object->kind == AggregateKind::kObject && property.key ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
+            if (property.computed_key) push(*property.computed_key);
+            push(property.value, property.computed_key ? NameContext{ComputedPropertyInferredName{}} : object->kind == AggregateKind::kObject && property.key ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
                 NameContext{PropertyInferredName{*property.key}} : NameContext{*property.key}) : NameContext{});
           }
         } else VisitExpressionChildren(Tree(), expression, [&](ExprId child) {
@@ -844,6 +846,10 @@ class TreePrinter {
   void Expression(NewTargetExpr) {
     if (ProgramBody()) throw Error::kUnsupportedContext;
     Append("new.target");
+  }
+  void Expression(DynamicImportExpr node) {
+    Append("import("); Push(std::string_view(")"));
+    Push(ExpressionOperand{node.specifier, {ExpressionGrammar::kAssignmentValue}});
   }
   void Expression(TemplateObjectExpr) { throw Error::kUnsupportedContext; }
   void Expression(RegExpExpr node) {
@@ -1431,6 +1437,7 @@ class TreePrinter {
     const auto& property = Tree().properties[id.value];
     Result().properties[id.value].begin = written_;
     if(property.effect == ObjectPropertyEffect::kSetPrototype)Append("__proto__: ");
+    else if(property.computed_key)Append("[");
     else if(!property.key)Append("...");
     else if (cursor.kind == AggregateKind::kObject) {
       const auto& name = Tree().names[property.key->value];
@@ -1445,8 +1452,12 @@ class TreePrinter {
     }
     Push(ObjectCursor{cursor.range, cursor.index + 1, cursor.kind, cursor.multiline});
     Push(EndProperty{id}); Push(ExpressionOperand{property.value, {ExpressionGrammar::kAssignmentValue},
-        cursor.kind == AggregateKind::kObject && property.key ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
+        property.computed_key ? NameContext{ComputedPropertyInferredName{}} : cursor.kind == AggregateKind::kObject && property.key ? (property.name_setting == analysis::PropertyNameSetting::kPropertyKey ?
                 NameContext{PropertyInferredName{*property.key}} : NameContext{*property.key}) : NameContext{}});
+    if (property.computed_key) {
+      Push(std::string_view("]: "));
+      Push(ExpressionOperand{*property.computed_key, {ExpressionGrammar::kAssignmentValue}});
+    }
   }
   void Run(EndProperty property) { Result().properties[property.id.value].end = written_; }
   void Run(ArgumentCursor cursor) {

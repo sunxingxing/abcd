@@ -149,6 +149,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
     else if constexpr (std::is_same_v<T, CopyProperties>) return ValueCopyProperties{op.kind};
     else if constexpr (std::is_same_v<T, ThisProperty>) {
       return ValueThisProperty{op.kind,op.name};
+    } else if constexpr (std::is_same_v<T, DynamicImport>) {
+      return ValueDynamicImport{};
     } else if constexpr (std::is_same_v<T, NewTargetLoad>) {
       return ValueNewTarget{};
     } else if constexpr (std::is_same_v<T, FrameThisLoad>) {

@@ -104,6 +104,10 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
       return Fail(SemanticError::kMalformedInstruction, site.offset);
     return DebuggerOperation{};
   }
+  if (decoded.opcode == Opcode::kDYNAMICIMPORT) {
+    if (decoded.operand_count != 0) return Fail(SemanticError::kMalformedInstruction, site.offset);
+    return DynamicImport{};
+  }
   if (decoded.opcode == Opcode::kLDNEWTARGET) {
     if (decoded.operand_count != 0) return Fail(SemanticError::kMalformedInstruction, site.offset);
     return NewTargetLoad{};
@@ -459,6 +463,17 @@ SemanticEffects Effects(const SemanticOperation& operation,
           effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |
                            LanguageEffect::kUserCode | LanguageEffect::kAllocation;
           effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, DynamicImport>) {
+          // RuntimeStubs::RuntimeDynamicImport queues the retained specifier;
+          // BuiltinsPromiseJob::DynamicImportJob performs conversion/loading.
+          // Conservative callback bounds retain ordering; publication gates the
+          // approved difference in conversion timing, never duplicates a job.
+          effects.normal = LanguageEffect::kAllocation | LanguageEffect::kModuleRead |
+              LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite | LanguageEffect::kUserCode;
+          // Conversion/loading rejects the retained promise, not this frame.
+          // Only promise/job allocation can fail before its successful Commit.
+          effects.before_throw = LanguageEffect::kAllocation;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, NewTargetLoad>) {
           // Observe the invocation frame even when unused: the V7 AOT-path

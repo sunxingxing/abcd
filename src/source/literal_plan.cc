@@ -161,8 +161,11 @@ class LiteralPath {
     budget.Size(flat_, graph.ops.size());
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step(); const auto& op = graph.ops[i];
+      const auto* computed = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation);
+      computed_names_ |= op.life == analysis::ValueLife::kLive && computed &&
+          computed->name_setting == analysis::PropertyNameSetting::kPropertyKey;
       if (op.life != analysis::ValueLife::kLive || op.use_count != 2 ||
-          !(std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) ||
+          !(IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) ||
             std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
       const auto base = Resolve(graph.uses[op.first_use.value].operand);
       const auto* value = std::get_if<analysis::ValueId>(&base);
@@ -241,7 +244,15 @@ class LiteralPath {
     return IsIdentityPhiInput(evaluation_ ? *evaluation_ : normal_aliases_, use);
   }
   std::uint32_t Position(analysis::OpId id) const { return effects_.position[id.value]; }
+  bool ComputedNames() const { return computed_names_; }
+  bool MustFollow(analysis::OpId before, analysis::OpId after) const {
+    return effects_.after[before.value] == after &&
+        effects_.before[after.value] == EffectPredecessor{before};
+  }
   bool NativeBefore(analysis::OpId allocation, const analysis::ValueOp& write) const {
+    // Candidate only. VerifyNesting independently proves the complete exact
+    // must-reach effect chain, including single execution and no early exit.
+    if (computed_names_ && !evaluation_) return Before(graph_.ops[allocation.value], write);
     if (flat_[allocation.value]) return Before(graph_.ops[allocation.value], write);
     if (evaluation_) {
       const auto& origin = graph_.ops[allocation.value];
@@ -288,6 +299,7 @@ class LiteralPath {
   EvaluationPlan normal_aliases_;
   EffectOrder effects_;
   std::vector<std::uint8_t> flat_;
+  bool computed_names_ = false;
 };
 analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id, const LiteralPath& path, bool same_path, EvaluationInputSite* failure) {
   EvaluationInputScope site(failure, {EvaluationInputCheck::kLiteralAllocation, id});
@@ -295,15 +307,17 @@ analysis::OpId Allocation(const analysis::ValueProgram& graph, analysis::OpId id
   const auto& op = graph.ops[id.value];
   const auto* write = std::get_if<analysis::ValueOwnWrite>(&op.operation);
   const bool spread=std::holds_alternative<analysis::ValueCopyProperties>(op.operation);
+  const auto* computed = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation);
   const auto* indexed = std::get_if<analysis::ValueIndexedWrite>(&op.operation);
-  Require(op.life == analysis::ValueLife::kLive && (write || indexed || spread) && (spread == op.result.has_value()) && op.use_count == 2,
+  Require(op.life == analysis::ValueLife::kLive && (write || indexed || spread || computed) && (spread == op.result.has_value()) && op.use_count == (computed ? 3 : 2),
       Error::kDefinition);
   if (indexed) Require(indexed->kind == analysis::IndexedDefinition::kOwnStore ||
       indexed->kind == analysis::IndexedDefinition::kDefineField, Error::kDefinition);
-  Require(spread || indexed || write->kind == analysis::OwnWriteKind::kStore ||
+  Require(spread || indexed || computed || write->kind == analysis::OwnWriteKind::kStore ||
       write->kind == analysis::OwnWriteKind::kDefineField, Error::kDefinition);
   const auto& base = graph.uses[op.first_use.value];
-  const auto& stored = graph.uses[op.first_use.value + 1];
+  const auto& stored = graph.uses[op.first_use.value + (computed ? 2 : 1)];
+  if (computed) Require(graph.uses[op.first_use.value+1].role == analysis::OperandRole::kKey, Error::kDefinition);
   Require(base.role == analysis::OperandRole::kBase && stored.role == analysis::OperandRole::kStoredValue &&
       base.purpose == analysis::ReadPurpose::kOperand && stored.purpose == analysis::ReadPurpose::kOperand,
       Error::kDefinition);
@@ -337,6 +351,16 @@ void EarlyValue(const analysis::ValueProgram& graph, const analysis::ValueOp& al
   // a dominating phi block and overwrite its source edge-copy storage.
   // Do not replace this proof with producer/block identity matching.
   Require(path.Available(*value, allocation), Error::kLateValue);
+}
+std::uint32_t StoredOrdinal(const analysis::ValueOp& op) {
+  return std::holds_alternative<analysis::ValueComputedOwnWrite>(op.operation) ? 2 : 1;
+}
+bool NamesValue(const analysis::ValueOp& op) {
+  if (const auto* own = std::get_if<analysis::ValueOwnWrite>(&op.operation))
+    return own->name_setting == analysis::PropertyNameSetting::kPropertyKey;
+  if (const auto* own = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation))
+    return own->name_setting == analysis::PropertyNameSetting::kPropertyKey;
+  return false;
 }
 bool Aggregate(const analysis::ValueOperation& op) {
   return std::holds_alternative<analysis::ValueArrayAllocation>(op) ||
@@ -439,9 +463,8 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     EvaluationInputScope site(failure, {EvaluationInputCheck::kLiteralNesting, analysis::OpId{static_cast<std::uint32_t>(i)}, plan.nested[i]});
     const auto& op = graph.ops[i]; const auto use = *plan.nested[i];
     const auto* naming_parent = std::get_if<analysis::OpId>(&graph.uses[use.value].owner);
-    const auto* naming = naming_parent ? std::get_if<analysis::ValueOwnWrite>(&graph.ops[naming_parent->value].operation) : nullptr;
     Require(op.life == analysis::ValueLife::kLive && (Aggregate(op.operation) || LiteralExpression(graph, op, i, guards, contract,
-        naming && naming->name_setting == analysis::PropertyNameSetting::kPropertyKey)) && op.result &&
+        naming_parent && NamesValue(graph.ops[naming_parent->value]))) && op.result &&
         use.value < graph.uses.size(), Error::kDefinition);
     const auto& occurrence = graph.uses[use.value];
     const auto* parent = std::get_if<analysis::OpId>(&occurrence.owner);
@@ -517,12 +540,18 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     budget.Admit(proof.allocated_bytes, 1); budget.Step(proof.work);
   }
   std::size_t depth = 0;
-  std::optional<analysis::OpId> catch_site;
+  std::optional<analysis::OpId> catch_site, previous_effect;
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step(); const auto& op = graph.ops[i];
-    if (depth) Require(path.Same(graph.ops[stack[0].value].block, op.block), Error::kFlow);
+    if (depth && !(path.ComputedNames() && !path.Phased()))
+      Require(path.Same(graph.ops[stack[0].value].block, op.block), Error::kFlow);
     if ((!projected.empty() && projected[i] && plan.nested[projected[i]->value]) ||
         op.life != analysis::ValueLife::kLive || path.Alias({static_cast<std::uint32_t>(i)}) || path.InitializedGuard({static_cast<std::uint32_t>(i)})) continue;
+    if (path.ComputedNames() && !path.Phased() && HasOrderedEffect(op)) {
+      const analysis::OpId id{static_cast<std::uint32_t>(i)};
+      if (depth) Require(previous_effect && path.MustFollow(*previous_effect, id), Error::kFlow);
+      previous_effect = id;
+    }
     // Every effect folded into native aggregate syntax retains the outer
     // allocation's dispatch and staged catch values, not merely a normal path.
     // Comparing each site's copy bundle once is bounded by original copy volume.
@@ -560,15 +589,20 @@ void VerifyNesting(const analysis::ValueProgram& graph, const LiteralPlan& plan,
     } else if (depth) {
       if (owners[i]) {
         Require(owners[i] == stack[depth - 1], Error::kDefinition);
-        const analysis::UseId rhs{op.first_use.value + 1};
-        const auto operand = path.Resolve(graph.uses[rhs.value].operand);
-        const auto* value = std::get_if<analysis::ValueId>(&operand);
-        const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
-        if (result && plan.nested[result->op.value] != rhs)
-          Require(result->op.value < stack[0].value, Error::kLateValue);
-        if (result && plan.nested[result->op.value] == rhs &&
-            !Aggregate(graph.ops[result->op.value].operation))
-          Require(first_read[result->op.value] > last_write[stack[depth - 1].value], Error::kDefinition);
+        std::size_t operand_end = last_write[stack[depth - 1].value];
+        for (std::uint32_t ordinal = 1; ordinal < op.use_count; ++ordinal) {
+          const analysis::UseId rhs{op.first_use.value + ordinal};
+          const auto operand = path.Resolve(graph.uses[rhs.value].operand);
+          const auto* value = std::get_if<analysis::ValueId>(&operand);
+          const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
+          if (!result) continue;
+          if (plan.nested[result->op.value] != rhs)
+            Require(result->op.value < stack[0].value, Error::kLateValue);
+          else {
+            Require(first_read[result->op.value] > operand_end, Error::kDefinition);
+            operand_end = ends[result->op.value] ? ends[result->op.value]->value : result->op.value;
+          }
+        }
         last_write[stack[depth - 1].value] = i;
       } else if (plan.nested[i]) {
         Require(value_owners[i] == stack[depth - 1], Error::kObserved);
@@ -871,6 +905,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
           previous_index = indexed->index;
         }
         if (object.form == LiteralForm::kStatements) {
+          Require(!std::holds_alternative<analysis::ValueComputedOwnWrite>(op.operation), Error::kNameSettingProof);
           const auto* named = std::get_if<analysis::ValueOwnWrite>(&op.operation);
           Require(!named || named->name_setting == analysis::PropertyNameSetting::kNone,
               Error::kNameSettingProof);
@@ -879,13 +914,12 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
         }
         EvaluationInputScope site(failure, {EvaluationInputCheck::kLiteralOrder, id});
         Require(path.Before(graph.ops[prior.value], op), Error::kDefinition); prior = id;
-        const analysis::UseId rhs{op.first_use.value + 1};
+        const analysis::UseId rhs{op.first_use.value + StoredOrdinal(op)};
         const auto operand = path.Resolve(graph.uses[rhs.value].operand);
         const auto* value = std::get_if<analysis::ValueId>(&operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
         const bool nested = result && !plan.nested.empty() && plan.nested[result->op.value] == rhs;
-        if (const auto* named = std::get_if<analysis::ValueOwnWrite>(&op.operation);
-            named && named->name_setting == analysis::PropertyNameSetting::kPropertyKey) {
+        if (NamesValue(op)) {
           // Native NamedEvaluation precedes definition. Only a private, unique
           // creation inside this construction makes that reordering unobservable.
           // VerifyNesting independently excludes aliases/escapes and preserves
@@ -895,6 +929,18 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
               graph.ops[result->op.value].operation) ||
               std::holds_alternative<analysis::ValueClassCreation>(graph.ops[result->op.value].operation)),
               Error::kNameSettingProof);
+        }
+        if (const auto* computed = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation)) {
+          Require(ComputedFunctionNames(contract) && computed->kind == analysis::OwnWriteKind::kStore &&
+              computed->name_setting == analysis::PropertyNameSetting::kPropertyKey && nested &&
+              std::holds_alternative<analysis::ValueFunctionCreation>(graph.ops[result->op.value].operation), Error::kNameSettingProof);
+          const analysis::UseId key_use{op.first_use.value+1};
+          const auto key = path.Resolve(graph.uses[key_use.value].operand);
+          const auto* key_id = std::get_if<analysis::ValueId>(&key);
+          const auto* key_origin = key_id ? std::get_if<analysis::OpResult>(&graph.values[key_id->value].origin) : nullptr;
+          if (key_origin && !plan.nested.empty() && plan.nested[key_origin->op.value] == key_use)
+            Require(path.Before(graph.ops[key_origin->op.value], graph.ops[result->op.value]), Error::kDefinition);
+          else EarlyValue(graph, allocation, key, path, id, key_use, failure);
         }
         if (nested) Require(path.Before(allocation, graph.ops[result->op.value]), Error::kLateValue);
         else EarlyValue(graph, allocation, operand, path, id, rhs, failure);
@@ -907,7 +953,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const bool own = (projected.empty() || !projected[i]) && graph.ops[i].life == analysis::ValueLife::kLive && !IsReceiverField(graph, graph.ops[i]) &&
-          (std::holds_alternative<analysis::ValueCopyProperties>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
+          (IsComputedNamedDefinition(graph.ops[i].operation) || std::holds_alternative<analysis::ValueCopyProperties>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
       Require(owners[i].has_value() == own && (!IsStagedLiteral(&plan, {static_cast<std::uint32_t>(i)}) || own), Error::kCoverage);
     }
     VerifyStaged(graph, plan, owners, budget, path, failure);
@@ -965,7 +1011,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     std::size_t count = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step(); const auto& op = graph.ops[i];
-      count += (projected.empty() || !projected[i]) && op.life == analysis::ValueLife::kLive && !IsReceiverField(graph, op) && (std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
+      count += (projected.empty() || !projected[i]) && op.life == analysis::ValueLife::kLive && !IsReceiverField(graph, op) && (IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
     }
     std::vector<FieldOwner> fields;
     LiteralPlan plan{graph.revision, graph.cfg_revision};
@@ -974,7 +1020,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const auto& op = graph.ops[i];
-      if ((!projected.empty() && projected[i]) || op.life != analysis::ValueLife::kLive || IsReceiverField(graph, op) || !(std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
+      if ((!projected.empty() && projected[i]) || op.life != analysis::ValueLife::kLive || IsReceiverField(graph, op) || !(IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
       const analysis::OpId id{static_cast<std::uint32_t>(i)};
       fields[next++] = {Allocation(graph, id, path, false, failure), id};
     }
@@ -1040,18 +1086,18 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
       for (const auto& object : plan.objects) for (std::uint32_t p = 0; p < object.count; ++p) {
         budget.Step(); if (object.form == LiteralForm::kStatements) continue;
         const auto& definition = graph.ops[plan.definitions[object.first + p].value];
-        const analysis::UseId rhs{definition.first_use.value + 1};
+        for (std::uint32_t ordinal = 1; ordinal < definition.use_count; ++ordinal) {
+        const analysis::UseId rhs{definition.first_use.value + ordinal};
         const auto operand = path.Resolve(graph.uses[rhs.value].operand);
         const auto* value = std::get_if<analysis::ValueId>(&operand);
         const auto* result = value ? std::get_if<analysis::OpResult>(&graph.values[value->value].origin) : nullptr;
-        const auto* naming = std::get_if<analysis::ValueOwnWrite>(&definition.operation);
         if (!result || !(Aggregate(graph.ops[result->op.value].operation) || LiteralExpression(graph, graph.ops[result->op.value], result->op.value, guards, contract,
-            naming && naming->name_setting == analysis::PropertyNameSetting::kPropertyKey)) ||
+            NamesValue(definition))) ||
             !path.Before(graph.ops[object.allocation.value], graph.ops[result->op.value])) continue;
         if (plan.nested.empty()) budget.Size(plan.nested, graph.ops.size());
         Require(!plan.nested[result->op.value], Error::kObserved);
         plan.nested[result->op.value] = rhs;
-      }
+      }}
     }
     if (!plan.nested.empty()) {
       // Consumers follow their inputs in SSA order; a reverse scan visits each

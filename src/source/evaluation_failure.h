@@ -6,7 +6,7 @@ namespace abcd::source {
 // mutation. Named private literals have a separate proof; computed keys and
 // class-member projections cannot erase the name mutation.
 inline std::optional<EvaluationFailure> NameSettingRefusal(
-    const analysis::ValueProgram& graph, analysis::OpId id, bool projected = false) {
+    const analysis::ValueProgram& graph, analysis::OpId id, bool projected = false, SourceContract contract = kSourceContract) {
   const auto& op = graph.ops[id.value];
   if (op.life != analysis::ValueLife::kLive) return {};
   auto naming = analysis::PropertyNameSetting::kNone;
@@ -15,7 +15,8 @@ inline std::optional<EvaluationFailure> NameSettingRefusal(
   // Named definitions are checked by LiteralPlan and the family naming proof.
   // Computed keys still require an independent key-domain proof.
   if (const auto* computed = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation)) naming = computed->name_setting;
-  if (naming == analysis::PropertyNameSetting::kNone) return {};
+  if (naming == analysis::PropertyNameSetting::kNone ||
+      (!projected && ComputedFunctionNames(contract))) return {};
   EvaluationEvidence witness;
   witness.obligation = EvaluationObligation::kPlan;
   witness.location = OperationLocation(graph, id);
@@ -46,6 +47,15 @@ inline std::optional<EvaluationFailure> WideRangeRefusal(
   witness.location = OperationLocation(graph, id);
   witness.input_check = EvaluationInputCheck::kWideRangePremise;
   return EvaluationFailure{EvaluationError::kUnsupportedOperation, witness};
+}
+inline std::optional<EvaluationFailure> DynamicImportRefusal(
+    const analysis::ValueProgram& graph, analysis::OpId id, SourceContract contract) {
+  const auto& op=graph.ops[id.value];
+  if(op.life!=analysis::ValueLife::kLive || !std::holds_alternative<analysis::ValueDynamicImport>(op.operation) ||
+      (DynamicImports(contract) && ModuleNamespaces(contract))) return {};
+  EvaluationEvidence witness;witness.obligation=EvaluationObligation::kPlan;
+  witness.location=OperationLocation(graph,id);witness.input_check=EvaluationInputCheck::kDynamicImportPremise;
+  return EvaluationFailure{EvaluationError::kUnsupportedOperation,witness};
 }
 inline EvaluationEvidence EvaluationAt(const analysis::ValueProgram& graph,
     const EvaluationPlan& plan, analysis::OpId id, EvaluationObligation obligation) {

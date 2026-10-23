@@ -182,7 +182,8 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     std::size_t next_function = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       const auto& op = graph.ops[i];
-      if (const auto failure = NameSettingRefusal(graph, {static_cast<std::uint32_t>(i)})) return *failure;
+      if (const auto failure = NameSettingRefusal(graph, {static_cast<std::uint32_t>(i)}, false, plan.call_spread_contract)) return *failure;
+      if (const auto failure = DynamicImportRefusal(graph, {static_cast<std::uint32_t>(i)}, plan.call_spread_contract)) return *failure;
       if (const auto failure = WideRangeRefusal(graph, {static_cast<std::uint32_t>(i)}, plan.call_spread_contract)) return *failure;
       if (const auto failure = CallSpreadRefusal(graph, {static_cast<std::uint32_t>(i)}, plan.call_spread_contract)) return *failure;
       const auto shape = op.life == analysis::ValueLife::kLive ? DescribeEvaluation(op.operation) : std::nullopt;
@@ -194,7 +195,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       if (projected_op(i)) if (const auto failure = NameSettingRefusal(graph,
           {static_cast<std::uint32_t>(i)}, true)) return *failure;
       step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&
-          (std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
+          (IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && !projected_op(i) && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
         Require(next_function < plan.functions.size() && plan.functions[next_function++].creation.value == i, Error::kOwnership);
@@ -512,7 +513,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       if (const auto error = CheckArgumentSnapshot(graph, op)) return *error;
       Require(shape.has_value(), Error::kUnsupportedOperation);
       Require(shape->Count() == op.use_count && shape->expression == op.result.has_value(), Error::kInvalidGraph);
-      if (!IsReceiverField(graph, op) && (!IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, {static_cast<std::uint32_t>(i)}) || placement.kind == EvaluationKind::kInitializer) && (std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
+      if (!IsReceiverField(graph, op) && (!IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, {static_cast<std::uint32_t>(i)}) || placement.kind == EvaluationKind::kInitializer) && (IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
         // Fresh LiteralPlan proved these definitions unobservable until complete.
         // They execute in object syntax, not as ordinary ordered heap writes;
         // producer snapshots remain pinned before allocation, never duplicated.

@@ -180,7 +180,7 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
       // Owned definitions consume the allocation as their implicit literal
       // base, not as a second source value. LiteralPlan proved that ownership.
       if (kind == EvaluationKind::kInitializer && use.role == OperandRole::kBase &&
-          (std::holds_alternative<ValueOwnWrite>(graph.ops[owner->value].operation) ||
+          (std::holds_alternative<ValueComputedOwnWrite>(graph.ops[owner->value].operation) || std::holds_alternative<ValueOwnWrite>(graph.ops[owner->value].operation) ||
            std::holds_alternative<ValueIndexedWrite>(graph.ops[owner->value].operation))) continue;
     }
     if (MemberUpdateWire(plan,{static_cast<std::uint32_t>(i)}) || AssignmentProducer(plan, {static_cast<std::uint32_t>(i)})) continue;

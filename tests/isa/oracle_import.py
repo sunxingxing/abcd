@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sqlite3
 
-CONTRACTS = {'language_source_v9': 'v4',
+CONTRACTS = {'language_source_v10': 'v4',
              'language_numeric_constructors_v1': 'previous'}
 MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_OCCURRENCE_BYTES = 1024 * 1024

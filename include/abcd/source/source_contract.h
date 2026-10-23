@@ -12,7 +12,7 @@ namespace abcd::source {
 enum class SourceContract : std::uint8_t {
   kLanguageAndHostV1, kLanguageAndHostV2, kLanguageAndHostV3, kLanguageArithmeticV1, kLanguageNumericV1,
   kLanguageConstructorsV1, kLanguageArithmeticConstructorsV1, kLanguageNumericConstructorsV1,
-  kLanguageSourceV1, kLanguageSourceV2, kLanguageSourceV3, kLanguageSourceV4, kLanguageSourceV5, kLanguageSourceV6, kLanguageSourceV7, kLanguageSourceV8, kLanguageSourceV9
+  kLanguageSourceV1, kLanguageSourceV2, kLanguageSourceV3, kLanguageSourceV4, kLanguageSourceV5, kLanguageSourceV6, kLanguageSourceV7, kLanguageSourceV8, kLanguageSourceV9, kLanguageSourceV10
 };
 enum class ConstructorSemantics : std::uint8_t { kPinnedRuntime, kSourceLanguage };
 enum class ConstructorForwardingSemantics : std::uint8_t { kInvocationFrame, kSourceRestSpread };
@@ -49,6 +49,7 @@ constexpr ConstructorForwardingSemantics ConstructorForwarding(SourceContract co
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -77,6 +78,7 @@ constexpr analysis::ArithmeticSemantics Arithmetic(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -105,6 +107,7 @@ constexpr ConstructorSemantics Constructors(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -125,6 +128,7 @@ constexpr SourceContract WithLanguageConstructors(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -149,6 +153,7 @@ constexpr analysis::PendingExceptionValues PendingExceptions(SourceContract cont
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -172,6 +177,7 @@ constexpr analysis::CallResultValues NormalCallResults(SourceContract contract) 
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -194,6 +200,7 @@ constexpr RealmBindingPolicy RealmBinding(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -216,6 +223,7 @@ constexpr ResourceFailureScope ResourceFailures(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -239,6 +247,7 @@ constexpr CallableTextPolicy CallableText(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -270,6 +279,7 @@ constexpr CaptureReadSemantics CaptureReads(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -297,6 +307,7 @@ constexpr LazyImportSemantics LazyImports(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -320,6 +331,7 @@ constexpr ArraySpreadSemantics ArraySpreads(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -346,6 +358,7 @@ constexpr IterationAcquisitionSemantics IterationAcquisition(SourceContract cont
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -373,6 +386,7 @@ constexpr ConcurrentOutputPolicy ConcurrentOutput(SourceContract contract) {
       return ConcurrentOutputPolicy::kNotEnabled;
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -397,6 +411,7 @@ constexpr SendableOutputPolicy SendableOutput(SourceContract contract) {
       return SendableOutputPolicy::kNotEnabled;
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -421,6 +436,7 @@ constexpr SharedModuleOutputPolicy SharedModuleOutput(SourceContract contract) {
       return SharedModuleOutputPolicy::kNotEnabled;
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -447,6 +463,7 @@ constexpr analysis::ExternalExceptionPolicy ExternalExceptionNoHole(SourceContra
     case SourceContract::kLanguageSourceV3:
       return analysis::ExternalExceptionPolicy::kPinnedRuntime;
     case SourceContract::kLanguageSourceV4:
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -474,6 +491,7 @@ constexpr CallSpreadSemantics CallSpread(SourceContract contract) {
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
     case SourceContract::kLanguageSourceV4: return CallSpreadSemantics::kPinnedRuntime;
+    case SourceContract::kLanguageSourceV10:
     case SourceContract::kLanguageSourceV9:
     case SourceContract::kLanguageSourceV8:
     case SourceContract::kLanguageSourceV7:
@@ -487,21 +505,28 @@ constexpr CallSpreadSemantics CallSpread(SourceContract contract) {
 // strict arguments, including escape. Ark's additional own throwing caller
 // accessor is the accepted difference; this does not authorize later snapshots.
 constexpr bool NativeArguments(SourceContract contract) {
-  return contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8 || contract == SourceContract::kLanguageSourceV9);
+  return contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || contract == SourceContract::kLanguageSourceV8 || contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10);
 }
 
 // User approval 2026-10-22, language-source.md. These are four independent
 // source equivalence premises, not an admission certificate. V1-V6 retain their
 // meanings. Arrays/keys, callee/receiver, event order and source scope still
 // require their own proofs before any native form may be published.
-constexpr bool TaggedTemplates(SourceContract c) { return c == SourceContract::kLanguageSourceV7 || c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9; }
-constexpr bool ObjectSpreads(SourceContract c) { return c == SourceContract::kLanguageSourceV7 || c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9; }
-constexpr bool ObjectRests(SourceContract c) { return c == SourceContract::kLanguageSourceV7 || c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9; }
-constexpr bool NativeNewTarget(SourceContract c) { return c == SourceContract::kLanguageSourceV7 || c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9; }
+constexpr bool TaggedTemplates(SourceContract c) { return c == SourceContract::kLanguageSourceV7 || c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9 || c == SourceContract::kLanguageSourceV10; }
+constexpr bool ObjectSpreads(SourceContract c) { return c == SourceContract::kLanguageSourceV7 || c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9 || c == SourceContract::kLanguageSourceV10; }
+constexpr bool ObjectRests(SourceContract c) { return c == SourceContract::kLanguageSourceV7 || c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9 || c == SourceContract::kLanguageSourceV10; }
+constexpr bool NativeNewTarget(SourceContract c) { return c == SourceContract::kLanguageSourceV7 || c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9 || c == SourceContract::kLanguageSourceV10; }
 
 // Approved 2026-10-22: ISA/C++/AOT argument layout for wide calls. Only
 // WIDE_CALLRANGE differs in the pinned asm stub; identity/order still require proof.
-constexpr bool WideRangeCalls(SourceContract c) { return c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9; }
+constexpr bool WideRangeCalls(SourceContract c) { return c == SourceContract::kLanguageSourceV8 || c == SourceContract::kLanguageSourceV9 || c == SourceContract::kLanguageSourceV10; }
+
+// Approved 2026-10-23; four independent Ark-faithful premises. Each still
+// needs its construction, reference, scope and completion certificate.
+constexpr bool ComputedFunctionNames(SourceContract c) { return c == SourceContract::kLanguageSourceV10; }
+constexpr bool DynamicImports(SourceContract c) { return c == SourceContract::kLanguageSourceV10; }
+constexpr bool ModuleNamespaces(SourceContract c) { return c == SourceContract::kLanguageSourceV10; }
+constexpr bool ArrayPatternAcquisition(SourceContract c) { return c == SourceContract::kLanguageSourceV10; }
 
 // Serialization boundary only. Never dispatch engine semantics on this label.
 constexpr std::string_view SourceContractName(SourceContract contract) {
@@ -518,6 +543,7 @@ constexpr std::string_view SourceContractName(SourceContract contract) {
     case SourceContract::kLanguageSourceV2: return "language_source_v2";
     case SourceContract::kLanguageSourceV3: return "language_source_v3";
     case SourceContract::kLanguageSourceV4: return "language_source_v4";
+    case SourceContract::kLanguageSourceV10: return "language_source_v10";
     case SourceContract::kLanguageSourceV9: return "language_source_v9";
     case SourceContract::kLanguageSourceV8: return "language_source_v8";
     case SourceContract::kLanguageSourceV7: return "language_source_v7";
@@ -529,7 +555,7 @@ constexpr std::string_view SourceContractName(SourceContract contract) {
 // User approved 2026-10-22: native script globals preserve Ark recompilation;
 // global lexical activation and unresolved sloppy writes differ on standard JS.
 constexpr bool GlobalScripts(SourceContract contract) {
-  return contract == SourceContract::kLanguageSourceV9;
+  return contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10;
 }
 
 }  // namespace abcd::source

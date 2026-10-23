@@ -44,6 +44,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       EvaluationShape shape{kInput, true}; shape.source = SourceEvaluation::kSuspending; return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueBinary>) return EvaluationShape{kBinary, true};
+    else if constexpr (std::is_same_v<T, analysis::ValueDynamicImport>) return EvaluationShape{kInput,true};
     else if constexpr (std::is_same_v<T, analysis::ValueObjectRest>) return EvaluationShape{kNamedRead,true,op.keys};
     else if constexpr (std::is_same_v<T, analysis::ValueCopyProperties>) {
       switch (op.kind) {
@@ -71,6 +72,10 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     }
     else if constexpr (std::is_same_v<T, analysis::ValueNamedWrite>) {
       EvaluationShape shape{kNamedWrite, false}; shape.assignment_result = Role::kStoredValue; return shape;
+    }
+    else if constexpr (std::is_same_v<T, analysis::ValueComputedOwnWrite>) {
+      if (op.name_setting != analysis::PropertyNameSetting::kPropertyKey) return {};
+      return EvaluationShape{kPropertyWrite, false};
     }
     else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>)
       return EvaluationShape{kNamedWrite, false};
@@ -180,7 +185,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else {
       // Accessors require descriptor composition; spreads require a checked
       // private-array/cursor projection. Raw lifting never grants source syntax.
-      static_assert(std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
+      static_assert(std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
@@ -258,7 +263,7 @@ bool OrderedEvaluation(const analysis::ValueOp& op) {
                   std::is_same_v<T, analysis::ValueBinary> ||
                   std::is_same_v<T, analysis::ValueString> || std::is_same_v<T, analysis::ValueHole>) return false;
     else {
-      static_assert(std::is_same_v<T, analysis::ValueObjectRest> || std::is_same_v<T, analysis::ValueCopyProperties> || std::is_same_v<T, analysis::ValueThisProperty> || std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield> || std::is_same_v<T, analysis::ValueNamedRead> ||
+      static_assert(std::is_same_v<T, analysis::ValueDynamicImport> || std::is_same_v<T, analysis::ValueObjectRest> || std::is_same_v<T, analysis::ValueCopyProperties> || std::is_same_v<T, analysis::ValueThisProperty> || std::is_same_v<T, analysis::ValueAwait> || std::is_same_v<T, analysis::ValueYield> || std::is_same_v<T, analysis::ValueNamedRead> ||
                     std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger> ||
                     std::is_same_v<T, analysis::ValueNewTarget> || std::is_same_v<T, analysis::ValueFrameThis> ||
                     std::is_same_v<T, analysis::ValueFrameFunction> ||

@@ -3232,12 +3232,28 @@
       "opcode": 189,
       "profile": 4,
       "lift": {
-        "cause": {
-          "domain": "SemanticError",
-          "pc": 1,
-          "value": 1
+        "before_throw_effects": 64,
+        "exception_cause": 0,
+        "exception_exit": {
+          "before": 1,
+          "handler_pc": null,
+          "payload_variant": 0
         },
-        "status": "refused"
+        "exceptional_completion": 1,
+        "inputs": [
+          {
+            "accumulator": true
+          }
+        ],
+        "normal_commit": {
+          "accumulator": true
+        },
+        "normal_effects": 79,
+        "roles": {
+          "type": "abcd::analysis::DynamicImport"
+        },
+        "semantic_family": "abcd::analysis::DynamicImport",
+        "status": "ok"
       },
       "encoding": {
         "acc_read": true,

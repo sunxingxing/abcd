@@ -1,0 +1,138 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "source": "tests/fixtures/isa/computed_names/basic.js",
+      "path": "tests/fixtures/isa/computed_names/basic-default.abc",
+      "sha256": "e531e4f2029b74d89240ece78d47835375e72669cbb8b4c1083a5d46e47337aa",
+      "source_sha256": "e8e3cf0e99d4eab025c4ba6fac9c2300a9d636cf54fcfc1394218e7f0ab45162",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=computedNames",
+        "--source-file=basic.js",
+        "--output=tests/fixtures/isa/computed_names/basic-default.abc",
+        "tests/fixtures/isa/computed_names/basic.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        4,
+        7,
+        51,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        153,
+        220
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/computed_names/basic.js",
+      "path": "tests/fixtures/isa/computed_names/basic-O0.abc",
+      "sha256": "75deadbe3640fc86ecb6e4ee3eb24e2e7bcd1d15ebf917a14f3d3818cbf56dee",
+      "source_sha256": "e8e3cf0e99d4eab025c4ba6fac9c2300a9d636cf54fcfc1394218e7f0ab45162",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=computedNames",
+        "--source-file=basic.js",
+        "--output=tests/fixtures/isa/computed_names/basic-O0.abc",
+        "--opt-level=0",
+        "tests/fixtures/isa/computed_names/basic.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        0,
+        4,
+        7,
+        51,
+        66,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        153,
+        220
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/computed_names/wide.js",
+      "path": "tests/fixtures/isa/computed_names/wide-default.abc",
+      "sha256": "4759a1360090a1d235b62f8179ed70cb1ae5458d1ee4517bf623fd40e49692be",
+      "source_sha256": "ea3857c62d18f5997ccc2e94df930b5020cbfbd606ed0bdd7bfc44902daa0918",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=computedNames",
+        "--source-file=wide.js",
+        "--output=tests/fixtures/isa/computed_names/wide-default.abc",
+        "tests/fixtures/isa/computed_names/wide.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        4,
+        51,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        116,
+        124,
+        144,
+        210
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/computed_names/wide.js",
+      "path": "tests/fixtures/isa/computed_names/wide-O0.abc",
+      "sha256": "f5ff04aa6d4eee7d53c4d5ccc495f491861094dd448c2f1f0cf8ba0c87b5b69d",
+      "source_sha256": "ea3857c62d18f5997ccc2e94df930b5020cbfbd606ed0bdd7bfc44902daa0918",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=computedNames",
+        "--source-file=wide.js",
+        "--output=tests/fixtures/isa/computed_names/wide-O0.abc",
+        "--opt-level=0",
+        "tests/fixtures/isa/computed_names/wide.js"
+      ],
+      "profile": 6,
+      "opcodes": [
+        0,
+        4,
+        51,
+        66,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        116,
+        124,
+        144,
+        210
+      ]
+    }
+  ]
+}

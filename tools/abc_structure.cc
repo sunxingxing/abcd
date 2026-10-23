@@ -517,7 +517,7 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
   const auto numeric_contract = numeric ? source::SourceContract::kLanguageNumericV1 : language ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
-  const auto contract = source ? source::SourceContract::kLanguageSourceV9
+  const auto contract = source ? source::SourceContract::kLanguageSourceV10
       : constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract;
   tools::InstallAllocationFailureMonitor();
   const auto limit = tools::EstablishProcessLimit();

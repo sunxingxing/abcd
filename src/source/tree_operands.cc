@@ -426,6 +426,9 @@ class OperandCheck {
             // Native MemberTarget retains the same reference through RHS;
             // common recovery owns these separate key/Get/Set events.
           }
+        } else if constexpr (std::is_same_v<T, analysis::ValueDynamicImport>) {
+          RequireMeaning(DynamicImports(tree_.identity.contract), Error::kUnsupportedOperation);
+          InputAt(0, Node<DynamicImportExpr>(expression).specifier);
         } else if constexpr (std::is_same_v<T, analysis::ValueNewTarget>) {
           original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(NativeNewTarget(tree_.identity.contract), Error::kNewTargetPremise);
@@ -678,6 +681,16 @@ class OperandCheck {
           RequireMeaning(target_id && result_id && *target_id==*result_id,Error::kOperand);
           original_.operations[i].intrinsic_property=flow_.initializers[i];
           const auto previous=edge_input_;edge_input_=true;InputAt(1,property.value);edge_input_=previous;
+        } else if constexpr (std::is_same_v<T, analysis::ValueComputedOwnWrite>) {
+          RequireMeaning(ComputedFunctionNames(tree_.identity.contract) && flow_.initializers[i], Error::kUnsupportedOperation);
+          const auto property_id = *flow_.initializers[i];
+          const auto& property = tree_.properties[property_id.value];
+          RequireMeaning(!property.key && property.computed_key && property.effect == ObjectPropertyEffect::kDefine &&
+              property.name_setting == operation.name_setting && operation.kind == analysis::OwnWriteKind::kStore, Error::kOperator);
+          original_.operations[i].intrinsic_property = property_id;
+          const auto previous = edge_input_; edge_input_ = true;
+          InputAt(1, *property.computed_key); InputAt(2, property.value);
+          edge_input_ = previous;
         } else if constexpr (std::is_same_v<T, analysis::ValueOwnWrite>) {
           if (IsStagedLiteral(evaluation_.literals ? &*evaluation_.literals : nullptr, current_) &&
               evaluation_.operations[i].kind != EvaluationKind::kInitializer) {
@@ -988,7 +1001,7 @@ class OperandCheck {
           if (created.heritage) InputAt(0, *created.heritage);
         } else {
           static_assert(
-                        std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
+                        std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger> ||

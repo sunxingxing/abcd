@@ -1,8 +1,8 @@
-# 源语言契约：LanguageSourceV1–V9
+# 源语言契约：LanguageSourceV1–V10
 
 `SourceContract::kLanguageSourceV1`（序列化名 `language_source_v1`）保留原有四项前提。
 2026-10-14 新增 `kLanguageSourceV2`（`language_source_v2`）；V2 继承 V1，并加入 §5 的独立标准迭代获取前提。
-2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），该轮 CLI 的 `--language-source` 选择 V4（当前版本见文末 V9）；
+2026-10-15 新增 `kLanguageSourceV3`（`language_source_v3`），2026-10-16 新增 `kLanguageSourceV4`（`language_source_v4`），该轮 CLI 的 `--language-source` 选择 V4（当前版本见文末 V10）；
 V4 继承 V3（含 V2 与独立 Ark 输出政策），并增加文末 2026-10-16 批准的外部异常值域前提。该选项必须与 `--value-source` 同用，并且不能与 `--language-arithmetic`、`--language-numeric`、
 `--language-constructors` 组合。它包含 `LanguageNumericConstructorsV1` 的全部前提（numeric 算术、
 原生 super 语义），并另外加入下面四项源语言前提。默认契约 V3 以及其他已有 opt-in 都不变。
@@ -792,3 +792,44 @@ The temporary `kHostGlobalAccessor` publication refusal is now lifted under V9;
 its enum value is retained for diagnostic compatibility. The independent entry,
 order, private scope, value and exception checks remain unchanged. No contract
 version is added, and previous flags still refuse executable script recovery.
+
+## LanguageSourceV10 — approvals of 2026-10-23
+
+`--language-source` selects V10. V1–V9 keep their historical meanings. Four
+independent predicates add Ark-faithful native forms; none replaces the required
+ownership, order, scope, completion or exception proof:
+
+- `ComputedFunctionNames()`: a proven private own definition may use computed
+  anonymous NamedEvaluation. The accepted difference is a numeric `.name` on
+  Ark's fast path: `interpreter-inl.cpp:2929–2966,6860–6897` uses the original key
+  with `JSFunction::SetFunctionNameNoPrefix` (`js_function.cpp:948–980`), whereas
+  standard JS converts a numeric property key to a string. The slow runtime path
+  (`runtime_stubs-inl.h:1291–1321`) converts it. Key evaluation, definition order,
+  anonymous freshness and non-observation still require independent proof.
+- `DynamicImports()`: native `import(x)` may move the specifier's ToString from
+  Ark's queued job to the standard import evaluation. The accepted difference
+  includes object coercion effects and rejection timing. The original specifier
+  enters the promise job in `runtime_stubs-inl.h:1839–1884`; conversion is in
+  `builtins_promise_job.cpp:206–228`; the interpreter entry is
+  `interpreter-inl.cpp:7570`. Evaluation of `x`, single evaluation and the promise
+  result/exception correspondence are not waived.
+- `ModuleNamespaces()`: native namespace imports may replace raw native/CJS
+  exports. `ModuleValueAccessor::GetModuleNamespace` in
+  `module_value_accessor.cpp:343–376` selects the original module request, then
+  returns an ESM namespace or raw native/CJS exports. Both encoding widths still
+  require the original request/type and lexical-capture correspondence.
+- `ArrayPatternAcquisition()`: array declarations, assignments and parameter
+  patterns may use native acquisition. The accepted difference is the step of
+  the TypeError for a non-callable `@@iterator`/`next`: `RuntimeGetIterator`
+  (`runtime_stubs-inl.h:1594–1610`) returns a non-callable iterator value, and
+  `ets_frontend/es2panda/compiler/base/iterators.cpp:25–42` observes `next`.
+  V2's for-of predicate is unchanged; V10 separately authorizes patterns.
+  Every element/rest/default/hole event, the pre-key coercibility obligation,
+  normal not-done close and abrupt-close priority still require a whole pattern
+  completion certificate. CLOSEITERATOR's pending-exception semantics are in
+  `runtime_stubs-inl.h:231–252`.
+
+All paths above are relative to the pinned
+`references/openharmony/arkcompiler/ets_runtime/ecmascript` tree except the
+explicit frontend path. These citations describe Ark; Node evidence never
+claims execution of that runtime or compares the explicitly accepted differences.

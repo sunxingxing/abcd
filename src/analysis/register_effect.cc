@@ -536,6 +536,12 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
     return ScalarError::kMalformedInstruction;
   using abc::Opcode;
   switch (instruction.opcode) {
+    case Opcode::kDYNAMICIMPORT: {
+      if (instruction.operand_count != 0) return ScalarError::kMalformedInstruction;
+      auto result = AccumulatorDefinition();
+      result.reads[result.read_count++] = Accumulator{};
+      return result;
+    }
     case Opcode::kLDBIGINT_ID16:
     case Opcode::kLDA_STR_ID16:
       if (instruction.operand_count != 1 ||

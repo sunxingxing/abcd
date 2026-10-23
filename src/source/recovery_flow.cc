@@ -1253,7 +1253,7 @@ class FlowBuilder {
       for(std::uint32_t i=aggregate->properties.count;i>0;--i) {
         budget_.Step();const auto property=aggregate->properties.first+i-1;
         RequireTree(property<tree_.properties.size()&&!result_.property_initializers[property],Error::kOwnership);
-        const bool spread=!tree_.properties[property].key;
+        const bool spread=!tree_.properties[property].key && !tree_.properties[property].computed_key;
         const bool prototype = tree_.properties[property].effect == ObjectPropertyEffect::kSetPrototype;
         const auto define=action(prototype ? FlowEventKind::kObjectPrototype : spread ? FlowEventKind::kObjectSpread : FlowEventKind::kAggregateDefinition,next);
         if(spread){
@@ -1263,6 +1263,8 @@ class FlowBuilder {
         }
         result_.property_initializers[property]=FlowAction{define,next,{context.thrown,context.finalizer}};
         next=Expr(tree_.properties[property].value,context.Operand(define));
+        if (tree_.properties[property].computed_key)
+          next=Expr(*tree_.properties[property].computed_key,context.Operand(next));
       }
       const auto allocation=action(FlowEventKind::kEvaluation,next);
       Append(result_.aggregates,FlowAggregate{at.id,allocation,next,context.next,aggregate->properties,{context.thrown,context.finalizer}});

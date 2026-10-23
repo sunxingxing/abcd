@@ -53,6 +53,8 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
       return ValueRule{ValueRuleKind::kFixed,ValueKinds::Language()};
     } else if constexpr (std::is_same_v<T, CopyProperties>) {
       return ValueRule{ValueRuleKind::kJoin, {}, arithmetic, 0};
+    } else if constexpr (std::is_same_v<T, DynamicImport>) {
+      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Defined()};
     } else if constexpr (std::is_same_v<T, NewTargetLoad>) {
       return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
     } else if constexpr (std::is_same_v<T, GlobalObjectLoad> ||

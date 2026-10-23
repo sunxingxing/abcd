@@ -111,7 +111,7 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
         !FailureOptionalId(c,"route_exit",evidence.route_exit)) return {};
     v.logical_coverage = evidence;
   }
-  if (j.contains("input_check")) { if (!FailureNumber(j,"input_check",n) || n > static_cast<unsigned>(EvaluationInputCheck::kWideRangePremise)) return {}; v.input_check = static_cast<EvaluationInputCheck>(n); }
+  if (j.contains("input_check")) { if (!FailureNumber(j,"input_check",n) || n > static_cast<unsigned>(EvaluationInputCheck::kDynamicImportPremise)) return {}; v.input_check = static_cast<EvaluationInputCheck>(n); }
   if (!FailureOptionalId(j,"use",v.use) || !FailureOptionalId(j,"value",v.value) ||
       !FailureOptionalId(j,"selection_edge",v.selection_edge) || !FailureOptionalId(j,"expected_consumer",v.expected_consumer) || !FailureOptionalId(j,"actual_consumer",v.actual_consumer)) return {};
   if (j.contains("selection_exit")) { if (!FailureNumber(j,"selection_exit",n) || n > static_cast<unsigned>(SelectionExitReason::kKeepEdge)) return {}; v.selection_exit = static_cast<SelectionExitReason>(n); }

@@ -10736,6 +10736,126 @@
         153,
         1019
       ]
+    },
+    {
+      "path": "tests/fixtures/isa/computed_names/basic-default.abc",
+      "sha256": "e531e4f2029b74d89240ece78d47835375e72669cbb8b4c1083a5d46e47337aa",
+      "profile": 6,
+      "opcodes": [
+        4,
+        7,
+        51,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        153,
+        220
+      ],
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/computed_names/basic-O0.abc",
+      "sha256": "75deadbe3640fc86ecb6e4ee3eb24e2e7bcd1d15ebf917a14f3d3818cbf56dee",
+      "profile": 6,
+      "opcodes": [
+        0,
+        4,
+        7,
+        51,
+        66,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        124,
+        153,
+        220
+      ],
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/computed_names/wide-default.abc",
+      "sha256": "4759a1360090a1d235b62f8179ed70cb1ae5458d1ee4517bf623fd40e49692be",
+      "profile": 6,
+      "opcodes": [
+        4,
+        51,
+        66,
+        96,
+        97,
+        98,
+        100,
+        101,
+        116,
+        124,
+        144,
+        210
+      ],
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/computed_names/wide-O0.abc",
+      "sha256": "f5ff04aa6d4eee7d53c4d5ccc495f491861094dd448c2f1f0cf8ba0c87b5b69d",
+      "profile": 6,
+      "opcodes": [
+        0,
+        4,
+        51,
+        66,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        116,
+        124,
+        144,
+        210
+      ],
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/dynamic_import/basic-default.abc",
+      "sha256": "5b069a39bb5cff3c54db3969a1528357fd7e1177013fb0fddaa056a12cb5b31e",
+      "profile": 6,
+      "opcodes": [
+        45,
+        51,
+        66,
+        96,
+        97,
+        100,
+        101,
+        124,
+        189
+      ],
+      "oracles": {}
+    },
+    {
+      "path": "tests/fixtures/isa/dynamic_import/basic-O0.abc",
+      "sha256": "887d32c9e6e4fda74c36686dc662830db7417cab5f49832ae204d6107b556bc1",
+      "profile": 6,
+      "opcodes": [
+        0,
+        45,
+        51,
+        66,
+        68,
+        96,
+        97,
+        100,
+        101,
+        124,
+        189
+      ],
+      "oracles": {}
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.",
@@ -10831,6 +10951,14 @@
     {
       "test": "isa_construct_spread_source_test",
       "producer": "tests/isa/construct_spread_test.py"
+    },
+    {
+      "test": "isa_computed_names_source_test",
+      "producer": "tests/isa/computed_names_test.py"
+    },
+    {
+      "test": "isa_dynamic_import_source_test",
+      "producer": "tests/isa/dynamic_import_test.py"
     }
   ]
 }

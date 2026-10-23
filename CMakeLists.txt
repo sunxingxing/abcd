@@ -378,6 +378,10 @@ if(BUILD_TESTING)
   target_link_libraries(call_spread_test PRIVATE abcd_source)
   add_test(NAME call_spread_test COMMAND call_spread_test)
   add_test(NAME construct_spread_scale_test COMMAND call_spread_test)
+  add_executable(dynamic_import_test tests/unit/source/dynamic_import_test.cc)
+  target_link_libraries(dynamic_import_test PRIVATE abcd_source)
+  add_test(NAME dynamic_import_test COMMAND dynamic_import_test)
+  add_test(NAME dynamic_import_scale_test COMMAND dynamic_import_test)
   add_executable(name_setting_literal_test tests/unit/source/name_setting_literal_test.cc)
   target_link_libraries(name_setting_literal_test PRIVATE abcd_source)
   add_test(NAME name_setting_literal_test COMMAND name_setting_literal_test)
@@ -423,6 +427,14 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/construct_spread_test.py)
     add_test(NAME isa_construct_spread_scale_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/construct_spread_test.py Constructs.test_scale)
+    add_test(NAME isa_dynamic_import_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/dynamic_import_test.py Imports.test_sources)
+    add_test(NAME isa_dynamic_import_scale_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/dynamic_import_test.py Imports.test_scale)
+    add_test(NAME isa_computed_names_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/computed_names_test.py Names.test_sources)
+    add_test(NAME isa_computed_names_scale_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/computed_names_test.py Names.test_scale)
     add_test(NAME isa_misc_evidence_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/misc_evidence_test.py)
     add_test(NAME isa_global_scripts_scale_test COMMAND ${Python3_EXECUTABLE}

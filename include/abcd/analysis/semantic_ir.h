@@ -133,6 +133,9 @@ struct SymbolConstructorLoad {};
 // AOT value candidate; the C++/asm interpreter disagreement is retained in
 // this typed operation. Native source requires the independent V7 predicate.
 struct NewTargetLoad {};
+// Retains the specifier and creates one import promise; coercion runs in the
+// pinned runtime job. Source timing requires the independent V10 predicate.
+struct DynamicImport {};
 // Reads VM frame.thisObj, not the writable optional ABI register copy. Derived
 // construction can expose Hole here; source use needs callable-owner evidence.
 struct FrameThisLoad {};
@@ -179,7 +182,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
-                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck, ConcurrentNotification, NewTargetLoad, ThisProperty, CopyProperties, ObjectRest>;
+                                       ArgumentSnapshot, AsyncEnter, AsyncSettle, ArraySpread, ComputedOwnWrite, PropertyDelete, PropertyIterator, NextPropertyName, AcquireIterator, ObjectCheck, ConcurrentNotification, NewTargetLoad, ThisProperty, CopyProperties, ObjectRest, DynamicImport>;
 // Exact VM-enumerator transport only. Does not prove acquisition identity,
 // closed use, loop advancement or source admission.
 [[nodiscard]] bool AcceptsPropertyEnumerator(const SemanticOperation& operation);

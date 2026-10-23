@@ -312,13 +312,14 @@ struct ValueConcurrentNotification {
 };
 struct ValueObjectRest { std::uint32_t keys; bool operator==(const ValueObjectRest&) const = default; };
 struct ValueCopyProperties { ObjectMutationKind kind = ObjectMutationKind::kCopyProperties; bool operator==(const ValueCopyProperties&) const = default; };
+struct ValueDynamicImport { bool operator==(const ValueDynamicImport&) const = default; };
 using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHole, ValueAwait, ValueYield,
     ValueNamedRead, ValueNamedWrite, ValueOwnWrite, ValueIndexedWrite, ValueDefineAccessor, ValuePropertyRead, ValueBranch, ValueJump,
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation, ValueIterResult,
     ValueInvoke, ValueConstruct, ValueConstructApply, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
     ValueModuleWrite, ValuePropertyWrite, ValuePropertyDelete, ValueEnumeration, ValueIteratorAcquire, ValueObjectCheck, ValueDebugger, ValueFrameThis, ValueFrameFunction,
-    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite, ValueConcurrentNotification, ValueNewTarget, ValueThisProperty, ValueCopyProperties, ValueObjectRest, ValueGlobalWrite>;
+    ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite, ValueConcurrentNotification, ValueNewTarget, ValueThisProperty, ValueCopyProperties, ValueObjectRest, ValueGlobalWrite, ValueDynamicImport>;
 struct ValueOp {
   ValueOperation operation;
   WorkBlockId block;

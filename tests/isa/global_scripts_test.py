@@ -18,7 +18,7 @@ class Scripts(unittest.TestCase):
      export=scratch/str(i);subprocess.run([BUILD/'abc_structure',abc,export,'--value-source','--language-source'],check=True,capture_output=True)
      manifest=json.loads((export/'manifest.json').read_text());records=[r for r in manifest['records'] if r.get('source_language')=='javascript-script']
      self.assertEqual(len(records),1);record=records[0]
-     self.assertEqual(record['source_status'],0,record);self.assertEqual(manifest['source_contract'],'language_source_v9')
+     self.assertEqual(record['source_status'],0,record);self.assertEqual(manifest['source_contract'],'language_source_v10')
      emitted=export/record['source'];self.assertEqual(emitted.suffix,'.js');subprocess.run(['node','--check',emitted],check=True,capture_output=True)
      observed=json.loads(subprocess.check_output(['node',ROOT/'tests/integration/global_scripts.mjs',original,emitted,kind],text=True))
      previous=scratch/(str(i)+'-previous');subprocess.run([BUILD/'abc_structure',abc,previous,'--value-source','--language-numeric','--language-constructors'],check=True,capture_output=True)
