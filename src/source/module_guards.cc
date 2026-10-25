@@ -177,7 +177,10 @@ std::variant<std::uint64_t, ModuleGuardError> VerifyLazyModuleReads(
     while(next<plan.pairs.size()&&plan.pairs[next].read.value<i)++next;
     const auto* read=std::get_if<analysis::ValueModuleRead>(&graph.ops[i].operation);
     if(graph.ops[i].life!=analysis::ValueLife::kLive||!read||(read->loading!=analysis::ModuleLoading::kLazy && read->domain!=analysis::ModuleDomain::kSendable))continue;
-    if(next==plan.pairs.size()||plan.pairs[next].read.value!=i||!plan.pairs[next].guard)return Error::kReadProof;
+    // A sendable LOCAL read may instead carry the ordinary initialized-local
+    // proof (pair without guard); lazy and external sendable reads need one.
+    const bool guard_required=read->loading==analysis::ModuleLoading::kLazy||read->space!=analysis::ModuleSpace::kLocal;
+    if(next==plan.pairs.size()||plan.pairs[next].read.value!=i||(guard_required&&!plan.pairs[next].guard))return Error::kReadProof;
   }
   return work;
 }

@@ -163,7 +163,9 @@ class ReadResolver {
       case analysis::ModuleDomain::kOrdinary: break;
       case analysis::ModuleDomain::kSendable:
         if (SendableOutput(contract_) != SendableOutputPolicy::kArkDirectiveV1) throw Error::kContract;
-        if (read.space != analysis::ModuleSpace::kExternal || read.loading != analysis::ModuleLoading::kOrdinary)
+        // Sendable reads resolve the same module record: an external import
+        // (ordinary or lazy) or a local binding of this module.
+        if (read.space == analysis::ModuleSpace::kLocal && read.loading != analysis::ModuleLoading::kOrdinary)
           throw Error::kBinding;
         break;
     }

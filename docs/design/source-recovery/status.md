@@ -10,6 +10,22 @@
 
 
 
+## Sendable local and lazy module reads (2026-10-25)
+
+- `LDSENDABLELOCALMODULEVAR` (narrow/wide) lifts as a local, and
+  `LDLAZYSENDABLEMODULEVAR` (narrow/wide) as a lazy external, module read in
+  the sendable domain (v7 `LdSendableLocalModuleVar` /
+  `LdLazySendableExternalModuleVar` resolve the executing sendable function's
+  module record). FunctionInput now requires owner/load domain agreement for
+  local loads too (the sendable-local proof), so the module enclosure accepts
+  local bindings in sendable trees. Lazy and external sendable reads still need
+  their hole-guard pair; a sendable local read may carry the ordinary
+  initialized-local proof instead.
+- Evidence: recovery fixtures module-sendable-lazy / module-sendable-local
+  (260 imports/locals: narrow and wide), O0 and default lazy complete with the
+  isa_recovery Node differential; default local refuses typed
+  (EvaluationError / LiteralError on the 260-element literal). Ledger (`build/review/isa-cc20`): SupportedVerified 218 → **222**, Unmeasured 65 → 61. Cohorts unchanged (613 / 547), no text changes (`build/review/csr77`).
+
 ## Intrinsic TypeError throws; generator-normalized ledger rows (2026-10-24)
 
 - THROW_CONSTASSIGNMENT and THROW_NOTEXISTS lift as

@@ -165,9 +165,9 @@ std::variant<ModuleDestination, ModuleEnclosureError> VerifyModuleDestination(
       const auto& symbol = tree.symbols[alias.symbol.value];
       const auto slot = alias.target.symbol.value;
       const bool local = slot >= enclosure.Names().size();
-      // A Sendable module access is a function->module external import. Local
-      // module cells need their own sendable-local proof; readonly is not enough.
-      Require(tree.module_domain!=analysis::ModuleDomain::kSendable || !local,Error::kBinding);
+      // A Sendable tree's local module reads are LDSENDABLELOCALMODULEVAR of
+      // the same module record (FunctionInput requires owner/load domain
+      // agreement), which es2panda re-emits for the same local reference.
       if(!local && enclosure.HasLazy()) {Require(slot<enclosure.Loadings().size(),Error::kBinding);loadings[alias.symbol.value]=enclosure.Loadings()[slot];}
       const auto evidence = local && !scope->module_local_evidence.empty()
           ? scope->module_local_evidence[slot - enclosure.Names().size()] : NameEvidence::kMetadata;

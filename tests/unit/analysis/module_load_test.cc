@@ -70,10 +70,20 @@ int main() {
     wrong=decoded;wrong.operands[0].kind=abc::OperandKind::kString;
     Check(std::get<ModuleLoadError>(LiftModuleLoad(wrong))==ModuleLoadError::kMalformedInstruction);
   }
-  for (const auto opcode : {abc::Opcode::kCALLRUNTIME_LDLAZYSENDABLEMODULEVAR_PREF_IMM8,
-                           abc::Opcode::kCALLRUNTIME_WIDELDLAZYSENDABLEMODULEVAR_PREF_IMM16}) {
-    abc::DecodedInstruction decoded; decoded.opcode = opcode;
-    Check(std::get<ModuleLoadError>(LiftModuleLoad(decoded)) == ModuleLoadError::kUnsupportedOpcode);
+  // Sendable local (narrow/wide) and lazy external (narrow/wide) reads keep
+  // their space, loading and sendable domain; slot widths are checked.
+  struct SendableCase { abc::Opcode opcode; ModuleSpace space; ModuleLoading loading; std::uint64_t limit; };
+  for (const auto& c : {SendableCase{abc::Opcode::kCALLRUNTIME_LDSENDABLELOCALMODULEVAR_PREF_IMM8, ModuleSpace::kLocal, ModuleLoading::kOrdinary, UINT8_MAX},
+                        SendableCase{abc::Opcode::kCALLRUNTIME_WIDELDSENDABLELOCALMODULEVAR_PREF_IMM16, ModuleSpace::kLocal, ModuleLoading::kOrdinary, UINT16_MAX},
+                        SendableCase{abc::Opcode::kCALLRUNTIME_LDLAZYSENDABLEMODULEVAR_PREF_IMM8, ModuleSpace::kExternal, ModuleLoading::kLazy, UINT8_MAX},
+                        SendableCase{abc::Opcode::kCALLRUNTIME_WIDELDLAZYSENDABLEMODULEVAR_PREF_IMM16, ModuleSpace::kExternal, ModuleLoading::kLazy, UINT16_MAX}}) {
+    abc::DecodedInstruction decoded; decoded.opcode = c.opcode; decoded.operand_count = 1;
+    decoded.operands[0].kind = abc::OperandKind::kImmediate; decoded.operands[0].raw_bits = c.limit;
+    const auto load = std::get<ModuleLoad>(LiftModuleLoad(decoded));
+    Check(load.space == c.space && load.loading == c.loading && load.domain == ModuleDomain::kSendable &&
+          load.slot.value == c.limit && !load.request_namespace);
+    decoded.operands[0].raw_bits = c.limit + 1;
+    Check(std::get<ModuleLoadError>(LiftModuleLoad(decoded)) == ModuleLoadError::kMalformedInstruction);
   }
 
 }

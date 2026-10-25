@@ -189,9 +189,11 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       }
     for (const auto& instruction : input->instructions) {
       quota.Step();
+      // Local and external module loads alike: a sendable owner's loads are the
+      // sendable variants and a sendable load needs a sendable owner. This is
+      // the sendable-local proof the module enclosure relies on.
       if (const auto* load = std::get_if<analysis::ModuleLoad>(&instruction.operation);
-          load && load->space == analysis::ModuleSpace::kExternal &&
-          (load->domain == analysis::ModuleDomain::kSendable || (owner && owner->ModuleDomain()==analysis::ModuleDomain::kSendable))) {
+          load && (load->domain == analysis::ModuleDomain::kSendable || (owner && owner->ModuleDomain()==analysis::ModuleDomain::kSendable))) {
         if (SendableOutput(identity.contract) != SendableOutputPolicy::kArkDirectiveV1)
           return FunctionInputFailure{analysis::SemanticFailure{analysis::SemanticError::kUnsupportedInstruction, instruction.pc}, method, instruction.pc};
         if (!owner || owner->ModuleDomain() != load->domain)

@@ -44,7 +44,7 @@ if(kind==='property-wide'){
   assert.notEqual(before,after,'mutation must change a super reference');
   const mutant=await load(after);assert.notDeepEqual(run(mutant.ns,0),run(b.ns,0));
 }else if(kind.startsWith('module-')){
-  const read=x=>kind==='module-sendable'?new x.ns.C().m():x.ns.read();
+  const read=x=>kind.startsWith('module-sendable')?new x.ns.C().m():x.ns.read();
   assert.deepEqual(normalize(read(a)),normalize(read(b)));++cases;
   for(const [id,value] of [[259,undefined],[258,5n],[257,null]]){
     if(!a.dependencies.size)break;

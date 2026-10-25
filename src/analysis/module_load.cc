@@ -25,6 +25,23 @@ std::variant<ModuleLoad, ModuleLoadError> LiftModuleLoad(
       space = ModuleSpace::kExternal;
       domain = ModuleDomain::kSendable;
       break;
+    // interpreter-inl.cpp: LdSendableLocalModuleVar / LdLazySendableExternal-
+    // ModuleVar resolve through the executing sendable function's module.
+    case abc::Opcode::kCALLRUNTIME_WIDELDSENDABLELOCALMODULEVAR_PREF_IMM16:
+      limit = UINT16_MAX;
+      [[fallthrough]];
+    case abc::Opcode::kCALLRUNTIME_LDSENDABLELOCALMODULEVAR_PREF_IMM8:
+      space = ModuleSpace::kLocal;
+      domain = ModuleDomain::kSendable;
+      break;
+    case abc::Opcode::kCALLRUNTIME_WIDELDLAZYSENDABLEMODULEVAR_PREF_IMM16:
+      limit = UINT16_MAX;
+      [[fallthrough]];
+    case abc::Opcode::kCALLRUNTIME_LDLAZYSENDABLEMODULEVAR_PREF_IMM8:
+      space = ModuleSpace::kExternal;
+      loading = ModuleLoading::kLazy;
+      domain = ModuleDomain::kSendable;
+      break;
     case abc::Opcode::kCALLRUNTIME_WIDELDLAZYMODULEVAR_PREF_IMM16:
       limit = UINT16_MAX;
       [[fallthrough]];

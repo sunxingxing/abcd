@@ -476,6 +476,175 @@
         "status": 0,
         "causes": []
       },
+      "path": "module-sendable-lazy-default.abc",
+      "sha256": "a97e1e5f63ea03a9d5147d1e4a2784cfa5162b794c61ca8bd8bf86667b22869f",
+      "source": "module-sendable-lazy.js",
+      "source_sha256": "1229cb3ee291aaa19d63c63e4e048c8c044e931a7393890a8b5e6bb5c4ac3edb",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRecovery",
+        "--source-file=module-sendable-lazy.js",
+        "--output=tests/fixtures/isa/recovery/module-sendable-lazy-default.abc",
+        "tests/fixtures/isa/recovery/module-sendable-lazy.js"
+      ],
+      "opcodes": [
+        5,
+        96,
+        97,
+        100,
+        101,
+        112,
+        121,
+        124,
+        203,
+        2043,
+        2558,
+        6139,
+        6395
+      ]
+    },
+    {
+      "recovery": {
+        "status": 0,
+        "causes": []
+      },
+      "path": "module-sendable-lazy-o0.abc",
+      "sha256": "1797281c34190cbd10ea2e998d7512cdd46c8b69c13a50f42fc4cd07da2e9272",
+      "source": "module-sendable-lazy.js",
+      "source_sha256": "1229cb3ee291aaa19d63c63e4e048c8c044e931a7393890a8b5e6bb5c4ac3edb",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRecovery",
+        "--source-file=module-sendable-lazy.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/recovery/module-sendable-lazy-o0.abc",
+        "tests/fixtures/isa/recovery/module-sendable-lazy.js"
+      ],
+      "opcodes": [
+        0,
+        5,
+        62,
+        68,
+        96,
+        97,
+        100,
+        101,
+        112,
+        121,
+        124,
+        203,
+        2043,
+        2558,
+        6139,
+        6395
+      ]
+    },
+    {
+      "recovery": {
+        "status": 3,
+        "causes": [
+          {
+            "domain": "abcd::source::EvaluationError",
+            "value": 2
+          },
+          {
+            "domain": "abcd::source::EvaluationObligation",
+            "value": 0
+          },
+          {
+            "domain": "abcd::source::LiteralError",
+            "value": 5
+          },
+          {
+            "domain": "abcd::source::EvaluationInputCheck",
+            "value": 4
+          }
+        ]
+      },
+      "path": "module-sendable-local-default.abc",
+      "sha256": "b041d9f987fd10cc8192e75c714730f2f847ab33562ea586669e158c5846fc97",
+      "source": "module-sendable-local.js",
+      "source_sha256": "ea41e86a97b472e977b598ed3cf18496d77b9797606d9ba8535c65d950d60d6f",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRecovery",
+        "--source-file=module-sendable-local.js",
+        "--output=tests/fixtures/isa/recovery/module-sendable-local-default.abc",
+        "tests/fixtures/isa/recovery/module-sendable-local.js"
+      ],
+      "opcodes": [
+        5,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        121,
+        124,
+        203,
+        2043,
+        2558,
+        4093,
+        6907,
+        7163
+      ]
+    },
+    {
+      "recovery": {
+        "status": 0,
+        "causes": []
+      },
+      "path": "module-sendable-local-o0.abc",
+      "sha256": "874139be6a8e8c988745f19b11e0213db846332798e58ed441a66084e5be7536",
+      "source": "module-sendable-local.js",
+      "source_sha256": "ea41e86a97b472e977b598ed3cf18496d77b9797606d9ba8535c65d950d60d6f",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=isaRecovery",
+        "--source-file=module-sendable-local.js",
+        "--opt-level=0",
+        "--output=tests/fixtures/isa/recovery/module-sendable-local-o0.abc",
+        "tests/fixtures/isa/recovery/module-sendable-local.js"
+      ],
+      "opcodes": [
+        0,
+        5,
+        62,
+        68,
+        96,
+        97,
+        98,
+        100,
+        101,
+        112,
+        121,
+        124,
+        203,
+        2043,
+        2558,
+        4093,
+        6907,
+        7163
+      ]
+    },
+    {
+      "recovery": {
+        "status": 0,
+        "causes": []
+      },
       "path": "module-sendable-default.abc",
       "sha256": "6aa77d0cece2f87948c16c2627334bbc867f2d651fa431a7289c1339f31670cd",
       "source": "module-sendable.js",
