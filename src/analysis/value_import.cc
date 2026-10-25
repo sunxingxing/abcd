@@ -74,6 +74,8 @@ ValueOperation Operation(const SemanticOperation& operation) {
       }, op.expression);
     } else if constexpr (std::is_same_v<T, AcquireIterator>) {
       return ValueIteratorAcquire{};
+    } else if constexpr (std::is_same_v<T, ArrayPatternOperation>) {
+      return ValueArrayPattern{op.action};
     } else if constexpr (std::is_same_v<T, ObjectCheck>) {
       return ValueObjectCheck{};
     } else if constexpr (std::is_same_v<T, PropertyIterator>) {

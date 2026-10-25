@@ -10,6 +10,24 @@
 
 
 
+## Array patterns, increment 1a: analysis layer (2026-10-25)
+
+- `NormalizeArrayPatterns` (source layer, run in the phased file reader after
+  generator/async normalization) matches the exact pinned O0 es2panda
+  array-pattern protocol for holes and single register/STLEXVAR targets, checks
+  closure (no outside branch/handler into the interior) and that removed
+  protocol registers are dead at every exit, removes the protocol and its try
+  regions, rebases offsets and emits `PatternSite` certificates. The lifter turns
+  them into `ArrayPatternOperation` (acquire/step/close) with a dedicated
+  `ValueKinds::PatternRecord` internal record, imported as `ValueArrayPattern`.
+  Design: [array-patterns.md](array-patterns.md).
+- Not yet source: evaluation/tree/verification of the pattern statement is the
+  next increment; such methods now refuse at evaluation planning
+  (EvaluationShapeError) instead of the earlier region/control refusals.
+- Evidence: cohorts unchanged (613 / 547), no text changes (`build/review/csr78`);
+  misc-evidence array-pattern refusal cause and the register value-flow kind
+  enumeration updated.
+
 ## Sendable local and lazy module reads (2026-10-25)
 
 - `LDSENDABLELOCALMODULEVAR` (narrow/wide) lifts as a local, and

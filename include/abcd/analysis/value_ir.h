@@ -135,6 +135,10 @@ struct ValueEnumeration {
 };
 // Raw acquisition retains pinned semantics, including non-object success.
 struct ValueIteratorAcquire { bool operator==(const ValueIteratorAcquire&) const = default; };
+// Certified array-pattern protocol action (semantic ArrayPatternOperation):
+// acquire has the iterable operand and an internal record result; step reads
+// the record (protocol operand) and yields the element; close reads it.
+struct ValueArrayPattern { PatternAction action; bool operator==(const ValueArrayPattern&) const = default; };
 struct ValueObjectCheck { bool operator==(const ValueObjectCheck&) const = default; };
 struct ValuePropertyDelete { bool operator==(const ValuePropertyDelete&) const = default; };
 struct ValuePropertyRead { PropertyLookup lookup = PropertyLookup::kObject; bool operator==(const ValuePropertyRead&) const = default; };
@@ -319,7 +323,7 @@ using ValueOperation = std::variant<ValueCopy, ValueUnary, ValueBinary, ValueHol
     ValueReturn, ValueNop, ValueString, ValueGlobalRead, ValueGuard, ValueArrayAllocation, ValueObjectAllocation, ValueIterResult,
     ValueInvoke, ValueConstruct, ValueConstructApply, ValueFunctionCreation, ValueClassCreation, ValueLexicalLoad, ValueLexicalStore,
     ValueEnvironmentPush, ValueEnvironmentPop, ValueCurrentEnvironment, ValueModuleRead,
-    ValueModuleWrite, ValuePropertyWrite, ValuePropertyDelete, ValueEnumeration, ValueIteratorAcquire, ValueObjectCheck, ValueDebugger, ValueFrameThis, ValueFrameFunction,
+    ValueModuleWrite, ValuePropertyWrite, ValuePropertyDelete, ValueEnumeration, ValueIteratorAcquire, ValueArrayPattern, ValueObjectCheck, ValueDebugger, ValueFrameThis, ValueFrameFunction,
     ValueGlobalObject, ValueSymbolConstructor, ValueRestArguments, ValueArgumentSnapshot, ValueThrow, ValueSuperCall, ValueSuperSpread, ValueSuperCheck, ValueArraySpread, ValueComputedOwnWrite, ValueConcurrentNotification, ValueNewTarget, ValueThisProperty, ValueCopyProperties, ValueObjectRest, ValueGlobalWrite, ValueDynamicImport>;
 struct ValueOp {
   ValueOperation operation;

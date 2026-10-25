@@ -221,7 +221,8 @@ int main() {
   Check(std::holds_alternative<MethodEntry>(cyclic_ssa.Values()[0].origin));
   const std::array atoms{ValueKinds::Language(), ValueKinds::Hole(),
                          ValueKinds::Environment(),
-                         ValueKinds::OtherInternal(), ValueKinds::PropertyEnumerator()};
+                         ValueKinds::OtherInternal(), ValueKinds::PropertyEnumerator(),
+                         ValueKinds::PatternRecord()};
   for (std::uint32_t mask = 1; mask < (1U << kValueKindCount); ++mask) {
     ValueKinds kinds;
     for (std::size_t bit = 0; bit < atoms.size(); ++bit)

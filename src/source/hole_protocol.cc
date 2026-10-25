@@ -25,7 +25,7 @@ struct Predecessor {
 bool Transport(ValueKinds kinds) {
   return !kinds.IsEmpty() && !kinds.Contains(VmValueKind::kEnvironment) &&
          !kinds.Contains(VmValueKind::kOtherInternal) &&
-         !kinds.Contains(VmValueKind::kPropertyEnumerator);
+         !kinds.Contains(VmValueKind::kPropertyEnumerator) && !kinds.Contains(VmValueKind::kPatternRecord);
 }
 }  // namespace
 

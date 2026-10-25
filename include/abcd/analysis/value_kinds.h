@@ -5,8 +5,8 @@
 #include <cstdint>
 
 namespace abcd::analysis {
-enum class VmValueKind { kLanguage, kHole, kEnvironment, kOtherInternal, kPropertyEnumerator };
-inline constexpr std::size_t kValueKindCount = 5;
+enum class VmValueKind { kLanguage, kHole, kEnvironment, kOtherInternal, kPropertyEnumerator, kPatternRecord };
+inline constexpr std::size_t kValueKindCount = 6;
 
 // Closed powerset of VM categories. String and non-NaN-number refine Defined
 // (a Language value other than undefined); their mixed join retains Defined.
@@ -56,8 +56,10 @@ class ValueKinds {
     return ValueKinds{kOtherInternal};
   }
   static constexpr ValueKinds PropertyEnumerator() { return ValueKinds{kPropertyEnumerator}; }
+  // Internal array-pattern record (acquired iterator, cached next, done).
+  static constexpr ValueKinds PatternRecord() { return ValueKinds{kPatternRecord}; }
   static constexpr ValueKinds Unknown() {
-    return Language().Join(Hole()).Join(Environment()).Join(OtherInternal()).Join(PropertyEnumerator());
+    return Language().Join(Hole()).Join(Environment()).Join(OtherInternal()).Join(PropertyEnumerator()).Join(PatternRecord());
   }
   [[nodiscard]] constexpr ValueKinds Join(ValueKinds other) const {
     if (IsEmpty()) return other;
@@ -167,6 +169,8 @@ class ValueKinds {
         return (bits_ & kPropertyEnumerator) != 0;
       case VmValueKind::kOtherInternal:
         return (bits_ & kOtherInternal) != 0;
+      case VmValueKind::kPatternRecord:
+        return (bits_ & kPatternRecord) != 0;
     }
     return false;
   }
@@ -181,6 +185,7 @@ class ValueKinds {
   static constexpr std::uint8_t kEnvironment = 1 << 2;
   static constexpr std::uint8_t kOtherInternal = 1 << 3;
   static constexpr std::uint8_t kPropertyEnumerator = 1 << 4;
+  static constexpr std::uint8_t kPatternRecord = 1 << 5;
   explicit constexpr ValueKinds(
       std::uint8_t bits, Refinement refinement = Refinement::kNone, bool excludes_min_int32 = false, bool integral_number = false)
       : bits_(bits), refinement_(refinement), excludes_min_int32_(excludes_min_int32),

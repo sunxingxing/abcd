@@ -21,7 +21,7 @@ inline nlohmann::json InternalValueJson(const analysis::InternalValueEvidence& e
     j["domains"] = nlohmann::json::array();
     for (auto kind : {analysis::VmValueKind::kLanguage, analysis::VmValueKind::kHole,
         analysis::VmValueKind::kEnvironment, analysis::VmValueKind::kOtherInternal,
-        analysis::VmValueKind::kPropertyEnumerator})
+        analysis::VmValueKind::kPropertyEnumerator, analysis::VmValueKind::kPatternRecord})
       if (e.kinds->Contains(kind)) j["domains"].push_back(static_cast<unsigned>(kind));
   }
   return j;
@@ -79,6 +79,7 @@ inline std::optional<analysis::InternalValueEvidence> ParseInternalValue(const n
         case analysis::VmValueKind::kEnvironment: kinds=kinds.Join(analysis::ValueKinds::Environment()); break;
         case analysis::VmValueKind::kOtherInternal: kinds=kinds.Join(analysis::ValueKinds::OtherInternal()); break;
         case analysis::VmValueKind::kPropertyEnumerator: kinds=kinds.Join(analysis::ValueKinds::PropertyEnumerator()); break;
+        case analysis::VmValueKind::kPatternRecord: kinds=kinds.Join(analysis::ValueKinds::PatternRecord()); break;
       }
     }
     e.kinds=kinds;

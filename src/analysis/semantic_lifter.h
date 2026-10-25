@@ -12,12 +12,15 @@ class SemanticLifter {
   SemanticLifter(abc::ProfileId profile, std::uint64_t frame_size,
                  std::span<const AwaitSite> awaits,
                  const abc::FrameLayout* frame = nullptr,
-                 std::span<const YieldSite> yields = {})
-      : profile_(profile), frame_size_(frame_size), awaits_(awaits), frame_(frame), yields_(yields) {}
+                 std::span<const YieldSite> yields = {},
+                 std::span<const PatternSite> patterns = {})
+      : profile_(profile), frame_size_(frame_size), awaits_(awaits), frame_(frame), yields_(yields),
+        patterns_(patterns) {}
   InstructionLift Lift(const abc::BodyInstruction& site);
   bool Complete() const {
     return next_await_ == awaits_.size() && next_mode_ == awaits_.size() &&
-        next_yield_ == yields_.size() && next_yield_mode_ == yields_.size();
+        next_yield_ == yields_.size() && next_yield_mode_ == yields_.size() &&
+        next_pattern_ == patterns_.size();
   }
 
  private:
@@ -29,6 +32,8 @@ class SemanticLifter {
   std::size_t next_mode_ = 0;
   std::span<const YieldSite> yields_;
   std::size_t next_yield_ = 0, next_yield_mode_ = 0;
+  std::span<const PatternSite> patterns_;
+  std::size_t next_pattern_ = 0;
 };
 }  // namespace abcd::analysis::detail
 #endif

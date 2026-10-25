@@ -71,7 +71,8 @@ class PhasedBody {
       std::span<const abc::CodeOffset> source_pcs = {},
       std::span<const analysis::YieldSite> yields = {},
       std::span<const analysis::LanguageLoadFact> initialized_modules = {},
-      const ModuleSlotSet* entry_modules = nullptr);
+      const ModuleSlotSet* entry_modules = nullptr,
+      std::span<const analysis::PatternSite> patterns = {});
   const analysis::ValueProgram& Graph() const;
   const RouteInputIdentity& Identity() const;
   abc::EntityOffset Target() const;

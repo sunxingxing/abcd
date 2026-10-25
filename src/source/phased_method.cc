@@ -143,7 +143,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     const PhasedModuleBinding* binding, analysis::CapturedValues capture_mode,
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
     std::span<const abc::CodeOffset> source_pcs, std::span<const analysis::YieldSite> yields,
-    std::span<const analysis::LanguageLoadFact> initialized_modules, const ModuleSlotSet* entry_modules) {
+    std::span<const analysis::LanguageLoadFact> initialized_modules, const ModuleSlotSet* entry_modules,
+    std::span<const analysis::PatternSite> patterns) {
   using namespace analysis;
   try {
     // Recovered scopes/snapshots can allocate at different VM locations.
@@ -174,8 +175,9 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     const auto frame = context.Frame();
     // Normalized suspension facts come from the same file owner's completion
     // normalization, not from opcode resemblance or provenance alone.
+    // Array-pattern folding rebases any callable kind's body.
     if ((!source_pcs.empty() || !awaits.empty() || !yields.empty()) &&
-        ((!IsAsyncCallable(context.Callable()) && !IsGeneratorCallable(context.Callable())) ||
+        ((!IsAsyncCallable(context.Callable()) && !IsGeneratorCallable(context.Callable()) && patterns.empty()) ||
          source_pcs.size() != body.instructions.size())) return Error::kInput;
     if ((!awaits.empty() && !IsAsyncCallable(context.Callable())) ||
         (!yields.empty() && !IsGeneratorCallable(context.Callable()))) return Error::kInput;
@@ -184,7 +186,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       if (yield.origin.execution != execution) return Error::kInput;
     }
     auto flow_result = BuildExceptionFlow(body, context.Identity().profile,
-        frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame, yields);
+        frame.registers, {quota.Remaining().bytes, quota.Remaining().work}, awaits, &frame, yields, patterns);
     if (!std::holds_alternative<ExceptionFlow>(flow_result)) {
       return std::visit([&](const auto& failure) -> PhasedFlowFailure {
         using T = std::decay_t<decltype(failure)>;

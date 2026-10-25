@@ -289,6 +289,7 @@ SemanticProofResult VerifySemanticSource(const abc::MethodBody& body,
         const auto& operation = method.instructions[i].operation;
         if (kinds && *kinds == ValueKinds::PropertyEnumerator() &&
             AcceptsPropertyEnumerator(operation)) continue;
+        if (kinds && *kinds == ValueKinds::PatternRecord() && AcceptsPatternRecord(operation)) continue;
         if (!kinds || !kinds->IsLanguage() ||
             std::holds_alternative<NextPropertyName>(operation))
           return SemanticProofFailure{SemanticProofError::kInternalValue, body.instructions[i].offset,

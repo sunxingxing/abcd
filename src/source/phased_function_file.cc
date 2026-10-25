@@ -1,3 +1,4 @@
+#include "array_pattern_normalize.h"
 #include "phased_function_file.h"
 #include "concurrent_async.h"
 
@@ -186,6 +187,22 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       }
       original.emplace(std::move(body)); body = std::move(normalized);
     }
+    // Fold certified array-pattern protocols; kept instructions keep their
+    // offsets, and removed ones never reach the input or its positions.
+    std::vector<analysis::PatternSite> patterns;
+    {
+      const GeneratorNames names{file, header, index, method.offset};
+      auto folded = NormalizeArrayPatterns(body, source_pcs, frame, names, left.bytes);
+      if (const auto* error = std::get_if<abc::MetadataError>(&folded)) throw PhasedFileFailure{*error};
+      auto normalized = std::get<ArrayPatternBody>(std::move(folded));
+      if (!normalized.sites.empty()) {
+        arena(normalized.body.instructions); arena(normalized.body.tries); arena(normalized.body.handlers);
+        arena(normalized.sites);
+        source_pcs = std::move(normalized.source_pcs);
+        if (!original) original.emplace(body);
+        body = std::move(normalized.body); patterns = std::move(normalized.sites);
+      }
+    }
     Require(mode == InputCaptureMode::kClosed || mode == InputCaptureMode::kConditional, Error::kIdentity);
     ModuleSlotSet entry_modules;
     std::vector<analysis::LanguageLoadFact> initialized;
@@ -235,7 +252,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     // standalone builder keeps Unknown, and no cell read becomes a snapshot.
     auto analyzed = PhasedBody::Build(context, body, left, modules,
         mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject,
-        analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields, initialized, &entry_modules);
+        analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields, initialized, &entry_modules, patterns);
     if (auto* failure = std::get_if<PhasedInputFailure>(&analyzed)) {
       failure->allocated_bytes += budget.bytes - left.bytes;
       failure->work += budget.work - left.work;

@@ -70,6 +70,7 @@ struct ExceptionFlowBudget {
     std::uint64_t frame_size, ExceptionFlowBudget budget = {},
     std::span<const AwaitSite> awaits = {},
     const abc::FrameLayout* frame = nullptr,
-    std::span<const YieldSite> yields = {});
+    std::span<const YieldSite> yields = {},
+    std::span<const PatternSite> patterns = {});
 }  // namespace abcd::analysis
 #endif  // ABCD_ANALYSIS_EXCEPTION_FLOW_H_

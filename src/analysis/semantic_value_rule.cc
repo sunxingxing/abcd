@@ -30,6 +30,12 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
           ? ValueKinds::Language() : ValueKinds::Unknown()};
     } else if constexpr (std::is_same_v<T, PropertyDelete>) {
       return ValueRule{ValueRuleKind::kFixed,ValueKinds::Boolean()};
+    } else if constexpr (std::is_same_v<T, ArrayPatternOperation>) {
+      // The acquisition record is internal; a step yields a Language element.
+      if (operation.action == PatternAction::kAcquire)
+        return ValueRule{ValueRuleKind::kFixed, ValueKinds::PatternRecord()};
+      // IteratorValue of an object result, or undefined once done.
+      return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
     } else if constexpr (std::is_same_v<T, NamedRead> ||
                          std::is_same_v<T, AwaitValue> || std::is_same_v<T, YieldValue>) {
       return ValueRule{ValueRuleKind::kLanguageOperation, {}};

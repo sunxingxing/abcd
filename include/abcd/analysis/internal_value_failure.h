@@ -11,7 +11,7 @@ namespace abcd::analysis {
 enum class InternalValueReason : std::uint8_t {
   kMissingFact, kEmpty, kHole, kEnvironment, kOtherInternal,
   kPropertyEnumerator, kMixed, kEnumerationProtocol,
-  kCyclicCellInitialization, kCellInitialization, kCellPreservation
+  kCyclicCellInitialization, kCellInitialization, kCellPreservation, kPatternRecord
 };
 constexpr InternalValueReason InternalReason(std::optional<ValueKinds> kinds) {
   if (!kinds) return InternalValueReason::kMissingFact;
@@ -20,6 +20,7 @@ constexpr InternalValueReason InternalReason(std::optional<ValueKinds> kinds) {
   if (*kinds == ValueKinds::Environment()) return InternalValueReason::kEnvironment;
   if (*kinds == ValueKinds::OtherInternal()) return InternalValueReason::kOtherInternal;
   if (*kinds == ValueKinds::PropertyEnumerator()) return InternalValueReason::kPropertyEnumerator;
+  if (*kinds == ValueKinds::PatternRecord()) return InternalValueReason::kPatternRecord;
   if (kinds->IsLanguage()) return InternalValueReason::kEnumerationProtocol;
   return InternalValueReason::kMixed;
 }

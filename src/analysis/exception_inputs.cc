@@ -112,10 +112,14 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
       const bool hole_transport = domain == ExceptionInputDomain::kHoleTransport &&
           !kinds.IsEmpty() && !kinds.Contains(VmValueKind::kEnvironment) &&
           !kinds.Contains(VmValueKind::kOtherInternal) &&
-          !kinds.Contains(VmValueKind::kPropertyEnumerator);
+          !kinds.Contains(VmValueKind::kPropertyEnumerator) && !kinds.Contains(VmValueKind::kPatternRecord);
       const bool enumerator = kinds == ValueKinds::PropertyEnumerator() &&
           AcceptsPropertyEnumerator(instruction.operation);
-      if ((!kinds.IsLanguage() && !hole_transport && !enumerator) ||
+      const bool record = kinds == ValueKinds::PatternRecord() && AcceptsPatternRecord(instruction.operation);
+      const bool consumer = std::holds_alternative<ArrayPatternOperation>(instruction.operation) &&
+          std::get<ArrayPatternOperation>(instruction.operation).action != PatternAction::kAcquire;
+      if ((consumer && !record) ||
+          (!record && !kinds.IsLanguage() && !hole_transport && !enumerator) ||
           (std::holds_alternative<NextPropertyName>(instruction.operation) && !enumerator))
         return fail(Error::kInternalValue, pc, id, read.value);
       ++proof.reads;

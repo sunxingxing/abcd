@@ -455,6 +455,13 @@ SemanticEffects Effects(const SemanticOperation& operation,
                            LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite;
           effects.before_throw = effects.normal;
           effects.exceptional = ExceptionalCompletion::kMayThrow;
+        } else if constexpr (std::is_same_v<T, ArrayPatternOperation>) {
+          // GetIterator/@@iterator, next() calls, done/value getters and
+          // return() all run user code; every step may throw.
+          effects.normal = LanguageEffect::kHeapRead | LanguageEffect::kHeapWrite |
+                           LanguageEffect::kUserCode | LanguageEffect::kAllocation;
+          effects.before_throw = effects.normal;
+          effects.exceptional = ExceptionalCompletion::kMayThrow;
         } else if constexpr (std::is_same_v<T, PropertyIterator> ||
                              std::is_same_v<T, NextPropertyName> || std::is_same_v<T, AcquireIterator>) {
           // Pinned enumeration may run proxy traps; RuntimeGetIterator may
@@ -586,6 +593,13 @@ SemanticEffects Effects(const SemanticOperation& operation,
 }
 }  // namespace
 
+bool AcceptsPatternRecordCopy(const SemanticOperation& operation) {
+  const auto* copy = std::get_if<ScalarAssignment>(&operation);
+  if (!copy || copy->completion != CompletionEffect::kNormal) return false;
+  const auto* value = std::get_if<ScalarValue>(&copy->expression);
+  return value && (std::holds_alternative<Accumulator>(*value) ||
+                   std::holds_alternative<abc::RegisterId>(*value));
+}
 bool AcceptsPropertyEnumerator(const SemanticOperation& operation) {
   if (std::holds_alternative<NextPropertyName>(operation)) return true;
   const auto* copy = std::get_if<ScalarAssignment>(&operation);
@@ -631,6 +645,27 @@ InstructionLift LiftSemanticInstruction(const abc::BodyInstruction& site,
 InstructionLift detail::SemanticLifter::Lift(const abc::BodyInstruction& site) {
   if (!SupportsSemantics(profile_))
     return Fail(SemanticError::kUnsupportedProfile, site.offset);
+  if (next_pattern_ < patterns_.size() && patterns_[next_pattern_].pc < site.offset)
+    return Fail(SemanticError::kMalformedInstruction, site.offset);
+  if (next_pattern_ < patterns_.size() && patterns_[next_pattern_].pc == site.offset) {
+    // The placeholder keeps the original first instruction of the folded
+    // sequence: GETITERATOR for acquisition, `lda done` for a step/close.
+    const auto& pattern = patterns_[next_pattern_++];
+    const auto opcode = site.decoded.opcode;
+    const bool acquire = pattern.action == PatternAction::kAcquire;
+    if (pattern.record.value >= frame_size_ ||
+        (acquire ? opcode != abc::Opcode::kGETITERATOR_IMM8 && opcode != abc::Opcode::kGETITERATOR_IMM16
+                 : opcode != abc::Opcode::kLDA_V8))
+      return Fail(SemanticError::kMalformedInstruction, site.offset);
+    SemanticOperation operation = ArrayPatternOperation{pattern.action,
+        acquire ? ScalarSlot{Accumulator{}} : ScalarSlot{pattern.record}};
+    RegisterEffect registers;
+    if (acquire) registers.reads[registers.read_count++] = Accumulator{};
+    else registers.reads[registers.read_count++] = pattern.record;
+    if (pattern.action != PatternAction::kClose) registers.write = Accumulator{};
+    const auto effects = Effects(operation, registers);
+    return SemanticInstruction{site.offset, std::move(operation), effects};
+  }
   if (!yields_.empty()) {
     // Async generator source awaits and intrinsic yields share this lifter.
     // Certificates cannot claim the same normalized instruction.

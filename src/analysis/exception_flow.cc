@@ -23,7 +23,7 @@ SemanticFailure Resource() { return {SemanticError::kResourceLimit, {}}; }
 ExceptionFlowResult BuildExceptionFlow(const abc::MethodBody& body,
     abc::ProfileId profile, std::uint64_t frame_size, ExceptionFlowBudget budget,
     std::span<const AwaitSite> awaits, const abc::FrameLayout* frame,
-    std::span<const YieldSite> yields) {
+    std::span<const YieldSite> yields, std::span<const PatternSite> patterns) {
   if (frame && frame->registers != frame_size)
     return SemanticFailure{SemanticError::kMalformedInstruction, {}};
   auto normal = BuildNormalFlow(body, {budget.bytes});
@@ -68,7 +68,7 @@ ExceptionFlowResult BuildExceptionFlow(const abc::MethodBody& body,
     if (result.nodes.capacity() > node_limit ||
         result.instructions.capacity() > count || entries.capacity() > count)
       return Resource();
-    detail::SemanticLifter lifter{profile, frame_size, awaits, frame, yields};
+    detail::SemanticLifter lifter{profile, frame_size, awaits, frame, yields, patterns};
     for (std::size_t i = 0; i < count; ++i) {
       charge();
       auto lifted = lifter.Lift(body.instructions[i]);

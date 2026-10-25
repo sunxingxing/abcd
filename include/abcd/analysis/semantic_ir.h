@@ -169,6 +169,23 @@ struct AwaitValue {
   ScalarValue input;
   AwaitRegion origin;
 };
+// Array-pattern protocol certified by the source-layer NormalizeArrayPatterns
+// (es2panda DestructuringIterator, docs/design/source-recovery/array-patterns.md):
+// kAcquire = GetIterator of acc plus its cached `next` (record in acc);
+// kStep = one IteratorStep on the record register with done tracking, the
+// element (value or undefined) in acc, an abrupt step marking done; kClose =
+// IteratorClose(normal) unless done. The record is internal, never a JS value.
+enum class PatternAction : std::uint8_t { kAcquire, kStep, kClose };
+struct ArrayPatternOperation {
+  PatternAction action;
+  ScalarSlot record;
+};
+// Lifter certificate: at this normalized PC, emit the action on this record.
+struct PatternSite {
+  abc::CodeOffset pc;
+  PatternAction action;
+  abc::RegisterId record;
+};
 struct YieldValue {
   ScalarValue input;
   YieldRegion origin;
@@ -185,7 +202,7 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
                                        PushEnvironment, PopEnvironment,
                                        CurrentEnvironment, FunctionCreation,
                                        LoadHole, SuperCheck, RestCopy,
-                                       BufferedArrayCreation, AwaitValue, YieldValue,
+                                       BufferedArrayCreation, AwaitValue, YieldValue, ArrayPatternOperation,
                                        ThrowOperation, SuperForward, SuperRange, SuperSpread, ClassCreation,
                                        DefineAccessor, IndexedWrite, GlobalObjectLoad, DebuggerOperation,
                                        FrameThisLoad, FrameFunctionLoad, SymbolConstructorLoad,
@@ -193,6 +210,13 @@ using SemanticOperation = std::variant<NoOperation, ScalarAssignment,
 // Exact VM-enumerator transport only. Does not prove acquisition identity,
 // closed use, loop advancement or source admission.
 [[nodiscard]] bool AcceptsPropertyEnumerator(const SemanticOperation& operation);
+// The internal array-pattern record is consumed only by its step/close, and
+// may be transported by plain register/accumulator copies.
+[[nodiscard]] bool AcceptsPatternRecordCopy(const SemanticOperation& operation);
+[[nodiscard]] inline bool AcceptsPatternRecord(const SemanticOperation& operation) {
+  const auto* pattern = std::get_if<ArrayPatternOperation>(&operation);
+  return (pattern && pattern->action != PatternAction::kAcquire) || AcceptsPatternRecordCopy(operation);
+}
 struct SemanticInstruction {
   abc::CodeOffset pc;
   SemanticOperation operation;

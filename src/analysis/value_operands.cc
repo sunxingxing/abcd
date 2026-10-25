@@ -54,6 +54,13 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
     } else if constexpr (std::is_same_v<T, NextPropertyName>) {
       Append(plan, OperandRole::kInput, op.iterator, ReadPurpose::kProtocol);
       plan.write = Accumulator{};
+    } else if constexpr (std::is_same_v<T, ArrayPatternOperation>) {
+      if (op.action == PatternAction::kAcquire) {
+        Append(plan, OperandRole::kInput, Accumulator{});
+      } else {
+        Append(plan, OperandRole::kInput, std::visit([](const auto& slot) -> ScalarValue { return slot; }, op.record), ReadPurpose::kProtocol);
+      }
+      if (op.action != PatternAction::kClose) plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, PropertyDelete>) {
       Append(plan, OperandRole::kBase, op.object);
       Append(plan, OperandRole::kKey, Accumulator{});
