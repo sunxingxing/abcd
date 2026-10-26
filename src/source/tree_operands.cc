@@ -1,3 +1,4 @@
+#include "phased_parameter_defaults.h"
 #include "template_tree.h"
 #include "super_store.h"
 #include "assignment_values.h"
@@ -1667,6 +1668,7 @@ class OperandCheck {
 void CheckTreeOperands(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     const TreeFlow& flow, ExpressionConstants constants, TreeCheckBudget& budget, OriginalFlow& original) {
+  VerifyPhasedDefaultInput(graph, tree, budget);
   budget.Admit(1, sizeof(OperandCheck));
   OperandCheck(graph, evaluation, tree, flow, constants, budget, original).Run();
 }

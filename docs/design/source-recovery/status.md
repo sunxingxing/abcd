@@ -5,6 +5,48 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Phased literal defaults and typed protocol-rebase causes (2026-10-26)
+
+- `PhasedFileFailure` retains `ProtocolRebaseError` semantic causes (`kInput`,
+  `kAnchor`, `kCollision`, `kDispatch`) through the route/manifest/CLI chain.
+  File-level resource/work mappings follow the existing quota convention.
+  A refused relocation is checked through CLI JSON in `async_failure_test`.
+- `PhasedParameterDefaults` owns the original phase graph/body and the ordered
+  strict-undefined decisions, provided/missing edges, initialized SSA identities,
+  initializer operations and original capture Before/Commit/storage evidence.
+  Only a legacy length refusal enters projection; existing rest routes stay
+  separate. The residual is reimported before capture planning, and
+  `ProjectDefaults` rechecks it. The normal-parent default path and the ABI
+  `.length` equality are unchanged. No new source-language premise.
+- Primitive and string literal defaults move to native parameter syntax only
+  with original phase-SSA use closure (including catch snapshots), private-cell
+  identity and nonthrowing/order proofs. ABI, operands/origins, exception flow,
+  RecoveryFlow parameter ports and family writes recheck the certificate.
+  Generator entry additionally proves a closed, acyclic private prologue and
+  callee identity. No arbitrary catch/finally or effectful initializer admission.
+  Proof/index work targets O((N+E+U+P) log(N+P)); new arenas, sparse maps, shared
+  owners and comparison/copy work are prepaid. Design: [family-defaults.md](family-defaults.md).
+- Authoritative build passes:
+  `cmake --build build/regression --target source_regression abc_structure isa_coverage_probe -j 8`.
+  `ctest --test-dir build/regression -L '^source-regression$' -j 2 --output-on-failure`:
+  **65/65 pass**, 100.58 s. `phased_defaults_test.py`, `normalized_protocols_test.py`
+  and `array_patterns_test.py` are **OK**. The new fixture has **357 positive
+  Node comparisons**, plus typed effectful-default and unchanged phased-rest
+  negatives. Mutation/budget/CLI tests pass **6/6**; the selected generator-entry
+  regressions pass **14/14**. The 200/201/400/800 proof work counts are
+  694240 / 697646 / 1847792 / 3896438 for 1625 / 1633 / 4339 / 9139 instructions.
+- Direct `abc_structure` comparison of all 40 inputs per flag set against
+  read-only `csr86`: **616/616 ns** and **549/549 no** previously complete files
+  remain byte-identical, **zero regressions/text changes**. No cohort tool ran.
+  Whole record **o32/15324 is complete with --language-source** (status 0):
+  m16026 emits `static async hypiumInitWorkers(abilityDelegator, scriptURL, workerNum = 8, params)`.
+  With `--language-numeric --language-constructors`, the next refusal is
+  **m16135 handleWorkerTestResult, pc 405**, `PhasedMethodError::kControl` (6) /
+  `ExceptionControlError::kMultipleExits` (4): region 0 body 405/handler 430,
+  exits 428 -> 432 and 419 -> 441. That control gap remains outside this increment.
+- Evidence and exact commands: [build/phased-defaults/acceptance.md](../../../build/phased-defaults/acceptance.md).
+  Input ABCs, `samples/` and `build/review/` were not modified; no commit/push.
+
 ## Normalization composition: await/yield coordinates after array-pattern folding (2026-10-26)
 
 - Soundness fix, applied **unconditionally**, with no legacy-first gate:
@@ -19,8 +61,8 @@
   verifier check injective coverage, opcode/operand/branch identity, anchor
   provenance, collisions, intact retained protocol intervals and selected catch
   correspondence. Removed anchors never map into replacement instructions.
-  Invalid composition refuses as typed `MetadataError::kRead`; resource/work
-  limits retain their typed phases. No opcode or source premise was added.
+  Invalid composition now retains typed `ProtocolRebaseError` causes (see the
+  follow-up above); resource/work limits retain their file-stage convention. No opcode or source premise was added.
   The new shared mapping/dispatch pass targets O((I+T+H+A+Y) log(I+T+H)) with
   prepaid mapping, claims, certificate vectors and dispatch scratch.
 - All streams enter the shared composition before phased import: ordinary and

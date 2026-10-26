@@ -1,3 +1,4 @@
+#include "phased_parameter_defaults.h"
 #include "recovery_flow.h"
 #include "template_tree.h"
 #include "super_store.h"
@@ -254,7 +255,7 @@ class FlowBuilder {
       }
       const auto expression_default =
           tree_.parameter_expressions ? tree_.parameter_expressions->Roots()[i]
-                                      : std::optional<ExprId>{};
+              : tree_.phased_defaults ? parameter.initializer : std::optional<ExprId>{};
       if (expression_default) {
         RequireTree(
             !parameter.rest && parameter.initializer == expression_default,

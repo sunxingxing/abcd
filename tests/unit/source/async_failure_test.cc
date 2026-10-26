@@ -46,6 +46,23 @@ void RoundTrip(AsyncCompletionFailure error) {
 }
 }
 int main() {
+  // A real refused relocation must retain its semantic leaf through the file,
+  // family and CLI envelopes; resource leaves keep the file-level convention.
+  const auto relocation_body = Body();
+  const std::array<abc::CodeOffset, 1> incomplete_origins{{{0}}};
+  const std::array<AwaitSite, 1> relocation_awaits{};
+  const auto relocation = RebaseProtocols({relocation_body, relocation_body, {},
+      incomplete_origins, {}, relocation_awaits, {}, abc::ProfileId::kDynamic1206});
+  test::Check(std::holds_alternative<ProtocolRebaseError>(relocation));
+  const auto relocation_error = std::get<ProtocolRebaseError>(relocation);
+  test::Check(relocation_error == ProtocolRebaseError::kInput);
+  const auto relocation_route = FamilyRouteFailure(FamilyPrepareFailure{
+      FamilyFileFailure{PhasedFileFailure{relocation_error}}});
+  nlohmann::json relocation_json;
+  tools::DescribeRecordFailure(RouteRefusal{relocation_route}, relocation_json);
+  const auto& relocation_cause = relocation_json["source_failure"]["causes"][0];
+  test::Check(relocation_cause["domain"] == "abcd::source::ProtocolRebaseError");
+  test::Check(relocation_cause["value"] == static_cast<unsigned>(relocation_error));
   static_assert(sizeof(AsyncCompletionEvidence) <= 256); // query storage is separately owned
   static_assert(static_cast<unsigned>(FunctionEmitError::kKind)==1);
   static_assert(static_cast<unsigned>(FunctionEmitError::kResourceLimit)==6);

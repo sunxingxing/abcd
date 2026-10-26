@@ -1,3 +1,4 @@
+#include "phased_parameter_defaults.h"
 #include "lexical_stores.h"
 
 #include <bit>
@@ -41,6 +42,20 @@ class StoreCheck {
         flow.value_revision == graph_.revision && flow.cfg_revision == graph_.cfg_revision, Error::kOwner);
     if (cells_) Require(cells_->revision == graph_.revision && cells_->cfg_revision == graph_.cfg_revision &&
         cells_->operations.size() == graph_.ops.size(), Error::kOwner);
+    std::vector<std::uint8_t> phased_signature;
+    if (std::holds_alternative<PhasedStoreInput>(input_) && tree.phased_defaults) {
+      TreeCheckBudget q(left_); VerifyPhasedDefaultSignature(tree, q);
+      Admit(q.Bytes(), 1); Step(q.Work());
+      Array(phased_signature, instructions_.size());
+      for (const auto& d : tree.phased_defaults->Evidence().defaults)
+        for (const auto& commit : d.captures) {
+          Step(); Require(commit.store.value < phased_signature.size() && !phased_signature[commit.store.value], Error::kStore);
+          phased_signature[commit.store.value] = 1;
+        }
+      for (std::size_t i = 0; i < instructions_.size(); ++i) {
+        Step(); Require(static_cast<bool>(phased_signature[i]) == (!signature_.empty() && static_cast<bool>(signature_[i])), Error::kCoverage);
+      }
+    }
     std::size_t retained = 0;
     for (std::size_t i = 0; i < instructions_.size(); ++i) {
       Step(); pc_ = instructions_[i].pc;
@@ -48,6 +63,21 @@ class StoreCheck {
       ++result_.stores;
       const bool captured = captured_[i];
       result_.captured += captured;
+      const bool moved = !phased_signature.empty() && phased_signature[i];
+      if (moved) {
+        Require(target_.tree.phased_defaults != nullptr && !captured, Error::kStore);
+        const auto op = graph_.input.sites[i];
+        Require(op && graph_.ops[op->value].life == analysis::ValueLife::kRemoved &&
+            std::holds_alternative<analysis::ValueNop>(graph_.ops[op->value].operation), Error::kStore);
+        const auto& original = target_.tree.phased_defaults->Original();
+        const auto* plan = original.Cells(); Require(plan != nullptr, Error::kStore);
+        Require(i < plan->operations.size() && plan->operations[i] &&
+            std::holds_alternative<AllocatedCell>(plan->cells[plan->operations[i]->value].storage), Error::kStore);
+        Require(cells_ != nullptr, Error::kStore);
+        Step(1 + std::bit_width(cells_->cells.size()));
+        Require(FindCell(*cells_, plan->cells[plan->operations[i]->value].storage).has_value(), Error::kStore);
+        ++result_.signature; continue;
+      }
       const auto reads = std::visit([&](const auto& input) { return Reads(input, i); }, input_);
       Require(!reads.empty(), Error::kDomain);
       for (const auto& read : reads) {

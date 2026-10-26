@@ -36,6 +36,7 @@ struct FilePhasedFunction::Storage {
   abc::MethodBody body;
   std::optional<abc::MethodBody> original;
   PhasedBody phases;
+  std::shared_ptr<const PhasedParameterDefaults> parameter_defaults;
   analysis::ExceptionLocals locals;
   analysis::GuardedReads guarded;
   std::vector<analysis::InstructionId> children;
@@ -58,6 +59,7 @@ const abc::MethodBody& FilePhasedFunction::OriginalBody() const {
   return storage_->original ? *storage_->original : storage_->body;
 }
 const PhasedBody& FilePhasedFunction::Phases() const { return storage_->phases; }
+std::shared_ptr<const PhasedParameterDefaults> FilePhasedFunction::ParameterDefaults() const { return storage_->parameter_defaults; }
 const analysis::ExceptionLocals& FilePhasedFunction::Locals() const { return storage_->locals; }
 const analysis::GuardedReads& FilePhasedFunction::GuardedReads() const { return storage_->guarded; }
 std::span<const analysis::InstructionId> FilePhasedFunction::Children() const { return storage_->children; }
@@ -203,6 +205,8 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       arena(normalized.folds);
       const ProtocolRebaseInput relocation{body, normalized.body, source_pcs,
           normalized.source_pcs, normalized.folds, awaits, yields, header.profile};
+      // File-stage limits follow the existing generic quota convention;
+      // semantic relocation refusals retain their own domain and exact value.
       const auto rebase_error = [](ProtocolRebaseError error) -> PhasedFileFailure {
         switch (error) {
           case ProtocolRebaseError::kResourceLimit: return Error::kResourceLimit;
@@ -210,9 +214,9 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
           case ProtocolRebaseError::kInput:
           case ProtocolRebaseError::kAnchor:
           case ProtocolRebaseError::kCollision:
-          case ProtocolRebaseError::kDispatch: return abc::MetadataError::kRead;
+          case ProtocolRebaseError::kDispatch: return error;
         }
-        return abc::MetadataError::kRead;
+        return error;
       };
       auto remapped = RebaseProtocols(relocation, left);
       if (const auto* error = std::get_if<ProtocolRebaseError>(&remapped)) throw rebase_error(*error);
@@ -288,6 +292,31 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     }
     auto phases = Take<PhasedBody>(std::move(analyzed));
     admit(phases.AllocatedBytes()); step(phases.Work());
+    std::shared_ptr<const PhasedParameterDefaults> parameter_defaults;
+    // Without an existing rest signature, this frame/length mismatch is the
+    // legacy ABI refusal. Only that route enters default projection.
+    bool legacy_rest = false;
+    if (context.Length() < frame.parameters) for (const auto& op : phases.Graph().ops) {
+      step(1);
+      if (op.life != analysis::ValueLife::kLive) continue;
+      if (const auto* rest = std::get_if<analysis::ValueRestArguments>(&op.operation))
+        legacy_rest |= rest->first_argument == context.Length() &&
+            static_cast<std::uint32_t>(rest->first_argument) + 1 == frame.parameters;
+    }
+    // Rest ownership and the ABI census remain on their existing route. This
+    // discovery flag grants no rest syntax or permission to suppress a check.
+    if (context.Length() < frame.parameters && !legacy_rest) {
+      parameter_defaults = Take<std::shared_ptr<const PhasedParameterDefaults>>(
+          PhasedParameterDefaults::Build(std::move(phases), std::move(body), frame,
+                                        context.Length(), left));
+      admit(parameter_defaults->AllocatedBytes()); step(parameter_defaults->Work());
+      auto residual = Take<PhasedParameterResidual>(parameter_defaults->Residual(left));
+      admit(residual.allocated_bytes); step(residual.work); body = std::move(residual.body);
+      phases = Take<PhasedBody>(PhasedBody::Build(context, body, left, modules,
+          mode == InputCaptureMode::kConditional ? analysis::CapturedValues::kLanguage : analysis::CapturedValues::kReject,
+          analysis::ClosureWrites::kLanguage, awaits, source_pcs, yields, initialized, &entry_modules, patterns));
+      admit(phases.AllocatedBytes()); step(phases.Work());
+    }
     const auto input = phases.TreeInput(body).input;
     auto guarded_result = analysis::ProveGuardedReads(phases.Graph(), left);
     if (const auto* error = std::get_if<analysis::GuardedReadError>(&guarded_result)) {
@@ -408,7 +437,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       accesses.push_back({before.instruction, load ? analysis::LocalAccessKind::kLoad : analysis::LocalAccessKind::kStore});
     }
     Require(!file.CheckUnchanged(), Error::kChanged);
-    return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(original), std::move(phases),
+    return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(original), std::move(phases), std::move(parameter_defaults),
         std::move(locals), std::move(guarded), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), std::move(entry_modules), std::move(module_reads), method.owner_offset,
         budget.bytes - left.bytes, budget.work - left.work}));
   } catch (GuardedStoreError error) { return PhasedFileFailure{error};

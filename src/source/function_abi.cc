@@ -1,3 +1,4 @@
+#include "phased_parameter_defaults.h"
 #include "function_abi.h"
 
 #include <limits>
@@ -36,6 +37,7 @@ class AbiBuilder {
       VerifyClassInnerScope(tree_, q);
       remaining_ = q.Remaining();
     }
+    if (tree_.phased_defaults) { TreeCheckBudget q(remaining_); VerifyPhasedDefaultInput(graph_, tree_, q); remaining_ = q.Remaining(); }
     if (tree_.parameter_expressions) {
       TreeCheckBudget q(remaining_);
       VerifyParameterExpressionTree(tree_, q);

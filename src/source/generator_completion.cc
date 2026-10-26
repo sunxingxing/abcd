@@ -331,6 +331,54 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       else if (is_cell_copy(enter)) enter += 2;
       else break;
     }
+    const auto frame_copy_end = enter;
+    // A source parameter prologue may contain nonthrowing decisions before
+    // Prepare. Delay only a closed, acyclic private-state region: no callback,
+    // capture escape, observable write or language exception can see its timing.
+    // Native defaults are projected later against the original phase SSA.
+    while (enter < code.size() && !Op(code[enter], asynchronous ? Opcode::kCREATEASYNCGENERATOROBJ_V8 : Opcode::kCREATEGENERATOROBJ_V8)) {
+      const auto lifted = analysis::LiftSemanticInstruction(code[enter], profile, frame.registers, &frame);
+      const auto* semantic = std::get_if<analysis::SemanticInstruction>(&lifted); Require(semantic);
+      const auto* store = std::get_if<analysis::LexicalStore>(&semantic->operation);
+      const auto* load = std::get_if<analysis::LexicalLoad>(&semantic->operation);
+      const bool private_store = environment && store && store->address.depth.value == 0 && store->address.slot.value < environment->slots;
+      const bool private_load = environment && load && load->address.depth.value == 0 && load->address.slot.value < environment->slots;
+      Require(private_store || private_load || (semantic->effects.normal == analysis::LanguageEffect::kNone &&
+          semantic->effects.before_throw == analysis::LanguageEffect::kNone &&
+          semantic->effects.exceptional == analysis::ExceptionalCompletion::kImpossible));
+      const auto transfer = abc::GetControlTransfer(code[enter].decoded.opcode);
+      Require(transfer && (*transfer == abc::ControlTransfer::kFallthrough ||
+          *transfer == abc::ControlTransfer::kJump || *transfer == abc::ControlTransfer::kBranch));
+      ++enter;
+    }
+    if (enter != frame_copy_end) {
+      // Topological removal proves termination for all decisions, including
+      // unreachable arms. Keep the original CFG's edges, independent of layout.
+      if (code.size() > bytes / (sizeof(std::uint32_t) * 2)) return Error::kResourceLimit;
+      std::vector<std::uint32_t> indegree(enter - frame_copy_end), queue;
+      queue.reserve(indegree.size());
+      const auto index = [&](abc::CodeOffset pc) {
+        const auto found = std::lower_bound(code.begin(), code.end(), pc, [](const auto& s, auto p) { return s.offset < p; });
+        Require(found != code.end() && found->offset == pc); return static_cast<std::size_t>(found - code.begin());
+      };
+      const auto successors = [&](std::size_t i, auto visit) {
+        const auto transfer = *abc::GetControlTransfer(code[i].decoded.opcode);
+        if (transfer != abc::ControlTransfer::kJump) visit(i + 1);
+        if (code[i].branch_target) visit(index(*code[i].branch_target));
+      };
+      for (std::size_t i = frame_copy_end; i < enter; ++i) successors(i, [&](std::size_t target) {
+        Require(target >= frame_copy_end && target <= enter);
+        if (target < enter) ++indegree[target - frame_copy_end];
+      });
+      for (std::uint32_t i = 0; i < indegree.size(); ++i) if (!indegree[i]) queue.push_back(i);
+      for (std::size_t head = 0; head < queue.size(); ++head) successors(queue[head] + frame_copy_end, [&](std::size_t target) {
+        if (target < enter && --indegree[target - frame_copy_end] == 0) queue.push_back(target - frame_copy_end);
+      });
+      Require(queue.size() == indegree.size());
+      for (std::size_t i = enter; i < code.size(); ++i)
+        if (code[i].branch_target) Require(*code[i].branch_target >= code[enter].offset);
+      for (const auto& handler : body.handlers) Require(handler.offset >= code[enter].offset);
+    }
     const auto first = enter + kEntryPrefix + (asynchronous ? kReturnMode : kResumeSize);
     Require(code.size() > first + 1 && frame.function &&
         Op(code[enter], asynchronous ? Opcode::kCREATEASYNCGENERATOROBJ_V8 : Opcode::kCREATEGENERATOROBJ_V8) &&
@@ -346,7 +394,7 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
     }
     const auto callee = Reg(code[enter]);
     bool same_function = callee == *frame.function;
-    for (std::size_t i = copy_begin; i < enter;) {
+    for (std::size_t i = copy_begin; i < frame_copy_end;) {
       const auto& copy = code[i];
       if (!is_frame_copy(copy)) { Require(is_cell_copy(i)); i += 2; continue; }
       Require(copy.decoded.operand_count == 2 && Reg(copy).value < frame.locals && Reg(copy) != state &&
@@ -358,6 +406,12 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       ++i;
     }
     Require(same_function);
+    for (std::size_t i = frame_copy_end; i < enter; ++i) {
+      const auto effect = analysis::LiftRegisterEffect(code[i].decoded, frame.registers);
+      const auto* access = std::get_if<analysis::RegisterEffect>(&effect); Require(access);
+      if (access->write) if (const auto* r = std::get_if<abc::RegisterId>(&*access->write))
+        Require(*r != callee && r->value < frame.locals);
+    }
     const auto handler = code.size() - (asynchronous ? kAsyncCatchSize : 1);
     const auto complete = [&](std::size_t load) {
       Require(Op(code[load], Opcode::kLDA_V8) && Reg(code[load]) == state);
@@ -489,7 +543,10 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       if (const auto* error = std::get_if<analysis::AwaitCatchFailure>(&catch_inputs))
         return error->kind == analysis::AwaitCatchError::kResourceLimit ? Error::kResourceLimit : Error::kKind;
     }
-    std::fill(interior.begin(), interior.begin() + first, 1);
+    // Legacy frame-only entry keeps its original sealed interior. The new
+    // private prelude has its own acyclic/closed-entry proof above.
+    std::fill(interior.begin() + (enter == frame_copy_end ? 0 : enter),
+              interior.begin() + first, 1);
     if (asynchronous) {
       // Exact Prepare and implicit return/catch settlement, with shared awaits
       // above. Source yield/explicit returns remain unsupported. Erase only VM
@@ -606,7 +663,7 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
         const auto* known = std::get_if<abc::RegisterAccesses>(&access); Require(known != nullptr);
         for (std::size_t j = 0; j < known->count; ++j) {
           const auto& window = known->windows[j];
-          Require(state.value < window.first.value || state.value - window.first.value >= window.count);
+          Require(i < enter || state.value < window.first.value || state.value - window.first.value >= window.count);
           if (asynchronous && initial_observed && i >= first && i < handler - kAsyncExitSize) {
             // Initial resumed values/mode have no source counterpart. Reuse
             // of these locals is admitted only when no path reads them before
@@ -720,6 +777,10 @@ std::variant<GeneratorBody, FunctionEmitError, abc::MetadataError> NormalizeGene
       const bool owned_return = route && route->branch == source && site.branch_target == owner->continuation;
       const bool owned_cleanup = route && source >= route->cleanup && source < route->payload &&
           *site.branch_target >= route->cleanup && *site.branch_target <= route->payload;
+      // A closed parameter-prefix edge enters Prepare, whose entire protocol
+      // is owned here. Native entry continues at its first retained body port.
+      if (source < code[enter].offset && site.branch_target == code[enter].offset)
+        site.branch_target = code[first].offset;
       const auto target = *site.branch_target;
       const auto original = std::lower_bound(code.begin(), code.end(), target,
           [](const auto& instruction, auto offset) { return instruction.offset < offset; });

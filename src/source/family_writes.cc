@@ -1,3 +1,4 @@
+#include "phased_parameter_defaults.h"
 #include "family_writes.h"
 #include "lexical_stores.h"
 #include "class_tree.h"
@@ -150,6 +151,14 @@ class WriteCheck {
         // The unchanged file reader excludes callable/unsupported elements;
         // independent tree semantics still checks every array constant.
         ++facts_.primitive_arrays;
+      }
+      { TreeCheckBudget q(left_); VerifyPhasedDefaultInput(Graph(source), target.tree, q); Admit(q.Bytes(), 1); Step(q.Work()); }
+      if (target.tree.phased_defaults) {
+        for (const auto& d : target.tree.phased_defaults->Evidence().defaults)
+          for (const auto& commit : d.captures) {
+            Step(); Require(commit.store.value < instructions.size(), Error::kStore);
+            signature_[offsets_[i] + commit.store.value] = 1;
+          }
       }
       Classes(i, source);
       for (const auto& placement : target.tree.signature) {
@@ -432,7 +441,7 @@ class WriteCheck {
         return VerifyLexicalStores(NormalStoreInput{input.input}, input.values.graph,
             input.values.cells ? &*input.values.cells : nullptr, {target.tree, target.flow}, signature, left_);
       else return VerifyLexicalStores(PhasedStoreInput{input.function, input.body}, input.function.Graph(),
-          input.function.Cells(), {target.tree, target.flow}, {}, left_);
+          input.function.Cells(), {target.tree, target.flow}, signature, left_);
     }, source.function);
     if (const auto* error = std::get_if<LexicalStoreFailure>(&checked)) {
       pc_ = error->pc;

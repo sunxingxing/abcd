@@ -1,5 +1,63 @@
 # 函数族默认参数迁移
 
+## 2026-10-26：phased literal parameter defaults
+
+`PhasedParameterDefaults` owns the immutable original phased input and a
+`PhasedParameterCertificate`. The certificate records formal ordinals and entry
+SSA values, strict-undefined comparisons, the provided/missing Commit edges,
+initialized phi identities, initializer operations and original joins. Captured
+formals additionally retain the initial private-cell store and the missing-arm
+store's Before/Commit ports and cell identity. Number, boolean, null, undefined
+and pool-backed string literals use the existing literal and `SignatureString`
+adapters. Effectful or otherwise unproved initializers refuse with
+`PhasedParameterError`; there is no new source-language premise.
+
+Discovery uses the common copy/phi identity index and reverse-CFG dominators to
+isolate each ordered initialization region. A shared phi index and sparse
+private-cell undo logs avoid scans or environment copies per formal. Original
+phase SSA use closure includes handler reads and snapshots: raw arguments and
+branch-private temporaries cannot escape the moved prologue. All initializer
+operations must be nonthrowing and private; fresh environment allocation uses
+only the existing excluded-resource-failure contract. Literal migration across
+those private stores cannot be observed before the proved initialized join.
+
+The source residual interprets its formals as **initialized** values. Only each
+certified decision changes to its provided edge; instruction identities, working
+byte offsets, suspension certificates and handler boundaries remain unchanged.
+The missing arms become unreachable. `FilePhasedFunction` retains the original
+owner, rebuilds phase SSA/environments/control/captures from the residual, and
+`FamilyTrees::ProjectDefaults` rechecks the certificate before family binding.
+It never fabricates a normal input from exception SSA or reuses stale analyses.
+
+Native signature, ABI, tree operands/origins, exception flow and family writes
+recheck the original certificate and residual correspondence. Throwing operations
+keep the same selected catch ports. RecoveryFlow retains the same certificate
+and checks ordered argument/undefined-decision/provided/missing/initialized ports,
+exclusive edges, literal evaluation once, caller exception boundaries and cell
+storage. The `.length` equality is unchanged. Removed private stores are accepted
+only by an independently verified certificate, not an ignored instruction anchor.
+
+The new path is gated by the legacy ABI mismatch. Existing rest-parameter routes
+remain separate, with their original ownership/refusal checks. A generator's
+existing entry owner also admits a closed, acyclic, nonthrowing private prologue
+before Prepare; it proves termination, callee identity and absence of external
+entries, and maps its normal exit through the owned entry protocol. This permits
+native literal defaults to execute at invocation without exposing delayed cells.
+The previous frame-copy entry path and normal-parent default projection remain
+unchanged.
+
+For I instructions/values, E edges, U uses and P defaults, the additional proof
+and verification target O((I+E+U+P) log(I+E+P)) time and O(I+E+U+P) space. All
+result arenas, shared control blocks, sparse map nodes and scratch grants are
+charged before allocation. The fixture exercises 200/201/400/800 defaults in
+separate records; unit tests cover ordinals, decision edges, initialized identity,
+capture Commit mutations and exact/exhausted byte/work admission boundaries.
+The Node fixture covers async functions/methods/arrows, generators, multiple and
+unused defaults, captured mutable formals, rejection/catch, `.length`, missing vs
+undefined/null/false/zero and object identity. Effectful defaults and the existing
+phased-rest ownership gap remain explicit typed negative cases.
+
+
 ## 2026-10-15：Round 71 直接 SSA 字符串默认值
 
 直接 SSA 默认值候选现在保留可选的类型化 `PoolIndex`。它与现有数字等

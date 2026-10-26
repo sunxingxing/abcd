@@ -459,7 +459,9 @@ struct SendableConstructorDirective {
 };
 class ScriptScopeProof;
 class ParameterExpressionSource;
+class PhasedParameterDefaults;
 struct FunctionTree {
+  std::shared_ptr<const PhasedParameterDefaults> phased_defaults;
   struct ClassScope {
     ClassInnerBinding binding;
     ScopeId scope;

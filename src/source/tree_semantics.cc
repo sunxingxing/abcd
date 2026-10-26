@@ -1,3 +1,4 @@
+#include "phased_parameter_defaults.h"
 #include "tree_semantics.h"
 
 #include <new>
@@ -99,6 +100,8 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
       // once here; current/trial flow borrows the same immutable owner.
       checked.Admit(original->environments->allocated_bytes,1);
     }
+    VerifyPhasedDefaultInput(graph, tree, checked);
+    original->phased_defaults = tree.phased_defaults;
     CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked,*original);
     CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked);
     RetainClassInitializationPorts(graph, tree, *original, checked);

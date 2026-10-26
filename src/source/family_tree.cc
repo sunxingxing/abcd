@@ -94,6 +94,7 @@ class FamilyTrees {
               file_, header_, index_, context,
               phase ? phase->OriginalBody() : function.Body(), graph,
               family.Owner(member_), left_,
+              phase && phase->ParameterDefaults() ? phase->ParameterDefaults()->Strings() :
               function.Defaults() ? function.Defaults()->Strings()
                                   : std::span<const SignatureString>{},
               function.Cells(),
@@ -518,6 +519,16 @@ class FamilyTrees {
         trees.push_back({std::move(constructed.tree), {}, std::move(cells), {}, {}, function.Record()});
         continue;
       }
+      if (phase && phase->ParameterDefaults()) {
+        TreeCheckBudget q(left_);
+        BuildPhasedDefaultSignature(phase->ParameterDefaults(), graph,
+                                   constructed.tree, constants, q);
+        Admit(q.Bytes(), 1); Step(q.Work());
+        auto semantics = Take<TreeSemantics, TreeSemanticError>(VerifyExceptionTreeSemantics(
+            graph, phase->Phases().TreeInput(phase->Body()), evaluation,
+            constructed.tree, constants, left_));
+        Account(semantics); constructed.flow = std::move(semantics.flow);
+      }
       if (family.members[i].function.Defaults()) {
         const DefaultSignatureContext capture{control, evaluation, &constants,
                                               aliases};
@@ -799,7 +810,14 @@ class FamilyTrees {
       if (i == 0 && !root) continue;
       const auto length = i == 0 ? root->Length() : member.context->Length();
       const auto& frame = i == 0 ? root->Frame() : member.context->Frame();
-      if (member.function.Phase()) continue;
+      if (const auto* phase = member.function.Phase()) {
+        if (phase->ParameterDefaults()) {
+          Step(Take<std::uint64_t, PhasedParameterError>(VerifyPhasedParameterDefaults(
+              phase->ParameterDefaults()->Original(), phase->ParameterDefaults()->Body(),
+              frame, phase->ParameterDefaults()->Evidence(), left_)));
+        }
+        continue;
+      }
       auto& values = member.function.Normal().values;
       if (length >= frame.parameters) continue;
       auto parameters = Take<ParameterPlan, ParameterPlanError>(BuildParameterPlan(values.graph, frame.parameters, left_));

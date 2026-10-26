@@ -1,0 +1,165 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "kind": "defaults",
+   "source": "tests/fixtures/isa/phased_defaults/defaults.js",
+   "path": "tests/fixtures/isa/phased_defaults/defaults-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_defaults_defaults",
+    "--source-file=defaults.js",
+    "--output=tests/fixtures/isa/phased_defaults/defaults-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_defaults/defaults.js"
+   ],
+   "source_sha256": "bc04a9f8678a16ce81d07148512fdcbdf1d76fb411422987e10489eb090d8ec5",
+   "sha256": "3fd53e16afb460684e8219d1c58d754600271a90fb02667a559a1ffaf22490e0",
+   "profile": 6
+  },
+  {
+   "kind": "generators",
+   "source": "tests/fixtures/isa/phased_defaults/generators.js",
+   "path": "tests/fixtures/isa/phased_defaults/generators-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_defaults_generators",
+    "--source-file=generators.js",
+    "--output=tests/fixtures/isa/phased_defaults/generators-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_defaults/generators.js"
+   ],
+   "source_sha256": "5845363d399dc43d2893f6e68cc96d1c8d285ac32b57cf46b101b665e2dd029b",
+   "sha256": "0ae7c765c97147817910d430a53b75e4b01a0d5957c4c6207da711aa7dd98b4d",
+   "profile": 6
+  },
+  {
+   "kind": "effectful",
+   "source": "tests/fixtures/isa/phased_defaults/effectful.js",
+   "path": "tests/fixtures/isa/phased_defaults/effectful-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_defaults_effectful",
+    "--source-file=effectful.js",
+    "--output=tests/fixtures/isa/phased_defaults/effectful-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_defaults/effectful.js"
+   ],
+   "source_sha256": "dd67f4b3760c4acb9895aaf2bc1579615de219b2b750d3347e5c1bc544a00af7",
+   "sha256": "fab8988772adba3457833dd697e3e62d9b87cef15fa19c5e39f39dbd0e059de0",
+   "profile": 6
+  },
+  {
+   "kind": "scale",
+   "source": "tests/fixtures/isa/phased_defaults/scale200.js",
+   "path": "tests/fixtures/isa/phased_defaults/scale200-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_defaults_scale200",
+    "--source-file=scale200.js",
+    "--output=tests/fixtures/isa/phased_defaults/scale200-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_defaults/scale200.js"
+   ],
+   "source_sha256": "1bb5a78242f33cfe5bdf5d79a42dbb7b886f8f9a4ce694c4d9e6d4aa57c0865a",
+   "sha256": "af8b640a25f7df7c5dbabf47a1080f16b0a1b6679ca19f79755a05bd3d231c7f",
+   "profile": 6
+  },
+  {
+   "kind": "scale",
+   "source": "tests/fixtures/isa/phased_defaults/scale201.js",
+   "path": "tests/fixtures/isa/phased_defaults/scale201-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_defaults_scale201",
+    "--source-file=scale201.js",
+    "--output=tests/fixtures/isa/phased_defaults/scale201-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_defaults/scale201.js"
+   ],
+   "source_sha256": "76424cd35cb30d408277559790ca9c07e6cfe770dbdb359c33f8b68ba0851995",
+   "sha256": "67a56df081021353d1855f752ba1fdba2aeaf0ab800265b75e696f1621b299b0",
+   "profile": 6
+  },
+  {
+   "kind": "scale",
+   "source": "tests/fixtures/isa/phased_defaults/scale400.js",
+   "path": "tests/fixtures/isa/phased_defaults/scale400-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_defaults_scale400",
+    "--source-file=scale400.js",
+    "--output=tests/fixtures/isa/phased_defaults/scale400-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_defaults/scale400.js"
+   ],
+   "source_sha256": "52e931926ddcf4ae8989c47ae33adceb104f6cf8ab7f08b86cf64609eddb5ead",
+   "sha256": "3d2a6c50bef53b8f1ab8ec1e993776313239e3a63bebe2cb375ecb38fb686ff2",
+   "profile": 6
+  },
+  {
+   "kind": "scale",
+   "source": "tests/fixtures/isa/phased_defaults/scale800.js",
+   "path": "tests/fixtures/isa/phased_defaults/scale800-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_defaults_scale800",
+    "--source-file=scale800.js",
+    "--output=tests/fixtures/isa/phased_defaults/scale800-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_defaults/scale800.js"
+   ],
+   "source_sha256": "0f740aea8fbed73082c97f2bf063c01843e9cfbb46c9189fd1ec97638f12a0ed",
+   "sha256": "c862bcb5dfb50cfdabf3cb644049b3a9fe424bd0e3466d7f757d302fa416c03e",
+   "profile": 6
+  },
+  {
+   "kind": "rest",
+   "source": "tests/fixtures/isa/phased_defaults/rest.js",
+   "path": "tests/fixtures/isa/phased_defaults/rest-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_defaults_rest",
+    "--source-file=rest.js",
+    "--output=tests/fixtures/isa/phased_defaults/rest-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_defaults/rest.js"
+   ],
+   "source_sha256": "dca80d543c663591a83e03db194265331dcca474955226a1d8d54fcf6e104d1b",
+   "sha256": "89f1f1d1e28200258e519ce9fe201f8eeded4a23135f90cea24bf51753111694",
+   "profile": 6,
+   "refusal": {
+    "domain": "abcd::source::RestOwnershipError",
+    "value": 0
+   }
+  }
+ ],
+ "note": "O0. Nonthrowing phased defaults and a refused effectful initializer."
+}

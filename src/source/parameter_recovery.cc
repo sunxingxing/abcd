@@ -1,3 +1,4 @@
+#include "phased_parameter_defaults.h"
 #include "parameter_recovery.h"
 #include "tree_flow.h"
 #include <new>
@@ -67,6 +68,7 @@ std::variant<DefaultSignatureProof,DefaultSignatureError> RetainParameterDefault
   catch(const std::bad_alloc&){return DefaultSignatureError::kResourceLimit;}
 }
 void VerifyParameterDefaultFlow(const FunctionTree& tree,const RecoveryFlow& flow,TreeCheckBudget& budget) {
+  if (tree.phased_defaults) { VerifyPhasedDefaultRecovery(tree, flow, budget); return; }
   if (tree.parameter_expressions) {
     VerifyParameterExpressionFlow(tree, flow, budget);
     return;

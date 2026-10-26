@@ -235,6 +235,7 @@ struct OriginalIterations {
 };
 struct OriginalMemberUpdate { ExprId expression; MemberUpdate proof; MemberMutationExpr syntax; };
 struct OriginalFlow {
+  std::shared_ptr<const PhasedParameterDefaults> phased_defaults;
   std::vector<ExprId> derived_bindings;
   std::shared_ptr<const OriginalTemplates> templates;
   std::vector<ObjectRestSurface> object_rests;

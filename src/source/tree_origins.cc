@@ -1,3 +1,4 @@
+#include "phased_parameter_defaults.h"
 #include "tree_checks.h"
 
 #include <algorithm>
@@ -7,6 +8,7 @@
 namespace abcd::source {
 void CheckTreeOrigins(const FunctionTree& tree, TreeCheckBudget& budget) {
   using Error = TreeStructureError;
+  VerifyPhasedDefaultSignature(tree, budget);
   std::size_t next_part = 0;
   for (std::size_t i = 0; i < tree.origins.size(); ++i) {
     budget.Step();

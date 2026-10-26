@@ -1,3 +1,4 @@
+#include "phased_parameter_defaults.h"
 #include "tree_correspondence.h"
 
 namespace abcd::source {
@@ -17,6 +18,7 @@ bool SameSite(const Origin& tree, const analysis::ValueOrigin& input) {
 
 void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget) {
+  VerifyPhasedDefaultInput(graph, tree, budget);
   RequireMeaning(tree.origins.size() >= graph.origins.size(), Error::kOrigin);
   for (std::size_t i = 0; i < graph.origins.size(); ++i) {
     budget.Step();

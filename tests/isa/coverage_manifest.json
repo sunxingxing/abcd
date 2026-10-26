@@ -11153,6 +11153,10 @@
     {
       "test": "isa_normalized_protocols_source_test",
       "producer": "tests/isa/normalized_protocols_test.py"
+    },
+    {
+      "test": "isa_phased_defaults_source_test",
+      "producer": "tests/isa/phased_defaults_test.py"
     }
   ]
 }

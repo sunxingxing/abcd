@@ -7,7 +7,8 @@
 
 namespace abcd::source {
 // Distinct owned flows, one family occurrence. Never manufacture a normal
-// input from a phase graph. Only normal residuals support default projection.
+// input from a phase graph. Phased defaults retain their own original input
+// and freshly imported residual, never a normal default certificate.
 class FamilyFunction {
  public:
   FamilyFunction(FileFunction function) : input_(std::move(function)) {}
