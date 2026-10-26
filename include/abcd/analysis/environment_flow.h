@@ -5,6 +5,7 @@
 #include "abcd/analysis/normal_flow.h"
 
 namespace abcd::analysis {
+struct EnvironmentRenewalEvidence;
 using EnvironmentOperation = std::variant<std::monostate, PushEnvironment,
                                           PopEnvironment, LexicalLoad, LexicalStore>;
 struct EnvironmentSite {
@@ -29,6 +30,10 @@ struct EnvironmentFlow {
   std::vector<EnvironmentAllocation> allocations;
   std::size_t allocated_bytes = 0;
   std::uint64_t instruction_visits = 0;
+  // A certified source-binding view only: physical definitions remain distinct
+  // in environments, while renewal->proof.current retains dynamic selection.
+  // Consumers must VerifyRenewedEnvironmentFlow before using this projection.
+  std::shared_ptr<const EnvironmentRenewalEvidence> renewal;
 };
 enum class EnvironmentFlowError {
   kExceptionRegions,

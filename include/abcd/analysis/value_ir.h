@@ -9,6 +9,7 @@
 
 namespace abcd::analysis {
 struct GuardedCatchEvidence;
+struct EnvironmentRenewalEvidence;
 struct ValueId {
   std::uint32_t value = 0;
   auto operator<=>(const ValueId&) const = default;
@@ -392,6 +393,7 @@ struct ValueProgram {
   std::vector<ValueExceptionalExit> exceptional_exits;
   InputCorrespondence input;
   std::shared_ptr<const GuardedCatchEvidence> guarded_catches;
+  std::shared_ptr<const EnvironmentRenewalEvidence> environment_renewal;
   std::optional<ArgumentFrameFact> arguments;
   // Empty for normal graphs; otherwise one site per block. Phase identity is
   // distinct from instruction/PC identity, especially for Catch definitions.

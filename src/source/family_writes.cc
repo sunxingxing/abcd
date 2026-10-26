@@ -1,12 +1,14 @@
-#include "phased_parameter_defaults.h"
 #include "family_writes.h"
-#include "lexical_stores.h"
-#include "class_tree.h"
 
 #include <limits>
 #include <new>
 #include <stdexcept>
 #include <type_traits>
+
+#include "class_tree.h"
+#include "environment_renewal_binding.h"
+#include "lexical_stores.h"
+#include "phased_parameter_defaults.h"
 
 namespace abcd::source {
 namespace {
@@ -322,6 +324,11 @@ class WriteCheck {
     Require(input.Proof().closure_writes == analysis::ClosureWrites::kLanguage, Error::kDomain);
   }
   void Owner(PhasedFamilyInput source, const FunctionTree& tree) {
+    if (source.function.Graph().environment_renewal) {
+      TreeCheckBudget checked(left_);
+      VerifyRenewalInput(source.function.Graph(), checked);
+      Step(checked.Work());
+    }
     Require(tree.identity == source.function.Identity() && tree.method == source.function.Target(), Error::kOwner);
     Require(source.locals.writes == analysis::ClosureWrites::kLanguage, Error::kDomain);
   }

@@ -2,6 +2,7 @@
 
 #include <bit>
 
+#include "abcd/analysis/environment_renewal.h"
 #include "argument_inputs.h"
 
 namespace abcd::analysis {
@@ -21,6 +22,16 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
       flow.nodes.size() > UINT32_MAX ||
       values.Facts().size() != ssa.Values().size())
     return fail(Error::kMismatchedAnalysis);
+  if (environments.renewal) {
+    const auto& e = *environments.renewal;
+    if (e.flow.get() != &flow || e.ssa.get() != &ssa)
+      return fail(Error::kMismatchedAnalysis);
+    const auto checked =
+        VerifyRenewedEnvironmentFlow(e, environments, {bytes, work});
+    if (!std::holds_alternative<std::uint64_t>(checked))
+      return fail(Error::kMismatchedAnalysis);
+    proof.work_units += std::get<std::uint64_t>(checked);
+  }
   if (values.GuardedPayloads()) {
     try {
       const auto& owner = *values.GuardedPayloads();

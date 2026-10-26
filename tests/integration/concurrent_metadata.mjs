@@ -15,7 +15,7 @@ try {
   assert.equal(manifest.source_contract,'language_source_v10');
   for(const [entity,method,creator,pc,count] of cases) {
    const record=manifest.records.find(r=>r.entity===entity);
-   if( [10719,18164,31477,25688].includes(entity)) {
+   if( [10719,16446,18164,31477,25688].includes(entity)) {
     assert.equal(record.source_status,0);assert.ok(record.source);
     const source=readFileSync(join(out,record.source),'utf8');assert.ok(source.includes('"use concurrent";'));
     const cli=JSON.parse(run(semantic,[input,String(method),'--record-source',...flags]));assert.equal(cli.source_complete,true);assert.equal(cli.source,source);
@@ -43,7 +43,6 @@ try {
    assert.equal(record.source_status,3);assert.equal(record.source,undefined);
    const f=record.source_failure;
    const cli=JSON.parse(run(semantic,[input,String(method),'--record-source',...flags],1));assert.deepEqual(cli.source_failure,f);
-   if( entity===16446) {assert.equal(f.method,16784);assert.deepEqual(f.causes,[{domain:'abcd::source::PhasedMethodError',value:2}]);continue;}
    assert.equal(f.class,'unproved');assert.equal(f.method,method);assert.equal(f.pc,10);assert.equal(f.working_pc,10);
    assert.equal(f.creation_method,creator);assert.equal(f.creation_pc,pc);
    assert.equal(f.concurrent.kind,7);assert.equal(f.concurrent.method,method);assert.equal(f.concurrent.record,entity);
@@ -52,5 +51,5 @@ try {
    assert.deepEqual(f.causes,[{domain:'abcd::source::CreationContextError',value:3},{domain:'abcd::source::ConcurrentError',value:7}]);
   }
  }
- console.log('5 records x default/alias: async promise/notify ports; collectFrame next environment refusal; 4 exported records round-trip kind/sendable/ordered requests/module tables');
+ console.log('5 records x default/alias: async promise/notify ports; Taskpool loop renewal complete; 5 exported records round-trip kind/sendable/ordered requests/module tables');
 } finally {rmSync(dir,{recursive:true,force:true});}

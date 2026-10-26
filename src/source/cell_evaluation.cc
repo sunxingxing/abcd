@@ -1,12 +1,14 @@
 #include "cell_evaluation.h"
-#include "evaluation_input_scope.h"
-#include "recovery_scratch.h"
-#include "../analysis/value_flow.h"
 
 #include <algorithm>
 #include <bit>
 #include <new>
 #include <stdexcept>
+
+#include "../analysis/value_flow.h"
+#include "environment_renewal_binding.h"
+#include "evaluation_input_scope.h"
+#include "recovery_scratch.h"
 
 namespace abcd::source {
 namespace {
@@ -225,6 +227,30 @@ std::variant<std::uint64_t, CellEvaluationError> VerifyEvaluation(
         ? VerifyPhasedCellInitializations : VerifyCellInitializations;
     quota.Step(Take(verify_initialization(graph, environments, plan.cells,
         plan.initialization.closure_writes, plan.initialization, quota.Remaining()), Error::kInitialization));
+    if (graph.environment_renewal) {
+      TreeCheckBudget check(quota.Remaining());
+      VerifyRenewalInput(graph, check);
+      quota.Step(check.Work());
+      const auto& owner = *graph.environment_renewal;
+      for (const auto& reset : owner.proof.resets) {
+        quota.Step(1 + std::bit_width(plan.cells.cells.size()));
+        const auto allocation =
+            owner.flow
+                ->nodes[owner.proof.allocations[reset.family.value].instruction]
+                .instruction;
+        const auto init =
+            owner.flow->nodes[reset.initializer.value].instruction;
+        if (!graph.input.sites[allocation.value] ||
+            !graph.input.sites[init.value])
+          throw Error::kCells;
+        const auto cell = FindCell(
+            plan.cells,
+            AllocatedCell{*graph.input.sites[allocation.value], {reset.slot}});
+        if (!cell || cell->value >= plan.deferred.size() ||
+            plan.deferred[cell->value] != graph.input.sites[init.value])
+          throw Error::kInitialization;
+      }
+    }
     Identities(graph, plan.cells, plan.incoming, quota, failure);
     const auto identities=Take(analysis::AnalyzeValueIdentities(graph,quota.Remaining()),Error::kInternalIdentity);
     quota.Admit(identities.allocated_bytes);quota.Step(identities.work);
@@ -264,7 +290,40 @@ std::variant<CellEvaluation, CellEvaluationError> BuildEvaluation(
     topology->allocated_bytes += ownership.Bytes();
     const auto retained = sizeof(CellEvaluation) + cells.allocated_bytes + initialization.allocated_bytes +
         topology_bytes + ownership.Bytes()+identities.allocated_bytes;
-    return CellEvaluation{std::move(cells), std::move(initialization), incoming, retained, quota.Work(), std::move(topology),std::move(identities)};
+    CellEvaluation result{std::move(cells),
+                          std::move(initialization),
+                          incoming,
+                          retained,
+                          quota.Work(),
+                          std::move(topology),
+                          std::move(identities)};
+    if (graph.environment_renewal) {
+      const auto& owner = *graph.environment_renewal;
+      quota.Admit(result.cells.cells.size() *
+                  sizeof(std::optional<analysis::OpId>));
+      result.deferred.resize(result.cells.cells.size());
+      for (const auto& reset : owner.proof.resets) {
+        quota.Step(1 + std::bit_width(result.cells.cells.size()));
+        const auto allocation =
+            owner.flow
+                ->nodes[owner.proof.allocations[reset.family.value].instruction]
+                .instruction;
+        const auto init =
+            owner.flow->nodes[reset.initializer.value].instruction;
+        if (!graph.input.sites[allocation.value] ||
+            !graph.input.sites[init.value])
+          throw Error::kCells;
+        const auto cell = FindCell(
+            result.cells,
+            AllocatedCell{*graph.input.sites[allocation.value], {reset.slot}});
+        if (!cell) throw Error::kCells;
+        result.deferred[cell->value] = *graph.input.sites[init.value];
+      }
+      result.allocated_bytes +=
+          result.deferred.capacity() * sizeof(result.deferred[0]);
+      result.work = quota.Work();
+    }
+    return result;
   } catch (Error error) { return error;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;

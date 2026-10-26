@@ -1,27 +1,28 @@
-#include "guarded_catch_verification.h"
-#include "phased_parameter_defaults.h"
-#include "template_tree.h"
-#include "super_store.h"
-#include "assignment_values.h"
-#include "native_arguments.h"
-#include "implicit_constructor.h"
-#include "derived_projection.h"
-#include "derived_value_states.h"
-#include "integer_nan.h"
-#include "function_object.h"
-#include "staged_literal_names.h"
-#include "tree_correspondence.h"
-#include "original_flow.h"
-#include "class_tree.h"
-#include "sendable_class.h"
-#include "phase_evaluation.h"
-#include "logical_evaluation.h"
-#include "logical_regions.h"
-
-#include <bit>
 #include <algorithm>
+#include <bit>
 #include <limits>
 #include <type_traits>
+
+#include "assignment_values.h"
+#include "class_tree.h"
+#include "derived_projection.h"
+#include "derived_value_states.h"
+#include "environment_renewal_binding.h"
+#include "function_object.h"
+#include "guarded_catch_verification.h"
+#include "implicit_constructor.h"
+#include "integer_nan.h"
+#include "logical_evaluation.h"
+#include "logical_regions.h"
+#include "native_arguments.h"
+#include "original_flow.h"
+#include "phase_evaluation.h"
+#include "phased_parameter_defaults.h"
+#include "sendable_class.h"
+#include "staged_literal_names.h"
+#include "super_store.h"
+#include "template_tree.h"
+#include "tree_correspondence.h"
 
 namespace abcd::source {
 namespace {
@@ -34,6 +35,10 @@ class OperandCheck {
       : graph_(graph), evaluation_(evaluation), tree_(tree), flow_(flow),
         constants_(constants), budget_(budget), original_(original) {}
   void Run() {
+    VerifyRenewalInput(graph_, budget_);
+    RequireMeaning(original_.environment_renewal == graph_.environment_renewal,
+                   Error::kOperand);
+    VerifyRenewalBindings(tree_, original_, budget_);
     VerifyGuardedCatchInput(graph_.guarded_catches, budget_);
     RequireMeaning(original_.guarded_catches == graph_.guarded_catches, Error::kOperand);
     RequireMeaning(constants_.operations.size() == graph_.ops.size() &&

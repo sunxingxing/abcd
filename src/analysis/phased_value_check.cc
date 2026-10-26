@@ -217,6 +217,8 @@ std::variant<PhasedImportProof, ValueImportFailure> VerifyImportedPhases(
   try {
     PhaseQuota quota{budget};
     const auto reachable = CheckPhaseInput(input, quota);
+    RequirePhase(graph.environment_renewal == input.environments.renewal,
+                 Error::kInputMismatch);
     RequirePhase(graph.guarded_catches == input.proof.guarded, Error::kInputMismatch);
     RequirePhase(graph.revision.value == 0 && graph.cfg_revision.value == 0 &&
         graph.phases.size() == input.flow.nodes.size() && graph.blocks.size() == graph.phases.size() &&

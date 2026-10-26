@@ -1,12 +1,14 @@
 #include "cell_lifetime.h"
+
+#include <bit>
+#include <limits>
+#include <new>
+#include <stdexcept>
+
+#include "environment_renewal_binding.h"
 #include "exception_tree.h"
 #include "for_of_emission.h"
 #include "switch_region.h"
-
-#include <limits>
-#include <bit>
-#include <new>
-#include <stdexcept>
 
 namespace abcd::source {
 namespace {
@@ -282,7 +284,10 @@ class Planner {
           // A smaller source scope may start later only once per original
           // environment activation. Crossing a loop would create fresh cells
           // for an old allocation and is never admitted by containment alone.
-          Require(loop_depth[at->value] == loop_depth[scope->value], Error::kScopeEscape);
+          Require(loop_depth[at->value] == loop_depth[scope->value] ||
+                      (graph_.environment_renewal &&
+                       RenewalDeclaration(graph_, *allocation, *store)),
+                  Error::kScopeEscape);
           declared = *at;
         }
       }

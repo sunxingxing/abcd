@@ -1,9 +1,4 @@
-#include "guarded_catch_verification.h"
-#include "phased_parameter_defaults.h"
 #include "recovery_flow.h"
-#include "template_tree.h"
-#include "super_store.h"
-#include "switch_syntax.h"
 
 #include <algorithm>
 #include <limits>
@@ -15,14 +10,20 @@
 #include "class_inner_scope.h"
 #include "class_tree.h"
 #include "concurrent_tree.h"
+#include "environment_renewal_binding.h"
+#include "exception_stage_recovery.h"
 #include "expression_children.h"
 #include "expression_observation.h"
 #include "flow_units.h"
-#include "exception_stage_recovery.h"
+#include "guarded_catch_verification.h"
 #include "loop_syntax.h"
 #include "parameter_expression_tree.h"
 #include "parameter_recovery.h"
+#include "phased_parameter_defaults.h"
 #include "recovery_scratch.h"
+#include "super_store.h"
+#include "switch_syntax.h"
+#include "template_tree.h"
 namespace abcd::source {
 namespace {
 using Error=TreeStructureError;
@@ -106,7 +107,14 @@ class FlowBuilder {
     if(!projection_.cells){owned_cells=AnalyzeSourceCells(tree_,budget_);projection_.cells=&*owned_cells;}
     RequireTree(projection_.cells->owner==&tree_&&projection_.cells->access.size()==tree_.symbols.size(),Error::kOwnership);
     result_.unit_captures_complete=projection_.cells->captures_complete;
-    if(result_.original) { VerifyGuardedCatchInput(result_.original->guarded_catches,budget_); CheckOriginalFlow(tree_,*result_.original); VerifyInactiveOriginalRegions(*result_.original,budget_); VerifyOriginalConcurrent(tree_,*result_.original,budget_); VerifyOriginalTemplates(tree_,*result_.original,budget_); }
+    if (result_.original) {
+      VerifyRenewalBindings(tree_, *result_.original, budget_);
+      VerifyGuardedCatchInput(result_.original->guarded_catches, budget_);
+      CheckOriginalFlow(tree_, *result_.original);
+      VerifyInactiveOriginalRegions(*result_.original, budget_);
+      VerifyOriginalConcurrent(tree_, *result_.original, budget_);
+      VerifyOriginalTemplates(tree_, *result_.original, budget_);
+    }
     RequireTree(projection_.normal_kinds.empty()||projection_.normal_kinds.size()==tree_.expressions.size(),Error::kOwnership);
     Resize(result_.normal_kinds,projection_.normal_kinds.size());
     std::copy(projection_.normal_kinds.begin(),projection_.normal_kinds.end(),result_.normal_kinds.begin());
@@ -510,6 +518,26 @@ class FlowBuilder {
       RequireTree(cell.binding.value<result.bindings.size(),Error::kOwnership);
       const auto& binding=result.bindings[cell.binding.value];
       if(std::holds_alternative<analysis::EnvironmentId>(cell.storage.environment)) {
+        if (result.original->environment_renewal && cell.declaration &&
+            !cell.activation) {
+          const auto& proof = result.original->environment_renewal->proof;
+          const auto family =
+              std::get<analysis::EnvironmentId>(cell.storage.environment);
+          budget_.Step(1 + std::bit_width(proof.resets.size()));
+          const auto reset =
+              std::lower_bound(proof.resets.begin(), proof.resets.end(),
+                               std::pair{family.value, cell.storage.slot.value},
+                               [](const auto& r, auto key) {
+                                 return std::pair{r.family.value, r.slot} < key;
+                               });
+          if (reset != proof.resets.end() && reset->family == family &&
+              reset->slot == cell.storage.slot.value) {
+            queries.push_back({cell.scope, cell.binding,
+                               result.statements[cell.declaration->value]});
+            selected.push_back(i);
+            continue;
+          }
+        }
         if(!cell.activation||!cell.declaration||cell.activation->operation.value>=allocations.size()||
             cell.activation->marker.value>=result.statements.size())continue;
         const auto& states=*result.original->environments;

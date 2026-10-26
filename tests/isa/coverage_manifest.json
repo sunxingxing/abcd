@@ -11161,6 +11161,10 @@
     {
       "test": "isa_guarded_catch_payload_source_test",
       "producer": "tests/isa/guarded_catch_payload_test.py"
+    },
+    {
+      "test": "isa_environment_renewal_source_test",
+      "producer": "tests/isa/environment_renewal_test.py"
     }
   ]
 }

@@ -1,12 +1,13 @@
-#include "abcd/analysis/exception_throw_domain.h"
 #include <bit>
 #include <new>
 #include <stdexcept>
 
 #include "../analysis/value_edits.h"
+#include "abcd/analysis/exception_throw_domain.h"
 #include "assignment_values.h"
 #include "call_spread_inputs.h"
 #include "derived_native_protocol.h"
+#include "environment_renewal_binding.h"
 #include "evaluation_aliases.h"
 #include "evaluation_failure.h"
 #include "evaluation_flow.h"
@@ -54,6 +55,12 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
         (plan.guarded_peers.empty() || plan.guarded_peers.size() == graph.ops.size()), Error::kOwnership);
     Require(plan.closed_expressions.empty() || (flow == EvaluationFlow::kNormal &&
         plan.closed_expressions.size() == graph.ops.size()), Error::kOwnership);
+    if (graph.environment_renewal) {
+      TreeCheckBudget checked(budget);
+      VerifyRenewalInput(graph, checked);
+      Require(checked.Work() <= budget.work, Error::kWorkLimit);
+      budget.work -= checked.Work();
+    }
     auto work = budget.work;
     const auto step = [&](std::size_t count = 1) {
       Require(count <= work, Error::kWorkLimit); work -= count;

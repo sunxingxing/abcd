@@ -1,3 +1,4 @@
+#include "environment_renewal_binding.h"
 #include "phased_parameter_defaults.h"
 #include "tree_correspondence.h"
 
@@ -124,6 +125,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
       mark_copy(root);
     }
   }
+  VerifyRenewalInput(graph, budget);
   for (std::size_t i = 0; i < graph.ops.size(); ++i) {
     budget.Step();
     const auto& op = graph.ops[i];

@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_PHASED_BODY_H_
 #define ABCD_SOURCE_PHASED_BODY_H_
 
+#include "abcd/analysis/environment_renewal.h"
 #include "class_creator.h"
 #include "exception_tree.h"
 #include "function_context.h"
@@ -18,9 +19,12 @@ enum class PhasedMethodError : std::uint8_t {
 // or input certificate is constructed from this envelope.
 struct PhasedFlowFailure {
   PhasedMethodError kind;
-  std::variant<analysis::SemanticFailure, analysis::FlowFailure, analysis::DispatchFailure> cause;
+  std::variant<analysis::SemanticFailure, analysis::FlowFailure,
+               analysis::DispatchFailure, analysis::EnvironmentFlowFailure>
+      cause;
   abc::EntityOffset method;
   std::optional<abc::CodeOffset> pc, working_pc;
+  std::optional<analysis::EnvironmentRenewalFailure> renewal;
 };
 struct PhasedInputFailure {
   analysis::ExceptionInputFailure cause;

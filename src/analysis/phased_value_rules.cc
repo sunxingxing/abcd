@@ -1,5 +1,7 @@
 #include "phased_value_rules.h"
 
+#include "abcd/analysis/environment_renewal.h"
+
 namespace abcd::analysis::detail {
 FlowEdgeKind PhaseEdgeKind(ExceptionArcKind kind) {
   switch (kind) {
@@ -48,6 +50,17 @@ std::vector<PhaseReachability> CheckPhaseInput(const PhasedValueInput& input, Ph
   RequirePhase(proof.guarded == input.proof.guarded && proof.arguments == input.proof.arguments && proof.reads == input.proof.reads &&
       proof.work_units == input.proof.work_units, PhaseError::kInputMismatch);
   const auto& nodes = input.flow.nodes;
+  if (input.environments.renewal) {
+    const auto& owner = *input.environments.renewal;
+    RequirePhase(
+        owner.flow.get() == &input.flow && owner.ssa.get() == &input.ssa,
+        PhaseError::kInputMismatch);
+    const auto checked = VerifyRenewedEnvironmentFlow(owner, input.environments,
+                                                      quota.Remaining());
+    RequirePhase(std::holds_alternative<std::uint64_t>(checked),
+                 PhaseError::kInputMismatch);
+    quota.Work(std::get<std::uint64_t>(checked));
+  }
   RequirePhase(!nodes.empty() && input.environments.before.size() == nodes.size(), PhaseError::kInputMismatch);
   std::vector<PhaseReachability> reachable;
   std::vector<ExceptionNodeId> queue;

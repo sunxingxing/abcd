@@ -1,5 +1,3 @@
-#include "guarded_catch_verification.h"
-#include "phased_parameter_defaults.h"
 #include "tree_flow.h"
 
 #include <algorithm>
@@ -11,12 +9,15 @@
 #include "completion_tree.h"
 #include "concurrent_tree.h"
 #include "derived_native_protocol.h"
+#include "environment_renewal_binding.h"
 #include "exception_tree.h"
 #include "for_in_emission.h"
 #include "for_of_evaluation.h"
+#include "guarded_catch_verification.h"
 #include "literal_field_forest.h"
 #include "logical_evaluation.h"
 #include "logical_regions.h"
+#include "phased_parameter_defaults.h"
 #include "switch_region.h"
 #include "switch_syntax.h"
 #include "tree_checks.h"
@@ -53,6 +54,7 @@ class FlowCheck {
       const ExceptionTreeInput* exceptions = nullptr)
       : graph_(graph), control_(control), evaluation_(evaluation), tree_(tree), budget_(budget),
         exceptions_(exceptions), sequences_(sequences), expression_scopes_(expression_scopes) {
+    VerifyRenewalInput(graph, budget);
     VerifyGuardedCatchInput(graph.guarded_catches, budget);
     VerifyPhasedDefaultInput(graph, tree, budget);
     Require(tree.derived_protocol == evaluation.derived_protocol,

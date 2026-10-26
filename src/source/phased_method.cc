@@ -1,15 +1,16 @@
 #include "phased_method.h"
 
+#include <limits>
 #include <new>
 #include <stdexcept>
 #include <type_traits>
-#include "abcd/analysis/exception_modules.h"
-#include "abcd/analysis/exception_locals.h"
-#include "abcd/analysis/exception_captures.h"
-#include "module_aliases.h"
-#include "abcd/analysis/detail/prepaid_shared.h"
 
+#include "abcd/analysis/detail/prepaid_shared.h"
+#include "abcd/analysis/exception_captures.h"
+#include "abcd/analysis/exception_locals.h"
+#include "abcd/analysis/exception_modules.h"
 #include "function_object.h"
+#include "module_aliases.h"
 
 namespace abcd::source {
 struct PhasedBody::Storage {
@@ -223,8 +224,61 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     quota.Admit(ssa_value.AllocatedBytes()); quota.Step(ssa_work.Consumed());
     auto ssa_owner = quota.Shared<ExceptionSsa>(std::move(ssa_value));
     const auto& ssa = *ssa_owner;
-    auto environments = PhaseResult<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow,
-        {quota.Remaining().bytes}), Error::kEnvironment);
+    auto environment_result =
+        AnalyzeExceptionEnvironments(flow, {quota.Remaining().bytes});
+    if (const auto* failed =
+            std::get_if<EnvironmentFlowFailure>(&environment_result)) {
+      PhasedFlowFailure failure{PhaseError(*failed, Error::kEnvironment),
+                                *failed, context.Target(), failed->offset,
+                                failed->offset};
+      const auto original = std::lower_bound(
+          flow.instructions.begin(), flow.instructions.end(), failed->offset,
+          [](const auto& i, auto pc) { return i.pc < pc; });
+      if (original != flow.instructions.end() && original->pc == failed->offset)
+        failure.pc = original->origin.value_or(failed->offset);
+      if (failed->kind != EnvironmentFlowError::kAmbiguousJoin) return failure;
+      // The failed legacy scratch is gone; retain only its bounded census work
+      // alongside the already charged immutable flow/SSA during the retry.
+      constexpr std::uint64_t kLegacyEnvironmentVisitBound =
+          4 + 2 * std::numeric_limits<std::uint32_t>::digits;
+      if (flow.nodes.size() >
+          quota.Remaining().work / kLegacyEnvironmentVisitBound)
+        return Error::kWorkLimit;
+      quota.Step(flow.nodes.size() * kLegacyEnvironmentVisitBound);
+      // Legacy-first, typed admission. All physical definitions and original
+      // exceptional ports remain in the owner-held, independently replayed
+      // proof.
+      auto renewed = ProveEnvironmentRenewal(
+          flow, ssa,
+          kSourceResourceFailures == ResourceFailureScope::kExcluded
+              ? EnvironmentRenewalResources::kExcluded
+              : EnvironmentRenewalResources::kObservable,
+          quota.Remaining());
+      if (const auto* error =
+              std::get_if<EnvironmentRenewalFailure>(&renewed)) {
+        failure.renewal = *error;
+        return failure;
+      }
+      auto proof = std::get<EnvironmentRenewal>(std::move(renewed));
+      quota.Admit(proof.allocated_bytes);
+      quota.Step(proof.work);
+      auto projected =
+          ProjectRenewedEnvironments(flow, ssa, proof, quota.Remaining());
+      if (const auto* error =
+              std::get_if<EnvironmentRenewalFailure>(&projected)) {
+        failure.renewal = *error;
+        return failure;
+      }
+      auto evidence = quota.Shared<EnvironmentRenewalEvidence>();
+      evidence->flow = flow_owner;
+      evidence->ssa = ssa_owner;
+      evidence->proof = std::move(proof);
+      auto value = std::get<EnvironmentFlow>(std::move(projected));
+      value.renewal = std::move(evidence);
+      environment_result = std::move(value);
+    }
+    auto environments =
+        std::get<EnvironmentFlow>(std::move(environment_result));
     quota.Admit(environments.allocated_bytes); quota.Step(environments.instruction_visits);
     quota.Admit(initialized_modules.size(), sizeof(LanguageLoadFact));
     std::vector<LanguageLoadFact> initialized(initialized_modules.begin(), initialized_modules.end());
@@ -302,10 +356,28 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     // about default undefined initialization. Conditional captured loads retain
     // their original occurrences in FilePhasedFunction; each parent must bind
     // them to initialized cells and complete-family writes close that premise.
-    auto values = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-        value_work, {quota.Remaining().bytes}, kSourcePendingExceptions, loads, {},
-        kSourceCallResults, receiver, kSourceArithmetic, ExceptionThrowRefinement::kNone,
-        binding && context.Position().value < binding->index.methods.size() && binding->index.methods[context.Position().value].owner_offset == binding->record.record() && binding->record.Attributes(binding->file,binding->record.record()) && !binding->record.ForOwner(binding->file,binding->record.record()) && GlobalScripts(context.Identity().contract) ? GlobalReadValues::kLanguage : GlobalReadValues::kUnknown), Error::kValues);
+    auto values = PhaseResult<ExceptionValueFlow>(
+        ExceptionValueFlow::Build(
+            flow, ssa, entries, value_work, {quota.Remaining().bytes},
+            kSourcePendingExceptions, loads, {}, kSourceCallResults, receiver,
+            kSourceArithmetic,
+            environments.renewal
+                ? ExceptionThrowRefinement::kGuardedCatchPayload
+                : ExceptionThrowRefinement::kNone,
+            binding &&
+                    context.Position().value < binding->index.methods.size() &&
+                    binding->index.methods[context.Position().value]
+                            .owner_offset == binding->record.record() &&
+                    binding->record.Attributes(binding->file,
+                                               binding->record.record()) &&
+                    !binding->record.ForOwner(binding->file,
+                                              binding->record.record()) &&
+                    GlobalScripts(context.Identity().contract)
+                ? GlobalReadValues::kLanguage
+                : GlobalReadValues::kUnknown,
+            environments.renewal ? flow_owner : nullptr,
+            environments.renewal ? ssa_owner : nullptr),
+        Error::kValues);
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
     auto verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,

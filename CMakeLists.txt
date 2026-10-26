@@ -104,7 +104,7 @@ target_sources(abcd_analysis PRIVATE src/analysis/capture_summary.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/method_captures.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/lexical.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/environment_index.cc)
-target_sources(abcd_analysis PRIVATE src/analysis/environment_flow.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/environment_flow.cc src/analysis/environment_renewal.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/hole_guard.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/indexed_read.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/indexed_write.cc)
@@ -224,6 +224,7 @@ target_sources(abcd_source PRIVATE src/source/cell_plan.cc)
 target_sources(abcd_source PRIVATE src/source/cell_lifetime.cc src/source/phased_capture_cells.cc)
 target_sources(abcd_source PRIVATE src/source/cell_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/cell_evaluation.cc)
+target_sources(abcd_source PRIVATE src/source/environment_renewal_binding.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_names.cc)
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
 target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
@@ -468,6 +469,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/phased_defaults_test.py)
     add_test(NAME isa_guarded_catch_payload_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/guarded_catch_payload_test.py)
+    add_test(NAME isa_environment_renewal_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/environment_renewal_test.py)
+    add_test(NAME environment_renewal_scale_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/environment_renewal_scale.py)
     add_test(NAME isa_derived_control_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/derived_control_test.py)
     add_test(NAME isa_phased_classes_source_test COMMAND ${Python3_EXECUTABLE}
@@ -648,6 +653,10 @@ if(BUILD_TESTING)
   add_executable(method_lookup_test tests/unit/abc/method_lookup_test.cc)
   target_link_libraries(method_lookup_test PRIVATE abcd_abc)
   add_test(NAME method_lookup_test COMMAND method_lookup_test)
+  add_executable(environment_renewal_test tests/unit/analysis/environment_renewal_test.cc)
+  target_link_libraries(environment_renewal_test PRIVATE abcd_source abcd_corpus)
+  target_compile_definitions(environment_renewal_test PRIVATE ABCD_ENVIRONMENT_RENEWAL_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/environment_renewal/renewal-O0.abc")
+  add_test(NAME environment_renewal_test COMMAND environment_renewal_test)
   add_executable(environment_flow_test tests/unit/analysis/environment_flow_test.cc)
   target_link_libraries(environment_flow_test PRIVATE abcd_analysis)
   add_test(NAME environment_flow_test COMMAND environment_flow_test)
@@ -2784,7 +2793,7 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/phase_copy.mjs $<TARGET_FILE:phase_copy_test>)
     add_test(NAME loop_condition_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_condition.mjs $<TARGET_FILE:loop_syntax_test>)
-    add_test(NAME loop_transition_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals
+    add_test(NAME loop_transition_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_transition.mjs $<TARGET_FILE:loop_transition_test>)
     add_test(NAME loop_initializer_source_test COMMAND ${ABCD_NODE_EXECUTABLE} --expose-internals --stack-size=4096
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/loop_initializer.mjs $<TARGET_FILE:loop_initializer_test>)

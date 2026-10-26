@@ -1,0 +1,85 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/environment_renewal/renewal.js",
+   "path": "tests/fixtures/isa/environment_renewal/renewal-O0.abc",
+   "sha256": "0e0d96a5cf50d8ebe923622083deaae53ecd379048994fb44730c9972c3b8ac2",
+   "source_sha256": "2b96c97210dd298d3f8898df29586936db04e22bc0e7824836f1975c061ee96b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=environment_renewal",
+    "--source-file=renewal.js",
+    "--output=tests/fixtures/isa/environment_renewal/renewal-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/environment_renewal/renewal.js"
+   ],
+   "profile": 6,
+   "kind": "renewal"
+  },
+  {
+   "source": "tests/fixtures/isa/environment_renewal/header.js",
+   "path": "tests/fixtures/isa/environment_renewal/header-O0.abc",
+   "sha256": "1e4f476316e8eb37127920499319e8f241d06ca7678da31352b6fca432c73fb0",
+   "source_sha256": "6562e268df936b2c2f33a512cd98b9954229bc239458bfba10a15acccc10994c",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=environment_renewal",
+    "--source-file=header.js",
+    "--output=tests/fixtures/isa/environment_renewal/header-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/environment_renewal/header.js"
+   ],
+   "profile": 6,
+   "kind": "header"
+  },
+  {
+   "source": "tests/fixtures/isa/environment_renewal/fresh.js",
+   "path": "tests/fixtures/isa/environment_renewal/fresh-O0.abc",
+   "sha256": "a8a436eeee1d95c37e7d794fd4d9bcc94d79491b901167b08d6acc953c04b97f",
+   "source_sha256": "5acd5e844b1cc72bd92f9ab934c277fda3cba196ecb37ff37e0eee4e9b6173cb",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=environment_renewal",
+    "--source-file=fresh.js",
+    "--output=tests/fixtures/isa/environment_renewal/fresh-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/environment_renewal/fresh.js"
+   ],
+   "profile": 6,
+   "kind": "fresh"
+  },
+  {
+   "source": "tests/fixtures/isa/environment_renewal/finally.js",
+   "path": "tests/fixtures/isa/environment_renewal/finally-O0.abc",
+   "sha256": "04d4ed3fae0df8e1a5f0f67061501699c0fccebfbd0501770856146aede6caa0",
+   "source_sha256": "156611db2c89acdef8ea9533db67ac9e2feb1ae179ee51b63f94dbacddf0b1fe",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=environment_renewal",
+    "--source-file=finally.js",
+    "--output=tests/fixtures/isa/environment_renewal/finally-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/environment_renewal/finally.js"
+   ],
+   "profile": 6,
+   "kind": "finally"
+  }
+ ],
+ "note": "O0 body-reset lexical environments and fresh-entry loops; captured header-copy projection remains a typed refusal."
+}

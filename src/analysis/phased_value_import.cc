@@ -32,6 +32,7 @@ std::variant<ImportedPhases, ValueImportFailure> BuildPhasedValues(
     ValueProgram graph;
     graph.arguments = input.proof.arguments;
     graph.guarded_catches = input.proof.guarded;
+    graph.environment_renewal = input.environments.renewal;
     quota.Admit(1, sizeof(OperandView));
     quota.Reserve(graph.phases, flow.nodes.size());
     quota.Reserve(graph.blocks, flow.nodes.size());

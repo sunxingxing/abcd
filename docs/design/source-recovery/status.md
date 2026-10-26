@@ -5,6 +5,68 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Certified environment renewal: body reset (2026-10-27)
+
+- Added the sparse environment-token/correspondence owner and an independent
+  verifier. Physical allocation IDs stay distinct. Slot snapshots, original
+  phi edges, actual parent tokens, copy corridors, initialization Commits,
+  captures and exceptional coverage are retained in one certificate. The
+  ordinary environment agreement solver and ancestry index are unchanged.
+- The new route activates only on typed `kEnvironment` / `kAmbiguousJoin`;
+  the lower cause and original/working join witness remain in failures.
+  Body-reset cells become a block-scoped `let` at the initializer inside the
+  loop body. Cell-state SSA proves initialization exactly once per generation,
+  including loops that would revisit the store without renewal. Header-copy
+  projection deliberately retains typed `kSourceScope` and is follow-up work.
+- The existing resource-exhaustion exclusion accounts for allocation after
+  departure; raw observable-resource analysis refuses. Exception/local/capture
+  input, phased import, working environments, cells, family writes, evaluation,
+  operands/origins, tree flow and recovery independently replay the evidence.
+  Newly admitted cleanup/finally catches reuse the existing guarded catch-payload
+  proof; no new finally rule, source premise or ignored throwing anchor is added.
+- The real O0 fixture has **330 Node comparisons**: multiple cells, old closure
+  writes, initialization callbacks and shared/primitive values, nested scopes,
+  zero iterations, continue/break/throw/finally, await and rejection. Header-copy
+  is an exact typed negative. Owned body/certificate mutations cover slots,
+  saved values, interference, phi edges, parents, generations, Commits, coverage
+  and limits, plus copy/block/renumbering invariance. Fresh-entry fixture output
+  remains **926 bytes, byte-identical** to the baseline engine.
+- Required make targets passed; source-regression passed **65/65**. All **16**
+  related ISA Python tests passed. New ISA/unit/scale tests are separately
+  registered, following existing ISA label practice. Complete IDF avoids
+  repeated per-cell liveness walks; 100/200/201/400/800-cell charged work is
+  **313868 / 634917 / 645280 / 1418395 / 3112657**, within the N log N bound.
+- All **40** inputs, no language flag, match read-only `csr90/def` for every
+  previously complete record: **617 → 618 / 1007**, zero regressions, zero text
+  changes over **3,596,767** prior complete-source bytes, and zero changed typed
+  failures elsewhere. Only **o14/16446 TaskpoolAsyncLevel** becomes complete.
+  Measured CLI peak RSS across these runs is **50,364,416 bytes**. Service
+  m60551 (original 313 / working 310) and DataDriver m42717 (633) retain their
+  nested iterator-close `kMultipleExits` blockers; that work is deferred.
+- Full authoritative Debug CTest swept **967** tests in **3105.52 s**.
+  Its initial 35 failures contain the same 34 B-state failures plus the stale
+  concurrent-metadata expectation below. After that exact rerun, the final
+  result is **933 pass / 34 persistent**, zero newly failing and zero newly
+  passing existing tests. All three new tests pass. Exact names and comparison:
+  `build/env-renewal/ctest-comparison.{json,md}` and adjacent full/rerun logs.
+  The ISA ledger passed over **1159** ABC evidence inputs with unchanged
+  **222 SupportedVerified / 21 SupportedUnverified / 61 Unmeasured /
+  28 NonExecutable**; evidence is in `build/env-renewal/isa/`.
+  A Node 25 Acorn stack overflow in the loop-transition harness was corrected
+  with the neighboring test's explicit 4096-KiB stack allowance; all **108**
+  emitted sources were verified identical to the baseline and assertions stay
+  intact. The concurrent metadata test now requires Taskpool completion and
+  runs all five records through its existing default/alias recompilation and
+  module/kind/sendable/request oracles; its exact rerun passes.
+- Change inventory: **27 production files, +1949/-53 lines**;
+  **16 test/fixture files, +654/-3 text lines**, including four new ABC binaries;
+  CMake **+11/-2**. Complete paths and per-file counts:
+  `build/env-renewal/changes.json`. Unrelated `sample.tar.gz` is untouched.
+- Evidence: `build/env-renewal/{cohort-final/comparison.json,related-results.json,
+  scaling-final.log,fresh-comparison.json}` and
+  [environment-renewal.md](environment-renewal.md). Samples, input ABCs and
+  `build/review` were not modified. cc review rerun: 65/65, cohort csr91/def vs csr90/def 617→618 (o14 TaskpoolAsyncLevel), zero regressions/text changes.
+
 ## Sole source engine, increment B (2026-10-27)
 
 - Retired the eight non-Source identities and `WithLanguageConstructors`.

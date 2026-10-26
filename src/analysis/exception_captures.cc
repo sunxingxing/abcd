@@ -1,6 +1,8 @@
 #include "abcd/analysis/exception_captures.h"
 
 #include <stdexcept>
+
+#include "abcd/analysis/environment_renewal.h"
 #include "idf_scratch.h"
 
 namespace abcd::analysis {
@@ -8,6 +10,17 @@ std::variant<ExceptionCaptures, ExceptionCaptureError> PlanExceptionCaptures(
     const ExceptionFlow& flow, const EnvironmentFlow& environments, SemanticBudget budget) {
   using Error = ExceptionCaptureError;
   try {
+    if (environments.renewal) {
+      const auto& e = *environments.renewal;
+      if (e.flow.get() != &flow) return Error::kInvalidEnvironment;
+      const auto verified =
+          VerifyRenewedEnvironmentFlow(e, environments, budget);
+      if (!std::holds_alternative<std::uint64_t>(verified))
+        return Error::kInvalidEnvironment;
+      const auto work = std::get<std::uint64_t>(verified);
+      if (work > budget.work) return Error::kInvalidEnvironment;
+      budget.work -= work;
+    }
     ExceptionCaptures result;
     const auto charge = [&] {
       if (result.work_units == budget.work) throw Error::kResourceLimit;

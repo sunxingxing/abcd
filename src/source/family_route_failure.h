@@ -25,6 +25,8 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     if constexpr (requires { error.cause; }) CollectFailureCauses(error.cause, out);
     else if constexpr (requires { error.error; }) CollectFailureCauses(error.error, out);
     else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);
+    if constexpr (requires { error.renewal; })
+      if (error.renewal) CollectFailureCauses(*error.renewal, out);
     if constexpr (requires { error.throw_domain; }) if (error.throw_domain) CollectFailureCauses(*error.throw_domain, out);
     if constexpr (requires { error.concurrent; }) if (error.concurrent) CollectFailureCauses(*error.concurrent, out);
     if constexpr (std::is_same_v<T, ConcurrentFailure>) if (error.metadata) CollectFailureCauses(*error.metadata, out);

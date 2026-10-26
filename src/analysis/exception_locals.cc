@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <tuple>
 
+#include "abcd/analysis/environment_renewal.h"
+
 namespace abcd::analysis {
 namespace {
 auto Key(LocalCell cell) { return std::tuple(cell.environment.value, cell.slot.value); }
@@ -25,6 +27,17 @@ std::variant<ExceptionLocals, ExceptionLocalFailure> ProveExceptionLocals(
   if (writes != ClosureWrites::kUnknown && writes != ClosureWrites::kLanguage)
     return fail(Error::kInvalidEnvironment);
   try {
+    if (environments.renewal) {
+      const auto& e = *environments.renewal;
+      if (e.flow.get() != &flow) return fail(Error::kInvalidEnvironment);
+      const auto verified =
+          VerifyRenewedEnvironmentFlow(e, environments, budget);
+      if (!std::holds_alternative<std::uint64_t>(verified))
+        return fail(Error::kInvalidEnvironment);
+      const auto work = std::get<std::uint64_t>(verified);
+      if (work > budget.work) return fail(Error::kInvalidEnvironment);
+      budget.work -= work;
+    }
     ExceptionLocals result;
     result.writes = writes;
     auto& plan = result.plan;

@@ -4,8 +4,9 @@
 #include <new>
 #include <stdexcept>
 
-#include "value_flow.h"
+#include "abcd/analysis/environment_renewal.h"
 #include "value_edits.h"
+#include "value_flow.h"
 
 namespace abcd::analysis {
 namespace {
@@ -73,6 +74,124 @@ EnvironmentOperation PhaseOperation(const ValueProgram& graph, const ValuePhaseS
   return operation;
 }
 
+ValueEnvironments Renewed(const ValueProgram& graph, Quota& quota) {
+  Require(graph.environment_renewal && !graph.phases.empty(), Error::kState);
+  const auto& owner = *graph.environment_renewal;
+  Require(owner.flow && owner.ssa, Error::kState);
+  auto built = ProjectRenewedEnvironments(*owner.flow, *owner.ssa, owner.proof,
+                                          quota.Remaining());
+  const auto* failure = std::get_if<EnvironmentRenewalFailure>(&built);
+  if (failure)
+    throw failure->kind == EnvironmentRenewalError::kResourceLimit
+        ? Error::kResourceLimit
+    : failure->kind == EnvironmentRenewalError::kWorkLimit ? Error::kWorkLimit
+                                                           : Error::kState;
+  auto raw = std::get<EnvironmentFlow>(std::move(built));
+  quota.Admit(raw.allocated_bytes, 1);
+  quota.Step(raw.instruction_visits);
+  ValueEnvironments result{graph.revision, graph.cfg_revision,
+                           EnvironmentFlow{std::move(raw.environments)}};
+  result.flow.renewal = graph.environment_renewal;
+  quota.Size(result.phase_entries, graph.phases.size());
+  quota.Size(result.flow.before, graph.ops.size());
+  quota.Size(result.normal_after, graph.ops.size());
+  quota.Size(result.flow.allocations, raw.allocations.size());
+  quota.Admit(raw.bindings.size(), sizeof(BoundLexicalSite));
+  result.flow.bindings.reserve(raw.bindings.size());
+  std::vector<std::optional<WorkBlockId>> before, commit;
+  quota.Size(before, owner.flow->instructions.size());
+  quota.Size(commit, before.size());
+  for (std::uint32_t b = 0; b < graph.phases.size(); ++b) {
+    quota.Step();
+    const auto& phase = graph.phases[b];
+    Require(phase.input.value < owner.flow->nodes.size(), Error::kOrigin);
+    const auto& original = owner.flow->nodes[phase.input.value];
+    Require(phase.instruction.value == original.instruction.value &&
+                phase.phase == original.phase,
+            Error::kOrigin);
+    result.phase_entries[b] = raw.before[phase.input.value];
+    if (phase.phase == ExceptionPhase::kBefore)
+      before[phase.instruction.value] = WorkBlockId{b};
+    if (phase.phase == ExceptionPhase::kCommit)
+      commit[phase.instruction.value] = WorkBlockId{b};
+  }
+  for (std::uint32_t i = 0; i < graph.ops.size(); ++i) {
+    quota.Step();
+    const auto& op = graph.ops[i];
+    Require(op.origin.value < graph.origins.size(), Error::kOrigin);
+    const auto original = graph.origins[op.origin.value].site.value;
+    Require(original < before.size() && before[original], Error::kOrigin);
+    result.flow.before[i] = result.phase_entries[before[original]->value];
+    if (op.life == ValueLife::kLive &&
+        op.exceptional != ExceptionalCompletion::kAlwaysThrow) {
+      Require(commit[original].has_value(), Error::kOrigin);
+      const auto node = graph.phases[commit[original]->value].input;
+      auto state = raw.before[node.value];
+      if (const auto* push = std::get_if<ValueEnvironmentPush>(&op.operation)) {
+        const auto* input = std::get_if<PushEnvironment>(
+            &owner.flow->instructions[original].operation);
+        Require(
+            input && input->slots == push->slots && input->scope == push->scope,
+            Error::kAllocation);
+      } else if (std::holds_alternative<ValueEnvironmentPop>(op.operation) &&
+                 state) {
+        Require(std::holds_alternative<PopEnvironment>(
+                    owner.flow->instructions[original].operation),
+                Error::kState);
+        const auto parent =
+            result.flow.environments.Ancestor(*state, LexicalDepth{1});
+        Require(std::holds_alternative<EnvironmentRef>(parent), Error::kState);
+        state = std::get<EnvironmentRef>(parent);
+      }
+      result.normal_after[i] = state;
+    }
+  }
+  for (std::size_t i = 0; i < raw.allocations.size(); ++i) {
+    quota.Step();
+    const auto& a = raw.allocations[i];
+    const auto instruction = owner.flow->nodes[a.instruction].instruction.value;
+    Require(instruction < graph.input.sites.size() &&
+                graph.input.sites[instruction],
+            Error::kOrigin);
+    const auto op = *graph.input.sites[instruction];
+    Require(op.value < graph.ops.size() &&
+                graph.ops[op.value].life == ValueLife::kLive &&
+                std::holds_alternative<ValueEnvironmentPush>(
+                    graph.ops[op.value].operation),
+            Error::kAllocation);
+    result.flow.allocations[i] = {op.value, a.environment};
+    result.normal_after[op.value] = owner.proof.families[a.environment.value];
+  }
+  for (const auto& b : raw.bindings) {
+    quota.Step();
+    const auto instruction = owner.flow->nodes[b.instruction].instruction.value;
+    Require(instruction < graph.input.sites.size() &&
+                graph.input.sites[instruction],
+            Error::kBinding);
+    const auto op = *graph.input.sites[instruction];
+    Require(op.value < graph.ops.size(), Error::kBinding);
+    const auto operation = Operation(graph.ops[op.value]);
+    const LexicalAddress* address = nullptr;
+    if (const auto* load = std::get_if<LexicalLoad>(&operation))
+      address = &load->address;
+    if (const auto* store = std::get_if<LexicalStore>(&operation))
+      address = &store->address;
+    Require(address != nullptr, Error::kBinding);
+    const auto resolved = result.flow.environments.Resolve(
+        *result.flow.before[op.value], *address);
+    Require(std::holds_alternative<LexicalBinding>(resolved) &&
+                SameBinding(std::get<LexicalBinding>(resolved), b.binding),
+            Error::kBinding);
+    result.flow.bindings.push_back({op.value, b.binding});
+  }
+  result.allocated_bytes =
+      sizeof(result) + raw.allocated_bytes +
+      result.phase_entries.capacity() * sizeof(result.phase_entries[0]) +
+      result.flow.before.capacity() * sizeof(result.flow.before[0]) +
+      result.normal_after.capacity() * sizeof(result.normal_after[0]);
+  result.work = quota.Work();
+  return result;
+}
 std::variant<std::uint64_t, ValueEnvironmentError> VerifyEnvironments(
     const ValueProgram& graph, const ValueEnvironments& environments, SemanticBudget budget,
     EnvironmentGraph kind) {
@@ -80,6 +199,44 @@ std::variant<std::uint64_t, ValueEnvironmentError> VerifyEnvironments(
     Quota quota(budget);
     Require(environments.revision == graph.revision && environments.cfg_revision == graph.cfg_revision, Error::kRevision);
     Flow(graph, quota, kind);
+    if (graph.environment_renewal) {
+      Require(kind == EnvironmentGraph::kPhased &&
+                  environments.flow.renewal == graph.environment_renewal,
+              Error::kState);
+      const auto expected = Renewed(graph, quota);
+      const auto& a = environments.flow;
+      const auto& b = expected.flow;
+      Require(a.before == b.before &&
+                  environments.phase_entries == expected.phase_entries &&
+                  environments.normal_after == expected.normal_after &&
+                  a.bindings.size() == b.bindings.size() &&
+                  a.allocations.size() == b.allocations.size() &&
+                  a.environments.Size() == b.environments.Size(),
+              Error::kState);
+      for (std::size_t i = 0; i < a.bindings.size(); ++i) {
+        quota.Step();
+        Require(a.bindings[i].instruction == b.bindings[i].instruction &&
+                    SameBinding(a.bindings[i].binding, b.bindings[i].binding),
+                Error::kBinding);
+      }
+      for (std::size_t i = 0; i < a.allocations.size(); ++i) {
+        quota.Step();
+        Require(
+            a.allocations[i].instruction == b.allocations[i].instruction &&
+                a.allocations[i].environment == b.allocations[i].environment,
+            Error::kAllocation);
+      }
+      for (std::uint32_t i = 0; i < a.environments.Size(); ++i) {
+        quota.Step();
+        const auto* x = a.environments.Find({i});
+        const auto* y = b.environments.Find({i});
+        Require(x && y && x->parent == y->parent &&
+                    x->allocation.slots == y->allocation.slots &&
+                    x->allocation.scope == y->allocation.scope,
+                Error::kAllocation);
+      }
+      return quota.Work();
+    }
     const auto& flow = environments.flow;
     Require(flow.before.size() == graph.ops.size() &&
         environments.normal_after.size() == graph.ops.size(), Error::kState);
@@ -186,6 +343,10 @@ std::variant<ValueEnvironments, ValueEnvironmentError> BuildEnvironments(
     const ValueProgram& graph, SemanticBudget budget, EnvironmentGraph kind) {
   try {
     Quota quota(budget); Flow(graph, quota, kind);
+    if (graph.environment_renewal) {
+      Require(kind == EnvironmentGraph::kPhased, Error::kState);
+      return Renewed(graph, quota);
+    }
     quota.Admit(1, sizeof(ValueEnvironments));
     std::vector<EnvironmentSite> sites;
     NormalFlow topology;
