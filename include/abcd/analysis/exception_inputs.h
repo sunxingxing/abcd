@@ -14,6 +14,7 @@ struct ExceptionInputFailure {
   std::optional<ExceptionNodeId> node;
   std::optional<SsaValueId> value;
   std::uint64_t work_units = 0;
+  std::optional<ExceptionThrowDomainError> throw_domain;
 };
 struct ExceptionInputProof {
   std::uint64_t reads = 0;
@@ -22,6 +23,7 @@ struct ExceptionInputProof {
   // Borrowed owner-certified original-coordinate local load premises. Source
   // owners retain their immutable arena and independently close creation/writes.
   std::span<const LanguageLoadFact> initialized_modules;
+  std::shared_ptr<const GuardedCatchEvidence> guarded;
 };
 // Import can retain a Hole-valued protocol without interpreting it as JS.
 // Source consumers still use kLanguage; transport is not source admission.
@@ -48,6 +50,7 @@ VerifyExceptionInputs(const ExceptionFlow& flow, const ExceptionSsa& ssa,
                       std::uint64_t work = kDefaultSemanticWork,
                       const ArgumentFrameFact* arguments = nullptr,
                       ExceptionInputDomain domain = ExceptionInputDomain::kLanguage,
-                      std::span<const LanguageLoadFact> initialized_modules = {});
+                      std::span<const LanguageLoadFact> initialized_modules = {},
+                      std::size_t bytes = SemanticBudget{}.bytes);
 }  // namespace abcd::analysis
 #endif

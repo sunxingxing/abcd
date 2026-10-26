@@ -9,7 +9,7 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
     const ExceptionFlow& flow, const ExceptionSsa& ssa,
     const EnvironmentFlow& environments, const ExceptionValueFlow& values,
     std::uint64_t work, const ArgumentFrameFact* arguments, ExceptionInputDomain domain,
-    std::span<const LanguageLoadFact> initialized_modules) {
+    std::span<const LanguageLoadFact> initialized_modules, std::size_t bytes) {
   using Error = ExceptionInputError;
   ExceptionInputProof proof;
   const auto fail = [&](Error kind, abc::CodeOffset pc = {},
@@ -21,6 +21,22 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
       flow.nodes.size() > UINT32_MAX ||
       values.Facts().size() != ssa.Values().size())
     return fail(Error::kMismatchedAnalysis);
+  if (values.GuardedPayloads()) {
+    try {
+      const auto& owner = *values.GuardedPayloads();
+      if ((owner.flow && owner.flow.get()!=&flow) || (owner.ssa && owner.ssa.get()!=&ssa))
+        throw ExceptionThrowDomainFailure{ExceptionThrowDomainError::kInput};
+      RawEventArena arena{{bytes, work}};
+      VerifyGuardedCatchPayloads(flow, ssa, values.GuardedPayloads()->proof, arena);
+      proof.work_units += arena.Work();
+      proof.guarded = values.GuardedPayloads();
+    } catch (const ExceptionThrowDomainFailure& error) {
+      auto failure = fail(Error::kMismatchedAnalysis); failure.throw_domain = error.kind; return failure;
+    } catch (const RawEventFailure& error) {
+      return fail(error.kind == RawEventError::kWorkLimit || error.kind == RawEventError::kResourceLimit
+          ? Error::kResourceLimit : Error::kMismatchedAnalysis);
+    } catch (const std::bad_alloc&) { return fail(Error::kResourceLimit); }
+  }
   const auto reads = ssa.AllReads();
   std::optional<ArgumentWindow> window;
   std::size_t cursor = 0;

@@ -44,6 +44,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     else if constexpr (requires { error.error; }) merge(error.error);
     else if constexpr (requires { error.reason; }) merge(error.reason);
     else static_assert(requires { error.kind; });
+    if constexpr (requires { error.throw_domain; }) if(error.throw_domain) merge(*error.throw_domain);
     if constexpr (std::is_same_v<T, analysis::SemanticFailure>) merge(error.ssa_cause);
     if constexpr (std::is_same_v<T, analysis::RegisterUseFailure>)
       if (error.instruction) merge(*error.instruction);

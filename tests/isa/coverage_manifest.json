@@ -11157,6 +11157,10 @@
     {
       "test": "isa_phased_defaults_source_test",
       "producer": "tests/isa/phased_defaults_test.py"
+    },
+    {
+      "test": "isa_guarded_catch_payload_source_test",
+      "producer": "tests/isa/guarded_catch_payload_test.py"
     }
   ]
 }

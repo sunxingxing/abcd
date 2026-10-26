@@ -1,10 +1,11 @@
 #ifndef ABCD_ANALYSIS_EXCEPTION_VALUE_FLOW_H_
 #define ABCD_ANALYSIS_EXCEPTION_VALUE_FLOW_H_
 #include "abcd/analysis/exception_ssa.h"
+#include "abcd/analysis/exception_throw_domain.h"
 #include "abcd/analysis/register_value_flow.h"
 
 namespace abcd::analysis {
-enum class ExceptionThrowRefinement : std::uint8_t { kNone, kGuardedNonHole };
+enum class ExceptionThrowRefinement : std::uint8_t { kNone, kGuardedNonHole, kGuardedCatchPayload };
 enum class PendingExceptionValues : std::uint8_t { kUnknown, kLanguage };
 enum class ExceptionLoadProof : std::uint8_t {
   kLanguage, kCallerGuardedModule, kCatchGuardedModule
@@ -53,16 +54,22 @@ class ExceptionValueFlow {
       // Optional fallback, only after ordinary input validation refused. Derive
       // and independently recheck full-CFG edge constraints on explicit throws.
       ExceptionThrowRefinement throws = ExceptionThrowRefinement::kNone,
-      GlobalReadValues globals = GlobalReadValues::kUnknown);
+      GlobalReadValues globals = GlobalReadValues::kUnknown,
+      std::shared_ptr<const ExceptionFlow> flow_owner = {},
+      std::shared_ptr<const ExceptionSsa> ssa_owner = {});
   [[nodiscard]] std::span<const ValueKinds> Facts() const {
     return {facts_.get(), facts_ ? count_ : 0};
   }
-  [[nodiscard]] std::size_t AllocatedBytes() const { return Facts().size_bytes(); }
+  [[nodiscard]] std::size_t AllocatedBytes() const {
+    return Facts().size_bytes() + (guarded_ ? guarded_->owner_bytes + guarded_->arena.Peak() : 0);
+  }
+  const std::shared_ptr<const GuardedCatchEvidence>& GuardedPayloads() const { return guarded_; }
   ValueFlowWork work;
  private:
   ExceptionValueFlow() = default;
   std::unique_ptr<ValueKinds[]> facts_;
   std::size_t count_ = 0;
+  std::shared_ptr<const GuardedCatchEvidence> guarded_;
 };
 }  // namespace abcd::analysis
 #endif

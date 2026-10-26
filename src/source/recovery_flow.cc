@@ -1,3 +1,4 @@
+#include "guarded_catch_verification.h"
 #include "phased_parameter_defaults.h"
 #include "recovery_flow.h"
 #include "template_tree.h"
@@ -105,7 +106,7 @@ class FlowBuilder {
     if(!projection_.cells){owned_cells=AnalyzeSourceCells(tree_,budget_);projection_.cells=&*owned_cells;}
     RequireTree(projection_.cells->owner==&tree_&&projection_.cells->access.size()==tree_.symbols.size(),Error::kOwnership);
     result_.unit_captures_complete=projection_.cells->captures_complete;
-    if(result_.original) { CheckOriginalFlow(tree_,*result_.original); VerifyInactiveOriginalRegions(*result_.original,budget_); VerifyOriginalConcurrent(tree_,*result_.original,budget_); VerifyOriginalTemplates(tree_,*result_.original,budget_); }
+    if(result_.original) { VerifyGuardedCatchInput(result_.original->guarded_catches,budget_); CheckOriginalFlow(tree_,*result_.original); VerifyInactiveOriginalRegions(*result_.original,budget_); VerifyOriginalConcurrent(tree_,*result_.original,budget_); VerifyOriginalTemplates(tree_,*result_.original,budget_); }
     RequireTree(projection_.normal_kinds.empty()||projection_.normal_kinds.size()==tree_.expressions.size(),Error::kOwnership);
     Resize(result_.normal_kinds,projection_.normal_kinds.size());
     std::copy(projection_.normal_kinds.begin(),projection_.normal_kinds.end(),result_.normal_kinds.begin());

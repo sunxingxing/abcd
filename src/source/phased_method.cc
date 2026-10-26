@@ -7,6 +7,7 @@
 #include "abcd/analysis/exception_locals.h"
 #include "abcd/analysis/exception_captures.h"
 #include "module_aliases.h"
+#include "abcd/analysis/detail/prepaid_shared.h"
 
 #include "function_object.h"
 
@@ -15,8 +16,8 @@ struct PhasedBody::Storage {
   RouteInputIdentity identity;
   abc::EntityOffset target;
   abc::FrameLayout frame;
-  analysis::ExceptionFlow flow;
-  analysis::ExceptionSsa ssa;
+  std::shared_ptr<const analysis::ExceptionFlow> flow;
+  std::shared_ptr<const analysis::ExceptionSsa> ssa;
   analysis::EnvironmentFlow environments;
   analysis::ExceptionValueFlow values;
   analysis::ExceptionInputProof proof;
@@ -34,7 +35,7 @@ struct PhasedBody::Storage {
   std::size_t bytes;
   std::uint64_t work;
   analysis::PhasedValueInput Input() const {
-    return {flow, ssa, environments, values, proof, frame};
+    return {*flow, *ssa, environments, values, proof, frame};
   }
 };
 struct PhasedMethod::Storage {
@@ -74,6 +75,12 @@ class PhaseBudget {
   void Step(std::uint64_t work = 1) {
     if (work > remaining_.work) throw Error::kWorkLimit;
     remaining_.work -= work;
+  }
+  template<class T, class... Args> std::shared_ptr<T> Shared(Args&&... args) {
+    analysis::detail::IdfScratch memory{remaining_.bytes}; std::size_t bytes = 0;
+    auto owner = std::allocate_shared<T>(analysis::detail::PrepaidSharedAllocator<T>{memory,bytes},
+        std::forward<Args>(args)...);
+    Admit(bytes); return owner;
   }
   analysis::SemanticBudget Remaining() const { return remaining_; }
   std::size_t Bytes() const { return initial_.bytes - remaining_.bytes; }
@@ -216,7 +223,9 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
         }
       }, flow_result);
     }
-    auto flow = std::get<ExceptionFlow>(std::move(flow_result));
+    quota.Admit(std::get<ExceptionFlow>(flow_result).allocated_bytes);
+    auto flow_owner = quota.Shared<ExceptionFlow>(std::get<ExceptionFlow>(std::move(flow_result)));
+    auto& flow = *flow_owner;
     for(std::size_t i=0;i<flow.instructions.size();++i) {
       quota.Step();const auto& instruction=flow.instructions[i];
       if(const auto* load=std::get_if<ModuleLoad>(&instruction.operation);load&&load->space==ModuleSpace::kExternal&&(load->domain==ModuleDomain::kSendable||context.ModuleDomain()==ModuleDomain::kSendable)) {
@@ -229,11 +238,13 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       if (i && source_pcs[i] <= source_pcs[i - 1]) return Error::kInput;
       flow.instructions[i].origin = source_pcs[i];
     }
-    quota.Admit(flow.allocated_bytes); quota.Step(flow.work_units);
+    quota.Step(flow.work_units);
     IdfQuota ssa_work{quota.Remaining().work};
-    auto ssa = PhaseResult<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers,
+    auto ssa_value = PhaseResult<ExceptionSsa>(ExceptionSsa::Build(flow, frame.registers,
         ssa_work, {quota.Remaining().bytes}), Error::kSsa);
-    quota.Admit(ssa.AllocatedBytes()); quota.Step(ssa_work.Consumed());
+    quota.Admit(ssa_value.AllocatedBytes()); quota.Step(ssa_work.Consumed());
+    auto ssa_owner = quota.Shared<ExceptionSsa>(std::move(ssa_value));
+    const auto& ssa = *ssa_owner;
     auto environments = PhaseResult<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow,
         {quota.Remaining().bytes}), Error::kEnvironment);
     quota.Admit(environments.allocated_bytes); quota.Step(environments.instruction_visits);
@@ -339,6 +350,37 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       values = std::move(refined);
       verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,
           arguments ? &*arguments : nullptr, ExceptionInputDomain::kHoleTransport, initialized);
+    }
+    if (const auto* failure = std::get_if<ExceptionInputFailure>(&verified);
+        failure && failure->kind == ExceptionInputError::kInternalValue) {
+      // Legacy-first: only the two existing input proofs' refusal reaches
+      // activation-safe edge facts. Successful source projections are untouched.
+      quota.Step(failure->work_units);
+      IdfQuota current_work{quota.Remaining().work};
+      auto current = ExceptionValueFlow::Build(flow, ssa, entries, current_work,
+          {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
+          NormalCallResults(context.Identity().contract), receiver, Arithmetic(context.Identity().contract),
+          ExceptionThrowRefinement::kGuardedCatchPayload,
+          binding && context.Position().value < binding->index.methods.size() && binding->index.methods[context.Position().value].owner_offset == binding->record.record() && binding->record.Attributes(binding->file,binding->record.record()) && !binding->record.ForOwner(binding->file,binding->record.record()) && GlobalScripts(context.Identity().contract) ? GlobalReadValues::kLanguage : GlobalReadValues::kUnknown,
+          flow_owner, ssa_owner);
+      if (const auto* error = std::get_if<ValueFlowFailure>(&current)) {
+        if (error->throw_domain) {
+          auto cause = *failure; cause.throw_domain = error->throw_domain;
+          const auto working = cause.pc;
+          if (cause.node && cause.node->value < flow.nodes.size()) {
+            const auto instruction = flow.nodes[cause.node->value].instruction;
+            if (instruction.value < flow.instructions.size())
+              cause.pc = flow.instructions[instruction.value].origin.value_or(working);
+          }
+          return PhasedInputFailure{cause, quota.Bytes(), quota.Work() + current_work.Consumed(), working};
+        }
+        return PhaseError(*error, Error::kValues);
+      }
+      quota.Step(current_work.Consumed());
+      values = std::get<ExceptionValueFlow>(std::move(current));
+      quota.Admit(values.AllocatedBytes());
+      verified = VerifyExceptionInputs(flow, ssa, environments, values, quota.Remaining().work,
+          arguments ? &*arguments : nullptr, ExceptionInputDomain::kHoleTransport, initialized, quota.Remaining().bytes);
     }
     if (const auto* failure = std::get_if<ExceptionInputFailure>(&verified)) {
       auto original = *failure;
@@ -499,8 +541,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
         std::make_unique<Storage>(Storage{context.Identity(),
                                           context.Target(),
                                           frame,
-                                          std::move(flow),
-                                          std::move(ssa),
+                                          std::move(flow_owner),
+                                          std::move(ssa_owner),
                                           std::move(environments),
                                           std::move(values),
                                           std::move(proof),

@@ -34,16 +34,18 @@ std::vector<PhaseReachability> CheckPhaseInput(const PhasedValueInput& input, Ph
   const auto* layout = std::get_if<abc::FrameLayout>(&built);
   RequirePhase(layout && *layout == frame && (!input.flow.frame || *input.flow.frame == frame),
       PhaseError::kInputMismatch);
+  RequirePhase(!input.proof.guarded || (input.proof.guarded->flow.get()==&input.flow &&
+      input.proof.guarded->ssa.get()==&input.ssa), PhaseError::kInputMismatch);
   const auto checked = VerifyExceptionInputs(input.flow, input.ssa, input.environments,
       input.values, quota.Remaining().work,
       input.proof.arguments ? &*input.proof.arguments : nullptr,
-      ExceptionInputDomain::kHoleTransport, input.proof.initialized_modules);
+      ExceptionInputDomain::kHoleTransport, input.proof.initialized_modules, quota.Remaining().bytes);
   if (const auto* failure = std::get_if<ExceptionInputFailure>(&checked))
     throw ValueImportFailure{failure->kind == ExceptionInputError::kResourceLimit
         ? PhaseError::kWorkLimit : PhaseError::kInputMismatch, failure->pc};
   const auto& proof = std::get<ExceptionInputProof>(checked);
   quota.Work(proof.work_units);
-  RequirePhase(proof.arguments == input.proof.arguments && proof.reads == input.proof.reads &&
+  RequirePhase(proof.guarded == input.proof.guarded && proof.arguments == input.proof.arguments && proof.reads == input.proof.reads &&
       proof.work_units == input.proof.work_units, PhaseError::kInputMismatch);
   const auto& nodes = input.flow.nodes;
   RequirePhase(!nodes.empty() && input.environments.before.size() == nodes.size(), PhaseError::kInputMismatch);

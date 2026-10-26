@@ -1,3 +1,4 @@
+#include "abcd/analysis/exception_throw_domain.h"
 #include <bit>
 #include <new>
 #include <stdexcept>
@@ -58,6 +59,14 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
       Require(count <= work, Error::kWorkLimit); work -= count;
     };
     auto bytes = budget.bytes;
+    if (graph.guarded_catches) {
+      try { step(analysis::VerifyGuardedCatchEvidence(*graph.guarded_catches, {bytes,work})); }
+      catch (const analysis::ExceptionThrowDomainFailure&) { return Error::kOwnership; }
+      catch (const analysis::RawEventFailure& error) {
+        return error.kind == analysis::RawEventError::kWorkLimit ? Error::kWorkLimit :
+            error.kind == analysis::RawEventError::kResourceLimit ? Error::kResourceLimit : Error::kOwnership;
+      }
+    }
     const auto admit = [&](std::size_t count, std::size_t width) {
       Require(count <= bytes / width, Error::kResourceLimit); bytes -= count * width;
     };

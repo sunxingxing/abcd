@@ -7,6 +7,15 @@ using namespace abcd;
 using namespace abcd::source;
 void Check(bool ok) { if (!ok) std::abort(); }
 void Failures() {
+  for (const auto cause : {analysis::ExceptionThrowDomainError::kGuard, analysis::ExceptionThrowDomainError::kPhi,
+      analysis::ExceptionThrowDomainError::kActivation, analysis::ExceptionThrowDomainError::kCoverage}) {
+    analysis::ExceptionInputFailure input{analysis::ExceptionInputError::kMismatchedAnalysis,{17}};
+    input.throw_domain=cause;
+    const auto refused=FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{PhasedInputFailure{input}}}});
+    Check(refused.causes.View().back().domain==FailureDomain<analysis::ExceptionThrowDomainError>() &&
+        refused.causes.View().back().value==static_cast<unsigned>(cause));
+  }
+
   auto projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyPrepareError::kResourceLimit});
   Check(projected.failure_class == RouteFailureClass::kMemoryLimit);
   FamilyTreeFailure tree{{2}, FamilyWriteFailure{FamilyWriteError::kWorkLimit, {2}, abc::CodeOffset{31}}};

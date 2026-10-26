@@ -28,6 +28,7 @@ analysis::ValueKinds Kinds(const OriginalFlow& original,const analysis::ValueOpe
 std::shared_ptr<OriginalFlow> RetainOriginalFlow(const analysis::ValueProgram& graph,
     const FunctionTree& tree,TreeFlow& flow,TreeCheckBudget& budget) {
   auto result=std::allocate_shared<OriginalFlow>(RecoveryAllocator<OriginalFlow>{budget});
+  result->guarded_catches=graph.guarded_catches;
   result->identity=tree.identity;result->method=tree.method;
   result->value_revision=graph.revision;result->cfg_revision=graph.cfg_revision;
   result->statements=tree.statements.size();result->bindings=tree.symbols.size();

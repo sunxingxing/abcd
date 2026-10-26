@@ -5,6 +5,51 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Guarded catch payloads with current-activation evidence (2026-10-26)
+
+- Legacy-first third input route: ordinary input validation and the old guarded
+  retry stay unchanged. The new throw-domain owner validates current SSA
+  definitions/uses, copied identities, every phi predecessor and all incoming
+  Catch sources. A sparse occurrence DAG proves non-Hole facts through guarded
+  edges, phi inputs and catch/rethrow transport, including loops. Only certified
+  throw-to-Catch dependencies are filtered; unrelated payload uses keep Hole.
+  No source premise or default iterator/concurrent policy changed.
+- Immutable shared evidence survives import and recovery. Exception-input,
+  imported-phase, evaluation, operand, tree-flow and recovery verifiers recheck
+  it independently. Guard/phi/activation/coverage failures retain typed
+  `analysis::ExceptionThrowDomainError` causes. PMR buffers and actual shared
+  control blocks are prepaid; the proof arena receives its byte grant after
+  its control block is charged. Sparse indexed work targets O(M log M).
+- Real O0 `guarded_catch_payload` fixture: **216 Node comparisons**, plus a
+  combined array-pattern/for-of/await/outer-catch typed control negative. Unit
+  coverage includes guarded phi arms, catch/copy/rethrow, current loop values,
+  direct-edge/split-block phi equivalence, an unguarded Hole throw, changed phi
+  predecessor, wrong guard direction, replaced loop payload, missing coverage,
+  exact/minus-one budgets and
+  200/201/400/800 widths. Typed causes are checked at the family failure boundary.
+- Acceptance: authoritative make-tree build (`source_regression abc_structure
+  isa_coverage_probe -j 8`) succeeds; `ctest -L '^source-regression$' -j 2`:
+  **65/65**; the new Python test plus `phased_defaults`, `normalized_protocols`,
+  `array_patterns` and `phased_member_calls`: **5/5 OK**. Focused throw-domain,
+  failure-routing and phased import/flow checks: **5/5**. The final build and
+  all checks were repeated after the allocation-order and edge-query corrections;
+  all pass.
+- Direct `abc_structure` byte comparison of all **40** inputs under both flag
+  sets against read-only `csr87`: **617/617 ns**, **549/549 no**, **0 regressions,
+  0 text changes**, **1,166** previously complete source files byte-identical.
+  No cohort tools were run. Outputs and evidence are under
+  `/private/tmp/abcd-guarded-compare-euc08j9g` (report:
+  `/private/tmp/guarded-compare-report.json`).
+- Whole-record o32/58223 service remains **partial (status4)**. m60551 no longer
+  refuses `ExceptionInputError::kInternalValue` at original2193/working1497.
+  Its next omitted-member cause is `PhasedMethodError::kControl` (6) →
+  `ExceptionControlError::kMultipleExits` (4), **region8, body original313 /
+  working310, handler338 / working335**. Original exits **336→340** and
+  **327→363** (working333→337 and324→360). Iterator-close ownership/control
+  remains outside this increment; Taskpool renewal and DataDriver nesting are
+  still subsequent work, and the default-flags iterator-policy issue is parked.
+- Details: [exception-throw-domain.md](exception-throw-domain.md). No commit/push.
+
 ## Phased literal defaults and typed protocol-rebase causes (2026-10-26)
 
 - `PhasedFileFailure` retains `ProtocolRebaseError` semantic causes (`kInput`,

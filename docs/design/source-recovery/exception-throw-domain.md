@@ -114,3 +114,69 @@ complete source byte (537/620 previous, 589/620 source). Only the two existing
 omissions change cause/location; their surrounding recovered text is unchanged.
 CLI/manifest parity and target partial syntax checks are 4/4. Scratch evidence
 is under `build/review/rpctool/`, including complete method/assembly SDK diffs.
+
+## Current-activation fallback (2026-10-26)
+
+The legacy SCC-based proof above is unchanged. A third route runs only after
+both ordinary input verification and the legacy guarded retry refuse with
+`ExceptionInputError::kInternalValue`. It has no new source contract premise.
+
+`GuardedCatchPayloads` retains original guard comparison/selected edge, compared
+SSA value and definition, scalar-copy definitions, every read occurrence, phi
+predecessor edge/value correspondence, and every incoming Catch source (including
+pending exceptions). `ThrowFact`/`ThrowFactInput` form a sparse occurrence DAG;
+`ThrowConstraint` names the explicit throw and its payload. Catch-source coverage
+retains its physical destination and distinguishes pending from explicit values.
+
+The builder first checks definition dominance for every original SSA use and
+phi input, actual read/write slots, and complete, unique phi predecessor
+coverage. Copies stop at phi/Catch definitions. A selected non-Hole edge must
+dominate the occurrence. The compared definition must dominate the comparison
+and occurrence, and the selected edge must not dominate that definition. These
+are activation obligations, rather than a blanket same-SCC exclusion: if the
+same SSA definition executes again before the use, a path from that execution
+to the use bypassing the selected edge would also give a first-entry path
+bypassing it, contradicting edge dominance. A replacement definition changes
+the SSA identity; a phi joining a guarded value and Hole remains unproved.
+
+Occurrence queries share phi/Catch definition queries. A phi input query
+names the physical predecessor successor, so a guard can directly enter the
+phi or pass through independently split blocks with the same result. Each phi needs all
+physical predecessor occurrences; each Catch needs every incoming exception
+source. Copies/transport retain identity. Supported unconditional normal-result
+facts use the common value-rule adapter, not an opcode whitelist. Only guard or
+independently fixed facts seed the least fixed point; unsupported pending
+sources and unseeded cycles stay unknown. The ordinary value solver separately
+retains its existing pending-exception/call/module/capture premises.
+
+`ExceptionValueFlow::Build` filters Hole only from certified throw-to-Catch
+contributions, then solves again. It never narrows the thrown SSA value or its
+unrelated uses. Original throwing guards, reads, comparisons and dispatch edges
+remain executable obligations. `VerifyGuardedCatchPayloads` independently
+rebuilds all equations and compares every table. Guard, phi, activation and
+coverage failures have `ExceptionThrowDomainError` causes; resource/work
+exhaustion retains established generic limit classification.
+
+Immutable shared evidence owns its prepaid arena and shares the original
+flow/SSA, without copying their graphs or borrowing moving method storage.
+Exception-input and imported-phase verification recheck it; imported and edited
+value graphs retain it. Evaluation, operand, tree-flow and recovery verifiers
+recheck it, and OriginalFlow retains it across recovery proposals. Shared
+control-block storage is charged using the allocator's actual rebound type.
+
+One shared dominance/copy/predecessor index plus a sparse occurrence DAG costs
+O((N+E+V+U+K) log(N+V)); K is retained query/dependency evidence. Reusing definition
+queries avoids repeated high-fan-in scans. A prepaid O(M log M) work grant caps
+expansion; dense relations refuse work, never return a partial certificate.
+PMR allocation, vector growth and retained shared owners are charged before
+allocation. Exact and minus-one limits, 200/201/400/800 widths, copied/phi/Catch
+transport, wrong guards/predecessors, uncovered Catch sources and replacement
+values in loops are unit-tested.
+
+The real O0 `guarded_catch_payload` fixture has a 216-case Node differential:
+for-of bodies with user try/catch, pattern loops, async iteration and pattern
+initialization before await, message getters/coercions, thrown null/undefined/
+primitives/objects, rejected promises and competing iterator-close failures.
+A combined array-pattern for-of/await/outer-catch fixture remains a typed
+`kControl/kMultipleExits` negative. This increment does not repair close
+ownership, iterator policy or exception-control placement.

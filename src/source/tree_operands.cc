@@ -1,3 +1,4 @@
+#include "guarded_catch_verification.h"
 #include "phased_parameter_defaults.h"
 #include "template_tree.h"
 #include "super_store.h"
@@ -33,6 +34,8 @@ class OperandCheck {
       : graph_(graph), evaluation_(evaluation), tree_(tree), flow_(flow),
         constants_(constants), budget_(budget), original_(original) {}
   void Run() {
+    VerifyGuardedCatchInput(graph_.guarded_catches, budget_);
+    RequireMeaning(original_.guarded_catches == graph_.guarded_catches, Error::kOperand);
     RequireMeaning(constants_.operations.size() == graph_.ops.size() &&
                    constants_.name_count <= tree_.names.size() &&
                    constants_.text_count <= tree_.texts.size(), Error::kConstant);

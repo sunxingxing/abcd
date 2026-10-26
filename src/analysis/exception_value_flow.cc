@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include "value_propagation.h"
+#include "abcd/analysis/detail/prepaid_shared.h"
 #include "abcd/analysis/exception_throw_domain.h"
 
 namespace abcd::analysis {
@@ -12,7 +13,8 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
     PendingExceptionValues pending_values,
     std::span<const ExceptionLoadFact> loads,
     std::span<const ExceptionPendingFact> pending_facts,
-    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic, ExceptionThrowRefinement throws, GlobalReadValues globals) {
+    CallResultValues calls, FrameReceiver receiver, ArithmeticSemantics arithmetic, ExceptionThrowRefinement throws, GlobalReadValues globals,
+    std::shared_ptr<const ExceptionFlow> flow_owner, std::shared_ptr<const ExceptionSsa> ssa_owner) {
   using Error = ValueFlowError;
   using Kind = detail::ValueRuleKind;
   const auto invalid = [] { return ValueFlowFailure{Error::kInvalidSsa, {}, {}}; };
@@ -118,6 +120,22 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
       charge(throw_arena.Work()); memory.Observe(throw_arena.Peak());
       memory.Retain(throw_domains.capacity() * sizeof(ExceptionThrowDomain));
     }
+    std::shared_ptr<GuardedCatchEvidence> guarded;
+    if (throws == ExceptionThrowRefinement::kGuardedCatchPayload) {
+      std::size_t owner_bytes = 0;
+      guarded = std::allocate_shared<GuardedCatchEvidence>(
+          detail::PrepaidSharedAllocator<GuardedCatchEvidence>{memory, owner_bytes},
+          std::move(flow_owner), std::move(ssa_owner), memory, quota.Remaining());
+      guarded->owner_bytes = owner_bytes;
+      guarded->proof = DeriveGuardedCatchPayloads(flow, ssa, guarded->arena);
+      charge(guarded->arena.Work()); memory.Observe(guarded->arena.Peak());
+      memory.Retain(guarded->arena.Peak());
+      RawEventArena verify{{memory.Available(), quota.Remaining()}};
+      VerifyGuardedCatchPayloads(flow, ssa, guarded->proof, verify);
+      charge(verify.Work()); memory.Observe(verify.Peak());
+    }
+    const std::span<const ExceptionThrowDomain> qualified = guarded
+        ? std::span<const ExceptionThrowDomain>{guarded->proof.throws} : std::span<const ExceptionThrowDomain>{throw_domains};
     const auto connect = [&](SsaValueId from, SsaValueId to, bool exclude_hole = false) {
       charge();
       if (from.value >= count || to.value >= count) throw invalid();
@@ -183,10 +201,12 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
         }
       }
     }
-    std::size_t throw_cursor = 0;
+    std::size_t throw_cursor = 0, constraint_cursor = 0;
     for (std::size_t i = 0; i < flow.nodes.size(); ++i) {
       charge();
-      while (throw_cursor < throw_domains.size() && throw_domains[throw_cursor].site.value < i) ++throw_cursor;
+      while (throw_cursor < qualified.size() && qualified[throw_cursor].site.value < i) ++throw_cursor;
+      if (guarded) while (constraint_cursor < guarded->proof.constraints.size() &&
+          guarded->proof.constraints[constraint_cursor].site.value < i) ++constraint_cursor;
       const auto& node = flow.nodes[i];
       if (!reached[i] || !node.exception) continue;
       for (std::size_t e = 0; e < node.successor_count; ++e) {
@@ -200,7 +220,9 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
           const auto reads = ssa.Reads({static_cast<std::uint32_t>(i)});
           if (!std::holds_alternative<Accumulator>(thrown->value) || reads.size() != 1)
             return invalid();
-          const bool filtered = throw_cursor < throw_domains.size() && throw_domains[throw_cursor].site.value == i;
+          const bool filtered = guarded ? constraint_cursor < guarded->proof.constraints.size() &&
+              guarded->proof.constraints[constraint_cursor].site.value == i :
+              throw_cursor < qualified.size() && qualified[throw_cursor].site.value == i;
           connect(reads.front().value, *target, filtered);
         } else {
           // User callbacks can supply the pending value. Without an owner
@@ -223,6 +245,7 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
       facts[id] = entry.kinds;
     }
     ExceptionValueFlow result;
+    result.guarded_ = std::move(guarded);
     detail::PropagateValues(nodes, edges, facts, marked, memory, charge, result.work);
     charge(count);
     if (count > memory.Available() / sizeof(ValueKinds)) throw std::bad_alloc{};
@@ -235,6 +258,9 @@ std::variant<ExceptionValueFlow, ValueFlowFailure> ExceptionValueFlow::Build(
     result.work.peak_bytes = memory.Peak();
     result.work.units = quota.Consumed() - consumed;
     return result;
+  } catch (const ExceptionThrowDomainFailure& failure) {
+    return ValueFlowFailure{failure.kind == ExceptionThrowDomainError::kResourceLimit ? Error::kResourceLimit :
+        failure.kind == ExceptionThrowDomainError::kWorkLimit ? Error::kWorkLimit : Error::kInvalidSemantics, {}, {}, failure.kind};
   } catch (const ValueFlowFailure& failure) { return failure;
   } catch (const RawEventFailure& failure) {
     return ValueFlowFailure{failure.kind == RawEventError::kWorkLimit ? ValueFlowError::kWorkLimit :

@@ -2,6 +2,7 @@
 #define ABCD_ANALYSIS_REGISTER_VALUE_FLOW_H_
 
 #include "abcd/analysis/register_ssa.h"
+#include "abcd/analysis/exception_throw_failure.h"
 #include "abcd/analysis/arithmetic_semantics.h"
 #include "abcd/analysis/call_result.h"
 #include "abcd/analysis/frame_receiver.h"
@@ -33,6 +34,7 @@ struct ValueFlowFailure {
   ValueFlowError kind;
   std::optional<InstructionId> instruction;
   std::optional<ScalarError> lift;
+  std::optional<ExceptionThrowDomainError> throw_domain;
 };
 struct ValueFlowWork {
   std::uint64_t changes = 0;

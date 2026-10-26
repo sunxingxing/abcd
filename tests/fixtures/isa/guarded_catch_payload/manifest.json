@@ -1,0 +1,55 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/guarded_catch_payload/main.js",
+   "path": "tests/fixtures/isa/guarded_catch_payload/main-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=guarded_catch_payload",
+    "--source-file=main.js",
+    "--output=tests/fixtures/isa/guarded_catch_payload/main-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/guarded_catch_payload/main.js"
+   ],
+   "source_sha256": "9ec580fa4fba180f52ca852b302c4489e80822ba1f373aadc95ffd6f1830af0a",
+   "sha256": "eef6d6cc8ca99dc5b16f8fcbeabc072220f96a9abb75e1cfd002c6a05f929408",
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/guarded_catch_payload/combined.js",
+   "path": "tests/fixtures/isa/guarded_catch_payload/combined-O0.abc",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=guarded_catch_payload_combined",
+    "--source-file=combined.js",
+    "--output=tests/fixtures/isa/guarded_catch_payload/combined-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/guarded_catch_payload/combined.js"
+   ],
+   "source_sha256": "f2903a80eb1c16fd52b63f8e8ccbe6bc8c6575924c2def8d626e55e094cdcc3f",
+   "sha256": "3e1f2047182aedc75bebe06f617b18cf0f3a0fd8a5e58a8dbc940626a867e5fa",
+   "profile": 6,
+   "refusal": [
+    {
+     "domain": "abcd::source::PhasedMethodError",
+     "value": 6
+    },
+    {
+     "domain": "abcd::source::ExceptionControlError",
+     "value": 4
+    }
+   ]
+  }
+ ],
+ "note": "O0; real JS guarded close payloads and catch selections."
+}

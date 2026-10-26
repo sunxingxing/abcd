@@ -8,6 +8,7 @@
 #include "abcd/analysis/value_kinds.h"
 
 namespace abcd::analysis {
+struct GuardedCatchEvidence;
 struct ValueId {
   std::uint32_t value = 0;
   auto operator<=>(const ValueId&) const = default;
@@ -390,6 +391,7 @@ struct ValueProgram {
   std::vector<ValueOrigin> origins;
   std::vector<ValueExceptionalExit> exceptional_exits;
   InputCorrespondence input;
+  std::shared_ptr<const GuardedCatchEvidence> guarded_catches;
   std::optional<ArgumentFrameFact> arguments;
   // Empty for normal graphs; otherwise one site per block. Phase identity is
   // distinct from instruction/PC identity, especially for Catch definitions.

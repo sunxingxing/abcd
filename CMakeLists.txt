@@ -466,6 +466,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/normalized_protocols_test.py)
     add_test(NAME isa_phased_defaults_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/phased_defaults_test.py)
+    add_test(NAME isa_guarded_catch_payload_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/guarded_catch_payload_test.py)
     add_test(NAME isa_derived_control_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/derived_control_test.py)
     add_test(NAME isa_phased_classes_source_test COMMAND ${Python3_EXECUTABLE}

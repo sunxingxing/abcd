@@ -253,6 +253,7 @@ struct OriginalFlow {
   abc::EntityOffset method;
   analysis::IrRevision value_revision;
   analysis::CfgRevision cfg_revision;
+  std::shared_ptr<const analysis::GuardedCatchEvidence> guarded_catches;
   std::size_t statements=0, bindings=0;
   std::vector<OriginalExceptionRegion> exception_regions;
   std::vector<analysis::InactiveExceptionRegion> inactive_regions;

@@ -156,6 +156,166 @@ void Unrefined() {
   }
 }
 
+void UnguardedHole() {
+  auto body=test::Body({Byte(abc::Opcode::kLDHOLE),0xfe,0,Byte(abc::Opcode::kRETURN)});
+  abc::TryRegion region;region.offset={1};region.length=2;region.handler_count=1;
+  abc::CatchHandler handler;handler.offset={3};handler.length=1;
+  body.tries.push_back(region);body.handlers.push_back(handler);
+  const auto flow=std::get<ExceptionFlow>(BuildExceptionFlow(body,kProfile,0));
+  IdfQuota quota{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(flow,0,quota));
+  auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,{},quota,{},PendingExceptionValues::kLanguage,{}, {},
+      CallResultValues::kLanguage,FrameReceiver::kUnknown,ArithmeticSemantics::kPinnedRuntime,ExceptionThrowRefinement::kGuardedCatchPayload));
+  test::Check(values.GuardedPayloads() && values.GuardedPayloads()->proof.constraints.empty());
+  const auto env=std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
+  const auto checked=VerifyExceptionInputs(flow,ssa,env,values);
+  const auto* refused=std::get_if<ExceptionInputFailure>(&checked);
+  test::Check(refused && refused->kind==ExceptionInputError::kInternalValue && refused->pc.value==1 && !refused->throw_domain);
+}
+void CatchTransport() {
+  auto body=Body(0);
+  std::vector<std::uint8_t> bytes;
+  // Keep the original guarded throw and replace its handler with catch/copy/
+  // rethrow transport into a second Catch. The second payload has a distinct
+  // Catch definition, so canonical-copy identity alone cannot prove it.
+  bytes={Byte(abc::Opcode::kLDA_V8),3,Byte(abc::Opcode::kJEQZ_IMM8),6,
+      Byte(abc::Opcode::kLDA_V8),4,Byte(abc::Opcode::kJMP_IMM8),3,
+      Byte(abc::Opcode::kLDHOLE),Byte(abc::Opcode::kSTA_V8),0,
+      Byte(abc::Opcode::kLDHOLE),Byte(abc::Opcode::kSTA_V8),1,
+      Byte(abc::Opcode::kLDA_V8),0,Byte(abc::Opcode::kNOTEQ_IMM8_V8),0,1,
+      Byte(abc::Opcode::kJEQZ_IMM8),6,Byte(abc::Opcode::kLDA_V8),0,0xfe,0,
+      Byte(abc::Opcode::kRETURNUNDEFINED)};
+  bytes.insert(bytes.end(),{Byte(abc::Opcode::kSTA_V8),2,Byte(abc::Opcode::kLDA_V8),2,0xfe,0,Byte(abc::Opcode::kRETURN)});
+  auto expanded=test::Body(bytes);expanded.tries=body.tries;expanded.handlers=body.handlers;
+  expanded.handlers[0].length=6;
+  abc::TryRegion outer;outer.offset={26};outer.length=6;outer.first_handler=1;outer.handler_count=1;
+  abc::CatchHandler handler;handler.offset={32};handler.length=1;
+  expanded.tries.push_back(outer);expanded.handlers.push_back(handler);
+  const auto flow=std::get<ExceptionFlow>(BuildExceptionFlow(expanded,kProfile,5));
+  IdfQuota quota{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(flow,5,quota));
+  RawEventArena arena{{}};const auto proof=DeriveGuardedCatchPayloads(flow,ssa,arena);
+  test::Check(proof.throws.size()==1 && proof.constraints.size()==2);
+  RawEventArena verify{{}};VerifyGuardedCatchPayloads(flow,ssa,proof,verify);
+}
+void PhiTransport() {
+  for(bool direct_edge:{false,true}) {
+  std::vector<std::uint8_t> bytes;
+  const auto emit=[&](std::initializer_list<std::uint8_t> code){const auto at=static_cast<std::uint32_t>(bytes.size());bytes.insert(bytes.end(),code);return at;};
+  const auto jump=[&](std::uint32_t at,std::uint32_t to){test::Check(to>=at && to-at<128);bytes[at+1]=static_cast<std::uint8_t>(to-at);};
+  emit({Byte(abc::Opcode::kLDA_V8),3});const auto choose=emit({Byte(abc::Opcode::kJEQZ_IMM8),0});
+  const auto arm=[&](std::uint8_t reg){
+    emit({Byte(abc::Opcode::kLDA_V8),reg,Byte(abc::Opcode::kSTA_V8),0,
+      Byte(abc::Opcode::kLDHOLE),Byte(abc::Opcode::kSTA_V8),1,Byte(abc::Opcode::kLDA_V8),0,
+      Byte(abc::Opcode::kNOTEQ_IMM8_V8),0,1});
+    if(direct_edge) {
+      const auto join=emit({Byte(abc::Opcode::kJNEZ_IMM8),0});
+      emit({Byte(abc::Opcode::kRETURNUNDEFINED)});return std::pair{join,join};
+    }
+    const auto done=emit({Byte(abc::Opcode::kJEQZ_IMM8),0});
+    const auto join=emit({Byte(abc::Opcode::kJMP_IMM8),0});return std::pair{done,join};
+  };
+  const auto left=arm(4);const auto right_pc=static_cast<std::uint32_t>(bytes.size());const auto right=arm(5);
+  const auto join=emit({Byte(abc::Opcode::kLDA_V8),0});const auto thrown=emit({0xfe,0});
+  const auto done=emit({Byte(abc::Opcode::kRETURNUNDEFINED)});const auto caught=emit({Byte(abc::Opcode::kRETURN)});
+  jump(choose,right_pc);if(!direct_edge){jump(left.first,done);jump(right.first,done);}jump(left.second,join);jump(right.second,join);
+  auto body=test::Body(bytes);abc::TryRegion region;region.offset={thrown};region.length=2;region.handler_count=1;
+  abc::CatchHandler handler;handler.offset={caught};handler.length=1;body.tries.push_back(region);body.handlers.push_back(handler);
+  const auto flow=std::get<ExceptionFlow>(BuildExceptionFlow(body,kProfile,6));
+  IdfQuota quota{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(flow,6,quota));
+  RawEventArena arena{{}};const auto proof=DeriveGuardedCatchPayloads(flow,ssa,arena);
+  test::Check(proof.throws.empty() && proof.constraints.size()==1);
+  RawEventArena verify{{}};VerifyGuardedCatchPayloads(flow,ssa,proof,verify);
+  std::vector<EntryValueFact> entries;
+  for(std::uint32_t v=0;v<ssa.Values().size();++v)if(std::holds_alternative<MethodEntry>(ssa.Values()[v].origin))
+    if(const auto* reg=std::get_if<abc::RegisterId>(&ssa.Values()[v].slot);reg && reg->value>=3)entries.push_back({{v},ValueKinds::Language().Join(ValueKinds::Hole())});
+  auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entries,quota,{},PendingExceptionValues::kLanguage,{}, {},
+      CallResultValues::kLanguage,FrameReceiver::kUnknown,ArithmeticSemantics::kPinnedRuntime,ExceptionThrowRefinement::kGuardedCatchPayload));
+  for(std::uint32_t n=0;n<flow.nodes.size();++n)if(flow.nodes[n].phase==ExceptionPhase::kCatch)
+    test::Check(values.Facts()[ssa.Write({n})->value].IsLanguage());
+  test::Check(values.Facts()[proof.constraints[0].payload.value].Contains(VmValueKind::kHole));
+  }
+}
+void CurrentActivation() {
+  for (bool loop : {false, true}) {
+    auto body = Body(0);
+    auto flow = std::get<ExceptionFlow>(BuildExceptionFlow(body, kProfile, 5));
+    if (loop) {
+      std::optional<ExceptionNodeId> join;
+      for (std::uint32_t n=0;n<flow.nodes.size();++n)
+        if(flow.nodes[n].phase==ExceptionPhase::kBefore && flow.instructions[flow.nodes[n].instruction.value].pc.value==9) join=ExceptionNodeId{n};
+      test::Check(join.has_value());
+      for(auto& node:flow.nodes) if(node.phase==ExceptionPhase::kCommit && flow.instructions[node.instruction.value].pc.value==25) {
+        flow.instructions[node.instruction.value].operation=JumpOperation{{9}};
+        node.successor_count=1;node.successors[0]={*join,ExceptionArcKind::kTaken};
+      }
+    }
+    IdfQuota quota{kDefaultSemanticWork};
+    auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(flow,5,quota));
+    RawEventArena arena{{}};auto proof=DeriveGuardedCatchPayloads(flow,ssa,arena);
+    test::Check(proof.throws.size()==1 && proof.throws[0].definition.has_value());
+    RawEventArena verify{{}};VerifyGuardedCatchPayloads(flow,ssa,proof,verify);
+    for(unsigned mutation=0;mutation<6;++mutation) {
+      auto changed=proof;
+      auto expected=ExceptionThrowDomainError::kGuard;
+      switch(mutation) {
+        case 0: changed.throws[0].successor^=1;break;
+        case 1: changed.definitions[changed.throws[0].compared.value].site=ExceptionNodeId{0};expected=ExceptionThrowDomainError::kActivation;break;
+        case 2: test::Check(!changed.phis.empty());changed.phis[0].source=ExceptionNodeId{0};expected=ExceptionThrowDomainError::kPhi;break;
+        case 3: changed.catches.clear();expected=ExceptionThrowDomainError::kCoverage;break;
+        case 4: changed.catches[0].payload=SsaValueId{0};expected=ExceptionThrowDomainError::kCoverage;break;
+        case 5: changed.reads[0].value.value^=1;expected=ExceptionThrowDomainError::kActivation;break;
+      }
+      RawEventArena check{{}}; bool refused=false;
+      try { VerifyGuardedCatchPayloads(flow,ssa,changed,check); }
+      catch(const ExceptionThrowDomainFailure& failure){test::Check(failure.kind==expected);refused=true;}
+      test::Check(refused);
+    }
+    std::vector<EntryValueFact> entries;
+    for(std::uint32_t v=0;v<ssa.Values().size();++v)if(std::holds_alternative<MethodEntry>(ssa.Values()[v].origin))
+      if(const auto* reg=std::get_if<abc::RegisterId>(&ssa.Values()[v].slot);reg && reg->value>=3)entries.push_back({{v},ValueKinds::Language()});
+    auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entries,quota,{},PendingExceptionValues::kLanguage,{}, {},
+        CallResultValues::kLanguage,FrameReceiver::kUnknown,ArithmeticSemantics::kPinnedRuntime,ExceptionThrowRefinement::kGuardedCatchPayload));
+    for(std::uint32_t n=0;n<flow.nodes.size();++n)if(flow.nodes[n].phase==ExceptionPhase::kCatch)
+      test::Check(values.Facts()[ssa.Write({n})->value].IsLanguage());
+    // The payload itself keeps its Hole alternative. Only the dispatch edge is filtered.
+    test::Check(values.Facts()[proof.throws[0].payload.value].Contains(VmValueKind::kHole));
+  }
+  // A guarded iteration can replace the payload on another path before
+  // throwing. SSA inserts a phi; the old comparison cannot filter that phi.
+  {
+    auto body=test::Body({Byte(abc::Opcode::kLDHOLE),Byte(abc::Opcode::kSTA_V8),1,
+      Byte(abc::Opcode::kLDA_V8),3,Byte(abc::Opcode::kSTA_V8),0,
+      Byte(abc::Opcode::kLDA_V8),0,Byte(abc::Opcode::kNOTEQ_IMM8_V8),0,1,
+      Byte(abc::Opcode::kJEQZ_IMM8),15,
+      Byte(abc::Opcode::kLDA_V8),4,Byte(abc::Opcode::kJEQZ_IMM8),5,
+      Byte(abc::Opcode::kLDHOLE),Byte(abc::Opcode::kSTA_V8),0,
+      Byte(abc::Opcode::kLDA_V8),0,0xfe,0,
+      Byte(abc::Opcode::kJMP_IMM8),static_cast<std::uint8_t>(-22),
+      Byte(abc::Opcode::kRETURN)});
+    abc::TryRegion region;region.offset={23};region.length=2;region.handler_count=1;
+    abc::CatchHandler handler;handler.offset={27};handler.length=1;
+    body.tries.push_back(region);body.handlers.push_back(handler);
+    const auto flow=std::get<ExceptionFlow>(BuildExceptionFlow(body,kProfile,5));
+    IdfQuota quota{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(flow,5,quota));
+    RawEventArena arena{{}};test::Check(DeriveGuardedCatchPayloads(flow,ssa,arena).throws.empty());
+    auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,{},quota,{},PendingExceptionValues::kLanguage,{}, {},
+        CallResultValues::kLanguage,FrameReceiver::kUnknown,ArithmeticSemantics::kPinnedRuntime,ExceptionThrowRefinement::kGuardedCatchPayload));
+    for(std::uint32_t n=0;n<flow.nodes.size();++n)if(flow.nodes[n].phase==ExceptionPhase::kCatch)
+      test::Check(values.Facts()[ssa.Write({n})->value].Contains(VmValueKind::kHole));
+  }
+  // Wrong branch direction and a real unguarded Hole payload cannot acquire a constraint.
+  for(bool wrong_direction:{false,true}) {
+    auto body=Body(0);
+    for(auto& instruction:body.instructions) {
+      if(wrong_direction && instruction.offset.value==19)
+        instruction.decoded=test::Body({Byte(abc::Opcode::kJNEZ_IMM8),6}).instructions[0].decoded;
+      if(!wrong_direction && instruction.offset.value==21)instruction.decoded.operands[0].raw_bits=1;
+    }
+    const auto flow=std::get<ExceptionFlow>(BuildExceptionFlow(body,kProfile,5));
+    IdfQuota quota{kDefaultSemanticWork};const auto ssa=std::get<ExceptionSsa>(ExceptionSsa::Build(flow,5,quota));
+    RawEventArena arena{{}};test::Check(DeriveGuardedCatchPayloads(flow,ssa,arena).throws.empty());
+  }
+}
+
 void Width(std::uint32_t count) {
   std::vector<std::uint8_t> bytes;
   const auto one = Body(0);
@@ -201,7 +361,22 @@ void Width(std::uint32_t count) {
     catch (const RawEventFailure&) { failed = true; } catch (const std::bad_alloc&) { failed = true; }
     test::Check(failed);
   }
-  std::cout << "width=" << count << " work=" << arena.Work() << " bytes=" << arena.Peak() << '\n';
+  RawEventArena current{{}};const auto extended=DeriveGuardedCatchPayloads(flow,ssa,current);
+  test::Check(extended.constraints.size()==count);
+  RawEventArena current_verify{{}};VerifyGuardedCatchPayloads(flow,ssa,extended,current_verify);
+  RawEventArena exact_current{{current.Peak(),current.Work()}};
+  const auto repeated=DeriveGuardedCatchPayloads(flow,ssa,exact_current);
+  test::Check(repeated.constraints==extended.constraints);
+  for(bool work:{false,true}) {
+    RawEventArena low{{work?current.Peak():current.Peak()-1,work?current.Work()-1:current.Work()}};
+    bool refused=false;
+    try{(void)DeriveGuardedCatchPayloads(flow,ssa,low);}
+    catch(const RawEventFailure&){refused=true;}
+    catch(const ExceptionThrowDomainFailure&){refused=true;}
+    catch(const std::bad_alloc&){refused=true;}
+    test::Check(refused);
+  }
+  std::cout << "width=" << count << " work=" << arena.Work() << " bytes=" << arena.Peak() << " current-work=" << current.Work() << " current-bytes=" << current.Peak() << '\n';
 }
 void Fixture(const char* path) {
   const auto file = std::get<std::unique_ptr<corpus::AbcFile>>(corpus::AbcFile::Open(path));
@@ -241,6 +416,10 @@ void Fixture(const char* path) {
 int main(int argc, char** argv) {
   for (auto n : {0u, 200u, 201u, 400u, 800u}) for (bool inverse : {false, true}) for (bool strict : {false, true}) Check(n, inverse, strict);
   Unrefined();
+  CurrentActivation();
+  PhiTransport();
+  CatchTransport();
+  UnguardedHole();
   for (auto n : {200u, 201u, 400u, 800u}) Width(n);
   test::Check(argc == 2); Fixture(argv[1]);
 }

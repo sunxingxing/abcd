@@ -1,3 +1,4 @@
+#include "guarded_catch_verification.h"
 #include "phased_parameter_defaults.h"
 #include "tree_flow.h"
 
@@ -52,6 +53,7 @@ class FlowCheck {
       const ExceptionTreeInput* exceptions = nullptr)
       : graph_(graph), control_(control), evaluation_(evaluation), tree_(tree), budget_(budget),
         exceptions_(exceptions), sequences_(sequences), expression_scopes_(expression_scopes) {
+    VerifyGuardedCatchInput(graph.guarded_catches, budget);
     VerifyPhasedDefaultInput(graph, tree, budget);
     Require(tree.derived_protocol == evaluation.derived_protocol,
             Error::kPlacement);
