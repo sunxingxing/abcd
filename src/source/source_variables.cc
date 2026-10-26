@@ -40,6 +40,7 @@ std::variant<SourceVariables,TreeStructureError> PrepareSourceVariables(
       RequireTree(VerifyReadableStatements(tree,result.bindings,result.nullish,result.loops,original,result.readable,budget),TreeStructureError::kOwnership);
       budget.Release(budget.ActiveBytes()-start);
     }
+    result.array_patterns=PlanArrayPatternSurfaces(tree,result.bindings,result.loops,result.readable,budget);
     result.readable_equalities=BuildReadableEqualityTargets(tree,result.bindings.replacements,budget);
     result.retained_bytes=budget.ActiveBytes();
     result.allocated_bytes=budget.Bytes();result.work=budget.Work();return result;

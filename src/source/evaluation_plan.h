@@ -289,7 +289,8 @@ enum class ReferenceBoundary : std::uint8_t { kNone, kBeforeStoredValue };
 // does not establish constructor/member bodies, captures or inheritance syntax.
 // ConstructorGuard retains the VM check as an ordered event and snapshots its
 // input. It does not authorize guard elision or reading uninitialized JS this.
-enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage, kReceiverGuard, kInvocationConstructor };
+// kPatternRecord: the private array-pattern record, read only by step/close.
+enum class InputEvaluation : std::uint8_t { kEager, kConditionalArgument, kClassHeritage, kReceiverGuard, kInvocationConstructor, kPatternRecord };
 // Source lowering capability, independent of opcode layout and SSA ownership.
 // Snapshot inputs can expand to repeated reads; suspension and invocation
 // protocols need their own control/ABI owner before expression composition.

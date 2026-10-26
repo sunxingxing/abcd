@@ -273,7 +273,7 @@ target_sources(abcd_source PRIVATE src/source/default_signature.cc src/source/de
 target_sources(abcd_source PRIVATE src/source/tree_printer.cc src/source/tree_print_tokens.cc src/source/grouping_plan.cc
   src/source/brace_plan.cc src/source/readable_statements.cc src/source/nullish_syntax.cc src/source/loop_syntax.cc src/source/loop_transition.cc src/source/loop_initializer.cc)
 target_sources(abcd_source PRIVATE src/source/super_store.cc src/source/template_construction.cc src/source/template_literal.cc src/source/template_tree.cc)
-target_sources(abcd_source PRIVATE src/source/loop_declarations.cc src/source/binding_initializer.cc src/source/binding_normalization.cc src/source/recovery_projection.cc src/source/snapshot_projection.cc src/source/snapshot_retention.cc src/source/source_variables.cc src/source/object_rest_plan.cc src/source/object_rest_surface.cc src/source/regexp_literal.cc src/source/binding_interference.cc src/source/recovery_flow.cc src/source/cell_access.cc src/source/flow_scopes.cc src/source/flow_units.cc src/source/flow_binding_names.cc src/source/source_names.cc src/source/source_name_retirement.cc src/source/flow_liveness.cc src/source/flow_dominance.cc src/source/flow_initializations.cc src/source/flow_initialization_cuts.cc src/source/flow_motion.cc src/source/flow_definitions.cc src/source/flow_constants.cc src/source/flow_copies.cc src/source/flow_kinds.cc src/source/flow_value_states.cc src/source/flow_statements.cc src/source/flow_cycles.cc src/source/definition_elision.cc)
+target_sources(abcd_source PRIVATE src/source/loop_declarations.cc src/source/binding_initializer.cc src/source/binding_normalization.cc src/source/recovery_projection.cc src/source/snapshot_projection.cc src/source/snapshot_retention.cc src/source/source_variables.cc src/source/object_rest_plan.cc src/source/object_rest_surface.cc src/source/array_pattern_surface.cc src/source/regexp_literal.cc src/source/binding_interference.cc src/source/recovery_flow.cc src/source/cell_access.cc src/source/flow_scopes.cc src/source/flow_units.cc src/source/flow_binding_names.cc src/source/source_names.cc src/source/source_name_retirement.cc src/source/flow_liveness.cc src/source/flow_dominance.cc src/source/flow_initializations.cc src/source/flow_initialization_cuts.cc src/source/flow_motion.cc src/source/flow_definitions.cc src/source/flow_constants.cc src/source/flow_copies.cc src/source/flow_kinds.cc src/source/flow_value_states.cc src/source/flow_statements.cc src/source/flow_cycles.cc src/source/definition_elision.cc)
 target_sources(abcd_source PRIVATE src/source/evaluation_boolean.cc src/source/storage_coalescing.cc)
 target_sources(abcd_source PRIVATE src/source/loop_entry_projection.cc)
 target_link_libraries(abcd_source PUBLIC abcd_analysis PRIVATE abcd_json)
@@ -459,6 +459,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/instance_fields_test.py)
     add_test(NAME isa_const_assignment_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/const_assignment_test.py)
+    add_test(NAME isa_array_patterns_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/array_patterns_test.py)
     add_test(NAME isa_loop_corridors_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/loop_corridors_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}

@@ -287,11 +287,15 @@ struct DataProperty {
 // print it; ordinary function expression output must refuse it.
 struct FieldDefinitionExpr { ExprId receiver; NameId name; ExprId value; };
 struct DynamicImportExpr { ExprId specifier; };
+// One certified array-pattern protocol action (array-patterns.md): acquire
+// reads the iterable, step/close read the private pattern record. Prints only
+// inside the verified contiguous ArrayPatternSurface as native `[t, ...] = e`.
+struct ArrayPatternExpr { analysis::PatternAction action; ExprId operand; };
 using TreeExpression = std::variant<TreeLiteral, SymbolExpr, GlobalNameExpr, RealmObjectExpr,
     SymbolConstructorExpr, ThisExpr, MemberExpr,
                                     UnaryExpr, AwaitExpr, YieldExpr, BinaryExpr, LogicalExpr, ConditionalExpr, AssignmentExpr, UpdateExpr, SequenceExpr,
                                     CallExpr, ConstructExpr, EmptyArrayExpr, EmptyObjectExpr, ObjectExpr, FunctionExpr,
-                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr, BigIntExpr, NewTargetExpr, ObjectRestExpr, PatternFailureExpr, RegExpExpr, TemplateObjectExpr, DynamicImportExpr>;
+                                    ArgumentSnapshotExpr, ClassExpr, FieldDefinitionExpr, SuperCallExpr, ArrayExpr, ArrayElement, DeleteExpr, MemberMutationExpr, BigIntExpr, NewTargetExpr, ObjectRestExpr, PatternFailureExpr, RegExpExpr, TemplateObjectExpr, DynamicImportExpr, ArrayPatternExpr>;
 struct ExprNode { TreeExpression expression; TreeOriginId origin; };
 struct LabelId { std::uint32_t value; auto operator<=>(const LabelId&) const = default; };
 struct BlockStmt {

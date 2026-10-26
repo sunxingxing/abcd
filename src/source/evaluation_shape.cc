@@ -45,6 +45,13 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     }
     else if constexpr (std::is_same_v<T, analysis::ValueBinary>) return EvaluationShape{kBinary, true};
     else if constexpr (std::is_same_v<T, analysis::ValueDynamicImport>) return EvaluationShape{kInput,true};
+    // Certified array-pattern protocol actions (array-patterns.md). Native
+    // syntax requires the separately verified contiguous pattern surface.
+    else if constexpr (std::is_same_v<T, analysis::ValueArrayPattern>) {
+      EvaluationShape shape{kInput, op.action != analysis::PatternAction::kClose};
+      if (op.action != analysis::PatternAction::kAcquire) shape.inputs = InputEvaluation::kPatternRecord;
+      return shape;
+    }
     else if constexpr (std::is_same_v<T, analysis::ValueObjectRest>) return EvaluationShape{kNamedRead,true,op.keys};
     else if constexpr (std::is_same_v<T, analysis::ValueCopyProperties>) {
       switch (op.kind) {
@@ -185,7 +192,7 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
     else {
       // Accessors require descriptor composition; spreads require a checked
       // private-array/cursor projection. Raw lifting never grants source syntax.
-      static_assert(std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueArrayPattern> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
+      static_assert(std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                     std::is_same_v<T, analysis::ValueLexicalLoad> || std::is_same_v<T, analysis::ValueLexicalStore> ||
                     std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                     std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
@@ -217,9 +224,16 @@ std::optional<EvaluationFailure> CheckEvaluationUse(
   const bool conditional = shape.inputs == InputEvaluation::kConditionalArgument;
   const bool heritage = shape.inputs == InputEvaluation::kClassHeritage;
   const bool receiver_guard = shape.inputs == InputEvaluation::kReceiverGuard;
-  const auto purpose = conditional || heritage || receiver_guard || shape.inputs == InputEvaluation::kInvocationConstructor ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
+  const bool record = shape.inputs == InputEvaluation::kPatternRecord;
+  const auto purpose = conditional || heritage || receiver_guard || record || shape.inputs == InputEvaluation::kInvocationConstructor ? analysis::ReadPurpose::kProtocol : analysis::ReadPurpose::kOperand;
   if (use.purpose != purpose) return EvaluationError::kProtocolOperand;
   if (use.role != shape.Role(ordinal)) return EvaluationError::kInvalidGraph;
+  if (record) {
+    const auto* value = std::get_if<analysis::ValueId>(&use.operand);
+    if (!value || value->value >= graph.values.size()) return EvaluationError::kInvalidGraph;
+    if (graph.values[value->value].domain != analysis::ValueKinds::PatternRecord())
+      return EvaluationError::kProtocolOperand;
+  }
   // Hole is absence of extends, never a source value or undefined. Mixed
   // internal/language domains need further control recovery, not a guess.
   if (heritage) {

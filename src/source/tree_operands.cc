@@ -429,6 +429,10 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueDynamicImport>) {
           RequireMeaning(DynamicImports(tree_.identity.contract), Error::kUnsupportedOperation);
           InputAt(0, Node<DynamicImportExpr>(expression).specifier);
+        } else if constexpr (std::is_same_v<T, analysis::ValueArrayPattern>) {
+          const auto& pattern=Node<ArrayPatternExpr>(expression);
+          RequireMeaning(ArrayPatternAcquisition(tree_.identity.contract) && pattern.action==operation.action, Error::kUnsupportedOperation);
+          InputAt(0, pattern.operand);
         } else if constexpr (std::is_same_v<T, analysis::ValueNewTarget>) {
           original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(NativeNewTarget(tree_.identity.contract), Error::kNewTargetPremise);
@@ -1020,7 +1024,7 @@ class OperandCheck {
           if (created.heritage) InputAt(0, *created.heritage);
         } else {
           static_assert(
-                        std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueArrayPattern> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
+                        std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
                         std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
                         std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
                         std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger> ||

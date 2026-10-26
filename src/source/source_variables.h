@@ -1,5 +1,6 @@
 #ifndef ABCD_SOURCE_SOURCE_VARIABLES_H_
 #define ABCD_SOURCE_SOURCE_VARIABLES_H_
+#include "array_pattern_surface.h"
 #include "binding_initializer.h"
 #include "brace_plan.h"
 #include "readable_statements.h"
@@ -20,6 +21,7 @@ struct SourceVariables {
   std::vector<std::optional<std::uint32_t>> object_rests;
   std::vector<std::uint8_t> object_rest_fields;
   ReadableStatements readable;
+  ArrayPatternSurfaces array_patterns;
   std::vector<std::optional<ExprId>> readable_equalities;
   // Peak preparation admission and conservative returned storage are distinct.
   // Callers admit the peak before releasing destroyed preparation scratch.

@@ -1331,6 +1331,7 @@ class ForestBuilder {
         return Add(MemberExpr{base,key},origin);
       }
       else if constexpr (std::is_same_v<T, analysis::ValueDynamicImport>) return Add(DynamicImportExpr{operands[0]}, origin);
+      else if constexpr (std::is_same_v<T, analysis::ValueArrayPattern>) return Add(ArrayPatternExpr{operation.action, operands[0]}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueNewTarget>) return Add(NewTargetExpr{owner_, NewTargetForm::kInstruction}, origin);
       else if constexpr (std::is_same_v<T, analysis::ValueFrameThis>)
         return Add(ThisExpr{owner_}, origin);
@@ -1385,7 +1386,7 @@ class ForestBuilder {
         return Add(FieldDefinitionExpr{operands[0], *name, operands[1]}, origin);
       }
       else {
-        static_assert(std::is_same_v<T, analysis::ValueCopyProperties> || std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueArrayPattern> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueClassCreation> ||
+        static_assert(std::is_same_v<T, analysis::ValueCopyProperties> || std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueComputedOwnWrite> || std::is_same_v<T, analysis::ValueClassCreation> ||
                       std::is_same_v<T, analysis::ValueArgumentSnapshot> ||
                       std::is_same_v<T, analysis::ValueGuard> || std::is_same_v<T, analysis::ValueHole> ||
                       std::is_same_v<T, analysis::ValueModuleRead> ||

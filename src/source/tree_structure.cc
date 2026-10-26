@@ -344,6 +344,8 @@ class StructureCheck {
         // The import job also exposes native/CJS exports. Both independently
         // approved V10 differences apply; neither is inferred from spelling.
         RequireTree(DynamicImports(tree_.identity.contract) && ModuleNamespaces(tree_.identity.contract), Error::kUnsupportedSyntax);
+      } else if constexpr(std::is_same_v<T,ArrayPatternExpr>) {
+        RequireTree(ArrayPatternAcquisition(tree_.identity.contract), Error::kUnsupportedSyntax);
       } else if constexpr(std::is_same_v<T,TemplateObjectExpr>) {
         VerifyTemplateLiteral(expression,tree_.texts,tree_.identity.contract,budget_);
       } else if constexpr(std::is_same_v<T,RegExpExpr>) {
@@ -720,6 +722,10 @@ class StructureCheck {
         if(frame.next_child++)return {};
         return dynamic->specifier;
       }
+      if (const auto* pattern = std::get_if<ArrayPatternExpr>(&syntax)) {
+        if(frame.next_child++)return {};
+        return pattern->operand;
+      }
       if (const auto* object = std::get_if<ObjectExpr>(&syntax)) {
         if (frame.next_child == object->properties.count * std::uint64_t{2}) return {};
         const auto slot = object->properties.first + frame.next_child / 2;
@@ -824,7 +830,7 @@ class StructureCheck {
                         std::is_same_v<T, RealmObjectExpr> ||
                         std::is_same_v<T, SymbolConstructorExpr> ||
                         std::is_same_v<T, ArgumentSnapshotExpr> ||
-                        std::is_same_v<T, DynamicImportExpr> || std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
+                        std::is_same_v<T, DynamicImportExpr> || std::is_same_v<T, ArrayPatternExpr> || std::is_same_v<T, NewTargetExpr> || std::is_same_v<T, ThisExpr> || std::is_same_v<T, CallExpr> ||
                         std::is_same_v<T, ConstructExpr> || std::is_same_v<T, SuperCallExpr> || std::is_same_v<T, EmptyArrayExpr> ||
                         std::is_same_v<T, EmptyObjectExpr> || std::is_same_v<T, ObjectExpr> || std::is_same_v<T, ArrayExpr> || std::is_same_v<T, ArrayElement> || std::is_same_v<T, FunctionExpr>);
         }

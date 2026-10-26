@@ -864,6 +864,8 @@ class TreePrinter {
     Push(ExpressionOperand{node.specifier, {ExpressionGrammar::kAssignmentValue}});
   }
   void Expression(TemplateObjectExpr) { throw Error::kUnsupportedContext; }
+  // Printed only by the verified ArrayPatternSurface statement projection.
+  void Expression(ArrayPatternExpr) { throw Error::kUnsupportedContext; }
   void Expression(RegExpExpr node) {
     auto checked=BuildRegExpLiteral(Tree().texts[node.text.value],node.flags,remaining_);
     if(const auto* error=std::get_if<RegExpLiteralError>(&checked))throw *error==RegExpLiteralError::kResourceLimit?Error::kResourceLimit:*error==RegExpLiteralError::kWorkLimit?Error::kWorkLimit:Error::kInvalidLiteral;
@@ -1932,6 +1934,28 @@ class TreePrinter {
       Push(std::string_view(snapshot?")]":"]"));Push(ExpressionOperand{excluded_key,{ExpressionGrammar::kAssignmentValue}});Push(std::string_view(snapshot?"[(0, ":"["));}
   }
   void StatementNode(ExpressionStmt node, Statement at) {
+    if(!Variables().array_patterns.statements.empty()&&Variables().array_patterns.statements[at.id.value]) {
+      const auto& patterns=Variables().array_patterns;
+      const auto& pattern=patterns.patterns[*patterns.statements[at.id.value]];
+      // Folded step/close statements keep their origins at the following
+      // boundary; this acquisition owns the native pattern text.
+      BeginExpression(node.expression);
+      if(const auto* assignment=std::get_if<AssignmentExpr>(&Tree().expressions[node.expression.value].expression))
+        BeginExpression(assignment->value);
+      if(pattern.declaration) Append(*pattern.declaration==DeclarationKind::kConst?"const ":"let ");
+      Append("[");
+      for(std::uint32_t k=0;k<pattern.target_count;++k) {
+        Step();
+        if(k) Append(", ");
+        if(const auto symbol=patterns.targets[pattern.first_target+k].symbol) Name(*symbol);
+        // A trailing elision needs its own comma: `[a, ,]` has two elements.
+        else if(k+1==pattern.target_count) Append(",");
+      }
+      Push(std::string_view(";"));
+      Push(ExpressionOperand{pattern.iterable,{ExpressionGrammar::kAssignmentValue}});
+      Push(std::string_view("] = "));
+      return;
+    }
     if(!Variables().object_rests.empty()&&Variables().object_rests[at.id.value]) {
       const auto& pattern=Original()->object_rests[*Variables().object_rests[at.id.value]];const auto& rest=std::get<ObjectRestExpr>(Tree().expressions[pattern.expression.value].expression);
       Append("(");Push(std::string_view(");"));BeginExpression(node.expression);BeginExpression(pattern.expression);Append("{");
@@ -2363,7 +2387,8 @@ class TreePrinter {
       Result().expression_extents[read->value] = GeneratedExtent::kBoundary;
       return;
     }
-    if ((!Variables().object_rest_fields.empty()&&Variables().object_rest_fields[child.value]) || Initializers().omitted[child.value] || Variables().readable.omit_snapshots[child.value] || Variables().readable.guards[child.value]==ReadableGuard::kRemove) {
+    if ((!Variables().object_rest_fields.empty()&&Variables().object_rest_fields[child.value]) ||
+        (!Variables().array_patterns.members.empty()&&Variables().array_patterns.members[child.value]) || Initializers().omitted[child.value] || Variables().readable.omit_snapshots[child.value] || Variables().readable.guards[child.value]==ReadableGuard::kRemove) {
       Push(ElideStatement{child}); return;
     }
     if(at.form==BlockForm::kElseIf){Push(Statement{child,at.depth});return;}

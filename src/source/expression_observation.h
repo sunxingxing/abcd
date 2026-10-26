@@ -71,7 +71,7 @@ inline LexicalDependency IntrinsicLexicalDependency(const TreeExpression& expres
         std::is_same_v<T,SymbolConstructorExpr> || std::is_same_v<T,ArgumentSnapshotExpr> ||
         std::is_same_v<T,SuperCallExpr> || std::is_same_v<T,FieldDefinitionExpr>) return LexicalDependency::kEnclosingEnvironment;
     else {
-      static_assert((std::is_same_v<T,RegExpExpr>||std::is_same_v<T,TemplateObjectExpr>) || std::is_same_v<T,ObjectRestExpr> || std::is_same_v<T,DynamicImportExpr> || std::is_same_v<T,PatternFailureExpr> || std::is_same_v<T,BigIntExpr> || std::is_same_v<T,TreeLiteral> || std::is_same_v<T,SymbolExpr> ||
+      static_assert((std::is_same_v<T,RegExpExpr>||std::is_same_v<T,TemplateObjectExpr>) || std::is_same_v<T,ObjectRestExpr> || std::is_same_v<T,DynamicImportExpr> || std::is_same_v<T,ArrayPatternExpr> || std::is_same_v<T,PatternFailureExpr> || std::is_same_v<T,BigIntExpr> || std::is_same_v<T,TreeLiteral> || std::is_same_v<T,SymbolExpr> ||
           std::is_same_v<T,GlobalNameExpr> ||
           std::is_same_v<T,MemberExpr>||std::is_same_v<T,DeleteExpr> || std::is_same_v<T,UnaryExpr> ||
           std::is_same_v<T,AwaitExpr> || std::is_same_v<T,YieldExpr> ||
@@ -115,6 +115,8 @@ inline analysis::ValueKinds NormalValueKinds(const TreeExpression& expression,
   return std::visit([&](const auto& node)->K {
     using T=std::decay_t<decltype(node)>;
     if constexpr(std::is_same_v<T,DynamicImportExpr>) return K::Defined();
+    else if constexpr(std::is_same_v<T,ArrayPatternExpr>)
+      return node.action==analysis::PatternAction::kAcquire?K::PatternRecord():K::Language();
     else if constexpr(std::is_same_v<T,PatternFailureExpr>) return {};
     else if constexpr(std::is_same_v<T,BigIntExpr>||(std::is_same_v<T,RegExpExpr>||std::is_same_v<T,TemplateObjectExpr>)) return K::Defined();
     else if constexpr(std::is_same_v<T,DeleteExpr>)return K::Boolean();
@@ -223,6 +225,8 @@ inline SourceEffects NormalValueEffects(const TreeExpression& expression,
     }
     else if constexpr(std::is_same_v<T,PatternFailureExpr>) return SourceEffects{L::kNone,L::kAllocation,X::kAlwaysThrow};
     else if constexpr(std::is_same_v<T,ObjectRestExpr>) return CallbackEffects();
+    // GetIterator/IteratorStep/IteratorClose run user code and may throw.
+    else if constexpr(std::is_same_v<T,ArrayPatternExpr>) return CallbackEffects();
     else if constexpr(std::is_same_v<T,TemplateObjectExpr>) return {L::kHeapRead|L::kHeapWrite|L::kUserCode|L::kAllocation,L::kHeapRead|L::kHeapWrite|L::kUserCode|L::kAllocation,X::kMayThrow};
     else if constexpr(std::is_same_v<T,BigIntExpr>||std::is_same_v<T,RegExpExpr>) return {L::kAllocation,L::kAllocation,X::kMayThrow};
     else if constexpr(std::is_same_v<T,NewTargetExpr>) return {node.form==NewTargetForm::kInstruction?L::kArgumentsRead:L::kNone,L::kNone,X::kImpossible};

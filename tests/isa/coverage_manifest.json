@@ -11133,6 +11133,10 @@
     {
       "test": "isa_loop_corridors_source_test",
       "producer": "tests/isa/loop_corridors_test.py"
+    },
+    {
+      "test": "isa_array_patterns_source_test",
+      "producer": "tests/isa/array_patterns_test.py"
     }
   ]
 }

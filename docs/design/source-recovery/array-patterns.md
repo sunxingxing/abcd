@@ -53,3 +53,17 @@ entering the region. It removes the protocol instructions and their try
 regions and emits PC-keyed `PatternSite` certificates that the semantic lifter
 honors (as it honors yield/await sites). Unmatched shapes are left untouched and
 keep their existing typed refusals.
+
+## Increment 1b (source)
+
+Pattern actions are ordinary effectful operations through evaluation, tree
+construction and verification (`ArrayPatternExpr`, record operands typed
+`kPatternRecord`). Native syntax is a printer projection only:
+`PlanArrayPatternSurfaces` accepts a run of retained ExpressionStmts, contiguous
+in one block, `r = Acquire(e)`, then each `t_k = Step(r)` / `Step(r)`, then
+`Close(r)`, none of them omitted, moved, replaced or printed in a loop header.
+Since nothing else executes between those statements and the targets are local
+bindings, the run is exactly `[t_0, …, t_n] = e` under the approved premise.
+It prints as an assignment pattern, or as one declaration when every bound
+target is a `let`/`const` initializer of distinct storage (`const` only if all
+are `const`). Any other run leaves its nodes unprintable (typed refusal).

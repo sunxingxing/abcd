@@ -38,6 +38,7 @@ void VisitExpressionChildren(const FunctionTree& tree, const TreeExpression& exp
       else visit(std::get<SpreadArguments>(node.arguments).iterable);
     }
     else if constexpr (std::is_same_v<T, DynamicImportExpr>) visit(node.specifier);
+    else if constexpr (std::is_same_v<T, ArrayPatternExpr>) visit(node.operand);
     else if constexpr (std::is_same_v<T, ObjectRestExpr>) { visit(node.source); arguments(node.keys); }
     else if constexpr (std::is_same_v<T, ArgumentSnapshotExpr>) arguments(node.slots);
     else if constexpr (std::is_same_v<T, ArrayExpr>) arguments(node.elements);

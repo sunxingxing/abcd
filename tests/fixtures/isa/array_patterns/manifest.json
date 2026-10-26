@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/array_patterns/patterns.js",
+   "path": "tests/fixtures/isa/array_patterns/patterns-O0.abc",
+   "sha256": "3e3714be0edaed6c9e9d0c6786ed3fba4fc2001065f956519ca9b8b3411dfb4d",
+   "source_sha256": "c8f491a3ce996cf503e61a2962c0deebff33eb5e352c071ee7c93bbce164d156",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=array_patterns",
+    "--source-file=patterns.js",
+    "--output=tests/fixtures/isa/array_patterns/patterns-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/array_patterns/patterns.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only; register and hole targets without defaults (array-patterns.md increment 1)."
+}

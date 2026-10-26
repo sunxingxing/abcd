@@ -10,6 +10,36 @@
 
 
 
+## Array patterns, increment 1b: native source (2026-10-26)
+
+- `ValueArrayPattern` lowers like any ordered user-code operation: shape
+  `kInput` (step/close read the private record through the new
+  `InputEvaluation::kPatternRecord`, protocol purpose, `PatternRecord` domain
+  only), tree node `ArrayPatternExpr`, callback effects, operand verification in
+  `tree_operands` under `ArrayPatternAcquisition` (V10 premise of 2026-10-23).
+  The verified tree keeps `r = Acquire(e); [t =] Step(r)...; Close(r)` as
+  ordinary statements with temporaries.
+- `PlanArrayPatternSurfaces` (printer-only, in `PrepareSourceVariables`) certifies
+  each run that is contiguous in one block, untouched by omission, motion,
+  replacement, loop-header or snapshot projections, with all step/close
+  operands reading the acquire's record. It prints `[t, , u] = e;` or, when
+  every bound target is a `let`/`const` initializer with distinct storage, one
+  `const`/`let` pattern declaration; folded steps/close keep boundary origins.
+  An uncertified `ArrayPatternExpr` refuses to print.
+- Evidence: fixture `tests/fixtures/isa/array_patterns` (holes, trailing hole,
+  reassignment, dead inner pattern, try, loop, await) with a 39-case Node
+  differential of the logged iterator protocol (cached next, per-element steps,
+  return only when not done, none after a throwing step, throwing return,
+  non-iterables); all seven destructurings of o38's `onRemoteMessageRequest`
+  decompile (that record stays blocked by its derived constructor: conditional
+  `super` plus `return null`). Cohorts unchanged (613 / 547, no text changes,
+  `build/review/csr79`); ISA ledger unchanged (`isa-cc22`). The dev-tree sweep
+  shows 34 failing tests that fail identically at 28dc7123 (pre-existing; next
+  task); no new failures.
+- Still refused (unfolded by the normalizer): empty patterns, captured
+  (`STLEXVAR`) targets in the source layer, patterns nested in a for-of region,
+  defaults, rest and nesting.
+
 ## Array patterns, increment 1a: analysis layer (2026-10-25)
 
 - `NormalizeArrayPatterns` (source layer, run in the phased file reader after
