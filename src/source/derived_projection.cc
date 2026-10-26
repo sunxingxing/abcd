@@ -1,11 +1,15 @@
-#include "abcd/source/method_context.h"
 #include "derived_projection.h"
-#include "derived_value_states.h"
-#include "implicit_constructor.h"
-#include "constructor_forwarding.h"
-#include "abcd/source/capture_preservation.h"
+
+#include <algorithm>
+#include <bit>
 #include <new>
 #include <stdexcept>
+
+#include "abcd/source/capture_preservation.h"
+#include "abcd/source/method_context.h"
+#include "constructor_forwarding.h"
+#include "derived_value_states.h"
+#include "implicit_constructor.h"
 namespace abcd::source {
 namespace {
 using Error = DerivedProjectionError;
@@ -70,6 +74,7 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
       spread |= std::holds_alternative<SuperSpread>(instruction.operation);
     // Select from the actual protocol, never retry a failed range proof under
     // a more permissive form. Both share normal-flow initialization analysis.
+    std::optional<RangeDerivedConstructor> range_proof;
     const auto proof = [&]() -> std::variant<abc::CodeOffset, DerivedConstructorError> {
       if (implicit || explicit_forward) {
         const auto& graph = function.values.graph;
@@ -82,10 +87,13 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
         if (const auto* error = std::get_if<DerivedConstructorError>(&checked)) return *error;
         return std::get<SpreadDerivedConstructor>(checked).super_pc;
       }
-      const auto checked = ProveRangeDerivedConstructor(function.body, function.frame,
-          {budget.bytes, budget.work}, function.input.Identity().profile, preserved.sites);
+      auto checked = ProveRangeDerivedConstructor(
+          function.body, function.frame, {budget.bytes, budget.work},
+          function.input.Identity().profile, preserved.sites);
       if (const auto* error = std::get_if<DerivedConstructorError>(&checked)) return *error;
-      return std::get<RangeDerivedConstructor>(checked).super_pc;
+      range_proof.emplace(
+          std::get<RangeDerivedConstructor>(std::move(checked)));
+      return range_proof->sites.front().pc;
     }();
     if (const auto* error = std::get_if<DerivedConstructorError>(&proof))
       throw *error == DerivedConstructorError::kResourceLimit ? Error::kResourceLimit : Error::kProtocol;
@@ -94,7 +102,10 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     const auto& graph = function.values.graph;
     const auto& input = function.input.Input();
     Require(graph.input.sites.size() == input.instructions.size(), Error::kOrigin);
-    const auto step = [&] { Require(budget.work != 0, Error::kWorkLimit); --budget.work; };
+    const auto step = [&](std::uint64_t count = 1) {
+      Require(count <= budget.work, Error::kWorkLimit);
+      budget.work -= count;
+    };
     DerivedProjection result{graph.revision, graph.cfg_revision, {}};
     result.form = implicit ? DerivedConstructorForm::kImplicit : explicit_forward ?
         DerivedConstructorForm::kInvocationRest : DerivedConstructorForm::kExplicit;
@@ -108,7 +119,86 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
       result.call = *graph.input.sites[i]; found = true; break;
     }
     Require(found && result.call.value < graph.ops.size(), Error::kOrigin);
-    auto classified = BuildDerivedValueStates(function, result.call, preserved.sites, budget);
+    if (range_proof) {
+      Require(range_proof->allocated_bytes <= budget.bytes,
+              Error::kResourceLimit);
+      budget.bytes -= range_proof->allocated_bytes;
+      Require(range_proof->work <= budget.work, Error::kWorkLimit);
+      budget.work -= range_proof->work;
+      Require(range_proof->sites.size() <= budget.bytes / sizeof(OpId),
+              Error::kResourceLimit);
+      budget.bytes -= range_proof->sites.size() * sizeof(OpId);
+      result.calls.reserve(range_proof->sites.size());
+      for (const auto& site : range_proof->sites) {
+        step();
+        Require(site.instruction.value < graph.input.sites.size() &&
+                    graph.input.sites[site.instruction.value],
+                Error::kOrigin);
+        result.calls.push_back(*graph.input.sites[site.instruction.value]);
+      }
+      step(result.calls.size() * (1 + std::bit_width(result.calls.size())));
+      std::sort(result.calls.begin(), result.calls.end());
+      const bool native =
+          std::any_of(range_proof->coverage.begin(),
+                      range_proof->coverage.end(), [](const auto& check) {
+                        return check.action != DerivedCheckAction::kNoop;
+                      });
+      if (native) {
+        result.native.emplace();
+        auto& projected = *result.native;
+        const auto reserve = [&](auto& values, std::size_t count) {
+          using T = typename std::decay_t<decltype(values)>::value_type;
+          Require(count <= budget.bytes / sizeof(T), Error::kResourceLimit);
+          budget.bytes -= count * sizeof(T);
+          values.reserve(count);
+          Require(values.capacity() - count <= budget.bytes / sizeof(T),
+                  Error::kResourceLimit);
+          budget.bytes -= (values.capacity() - count) * sizeof(T);
+        };
+        reserve(projected.calls, result.calls.size());
+        projected.calls.assign(result.calls.begin(), result.calls.end());
+        reserve(projected.returns, range_proof->returns.size());
+        reserve(projected.reads, range_proof->coverage.size());
+        reserve(projected.bindings, range_proof->bindings.size());
+        for (const auto& returned : range_proof->returns) {
+          step();
+          Require(returned.instruction.value < graph.input.sites.size() &&
+                      graph.input.sites[returned.instruction.value],
+                  Error::kOrigin);
+          projected.returns.push_back(
+              *graph.input.sites[returned.instruction.value]);
+        }
+        for (const auto& covered : range_proof->coverage) {
+          step();
+          const auto guard = graph.input.sites[covered.instruction.value];
+          Require(guard.has_value(), Error::kOrigin);
+          if (covered.action == DerivedCheckAction::kRead)
+            projected.reads.push_back(*guard);
+        }
+        for (const auto& binding : range_proof->bindings) {
+          step();
+          Require(graph.input.sites[binding.guard.value] &&
+                      graph.input.sites[binding.construction.value],
+                  Error::kOrigin);
+          projected.bindings.push_back(
+              {*graph.input.sites[binding.guard.value],
+               *graph.input.sites[binding.construction.value]});
+        }
+        step(projected.bindings.size() *
+             (1 + std::bit_width(projected.bindings.size())));
+        std::sort(projected.bindings.begin(), projected.bindings.end(),
+                  [](auto a, auto b) {
+                    return a.guard != b.guard ? a.guard < b.guard
+                                              : a.construction < b.construction;
+                  });
+      }
+    }
+    auto classified = range_proof
+                          ? BuildDerivedValueStates(
+                                function, std::span<const OpId>(result.calls),
+                                preserved.sites, budget)
+                          : BuildDerivedValueStates(function, result.call,
+                                                    preserved.sites, budget);
     if (const auto* error = std::get_if<Error>(&classified)) throw *error;
     const auto& states = std::get<DerivedValueStates>(classified);
     Require(states.allocated_bytes <= budget.bytes && states.work <= budget.work, Error::kResourceLimit);
@@ -198,6 +288,55 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
         }
       }
     }
+    std::vector<SsaValueId> original_roots;
+    if (result.native) {
+      const auto count = input.ssa.Values().size();
+      Require(count <= budget.bytes /
+                           (sizeof(SsaValueId) * 2 + sizeof(std::uint8_t)),
+              Error::kResourceLimit);
+      budget.bytes -= count * (sizeof(SsaValueId) * 2 + sizeof(std::uint8_t));
+      original_roots.resize(count);
+      std::vector<std::uint8_t> done(count);
+      std::vector<SsaValueId> path;
+      path.reserve(count);
+      for (std::uint32_t v = 0; v < count; ++v) original_roots[v] = {v};
+      for (std::uint32_t v = 0; v < count; ++v) {
+        if (done[v]) continue;
+        path.clear();
+        auto at = SsaValueId{v};
+        while (!done[at.value]) {
+          step();
+          done[at.value] = 1;
+          path.push_back(at);
+          const auto* origin = std::get_if<InstructionValue>(
+              &input.ssa.Values()[at.value].origin);
+          if (!origin) break;
+          const auto& instruction =
+              input.instructions[origin->instruction.value];
+          const auto* assign =
+              std::get_if<ScalarAssignment>(&instruction.operation);
+          const auto* scalar =
+              assign ? std::get_if<ScalarValue>(&assign->expression) : nullptr;
+          if (!scalar ||
+              (!std::holds_alternative<Accumulator>(*scalar) &&
+               !std::holds_alternative<abc::RegisterId>(*scalar)) ||
+              instruction.effects.normal != LanguageEffect::kNone ||
+              instruction.effects.exceptional !=
+                  ExceptionalCompletion::kImpossible)
+            break;
+          const auto reads = input.ssa.Reads(origin->instruction);
+          Require(reads.size() == 1, Error::kOperand);
+          at = reads[0].value;
+        }
+        const auto root = original_roots[at.value];
+        while (!path.empty()) {
+          const auto x = path.back();
+          path.pop_back();
+          original_roots[x.value] = root;
+          done[x.value] = 2;
+        }
+      }
+    }
     for (std::size_t i = 0; i < input.instructions.size(); ++i) {
       step(); const auto& original = input.instructions[i];
       const auto* check = std::get_if<SuperCheck>(&original.operation);
@@ -224,9 +363,17 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
             classify(use.operand) == State::kConstructor, Error::kOperand);
       } else if (call) {
         const auto* current = std::get_if<ValueSuperCall>(&op.operation);
-        Require(call->callee == SuperCalleeSource::kInvocationFunction && id == result.call && current &&
-            current->callee == SuperCalleeSource::kInvocationFunction && current->source == SuperArgumentSource::kExplicit && current->arguments == call->count &&
-            current->cache_slot == call->cache_slot && op.result && op.use_count == call->count, Error::kOrigin);
+        Require(call->callee == SuperCalleeSource::kInvocationFunction &&
+                    (range_proof ? std::binary_search(result.calls.begin(),
+                                                      result.calls.end(), id)
+                                 : id == result.call) &&
+                    current &&
+                    current->callee == SuperCalleeSource::kInvocationFunction &&
+                    current->source == SuperArgumentSource::kExplicit &&
+                    current->arguments == call->count &&
+                    current->cache_slot == call->cache_slot && op.result &&
+                    op.use_count == call->count,
+                Error::kOrigin);
       } else if (spread_call) {
         const auto* current = std::get_if<ValueSuperSpread>(&op.operation);
         Require(id == result.call && current && current->cache_slot == spread_call->cache_slot &&
@@ -247,6 +394,24 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
         const auto& use = graph.uses[op.first_use.value];
         Require(use.life == ValueLife::kLive && use.owner == decltype(use.owner){id} &&
             use.role == OperandRole::kGuardValue && use.purpose == ReadPurpose::kProtocol, Error::kOperand);
+        if (result.native) {
+          // Original and working operands must still be the same SSA value.
+          // The path proof alone is never authority for a mutated work graph.
+          const auto reads =
+              input.ssa.Reads(InstructionId{static_cast<std::uint32_t>(i)});
+          Require(reads.size() == 1 &&
+                      reads[0].value.value < graph.input.values.size(),
+                  Error::kOperand);
+          const auto expected =
+              graph.input.values[original_roots[reads[0].value.value].value];
+          const auto* actual = std::get_if<ValueId>(&use.operand);
+          Require(actual && *actual == expected, Error::kOperand);
+          if (std::binary_search(result.native->reads.begin(),
+                                 result.native->reads.end(), id))
+            continue;
+          result.guards.push_back(id);
+          continue;
+        }
         const auto state = classify(use.operand);
         switch (check->kind) {
           case SuperCheckKind::kRequireInitialized: Require(state == State::kSuper, Error::kOperand); break;
@@ -271,9 +436,14 @@ std::optional<DerivedProjectionError> VerifyDerivedProjection(
   const auto checked = ProjectDerivedConstructor(function, owner, budget, captures);
   if (const auto* error = std::get_if<Error>(&checked)) return *error;
   const auto& expected = std::get<DerivedProjection>(checked);
-  if (expected.form != projection.form || expected.forwarding_calls != projection.forwarding_calls || expected.call != projection.call || expected.guards != projection.guards ||
+  if (expected.form != projection.form ||
+      expected.forwarding_calls != projection.forwarding_calls ||
+      expected.call != projection.call || expected.calls != projection.calls ||
+      expected.native != projection.native ||
+      expected.guards != projection.guards ||
       expected.receiver_cells != projection.receiver_cells ||
-      expected.receiver_initializations != projection.receiver_initializations) return Error::kCoverage;
+      expected.receiver_initializations != projection.receiver_initializations)
+    return Error::kCoverage;
   return {};
 }
 

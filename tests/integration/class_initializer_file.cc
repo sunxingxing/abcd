@@ -85,7 +85,9 @@ int main(int argc, char** argv) {
     if (const auto* error = std::get_if<analysis::DerivedConstructorError>(&proof))
       std::cerr << "derived protocol failure " << static_cast<unsigned>(*error) << '\n';
     Check(std::holds_alternative<analysis::RangeDerivedConstructor>(proof));
-    Check(std::get<analysis::RangeDerivedConstructor>(proof).super_pc.value == 79);
+    Check(std::get<analysis::RangeDerivedConstructor>(proof)
+              .sites.front()
+              .pc.value == 79);
     std::size_t checks = 0, calls = 0;
     const auto& graph = constructor.values.graph;
     for (std::size_t i = 0; i < constructor.input.Input().instructions.size(); ++i) {

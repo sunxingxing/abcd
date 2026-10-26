@@ -95,7 +95,8 @@ target_sources(abcd_analysis PRIVATE src/analysis/define_instruction.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/class_creation.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/class_heritage.cc src/analysis/value_heritage.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/derived_constructor.cc)
-target_sources(abcd_analysis PRIVATE src/analysis/range_derived_constructor.cc)
+target_sources(abcd_analysis PRIVATE src/analysis/range_derived_constructor.cc
+  src/analysis/range_constructor_protocol.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/local_ssa.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/method_roles.cc)
 target_sources(abcd_analysis PRIVATE src/analysis/creation_binding.cc)
@@ -461,6 +462,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/const_assignment_test.py)
     add_test(NAME isa_array_patterns_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/array_patterns_test.py)
+    add_test(NAME isa_derived_control_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/derived_control_test.py)
     add_test(NAME isa_loop_corridors_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/loop_corridors_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}

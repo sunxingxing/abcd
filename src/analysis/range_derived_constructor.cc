@@ -12,6 +12,9 @@
 #include "abcd/analysis/scalar.h"
 
 namespace abcd::analysis {
+RangeDerivedConstructorResult ProveRangeConstructorProtocol(
+    const abc::MethodBody&, const abc::FrameLayout&, DerivedConstructorBudget,
+    abc::ProfileId);
 namespace {
 enum class Origin : std::uint8_t {
   kBottom,
@@ -413,8 +416,56 @@ RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     DerivedConstructorBudget budget, abc::ProfileId profile,
     std::span<const CapturePreservation> preserved) {
   const auto result = ProveInitialization(body, frame, budget, profile, preserved, CallForm::kRange);
-  if (const auto* error = std::get_if<DerivedConstructorError>(&result)) return *error;
-  return RangeDerivedConstructor{std::get<abc::CodeOffset>(result)};
+  if (const auto* error = std::get_if<DerivedConstructorError>(&result)) {
+    if (*error == DerivedConstructorError::kResourceLimit ||
+        *error == DerivedConstructorError::kFrame)
+      return *error;
+    auto general = ProveRangeConstructorProtocol(body, frame, budget, profile);
+    if (const auto* refused = std::get_if<DerivedConstructorError>(&general);
+        refused && *refused != DerivedConstructorError::kResourceLimit)
+      return *error;
+    return general;
+  }
+  const auto pc = std::get<abc::CodeOffset>(result);
+  RangeDerivedConstructor proof;
+  std::size_t guards = 0, returns = 0;
+  for (const auto& site : body.instructions) {
+    guards += std::holds_alternative<SuperCheck>(
+        LiftSuperInstruction(site.decoded, frame.registers));
+    returns += site.decoded.opcode == abc::Opcode::kRETURN ||
+               site.decoded.opcode == abc::Opcode::kRETURNUNDEFINED;
+  }
+  if (budget.bytes < sizeof(DerivedSuperSite) ||
+      guards >
+          (budget.bytes - sizeof(DerivedSuperSite)) / sizeof(DerivedCoverage))
+    return DerivedConstructorError::kResourceLimit;
+  budget.bytes -= sizeof(DerivedSuperSite) + guards * sizeof(DerivedCoverage);
+  if (returns > budget.bytes / sizeof(DerivedReturnSite))
+    return DerivedConstructorError::kResourceLimit;
+  try {
+    proof.sites.reserve(1);
+    proof.coverage.reserve(guards);
+    proof.returns.reserve(returns);
+    for (std::uint32_t i = 0; i < body.instructions.size(); ++i) {
+      const auto& site = body.instructions[i];
+      if (site.offset == pc) proof.sites.push_back({{i}, pc});
+      if (std::holds_alternative<SuperCheck>(
+              LiftSuperInstruction(site.decoded, frame.registers)))
+        proof.coverage.push_back({{i}, DerivedCheckAction::kNoop, {}});
+      if (site.decoded.opcode == abc::Opcode::kRETURN ||
+          site.decoded.opcode == abc::Opcode::kRETURNUNDEFINED)
+        proof.returns.push_back({{i}, ReceiverState::kInitialized});
+    }
+    proof.allocated_bytes =
+        proof.sites.capacity() * sizeof(DerivedSuperSite) +
+        proof.returns.capacity() * sizeof(DerivedReturnSite) +
+        proof.coverage.capacity() * sizeof(DerivedCoverage);
+    return proof;
+  } catch (const std::bad_alloc&) {
+    return DerivedConstructorError::kResourceLimit;
+  } catch (const std::length_error&) {
+    return DerivedConstructorError::kResourceLimit;
+  }
 }
 SpreadDerivedConstructorResult ProveSpreadDerivedConstructor(
     const abc::MethodBody& body, const abc::FrameLayout& frame,

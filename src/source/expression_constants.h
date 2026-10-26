@@ -59,6 +59,7 @@ struct ExpressionConstants {
   // Exact original invocation and work graph; the common derived-state solver
   // independently proves constructor identity through aliases, cells and phis.
   const FileFunction* derived_constructor = nullptr;
+  const DerivedNativeProtocol* derived_protocol = nullptr;
   // Original same-owner context for independent explicit-frame projection.
   // Borrowed only through construction/verification, never by the printer.
   const FunctionContext* forwarding_owner = nullptr;

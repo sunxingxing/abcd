@@ -17,6 +17,11 @@ struct DerivedValueStates {
 // actual load/store addresses, effects and operands are checked again here.
 // No captured incoming cell is inferred initialized or immutable. Each origin
 // changes at most twice (bottom -> concrete -> other), bounding propagation.
+[[nodiscard]] std::variant<DerivedValueStates, DerivedProjectionError>
+BuildDerivedValueStates(const FileFunction&,
+                        std::span<const analysis::OpId> calls,
+                        std::span<const analysis::CapturePreservation>,
+                        analysis::SemanticBudget);
 [[nodiscard]] std::variant<DerivedValueStates, DerivedProjectionError> BuildDerivedValueStates(
     const FileFunction&, analysis::OpId call,
     std::span<const analysis::CapturePreservation>, analysis::SemanticBudget);

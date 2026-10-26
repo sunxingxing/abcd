@@ -129,6 +129,9 @@ using OriginalWriteSite=std::variant<ExprId,StmtId>;
 enum class OriginalCompletionBoundary : std::uint8_t { kProjectedResult, kIntrinsicAction, kInvocationBinding, kUnmodeled };
 // Original operations retain phase effects and success-only results, without
 // copying opcode variants or interpreting them a second time in recovery.
+struct OriginalDerivedBindingRange {
+  std::uint32_t first, count;
+};
 struct OriginalOperation {
   analysis::WorkBlockId block;
   analysis::UseId first_use;
@@ -164,6 +167,9 @@ struct OriginalOperation {
   std::optional<OriginalStatementKind> statement_kind;
   std::optional<OriginalControlInput> control;
   std::optional<OriginalInitializedGuard> initialized_guard;
+  std::optional<ExprId> derived_construction;
+  std::optional<OriginalDerivedBindingRange> derived_binding;
+  bool derived_return = false;
   std::optional<OriginalNumberIdentity> number_identity;
   // Physical binding write verified at this source commit. A numeric staging
   // save has a definition correspondence but is not the conversion's write.
@@ -223,6 +229,7 @@ struct OriginalIterations {
 };
 struct OriginalMemberUpdate { ExprId expression; MemberUpdate proof; MemberMutationExpr syntax; };
 struct OriginalFlow {
+  std::vector<ExprId> derived_bindings;
   std::shared_ptr<const OriginalTemplates> templates;
   std::vector<ObjectRestSurface> object_rests;
   std::vector<OriginalMemberUpdate> member_updates;

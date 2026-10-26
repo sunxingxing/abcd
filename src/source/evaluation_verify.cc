@@ -1,5 +1,3 @@
-#include "module_guards.h"
-#include "object_rest_plan.h"
 #include <bit>
 #include <new>
 #include <stdexcept>
@@ -7,18 +5,21 @@
 #include "../analysis/value_edits.h"
 #include "assignment_values.h"
 #include "call_spread_inputs.h"
+#include "derived_native_protocol.h"
 #include "evaluation_aliases.h"
 #include "evaluation_failure.h"
 #include "evaluation_flow.h"
 #include "evaluation_plan.h"
-#include "function_object.h"
 #include "for_in_evaluation.h"
 #include "for_of_evaluation.h"
+#include "function_object.h"
 #include "integer_nan.h"
 #include "literal_arm_view.h"
 #include "logical_evaluation.h"
 #include "logical_regions.h"
 #include "module_evaluation.h"
+#include "module_guards.h"
+#include "object_rest_plan.h"
 #include "phase_corridor.h"
 #include "phase_evaluation.h"
 #include "tree_checks.h"
@@ -147,6 +148,10 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
           use.role == analysis::OperandRole::kGuardValue && use.purpose == analysis::ReadPurpose::kProtocol,
           Error::kOwnership);
     }
+    if (plan.derived_protocol)
+      Require(CheckDerivedNativeProtocol(graph, *plan.derived_protocol,
+                                         [&] { step(); }),
+              Error::kOwnership);
     const auto aliases = VerifyEvaluationAliases(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<EvaluationFailure>(&aliases)) return *error;
     step(std::get<std::uint64_t>(aliases));

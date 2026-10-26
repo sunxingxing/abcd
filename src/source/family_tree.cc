@@ -310,10 +310,16 @@ class FamilyTrees {
         if (const auto* error = std::get_if<DerivedProjectionError>(&projection))
           throw FamilyTreeFailure{member_, *error};
         derived.emplace(std::get<DerivedProjection>(std::move(projection)));
-        Admit(sizeof(DerivedProjection) + derived->guards.capacity() * sizeof(analysis::OpId) +
-            derived->forwarding_calls.capacity() * sizeof(analysis::OpId) +
-            derived->receiver_cells.capacity() * sizeof(CellId) +
-            derived->receiver_initializations.capacity() * sizeof(ReceiverInitialization), 1);
+        Admit(
+            sizeof(DerivedProjection) +
+                derived->guards.capacity() * sizeof(analysis::OpId) +
+                derived->forwarding_calls.capacity() * sizeof(analysis::OpId) +
+                derived->calls.capacity() * sizeof(analysis::OpId) +
+                (derived->native ? derived->native->AllocatedBytes() : 0) +
+                derived->receiver_cells.capacity() * sizeof(CellId) +
+                derived->receiver_initializations.capacity() *
+                    sizeof(ReceiverInitialization),
+            1);
       }
       auto receiver_guards = ReceiverGuards(family, i, derived ? &*derived : nullptr);
       const auto guards = derived ? std::span<const analysis::OpId>(derived->guards) :
@@ -368,14 +374,33 @@ class FamilyTrees {
         });
       }
       const auto for_of=phase?phase->Phases().ForOfInput():std::optional<ForOfEvaluationInput>{};
-      auto evaluated = phase ?
-          BuildPhasedEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations, demands, {}, phase->Locals().writes, array_source, guarded,for_of?&*for_of:nullptr) :
-          BuildEvaluationPlan(graph, left_, i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
-              member.children, module_evaluations, demands, function.Normal().values.initializers.calls, analysis::ClosureWrites::kLanguage,
-              function.Normal().values.definitions.sites, guards, entries,
-              function.Normal().self_order ? &*function.Normal().self_order : nullptr,
-              named_prototypes ? std::span<const ClassPrototypeRead>(named_prototypes->reads) : std::span<const ClassPrototypeRead>{}, array_source);
+      auto evaluated =
+          phase
+              ? BuildPhasedEvaluationPlan(graph, left_,
+                                          i == 0 && !family.root_capture
+                                              ? IncomingCells::kReject
+                                              : IncomingCells::kConditional,
+                                          member.children, module_evaluations,
+                                          demands, {}, phase->Locals().writes,
+                                          array_source, guarded,
+                                          for_of ? &*for_of : nullptr)
+              : BuildEvaluationPlan(
+                    graph, left_,
+                    i == 0 && !family.root_capture
+                        ? IncomingCells::kReject
+                        : IncomingCells::kConditional,
+                    member.children, module_evaluations, demands,
+                    function.Normal().values.initializers.calls,
+                    analysis::ClosureWrites::kLanguage,
+                    function.Normal().values.definitions.sites, guards, entries,
+                    function.Normal().self_order
+                        ? &*function.Normal().self_order
+                        : nullptr,
+                    named_prototypes ? std::span<const ClassPrototypeRead>(
+                                           named_prototypes->reads)
+                                     : std::span<const ClassPrototypeRead>{},
+                    array_source,
+                    derived && derived->native ? &*derived->native : nullptr);
       if (array_error) Fail(*array_error);
       if(auto* error=std::get_if<EvaluationFailure>(&evaluated);error&&error->evaluation.concurrent&&context.Concurrent()) {
         const auto detail=*error->evaluation.concurrent;auto located=context.Concurrent()->location;
@@ -422,6 +447,12 @@ class FamilyTrees {
       const NameReservations reserved{references_, family.Owner(member_), subtree_end_[i] - i};
       constants.name_reservations = &reserved;
       constants.receiver_guards = guards;
+      if (derived && derived->native) {
+        constants.derived_protocol = &*derived->native;
+        constants.forwarding_owner = &context;
+        constants.forwarding_captures =
+            derived_captures ? &*derived_captures : nullptr;
+      }
       if (derived) constants.derived_constructor = &function.Normal();
       if (derived && derived->form == DerivedConstructorForm::kImplicit) constants.implicit_constructor = &function.Normal();
       if (derived && derived->form == DerivedConstructorForm::kInvocationRest) {

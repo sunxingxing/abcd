@@ -218,6 +218,22 @@ struct ConstructExpr { ExprId constructor; ConstructArguments arguments; };
 // The parent constructor and newTarget are supplied by the derived invocation.
 struct SpreadArguments { ExprId iterable; };
 using SuperArguments = std::variant<ArgumentRange, SpreadArguments>;
+// Native binding checks have physical source phases; they are not harmless
+// guard anchors. IDs refer to the independently checked original value graph.
+struct DerivedBindingCheck {
+  analysis::OpId guard, construction;
+  bool operator==(const DerivedBindingCheck&) const = default;
+};
+struct DerivedNativeProtocol {
+  std::vector<analysis::OpId> calls, returns, reads;
+  std::vector<DerivedBindingCheck> bindings;
+  bool operator==(const DerivedNativeProtocol&) const = default;
+  std::size_t AllocatedBytes() const {
+    return (calls.capacity() + returns.capacity() + reads.capacity()) *
+               sizeof(analysis::OpId) +
+           bindings.capacity() * sizeof(DerivedBindingCheck);
+  }
+};
 struct SuperCallExpr {
   SuperArguments arguments;
   analysis::SuperArgumentSource source = analysis::SuperArgumentSource::kExplicit;
@@ -469,6 +485,7 @@ struct FunctionTree {
   // The adapter proves the same derived protocol or an initialized captured
   // receiver preserved through its complete original creation family.
   std::vector<analysis::OpId> receiver_guards;
+  std::optional<DerivedNativeProtocol> derived_protocol;
   RouteInputIdentity identity;
   abc::EntityOffset method;
   analysis::IrRevision value_revision;

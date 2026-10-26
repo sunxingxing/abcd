@@ -19,7 +19,9 @@ enum class DerivedConstructorForm : std::uint8_t { kExplicit, kImplicit, kInvoca
 struct DerivedProjection {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
-  analysis::OpId call;
+  analysis::OpId call;  // Legacy spread/forwarding entry.
+  std::vector<analysis::OpId> calls;
+  std::optional<DerivedNativeProtocol> native;
   DerivedConstructorForm form = DerivedConstructorForm::kExplicit;
   std::vector<analysis::OpId> forwarding_calls;
   std::vector<analysis::OpId> guards;

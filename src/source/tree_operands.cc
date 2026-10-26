@@ -187,6 +187,29 @@ class OperandCheck {
       RequireMeaning(proof.form == DerivedConstructorForm::kInvocationRest &&
           proof.guards == tree_.receiver_guards, Error::kOperand);
     }
+    if (tree_.derived_protocol) {
+      RequireMeaning(
+          constants_.derived_protocol &&
+              *tree_.derived_protocol == *constants_.derived_protocol &&
+              constants_.derived_constructor && constants_.forwarding_owner,
+          Error::kOperand);
+      auto checked = ProjectDerivedConstructor(
+          *constants_.derived_constructor, *constants_.forwarding_owner,
+          budget_.Remaining(), constants_.forwarding_captures);
+      if (const auto* error = std::get_if<DerivedProjectionError>(&checked)) {
+        if (*error == DerivedProjectionError::kResourceLimit)
+          throw Error::kResourceLimit;
+        if (*error == DerivedProjectionError::kWorkLimit)
+          throw Error::kWorkLimit;
+        throw Error::kOperand;
+      }
+      const auto& proof = std::get<DerivedProjection>(checked);
+      budget_.Admit(proof.allocated_bytes, 1);
+      budget_.Step(proof.work);
+      RequireMeaning(proof.native == tree_.derived_protocol &&
+                         proof.guards == tree_.receiver_guards,
+                     Error::kOperand);
+    }
     std::optional<DerivedValueStates> derived_states;
     for (std::size_t i = 0; i < graph_.ops.size(); ++i) {
       budget_.Step();
@@ -225,6 +248,30 @@ class OperandCheck {
     RequireMeaning(tree_.receiver_guards == evaluation_.receiver_guards, Error::kOperand);
     RequireMeaning(tree_.receiver_guards.size() == constants_.receiver_guards.size() &&
         std::equal(tree_.receiver_guards.begin(), tree_.receiver_guards.end(), constants_.receiver_guards.begin()), Error::kOperand);
+    if (tree_.derived_protocol) {
+      for (const auto call : tree_.derived_protocol->calls) {
+        budget_.Step();
+        RequireMeaning(flow_.expressions[call.value].has_value(),
+                       Error::kOperand);
+        original_.operations[call.value].derived_construction =
+            *flow_.expressions[call.value];
+      }
+      budget_.Array(original_.derived_bindings,
+                    tree_.derived_protocol->bindings.size());
+      for (std::uint32_t b = 0; b < tree_.derived_protocol->bindings.size();
+           ++b) {
+        const auto binding = tree_.derived_protocol->bindings[b];
+        budget_.Step();
+        RequireMeaning(
+            flow_.expressions[binding.construction.value].has_value(),
+            Error::kOperand);
+        original_.derived_bindings[b] =
+            *flow_.expressions[binding.construction.value];
+        auto& range = original_.operations[binding.guard.value].derived_binding;
+        if (!range) range = OriginalDerivedBindingRange{b, 0};
+        ++range->count;
+      }
+    }
     VerifyMemberUpdates(graph_, evaluation_, budget_);
     RetainTemplateInputs(graph_,evaluation_,tree_,constants_,original_,budget_);
     budget_.Admit(MemberUpdates(evaluation_).updates.size(), sizeof(OriginalMemberUpdate));
@@ -457,8 +504,26 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueThrow>) {
           if(analysis::ThrowsIntrinsicTypeError(operation.kind)){Node<PatternFailureExpr>(expression);original_.operations[i].intrinsic_expression=expression;}
           else InputAt(0,expression);
+        } else if constexpr (std::is_same_v<T, analysis::ValueSuperCheck>) {
+          RequireMeaning(
+              tree_.derived_protocol &&
+                  operation.kind ==
+                      analysis::SuperCheckKind::kRequireInitialized &&
+                  std::binary_search(tree_.derived_protocol->reads.begin(),
+                                     tree_.derived_protocol->reads.end(),
+                                     current_) &&
+                  Node<ThisExpr>(expression).owner == tree_.owner,
+              Error::kOperand);
+          original_.operations[i].intrinsic_expression = expression;
         } else if constexpr (std::is_same_v<T, analysis::ValueReturn>) {
           InputAt(0, expression);
+          if (tree_.derived_protocol) {
+            RequireMeaning(std::binary_search(
+                               tree_.derived_protocol->returns.begin(),
+                               tree_.derived_protocol->returns.end(), current_),
+                           Error::kOperand);
+            original_.operations[i].derived_return = true;
+          }
         } else if constexpr (std::is_same_v<T, analysis::ValueUnary>) {
           if(operation.op==analysis::UnaryOperator::kTemplateObject){
             const auto* site=TemplateSite(evaluation_,current_);RequireMeaning(site,Error::kOperand);const auto& object=Node<TemplateObjectExpr>(expression);RequireMeaning(object.quasis&&object.quasis->size()==site->quasis.size(),Error::kConstant);
@@ -685,7 +750,8 @@ class OperandCheck {
           RequireMeaning(target_id && result_id && *target_id==*result_id,Error::kOperand);
           original_.operations[i].intrinsic_property=flow_.initializers[i];
           const auto previous=edge_input_;edge_input_=true;InputAt(1,property.value);edge_input_=previous;
-        } else if constexpr (std::is_same_v<T, analysis::ValueComputedOwnWrite>) {
+        } else if constexpr (std::is_same_v<T,
+                                            analysis::ValueComputedOwnWrite>) {
           RequireMeaning(ComputedFunctionNames(tree_.identity.contract) && flow_.initializers[i], Error::kUnsupportedOperation);
           const auto property_id = *flow_.initializers[i];
           const auto& property = tree_.properties[property_id.value];
@@ -895,8 +961,10 @@ class OperandCheck {
             InputAt(1, test.left);
             RequireMeaning(Literal<BooleanLiteral>(test.right).value, Error::kOperand);
           }
-        } else if constexpr (std::is_same_v<T, analysis::ValueArrayAllocation> ||
-                             std::is_same_v<T, analysis::ValueObjectAllocation>) {
+        } else if constexpr (std::is_same_v<T,
+                                            analysis::ValueArrayAllocation> ||
+                             std::is_same_v<T,
+                                            analysis::ValueObjectAllocation>) {
           constexpr bool array = std::is_same_v<T, analysis::ValueArrayAllocation>;
           constexpr auto kind = array ? AggregateKind::kArray : AggregateKind::kObject;
           // Literal/TreeFlow verification already proved no observation until
@@ -974,7 +1042,8 @@ class OperandCheck {
           RequireMeaning(aggregate ? aggregate->kind == kind :
               (array ? std::holds_alternative<EmptyArrayExpr>(tree_.expressions[expression.value].expression) :
                        std::holds_alternative<EmptyObjectExpr>(tree_.expressions[expression.value].expression)), Error::kOperator);
-        } else if constexpr (std::is_same_v<T, analysis::ValueFunctionCreation>) {
+        } else if constexpr (std::is_same_v<T,
+                                            analysis::ValueFunctionCreation>) {
           original_.operations[i].intrinsic_expression=expression;
           RequireMeaning(next_function < evaluation_.functions.size(), Error::kOperand);
           const auto& function = evaluation_.functions[next_function++];
@@ -1024,11 +1093,20 @@ class OperandCheck {
           if (created.heritage) InputAt(0, *created.heritage);
         } else {
           static_assert(
-                        std::is_same_v<T, analysis::ValueIteratorAcquire> || std::is_same_v<T, analysis::ValueObjectCheck> || std::is_same_v<T, analysis::ValueEnumeration> || std::is_same_v<T, analysis::ValueArraySpread> || std::is_same_v<T, analysis::ValueSuperCall> || std::is_same_v<T, analysis::ValueSuperCheck> || std::is_same_v<T, analysis::ValueDefineAccessor> || std::is_same_v<T, analysis::ValueHole> ||
-                        std::is_same_v<T, analysis::ValueEnvironmentPush> || std::is_same_v<T, analysis::ValueEnvironmentPop> ||
-                        std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
-                        std::is_same_v<T, analysis::ValueNop> || std::is_same_v<T, analysis::ValueConcurrentNotification> || std::is_same_v<T, analysis::ValueDebugger> ||
-                        std::is_same_v<T, analysis::ValueJump>);
+              std::is_same_v<T, analysis::ValueIteratorAcquire> ||
+              std::is_same_v<T, analysis::ValueObjectCheck> ||
+              std::is_same_v<T, analysis::ValueEnumeration> ||
+              std::is_same_v<T, analysis::ValueArraySpread> ||
+              std::is_same_v<T, analysis::ValueSuperCall> ||
+              std::is_same_v<T, analysis::ValueDefineAccessor> ||
+              std::is_same_v<T, analysis::ValueHole> ||
+              std::is_same_v<T, analysis::ValueEnvironmentPush> ||
+              std::is_same_v<T, analysis::ValueEnvironmentPop> ||
+              std::is_same_v<T, analysis::ValueCurrentEnvironment> ||
+              std::is_same_v<T, analysis::ValueNop> ||
+              std::is_same_v<T, analysis::ValueConcurrentNotification> ||
+              std::is_same_v<T, analysis::ValueDebugger> ||
+              std::is_same_v<T, analysis::ValueJump>);
           throw Error::kUnsupportedOperation;
         }
       }, op.operation);

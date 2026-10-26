@@ -10,9 +10,18 @@ using Error = ExpressionError;
 void Require(bool valid, Error error) { if (!valid) throw error; }
 class CopyExpressions {
  public:
-  CopyExpressions(const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-                  ExpressionForest& forest, FunctionOwnerId owner, std::uint64_t work, std::span<const std::uint8_t> selected_edges)
-      : graph_(graph), evaluation_(evaluation), forest_(forest), owner_(owner), work_(work), selected_edges_(selected_edges) {}
+  CopyExpressions(const analysis::ValueProgram& graph,
+                  const EvaluationPlan& evaluation, ExpressionForest& forest,
+                  FunctionOwnerId owner, CallableKind callable,
+                  std::uint64_t work,
+                  std::span<const std::uint8_t> selected_edges)
+      : graph_(graph),
+        evaluation_(evaluation),
+        forest_(forest),
+        owner_(owner),
+        callable_(callable),
+        work_(work),
+        selected_edges_(selected_edges) {}
   void Append() {
     if (!evaluation_.phis) return;
     for (std::size_t b = 0; b < evaluation_.phis->bundles.size(); ++b) {
@@ -119,6 +128,11 @@ class CopyExpressions {
           return *forest_.operations[producer->op.value];
         }
         if (std::holds_alternative<NewTargetEntryBinding>(binding)) return Add(NewTargetExpr{owner_}, origin);
+        // The derived ABI entry is a value (undefined), whereas native this
+        // is a checked read. Phi edges obey the same distinction as operands.
+        if (std::holds_alternative<ReceiverEntryBinding>(binding) &&
+            callable_ == CallableKind::kDerivedConstructor)
+          return Add(TreeLiteral{UndefinedLiteral{}}, origin);
         Require(std::holds_alternative<ReceiverEntryBinding>(binding) ||
             std::holds_alternative<NativeReceiverBinding>(binding), Error::kUnavailableValue);
         return Add(ThisExpr{owner_}, origin);
@@ -180,15 +194,18 @@ class CopyExpressions {
   const EvaluationPlan& evaluation_;
   ExpressionForest& forest_;
   FunctionOwnerId owner_;
+  CallableKind callable_;
   std::uint64_t work_;
   std::span<const std::uint8_t> selected_edges_;
 };
 }  // namespace
 std::variant<std::uint64_t, ExpressionFailure> AppendCopyExpressions(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
-    ExpressionForest& forest, FunctionOwnerId owner, std::uint64_t work, std::span<const std::uint8_t> selected_edges) {
+    ExpressionForest& forest, FunctionOwnerId owner, CallableKind callable,
+    std::uint64_t work, std::span<const std::uint8_t> selected_edges) {
   try {
-    CopyExpressions builder(graph, evaluation, forest, owner, work, selected_edges);
+    CopyExpressions builder(graph, evaluation, forest, owner, callable, work,
+                            selected_edges);
     builder.Append();
     return work - builder.Remaining();
   } catch (Error error) { return error; }

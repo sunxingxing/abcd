@@ -67,6 +67,137 @@ class InitializationCode {
   std::array<std::size_t, static_cast<std::size_t>(Label::kCount)> labels{};
   std::vector<std::pair<std::size_t, Label>> fixes;
 };
+void NativeInitializationFixtures() {
+  using namespace abcd;
+  using namespace analysis;
+  using abc::Opcode;
+  const auto frame = std::get<abc::FrameLayout>(
+      abc::BuildFrameLayout(4, 4, abc::CallFlags{true, true, false, true}));
+  const auto receiver = static_cast<std::uint8_t>(frame.this_value->value);
+  const auto parameter = static_cast<std::uint8_t>(frame.first_parameter.value);
+  std::uint64_t previous_work = 0;
+  for (const unsigned count : {1U, 2U, 200U, 201U, 400U, 800U}) {
+    InitializationCode code;
+    for (unsigned i = 0; i < count; ++i) {
+      code.Emit(Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8, {0, 1, parameter});
+      code.Emit(Opcode::kSTA_V8, {0});
+      code.Emit(Opcode::kLDA_V8, {receiver});
+      code.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {1});
+      code.Emit(Opcode::kLDA_V8, {0});
+      code.Emit(Opcode::kSTA_V8, {receiver});
+    }
+    code.Emit(Opcode::kLDA_V8, {receiver});
+    code.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {0});
+    code.Emit(Opcode::kRETURN);
+    auto body = code.Decode(abc::ProfileId::kDynamic1301);
+    const auto checked = ProveRangeDerivedConstructor(body, frame);
+    if (const auto* error = std::get_if<DerivedConstructorError>(&checked))
+      std::cerr << "native proof " << count << " "
+                << static_cast<unsigned>(*error) << '\n';
+    Check(std::holds_alternative<RangeDerivedConstructor>(checked));
+    Check(std::get<RangeDerivedConstructor>(checked).sites.size() == count);
+    const auto work = std::get<RangeDerivedConstructor>(checked).work;
+    if (count >= 400) {
+      constexpr std::uint64_t kMaxDoublingGrowth = 3;
+      Check(work < previous_work * kMaxDoublingGrowth);
+    }
+    previous_work = work;
+    std::cout << "native range sites " << count << " work " << work << '\n';
+    Check(std::get<DerivedConstructorError>(ProveRangeDerivedConstructor(
+              body, frame, {0})) == DerivedConstructorError::kResourceLimit);
+    Check(std::get<DerivedConstructorError>(ProveRangeDerivedConstructor(
+              body, frame, {DerivedConstructorBudget::kDefaultBytes, 0})) ==
+          DerivedConstructorError::kResourceLimit);
+    if (count > 1)
+      Check(std::get<RangeDerivedConstructor>(checked).coverage[0].action ==
+            DerivedCheckAction::kBind);
+    // Changing the actual binding guard to an initialized check must not
+    // authorize native super: it would throw on the first invocation.
+    for (auto& site : body.instructions)
+      if (site.decoded.opcode ==
+          Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8) {
+        site.decoded.operands[0].raw_bits = 0;
+        break;
+      }
+    const auto refused = ProveRangeDerivedConstructor(body, frame);
+    Check(std::holds_alternative<DerivedConstructorError>(refused));
+    Check(std::get<DerivedConstructorError>(refused) ==
+          (count == 1 ? DerivedConstructorError::kGuard
+                      : DerivedConstructorError::kInstruction));
+  }
+  // Share a binding guard after an exclusive selection. Neither construction
+  // dominates the join; copy/phi equations, not a one-producer restriction,
+  // establish the common receiver protocol.
+  {
+    InitializationCode shared;
+    shared.Emit(Opcode::kLDA_V8, {parameter});
+    shared.Jump(Opcode::kJEQZ_IMM32, Label::kCall);
+    shared.Emit(Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8, {0, 1, parameter});
+    shared.Emit(Opcode::kSTA_V8, {0});
+    shared.Jump(Opcode::kJMP_IMM32, Label::kTail);
+    shared.Mark(Label::kCall);
+    shared.Emit(Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8, {0, 0, parameter});
+    shared.Emit(Opcode::kSTA_V8, {0});
+    shared.Mark(Label::kTail);
+    shared.Emit(Opcode::kLDA_V8, {receiver});
+    shared.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {1});
+    shared.Emit(Opcode::kLDA_V8, {0});
+    shared.Emit(Opcode::kSTA_V8, {receiver});
+    shared.Emit(Opcode::kLDA_V8, {receiver});
+    shared.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {0});
+    shared.Emit(Opcode::kRETURN);
+    const auto result = ProveRangeDerivedConstructor(
+        shared.Decode(abc::ProfileId::kDynamic1301), frame);
+    Check(std::holds_alternative<RangeDerivedConstructor>(result));
+    Check(std::get<RangeDerivedConstructor>(result).bindings.size() == 2);
+  }
+  {
+    InitializationCode loop;
+    loop.Mark(Label::kLoop);
+    loop.Emit(Opcode::kLDA_V8, {parameter});
+    loop.Jump(Opcode::kJEQZ_IMM32, Label::kExit);
+    loop.Emit(Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8, {0, 1, parameter});
+    loop.Emit(Opcode::kSTA_V8, {0});
+    loop.Emit(Opcode::kLDA_V8, {receiver});
+    loop.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {1});
+    loop.Emit(Opcode::kLDA_V8, {0});
+    loop.Emit(Opcode::kSTA_V8, {receiver});
+    loop.Jump(Opcode::kJMP_IMM32, Label::kLoop);
+    loop.Mark(Label::kExit);
+    loop.Emit(Opcode::kLDA_V8, {receiver});
+    loop.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {0});
+    loop.Emit(Opcode::kRETURN);
+    Check(std::holds_alternative<RangeDerivedConstructor>(
+        ProveRangeDerivedConstructor(loop.Decode(abc::ProfileId::kDynamic1301),
+                                     frame)));
+  }
+  InitializationCode code;
+  code.Emit(Opcode::kLDA_V8, {parameter});
+  code.Jump(Opcode::kJEQZ_IMM32, Label::kExit);
+  code.Emit(Opcode::kSUPERCALLTHISRANGE_IMM8_IMM8_V8, {0, 1, parameter});
+  code.Emit(Opcode::kSTA_V8, {0});
+  code.Emit(Opcode::kLDA_V8, {receiver});
+  code.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {1});
+  code.Emit(Opcode::kLDA_V8, {0});
+  code.Emit(Opcode::kSTA_V8, {receiver});
+  code.Mark(Label::kExit);
+  code.Emit(Opcode::kLDA_V8, {receiver});
+  code.Emit(Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8, {0});
+  code.Emit(Opcode::kRETURN);
+  Check(std::holds_alternative<RangeDerivedConstructor>(
+      ProveRangeDerivedConstructor(code.Decode(abc::ProfileId::kDynamic1301),
+                                   frame)));
+  auto unchecked = code.Decode(abc::ProfileId::kDynamic1301);
+  for (auto& instruction : unchecked.instructions)
+    if (instruction.decoded.opcode ==
+            Opcode::kTHROW_IFSUPERNOTCORRECTCALL_PREF_IMM8 &&
+        instruction.decoded.operands[0].raw_bits == 0)
+      instruction.decoded.operands[0].raw_bits = 2;
+  // A raw undefined completion without the receiver check must not acquire
+  // native ReferenceError semantics merely because this is a constructor.
+  Check(std::get<DerivedConstructorError>(ProveRangeDerivedConstructor(
+            unchecked, frame)) == DerivedConstructorError::kReturn);
+}
 void InitializationFixtures() {
   using namespace abcd;
   using namespace analysis;
@@ -192,6 +323,7 @@ void InitializationFixtures() {
 }  // namespace
 
 int main() {
+  NativeInitializationFixtures();
   InitializationFixtures();
   for (const auto profile : {abcd::abc::ProfileId::kDynamic1206, abcd::abc::ProfileId::kDynamic1301, abcd::abc::ProfileId::kDynamic1202}) {
     using namespace abcd; using namespace analysis;

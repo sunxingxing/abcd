@@ -162,6 +162,7 @@ struct EvaluationPlan {
   // edges to its preserved receiver cells. The family factory discharges this
   // against unchanged input/work pairs after default recovery, never Language alone.
   std::vector<analysis::OpId> receiver_guards;
+  std::optional<DerivedNativeProtocol> derived_protocol;
   // Phi values exclusively owned by native logical or conditional expressions, indexed by
   // ValueId. Each entry points to its original conditional branch operation.
   std::vector<std::optional<analysis::OpId>> logical_values;
@@ -373,17 +374,22 @@ struct EvaluationShape {
 // including primitive buffered objects without actual child functions.
 // Family demands retain forwarded storage even without local lexical accesses;
 // they must come from these actual child occurrences, not arbitrary slots.
-[[nodiscard]] std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationPlan(
+[[nodiscard]] std::variant<EvaluationPlan, EvaluationFailure>
+BuildEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget = {},
     IncomingCells incoming = IncomingCells::kReject,
     std::span<const FunctionBinding> functions = {},
-    std::span<const ModuleEvaluation> modules = {}, std::span<const CellDemand> demands = {},
+    std::span<const ModuleEvaluation> modules = {},
+    std::span<const CellDemand> demands = {},
     std::span<const ClassInitializerCall> initializers = {},
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown,
     std::span<const ClassDefinitionSite> definitions = {},
     std::span<const analysis::OpId> receiver_guards = {},
-    std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr,
-    std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput arrays = {});
+    std::span<const IncomingCell> entry_demands = {},
+    const ClassSelfOrder* self_order = nullptr,
+    std::span<const ClassPrototypeRead> prototype_reads = {},
+    ArraySourceInput arrays = {},
+    const DerivedNativeProtocol* derived = nullptr);
 // Iteratively expands the proposed forest in the declared input order, checking
 // exact ordered occurrences and availability. Cross-phase expressions require
 // contiguous effect intervals and equal catch snapshots at their final roots.

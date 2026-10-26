@@ -1,9 +1,12 @@
 #include "derived_value_states.h"
-#include "abcd/analysis/local_ssa.h"
-#include "../analysis/value_flow.h"
+
+#include <algorithm>
 #include <limits>
 #include <new>
 #include <stdexcept>
+
+#include "../analysis/value_flow.h"
+#include "abcd/analysis/local_ssa.h"
 namespace abcd::source {
 namespace {
 using namespace analysis;
@@ -23,8 +26,8 @@ State Literal(const ValueOperand& value) {
 }
 }
 std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
-    const FileFunction& function, OpId call, std::span<const CapturePreservation> preserved,
-    SemanticBudget budget) {
+    const FileFunction& function, std::span<const OpId> calls,
+    std::span<const CapturePreservation> preserved, SemanticBudget budget) {
   const auto initial = budget;
   try {
     const auto step = [&](std::size_t count = 1) {
@@ -44,7 +47,8 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
     const auto& graph = function.values.graph;
     const auto& input = function.input.Input();
     Require(graph.values.size() <= UINT32_MAX, Error::kResourceLimit);
-    Require(call.value < graph.ops.size(), Error::kOrigin);
+    for (const auto call : calls)
+      Require(call.value < graph.ops.size(), Error::kOrigin);
     // Local SSA describes original stores, but supplied working operands may
     // have changed. Reject unavailable feedback before solving origin cycles.
     const auto available = VerifyValueFlow(graph, budget);
@@ -130,7 +134,8 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
       const auto& op = graph.ops[result->op.value];
       Require(op.life == ValueLife::kLive && op.result == ValueId{static_cast<std::uint32_t>(i)}, Error::kOrigin);
       const auto* super = std::get_if<ValueSuperCall>(&op.operation);
-      if (result->op == call || (super && super->source == SuperArgumentSource::kInvocationFrame)) {
+      if (std::binary_search(calls.begin(), calls.end(), result->op) ||
+          (super && super->source == SuperArgumentSource::kInvocationFrame)) {
         states[i] = State::kSuper; continue;
       }
       if (std::holds_alternative<ValueCopy>(op.operation)) {
@@ -215,5 +220,12 @@ std::variant<DerivedValueStates, Error> BuildDerivedValueStates(
   } catch (Error error) { return error; }
     catch (const std::bad_alloc&) { return Error::kResourceLimit; }
     catch (const std::length_error&) { return Error::kResourceLimit; }
+}
+std::variant<DerivedValueStates, DerivedProjectionError>
+BuildDerivedValueStates(const FileFunction& function, OpId call,
+                        std::span<const CapturePreservation> preserved,
+                        SemanticBudget budget) {
+  return BuildDerivedValueStates(function, std::span<const OpId>(&call, 1),
+                                 preserved, budget);
 }
 }

@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/derived_control/control.js",
+   "path": "tests/fixtures/isa/derived_control/control-O0.abc",
+   "sha256": "ba2dee3b75b3ef546848c2e4174dc125ededed7b6fbe21fc29bfd4dbfa042a67",
+   "source_sha256": "bf3e371606a43d2e3e2a90bcbb754177795622b49b1bd01a12875a75aeb13378",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=derived_control",
+    "--source-file=control.js",
+    "--output=tests/fixtures/isa/derived_control/control-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/derived_control/control.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only."
+}

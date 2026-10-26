@@ -139,3 +139,61 @@ found no concrete defect in the zero-field extension. Tests, generated-JS
 execution and RSS collection remain paused. Deferred regressions cover empty
 field sequences with malformed rest/guards, extra effects, nonterminal returns,
 wrong length, unknown parent brand and explicit-spread semantics.
+
+### Range constructor control flow, increment 1 (2026-10-26)
+
+Range-derived proofs now publish one certificate containing super sites, return
+sites with receiver state, check coverage, and guard-to-construction bindings.
+The previous single-site proof remains a sufficient fast path and produces the
+same projection. Explicit spread, forwarding, and implicit constructors retain
+their existing admission paths and parent-runtime requirements. This increment
+adds no source-language premise.
+
+The general proof uses the existing semantic instruction adapter, normal CFG,
+register SSA, and dominators. An auxiliary SSA program observes a shadow receiver
+binding and pending construction; it never changes the input body. Copy roots
+and memoized phi equations compare actual guard operands to that binding.
+Monotone normal-flow dataflow tracks unreachable/uninitialized/initialized/both
+and whether a construction awaits binding. Each range construction must reach
+its mode-1 check without intervening effects, throws, returns, or an initialized
+pending cycle. The check constructs first, throws on an initialized path, and
+binds on an uninitialized path. Alternative constructions may share a guard.
+No construction is required to dominate returns or other constructions.
+
+Mode-0 checks become native `this` reads, including their ReferenceError path.
+Mode-1 checks map to a distinct native super binding phase after construction;
+they are never treated as ignored, nonthrowing anchors. Native constructor exits
+retain their own throwing phase. Object/function results return directly;
+non-undefined primitives reach the VM/native TypeError check. Undefined results
+require the bytecode receiver check/substitution, proved through SSA, edge
+states, and dominating strict-undefined refinements. Source returns evaluate
+their expression once. The ABI's uninitialized receiver transport is represented
+as undefined; only certified receiver observations become native `this`.
+
+The existing `EraseTransparentRethrowRegions` analysis remains the sole owner of
+handler removal. Its proof admits the compiler's transparent implicit-super-check
+handlers before semantic import. Remaining exception regions are refused; this
+increment does not implement arbitrary catch/finally. Evaluation verification,
+tree operands/flow, recovery flow, and fresh derived projection verification all
+consume/check the complete site list. Recovery flow distinguishes construction,
+binding, receiver-read, and constructor-exit exception points. Shared guards keep
+all alternative native binding ports; consumers requiring one physical point
+conservatively decline that optimization.
+
+Let N be instructions/SSA nodes, E CFG/phi edges, and U indexed uses. Storage is
+charged before admission; CFG/SSA/dominator builders receive the remaining
+budget. Iterative worklists, copy compression, sorted indexes and memoized
+relations target O((N+E+U) log N) work and linear retained storage. Relational
+states/visits have an explicit input-sized resource bound; a denser product
+returns typed resource exhaustion instead of starting quadratic per-site graph
+walks. The algorithms reuse the project's SSA/dominator implementations and
+standard monotone dataflow; there is no new dependency or licensing obligation.
+Unproved receiver identity, return completion, order, lexical effects, handlers,
+malformed instructions, and budget exhaustion retain typed refusals.
+
+The O0 `derived_control` fixture and Node differential cover 57 outcomes,
+including early returns, branch-local super sites, double construction before
+ReferenceError, loop super calls, pre-super receiver reads, replacement objects,
+user exceptions and alternate `new.target`. Analysis tests include shared-guard
+phis, mode mutations and 200/201/400/800-site resource/scaling checks. Current
+acceptance and baseline failures are recorded in source-recovery/status.md.

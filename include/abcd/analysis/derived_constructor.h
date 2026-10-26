@@ -11,8 +11,9 @@
 #include "abcd/abc/frame_layout.h"
 #include "abcd/abc/method_body.h"
 #include "abcd/abc/pool_reference.h"
-#include "abcd/analysis/phi_placement.h"
 #include "abcd/analysis/capture_effect.h"
+#include "abcd/analysis/phi_placement.h"
+#include "abcd/analysis/register_ssa.h"
 
 namespace abcd::analysis {
 struct SuperForward {
@@ -80,21 +81,51 @@ using DerivedConstructorResult = std::variant<ForwardingDerivedConstructor,
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     DerivedConstructorBudget budget = {});
 
+enum class ReceiverState : std::uint8_t {
+  kUnreachable = 0,
+  kUninitialized = 1,
+  kInitialized = 2,
+  kBoth = 3
+};
+enum class DerivedCheckAction : std::uint8_t { kNoop, kBind, kRead };
+struct DerivedSuperSite {
+  InstructionId instruction;
+  abc::CodeOffset pc;
+  bool operator==(const DerivedSuperSite&) const = default;
+};
+struct DerivedReturnSite {
+  InstructionId instruction;
+  ReceiverState receiver;
+  bool operator==(const DerivedReturnSite&) const = default;
+};
+struct DerivedCoverage {
+  InstructionId instruction;
+  DerivedCheckAction action;
+  std::optional<InstructionId> construction;
+  bool operator==(const DerivedCoverage&) const = default;
+};
+struct DerivedBindingSite {
+  InstructionId guard, construction;
+  bool operator==(const DerivedBindingSite&) const = default;
+};
 struct RangeDerivedConstructor {
-  abc::CodeOffset super_pc;
+  std::vector<DerivedSuperSite> sites;
+  std::vector<DerivedReturnSite> returns;
+  std::vector<DerivedCoverage> coverage;
+  std::vector<DerivedBindingSite> bindings;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
 };
 using RangeDerivedConstructorResult =
     std::variant<RangeDerivedConstructor, DerivedConstructorError>;
-// A single range super call must dominate every normal return. Sparse SSA
-// origin propagation proves each VM super check is a no-op on its actual
-// input; arbitrary constructors and inferred source types are not admitted.
-// Local stores/loads participate through sparse cell SSA before the first
-// capture-capable creation not covered by a same-body preservation certificate.
-// Later cell loads remain unknown. The default
-// profile is the pinned v7 dynamic 13.0.1 contract; file owners pass theirs.
-// CFG successor reachability proves the call cannot repeat. Independent loops
-// and backward physical layouts are admitted; guard count/placement do not
-// define initialization. Exception regions remain outside this normal proof.
+// Range protocols retain every call/return/check. The historical harmless-
+// guard proof remains a sufficient fast path, preserving existing projections.
+// The general proof compares actual SSA receiver values with an invocation-
+// owned shadow binding and tracks initialization on normal CFG paths. Native
+// bind/read/exit checks have explicit coverage, including throwing paths.
+// Copies, phis and block splitting do not change the protocol. Remaining
+// exception regions require the existing transparent-rethrow normalization;
+// arbitrary handlers and unproved lexical receiver effects remain refused.
 [[nodiscard]] RangeDerivedConstructorResult ProveRangeDerivedConstructor(
     const abc::MethodBody& body, const abc::FrameLayout& frame,
     DerivedConstructorBudget budget = {},

@@ -69,6 +69,8 @@ class FlowBuilder {
     discarded_=std::move(result_.discarded);discarded_.clear();
     result_.properties.clear();
     result_.class_initializations.clear();
+    result_.derived_constructions.clear();
+    result_.derived_bindings.clear();
     result_.aggregates.clear();
     result_.argument_carriers.clear();
     result_.snapshot_slots.clear();
@@ -454,7 +456,10 @@ class FlowBuilder {
     // Ownership census, not semantic dispatch. Add any new owned flow buffer
     // here; original evidence is borrowed and scopes are charged separately.
     add(flow.enumerations);add(flow.iterations);add(flow.iteration_closes);add(flow.parameter_defaults);add(flow.parameter_expression_events);add(flow.parameter_guards);
-    add(flow.class_initializations);add(flow.member_updates);
+    add(flow.class_initializations);
+    add(flow.derived_constructions);
+    add(flow.derived_bindings);
+    add(flow.member_updates);
     add(flow.normal_kinds);add(flow.normal_truths);add(flow.normal_exits);
     add(flow.actions);add(flow.aggregates);add(flow.argument_carriers);
     add(flow.snapshot_slots);add(flow.property_initializers);add(flow.original_actions);
@@ -648,10 +653,63 @@ class FlowBuilder {
     }
     // Publish each native action once. Phase and exception consumers use this
     // same index; they must not independently guess an action from an anchor.
+    std::vector<std::optional<FlowDerivedConstruction>> derived;
+    if (tree_.derived_protocol && result.original) {
+      Resize(derived, tree_.expressions.size());
+      for (const auto& native : result.derived_constructions) {
+        budget_.Step();
+        RequireTree(!derived[native.expression.value], Error::kOwnership);
+        derived[native.expression.value] = native;
+      }
+      for (std::size_t i = 0; i < result.original->operations.size(); ++i) {
+        budget_.Step();
+        const auto& raw = result.original->operations[i];
+        if (raw.derived_construction) {
+          const auto expression = *raw.derived_construction;
+          if (!derived[expression.value]) continue;
+          const auto& action = derived[expression.value]->construction;
+          result.original_actions[i] = FlowOriginalAction{
+              action.before, action.normal, action.exceptions};
+        }
+        if (raw.derived_binding) {
+          const auto range = *raw.derived_binding;
+          RequireTree(
+              range.first <= result.original->derived_bindings.size() &&
+                  range.count <=
+                      result.original->derived_bindings.size() - range.first,
+              Error::kOwnership);
+          bool complete = true;
+          for (const auto expression :
+               std::span(result.original->derived_bindings)
+                   .subspan(range.first, range.count)) {
+            budget_.Step();
+            RequireTree(expression.value < derived.size(), Error::kOwnership);
+            complete &= derived[expression.value].has_value();
+          }
+          if (!complete) continue;
+          for (const auto expression :
+               std::span(result.original->derived_bindings)
+                   .subspan(range.first, range.count)) {
+            budget_.Step();
+            Append(result.derived_bindings,
+                   FlowDerivedBinding{analysis::OpId{static_cast<unsigned>(i)},
+                                      derived[expression.value]->binding});
+          }
+          if (range.count == 1) {
+            const auto& action =
+                derived[result.original->derived_bindings[range.first].value]
+                    ->binding;
+            result.original_actions[i] = FlowOriginalAction{
+                action.before, action.normal, action.exceptions};
+          }
+        }
+      }
+    }
     for(std::size_t i=0;i<result.original_actions.size();++i) {
       budget_.Step();const auto& operation=result.original->operations[i];
       if(operation.life!=analysis::ValueLife::kLive)continue;
       auto& current=result.original_actions[i];
+      if (operation.derived_construction || operation.derived_binding) continue;
       if(result.original->cells&&result.original->cells->references[i]&&
           !FindFlowOriginalCellReference(result,analysis::OpId{static_cast<std::uint32_t>(i)})) {
         // A known value can replace a read without executing that cell access.
@@ -775,6 +833,24 @@ class FlowBuilder {
       const auto& operation=result.original->operations[phase.operation->value];
       if(operation.life!=analysis::ValueLife::kLive)continue;
       const auto& action=result.original_actions[phase.operation->value];
+      if (operation.derived_binding && operation.derived_binding->count > 1) {
+        // All alternatives must still exist. A later consumer requiring one
+        // physical point must conservatively refuse this sum of native ports.
+        const auto first = std::lower_bound(
+            result.derived_bindings.begin(), result.derived_bindings.end(),
+            *phase.operation, [](const auto& binding, auto operation) {
+              return binding.guard < operation;
+            });
+        const auto last = std::upper_bound(
+            first, result.derived_bindings.end(), *phase.operation,
+            [](auto operation, const auto& binding) {
+              return operation < binding.guard;
+            });
+        if (std::size_t(last - first) == operation.derived_binding->count &&
+            phase.phase != analysis::ExceptionPhase::kCatch)
+          point = FlowDerivedBindingPhase{*phase.operation};
+        continue;
+      }
       if(operation.initialized_guard) {
         if(phase.phase!=analysis::ExceptionPhase::kCatch&&FindFlowOriginalGuard(result,*phase.operation))
           point=FlowGuardPhase{*phase.operation};
@@ -1323,6 +1399,48 @@ class FlowBuilder {
                       : allocation);
       return;
     }
+    if (tree_.derived_protocol)
+      if (const auto* super = std::get_if<SuperCallExpr>(&node)) {
+        // ECMA SuperCall constructs first, then BindThisValue checks and
+        // commits. These are distinct physical phases, even though syntax is
+        // one call.
+        const auto construct = New({FlowEventKind::kEvaluation, {}, {}, at.id});
+        const auto bind = New({FlowEventKind::kEvaluation, {}, {}, at.id});
+        const SourceEffects guard{analysis::LanguageEffect::kGuard,
+                                  analysis::LanguageEffect::kGuard,
+                                  analysis::ExceptionalCompletion::kMayThrow};
+        events_[construct.value].discarded = context.discarded;
+        events_[bind.value].discarded = context.discarded;
+        events_[construct.value].effects = CallbackEffects();
+        events_[construct.value].effect = ExpressionEvaluation::kRequired;
+        events_[bind.value].effects = guard;
+        events_[bind.value].effect = ExpressionEvaluation::kRequired;
+        Link(construct, bind);
+        Link(construct, context.thrown, FlowCompletion::kThrow);
+        Link(bind, context.next);
+        Link(bind, context.thrown, FlowCompletion::kThrow);
+        if (context.discarded)
+          discarded_[context.discarded->value].effect =
+              ExpressionEvaluation::kRequired;
+        if (!result_.actions.empty())
+          result_.actions[at.id.value] = FlowAction{
+              construct, context.next, {context.thrown, context.finalizer}};
+        Append(result_.derived_constructions,
+               FlowDerivedConstruction{
+                   at.id,
+                   {construct, bind, {context.thrown, context.finalizer}},
+                   {bind, context.next, {context.thrown, context.finalizer}}});
+        const auto* arguments = std::get_if<ArgumentRange>(&super->arguments);
+        RequireTree(arguments, Error::kOwnership);
+        auto next = construct;
+        for (std::uint32_t i = arguments->count; i > 0; --i) {
+          budget_.Step();
+          next = Expr(tree_.arguments[arguments->first + i - 1],
+                      context.Operand(next));
+        }
+        Link(start, next);
+        return;
+      }
     const auto effect=New({FlowEventKind::kEvaluation,{},{},at.id});auto normal=context.next;
     if(!projection_.cells->captures.empty())for(const auto capture:projection_.cells->Captured(at.id,budget_)) {
       budget_.Step();Append(result_.unit_captures,FlowUnitCapture{effect,Resolve(capture.binding)});
@@ -1821,6 +1939,18 @@ class FlowBuilder {
           Link(start,node.value?Expr(*node.value,context.Operand(pending)):pending);
         } else {
           auto returned=New();Abrupt(returned,terminal_,context,FlowCompletion::kReturn);
+          if (tree_.derived_protocol) {
+            // [[Construct]] validates completion after the body, outside its
+            // catches. This increment admits only transparent rethrow regions.
+            RequireTree(!context.finalizer && context.thrown == terminal_,
+                        Error::kOwnership);
+            events_[returned.value].effects =
+                SourceEffects{analysis::LanguageEffect::kGuard,
+                              analysis::LanguageEffect::kGuard,
+                              analysis::ExceptionalCompletion::kMayThrow};
+            events_[returned.value].effect = ExpressionEvaluation::kRequired;
+            Link(returned, terminal_, FlowCompletion::kThrow);
+          }
           if(!statement_actions_.empty())statement_actions_[at.id.value]=FlowStatementAction{OriginalStatementKind::kReturn,{returned,context.finalizer?std::nullopt:std::optional{terminal_},{context.thrown,context.finalizer}}};
           Link(start,node.value?Expr(*node.value,context.Operand(returned)):returned);
         }

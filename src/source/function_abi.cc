@@ -114,6 +114,20 @@ class AbiBuilder {
                       evaluation_->operations[owner->value].kind == EvaluationKind::kAlias)) continue;
       if (const auto* owner = std::get_if<analysis::OpId>(&use.owner);
           owner && IsReceiverGuard(tree_, *owner)) continue;
+      if (const auto* owner = std::get_if<analysis::OpId>(&use.owner);
+          owner && tree_.derived_protocol &&
+          std::binary_search(tree_.derived_protocol->reads.begin(),
+                             tree_.derived_protocol->reads.end(), *owner)) {
+        const auto* check = std::get_if<analysis::ValueSuperCheck>(
+            &graph_.ops[owner->value].operation);
+        Require(
+            check &&
+                check->kind == analysis::SuperCheckKind::kRequireInitialized &&
+                use.role == analysis::OperandRole::kGuardValue &&
+                use.purpose == analysis::ReadPurpose::kProtocol,
+            Error::kEntry);
+        continue;  // Tree operands proved this native checked receiver read.
+      }
       if ((tree_.ImplicitConstructor() || invocation_rest) && use.role == analysis::OperandRole::kConstructor &&
           use.purpose == analysis::ReadPurpose::kProtocol) {
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);

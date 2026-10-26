@@ -31,10 +31,22 @@ using Error = EvaluationError;
 void Require(bool condition, Error error) { if (!condition) throw error; }
 struct EffectInterval { std::uint32_t count = 0; std::uint32_t end = 0; };
 std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
-    EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands = {}, const ClassSelfOrder* self_order = nullptr, std::span<const ClassPrototypeRead> prototype_reads = {}, ArraySourceInput array_source = {}, bool assignments = true, bool* proposed = nullptr, std::span<const analysis::GuardedRead> guarded = {}, const ForOfEvaluationInput* for_of = nullptr) {
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget,
+    IncomingCells incoming, std::span<const FunctionBinding> functions,
+    std::span<const ModuleEvaluation> modules, EvaluationFlow flow,
+    std::span<const CellDemand> demands,
+    std::span<const ClassInitializerCall> initializers,
+    analysis::ClosureWrites closure_writes,
+    std::span<const ClassDefinitionSite> definitions,
+    std::span<const analysis::OpId> receiver_guards,
+    std::span<const IncomingCell> entry_demands = {},
+    const ClassSelfOrder* self_order = nullptr,
+    std::span<const ClassPrototypeRead> prototype_reads = {},
+    ArraySourceInput array_source = {}, bool assignments = true,
+    bool* proposed = nullptr,
+    std::span<const analysis::GuardedRead> guarded = {},
+    const ForOfEvaluationInput* for_of = nullptr,
+    const DerivedNativeProtocol* derived = nullptr) {
   EvaluationEvidence witness;
   const auto Require = [&](bool condition, Error error) { if (!condition) throw EvaluationFailure{error, witness}; };
   auto work = budget.work; auto bytes = budget.bytes;
@@ -119,6 +131,19 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         plan.guarded_peers[pair.read.value] = GuardedReadPeer{pair.guard, GuardedReadRole::kRead};
         plan.guarded_peers[pair.guard.value] = GuardedReadPeer{pair.read, GuardedReadRole::kGuard};
       }
+    }
+    if (derived) {
+      plan.derived_protocol.emplace();
+      const auto copy = [&](auto& to, const auto& from) {
+        using T = typename std::decay_t<decltype(to)>::value_type;
+        admit(from.size(), sizeof(T));
+        to.assign(from.begin(), from.end());
+        admit(to.capacity() - to.size(), sizeof(T));
+      };
+      copy(plan.derived_protocol->calls, derived->calls);
+      copy(plan.derived_protocol->returns, derived->returns);
+      copy(plan.derived_protocol->reads, derived->reads);
+      copy(plan.derived_protocol->bindings, derived->bindings);
     }
     plan.closure_writes = closure_writes;
     plan.arguments = graph.arguments;
@@ -703,6 +728,8 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
              ? ArrayInitializations(plan)->allocated_bytes
              : 0);
     for (const auto& call : plan.phase_selections) plan.allocated_bytes += call.prefix.capacity() * sizeof(analysis::OpId) + call.ancestors.capacity() * sizeof(PhaseCallReference);
+    if (plan.derived_protocol)
+      plan.allocated_bytes += plan.derived_protocol->AllocatedBytes();
     if (plan.for_of) plan.allocated_bytes += plan.for_of->allocated_bytes;
     if (plan.for_in) plan.allocated_bytes += plan.for_in->allocated_bytes + plan.for_in_events->allocated_bytes;
     if (plan.self_order) plan.allocated_bytes += plan.self_order->AllocatedBytes();
@@ -730,13 +757,22 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     return Error::kResourceLimit;
   }
 }
-std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(const analysis::ValueProgram& graph,
-    analysis::SemanticBudget budget, IncomingCells incoming,
-    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules,
-    EvaluationFlow flow, std::span<const CellDemand> demands, std::span<const ClassInitializerCall> initializers,
-    analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions,
-    std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands,
-    const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads, ArraySourceInput array_source, std::span<const analysis::GuardedRead> guarded = {}, const ForOfEvaluationInput* for_of = nullptr) {
+std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget,
+    IncomingCells incoming, std::span<const FunctionBinding> functions,
+    std::span<const ModuleEvaluation> modules, EvaluationFlow flow,
+    std::span<const CellDemand> demands,
+    std::span<const ClassInitializerCall> initializers,
+    analysis::ClosureWrites closure_writes,
+    std::span<const ClassDefinitionSite> definitions,
+    std::span<const analysis::OpId> receiver_guards,
+    std::span<const IncomingCell> entry_demands,
+    const ClassSelfOrder* self_order,
+    std::span<const ClassPrototypeRead> prototype_reads,
+    ArraySourceInput array_source,
+    std::span<const analysis::GuardedRead> guarded = {},
+    const ForOfEvaluationInput* for_of = nullptr,
+    const DerivedNativeProtocol* derived = nullptr) {
   // Reserve two disjoint work allowances before trying an optional projection.
   // A failed subpass need not report partial work: its entire allowance remains
   // charged. The byte allowance is reused only after the failed plan is gone.
@@ -753,7 +789,11 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(const analysis::
   const bool attempt = has_write && has_call;
   const auto allowance = attempt ? (budget.work - scan) / 2 : budget.work - scan;
   bool proposed = false;
-  auto result = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, attempt, &proposed, guarded, for_of);
+  auto result = BuildEvaluationAttempt(
+      graph, {budget.bytes, allowance}, incoming, functions, modules, flow,
+      demands, initializers, closure_writes, definitions, receiver_guards,
+      entry_demands, self_order, prototype_reads, array_source, attempt,
+      &proposed, guarded, for_of, derived);
   if (auto* plan = std::get_if<EvaluationPlan>(&result)) {
     // Twice actual work also admits this same successful attempt at plan.work.
     plan->work = scan + plan->work * (attempt ? 2 : 1);
@@ -761,16 +801,32 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(const analysis::
   }
   const auto error = std::get<EvaluationFailure>(result);
   if (!proposed || error == Error::kResourceLimit || error == Error::kWorkLimit) return result;
-  auto fallback = BuildEvaluationAttempt(graph, {budget.bytes, allowance}, incoming, functions, modules, flow, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, array_source, false, nullptr, guarded, for_of);
+  auto fallback = BuildEvaluationAttempt(
+      graph, {budget.bytes, allowance}, incoming, functions, modules, flow,
+      demands, initializers, closure_writes, definitions, receiver_guards,
+      entry_demands, self_order, prototype_reads, array_source, false, nullptr,
+      guarded, for_of, derived);
   if (auto* plan = std::get_if<EvaluationPlan>(&fallback)) plan->work += scan + allowance;
   return fallback;
 }
 }  // namespace
 std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationPlan(
-    const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
-    std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
-    std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, std::span<const ClassDefinitionSite> definitions, std::span<const analysis::OpId> receiver_guards, std::span<const IncomingCell> entry_demands, const ClassSelfOrder* self_order, std::span<const ClassPrototypeRead> prototype_reads, ArraySourceInput arrays) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kNormal, demands, initializers, closure_writes, definitions, receiver_guards, entry_demands, self_order, prototype_reads, arrays);
+    const analysis::ValueProgram& graph, analysis::SemanticBudget budget,
+    IncomingCells incoming, std::span<const FunctionBinding> functions,
+    std::span<const ModuleEvaluation> modules,
+    std::span<const CellDemand> demands,
+    std::span<const ClassInitializerCall> initializers,
+    analysis::ClosureWrites closure_writes,
+    std::span<const ClassDefinitionSite> definitions,
+    std::span<const analysis::OpId> receiver_guards,
+    std::span<const IncomingCell> entry_demands,
+    const ClassSelfOrder* self_order,
+    std::span<const ClassPrototypeRead> prototype_reads,
+    ArraySourceInput arrays, const DerivedNativeProtocol* derived) {
+  return BuildEvaluation(
+      graph, budget, incoming, functions, modules, EvaluationFlow::kNormal,
+      demands, initializers, closure_writes, definitions, receiver_guards,
+      entry_demands, self_order, prototype_reads, arrays, {}, nullptr, derived);
 }
 std::variant<EvaluationPlan, EvaluationFailure> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,

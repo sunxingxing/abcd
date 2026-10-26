@@ -245,6 +245,26 @@ class TreeBuilder {
     tree_.sendable = syntax_.sendable;
     tree_.module_domain = syntax_.module_domain;
     tree_.concurrent = std::move(syntax_.concurrent); tree_.callable = syntax_.callable;
+    Require(evaluation_.derived_protocol.has_value() ==
+                (constants_.derived_protocol != nullptr),
+            Error::kOwnership);
+    if (constants_.derived_protocol) {
+      Require(*evaluation_.derived_protocol == *constants_.derived_protocol,
+              Error::kOwnership);
+      tree_.derived_protocol.emplace();
+      const auto copy = [&](auto& to, const auto& from) {
+        using T = typename std::decay_t<decltype(to)>::value_type;
+        Admit(from.size(), sizeof(T));
+        to.assign(from.begin(), from.end());
+        Admit(to.capacity() - to.size(), sizeof(T));
+      };
+      copy(tree_.derived_protocol->calls, constants_.derived_protocol->calls);
+      copy(tree_.derived_protocol->returns,
+           constants_.derived_protocol->returns);
+      copy(tree_.derived_protocol->reads, constants_.derived_protocol->reads);
+      copy(tree_.derived_protocol->bindings,
+           constants_.derived_protocol->bindings);
+    }
     tree_.home_object = syntax_.home_object;
     tree_.parameter_form = syntax_.parameter_form;
     tree_.constructor_form = constants_.implicit_constructor ? ConstructorForm::kImplicit : ConstructorForm::kExplicit;
@@ -1262,9 +1282,17 @@ class TreeBuilder {
         tree_.operations.push_back({id, *expression});
         if (LiteralFieldPrefix(evaluation_, id) ||
             (!original_prefixes_.empty() && original_prefixes_[id.value]) ||
-            (id.value < evaluation_.phase_prefixes.size() && evaluation_.phase_prefixes[id.value]) ||
-            evaluation.kind == EvaluationKind::kInline || evaluation.kind == EvaluationKind::kPredicateSnapshot || evaluation.kind == EvaluationKind::kNestedLiteral ||
-            evaluation.kind == EvaluationKind::kPhiInput || evaluation.kind == EvaluationKind::kLogicalLeft) continue;
+            (id.value < evaluation_.phase_prefixes.size() &&
+             evaluation_.phase_prefixes[id.value]) ||
+            evaluation.kind == EvaluationKind::kInline ||
+            (evaluation.kind == EvaluationKind::kPredicateSnapshot &&
+             !(tree_.derived_protocol && op.result &&
+               std::holds_alternative<NativeReceiverBinding>(
+                   forest_.bindings.values[op.result->value]))) ||
+            evaluation.kind == EvaluationKind::kNestedLiteral ||
+            evaluation.kind == EvaluationKind::kPhiInput ||
+            evaluation.kind == EvaluationKind::kLogicalLeft)
+          continue;
         const auto evaluated = RootExpression(id, *expression);
         Append(draft, Statement(ExpressionStmt{evaluated}, origin));
       }

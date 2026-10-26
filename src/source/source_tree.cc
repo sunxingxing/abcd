@@ -33,6 +33,11 @@ std::variant<TreeStorage, TreeStorageError> MeasureTreeStorage(
       !arena(tree.labels) || !arena(tree.finalizers) ||
       !arena(tree.yield_returns))
     return TreeStorageError::kResourceLimit;
+  if (tree.derived_protocol && (!arena(tree.derived_protocol->calls) ||
+                                !arena(tree.derived_protocol->returns) ||
+                                !arena(tree.derived_protocol->reads) ||
+                                !arena(tree.derived_protocol->bindings)))
+    return TreeStorageError::kResourceLimit;
   if(tree.concurrent&&!admit(tree.concurrent->AllocatedBytes(),1))return TreeStorageError::kResourceLimit;
   const auto payloads = [&](const auto& strings) -> std::optional<TreeStorageError> {
     for (const auto& text : strings) {

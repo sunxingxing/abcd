@@ -4,19 +4,20 @@
 #include <new>
 #include <stdexcept>
 
-#include "class_inner_scope.h"
 #include "cell_lifetime.h"
+#include "class_inner_scope.h"
 #include "completion_tree.h"
 #include "concurrent_tree.h"
+#include "derived_native_protocol.h"
 #include "exception_tree.h"
 #include "for_in_emission.h"
 #include "for_of_evaluation.h"
+#include "literal_field_forest.h"
 #include "logical_evaluation.h"
 #include "logical_regions.h"
-#include "literal_field_forest.h"
-#include "tree_checks.h"
 #include "switch_region.h"
 #include "switch_syntax.h"
+#include "tree_checks.h"
 #include "tree_edge_flow.h"
 
 namespace abcd::source {
@@ -50,6 +51,12 @@ class FlowCheck {
       const ExceptionTreeInput* exceptions = nullptr)
       : graph_(graph), control_(control), evaluation_(evaluation), tree_(tree), budget_(budget),
         exceptions_(exceptions), sequences_(sequences), expression_scopes_(expression_scopes) {
+    Require(tree.derived_protocol == evaluation.derived_protocol,
+            Error::kPlacement);
+    if (tree.derived_protocol)
+      Require(CheckDerivedNativeProtocol(graph, *tree.derived_protocol,
+                                         [&] { budget.Step(); }),
+              Error::kPlacement);
     budget.Array(placements_, graph.ops.size());
     budget.Array(flow_.expressions, graph.ops.size());
     budget.Array(flow_.statements, graph.ops.size());

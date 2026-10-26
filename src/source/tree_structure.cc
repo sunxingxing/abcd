@@ -1004,6 +1004,9 @@ static std::variant<TreeStructure, TreeStructureError> VerifyStructure(
                 tree.arguments.size() <= kMaxId && tree.properties.size() <= kMaxId &&
                 tree.captures.size() <= kMaxId && tree.closure_captures.size() <= kMaxId &&
                 tree.modules.size() <= kMaxId && tree.labels.size() <= kMaxId, Error::kResourceLimit);
+    if (tree.derived_protocol)
+      RequireTree(tree.callable == CallableKind::kDerivedConstructor,
+                  Error::kOwnership);
     for (std::size_t i = 0; i < tree.receiver_guards.size(); ++i) {
       checked.Step();
       RequireTree(i == 0 || tree.receiver_guards[i - 1] < tree.receiver_guards[i], Error::kOwnership);

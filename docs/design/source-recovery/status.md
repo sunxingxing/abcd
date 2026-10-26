@@ -10,6 +10,47 @@
 
 
 
+## Range derived constructor control, increment 1 (2026-10-26)
+
+- Added a shared range certificate for every super/return/check/binding site,
+  receiver-state CFG dataflow and SSA identity/return proofs. Branch-local super,
+  early object/function/primitive returns, undefined completion, repeated super,
+  loops and pre-super this reads use native constructor semantics. Throwing
+  checks retain physical flow phases and all-site verification. No source
+  premise was added. Spread/forwarding/implicit admission paths are unchanged;
+  only existing transparent-rethrow normalization admits handlers.
+- Added `tests/fixtures/isa/derived_control/` with pinned O0 compiler command and
+  source/ABC/tool hashes, a Python ISA producer and 57-case Node differential.
+  Registered its CTest beside array_patterns and appended its coverage producer.
+  Existing derived analysis tests also cover shared guards, mode mutations,
+  missing receiver checks and zero work/byte budgets. Accounted general-proof
+  work at 200/201/400/800 sites: **110416/112169/232061/486455**; the doubling
+  assertions pass. Existing decoded initialization cases: **720**.
+- Authoritative build passes:
+  `cmake --build build/regression --target source_regression abc_structure isa_coverage_probe -j 8`.
+  Required `ctest --test-dir build/regression -L source-regression --output-on-failure`
+  passes **65/65**. `python3 tests/isa/derived_control_test.py` passes (57 Node
+  outcomes); the derived/derived_control/super_stores/construct_spread/
+  inherited_modules/local_classes/instance_fields/wide_ops ISA source sweep
+  passes **8/8**. Final targeted `derived_constructor_test` passes.
+- Additional derived/forwarding/capture/heritage/class-initializer sweep:
+  **10/15** pass. The five derived_cells/literal_receiver failures reproduce
+  **5/5** on a fresh source snapshot/build of starting HEAD `f14c96d8`, with the
+  same family diagnostic/tree cause and assertion at line 412. They remain open
+  pre-existing failures, not passing evidence. Full commands/results and logs
+  are retained under `build/derived-control/`.
+- Existing `derived/basic-O0.abc` generated source is byte-identical to its
+  pre-change output, including implicit/spread subclasses. Forwarding `fields`
+  and `pure` outputs are byte-identical to a fresh starting-HEAD CLI build;
+  forwarding unit/CLI checks pass. This is local fixture evidence only. No cohort
+  tools, full-corpus RSS run or Ark/device execution was part of the
+  implementation round. Review evidence: cohorts 613 -> 614 (o38 `driver.mjs`
+  complete; its derived constructor prints correct native `super`/`return null`
+  with residual `this;` reads and an unfolded `null !== (void 0)` selection, a
+  readability follow-up), 547 unchanged, zero regressions and zero text
+  changes (`build/review/csr80`). General catch/finally, spread
+  control-flow expansion and unproved receiver/return forms remain out of scope.
+
 ## Array patterns, increment 1b: native source (2026-10-26)
 
 - `ValueArrayPattern` lowers like any ordered user-code operation: shape

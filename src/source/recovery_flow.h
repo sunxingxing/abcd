@@ -34,11 +34,19 @@ struct FlowInvocationPhase {ParameterId parameter;};
 // An erased initialized guard qualifies a captured value. Its VM location is
 // not the load's physical action or a later expression's completion.
 struct FlowGuardPhase {analysis::OpId operation;};
+// A shared raw binding guard has alternative physical native BindThisValue
+// ports on disjoint construction paths. It is never an ignored anchor.
+struct FlowDerivedBindingPhase {
+  analysis::OpId operation;
+};
 struct FlowForwardedTryPhase {analysis::TryId region; analysis::WorkBlockId block;};
 struct FlowForwardedPhase {StmtId statement; analysis::WorkBlockId block;};
 enum class FlowIterationPhaseKind : std::uint8_t { kPrivate, kBindingCommit };
 struct FlowIterationPhase { IteratorProtocolId protocol; analysis::WorkBlockId original; FlowIterationPhaseKind kind=FlowIterationPhaseKind::kPrivate; };
-using FlowOriginalPhase=std::variant<FlowPoint,FlowControlPhase,FlowRegionPhase,FlowInvocationPhase,FlowGuardPhase,FlowForwardedPhase,FlowForwardedTryPhase,FlowIterationPhase>;
+using FlowOriginalPhase =
+    std::variant<FlowPoint, FlowControlPhase, FlowRegionPhase,
+                 FlowInvocationPhase, FlowGuardPhase, FlowDerivedBindingPhase,
+                 FlowForwardedPhase, FlowForwardedTryPhase, FlowIterationPhase>;
 struct FlowIterationEvent {ForOfEventKind kind;FlowPoint before,commit,thrown;};
 // A native close is effectful and has completion-dependent exception priority.
 // It is never a transparent handler forwarding record.
@@ -244,6 +252,14 @@ struct FlowExceptionContext {
 // precedes access; an update's conversion follows its captured read. Normal
 // completion includes successful source writeback, never the throwing route.
 struct FlowAction {FlowPoint before,normal;FlowExceptionContext exceptions;};
+struct FlowDerivedConstruction {
+  ExprId expression;
+  FlowAction construction, binding;
+};
+struct FlowDerivedBinding {
+  analysis::OpId guard;
+  FlowAction action;
+};
 struct FlowClassInitialization {
   ExprId expression;
   FlowPoint allocation, inner, before, commit;
@@ -531,6 +547,8 @@ struct FlowLoop {
 };
 struct RecoveryFlow {
   std::vector<FlowClassInitialization> class_initializations;
+  std::vector<FlowDerivedConstruction> derived_constructions;
+  std::vector<FlowDerivedBinding> derived_bindings;
   std::vector<std::optional<FlowIteration>> iterations; // StmtId indexed.
   std::vector<FlowIterationClose> iteration_closes;
   std::vector<FlowParameterDefault> parameter_defaults;

@@ -337,6 +337,17 @@ class ForestBuilder {
           Require(std::holds_alternative<analysis::ValueSuperCheck>(op.operation) && !op.result, Error::kOwnership);
           continue;
         }
+        if (constants_.derived_protocol &&
+            std::binary_search(constants_.derived_protocol->reads.begin(),
+                               constants_.derived_protocol->reads.end(),
+                               analysis::OpId{static_cast<std::uint32_t>(i)})) {
+          Require(callable_ == CallableKind::kDerivedConstructor &&
+                      std::holds_alternative<analysis::ValueSuperCheck>(
+                          op.operation),
+                  Error::kOwnership);
+          forest_.operations[i] = Add(ThisExpr{owner_}, origin);
+          continue;
+        }
         if (IsAbsentHeritageTransport(graph_, evaluation_, op)) continue;
         if (evaluation_.operations[i].kind == EvaluationKind::kElidedPure ||
             evaluation_.operations[i].kind == EvaluationKind::kAlias)
@@ -495,7 +506,8 @@ class ForestBuilder {
     for (const auto& region : logicals_) {
       Step(); if (evaluation_.operations[region.branch.value].kind != EvaluationKind::kLogicalValue) LogicalTree(region);
     }
-    const auto copied = AppendCopyExpressions(graph_, evaluation_, forest_, owner_, work_, selected_edges);
+    const auto copied = AppendCopyExpressions(
+        graph_, evaluation_, forest_, owner_, callable_, work_, selected_edges);
     if (const auto* error = std::get_if<ExpressionFailure>(&copied)) throw error->kind;
     Step(std::get<std::uint64_t>(copied));
     if(iteration_view_) {

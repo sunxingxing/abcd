@@ -11137,6 +11137,10 @@
     {
       "test": "isa_array_patterns_source_test",
       "producer": "tests/isa/array_patterns_test.py"
+    },
+    {
+      "test": "isa_derived_control_source_test",
+      "producer": "tests/isa/derived_control_test.py"
     }
   ]
 }
