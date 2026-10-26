@@ -74,9 +74,22 @@ class Preparation {
   template<class T,class E>T Take(std::variant<T,E> v){if(auto* e=std::get_if<E>(&v))Error(*e);return std::get<T>(std::move(v));}
   CreatorClassInput Input() const {
     const auto& function=family.members[owner.value].function;
-    Require(!function.Phase() && family.class_roles && family.class_functions && family.class_sites,FamilyCreationCheck::kClassPreparationInput);
-    return {file,header,index,lookup,*family.class_roles,*family.class_functions,*family.class_sites,function.Normal(),function.Identity(),
-        {family.members.front().function.Method(),family.first_owner,{owner.value}},function.Storage()};
+    Require(family.class_roles && family.class_functions && family.class_sites,
+            FamilyCreationCheck::kClassPreparationInput);
+    return {file,
+            header,
+            index,
+            lookup,
+            *family.class_roles,
+            *family.class_functions,
+            *family.class_sites,
+            function.Phase() ? ClassCreator{*function.Phase()}
+                             : ClassCreator{function.Normal()},
+            function.Identity(),
+            {family.members.front().function.Method(),
+             family.first_owner,
+             {owner.value}},
+            function.Storage()};
   }
   void Reference(DescendantClasses& result,std::u16string_view name) {
     Step(name.size()+1);

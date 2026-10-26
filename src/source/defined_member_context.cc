@@ -8,12 +8,14 @@
 #include <stdexcept>
 #include <type_traits>
 namespace abcd::source {
-std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveDefinedMember(
-    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
-    const analysis::FunctionCreationSites& functions, const FileFunction& creator,
-    analysis::OpId definition, abc::ClassMethodKind kind, RouteInputIdentity identity,
-    analysis::SemanticBudget budget) {
+std::variant<ClassTreeContext, ClassContextFailure>
+ClassTreeContext::ResolveDefinedMember(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions, ClassCreator creator,
+    analysis::OpId definition, abc::ClassMethodKind kind,
+    RouteInputIdentity identity, analysis::SemanticBudget budget) {
   using Error = ClassContextError;
   const auto initial = budget;
   const auto fail = [](Error error) { return ClassContextFailure{error}; };
@@ -25,9 +27,10 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveDef
       if (count > budget.bytes / width) throw fail(Error::kResourceLimit); budget.bytes -= count * width;
     };
     if (kind != abc::ClassMethodKind::kGetter && kind != abc::ClassMethodKind::kSetter && kind != abc::ClassMethodKind::kOrdinary) return fail(Error::kKind);
-    if (identity != creator.input.Identity()) return fail(Error::kProfile);
-    const auto& graph = creator.values.graph;
-    const auto& inventory = creator.values.definitions;
+    if (identity != creator.Identity()) return fail(Error::kProfile);
+    const auto& graph = creator.Graph();
+    if (!creator.Normal()) return fail(Error::kSite);
+    const auto& inventory = creator.Normal()->values.definitions;
     if (inventory.revision != graph.revision) return fail(Error::kSite);
     const auto found = std::lower_bound(inventory.sites.begin(), inventory.sites.end(), definition,
         [&](const auto& site, auto id) { step(); return site.definition < id; });
@@ -38,16 +41,22 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveDef
     const auto* method = std::get_if<analysis::ValueFunctionCreation>(&operation.operation);
     if (!method || operation.origin.value >= graph.origins.size()) return fail(Error::kSite);
     const auto& origin = graph.origins[operation.origin.value];
-    if (origin.site.value >= graph.input.sites.size() || graph.input.sites[origin.site.value] != *method_id ||
-        origin.site.value >= creator.input.Input().instructions.size()) return fail(Error::kSite);
-    const auto& original = creator.input.Input().instructions[origin.site.value];
+    if (origin.site.value >= graph.input.sites.size() ||
+        graph.input.sites[origin.site.value] != *method_id ||
+        origin.site.value >= creator.Instructions().size())
+      return fail(Error::kSite);
+    const auto& original = creator.Instructions()[origin.site.value];
     const auto* creation = std::get_if<analysis::FunctionCreation>(&original.operation);
     if (!creation || original.pc != origin.pc || creation->method != method->method ||
         creation->kind != method->kind || creation->home_object != method->home_object ||
         creation->length.value != method->length || creation->cache_slot != method->cache_slot) return fail(Error::kSite);
-    const auto target = abc::ResolvePoolReference(file, header, index, creator.input.Method(), method->method, abc::PoolEntityKind::kMethod);
+    const auto target =
+        abc::ResolvePoolReference(file, header, index, creator.Method(),
+                                  method->method, abc::PoolEntityKind::kMethod);
     if (const auto* error = std::get_if<abc::MetadataError>(&target)) return ClassContextFailure{*error};
-    const auto occurrence = functions.FindOccurrence(std::get<abc::PoolReference>(target).offset, creator.input.Method(), origin.pc);
+    const auto occurrence =
+        functions.FindOccurrence(std::get<abc::PoolReference>(target).offset,
+                                 creator.Method(), origin.pc);
     if (!occurrence) return fail(Error::kSite);
     auto resolved = CreationTreeContext::Resolve(file, header, index, lookup, roles, functions,
         *occurrence, identity, budget, CreationContextMode::kMethodBody);
@@ -69,12 +78,18 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveDef
     const auto length = kind == abc::ClassMethodKind::kGetter ? 0U : 1U;
     if (kind != abc::ClassMethodKind::kOrdinary && (context.Frame().parameters != length || context.Site().creation.length.value != length)) return fail(Error::kSignature);
     const auto read = [&](abc::PoolIndex key) -> std::u16string {
-      const auto reference = abc::ResolvePoolReference(file, header, index, creator.input.Method(), key, abc::PoolEntityKind::kString);
-      if (const auto* error = std::get_if<abc::MetadataError>(&reference)) throw ClassContextFailure{*error};
+      const auto reference =
+          abc::ResolvePoolReference(file, header, index, creator.Method(), key,
+                                    abc::PoolEntityKind::kString);
+      if (const auto* error = std::get_if<abc::MetadataError>(&reference))
+        throw ClassContextFailure{*error};
       auto decoded = abc::ReadStringEntity(file, header, std::get<abc::PoolReference>(reference).offset, {budget.bytes});
-      if (const auto* error = std::get_if<abc::MetadataError>(&decoded)) throw ClassContextFailure{*error};
+      if (const auto* error = std::get_if<abc::MetadataError>(&decoded))
+        throw ClassContextFailure{*error};
       auto name = std::get<std::u16string>(std::move(decoded));
-      admit(name.capacity() + 1, sizeof(char16_t)); step(name.size()); return name;
+      admit(name.capacity() + 1, sizeof(char16_t));
+      step(name.size());
+      return name;
     };
     if (found->prototype) {
       if (found->prototype->value >= graph.ops.size()) return fail(Error::kSite);

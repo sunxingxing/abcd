@@ -3,9 +3,10 @@
 
 #include <memory>
 
-#include "family_tree.h"
+#include "class_creator.h"
 #include "family_cells.h"
 #include "family_print.h"
+#include "family_tree.h"
 
 namespace abcd::source {
 // Caller-proven destination, not facts inferred from ABC or free-name spelling.
@@ -42,13 +43,16 @@ class FamilyPreparation {
   static std::variant<FamilyPreparation, FamilyPrepareFailure> Read(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, const analysis::MethodRoleIndex&,
-      const analysis::FunctionCreationSites&, FunctionContext, FamilyDestination,
-      analysis::SemanticBudget, RecoveryMode, const ParentModuleInput*, const FileFunction*,
-      const analysis::ClassMethodSites* = nullptr, const CaptureStorage* creator_storage = nullptr,
+      const analysis::FunctionCreationSites&, FunctionContext,
+      FamilyDestination, analysis::SemanticBudget, RecoveryMode,
+      const ParentModuleInput*, ClassCreator,
+      const analysis::ClassMethodSites* = nullptr,
+      const CaptureStorage* creator_storage = nullptr,
       ClassRootBinding root_binding = ClassRootBinding::kBind);
   std::variant<FamilyCellCost, FamilyPrepareFailure> BindCreator(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
-      const abc::MethodLookup&, const FileFunction&, const CaptureStorage*, analysis::SemanticBudget = {});
+      const abc::MethodLookup&, ClassCreator, const CaptureStorage*,
+      analysis::SemanticBudget = {});
   bool RequirementsOnly() const { return requirements_only_; }
   const CaptureCells* RootCapture() const {
     const auto& capture = input_.Input().root_capture; return capture ? &*capture : nullptr;
@@ -91,31 +95,41 @@ class PreparedFamily {
       const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
       analysis::FunctionSiteId site, RouteInputIdentity identity,
       FamilyDestination destination, analysis::SemanticBudget budget = {});
-  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareClass(
-      const corpus::AbcFile& file, const abc::Header& header,
-      const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-      const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
-      const analysis::ClassMethodSites& classes, analysis::ClassSiteId site,
-      RouteInputIdentity identity, FamilyDestination destination,
-      analysis::SemanticBudget budget = {}, RecoveryMode recovery = RecoveryMode::kCompleteOnly,
-      const ParentModuleInput* modules = nullptr, const FileFunction* creator = nullptr);
-  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareConstructor(
-      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
-      const abc::MethodLookup&, const analysis::MethodRoleIndex&,
-      const analysis::FunctionCreationSites&, const FileFunction& creator,
-      analysis::OpId creation, RouteInputIdentity, FamilyDestination,
-      analysis::SemanticBudget budget = {}, RecoveryMode recovery = RecoveryMode::kCompleteOnly);
-  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure> PrepareDefinedMember(
-      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
-      const abc::MethodLookup&, const analysis::MethodRoleIndex&,
-      const analysis::FunctionCreationSites&, const FileFunction&, analysis::OpId,
-      abc::ClassMethodKind, RouteInputIdentity, FamilyDestination, analysis::SemanticBudget = {},
-      RecoveryMode recovery = RecoveryMode::kCompleteOnly);
+  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure>
+  PrepareClass(const corpus::AbcFile& file, const abc::Header& header,
+               const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+               const analysis::MethodRoleIndex& roles,
+               const analysis::FunctionCreationSites& functions,
+               const analysis::ClassMethodSites& classes,
+               analysis::ClassSiteId site, RouteInputIdentity identity,
+               FamilyDestination destination,
+               analysis::SemanticBudget budget = {},
+               RecoveryMode recovery = RecoveryMode::kCompleteOnly,
+               const ParentModuleInput* modules = nullptr,
+               ClassCreator creator = nullptr);
+  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure>
+  PrepareConstructor(const corpus::AbcFile&, const abc::Header&,
+                     const abc::MetadataIndex&, const abc::MethodLookup&,
+                     const analysis::MethodRoleIndex&,
+                     const analysis::FunctionCreationSites&,
+                     ClassCreator creator, analysis::OpId creation,
+                     RouteInputIdentity, FamilyDestination,
+                     analysis::SemanticBudget budget = {},
+                     RecoveryMode recovery = RecoveryMode::kCompleteOnly);
+  [[nodiscard]] static std::variant<PreparedFamily, FamilyPrepareFailure>
+  PrepareDefinedMember(const corpus::AbcFile&, const abc::Header&,
+                       const abc::MetadataIndex&, const abc::MethodLookup&,
+                       const analysis::MethodRoleIndex&,
+                       const analysis::FunctionCreationSites&, ClassCreator,
+                       analysis::OpId, abc::ClassMethodKind, RouteInputIdentity,
+                       FamilyDestination, analysis::SemanticBudget = {},
+                       RecoveryMode recovery = RecoveryMode::kCompleteOnly);
   // Preparation storage is already admitted. Returned cost covers this stage only.
   static std::variant<PreparedFamily, FamilyPrepareFailure> Finish(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       const abc::MethodLookup&, FamilyPreparation, FamilyDestination,
-      analysis::SemanticBudget, const FileFunction*, const CaptureStorage* creator_storage = nullptr);
+      analysis::SemanticBudget, ClassCreator,
+      const CaptureStorage* creator_storage = nullptr);
   [[nodiscard]] const ConstructedFamily& Family() const;
   [[nodiscard]] const RouteInputIdentity& Identity() const;
   [[nodiscard]] const analysis::ClassMethodSite* ClassCreation() const;
@@ -144,10 +158,12 @@ class PreparedFamily {
   static std::variant<PreparedFamily, FamilyPrepareFailure> Prepare(
       const corpus::AbcFile& file, const abc::Header& header,
       const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-      const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
-      FunctionContext context, FamilyDestination destination, analysis::SemanticBudget budget,
-      RecoveryMode recovery = RecoveryMode::kCompleteOnly, const ParentModuleInput* modules = nullptr,
-      const FileFunction* creator = nullptr);
+      const analysis::MethodRoleIndex& roles,
+      const analysis::FunctionCreationSites& sites, FunctionContext context,
+      FamilyDestination destination, analysis::SemanticBudget budget,
+      RecoveryMode recovery = RecoveryMode::kCompleteOnly,
+      const ParentModuleInput* modules = nullptr,
+      ClassCreator creator = nullptr);
   explicit PreparedFamily(std::unique_ptr<const Storage> storage);
   std::unique_ptr<const Storage> storage_;
   std::size_t preparation_bytes_ = 0;

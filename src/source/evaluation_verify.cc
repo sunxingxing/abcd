@@ -130,8 +130,11 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
         }
       }
       Require(protocol->comparisons == plan.holes->comparisons &&
-          protocol->rethrows == plan.holes->rethrows, Error::kOwnership);
-      admit(protocol->allocated_bytes, 1); step(protocol->work);
+                  protocol->rethrows == plan.holes->rethrows &&
+                  protocol->phi_transport == plan.holes->phi_transport,
+              Error::kOwnership);
+      admit(protocol->allocated_bytes, 1);
+      step(protocol->work);
     }
     if (plan.phis) Require(plan.phis->domain == (has_holes && flow == EvaluationFlow::kPhased
         ? PhiDomain::kHoleTransport : PhiDomain::kLanguage), Error::kOwnership);

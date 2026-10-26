@@ -445,7 +445,10 @@ bool InheritedModuleInput::Matches(const FunctionContext& owner, abc::EntityOffs
 }
 std::pair<abc::EntityOffset, abc::CodeOffset> InheritedModuleInput::Origin(const FunctionContext& owner) {
   const auto described = FunctionInput::DescribeOwner(owner);
-  return {described.creator, described.pc};
+  const auto* constructor = owner.ConstructorSite();
+  return {described.creator,
+          constructor ? constructor->original_pc.value_or(described.pc)
+                      : described.pc};
 }
 
 std::variant<std::uint64_t, FunctionInputError> VerifyInheritedModuleReads(

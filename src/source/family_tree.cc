@@ -26,7 +26,9 @@ class FamilyTrees {
       RecoveryMode recovery)
       : file_(file), header_(header), index_(index), initial_(budget), left_(budget),
         modules_(modules), module_owner_(owner), lookup_(lookup), recovery_(recovery) {}
-  FamilyCellCost Prepare(FileFamily& family, const FunctionContext* root, const FileFunction* creator, const CaptureStorage* creator_storage = nullptr) {
+  FamilyCellCost Prepare(FileFamily& family, const FunctionContext* root,
+                         ClassCreator creator,
+                         const CaptureStorage* creator_storage = nullptr) {
     // Keep the original family-stage resource gate before any nested pass.
     Admit(1, sizeof(FamilyTrees));
     Require(!family.members.empty(), FamilyTreeError::kContext);
@@ -34,11 +36,15 @@ class FamilyTrees {
     ProjectDefaults(family, root);
     Rebind(family);
     if (family.root_capture) {
-      auto cells = Take<CaptureCells, CaptureCellFailure>(BindClassRootCaptureCells(file_, header_, index_, *lookup_,
-          *creator, family.members.front().function.Capture(), *root, left_, creator_storage));
+      auto cells = Take<CaptureCells, CaptureCellFailure>(
+          BindClassRootCaptureCells(file_, header_, index_, *lookup_, creator,
+                                    family.members.front().function.Capture(),
+                                    *root, left_, creator_storage));
       Account(cells);
-      Step(Take<std::uint64_t, CaptureCellFailure>(VerifyClassRootCaptureCells(file_, header_, index_, *lookup_,
-          *creator, family.members.front().function.Capture(), *root, cells, left_, creator_storage)));
+      Step(Take<std::uint64_t, CaptureCellFailure>(
+          VerifyClassRootCaptureCells(file_, header_, index_, *lookup_, creator,
+                                      family.members.front().function.Capture(),
+                                      *root, cells, left_, creator_storage)));
       family.root_capture = std::move(cells);
     }
     return {initial_.bytes - left_.bytes, initial_.work - left_.work};
@@ -209,10 +215,12 @@ class FamilyTrees {
         if (*error == CaptureTreeError::kResourceLimit) Fail(FamilyTreeError::kResourceLimit);
         if (*error == CaptureTreeError::kWorkLimit) Fail(FamilyTreeError::kWorkLimit);
         auto failure = FamilyTreeFailure{FileFamily::kRoot, FamilyTreeError::kDeferredCell};
-        failure.deferred = DescribeDeferredFailure(DeferredCellError::kExternalRoot,
-            external->creator.values.graph, external->storage ? &external->storage->cells :
-                external->creator.values.cells ? &*external->creator.values.cells : nullptr,
-            *family.root_capture, rejected ? &family.root_capture->deferred[*rejected] : nullptr,
+        failure.deferred = DescribeDeferredFailure(
+            DeferredCellError::kExternalRoot, external->creator.Graph(),
+            external->storage ? &external->storage->cells
+                              : external->creator.Cells(),
+            *family.root_capture,
+            rejected ? &family.root_capture->deferred[*rejected] : nullptr,
             family.members.front().function.Capture().Input().Captures());
         failure.method = failure.deferred->creator;
         throw failure;
@@ -440,13 +448,14 @@ class FamilyTrees {
           Fail(FamilyTreeError::kContext);
         }
         incoming->class_inner = std::get<std::shared_ptr<const ClassInnerScopeProof>>(std::move(selected));
-        incoming->class_name = external->creator.class_self->members.layout.name;
+        incoming->class_name = external->creator.Self()->members.layout.name;
         Admit(q.Bytes(), 1); Step(q.Work());
       }
       auto constants = syntax.View();
       const NameReservations reserved{references_, family.Owner(member_), subtree_end_[i] - i};
       constants.name_reservations = &reserved;
       constants.receiver_guards = guards;
+      if (phase) constants.class_creator = *phase;
       if (derived && derived->native) {
         constants.derived_protocol = &*derived->native;
         constants.forwarding_owner = &context;
@@ -474,12 +483,17 @@ class FamilyTrees {
       }();
       Account(constructed);
       if(!class_plans.creators.empty() && class_plans.creators[i]){
-        Require(!phase && constructed.flow.has_value(),FamilyTreeError::kContext);
+        Require(constructed.flow.has_value(), FamilyTreeError::kContext);
         const CaptureTree parent{constructed.tree,*constructed.flow};
         auto finished=FinishDescendantClasses(file_,header_,index_,*lookup_,family,member_,*class_plans.creators[i],globals,parent,recovery_,left_);
         if(const auto* error=std::get_if<FamilyTreeFailure>(&finished))throw *error;
         Account(std::get<CreatorClassCost>(finished));
-        auto checked=Take<TreeSemantics,TreeSemanticError>(VerifyTreeSemantics(graph,control,evaluation,constructed.tree,constants,left_));
+        auto checked = Take<TreeSemantics, TreeSemanticError>(
+            phase ? VerifyExceptionTreeSemantics(
+                        graph, phase->Phases().TreeInput(phase->Body()),
+                        evaluation, constructed.tree, constants, left_)
+                  : VerifyTreeSemantics(graph, control, evaluation,
+                                        constructed.tree, constants, left_));
         Account(checked);constructed.flow=std::move(checked.flow);
       }
       // Naming evidence is creation-specific and must survive arena growth and
@@ -971,10 +985,13 @@ std::size_t FamilyTreeInput::OwnerCount() const {
   return classes_?classes_->owner_end-family_.first_owner.value:family_.members.size();
 }
 std::variant<FamilyTreeInput, FamilyTreeFailure> FamilyTreeInput::Prepare(
-    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    FileFamily family, const FunctionContext& root, analysis::SemanticBudget budget,
-    const RecordModuleContext* modules, ModuleOwnerId owner, const abc::MethodLookup* lookup,
-    RecoveryMode recovery, const FileFunction* creator, const CaptureStorage* creator_storage, const GlobalScope* globals) {
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, FileFamily family,
+    const FunctionContext& root, analysis::SemanticBudget budget,
+    const RecordModuleContext* modules, ModuleOwnerId owner,
+    const abc::MethodLookup* lookup, RecoveryMode recovery,
+    ClassCreator creator, const CaptureStorage* creator_storage,
+    const GlobalScope* globals) {
   try {
     FamilyTrees builder(file, header, index, budget, modules, owner, lookup, recovery);
     auto cost = builder.Prepare(family, &root, creator, creator_storage);
@@ -1003,8 +1020,9 @@ std::variant<FamilyTreeInput, FamilyTreeFailure> FamilyTreeInput::Prepare(
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }
 }
 std::variant<FamilyCellCost, FamilyTreeFailure> FamilyTreeInput::BindCreator(
-    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    const abc::MethodLookup& lookup, const FunctionContext& root, const FileFunction& creator,
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const FunctionContext& root, ClassCreator creator,
     const CaptureStorage* storage, analysis::SemanticBudget budget) {
   if (family_.members.empty() || !root.ClassContext())
     return FamilyTreeFailure{{0},FamilyTreeError::kContext};
@@ -1051,7 +1069,9 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     const abc::MethodLookup* lookup, RecoveryMode recovery, const ExternalFamilyCapture* external) {
   try {
     FamilyTrees builder(file, header, index, budget, modules, module_owner, lookup, recovery);
-    builder.Prepare(family, &root, external ? &external->creator : nullptr, external ? external->storage : nullptr);
+    builder.Prepare(family, &root,
+                    external ? external->creator : ClassCreator{},
+                    external ? external->storage : nullptr);
     return builder.Build(family, &root, {}, external);
   } catch (const FamilyTreeFailure& error) {
     auto located = error;

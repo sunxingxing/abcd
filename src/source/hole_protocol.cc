@@ -262,6 +262,7 @@ std::variant<HoleProtocol, HoleProtocolError> AnalyzeHoleProtocol(
         Require(phi->value < graph.values.size() &&
                 std::holds_alternative<PhiDefinition>(
                     graph.values[phi->value].origin));
+        result.phi_transport = true;
         continue;
       }
       const auto id = std::get<OpId>(use.owner);

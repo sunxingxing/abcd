@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_FAMILY_WRITES_H_
 #define ABCD_SOURCE_FAMILY_WRITES_H_
 
+#include "class_creator.h"
 #include "family_file.h"
 #include "phased_capture_cells.h"
 
@@ -53,7 +54,7 @@ struct ClassRootWriteInput {
   const corpus::AbcFile& file;
   const abc::Header& header;
   const abc::MethodLookup& lookup;
-  const FileFunction& creator;
+  ClassCreator creator;
   const FunctionContext& owner;
   ClassCaptureParent parent;
   const CaptureStorage* creator_storage = nullptr;

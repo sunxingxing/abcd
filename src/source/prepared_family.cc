@@ -53,14 +53,12 @@ class Budget {
  private:
   analysis::SemanticBudget left_;
 };
-ParentModuleInput ModuleInputAt(const FileFunction& creator, const FunctionContext& owner) {
-  const auto pc = owner.ConstructorSite() ? owner.ConstructorSite()->pc :
-      owner.ClassSite() ? owner.ClassSite()->pc : owner.CreationSite()->pc;
-  const auto& instructions = creator.input.Input().instructions;
-  const auto found = std::lower_bound(instructions.begin(), instructions.end(), pc,
-      [](const auto& instruction, auto site) { return instruction.pc < site; });
-  Require(found != instructions.end() && found->pc == pc, Error::kModules);
-  return {creator.input, {static_cast<std::uint32_t>(found - instructions.begin())}};
+std::optional<ParentModuleInput> ModuleInputAt(ClassCreator creator,
+                                               const FunctionContext& owner) {
+  if (creator.Phase()) return {};
+  const auto site = creator.Site(owner);
+  Require(site.has_value(), Error::kModules);
+  return ParentModuleInput{creator.Normal()->input, *site};
 }
 }  // namespace
 std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareCreated(
@@ -84,10 +82,12 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareCreate
 std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions,
     const analysis::ClassMethodSites& classes, analysis::ClassSiteId site,
-    RouteInputIdentity identity, FamilyDestination destination, analysis::SemanticBudget allowance,
-    RecoveryMode recovery, const ParentModuleInput* modules, const FileFunction* creator) {
+    RouteInputIdentity identity, FamilyDestination destination,
+    analysis::SemanticBudget allowance, RecoveryMode recovery,
+    const ParentModuleInput* modules, ClassCreator creator) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
@@ -100,12 +100,15 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareClass(
   } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
 }
-std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareDefinedMember(
-    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
-    const analysis::FunctionCreationSites& functions, const FileFunction& creator,
-    analysis::OpId definition, abc::ClassMethodKind kind, RouteInputIdentity identity,
-    FamilyDestination destination, analysis::SemanticBudget allowance, RecoveryMode recovery) {
+std::variant<PreparedFamily, FamilyPrepareFailure>
+PreparedFamily::PrepareDefinedMember(
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions, ClassCreator creator,
+    analysis::OpId definition, abc::ClassMethodKind kind,
+    RouteInputIdentity identity, FamilyDestination destination,
+    analysis::SemanticBudget allowance, RecoveryMode recovery) {
   try {
     Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
     auto resolution = allowance; resolution.bytes -= sizeof(Storage);
@@ -114,17 +117,21 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareDefine
     FunctionContext owner{std::move(context)};
     const auto modules = ModuleInputAt(creator, owner);
     return Prepare(file, header, index, lookup, roles, functions,
-        std::move(owner), destination, allowance, recovery, &modules, &creator);
+                   std::move(owner), destination, allowance, recovery,
+                   modules ? &*modules : nullptr, creator);
   } catch (const FamilyPrepareFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
     catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
 }
-std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareConstructor(
+std::variant<PreparedFamily, FamilyPrepareFailure>
+PreparedFamily::PrepareConstructor(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& functions,
-    const FileFunction& creator, analysis::OpId creation, RouteInputIdentity identity,
-    FamilyDestination destination, analysis::SemanticBudget allowance, RecoveryMode recovery) {
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions, ClassCreator creator,
+    analysis::OpId creation, RouteInputIdentity identity,
+    FamilyDestination destination, analysis::SemanticBudget allowance,
+    RecoveryMode recovery) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     Require(allowance.bytes >= sizeof(Storage), Error::kResourceLimit);
@@ -134,7 +141,8 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareConstr
     FunctionContext owner{std::move(context)};
     const auto modules = ModuleInputAt(creator, owner);
     return Prepare(file, header, index, lookup, roles, functions,
-        std::move(owner), destination, allowance, recovery, &modules, &creator);
+                   std::move(owner), destination, allowance, recovery,
+                   modules ? &*modules : nullptr, creator);
   } catch (const FamilyPrepareFailure& failure) { return failure; }
     catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
     catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
@@ -142,10 +150,12 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::PrepareConstr
 std::variant<FamilyPreparation, FamilyPrepareFailure> FamilyPreparation::Read(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
-    FunctionContext root, FamilyDestination destination, analysis::SemanticBudget allowance,
-    RecoveryMode recovery, const ParentModuleInput* root_modules, const FileFunction* creator,
-    const analysis::ClassMethodSites* class_sites, const CaptureStorage* creator_storage, ClassRootBinding root_binding) {
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& sites, FunctionContext root,
+    FamilyDestination destination, analysis::SemanticBudget allowance,
+    RecoveryMode recovery, const ParentModuleInput* root_modules,
+    ClassCreator creator, const analysis::ClassMethodSites* class_sites,
+    const CaptureStorage* creator_storage, ClassRootBinding root_binding) {
   try {
     Require(destination.strictness == Strictness::kStrict, Error::kStrictness);
     CheckPlacement(root, destination);
@@ -199,10 +209,14 @@ std::variant<FamilyPreparation, FamilyPrepareFailure> FamilyPreparation::Read(
   } catch (const std::bad_alloc&) { return FamilyPrepareFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return FamilyPrepareFailure{Error::kResourceLimit}; }
 }
-std::variant<FamilyCellCost, FamilyPrepareFailure> FamilyPreparation::BindCreator(
-    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    const abc::MethodLookup& lookup, const FileFunction& creator, const CaptureStorage* storage,
-    analysis::SemanticBudget budget) {
+std::variant<FamilyCellCost, FamilyPrepareFailure>
+FamilyPreparation::BindCreator(const corpus::AbcFile& file,
+                               const abc::Header& header,
+                               const abc::MetadataIndex& index,
+                               const abc::MethodLookup& lookup,
+                               ClassCreator creator,
+                               const CaptureStorage* storage,
+                               analysis::SemanticBudget budget) {
   // This is the only transition out of requirements-only preparation. A real
   // creation and independently rechecked storage binding precede any AST.
   requirements_only_=true;
@@ -212,9 +226,11 @@ std::variant<FamilyCellCost, FamilyPrepareFailure> FamilyPreparation::BindCreato
   return std::get<FamilyCellCost>(bound);
 }
 std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Finish(
-    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    const abc::MethodLookup& lookup, FamilyPreparation preparation, FamilyDestination destination,
-    analysis::SemanticBudget allowance, const FileFunction* creator, const CaptureStorage* creator_storage) {
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    FamilyPreparation preparation, FamilyDestination destination,
+    analysis::SemanticBudget allowance, ClassCreator creator,
+    const CaptureStorage* creator_storage) {
   try {
     Require(!preparation.requirements_only_, Error::kClassRequirements);
     auto& root = preparation.root_;
@@ -245,8 +261,9 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Finish(
     }
     std::optional<ExternalFamilyCapture> external;
     if (destination.captures) {
-      Require(creator != nullptr, Error::kPlacement);
-      external.emplace(ExternalFamilyCapture{*creator, *destination.captures, creator_storage,
+      Require(static_cast<bool>(creator), Error::kPlacement);
+      external.emplace(ExternalFamilyCapture{
+          creator, *destination.captures, creator_storage,
           destination.class_inner, destination.class_family});
     }
     auto family = Take<ConstructedFamily, FamilyTreeFailure>(std::move(preparation.input_).Build(
@@ -310,9 +327,11 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Finish(
 std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Prepare(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
-    FunctionContext root, FamilyDestination destination, analysis::SemanticBudget allowance,
-    RecoveryMode recovery, const ParentModuleInput* root_modules, const FileFunction* creator) {
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& sites, FunctionContext root,
+    FamilyDestination destination, analysis::SemanticBudget allowance,
+    RecoveryMode recovery, const ParentModuleInput* root_modules,
+    ClassCreator creator) {
   try {
     auto input = Take<FamilyPreparation, FamilyPrepareFailure>(FamilyPreparation::Read(file, header, index,
         lookup, roles, sites, std::move(root), destination, allowance, recovery, root_modules, creator));

@@ -1,12 +1,14 @@
 #ifndef ABCD_SOURCE_CLASS_TREE_H_
 #define ABCD_SOURCE_CLASS_TREE_H_
-#include "prepared_family.h"
-#include "class_initializer_file.h"
-#include "syntax_resolution.h"
-#include "function_tree.h"
-#include "module_aliases.h"
+
 #include "abcd/abc/class_buffer.h"
 #include "abcd/source/sendable_failure.h"
+#include "class_creator.h"
+#include "class_initializer_file.h"
+#include "function_tree.h"
+#include "module_aliases.h"
+#include "prepared_family.h"
+#include "syntax_resolution.h"
 namespace abcd::source {
 struct ClassTree;
 // One class-creation expression, with optional native static fields whose
@@ -122,6 +124,8 @@ struct ClassInstallationOrder {
   bool operator==(const ClassInstallationOrder&) const = default;
 };
 struct ClassTree {
+  std::optional<PhasedClassPoint> phase_point;
+  std::optional<PhasedClassBinding> phase_binding;
   std::optional<ClassInstallationOrder> installation_order;
   std::optional<ClassTreeInitialization> class_self;
   RouteInputIdentity identity;
@@ -149,9 +153,8 @@ struct ClassTree {
 };
 enum class ClassTreeError : std::uint8_t { kCreation, kMember, kName, kResourceLimit, kWorkLimit };
 struct ClassParentScope { bool independent; std::uint64_t work; };
-// A prepared class with no parent cells/modules can retain its exact creation
-// in a phased parent without borrowing normal-SSA capture identities. Static
-// initializer/defined-member projection needs its own phase bridge.
+// Diagnostic summary only. Phased emission requires the actual creator's
+// capture binding and enclosure proof even when this summary is independent.
 [[nodiscard]] std::variant<ClassParentScope, ClassTreeError> CheckClassParentScope(
     const ClassTree&, std::uint64_t work = analysis::kDefaultSemanticWork);
 using ClassTreeFailure = std::variant<SendableFailure, ClassTreeError, ClassContextFailure, FamilyPrepareFailure,
@@ -162,9 +165,10 @@ using ClassTreeFailure = std::variant<SendableFailure, ClassTreeError, ClassCont
 [[nodiscard]] std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
     const abc::MethodLookup&, const analysis::MethodRoleIndex&,
-    const analysis::ClassMethodSites&, const FileFunction&, analysis::OpId,
+    const analysis::ClassMethodSites&, ClassCreator, analysis::OpId,
     RouteInputIdentity, analysis::SemanticBudget = {},
-    const ClassInitializerCall* = nullptr, std::span<const ClassDefinitionSite> = {},
+    const ClassInitializerCall* = nullptr,
+    std::span<const ClassDefinitionSite> = {},
     const ClassProjection* shared_projection = nullptr);
 // Bodies' residual inputs are prepared in the original emission order. No
 // syntax owners/names are allocated here; member count reserves the same range.
@@ -180,9 +184,10 @@ struct ClassPreparation {
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
     const abc::MethodLookup&, const analysis::MethodRoleIndex&,
     const analysis::FunctionCreationSites&, const analysis::ClassMethodSites&,
-    const FileFunction&, analysis::OpId, RouteInputIdentity, const GlobalScope*,
-    analysis::SemanticBudget, const ClassInitializerCall*, std::span<const ClassDefinitionSite>,
-    FunctionOwnerId, RecoveryMode, const CaptureStorage* creator_storage = nullptr,
+    ClassCreator, analysis::OpId, RouteInputIdentity, const GlobalScope*,
+    analysis::SemanticBudget, const ClassInitializerCall*,
+    std::span<const ClassDefinitionSite>, FunctionOwnerId, RecoveryMode,
+    const CaptureStorage* creator_storage = nullptr,
     ClassRootBinding root_binding = ClassRootBinding::kBind,
     const ClassProjection* shared_projection = nullptr);
 // Fresh unchanged caller and same-file indexes are admitted by the caller.
@@ -196,7 +201,7 @@ struct ClassPreparation {
     const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
     const abc::MethodLookup&, const analysis::MethodRoleIndex&,
     const analysis::FunctionCreationSites&, const analysis::ClassMethodSites&,
-    const FileFunction& creator, analysis::OpId creation, RouteInputIdentity,
+    ClassCreator creator, analysis::OpId creation, RouteInputIdentity,
     const GlobalScope* globals = nullptr, analysis::SemanticBudget budget = {},
     const ClassInitializerCall* initializer = nullptr,
     std::span<const ClassDefinitionSite> definitions = {},

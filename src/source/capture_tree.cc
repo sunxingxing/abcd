@@ -174,10 +174,16 @@ static std::variant<std::uint64_t, CaptureTreeError> CheckClassSyntax(
           layout.creation.pc == constructor->pc && layout.creation.creation == constructor->creation, Error::kCreation);
     } else if (const auto* member = owner.ClassSite()) {
       const auto occurrence = owner.ClassContext()->Occurrence();
-      Require(occurrence && member->property < layout.member_sites.size() && layout.member_sites[member->property] == *occurrence &&
-          cells.creation == creation && cells.input.pc == member->pc && cells.input.target == owner.Position() &&
-          layout.creation.creator == member->creator && layout.creation.pc == member->pc &&
-          layout.creation.creation == member->creation, Error::kCreation);
+      Require(occurrence && member->property < layout.member_sites.size() &&
+                  layout.member_sites[member->property] == *occurrence &&
+                  cells.creation == creation &&
+                  cells.input.pc == layout.creation.pc &&
+                  cells.input.target == owner.Position() &&
+                  layout.creation.creator == member->creator &&
+                  layout.creation.original_pc.value_or(layout.creation.pc) ==
+                      member->pc &&
+                  layout.creation.creation == member->creation,
+              Error::kCreation);
     } else {
       const auto* defined = owner.ClassContext()->DefinedMember();
       Require(defined && !owner.ClassContext()->Occurrence() && defined->function.creator == cells.parent &&

@@ -706,10 +706,15 @@ class ForestBuilder {
     if (!definition || !*definition) throw Error::kUnsupportedOperation;
     Require(op.use_count == 1, Error::kOwnership);
     if (evaluation_.flow == EvaluationFlow::kPhased) {
-      const auto checked = CheckClassParentScope(**definition, work_);
-      if (std::holds_alternative<ClassTreeError>(checked)) throw Error::kWorkLimit;
-      const auto scope = std::get<ClassParentScope>(checked); Step(scope.work);
-      Require(scope.independent, Error::kOwnership);
+      // The actual Before environment has bound every prepared class root.
+      // Parent-scope independence alone cannot authorize a phased occurrence.
+      Step();
+      Require((**definition).phase_binding &&
+                  (**definition)
+                      .phase_binding->Matches(
+                          constants_.class_creator,
+                          analysis::OpId{static_cast<std::uint32_t>(i)}),
+              Error::kOwnership);
     }
     const auto* heritage = std::get_if<analysis::ValueId>(&graph_.uses[op.first_use.value].operand);
     const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();

@@ -6,11 +6,13 @@
 #include "function_file.h"
 #include "abcd/abc/profile_capabilities.h"
 namespace abcd::source {
-std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveConstructor(
+std::variant<ClassTreeContext, ClassContextFailure>
+ClassTreeContext::ResolveConstructor(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-    const analysis::MethodRoleIndex& roles, const FileFunction& creator,
-    analysis::OpId operation, RouteInputIdentity identity, analysis::SemanticBudget budget) {
+    const analysis::MethodRoleIndex& roles, ClassCreator creator,
+    analysis::OpId operation, RouteInputIdentity identity,
+    analysis::SemanticBudget budget) {
   using Error = ClassContextError;
   const auto fail = [](Error error) { return ClassContextFailure{error}; };
   try {
@@ -31,18 +33,23 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveCon
     // Caller supplies a fresh unchanged file-backed input/value pair, as for
     // family capture binding. Resolve one occurrence in O(log M + log R), never
     // decode and rescan the entire creator for every class in a large record.
-    const auto& graph = creator.values.graph;
-    if (creator.input.Identity() != identity || creator.values.identity != identity ||
-        creator.input.Method() != creator.values.method || operation.value >= graph.ops.size())
+    const auto& graph = creator.Graph();
+    if (const auto* normal = creator.Normal();
+        normal && (normal->values.identity != identity ||
+                   normal->input.Method() != normal->values.method))
+      return fail(Error::kSite);
+    if (creator.Identity() != identity || operation.value >= graph.ops.size())
       return fail(Error::kSite);
     const auto& op = graph.ops[operation.value];
     if (op.life != analysis::ValueLife::kLive || op.origin.value >= graph.origins.size() ||
         op.use_count != 1 || op.first_use.value >= graph.uses.size()) return fail(Error::kSite);
     const auto& origin = graph.origins[op.origin.value];
     if (origin.disposition != analysis::OriginDisposition::kRetained ||
-        origin.site.value >= graph.input.sites.size() || graph.input.sites[origin.site.value] != operation ||
-        origin.site.value >= creator.input.Input().instructions.size()) return fail(Error::kSite);
-    const auto& original = creator.input.Input().instructions[origin.site.value];
+        origin.site.value >= graph.input.sites.size() ||
+        graph.input.sites[origin.site.value] != operation ||
+        origin.site.value >= creator.Instructions().size())
+      return fail(Error::kSite);
+    const auto& original = creator.Instructions()[origin.site.value];
     const auto* creation = std::get_if<analysis::ClassCreation>(&original.operation);
     const auto* working = std::get_if<analysis::ValueClassCreation>(&op.operation);
     if (!creation || !working || origin.pc != original.pc ||
@@ -63,7 +70,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveCon
     // the enclosing class tree's obligation (including null/Proxy parents).
     if (derived && !domain.IsLanguage()) return fail(Error::kKind);
     const auto pc = original.pc;
-    const auto method = creator.input.Method();
+    const auto method = creator.Method();
     step(1);
     const auto resolved = abc::ResolvePoolReference(file, header, index, method,
         creation->constructor, abc::PoolEntityKind::kMethod);
@@ -91,17 +98,19 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::ResolveCon
     if (std::get<abc::FrameLayout>(frame).parameters < creation->length) return fail(Error::kSignature);
     ClassTreeContext context;
     context.identity_ = identity; context.position_ = *position;
-    context.site_ = ClassConstructorSite{target->offset, method, pc, *creation};
+    context.site_ =
+        ClassConstructorSite{target->offset, method, pc, *creation,
+                             creator.Phase() ? origin.original : std::nullopt};
     context.frame_ = std::get<abc::FrameLayout>(frame);
     context.callable_ = derived ? CallableKind::kDerivedConstructor : CallableKind::kBaseConstructor;
     context.name_ = u"constructor";
     admit(context.name_.capacity() + 1, sizeof(char16_t));
     // A stored instance initializer of THIS creation, written in the very
     // environment the constructor closes over (its depth-0 slot at entry).
-    for (const auto& instance : creator.values.initializers.instances) {
+    for (const auto& instance : creator.Instances()) {
       step(1);
       if (instance.creation != operation) continue;
-      const auto& environments = creator.values.environments;
+      const auto* environments = creator.Environments();
       if (context.instance_initializer_ || instance.slot.depth.value != 0 || !environments ||
           instance.store.value >= environments->flow.before.size() ||
           !environments->flow.before[instance.store.value] || !environments->flow.before[operation.value] ||

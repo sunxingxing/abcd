@@ -22,6 +22,7 @@ struct PhasedBody::Storage {
   analysis::ExceptionInputProof proof;
   std::vector<analysis::LanguageLoadFact> initialized_modules;
   analysis::ValueProgram graph;
+  PhasedClassSites classes;
   std::optional<analysis::ValueEnvironments> cell_environments;
   std::optional<CellPlan> cells;
   std::optional<ModuleGuards> modules;
@@ -120,6 +121,9 @@ PhasedBody::PhasedBody(PhasedBody&&) noexcept = default;
 PhasedBody& PhasedBody::operator=(PhasedBody&&) noexcept = default;
 PhasedBody::~PhasedBody() = default;
 const analysis::ValueProgram& PhasedBody::Graph() const { return storage_->graph; }
+const PhasedClassSites& PhasedBody::Classes() const {
+  return storage_->classes;
+}
 const RouteInputIdentity& PhasedBody::Identity() const { return storage_->identity; }
 abc::EntityOffset PhasedBody::Target() const { return storage_->target; }
 const ControlPlan& PhasedBody::Control() const { return storage_->control.skeleton; }
@@ -367,6 +371,11 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     }
     auto imported = std::get<ImportedPhases>(std::move(built_import));
     quota.Admit(imported.allocated_bytes); quota.Step(imported.work);
+    auto classes = PhaseResult<PhasedClassSites>(
+        BuildPhasedClassSites(imported.graph, quota.Remaining()),
+        Error::kValues);
+    quota.Admit(classes.allocated_bytes);
+    quota.Step(classes.work);
     bool needs_cells = false;
     for (const auto& op : imported.graph.ops) {
       quota.Step();
@@ -486,11 +495,28 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       const auto copy=[&](const auto& from,auto& to){using T=typename std::decay_t<decltype(to)>::value_type;quota.Admit(from.size(),sizeof(T));quota.Step(from.size());to.reserve(from.size());quota.Admit(to.capacity()-from.size(),sizeof(T));to.assign(from.begin(),from.end());};
       protocol_body.emplace();copy(body.instructions,protocol_body->instructions);copy(body.tries,protocol_body->tries);copy(body.handlers,protocol_body->handlers);
     }
-    return PhasedBody(std::make_unique<Storage>(Storage{context.Identity(), context.Target(), frame, std::move(flow), std::move(ssa),
-        std::move(environments), std::move(values), std::move(proof), std::move(initialized), std::move(imported.graph),
-        std::move(cell_environments), std::move(cells),
-        std::move(guards), std::move(aliases), std::move(regions), std::move(control),std::move(protocols),std::move(protocol_body),
-        quota.Bytes(), quota.Work()}));
+    return PhasedBody(
+        std::make_unique<Storage>(Storage{context.Identity(),
+                                          context.Target(),
+                                          frame,
+                                          std::move(flow),
+                                          std::move(ssa),
+                                          std::move(environments),
+                                          std::move(values),
+                                          std::move(proof),
+                                          std::move(initialized),
+                                          std::move(imported.graph),
+                                          std::move(classes),
+                                          std::move(cell_environments),
+                                          std::move(cells),
+                                          std::move(guards),
+                                          std::move(aliases),
+                                          std::move(regions),
+                                          std::move(control),
+                                          std::move(protocols),
+                                          std::move(protocol_body),
+                                          quota.Bytes(),
+                                          quota.Work()}));
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

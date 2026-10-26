@@ -176,7 +176,7 @@ class WriteCheck {
  private:
   void Classes(std::size_t owner, const FamilyWriteInput& source) {
     if (source.classes.empty()) return;
-    Require(owner < trees_.members.size() && std::holds_alternative<CaptureFunction>(source.function), Error::kCoverage);
+    Require(owner < trees_.members.size(), Error::kCoverage);
     const auto& graph = Graph(source);
     const auto& target = trees_.members[owner];
     // Build one operation-owner index from actual composed ClassExpr bodies.
@@ -194,6 +194,14 @@ class WriteCheck {
       const auto* node = std::get_if<ClassExpr>(&target.tree.expressions[expression.value].expression);
       Require(node && node->definition, Error::kCoverage);
       const auto& definition = *node->definition;
+      if (const auto* phased =
+              std::get_if<PhasedFamilyInput>(&source.function)) {
+        Require(phased->owner && definition.phase_binding &&
+                    definition.phase_point ==
+                        ClassCreator{*phased->owner}.Point(creation) &&
+                    definition.phase_binding->Matches(*phased->owner, creation),
+                Error::kCoverage);
+      }
       Step(definition.members.size() + definition.omissions.size() + definition.definitions.size());
       // This scan certifies the original class barrier, not member bodies.
       // A marked omission never discharges class-internal writes or publication.
@@ -276,7 +284,10 @@ class WriteCheck {
       }
       if (const auto* phase = member.function.Phase()) {
         Require(lookup_ != nullptr, Error::kOwner);
-        return {PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(), *lookup_, phase, member.function.Storage()}, edge, member.objects, {}, member.arrays};
+        return {
+            PhasedFamilyInput{phase->Phases(), phase->Body(), phase->Locals(),
+                              *lookup_, phase, member.function.Storage()},
+            edge, member.objects, member.classes, member.arrays};
       }
       return {member.function.NormalCapture(), edge, member.objects, member.classes, member.arrays};
     }
@@ -305,6 +316,19 @@ class WriteCheck {
     Require(tree.identity == source.function.Identity() && tree.method == source.function.Target(), Error::kOwner);
     Require(source.locals.writes == analysis::ClosureWrites::kLanguage, Error::kDomain);
   }
+  void ExternalModules(const ModuleSlotSet& entry,
+                       std::span<const InputModuleRead> reads) {
+    Require(external_ && external_->creator.Phase(), Error::kOwner);
+    const auto [method, pc] = InheritedModuleInput::Origin(external_->owner);
+    Require(method == external_->creator.Method(), Error::kOwner);
+    const auto checked =
+        VerifyInheritedModuleReads(external_->creator.Phase()->EntryModules(),
+                                   method, pc, entry, reads, left_);
+    if (const auto* error = std::get_if<FunctionInputError>(&checked))
+      Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit
+                                                    : Error::kOwner);
+    Step(std::get<std::uint64_t>(checked));
+  }
   void ClosedRoot(CaptureFunction source) {
     Require(trees_.root_capture || CaptureChild(source).Input().Captures().empty(), Error::kCapture);
     if (const auto* family = std::get_if<const FileFamily*>(&inputs_); family && (*family)->root_modules) {
@@ -313,7 +337,13 @@ class WriteCheck {
       if (const auto* error = std::get_if<FunctionInputError>(&check))
         Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit : Error::kOwner);
       Step(std::get<std::uint64_t>(check));
-    } else Require(source.input.InitializedModuleReads().empty() && !source.input.HasInheritedModules(), Error::kOwner);
+    } else if (external_ && external_->creator.Phase()) {
+      ExternalModules(source.input.EntryModules(),
+                      source.input.InitializedModuleReads());
+    } else
+      Require(source.input.InitializedModuleReads().empty() &&
+                  !source.input.HasInheritedModules(),
+              Error::kOwner);
   }
   void ClosedRoot(PhasedFamilyInput source) {
     if (const auto* family = std::get_if<const FileFamily*>(&inputs_); family && (*family)->root_modules) {
@@ -323,9 +353,17 @@ class WriteCheck {
       if (const auto* error = std::get_if<FunctionInputError>(&check))
         Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit : Error::kOwner);
       Step(std::get<std::uint64_t>(check));
-    } else Require(source.function.TreeInput(source.body).input.proof.initialized_modules.empty() &&
-        (!source.owner || (source.owner->InitializedModuleReads().empty() && source.owner->EntryModules().Empty())),
-        Error::kOwner);
+    } else if (external_ && external_->creator.Phase()) {
+      Require(source.owner != nullptr, Error::kOwner);
+      ExternalModules(source.owner->EntryModules(),
+                      source.owner->InitializedModuleReads());
+    } else
+      Require(source.function.TreeInput(source.body)
+                      .input.proof.initialized_modules.empty() &&
+                  (!source.owner ||
+                   (source.owner->InitializedModuleReads().empty() &&
+                    source.owner->EntryModules().Empty())),
+              Error::kOwner);
     if (source.storage) Require(trees_.root_capture || source.storage->uses.empty(), Error::kCapture);
     for (const auto& binding : source.function.TreeInput(source.body).input.environments.bindings) {
       Step(); Require(trees_.root_capture || !std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment), Error::kCapture);

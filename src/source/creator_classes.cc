@@ -9,6 +9,12 @@
 #include "class_self_deferred.h"
 
 namespace abcd::source {
+struct CreatorClassBindingAccess {
+  static PhasedClassBinding Make(ClassCreator creator,
+                                 const PhasedClassPoint& point) {
+    return PhasedClassBinding(creator, point);
+  }
+};
 namespace {
 using Error = ClassTreeError;
 class Quota {
@@ -67,34 +73,38 @@ std::variant<CreatorClasses, CreatorClassFailure> DiscoverCreatorClasses(
     const CreatorClassInput& input, analysis::SemanticBudget budget) {
   return Run(budget, [&](Quota& q) {
     CreatorClasses result;
-    const auto& values = input.creator.values;
+    const auto creator = input.creator;
     result.occurrence=input.occurrence;result.identity=input.identity;
-    result.creator=input.creator.input.Method();
-    result.value_revision=values.graph.revision;result.cfg_revision=values.graph.cfg_revision;
-    q.Reserve(result.definitions, values.definitions.sites.size());
-    result.definitions.insert(result.definitions.end(), values.definitions.sites.begin(), values.definitions.sites.end());
+    result.creator = input.creator.Method();
+    result.value_revision = creator.Graph().revision;
+    result.cfg_revision = creator.Graph().cfg_revision;
+    q.Reserve(result.definitions, creator.Definitions().size());
+    result.definitions.insert(result.definitions.end(),
+                              creator.Definitions().begin(),
+                              creator.Definitions().end());
     std::sort(result.definitions.begin(), result.definitions.end(), [&](const auto& a, const auto& b) {
       q.Step(); return a.creation != b.creation ? a.creation < b.creation : a.definition < b.definition;
     });
     // Indexed once per creator. No per-class scan through all initialization calls.
     std::vector<const ClassInitializerCall*> initializers;
-    q.Reserve(initializers, values.graph.ops.size()); initializers.resize(values.graph.ops.size());
-    for (const auto& call : values.initializers.calls) {
+    q.Reserve(initializers, creator.Graph().ops.size());
+    initializers.resize(creator.Graph().ops.size());
+    for (const auto& call : creator.Initializers()) {
       q.Step(); q.operation=call.creation; q.Require(call.creation.value < initializers.size() && !initializers[call.creation.value], Error::kCreation);
       initializers[call.creation.value] = &call;
     }
-    if (!values.initializers.calls.empty() && !values.definitions.sites.empty()) {
-      auto proof = q.Take<ClassProjection>(ProjectClassMembers(values.graph,
-          values.initializers.calls, q.Left(), values.definitions.sites,
-          input.creator.self_order ? &*input.creator.self_order : nullptr));
+    if (!creator.Initializers().empty() && !creator.Definitions().empty()) {
+      auto proof = q.Take<ClassProjection>(ProjectClassMembers(
+          creator.Graph(), creator.Initializers(), q.Left(),
+          creator.Definitions(), input.creator.SelfOrder()));
       q.Admit(proof.allocated_bytes); q.Step(proof.work);
       result.initialization_projection.emplace(std::move(proof));
     }
-    q.Reserve(result.tasks, values.classes.classes.size());
+    q.Reserve(result.tasks, creator.Classes().size());
     // The family reader supplies the explicit creator DFS stack. This worklist
     // visits this creator's class occurrences in existing emission order only;
     // it never recursively reads member families during discovery.
-    for (const auto& occurrence : values.classes.classes) {
+    for (const auto& occurrence : creator.Classes()) {
       q.Step(); q.operation = occurrence.operation;
       q.Require(occurrence.operation.value < initializers.size(), Error::kCreation);
       q.Step(2 * (std::bit_width(result.definitions.size()) + 1));
@@ -117,29 +127,42 @@ std::variant<CreatorClasses, CreatorClassFailure> DiscoverCreatorClasses(
 std::variant<CreatorClassCost, CreatorClassFailure> VerifyCreatorClasses(
     const CreatorClassInput& input, const CreatorClasses& plan, analysis::SemanticBudget budget) {
   return Run(budget, [&](Quota& q) {
-    const auto& graph=input.creator.values.graph;
-    q.Require(plan.occurrence==input.occurrence && plan.identity==input.identity &&
-        plan.creator==input.creator.input.Method() && plan.value_revision==graph.revision &&
-        plan.cfg_revision==graph.cfg_revision && plan.tasks.size()==input.creator.values.classes.classes.size(),Error::kCreation);
+    const auto& graph = input.creator.Graph();
+    q.Require(plan.occurrence == input.occurrence &&
+                  plan.identity == input.identity &&
+                  plan.creator == input.creator.Method() &&
+                  plan.value_revision == graph.revision &&
+                  plan.cfg_revision == graph.cfg_revision &&
+                  plan.tasks.size() == input.creator.Classes().size(),
+              Error::kCreation);
     std::vector<ClassDefinitionSite> definitions;
-    q.Reserve(definitions,input.creator.values.definitions.sites.size());
-    definitions.insert(definitions.end(),input.creator.values.definitions.sites.begin(),input.creator.values.definitions.sites.end());
+    q.Reserve(definitions, input.creator.Definitions().size());
+    definitions.insert(definitions.end(), input.creator.Definitions().begin(),
+                       input.creator.Definitions().end());
     std::sort(definitions.begin(),definitions.end(),[&](const auto& a,const auto& b){
       q.Step();return a.creation!=b.creation?a.creation<b.creation:a.definition<b.definition;
     });
-    q.Step(definitions.size());q.Require(definitions==plan.definitions,Error::kCreation);
+    q.Step(definitions.size());
+    q.Require(definitions == plan.definitions, Error::kCreation);
     std::vector<const ClassInitializerCall*> initializers;
-    q.Reserve(initializers,graph.ops.size());initializers.resize(graph.ops.size());
-    for(const auto& call:input.creator.values.initializers.calls) {
-      q.Step();q.operation=call.creation;q.Require(call.creation.value<initializers.size() && !initializers[call.creation.value],Error::kCreation);
+    q.Reserve(initializers,graph.ops.size());
+    initializers.resize(graph.ops.size());
+    for (const auto& call : input.creator.Initializers()) {
+      q.Step();
+      q.operation = call.creation;
+      q.Require(call.creation.value < initializers.size() &&
+                    !initializers[call.creation.value],
+                Error::kCreation);
       initializers[call.creation.value]=&call;
     }
     std::optional<ClassProjection> projection;
-    if (!input.creator.values.initializers.calls.empty() && !input.creator.values.definitions.sites.empty()) {
-      projection.emplace(q.Take<ClassProjection>(ProjectClassMembers(graph,
-          input.creator.values.initializers.calls, q.Left(), input.creator.values.definitions.sites,
-          input.creator.self_order ? &*input.creator.self_order : nullptr)));
-      q.Admit(projection->allocated_bytes); q.Step(projection->work);
+    if (!input.creator.Initializers().empty() &&
+        !input.creator.Definitions().empty()) {
+      projection.emplace(q.Take<ClassProjection>(ProjectClassMembers(
+          graph, input.creator.Initializers(), q.Left(),
+          input.creator.Definitions(), input.creator.SelfOrder())));
+      q.Admit(projection->allocated_bytes);
+      q.Step(projection->work);
     }
     q.Require(projection.has_value() == plan.initialization_projection.has_value(), Error::kCreation);
     if (projection) {
@@ -147,15 +170,25 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyCreatorClasses(
       q.Require(projection->owners == plan.initialization_projection->owners &&
           projection->prototypes == plan.initialization_projection->prototypes, Error::kCreation);
     }
-    std::vector<analysis::OpId> seen; q.Reserve(seen,plan.tasks.size());
+    std::vector<analysis::OpId> seen;
+    q.Reserve(seen, plan.tasks.size());
     for (std::size_t i=0;i<plan.tasks.size();++i) {
-      q.Step(); const auto& task=plan.tasks[i]; q.operation=task.operation;
-      q.Require(task.operation==input.creator.values.classes.classes[i].operation && task.tree,Error::kCreation);
+      q.Step();
+      const auto& task = plan.tasks[i];
+      q.operation = task.operation;
+      q.Require(
+          task.operation == input.creator.Classes()[i].operation && task.tree,
+          Error::kCreation);
       const auto& tree=*task.tree;
+      q.Require(tree.phase_point == input.creator.Point(task.operation),
+                Error::kCreation);
       q.Require(!task.preparation && !task.owners && !tree.constructor && tree.members.empty() &&
           tree.omissions.empty() && !tree.initializer,Error::kCreation);
-      q.Require(tree.identity==input.identity && tree.operation==task.operation &&
-          tree.creation.creator==input.creator.input.Method() && task.operation.value<graph.ops.size(),Error::kCreation);
+      q.Require(tree.identity == input.identity &&
+                    tree.operation == task.operation &&
+                    tree.creation.creator == input.creator.Method() &&
+                    task.operation.value < graph.ops.size(),
+                Error::kCreation);
       q.Step(2*(std::bit_width(definitions.size())+1));
       const auto first=std::lower_bound(definitions.begin(),definitions.end(),task.operation,
           [](const auto& site,auto id){return site.creation<id;});
@@ -167,26 +200,39 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyCreatorClasses(
       auto expected=q.Take<ClassTree>(BuildClassLayout(input.file,input.header,input.index,input.lookup,
           input.roles,input.classes,input.creator,task.operation,input.identity,q.Left(),initializers[task.operation.value],std::span(first,last),
           projection ? &*projection : nullptr));
-      q.Admit(expected.allocated_bytes); q.Step(expected.work);
-      q.Require(tree.creation.target==expected.creation.target && tree.creation.pc==expected.creation.pc &&
-          tree.creation.creation==expected.creation.creation &&
-          tree.member_sites==expected.member_sites && tree.callable==expected.callable && tree.name==expected.name && tree.sendable==expected.sendable,Error::kCreation);
+      q.Admit(expected.allocated_bytes);
+      q.Step(expected.work);
+      q.Require(
+          tree.creation.target == expected.creation.target &&
+              tree.creation.pc == expected.creation.pc &&
+              tree.creation.creation == expected.creation.creation &&
+              tree.creation.original_pc == expected.creation.original_pc &&
+              tree.member_sites == expected.member_sites &&
+              tree.callable == expected.callable &&
+              tree.name == expected.name && tree.sendable == expected.sendable,
+          Error::kCreation);
       q.Require(tree.initializer_site==expected.initializer_site && tree.installation_order==expected.installation_order && tree.definitions.size()==expected.definitions.size(),Error::kCreation);
       for(std::size_t d=0;d<tree.definitions.size();++d) {
-        q.Step();const auto& definition=tree.definitions[d];
+        q.Step();
+        const auto& definition = tree.definitions[d];
         q.Require(definition.site==expected.definitions[d].site && !definition.bodies[0] &&
             !definition.bodies[1] && !definition.omissions[0] && !definition.omissions[1],Error::kCreation);
       }
       seen.push_back(task.operation);
     }
     std::sort(seen.begin(),seen.end(),[&](auto a,auto b){q.Step();return a<b;});
-    for (std::size_t i=1;i<seen.size();++i) {q.Step();q.Require(seen[i-1]!=seen[i],Error::kCreation);}
+    for (std::size_t i=1;i<seen.size();++i) {
+      q.Step();
+      q.Require(seen[i - 1] != seen[i], Error::kCreation);
+    }
     // Coverage is re-derived from live original-corresponding value operations,
     // not just agreement between two potentially shortened occurrence lists.
     std::size_t next=0;
     for(std::size_t i=0;i<graph.ops.size();++i) {
-      q.Step();const auto& op=graph.ops[i];
-      if(op.life!=analysis::ValueLife::kLive || !std::holds_alternative<analysis::ValueClassCreation>(op.operation)) continue;
+      q.Step();
+      const auto& op = graph.ops[i];
+      if(op.life!=analysis::ValueLife::kLive || !std::holds_alternative<analysis::ValueClassCreation>(op.operation))
+        continue;
       q.operation=analysis::OpId{static_cast<std::uint32_t>(i)};
       q.Require(next<seen.size() && seen[next++]==*q.operation,Error::kCreation);
     }
@@ -219,10 +265,13 @@ std::variant<CreatorClassDemands, CreatorClassFailure> CollectCreatorClassDemand
     analysis::SemanticBudget budget) {
   return Run(budget,[&](Quota& q) {
     CreatorClassDemands result;
-    q.Require(plan.occurrence==input.occurrence && creator.value==input.occurrence.member.value &&
-        plan.identity==input.identity && plan.creator==input.creator.input.Method() &&
-        plan.value_revision==input.creator.values.graph.revision &&
-        plan.cfg_revision==input.creator.values.graph.cfg_revision,Error::kCreation);
+    q.Require(plan.occurrence == input.occurrence &&
+                  creator.value == input.occurrence.member.value &&
+                  plan.identity == input.identity &&
+                  plan.creator == input.creator.Method() &&
+                  plan.value_revision == input.creator.Graph().revision &&
+                  plan.cfg_revision == input.creator.Graph().cfg_revision,
+              Error::kCreation);
     std::size_t count=0;
     for(const auto& task:plan.tasks) {
       q.Step();q.operation=task.operation;q.Require(task.preparation.has_value(),Error::kCreation);
@@ -234,8 +283,8 @@ std::variant<CreatorClassDemands, CreatorClassFailure> CollectCreatorClassDemand
       }
     }
     q.Reserve(result.demands,count);
-    const auto& instructions=input.creator.input.Input().instructions;
-    const auto& graph=input.creator.values.graph;
+    const auto& instructions = input.creator.Instructions();
+    const auto& graph = input.creator.Graph();
     for(const auto& task:plan.tasks) for(const auto& body:task.preparation->bodies) {
       q.Step();q.operation=task.operation;
       const auto* family=std::get_if<FamilyPreparation>(&body);if(!family) continue;
@@ -244,13 +293,14 @@ std::variant<CreatorClassDemands, CreatorClassFailure> CollectCreatorClassDemand
       const auto* constructor=context.ConstructorSite();const auto* member=context.ClassSite();
       const auto* function=context.CreationSite();
       q.Require(constructor || member || function,Error::kCreation);
-      q.Require((constructor?constructor->creator:member?member->creator:function->creator)==input.creator.input.Method(),Error::kCreation);
-      const auto pc=constructor?constructor->pc:member?member->pc:function->pc;
+      q.Require((constructor ? constructor->creator
+                 : member    ? member->creator
+                             : function->creator) == input.creator.Method(),
+                Error::kCreation);
       q.Step(std::bit_width(instructions.size())+1);
-      const auto site=std::lower_bound(instructions.begin(),instructions.end(),pc,
-          [](const auto& instruction,auto pc){return instruction.pc<pc;});
-      q.Require(site!=instructions.end() && site->pc==pc,Error::kCreation);
-      const auto id=static_cast<std::size_t>(site-instructions.begin());
+      const auto site = input.creator.Site(context);
+      q.Require(site.has_value(), Error::kCreation);
+      const auto id = site->value;
       q.Require(id<graph.input.sites.size() && graph.input.sites[id],Error::kCreation);
       for(const auto& use:family->RootUses()) {
         q.Step();result.demands.push_back({creator,{*graph.input.sites[id],use.cell,use.domain,
@@ -261,18 +311,39 @@ std::variant<CreatorClassDemands, CreatorClassFailure> CollectCreatorClassDemand
   });
 }
 std::variant<CreatorClassCost, CreatorClassFailure> BindCreatorClasses(
-    const corpus::AbcFile& file,const abc::Header& header,const abc::MetadataIndex& index,
-    const abc::MethodLookup& lookup,const FileFunction& creator,const CaptureStorage* storage,
-    CreatorClasses& plan,analysis::SemanticBudget budget) {
-  return Run(budget,[&](Quota& q) {
-    q.Require(plan.creator==creator.input.Method() && plan.value_revision==creator.values.graph.revision &&
-        plan.cfg_revision==creator.values.graph.cfg_revision,Error::kCreation);
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    ClassCreator creator, const CaptureStorage* storage, CreatorClasses& plan,
+    analysis::SemanticBudget budget) {
+  return Run(budget, [&](Quota& q) {
+    q.Require(plan.creator == creator.Method() &&
+                  plan.value_revision == creator.Graph().revision &&
+                  plan.cfg_revision == creator.Graph().cfg_revision,
+              Error::kCreation);
     for(auto& task:plan.tasks) {
-      q.Step();q.operation=task.operation;q.Require(task.preparation.has_value(),Error::kCreation);
-      for(auto& body:task.preparation->bodies) if(auto* family=std::get_if<FamilyPreparation>(&body)) {
-        q.Step();auto bound=family->BindCreator(file,header,index,lookup,creator,storage,q.Left());
-        if(const auto* error=std::get_if<FamilyPrepareFailure>(&bound))throw CreatorClassFailure{*error,q.operation};
-        const auto cost=std::get<FamilyCellCost>(bound);q.Admit(cost.allocated_bytes);q.Step(cost.work);
+      q.Step();
+      q.operation = task.operation;
+      q.Require(task.preparation.has_value(), Error::kCreation);
+      for(auto& body:task.preparation->bodies)
+        if (auto* family = std::get_if<FamilyPreparation>(&body)) {
+          q.Step();
+          auto bound = family->BindCreator(file, header, index, lookup, creator,
+                                           storage, q.Left());
+          if (const auto* error = std::get_if<FamilyPrepareFailure>(&bound))
+            throw CreatorClassFailure{*error, q.operation};
+          const auto cost = std::get<FamilyCellCost>(bound);
+          q.Admit(cost.allocated_bytes);
+          q.Step(cost.work);
+        }
+      if (creator.Phase()) {
+        q.Step();
+        const auto point = creator.Point(task.operation);
+        q.Require(
+            point.has_value() && task.tree && task.tree->phase_point == point,
+            Error::kCreation);
+        task.tree->phase_binding =
+            CreatorClassBindingAccess::Make(creator, *point);
+        task.preparation->layout.phase_binding = task.tree->phase_binding;
       }
     }
     return q.Cost();
@@ -334,29 +405,34 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyFinishedClassOwners(
 std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
     const CreatorClassInput& input, CreatorClasses& plan, const GlobalScope* globals,
     FunctionOwnerId first_owner,const CaptureTree* parent,RecoveryMode recovery,analysis::SemanticBudget budget) {
-  return Run(budget,[&](Quota& q) {
-    q.Require(plan.occurrence==input.occurrence && plan.identity==input.identity &&
-        plan.creator==input.creator.input.Method() && plan.value_revision==input.creator.values.graph.revision &&
-        plan.cfg_revision==input.creator.values.graph.cfg_revision,Error::kCreation);
+  return Run(budget, [&](Quota& q) {
+    q.Require(plan.occurrence == input.occurrence &&
+                  plan.identity == input.identity &&
+                  plan.creator == input.creator.Method() &&
+                  plan.value_revision == input.creator.Graph().revision &&
+                  plan.cfg_revision == input.creator.Graph().cfg_revision,
+              Error::kCreation);
     auto checked=VerifyCreatorClassOwners(plan,first_owner,q.Left());
-    if(const auto* failure=std::get_if<CreatorClassFailure>(&checked)) throw *failure;
+    if(const auto* failure=std::get_if<CreatorClassFailure>(&checked))
+      throw *failure;
     q.Step(std::get<CreatorClassCost>(checked).work);
     std::uint64_t next=first_owner.value;
     for (auto& task:plan.tasks) {
-      q.Step();q.operation=task.operation;
+      q.Step();
+      q.operation = task.operation;
       q.Require(task.owners && ValidClassOwnerRange(*task.owners,next) && task.preparation,Error::kCreation);
       std::optional<ClassStaticFields> certified_initializer;
       std::optional<ClassSelfInitializationDiagnostic> class_diagnostic;
-      if (parent && input.creator.class_self &&
-          input.creator.class_self->initialization.Evidence().call.creation ==
+      if (parent && input.creator.Self() &&
+          input.creator.Self()->initialization.Evidence().call.creation ==
               task.operation) {
         auto diagnostic = BindDeferredClassSelf(
             input.file, input.header, input.index, input.lookup, input.roles,
-            input.classes, input.creator, *input.creator.class_self, *task.tree,
-            {static_cast<std::uint32_t>(task.owners->end - 1)}, *parent,
-            input.storage, q.Left(),
+            input.classes, *input.creator.Normal(), *input.creator.Self(),
+            *task.tree, {static_cast<std::uint32_t>(task.owners->end - 1)},
+            *parent, input.storage, q.Left(),
             globals ? globals->module_enclosure : nullptr);
-        auto& retained = *input.creator.class_self;
+        auto& retained = *input.creator.Self();
         if (retained.flow && retained.initializer.tree.class_scope &&
             diagnostic.recovery &&
             diagnostic.recovery->kind ==
@@ -427,18 +503,24 @@ std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
       auto definition = q.Take<ClassTree>(std::move(completed));
       q.Require(definition.name==task.tree->name && definition.callable==task.tree->callable &&
           definition.member_sites==task.tree->member_sites && definition.DraftPrepared(),Error::kCreation);
-      q.Admit(definition.allocated_bytes);q.Step(definition.work);
+      q.Admit(definition.allocated_bytes);
+      q.Step(definition.work);
       next+=definition.constructor->Family().OwnerCount();
-      for(const auto& member:definition.members) if(member) next+=member->Family().OwnerCount();
-      for(const auto& site:definition.definitions) for(const auto& member:site.bodies)
-        if(member) next+=member->Family().OwnerCount();
+      for(const auto& member:definition.members)
+        if (member) next += member->Family().OwnerCount();
+      for(const auto& site:definition.definitions)
+        for (const auto& member : site.bodies)
+          if (member) next += member->Family().OwnerCount();
       next+=definition.initializer.has_value();
       q.Require(next==task.owners->end,Error::kCreation);
       *task.tree=std::move(definition);
     }
     auto owners=VerifyFinishedClassOwners(plan,first_owner,q.Left());
-    if(const auto* failure=std::get_if<CreatorClassFailure>(&owners))throw *failure;
-    const auto cost=std::get<CreatorClassCost>(owners);q.Admit(cost.allocated_bytes);q.Step(cost.work);
+    if(const auto* failure=std::get_if<CreatorClassFailure>(&owners))
+      throw *failure;
+    const auto cost=std::get<CreatorClassCost>(owners);
+    q.Admit(cost.allocated_bytes);
+    q.Step(cost.work);
     return q.Cost();
   });
 }

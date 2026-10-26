@@ -3,12 +3,14 @@
 
 #include "abcd/abc/call_type.h"
 #include "abcd/analysis/class_method_sites.h"
-#include "abcd/analysis/method_roles.h"
 #include "abcd/analysis/function_creation_sites.h"
+#include "abcd/analysis/method_roles.h"
 #include "abcd/source/source_tree.h"
+#include "class_creator.h"
 
 namespace abcd::source {
 struct FileFunction;
+class ClassCreator;
 enum class ClassContextError : std::uint8_t {
   kSite, kProfile, kRole, kKind, kName, kSignature, kResourceLimit, kWorkLimit
 };
@@ -17,6 +19,7 @@ struct ClassConstructorSite {
   abc::EntityOffset creator;
   abc::CodeOffset pc;
   analysis::ClassCreation creation;
+  std::optional<abc::CodeOffset> original_pc;
 };
 struct ClassDefinedMember {
   analysis::FunctionCreationSite function;
@@ -45,21 +48,24 @@ class ClassTreeContext {
   // operation must retain its original occurrence and typed heritage input.
   // Resolving a derived owner does not prove the constructor protocol or
   // authorize class emission; actual heritage evaluation remains obligatory.
-  [[nodiscard]] static std::variant<ClassTreeContext, ClassContextFailure> ResolveConstructor(
-      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
-      const abc::MethodLookup&, const analysis::MethodRoleIndex&,
-      const FileFunction& creator, analysis::OpId creation, RouteInputIdentity,
-      analysis::SemanticBudget budget = {});
+  [[nodiscard]] static std::variant<ClassTreeContext, ClassContextFailure>
+  ResolveConstructor(const corpus::AbcFile&, const abc::Header&,
+                     const abc::MetadataIndex&, const abc::MethodLookup&,
+                     const analysis::MethodRoleIndex&, ClassCreator creator,
+                     analysis::OpId creation, RouteInputIdentity,
+                     analysis::SemanticBudget budget = {});
   // Fresh unchanged creator and its occurrence inventory. Recheck the actual
   // DEFINEMETHOD owner, key/prototype pool strings and native member signature.
   // This prepares a body only; moving the definition into a class expression
   // still requires the surrounding class escape/effect projection.
-  [[nodiscard]] static std::variant<ClassTreeContext, ClassContextFailure> ResolveDefinedMember(
-      const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
-      const abc::MethodLookup&, const analysis::MethodRoleIndex&,
-      const analysis::FunctionCreationSites&, const FileFunction& creator,
-      analysis::OpId definition, abc::ClassMethodKind kind, RouteInputIdentity,
-      analysis::SemanticBudget budget = {});
+  [[nodiscard]] static std::variant<ClassTreeContext, ClassContextFailure>
+  ResolveDefinedMember(const corpus::AbcFile&, const abc::Header&,
+                       const abc::MetadataIndex&, const abc::MethodLookup&,
+                       const analysis::MethodRoleIndex&,
+                       const analysis::FunctionCreationSites&,
+                       ClassCreator creator, analysis::OpId definition,
+                       abc::ClassMethodKind kind, RouteInputIdentity,
+                       analysis::SemanticBudget budget = {});
   const ClassDefinedMember* DefinedMember() const { return std::get_if<ClassDefinedMember>(&site_); }
   abc::ClassPlacement Placement() const { return DefinedMember() ? DefinedMember()->placement : Site().placement; }
   const ClassConstructorSite* Constructor() const { return std::get_if<ClassConstructorSite>(&site_); }

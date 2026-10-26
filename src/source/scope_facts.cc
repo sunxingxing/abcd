@@ -191,6 +191,7 @@ std::optional<abc::CodeOffset> CapturePc(const CaptureSite& site) {
   return std::visit([](const auto& creation) -> std::optional<abc::CodeOffset> {
     if constexpr (std::is_same_v<std::decay_t<decltype(creation)>, analysis::CreationBinding>) return creation.offset;
     else {
+      if (creation.working_pc) return creation.working_pc;
       if (const auto* ctor = creation.owner.ConstructorSite()) return ctor->pc;
       if (const auto* member = creation.owner.ClassSite()) return member->pc;
       return std::nullopt;

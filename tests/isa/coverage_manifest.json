@@ -11141,6 +11141,10 @@
     {
       "test": "isa_derived_control_source_test",
       "producer": "tests/isa/derived_control_test.py"
+    },
+    {
+      "test": "isa_phased_classes_source_test",
+      "producer": "tests/isa/phased_classes_test.py"
     }
   ]
 }

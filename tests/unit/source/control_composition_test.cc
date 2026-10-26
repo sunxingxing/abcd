@@ -138,9 +138,15 @@ void Emit(const abc::MethodBody& body, abc::ProfileId profile, std::uint32_t loc
     altered.holes.reset();
     test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, altered)));
     altered = evaluation;
-    altered.holes->comparisons.front().equal = !altered.holes->comparisons.front().equal;
-    test::Check(std::holds_alternative<EvaluationFailure>(VerifyPhasedEvaluationPlan(graph, altered)));
-    return; // Raw VM transport is not a source or finalizer completion claim.
+    altered.holes->comparisons.front().equal =
+        !altered.holes->comparisons.front().equal;
+    test::Check(std::holds_alternative<EvaluationFailure>(
+        VerifyPhasedEvaluationPlan(graph, altered)));
+    altered = evaluation;
+    altered.holes->phi_transport = !altered.holes->phi_transport;
+    test::Check(std::holds_alternative<EvaluationFailure>(
+        VerifyPhasedEvaluationPlan(graph, altered)));
+    return;  // Raw VM transport is not a source or finalizer completion claim.
   }
   const auto regions = Take<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto built_control = BuildExceptionControl(body, graph, input, regions);

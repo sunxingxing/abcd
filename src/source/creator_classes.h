@@ -1,7 +1,9 @@
 #ifndef ABCD_SOURCE_CREATOR_CLASSES_H_
 #define ABCD_SOURCE_CREATOR_CLASSES_H_
-#include "class_tree.h"
+
 #include "abcd/source/creator_class_occurrence.h"
+#include "class_creator.h"
+#include "class_tree.h"
 
 namespace abcd::source {
 // Borrowed input identity belongs to this occurrence, not to the constructor's
@@ -14,7 +16,7 @@ struct CreatorClassInput {
   const analysis::MethodRoleIndex& roles;
   const analysis::FunctionCreationSites& functions;
   const analysis::ClassMethodSites& classes;
-  const FileFunction& creator;
+  ClassCreator creator;
   RouteInputIdentity identity;
   CreatorClassOccurrence occurrence;
   const CaptureStorage* storage = nullptr;
@@ -69,9 +71,11 @@ struct CreatorClassCost { std::size_t allocated_bytes; std::uint64_t work; };
     const CreatorClasses&, FunctionOwnerId, analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<CreatorClassDemands, CreatorClassFailure> CollectCreatorClassDemands(
     const CreatorClassInput&, const CreatorClasses&, FamilyId, analysis::SemanticBudget = {});
-[[nodiscard]] std::variant<CreatorClassCost, CreatorClassFailure> BindCreatorClasses(
-    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&, const abc::MethodLookup&,
-    const FileFunction&, const CaptureStorage*, CreatorClasses&, analysis::SemanticBudget = {});
+[[nodiscard]] std::variant<CreatorClassCost, CreatorClassFailure>
+BindCreatorClasses(const corpus::AbcFile&, const abc::Header&,
+                   const abc::MetadataIndex&, const abc::MethodLookup&,
+                   ClassCreator, const CaptureStorage*, CreatorClasses&,
+                   analysis::SemanticBudget = {});
 [[nodiscard]] std::variant<CreatorClassCost, CreatorClassFailure> VerifyFinishedClassOwners(
     const CreatorClasses&, FunctionOwnerId, analysis::SemanticBudget = {});
 // Allocation-free validation used at preparation and final construction.

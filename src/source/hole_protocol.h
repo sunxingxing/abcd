@@ -21,6 +21,9 @@ struct HoleRethrow {
 struct HoleProtocol {
   std::vector<HoleComparison> comparisons;
   std::vector<HoleRethrow> rethrows;
+  // Non-native phi transport still needs a source token for its copy storage.
+  // A protocol containing only copies to absent heritage needs no JS value.
+  bool phi_transport = false;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

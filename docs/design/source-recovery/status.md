@@ -10,6 +10,69 @@
 
 
 
+## Classes in phased creators, increment 1 (2026-10-26)
+
+- Added a borrowed normal/phased `ClassCreator`, one phased class inventory and
+  original-PC index, and a Before/environment/Commit/exception occurrence proof.
+  Classes use the existing creator preparation/descendant/binding pipeline and
+  exception-aware capture planner. Phased function bindings remain separate.
+  Forest/operand/finish/family-write checks require the real binding and fresh
+  occurrence; scope independence alone no longer admits a phased class. Fresh
+  exception-tree verification preserves execution point, Commit availability and
+  the creation exception edge. No source-language premise was added. Design:
+  [phased-classes.md](phased-classes.md).
+- Added the pinned O0 `phased_classes` fixture, append-only ISA producer and
+  **28-case** Node differential: both reproducers, captured parameters/mutable
+  cells/catch locals, escaping methods, async fulfillment/rejection before and
+  after await, generators, fresh identity and initialized module function reads.
+  Site/PC/environment/Before/Commit/original-coordinate and missing-binding
+  mutations refuse with typed errors, including independent family-write checks.
+  Inventory work at 200/201/400/800 sites: **5215/5241/16315/33115**, over
+  **6025/6055/20876/42476** actual value inputs (compiler register copies differ).
+  Exact-work and exhausted-work/byte checks pass; these are inventory measurements.
+- Authoritative build passes:
+  `cmake --build build/regression --target source_regression abc_structure isa_coverage_probe -j 8`.
+  `ctest --test-dir build/regression -L source-regression --output-on-failure`:
+  **65/65** pass. `python3 tests/isa/phased_classes_test.py`: **OK** (28 cases).
+  Related ISA source sweep: **11/11** pass. Class/capture checks including the
+  new proof test: **6/6** pass. The existing deferred-loop regression now reaches
+  typed `kClassDeferredDeclaration` (16), preserving its refusal and location
+  assertions. Normal `local_classes` and `inherited_modules` source bytes match
+  the pre-change CLI baseline exactly. Commands/logs: `build/phased-classes/`.
+- Descendant heritage retains `kClassHeritage` (17); no member installation or
+  initializer is fused across exception ports. Computed/static forms outside the
+  shared path and deferred/unsupported capture obligations remain typed refusals.
+  Node is independent source evidence; no Ark/device, full-process RSS or cohort
+  run was performed. No input ABC, `samples/` or `build/review/` was modified.
+  Changes remain uncommitted at the user's request.
+
+- Review correction (2026-10-26): removed discarded `({});` from the new phased
+  class output. The allocation was an unused private Hole token for absent
+  heritage; NEWLEXENV already had the checked environment disposition. The
+  shared Hole protocol now records non-native phi storage, freshly rechecked
+  by evaluation verification. Heritage-only pure transport uses anchors with
+  no token; real comparisons/rethrows/phi transport keep their source token.
+  Added the ISA text assertion and typed proof mutation; no premise was added.
+  Rebuilt the authoritative targets and reran source-regression **65/65**, the
+  **28-case** Python/Node fixture, the **11/11** ISA source sweep, **2/2** proof
+  units and **3/3** exception/completion Node tests. Normal local_classes and
+  inherited_modules source bytes still match the saved baseline. Logs and
+  read-only CameraService diagnosis/proposal: `build/phased-classes/review-fix/`.
+  CameraService method 13268 (`getSupportedCamerasFn`) still refuses at pc 138:
+  saved `Logger.info` from pc 44 remains a cross-region root across the optional
+  access and concatenations in its message argument; the member-reference call
+  proof requires inline ownership. A small O0 JS reproducer fails identically;
+  controls without that combined phased expression succeed. No implementation
+  of this follow-up, cohort tool run, commit or push was performed. The user's
+  cohort review reports EditPage complete in both flag sets with zero prior
+  complete-record text changes or regressions; that evidence was not rerun here.
+
+- Review evidence: cohorts 614 -> 615 / 547 -> 548 (o36 `EditPage.mjs`
+  complete in both flag sets), zero regressions and zero text changes
+  (`build/review/csr82`); source-regression 65/65 at preset parallelism.
+  o36 `CameraService` now stops later, at a phased call whose member callee
+  read crosses an optional-chain template argument (CallReferenceError).
+
 ## Range derived constructor control, increment 1 (2026-10-26)
 
 - Added a shared range certificate for every super/return/check/binding site,

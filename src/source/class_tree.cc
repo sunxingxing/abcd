@@ -43,13 +43,15 @@ std::variant<ClassParentScope, ClassTreeError> CheckClassParentScope(
 
 namespace {
 using Error = ClassTreeError;
-SendableFailure LocateSendable(SendableFailure failure,const FileFunction& creator,analysis::OpId operation) {
-  failure.record=creator.input.Record();failure.method=creator.input.Method();
-  const auto& graph=creator.values.graph;
+SendableFailure LocateSendable(SendableFailure failure, ClassCreator creator,
+                               analysis::OpId operation) {
+  failure.record = creator.Record();
+  failure.method = creator.Method();
+  const auto& graph = creator.Graph();
   if(operation.value<graph.ops.size() && graph.ops[operation.value].origin.value<graph.origins.size()) {
     const auto site=graph.origins[graph.ops[operation.value].origin.value].site;
-    if(site.value<creator.input.Input().instructions.size()) {
-      const auto& instruction=creator.input.Input().instructions[site.value];
+    if (site.value < creator.Instructions().size()) {
+      const auto& instruction = creator.Instructions()[site.value];
       failure.pc=instruction.origin.value_or(instruction.pc);failure.working_pc=instruction.pc;
     }
   }
@@ -80,7 +82,8 @@ bool ClassTree::DraftPrepared() const {
     const auto& context = omitted.context;
     if (context.Constructor() || context.DefinedMember() ||
         context.Identity() != identity || context.Occurrence() != member_sites[i] ||
-        context.Site().property != i || context.Site().creator != creation.creator || context.Site().pc != creation.pc ||
+        context.Site().property != i || context.Site().creator != creation.creator ||
+        context.Site().pc != creation.original_pc.value_or(creation.pc) ||
         !omitted.InputGap()) return false;
   }
   if (gap != omissions.size()) return false;
@@ -103,11 +106,13 @@ bool ClassTree::DraftPrepared() const {
   return true;
 }
 std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
-    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
-    const analysis::ClassMethodSites& classes, const FileFunction& creator,
-    analysis::OpId operation, RouteInputIdentity identity, analysis::SemanticBudget budget,
-    const ClassInitializerCall* initializer, std::span<const ClassDefinitionSite> definitions,
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles,
+    const analysis::ClassMethodSites& classes, ClassCreator creator,
+    analysis::OpId operation, RouteInputIdentity identity,
+    analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
+    std::span<const ClassDefinitionSite> definitions,
     const ClassProjection* shared_projection) {
   const auto initial = budget;
   try {
@@ -131,8 +136,13 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     std::shared_ptr<const analysis::IndexedSendableLiteral> sendable;
     if(site.creation.kind==abc::ClassKind::kSendable) {
       sendable=classes.SendableLiteral(resolved.offset);
-      if(index.methods[context.Position().value].owner_offset!=creator.input.Record()) {
-        SendableFailure e;e.kind=SendableError::kOwner;e.record=creator.input.Record();e.method=site.creator;e.pc=site.pc;
+      if (index.methods[context.Position().value].owner_offset !=
+          creator.Record()) {
+        SendableFailure e;
+        e.kind = SendableError::kOwner;
+        e.record = creator.Record();
+        e.method = site.creator;
+        e.pc = site.pc;
         throw ClassTreeFailure{e};
       }
       if(!sendable) {SendableFailure e;e.kind=SendableError::kClassLiteral;e.method=site.creator;e.pc=site.pc;throw ClassTreeFailure{e};}
@@ -146,6 +156,10 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     const auto name = RuntimeName(index.methods[context.Position().value]);
     if (!name) return ClassTreeFailure{Error::kName};
     ClassTree tree;
+    if (creator.Phase()) {
+      tree.phase_point = creator.Point(operation);
+      if (!tree.phase_point) return ClassTreeFailure{Error::kCreation};
+    }
     tree.identity = identity; tree.creation = site; tree.operation = operation; tree.callable = context.Callable();tree.sendable=std::move(sendable);
     admit(name->size() + 1, sizeof(char16_t)); step(name->size());
     tree.name.assign(name->begin(), name->end());
@@ -159,7 +173,9 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
       if (!method || i > UINT32_MAX) return ClassTreeFailure{Error::kMember};
       // Exact creation lookup, never scan every use of a shared method per key.
       step(std::bit_width(classes.AllocatedBytes() / sizeof(analysis::ClassMethodSite)) + 1);
-      const auto occurrence = classes.FindOccurrence(method->target, site.creator, site.pc, static_cast<std::uint32_t>(i));
+      const auto occurrence = classes.FindOccurrence(
+          method->target, site.creator, site.original_pc.value_or(site.pc),
+          static_cast<std::uint32_t>(i));
       if (!occurrence) return ClassTreeFailure{Error::kMember};
       const auto* actual = classes.At(*occurrence);
       if (!actual || actual->literal != resolved.offset || actual->kind != method->kind ||
@@ -170,16 +186,16 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     // Layout retains actual wire order. Projection/movement is a separate
     // parent-tree obligation; a metadata inventory grants no executable body.
     if (initializer && !definitions.empty() &&
-        (!creator.class_self ||
-         creator.class_self->initialization.Evidence().call != *initializer)) {
+        (!creator.Self() ||
+         creator.Self()->initialization.Evidence().call != *initializer)) {
       // A normal private installation corridor can compose with a static
       // initializer without a self cell. Recompute its original effects and
       // every pre-initialization observation; layout alone grants no movement.
       std::optional<ClassProjection> local_projection;
       if (!shared_projection) {
-        local_projection.emplace(Take<ClassProjection>(ProjectClassMembers(
-            creator.values.graph, std::span{initializer, 1}, budget, definitions,
-            creator.self_order ? &*creator.self_order : nullptr)));
+        local_projection.emplace(Take<ClassProjection>(
+            ProjectClassMembers(creator.Graph(), std::span{initializer, 1},
+                                budget, definitions, creator.SelfOrder())));
         admit(local_projection->allocated_bytes, 1); step(local_projection->work);
         shared_projection = &*local_projection;
       }
@@ -226,11 +242,11 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     }
     if (initializer) {
       if (initializer->creation != operation) return ClassTreeFailure{Error::kCreation};
-      if (creator.class_self &&
-          creator.class_self->initialization.Evidence().call == *initializer) {
+      if (creator.Self() &&
+          creator.Self()->initialization.Evidence().call == *initializer) {
         auto checked =
             VerifyDeferredClassSelf(file, header, index, lookup, roles, classes,
-                                    creator, *creator.class_self, budget);
+                                    *creator.Normal(), *creator.Self(), budget);
         if (const auto* error =
                 std::get_if<ClassSelfInitializationFailure>(&checked)) {
           if (error->kind == ClassSelfInitializationError::kResourceLimit)
@@ -256,12 +272,17 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassLayout(
     catch (const std::length_error&) { return ClassTreeFailure{Error::kResourceLimit}; }
 }
 std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
-    const corpus::AbcFile& file, const abc::Header& header, const abc::MetadataIndex& index,
-    const abc::MethodLookup& lookup, const analysis::MethodRoleIndex& roles,
-    const analysis::FunctionCreationSites& functions, const analysis::ClassMethodSites& classes,
-    const FileFunction& creator, analysis::OpId operation, RouteInputIdentity identity,
-    const GlobalScope* globals, analysis::SemanticBudget budget, const ClassInitializerCall* initializer,
-    std::span<const ClassDefinitionSite> definitions, FunctionOwnerId first_owner, RecoveryMode recovery, const CaptureStorage* creator_storage, ClassRootBinding root_binding,
+    const corpus::AbcFile& file, const abc::Header& header,
+    const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& functions,
+    const analysis::ClassMethodSites& classes, ClassCreator creator,
+    analysis::OpId operation, RouteInputIdentity identity,
+    const GlobalScope* globals, analysis::SemanticBudget budget,
+    const ClassInitializerCall* initializer,
+    std::span<const ClassDefinitionSite> definitions,
+    FunctionOwnerId first_owner, RecoveryMode recovery,
+    const CaptureStorage* creator_storage, ClassRootBinding root_binding,
     const ClassProjection* shared_projection) {
   const auto initial = budget;
   try {
@@ -288,18 +309,18 @@ std::variant<ClassPreparation, ClassTreeFailure> PrepareClassTree(
     const auto read = [&](ClassTreeContext context, bool member = true) {
       if (result.next_owner > UINT32_MAX) throw ClassTreeFailure{Error::kResourceLimit};
       FunctionContext root{std::move(context)};
-      const auto pc = root.ConstructorSite() ? root.ConstructorSite()->pc :
-          root.ClassSite() ? root.ClassSite()->pc : root.CreationSite()->pc;
-      const auto& instructions = creator.input.Input().instructions;
-      step(std::bit_width(instructions.size()) + 1);
-      const auto site = std::lower_bound(instructions.begin(), instructions.end(), pc,
-          [](const auto& instruction, auto pc) { return instruction.pc < pc; });
-      if (site == instructions.end() || site->pc != pc) throw ClassTreeFailure{Error::kCreation};
-      const ParentModuleInput modules{creator.input, {static_cast<std::uint32_t>(site-instructions.begin())}};
+      step(std::bit_width(creator.Instructions().size()) + 1);
+      const auto site = creator.Site(root);
+      if (!site) throw ClassTreeFailure{Error::kCreation};
+      std::optional<ParentModuleInput> modules;
+      if (creator.Normal())
+        modules.emplace(ParentModuleInput{creator.Normal()->input, *site});
       const FamilyDestination destination{Strictness::kStrict, globals, FunctionFragment::kClassMember,
           {static_cast<std::uint32_t>(result.next_owner)}};
-      auto body = FamilyPreparation::Read(file, header, index, lookup, roles, functions,
-          std::move(root), destination, budget, recovery, &modules, &creator, &classes, creator_storage, root_binding);
+      auto body = FamilyPreparation::Read(
+          file, header, index, lookup, roles, functions, std::move(root),
+          destination, budget, recovery, modules ? &*modules : nullptr, creator,
+          &classes, creator_storage, root_binding);
       if (const auto* prepared = std::get_if<FamilyPreparation>(&body)) {
         admit(prepared->AllocatedBytes(), 1); step(prepared->Work());
         result.next_owner += prepared->OwnerCount();
@@ -355,7 +376,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
     const analysis::MethodRoleIndex& roles,
     const analysis::FunctionCreationSites& functions,
-    const analysis::ClassMethodSites& classes, const FileFunction& creator,
+    const analysis::ClassMethodSites& classes, ClassCreator creator,
     analysis::OpId operation, RouteInputIdentity identity,
     const GlobalScope* globals, analysis::SemanticBudget budget,
     const ClassInitializerCall* initializer,
@@ -377,15 +398,25 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
         creator, operation, identity, budget, initializer, definitions));
     if (!preparation) { admit(tree.allocated_bytes, 1); step(tree.work); }
     if(tree.sendable) {
-      const auto resolved=Take<abc::PoolReference>(abc::ResolvePoolReference(file,header,index,
-          creator.input.Method(),tree.creation.creation.literal,abc::PoolEntityKind::kLiteralArray));
+      const auto resolved = Take<abc::PoolReference>(abc::ResolvePoolReference(
+          file, header, index, creator.Method(), tree.creation.creation.literal,
+          abc::PoolEntityKind::kLiteralArray));
       if(tree.sendable!=classes.SendableLiteral(resolved.offset)) {
-        SendableFailure e;e.kind=SendableError::kCorrespondence;e.record=creator.input.Record();
-        e.method=creator.input.Method();e.pc=tree.creation.pc;throw ClassTreeFailure{e};
+        SendableFailure e;
+        e.kind = SendableError::kCorrespondence;
+        e.record = creator.Record();
+        e.method = creator.Method();
+        e.pc = tree.creation.pc;
+        throw ClassTreeFailure{e};
       }
     }
     if (preparation && preparation->recovery != recovery) throw ClassTreeFailure{Error::kCreation};
-    if (tree.identity != identity || tree.operation != operation || tree.creation.creator != creator.input.Method())
+    if (tree.identity != identity || tree.operation != operation ||
+        tree.creation.creator != creator.Method())
+      throw ClassTreeFailure{Error::kCreation};
+    if (creator.Phase() &&
+        (tree.phase_point != creator.Point(operation) || !tree.phase_binding ||
+         !tree.phase_binding->Matches(creator, operation)))
       throw ClassTreeFailure{Error::kCreation};
     std::size_t prepared_body = 0;
     std::uint64_t next_owner = first_owner.value;
@@ -409,11 +440,18 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
         // constructor/literal/accessor occurrences in this same verified order.
         target.class_family = static_cast<std::uint32_t>(prepared_body);
       }
-      return PreparedFamily::Finish(file, header, index, lookup,
-          std::get<FamilyPreparation>(std::move(input)), target, budget, &creator, creator_storage);
+      return PreparedFamily::Finish(
+          file, header, index, lookup,
+          std::get<FamilyPreparation>(std::move(input)), target, budget,
+          creator, creator_storage);
     };
-    const ParentModuleInput modules{creator.input,
-        {creator.values.graph.origins[creator.values.graph.ops[operation.value].origin.value].site.value}};
+    std::optional<ParentModuleInput> modules;
+    if (creator.Normal())
+      modules.emplace(ParentModuleInput{
+          creator.Normal()->input,
+          {creator.Graph()
+               .origins[creator.Graph().ops[operation.value].origin.value]
+               .site.value}});
     tree.constructor = Take<PreparedFamily>(preparation ? finish() : PreparedFamily::PrepareConstructor(file, header, index, lookup,
         roles, functions, creator, operation, identity, destination(), budget, recovery));
     admit(tree.constructor->AllocatedBytes(), 1); step(tree.constructor->Work());
@@ -457,8 +495,13 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     admit(tree.members.capacity() - tree.member_sites.size(), sizeof(std::optional<PreparedFamily>));
     for (const auto occurrence : tree.member_sites) {
       step(1);
-      auto prepared = preparation ? finish() : PreparedFamily::PrepareClass(file, header, index, lookup, roles,
-          functions, classes, occurrence, identity, destination(), budget, recovery, &modules, &creator);
+      auto prepared =
+          preparation
+              ? finish()
+              : PreparedFamily::PrepareClass(
+                    file, header, index, lookup, roles, functions, classes,
+                    occurrence, identity, destination(), budget, recovery,
+                    modules ? &*modules : nullptr, creator);
       if (auto gap = omission(prepared, [&] {
             return Take<ClassTreeContext>(ClassTreeContext::Resolve(file, header, index, lookup,
                 roles, classes, occurrence, identity, budget));
@@ -579,7 +622,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
         ++next_owner;
       } else {
         auto body = Take<ClassInitializerFunction>(ReadClassInitializerFunction(
-            file, header, index, lookup, roles, functions, creator,
+            file, header, index, lookup, roles, functions, *creator.Normal(),
             *initializer, budget,
             globals && globals->module_enclosure
                 ? &globals->module_enclosure->Context()
@@ -595,13 +638,16 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
     }
     // A stored instance initializer this creation owns is printed as native
     // fields or the class is refused; it is never silently dropped.
-    for (const auto& instance : creator.values.initializers.instances) {
+    for (const auto& instance : creator.Instances()) {
       step(1);
       if (instance.creation != operation) continue;
       if (tree.instance_fields) throw ClassTreeFailure{Error::kCreation};
       auto body = Take<ClassInitializerFunction>(ReadClassInstanceInitializer(
-          file, header, index, lookup, roles, functions, creator, instance, budget,
-          globals && globals->module_enclosure ? &globals->module_enclosure->Context() : nullptr));
+          file, header, index, lookup, roles, functions, *creator.Normal(),
+          instance, budget,
+          globals && globals->module_enclosure
+              ? &globals->module_enclosure->Context()
+              : nullptr));
       admit(body.function.allocated_bytes, 1);
       admit(body.context.AllocatedBytes(), 1);
       step(body.context.Work());

@@ -1,10 +1,11 @@
 #ifndef ABCD_SOURCE_PHASED_BODY_H_
 #define ABCD_SOURCE_PHASED_BODY_H_
 
+#include "class_creator.h"
 #include "exception_tree.h"
 #include "function_context.h"
-#include "module_slot_set.h"
 #include "module_aliases.h"
+#include "module_slot_set.h"
 
 namespace abcd::source {
 struct PhasedModuleBinding;
@@ -74,6 +75,7 @@ class PhasedBody {
       const ModuleSlotSet* entry_modules = nullptr,
       std::span<const analysis::PatternSite> patterns = {});
   const analysis::ValueProgram& Graph() const;
+  const PhasedClassSites& Classes() const;
   const RouteInputIdentity& Identity() const;
   abc::EntityOffset Target() const;
   const ControlPlan& Control() const;

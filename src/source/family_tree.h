@@ -1,23 +1,24 @@
 #ifndef ABCD_SOURCE_FAMILY_TREE_H_
 #define ABCD_SOURCE_FAMILY_TREE_H_
 
-#include "family_file.h"
-#include "family_cells.h"
-#include "derived_projection.h"
-#include "cell_defaults.h"
 #include "cell_default_proof.h"
+#include "cell_defaults.h"
+#include "class_creator.h"
+#include "default_signature.h"
+#include "derived_projection.h"
+#include "family_cells.h"
+#include "family_enclosure.h"
+#include "family_file.h"
+#include "family_writes.h"
 #include "function_abi.h"
 #include "function_tree.h"
 #include "module_aliases.h"
 #include "syntax_resolution.h"
-#include "default_signature.h"
 #include "tree_semantics.h"
-#include "family_enclosure.h"
-#include "family_writes.h"
 
 namespace abcd::source {
 struct ExternalFamilyCapture {
-  const FileFunction& creator;
+  ClassCreator creator;
   ClassCaptureParent source;
   const CaptureStorage* storage = nullptr;
   std::shared_ptr<const ClassInnerScopeProof> class_inner;
@@ -63,11 +64,12 @@ class FamilyTreeInput {
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
       FileFamily, const FunctionContext&, analysis::SemanticBudget,
       const RecordModuleContext*, ModuleOwnerId, const abc::MethodLookup*,
-      RecoveryMode, const FileFunction* creator, const CaptureStorage* creator_storage = nullptr,
+      RecoveryMode, ClassCreator creator,
+      const CaptureStorage* creator_storage = nullptr,
       const GlobalScope* globals = nullptr);
   std::variant<FamilyCellCost, FamilyTreeFailure> BindCreator(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
-      const abc::MethodLookup&, const FunctionContext&, const FileFunction&,
+      const abc::MethodLookup&, const FunctionContext&, ClassCreator,
       const CaptureStorage*, analysis::SemanticBudget);
   std::variant<ConstructedFamily, FamilyTreeFailure> Build(
       const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,

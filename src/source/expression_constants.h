@@ -4,6 +4,7 @@
 #include <span>
 
 #include "abcd/source/source_tree.h"
+#include "class_creator.h"
 #include "name_reservations.h"
 
 namespace abcd::source {
@@ -66,6 +67,7 @@ struct ExpressionConstants {
   const DerivedCaptureInput* forwarding_captures = nullptr;
   // Borrowed naming-only index; actual scope/capture checks remain independent.
   const NameReservations* name_reservations = nullptr;
+  ClassCreator class_creator;
 };
 }  // namespace abcd::source
 #endif

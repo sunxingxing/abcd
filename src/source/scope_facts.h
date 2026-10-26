@@ -12,6 +12,7 @@ class FunctionContext;
 struct ClassCaptureSite {
   const FunctionContext& owner;
   analysis::EnvironmentRef environment;
+  std::optional<abc::CodeOffset> working_pc;
 };
 using CaptureSite = std::variant<analysis::CreationBinding, ClassCaptureSite>;
 [[nodiscard]] std::optional<abc::CodeOffset> CapturePc(const CaptureSite& site);

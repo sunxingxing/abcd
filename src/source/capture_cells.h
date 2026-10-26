@@ -1,8 +1,9 @@
 #ifndef ABCD_SOURCE_CAPTURE_CELLS_H_
 #define ABCD_SOURCE_CAPTURE_CELLS_H_
 
-#include "function_values.h"
 #include "capture_input.h"
+#include "class_creator.h"
+#include "function_values.h"
 
 namespace abcd::source {
 struct FileFunction;
@@ -97,14 +98,20 @@ struct CaptureCellFailure {
 // Resolve the actual original class-root creation point, then reuse the common
 // normal-parent/normal-or-phase-child cell binder. Defaults must freshly rebind
 // this proof after residual graphs and descendant demands settle.
-[[nodiscard]] std::variant<CaptureCells, CaptureCellFailure> BindClassRootCaptureCells(
-    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
-    const abc::MethodLookup&, const FileFunction& creator, CaptureChild child,
-    const FunctionContext& owner, analysis::SemanticBudget = {}, const CaptureStorage* creator_storage = nullptr);
-[[nodiscard]] std::variant<std::uint64_t, CaptureCellFailure> VerifyClassRootCaptureCells(
-    const corpus::AbcFile&, const abc::Header&, const abc::MetadataIndex&,
-    const abc::MethodLookup&, const FileFunction& creator, CaptureChild child,
-    const FunctionContext& owner, const CaptureCells&, analysis::SemanticBudget = {}, const CaptureStorage* creator_storage = nullptr);
+[[nodiscard]] std::variant<CaptureCells, CaptureCellFailure>
+BindClassRootCaptureCells(const corpus::AbcFile&, const abc::Header&,
+                          const abc::MetadataIndex&, const abc::MethodLookup&,
+                          ClassCreator creator, CaptureChild child,
+                          const FunctionContext& owner,
+                          analysis::SemanticBudget = {},
+                          const CaptureStorage* creator_storage = nullptr);
+[[nodiscard]] std::variant<std::uint64_t, CaptureCellFailure>
+VerifyClassRootCaptureCells(const corpus::AbcFile&, const abc::Header&,
+                            const abc::MetadataIndex&, const abc::MethodLookup&,
+                            ClassCreator creator, CaptureChild child,
+                            const FunctionContext& owner, const CaptureCells&,
+                            analysis::SemanticBudget = {},
+                            const CaptureStorage* creator_storage = nullptr);
 // One genuine same-file resolved creation. Per-function plans are prepared
 // once, not rebuilt per creation. Same target at two sites produces two plans.
 [[nodiscard]] std::variant<CaptureCells, CaptureCellFailure> BindCaptureCells(

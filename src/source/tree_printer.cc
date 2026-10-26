@@ -2845,8 +2845,11 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
         continue;
       }
       const auto& family = *tree.members[i]; const auto* site = family.ClassCreation();
-      if (!site || family.Identity() != tree.identity || site->creator != tree.creation.creator ||
-          site->pc != tree.creation.pc || site->property != i) throw Failure::kUnsupportedContext;
+      if (!site || family.Identity() != tree.identity ||
+          site->creator != tree.creation.creator ||
+          site->pc != tree.creation.original_pc.value_or(tree.creation.pc) ||
+          site->property != i)
+        throw Failure::kUnsupportedContext;
       member(family);
     }
     std::optional<DefinitionOrder> previous_definition;

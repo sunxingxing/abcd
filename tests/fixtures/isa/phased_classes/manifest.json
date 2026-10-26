@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/phased_classes/classes.js",
+   "path": "tests/fixtures/isa/phased_classes/classes-O0.abc",
+   "sha256": "96e59149776684e932ccea1292aa7a85d48ed1ed55061aa61f69cd6034f24ef4",
+   "source_sha256": "66f4aa292048d42814ab222b18483e2660d695d584f98fbb388371fe5bc89ba9",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_classes",
+    "--source-file=classes.js",
+    "--output=tests/fixtures/isa/phased_classes/classes-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_classes/classes.js"
+   ],
+   "profile": 6
+  }
+ ],
+ "note": "O0 only."
+}

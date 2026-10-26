@@ -2,14 +2,15 @@
 #define ABCD_SOURCE_FAMILY_FILE_H_
 
 #include "capture_evaluation.h"
+#include "class_creator.h"
+#include "class_initializer_file.h"
 #include "creation_tree_context.h"
+#include "family_function.h"
 #include "function_family.h"
 #include "function_file.h"
-#include "family_function.h"
-#include "phased_creations.h"
 #include "object_buffer.h"
+#include "phased_creations.h"
 #include "record_array.h"
-#include "class_initializer_file.h"
 
 namespace abcd::source {
 enum class ClassTreeError : std::uint8_t;
@@ -125,13 +126,15 @@ struct FamilyFileFailure {
 [[nodiscard]] std::variant<FileFamily, FamilyFileFailure> ReadFunctionFamily(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, const abc::MethodLookup& lookup,
-    const analysis::MethodRoleIndex& roles, const analysis::FunctionCreationSites& sites,
-    abc::MethodPosition root, RouteInputIdentity identity,
-    analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
+    const analysis::MethodRoleIndex& roles,
+    const analysis::FunctionCreationSites& sites, abc::MethodPosition root,
+    RouteInputIdentity identity, analysis::SemanticBudget budget = {},
+    const RecordModuleContext* modules = nullptr,
     const FunctionContext* owner = nullptr, ModuleOwnerId module_owner = {},
     FamilyClassMode classes = FamilyClassMode::kReject,
-    const ParentModuleInput* root_modules = nullptr, FunctionOwnerId first_owner = {},
-    const FileFunction* root_creator = nullptr, const analysis::ClassMethodSites* class_sites = nullptr,
+    const ParentModuleInput* root_modules = nullptr,
+    FunctionOwnerId first_owner = {}, ClassCreator root_creator = nullptr,
+    const analysis::ClassMethodSites* class_sites = nullptr,
     const CaptureStorage* root_storage = nullptr,
     ClassRootBinding root_binding = ClassRootBinding::kBind);
 }  // namespace abcd::source

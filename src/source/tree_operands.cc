@@ -1078,10 +1078,11 @@ class OperandCheck {
           const auto* heritage = std::get_if<analysis::ValueId>(&input(0));
           const bool absent = heritage && graph_.values[heritage->value].domain == analysis::ValueKinds::Hole();
           if (evaluation_.flow == EvaluationFlow::kPhased) {
-            const auto checked = CheckClassParentScope(definition, budget_.Remaining().work);
-            if (std::holds_alternative<ClassTreeError>(checked)) throw Error::kWorkLimit;
-            const auto scope = std::get<ClassParentScope>(checked); budget_.Step(scope.work);
-            RequireMeaning(scope.independent, Error::kOperand);
+            budget_.Step();
+            RequireMeaning(definition.phase_binding &&
+                               definition.phase_binding->Matches(
+                                   constants_.class_creator, current_),
+                           Error::kOperand);
           }
           RequireMeaning(created.heritage.has_value() != absent &&
               definition.callable ==

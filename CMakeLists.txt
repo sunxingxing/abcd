@@ -246,7 +246,7 @@ target_sources(abcd_source PRIVATE src/source/family_file.cc)
 target_sources(abcd_source PRIVATE src/source/family_cells.cc)
 target_sources(abcd_source PRIVATE src/source/tree_labels.cc)
 target_sources(abcd_source PRIVATE src/source/family_tree.cc)
-target_sources(abcd_source PRIVATE src/source/prepared_family.cc src/source/creator_classes.cc src/source/descendant_classes.cc)
+target_sources(abcd_source PRIVATE src/source/prepared_family.cc src/source/creator_classes.cc src/source/class_creator.cc src/source/descendant_classes.cc)
 target_sources(abcd_source PRIVATE src/source/instruction_sources.cc)
 target_sources(abcd_source PRIVATE src/source/family_emission.cc)
 target_sources(abcd_source PRIVATE src/source/family_route_failure.cc)
@@ -464,6 +464,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/array_patterns_test.py)
     add_test(NAME isa_derived_control_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/derived_control_test.py)
+    add_test(NAME isa_phased_classes_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/phased_classes_test.py)
     add_test(NAME isa_loop_corridors_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/loop_corridors_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}
@@ -1629,6 +1631,11 @@ if(BUILD_TESTING)
   target_link_libraries(creator_requirements_test PRIVATE abcd_source)
   add_test(NAME creator_requirements_test COMMAND creator_requirements_test
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes)
+  add_executable(phased_classes_test tests/unit/source/phased_classes_test.cc)
+  target_link_libraries(phased_classes_test PRIVATE abcd_source)
+  add_test(NAME phased_classes_test COMMAND phased_classes_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/phased_classes/classes-O0.abc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/creator_classes")
   add_executable(descendant_classes_test tests/unit/source/descendant_classes_test.cc)
   target_link_libraries(descendant_classes_test PRIVATE abcd_source)
   add_test(NAME descendant_classes_test COMMAND descendant_classes_test

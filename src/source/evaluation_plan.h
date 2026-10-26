@@ -253,31 +253,43 @@ inline bool IsArrayCursor(const EvaluationPlan& plan, analysis::OpId id, const a
       !std::holds_alternative<analysis::ValueComputedOwnWrite>(graph.ops[id.value].operation) &&
       !std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[id.value].operation);
 }
-// After VerifyEvaluationPlan: normal Hole transport is closed over copies and
-// absent class heritage only. It has source positions, but no JS value/binding.
+// After fresh evaluation verification: Hole transport closed over copies and
+// absent heritage has positions, but no JS value/binding. Phased comparisons,
+// rethrows and phi storage retain their existing source-token representation.
 inline bool IsAbsentHeritageTransport(const analysis::ValueProgram& graph,
-    const EvaluationPlan& plan, const analysis::ValueOp& op) {
-  return plan.flow == EvaluationFlow::kNormal && plan.holes && op.result &&
-      op.normal == analysis::LanguageEffect::kNone && op.before_throw == analysis::LanguageEffect::kNone &&
-      op.exceptional == analysis::ExceptionalCompletion::kImpossible &&
-      graph.values[op.result->value].domain == analysis::ValueKinds::Hole() &&
-      (std::holds_alternative<analysis::ValueHole>(op.operation) ||
-       std::holds_alternative<analysis::ValueCopy>(op.operation));
+                                      const EvaluationPlan& plan,
+                                      const analysis::ValueOp& op) {
+  return plan.holes &&
+         (plan.flow == EvaluationFlow::kNormal ||
+          (!plan.holes->phi_transport && plan.holes->comparisons.empty() &&
+           plan.holes->rethrows.empty())) &&
+         op.result && op.normal == analysis::LanguageEffect::kNone &&
+         op.before_throw == analysis::LanguageEffect::kNone &&
+         op.exceptional == analysis::ExceptionalCompletion::kImpossible &&
+         graph.values[op.result->value].domain ==
+             analysis::ValueKinds::Hole() &&
+         (std::holds_alternative<analysis::ValueHole>(op.operation) ||
+          std::holds_alternative<analysis::ValueCopy>(op.operation));
 }
 inline bool NeedsHoleToken(const EvaluationPlan& plan) {
-  if(!plan.holes || plan.flow!=EvaluationFlow::kPhased)return false;
-  if(!plan.for_of)return true;
+  if (!plan.holes || plan.flow != EvaluationFlow::kPhased) return false;
+  if (plan.holes->phi_transport) return true;
   // The implicit native close owns these sentinel tests/rethrows. A VM Hole
   // token is needed only by surviving source operations, never for that state.
-  for(const auto& comparison:plan.holes->comparisons)
-    if(plan.operations[comparison.operation.value].kind!=EvaluationKind::kForOfEvent)return true;
-  for(const auto& rethrow:plan.holes->rethrows)
-    if(plan.operations[rethrow.operation.value].kind!=EvaluationKind::kForOfEvent)return true;
+  for (const auto& comparison : plan.holes->comparisons)
+    if (!plan.for_of || plan.operations[comparison.operation.value].kind !=
+                            EvaluationKind::kForOfEvent)
+      return true;
+  for (const auto& rethrow : plan.holes->rethrows)
+    if (!plan.for_of || plan.operations[rethrow.operation.value].kind !=
+                            EvaluationKind::kForOfEvent)
+      return true;
   return false;
 }
 inline analysis::ValueOperand ResolveEvaluationOperand(
     const EvaluationPlan& plan, const analysis::ValueOperand& operand) {
-  if (const auto* value = std::get_if<analysis::ValueId>(&operand)) return ResolveEvaluationValue(plan, *value);
+  if (const auto* value = std::get_if<analysis::ValueId>(&operand))
+    return ResolveEvaluationValue(plan, *value);
   return operand;
 }
 
