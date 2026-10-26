@@ -51,9 +51,8 @@ struct Fixture {
     for(auto& arg:tree.arguments)arg=remap(arg);std::reverse(tree.expressions.begin(),tree.expressions.end());
   }
 };
-std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit,bool resources=false) {
+std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit) {
   Fixture f;auto& tree=f.tree;
-  if(resources)tree.identity.contract=SourceContract::kLanguageAndHostV1;
   std::vector<StmtId> body{f.Stmt(DeclarationStmt{{2},form>=5?std::nullopt:std::optional{f.Read(1)}})};
   if(form==6) {const auto arg=f.Read(2);const auto first=static_cast<std::uint32_t>(tree.arguments.size());tree.arguments.push_back(arg);body.push_back(f.Stmt(ExpressionStmt{f.Expr(CallExpr{f.Read(0),{first,1},CallReference::kValue})}));}
   for(unsigned i=0;i<count;++i)body.push_back(f.Stmt(ExpressionStmt{f.Call(0)}));
@@ -78,13 +77,12 @@ std::uint64_t Check(unsigned form,unsigned count,bool reverse,bool emit,bool res
   const auto loops=std::get<LoopSyntax>(PlanLoopSyntax(tree));const auto nullish=std::get<NullishSyntax>(PlanNullishSyntax(tree));
   const auto planned=PlanBindingInitializers(tree,loops,nullish);test::Check(std::holds_alternative<BindingInitializers>(planned));const auto& plan=std::get<BindingInitializers>(planned);
   const auto id=reverse?tree.expressions.size()-1-first.value:first.value;
-  test::Check(plan.replacements[id].has_value()==(!resources&&(form==0||form==3||form==4||form==5||form==6)));
+  test::Check(plan.replacements[id].has_value()==(form==0||form==3||form==4||form==5||form==6));
   // A dead assignment must not become a protected initializer before demand
-  // cleanup. Resource-observable lifetimes stay; a completed private initial
+  // cleanup. A completed private initial
   // read can retain undefined without retaining its native binding.
-  if(form==5) {test::Check(plan.omitted[body[0].value]);test::Check(plan.statements[body[count+1].value].has_value()==resources);}
+  if(form==5) {test::Check(plan.omitted[body[0].value]);test::Check(!plan.statements[body[count+1].value].has_value());}
   else if(form==6)test::Check(plan.omitted[body[0].value]);
-  else if(resources)test::Check(!plan.omitted[body[0].value]);
   if(count<=1) {
     test::Check(std::holds_alternative<BindingInitializers>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes,plan.work})));
     test::Check(std::get<TreeStructureError>(PlanBindingInitializers(tree,loops,nullish,{plan.allocated_bytes-1,plan.work}))==TreeStructureError::kResourceLimit);
@@ -645,7 +643,6 @@ int main(int argc,char**) {
       const auto work=Check(form,count,reverse,argc>1);
       if(count>=400)test::Check(work<previous*3);
       previous=work;
-      if(count==0)Check(form,count,reverse,false,true);
     }
   }
 }

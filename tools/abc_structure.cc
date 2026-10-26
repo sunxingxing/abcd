@@ -355,7 +355,7 @@ int Export(const std::filesystem::path& input,
                 static_cast<unsigned>(SourceStatus::kNoModule);
           } else {
             if(script_entry){source_path=source_stem.string()+".js";record_manifest["planned_source"]=source_path;record_manifest["source_language"]="javascript-script";}
-            const bool arkts = module && source::LazyImports(identity.contract) == source::LazyImportSemantics::kArkTsLazyImport && std::find(module->request_phases.begin(), module->request_phases.end(),
+            const bool arkts = module && std::find(module->request_phases.begin(), module->request_phases.end(),
                 abc::ModuleRequestPhase::kLazy) != module->request_phases.end();
             if (arkts) {
               source_path = source_stem.string() + ".ets";

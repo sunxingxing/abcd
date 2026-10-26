@@ -59,8 +59,7 @@ class AbiBuilder {
         Require(tree_.callable == CallableKind::kDerivedConstructor && !tree_.ImplicitConstructor() &&
             tree_.strictness == Strictness::kStrict && length == 0 && graph_.arguments &&
             graph_.arguments->frame == frame_ && tree_.parameters.size() == 1 &&
-            tree_.parameters.front().rest && !tree_.parameters.front().initializer &&
-            ConstructorForwarding(tree_.identity.contract) == ConstructorForwardingSemantics::kSourceRestSpread,
+            tree_.parameters.front().rest && !tree_.parameters.front().initializer,
             Error::kParameter);
         break;
       default: throw Error::kParameter;
@@ -138,7 +137,6 @@ class AbiBuilder {
         continue; // TreeOperands reproved the native constructor and raw frame.
       }
       if (tree_.callable == CallableKind::kDerivedConstructor &&
-          Constructors(tree_.identity.contract) == ConstructorSemantics::kSourceLanguage &&
           use.role == analysis::OperandRole::kConstructor) {
         const auto* owner = std::get_if<analysis::OpId>(&use.owner);
         if (owner && std::holds_alternative<analysis::ValueSuperSpread>(graph_.ops[owner->value].operation))
@@ -303,8 +301,7 @@ class AbiBuilder {
     Require(graph_.arguments && graph_.arguments->frame == frame_ &&
         node.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&
         (!IsArrowCallable(tree_.callable) || tree_.invocation == InvocationForm::kArrowMethod) &&
-        node.slots.count == frame_.parameters &&
-        ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded,
+        node.slots.count == frame_.parameters,
         Error::kEntry);
   }
   void Expression(const AssignmentExpr& node) {

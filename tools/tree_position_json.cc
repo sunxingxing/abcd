@@ -104,9 +104,9 @@ void WriteTreePositions(std::ostream& output, const FunctionTree& tree, const Pr
   if (printed.realm_binding) {
     const auto& binding = *printed.realm_binding;
     std::string_view policy;
-    switch (binding.policy) {
-      case RealmBindingPolicy::kExplicitHost: policy = "explicit_host"; break;
-      case RealmBindingPolicy::kStableGlobalThis: policy = "stable_global_this"; break;
+    switch (binding.origin) {
+      case RealmBindingOrigin::kExplicitHost: policy = "explicit_host"; break;
+      case RealmBindingOrigin::kStableGlobalThis: policy = "stable_global_this"; break;
     }
     // Resolver admits ASCII identifiers only; this is a serialization boundary.
     output << ",\"realm_binding\":" << nlohmann::json{

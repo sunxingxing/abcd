@@ -1,7 +1,9 @@
 #ifndef ABCD_SOURCE_SOURCE_CONTRACT_H_
 #define ABCD_SOURCE_SOURCE_CONTRACT_H_
 
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <exception>
 #include <string_view>
 
@@ -9,17 +11,49 @@
 #include "abcd/analysis/catch_payload_domain.h"
 
 namespace abcd::source {
+// Published IDs 0..7 are retired, not available for reuse or reinterpretation.
 enum class SourceContract : std::uint8_t {
-  kLanguageAndHostV1, kLanguageAndHostV2, kLanguageAndHostV3, kLanguageArithmeticV1, kLanguageNumericV1,
-  kLanguageConstructorsV1, kLanguageArithmeticConstructorsV1, kLanguageNumericConstructorsV1,
-  kLanguageSourceV1, kLanguageSourceV2, kLanguageSourceV3, kLanguageSourceV4, kLanguageSourceV5, kLanguageSourceV6, kLanguageSourceV7, kLanguageSourceV8, kLanguageSourceV9, kLanguageSourceV10
+  kLanguageSourceV1 = 8, kLanguageSourceV2 = 9, kLanguageSourceV3 = 10,
+  kLanguageSourceV4 = 11, kLanguageSourceV5 = 12, kLanguageSourceV6 = 13,
+  kLanguageSourceV7 = 14, kLanguageSourceV8 = 15, kLanguageSourceV9 = 16,
+  kLanguageSourceV10 = 17
 };
-enum class ConstructorSemantics : std::uint8_t { kPinnedRuntime, kSourceLanguage };
-enum class ConstructorForwardingSemantics : std::uint8_t { kInvocationFrame, kSourceRestSpread };
-enum class RealmBindingPolicy : std::uint8_t { kExplicitHost, kStableGlobalThis };
+// Provenance of an actual binding, independent of the source target contract.
+enum class RealmBindingOrigin : std::uint8_t { kExplicitHost, kStableGlobalThis };
+// Resource observability remains an independent proof input.
 enum class ResourceFailureScope : std::uint8_t { kObservable, kExcluded };
-enum class CallableTextPolicy : std::uint8_t { kUnspecified, kRecovered };
-enum class CaptureReadSemantics : std::uint8_t { kPinnedRuntime, kSourceTdz };
+
+struct SourceContractEntry {
+  SourceContract contract;
+  std::string_view label;
+};
+// One boundary registry for writing, parsing and identity admission. Historical
+// Source identities keep their published IDs/labels; retired receipts refuse.
+inline constexpr std::array kSourceContracts{
+    SourceContractEntry{SourceContract::kLanguageSourceV1, "language_source_v1"},
+    SourceContractEntry{SourceContract::kLanguageSourceV2, "language_source_v2"},
+    SourceContractEntry{SourceContract::kLanguageSourceV3, "language_source_v3"},
+    SourceContractEntry{SourceContract::kLanguageSourceV4, "language_source_v4"},
+    SourceContractEntry{SourceContract::kLanguageSourceV5, "language_source_v5"},
+    SourceContractEntry{SourceContract::kLanguageSourceV6, "language_source_v6"},
+    SourceContractEntry{SourceContract::kLanguageSourceV7, "language_source_v7"},
+    SourceContractEntry{SourceContract::kLanguageSourceV8, "language_source_v8"},
+    SourceContractEntry{SourceContract::kLanguageSourceV9, "language_source_v9"},
+    SourceContractEntry{SourceContract::kLanguageSourceV10, "language_source_v10"},
+ };
+constexpr std::string_view SourceContractName(SourceContract contract) {
+  for (const auto& entry : kSourceContracts)
+    if (entry.contract == contract) return entry.label;
+  return {};
+}
+constexpr bool IsSourceContract(SourceContract contract) {
+  return !SourceContractName(contract).empty();
+}
+constexpr std::optional<SourceContract> ParseSourceContract(std::string_view label) {
+  for (const auto& entry : kSourceContracts)
+    if (entry.label == label) return entry.contract;
+  return {};
+}
 // User-approved source equivalence scope (2026-09-25): legal JS/ArkTS and
 // compliant host APIs throw arbitrary JS values, never VM-private markers.
 // This is a whole-source-engine premise, not an ABC-derived certificate.
@@ -33,329 +67,19 @@ enum class CaptureReadSemantics : std::uint8_t { kPinnedRuntime, kSourceTdz };
 // selecting this default adds no premise beyond the already approved V10.
 inline constexpr SourceContract kSourceContract = SourceContract::kLanguageSourceV10;
 
-// User-approved 2026-10-13: explicit rest/spread may observe array iteration;
-// invocation identity, argument values and the retained body still require proof.
-// This premise is independent of the earlier native-super constructor opt-in.
-constexpr ConstructorForwardingSemantics ConstructorForwarding(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-      return ConstructorForwardingSemantics::kInvocationFrame;
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5:
-      return ConstructorForwardingSemantics::kSourceRestSpread;
-  }
-  std::terminate();
-}
+// Shared source premises. These are not analysis defaults: raw analysis still
+// accepts pinned arithmetic/call-result/pending-exception modes independently.
+inline constexpr auto kSourceArithmetic = analysis::ArithmeticSemantics::kSourceNumeric;
+inline constexpr auto kSourceCallResults = analysis::CallResultValues::kLanguage;
+inline constexpr auto kSourcePendingExceptions = analysis::PendingExceptionValues::kLanguage;
+inline constexpr auto kSourceResourceFailures = ResourceFailureScope::kExcluded;
 
-// Opt-in language arithmetic changes the numeric equivalence premise only;
-// it does not claim measured equivalence to a particular Ark binary. See
-// language-arithmetic.md. LanguageNumericV1 also covers unary numeric rules,
-// explicitly approved on 2026-10-06; see language-numeric.md. Neither opt-in
-// changed the historical V3 or constructor/host premises. The CLI now defaults to V10.
-constexpr analysis::ArithmeticSemantics Arithmetic(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageConstructorsV1:
-      return analysis::ArithmeticSemantics::kPinnedRuntime;
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5:
-      return analysis::ArithmeticSemantics::kSourceNumeric;
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-      return analysis::ArithmeticSemantics::kSourceLanguage;
-  }
-  std::terminate();
-}
-// Explicit user-approved language super semantics, independent of arithmetic.
-// No assumption about lifetime parent brand; current parent/newTarget are native.
-constexpr ConstructorSemantics Constructors(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1: return ConstructorSemantics::kPinnedRuntime;
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5: return ConstructorSemantics::kSourceLanguage;
-  }
-  std::terminate();
-}
-constexpr SourceContract WithLanguageConstructors(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV3: return SourceContract::kLanguageConstructorsV1;
-    case SourceContract::kLanguageArithmeticV1: return SourceContract::kLanguageArithmeticConstructorsV1;
-    case SourceContract::kLanguageNumericV1: return SourceContract::kLanguageNumericConstructorsV1;
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5: return contract;
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2: std::terminate(); // Historical host profiles cannot opt in.
-  }
-  std::terminate();
-}
-constexpr analysis::PendingExceptionValues PendingExceptions(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5:
-      return analysis::PendingExceptionValues::kLanguage;
-  }
-  std::terminate();
-}
-constexpr analysis::CallResultValues NormalCallResults(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1: return analysis::CallResultValues::kUnknown;
-    case SourceContract::kLanguageAndHostV2: return analysis::CallResultValues::kLanguage;
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5: return analysis::CallResultValues::kLanguage;
-  }
-  std::terminate();
-}
-constexpr RealmBindingPolicy RealmBinding(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1: return RealmBindingPolicy::kExplicitHost;
-    case SourceContract::kLanguageAndHostV2: return RealmBindingPolicy::kStableGlobalThis;
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5: return RealmBindingPolicy::kStableGlobalThis;
-  }
-  std::terminate();
-}
-constexpr ResourceFailureScope ResourceFailures(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1: return ResourceFailureScope::kObservable;
-    case SourceContract::kLanguageAndHostV2: return ResourceFailureScope::kExcluded;
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5: return ResourceFailureScope::kExcluded;
-  }
-  std::terminate();
-}
-constexpr CallableTextPolicy CallableText(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-      return CallableTextPolicy::kUnspecified;
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5:
-      return CallableTextPolicy::kRecovered;
-  }
-  std::terminate();
-}
-// LanguageSourceV1 = LanguageNumericConstructorsV1 plus four source premises
-// explicitly approved by the user on 2026-10-13 (language-source.md). Each
-// premise has its own predicate; never test the enum value directly.
-// Captured accesses (unguarded reads, writes) are source identifier accesses:
-// a function may be created before the binding's first store (es2panda omits
-// the check by textual order), and only an early call differs (the runtime
-// reads the hole or writes the slot, the source throws ReferenceError).
-// Reads approved 2026-10-13, extended to writes the same day.
-constexpr CaptureReadSemantics CaptureReads(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1: return CaptureReadSemantics::kPinnedRuntime;
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5: return CaptureReadSemantics::kSourceTdz;
-  }
-  std::terminate();
-}
-// Round 31: ArkTS preserves lazy initialization; array spread is a separate
-// approved premise whose lowering is not enabled by the lazy-import adapter.
-enum class LazyImportSemantics : std::uint8_t { kPinnedRuntime, kArkTsLazyImport };
-enum class ArraySpreadSemantics : std::uint8_t { kPinnedRuntime, kSourceIterator };
-constexpr LazyImportSemantics LazyImports(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-      return LazyImportSemantics::kPinnedRuntime;
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5: return LazyImportSemantics::kArkTsLazyImport;
-  }
-  std::terminate();
-}
-constexpr ArraySpreadSemantics ArraySpreads(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
-      return ArraySpreadSemantics::kPinnedRuntime;
-    case SourceContract::kLanguageSourceV1:
-    case SourceContract::kLanguageSourceV2:
-    case SourceContract::kLanguageSourceV3:
-    case SourceContract::kLanguageSourceV4:
-    case SourceContract::kLanguageSourceV10:
-    case SourceContract::kLanguageSourceV9:
-    case SourceContract::kLanguageSourceV8:
-    case SourceContract::kLanguageSourceV7:
-    case SourceContract::kLanguageSourceV6:
-    case SourceContract::kLanguageSourceV5: return ArraySpreadSemantics::kSourceIterator;
-  }
-  std::terminate();
-}
 // Approved 2026-10-14. V2 adds only standard iterator acquisition; V1 keeps
 // its historical four premises. This does not authorize apply/spread calls,
 // next re-reads, different close completion priority, or binding changes.
 enum class IterationAcquisitionSemantics : std::uint8_t { kPinnedRuntime, kStandardV1 };
 constexpr IterationAcquisitionSemantics IterationAcquisition(SourceContract contract) {
   switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageSourceV1: return IterationAcquisitionSemantics::kPinnedRuntime;
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
@@ -375,14 +99,6 @@ constexpr IterationAcquisitionSemantics IterationAcquisition(SourceContract cont
 enum class ConcurrentOutputPolicy : std::uint8_t { kNotEnabled, kArkDirectiveV1 };
 constexpr ConcurrentOutputPolicy ConcurrentOutput(SourceContract contract) {
   switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
       return ConcurrentOutputPolicy::kNotEnabled;
@@ -400,14 +116,6 @@ constexpr ConcurrentOutputPolicy ConcurrentOutput(SourceContract contract) {
 enum class SendableOutputPolicy : std::uint8_t { kNotEnabled, kArkDirectiveV1 };
 constexpr SendableOutputPolicy SendableOutput(SourceContract contract) {
   switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
       return SendableOutputPolicy::kNotEnabled;
@@ -425,14 +133,6 @@ constexpr SendableOutputPolicy SendableOutput(SourceContract contract) {
 enum class SharedModuleOutputPolicy : std::uint8_t { kNotEnabled, kArkDirectiveV1 };
 constexpr SharedModuleOutputPolicy SharedModuleOutput(SourceContract contract) {
   switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
       return SharedModuleOutputPolicy::kNotEnabled;
@@ -452,14 +152,6 @@ constexpr SharedModuleOutputPolicy SharedModuleOutput(SourceContract contract) {
 // Hole. Local explicit throws retain their SSA domain, including raw Hole.
 constexpr analysis::ExternalExceptionPolicy ExternalExceptionNoHole(SourceContract contract) {
   switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
@@ -481,14 +173,6 @@ constexpr analysis::ExternalExceptionPolicy ExternalExceptionNoHole(SourceContra
 enum class CallSpreadSemantics : std::uint8_t { kPinnedRuntime, kPrivateArgumentsV1 };
 constexpr CallSpreadSemantics CallSpread(SourceContract contract) {
   switch (contract) {
-    case SourceContract::kLanguageAndHostV1:
-    case SourceContract::kLanguageAndHostV2:
-    case SourceContract::kLanguageAndHostV3:
-    case SourceContract::kLanguageArithmeticV1:
-    case SourceContract::kLanguageNumericV1:
-    case SourceContract::kLanguageConstructorsV1:
-    case SourceContract::kLanguageArithmeticConstructorsV1:
-    case SourceContract::kLanguageNumericConstructorsV1:
     case SourceContract::kLanguageSourceV1:
     case SourceContract::kLanguageSourceV2:
     case SourceContract::kLanguageSourceV3:
@@ -530,30 +214,6 @@ constexpr bool DynamicImports(SourceContract c) { return c == SourceContract::kL
 constexpr bool ModuleNamespaces(SourceContract c) { return c == SourceContract::kLanguageSourceV10; }
 constexpr bool ArrayPatternAcquisition(SourceContract c) { return c == SourceContract::kLanguageSourceV10; }
 
-// Serialization boundary only. Never dispatch engine semantics on this label.
-constexpr std::string_view SourceContractName(SourceContract contract) {
-  switch (contract) {
-    case SourceContract::kLanguageAndHostV1: return "language_and_host_v1";
-    case SourceContract::kLanguageAndHostV2: return "language_and_host_v2";
-    case SourceContract::kLanguageNumericV1: return "language_numeric_v1";
-    case SourceContract::kLanguageConstructorsV1: return "language_constructors_v1";
-    case SourceContract::kLanguageArithmeticConstructorsV1: return "language_arithmetic_constructors_v1";
-    case SourceContract::kLanguageNumericConstructorsV1: return "language_numeric_constructors_v1";
-    case SourceContract::kLanguageArithmeticV1: return "language_arithmetic_v1";
-    case SourceContract::kLanguageAndHostV3: return "language_and_host_v3";
-    case SourceContract::kLanguageSourceV1: return "language_source_v1";
-    case SourceContract::kLanguageSourceV2: return "language_source_v2";
-    case SourceContract::kLanguageSourceV3: return "language_source_v3";
-    case SourceContract::kLanguageSourceV4: return "language_source_v4";
-    case SourceContract::kLanguageSourceV10: return "language_source_v10";
-    case SourceContract::kLanguageSourceV9: return "language_source_v9";
-    case SourceContract::kLanguageSourceV8: return "language_source_v8";
-    case SourceContract::kLanguageSourceV7: return "language_source_v7";
-    case SourceContract::kLanguageSourceV6: return "language_source_v6";
-    case SourceContract::kLanguageSourceV5: return "language_source_v5";
-  }
-  std::terminate();
-}
 // User approved 2026-10-22: native script globals preserve Ark recompilation;
 // global lexical activation and unresolved sloppy writes differ on standard JS.
 constexpr bool GlobalScripts(SourceContract contract) {

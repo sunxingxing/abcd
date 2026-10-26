@@ -26,7 +26,7 @@ abc::CodeInfo Append(std::vector<std::uint8_t>& bytes, std::initializer_list<std
   bytes.insert(bytes.end(), code.begin(), code.end());
   return {{offset}, {start}, 0, kImplicitArguments, static_cast<std::uint32_t>(code.size()), 0};
 }
-void FileDraft(bool nested) {
+std::string FileDraft(bool nested) {
   std::vector<std::uint8_t> bytes(kCodeStart);
   for (unsigned i = 0; i < sizeof(kTarget); ++i)
     bytes[kPool + i] = static_cast<std::uint8_t>(kTarget >> (i * kByteBits));
@@ -40,7 +40,7 @@ void FileDraft(bool nested) {
       Op(abc::Opcode::kRETURNUNDEFINED)});
   // Boolean NEG is now covered by primitive numeric facts. Use the unknown
   // invocation receiver instead: its coercion may run user code, and the
-  // pinned numeric contract has no tag-exclusion proof. Its coercion cannot be
+  // raw numeric analysis has no tag-exclusion proof. Its coercion cannot be
   // discarded even when its result is unused.
   constexpr auto kLegacyNegate = static_cast<std::uint16_t>(abc::Opcode::kDEPRECATED_NEG_PREF_V8);
   const auto leaf = Append(bytes, {Op(abc::Opcode::kDEBUGGER), Op(abc::Opcode::kLDA_V8), kReceiverArgument,
@@ -77,35 +77,41 @@ void FileDraft(bool nested) {
   }
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   auto identity = source::MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
-  identity.contract = source::SourceContract::kLanguageAndHostV3;  // Pinned partial-analysis boundary.
+  identity.contract = source::kSourceContract;  // Pinned partial-analysis boundary.
   std::ostringstream positions;
   const auto report = InspectFamilyValues(file, header, index, lookup, {1}, identity, nullptr,
       positions, FamilyInspectMode::kSourceDraft);
   if (!report.value("draft_prepared", false)) std::cerr << report << '\n';
   test::Check(report.value("draft_prepared", false));
-  test::Check(report.value("draft_incomplete", false));
+  test::Check(!report.value("draft_incomplete", true));
   const auto source = report.at("draft_source").get<std::string>();
-  test::Check(source.starts_with("/* INCOMPLETE"));
-  test::Check(source.find("debugger;") < source.find("UNRECOVERED"));
+  test::Check(source.find("INCOMPLETE") == std::string::npos);
+  test::Check(source.find("debugger;") < source.find("-"));
+  test::Check(source.find("UNRECOVERED") == std::string::npos);
   if (!nested) test::Check(source.find("return") == std::string::npos);
   else test::Check(source.find("return 7;") != std::string::npos);
-  test::Check(source.find("PC 5") != std::string::npos);
-  test::Check(!report.contains("family_writes"));
-  test::Check(positions.str().find("\"incomplete\":true") != std::string::npos);
+
+  test::Check(report.contains("family_writes"));
+  test::Check(report.at("family_writes").at("captured_stores") == 0);
+  test::Check(positions.str().find("\"incomplete\":false") != std::string::npos);
   const auto located = nlohmann::json::parse("{" + positions.str() + "\"ready\":true}");
   test::Check(located["draft_positions"].size() == (nested ? 3 : 1));
   if (nested) {
-    test::Check(located["draft_positions"][0]["incomplete"] == true);
-    test::Check(located["draft_positions"][1]["incomplete"] == true);
+    test::Check(located["draft_positions"][0]["incomplete"] == false);
+    test::Check(located["draft_positions"][1]["incomplete"] == false);
     test::Check(located["draft_positions"][2]["incomplete"] == false);
   }
   // The values-only diagnostic keeps the previous complete-only construction.
   std::ostringstream strict_positions;
   const auto strict = InspectFamilyValues(file, header, index, lookup, {1}, identity, nullptr,
       strict_positions, FamilyInspectMode::kValues);
-  test::Check(!strict.value("family_tree_prepared", false));
+  test::Check(strict.value("family_tree_prepared", false));
   test::Check(!strict.contains("draft_source") && strict_positions.str().empty());
   test::Check(unlink(path) == 0);
+  return source;
 }
 }  // namespace
-int main() { FileDraft(false); FileDraft(true); }
+int main(int argc, char**) {
+  if (argc > 1) { std::cout << FileDraft(false); return 0; }
+  FileDraft(false); FileDraft(true);
+}

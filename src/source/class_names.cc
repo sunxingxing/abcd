@@ -321,7 +321,7 @@ class NamePlan {
       Reference(tree.names[global->name.value], 0);
     }
     if (std::holds_alternative<RealmObjectExpr>(expression)) {
-      const auto binding = ResolveRealmBinding(tree.identity.contract, scope_); if (binding) Reference(binding->name, 0); else Unknown();
+      const auto binding = ResolveRealmBinding(scope_); if (binding) Reference(binding->name, 0); else Unknown();
     }
     if (std::holds_alternative<SymbolConstructorExpr>(expression)) {
       const auto binding = ResolveSymbolBinding(scope_); if (binding) Reference(*binding, 0); else Unknown();

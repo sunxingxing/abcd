@@ -5,6 +5,56 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Sole source engine, increment B (2026-10-27)
+
+- Retired the eight non-Source identities and `WithLanguageConstructors`.
+  One explicit typed registry owns SourceV1–V10 writing, parsing and identity
+  validation; published numeric IDs 8–17 and labels are unchanged. Retired
+  labels/IDs refuse with `RouteReceiptError::kIdentity`, with negative tests.
+- Removed constant constructor/capture/forwarding/lazy-import/array-spread and
+  callable-text selectors. Every semantic owner, capture/store, effect,
+  exception, operand, origin, flow and recovery proof remains in place.
+  `RealmBindingOrigin` retains explicit-host provenance and the existing wire
+  labels/key. `ResourceFailureScope::kObservable` and pinned arithmetic,
+  call-result, pending-exception and private-value analysis inputs remain live.
+- Source tests now select retained identities; raw numeric refusals use the
+  analysis API. Historical SourceV5 still tests the pre-native-arguments frame
+  snapshot ABI. Partial-expression tests retain their pinned refusal/partial checks below
+  the source target; the now-complete V10 projections also have Node coercion
+  oracles. Class gaps use genuine private-value operands instead of retired
+  numeric-policy refusals. Source-regression membership stays at 65.
+- Full authoritative make passed: `cmake --build build/regression -j 8`.
+  `ctest --test-dir build/regression -L '^source-regression$' -j 2
+  --output-on-failure` passed **65/65**. Historical ID/label, retired-receipt,
+  raw numeric/capture/ABI, native naming and coercion oracles passed. All **218**
+  existing Verify/Prove symbol names remain; production removes **633** lines
+  and adds **160** (net **473 fewer**). No semantic proof/verifier was removed.
+- All 40 exploration inputs, no language flag, match read-only `csr89/def`:
+  **1007 records / 617 complete**, identical status/typed causes and **3,596,767**
+  complete-source bytes, zero differences. Evidence and binary fingerprint:
+  `build/contract-b/cohort-final/comparison.json`. No review tooling, review
+  output, samples or input ABCs were changed; no new source premise.
+- `python3 tests/isa/coverage_matrix.py` passed with unchanged totals:
+  **222 SupportedVerified / 21 SupportedUnverified / 61 Unmeasured /
+  28 NonExecutable**. Binary fingerprint and full log:
+  `build/contract-b/coverage.log` (same binary as the cohort comparison).
+- Full CTest swept **964** tests, including all serial graph tests. The final
+  exhaustive rerun of its initial failures leaves **930 pass / 34 persistent
+  A-state failures**, exactly the same names: **zero newly failing, zero newly
+  passing**. Initial B fixture failures were corrected by moving retired-policy
+  negatives to raw analysis, retaining meaningful identity/capture counterexamples,
+  and adding native coercion/NaN/reentrant-TDZ oracles; all were rerun. Exact
+  names, status comparison, commands and JUnit evidence:
+  `build/contract-b/ctest-comparison.md` and adjacent JSON/XML/log files.
+  `tree_structure_test` remains in the pre-existing set; its retired opt-out
+  assertion was migrated without concealing that status. The 34 old failures
+  and the same 390 incomplete/refused cohort records remain outside this cleanup.
+- Reviewed by cc (gates rerun: 65/65, cohort `csr90/def` vs `csr89/def` 617→617
+  with zero text changes, ledger unchanged). Changed-file inventory:
+  `build/contract-b/changed-files.txt`. Raw arithmetic/call-result/pending-exception
+  and private-value proofs retain their original analysis meanings; published
+  retired contracts are rejected rather than upgraded.
+
 ## Sole CLI source target, increment A (2026-10-27)
 
 - User decision 2026-10-26: retain `--language-source` as the sole target.

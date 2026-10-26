@@ -76,8 +76,7 @@ class FamilyTrees {
       const auto& context = i ? *member.context : *root;
       const auto& function = member.function;
       const auto* phase = function.Phase();
-      if (phase && context.Callable() == CallableKind::kDerivedConstructor &&
-          ConstructorForwarding(context.Identity().contract) == ConstructorForwardingSemantics::kSourceRestSpread)
+      if (phase && context.Callable() == CallableKind::kDerivedConstructor)
         throw FamilyTreeFailure{member_, DerivedProjectionError::kForwardingHandlers};
       const auto& graph = function.Graph();
       if(context.Concurrent()) {

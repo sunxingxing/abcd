@@ -16,19 +16,14 @@ std::optional<std::u16string_view> ResolveSymbolBinding(const GlobalScope* scope
   if (!scope || !scope->symbol_binding || !IsSourceIdentifier(scope->symbol_binding->name)) return {};
   return scope->symbol_binding->name;
 }
-std::optional<RealmBindingView> ResolveRealmBinding(SourceContract contract, const GlobalScope* scope) {
+std::optional<RealmBindingView> ResolveRealmBinding(const GlobalScope* scope) {
   if (!scope) return {};
   if (scope->realm_binding) {
     const auto name = scope->realm_binding->name;
     if (!IsSourceIdentifier(name) || name == u"arguments") return {};
-    return RealmBindingView{RealmBindingPolicy::kExplicitHost, name};
+    return RealmBindingView{RealmBindingOrigin::kExplicitHost, name};
   }
-  switch (RealmBinding(contract)) {
-    case RealmBindingPolicy::kExplicitHost: return {};
-    case RealmBindingPolicy::kStableGlobalThis:
-      return RealmBindingView{RealmBindingPolicy::kStableGlobalThis, u"globalThis"};
-  }
-  return {};
+  return RealmBindingView{RealmBindingOrigin::kStableGlobalThis, u"globalThis"};
 }
 namespace {
 bool EqualsAscii(std::u16string_view name, std::string_view ascii) {

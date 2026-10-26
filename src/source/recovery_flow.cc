@@ -287,7 +287,7 @@ class FlowBuilder {
         Append(result_.parameter_defaults,{ParameterId{static_cast<std::uint32_t>(i)},argument,decision,provided,missing,initialized,joint->initializer,terminal_});
       } else if (parameter.rest) {
         const auto creation=New({FlowEventKind::kEvaluation});
-        const auto effects=NormalValueEffects(EmptyArrayExpr{},{},ResourceFailures(tree_.identity.contract));
+        const auto effects=NormalValueEffects(EmptyArrayExpr{},{},kSourceResourceFailures);
         events_[creation.value].effects=effects;events_[creation.value].effect=effects.Evaluation();
         events_[creation.value].entry_evaluation=true;
         Link(previous,creation);Link(creation,initialized);
@@ -919,8 +919,7 @@ class FlowBuilder {
       const auto& operation=result.original->operations[exit.op.value];
       if(operation.life!=analysis::ValueLife::kLive)continue;
       if(!result.original->exception_causes.empty()&&
-          result.original->exception_causes[i]==analysis::ExceptionCause::kResourceExhaustion&&
-          ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kExcluded) {
+          result.original->exception_causes[i]==analysis::ExceptionCause::kResourceExhaustion) {
         // The input adapter proves the cause; the explicit source contract
         // excludes this completion. No current physical action is asserted,
         // and all ordinary source failures still need their own correspondence.
@@ -1149,7 +1148,7 @@ class FlowBuilder {
       }
       return point;
     };
-    const auto resources=ResourceFailures(tree_.identity.contract);
+    const auto resources=kSourceResourceFailures;
     // A super reference resolves the current function's retained home object
     // and its current prototype; it does not box/inspect the receiver as base.
     const auto receiver=phase(FlowPropertyPhase::kReceiver,lookup == analysis::PropertyLookup::kSuper ?
@@ -1297,7 +1296,7 @@ class FlowBuilder {
         budget_.Step(); next=Expr(tree_.arguments[array->elements.first+i-1],context.Operand(next));
       }
       const auto allocation=New({FlowEventKind::kEvaluation,{},{},at.id});
-      const auto effects=NormalValueEffects(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract));
+      const auto effects=NormalValueEffects(node,result_.normal_kinds,kSourceResourceFailures);
       events_[allocation.value].effects=effects;events_[allocation.value].effect=effects.Evaluation();
       Link(allocation,next);
       if(effects.exceptional==analysis::ExceptionalCompletion::kMayThrow)Link(allocation,context.thrown,FlowCompletion::kThrow);
@@ -1312,7 +1311,7 @@ class FlowBuilder {
       Link(start,failed);return;
     }
     if(const auto* aggregate=std::get_if<ObjectExpr>(&node)) {
-      const auto effects=NormalValueEffects(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract));
+      const auto effects=NormalValueEffects(node,result_.normal_kinds,kSourceResourceFailures);
       const bool required=projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;
       const auto action=[&](FlowEventKind kind,Point next) {
         const auto point=New({kind,{},{},at.id});
@@ -1451,7 +1450,7 @@ class FlowBuilder {
     }
     if(!result_.actions.empty())result_.actions[at.id.value]=FlowAction{effect,context.next,{context.thrown,context.finalizer}};
     events_[effect.value].discarded=context.discarded;
-    bool required=NormalValueEvaluation(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract))==ExpressionEvaluation::kRequired &&
+    bool required=NormalValueEvaluation(node,result_.normal_kinds,kSourceResourceFailures)==ExpressionEvaluation::kRequired &&
         projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert;
     if(const auto* read=std::get_if<SymbolExpr>(&node)) {
       if(!projection_.ReadLiteral(at.id,read->symbol)) {
@@ -1488,7 +1487,7 @@ class FlowBuilder {
     // whether their result is later used. Inert private writes can be dropped;
     // initialization, getters, coercion, calls, throws and suspension remain.
     events_[effect.value].effect=required?ExpressionEvaluation::kRequired:ExpressionEvaluation::kInert;
-    events_[effect.value].effects=required?NormalValueEffects(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract)):SourceEffects{};
+    events_[effect.value].effects=required?NormalValueEffects(node,result_.normal_kinds,kSourceResourceFailures):SourceEffects{};
     if(context.discarded && required)discarded_[context.discarded->value].effect=ExpressionEvaluation::kRequired;
     const bool suspension=std::holds_alternative<AwaitExpr>(node)||std::holds_alternative<YieldExpr>(node);
     if (context.entry_evaluation && at.id.value < parameter_guards_.size() &&
@@ -1503,7 +1502,7 @@ class FlowBuilder {
     } else
       Link(effect, normal,
            suspension ? FlowCompletion::kResumeNext : FlowCompletion::kNormal);
-    if(NormalValueEvaluation(node,result_.normal_kinds,ResourceFailures(tree_.identity.contract))==ExpressionEvaluation::kRequired &&
+    if(NormalValueEvaluation(node,result_.normal_kinds,kSourceResourceFailures)==ExpressionEvaluation::kRequired &&
         projection_.evaluations[at.id.value]!=ExpressionEvaluation::kInert &&
         !projection_.normal_stores[at.id.value])Link(effect,context.thrown,suspension?FlowCompletion::kResumeThrow:FlowCompletion::kThrow);
     if(suspension)events_[effect.value].kind=FlowEventKind::kSuspend;
@@ -1527,11 +1526,9 @@ class FlowBuilder {
       SourceEffects arithmetic=CallbackEffects();
       if(increment) {
         // After ToNumeric only a Number/BigInt remains. Adding/subtracting one
-        // cannot invoke user code; the source contract independently controls
-        // allocation-failure observability, as for ordinary numeric updates.
+        // cannot invoke user code. The source target excludes resource failure;
+        // independent resource-aware analyses still use ResourceFailureScope.
         arithmetic={};
-        if(ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kObservable)
-          arithmetic={analysis::LanguageEffect::kAllocation,analysis::LanguageEffect::kAllocation,analysis::ExceptionalCompletion::kMayThrow};
       }
       const auto calculation=action(arithmetic);
       std::optional<FlowAction> conversion;
@@ -1619,7 +1616,7 @@ class FlowBuilder {
       events_[effect.value].input=FlowInputId{static_cast<std::uint32_t>(result_.captured_inputs.size())};
       Append(result_.captured_inputs,FlowCapturedInput{effect,captured});
       events_[read.value].effect=ExpressionEvaluation::kRequired;
-      events_[read.value].effects=NormalValueEffects(SymbolExpr{update->symbol},{},ResourceFailures(tree_.identity.contract));
+      events_[read.value].effects=NormalValueEffects(SymbolExpr{update->symbol},{},kSourceResourceFailures);
       Reference(read,Resolve(update->symbol),FlowReferenceKind::kRead,at.id,FlowExceptionContext{context.thrown,context.finalizer},context.owner);
       Link(read,context.thrown,FlowCompletion::kThrow);next=read;
     }
@@ -2245,7 +2242,7 @@ FlowEventEffects EvaluateFlowEventEffects(const RecoveryFlow& flow,const Functio
   if(!event.expression||event.kind==FlowEventKind::kTruthBranch||event.kind==FlowEventKind::kNullishBranch)
     return {event.effect,event.effects};
   const auto kinds=input.normal_kinds.empty()?std::span<const analysis::ValueKinds>(flow.normal_kinds):input.normal_kinds;
-  const auto resources=ResourceFailures(tree.identity.contract);
+  const auto resources=kSourceResourceFailures;
   if(event.kind==FlowEventKind::kPropertyReference) {
     RequireTree(event.property&&event.property->reference.value<flow.properties.size(),Error::kOwnership);
     const auto& reference=flow.properties[event.property->reference.value];

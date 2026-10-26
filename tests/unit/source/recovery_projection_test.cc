@@ -1,4 +1,5 @@
 #include "../../../src/source/flow_units.h"
+#include "../../../src/source/expression_observation.h"
 #include "../../../src/source/recovery_projection.h"
 #include "../../../src/source/snapshot_projection.h"
 #include "../../../src/source/flow_kinds.h"
@@ -1938,12 +1939,12 @@ std::pair<std::uint64_t,std::size_t> RawProjectionClosure(bool changed,RawClosur
     Check(model.flow.original_exceptions.back()&&std::holds_alternative<FlowExcludedResourceFailure>(*model.flow.original_exceptions.back()));
     Check(!model.flow.original_actions.back());
     Check(!FindOriginalPhase(model.flow,{5},analysis::ExceptionPhase::kBefore,analysis::OpId{2}));
-    auto observed_tree=t;observed_tree.identity.contract=SourceContract::kLanguageAndHostV1;
-    auto observed_original=f.original;observed_original.identity=observed_tree.identity;
-    auto observed_input=f.Input();observed_input.original=&observed_original;
-    const auto observed=std::get<RecoveryProjection>(PrepareRecoveryProjection(observed_tree,projection,observed_input));
-    Check(!observed.flow.original_exceptions.back());
-    Check(OriginalCatchKinds(observed.flow,*observed_original.catches[2]).IsEmpty());
+    // Resource observability is an independent proof input, not another
+    // target contract. Its retained analysis must still model allocation.
+    Check(NormalValueEffects(EmptyObjectExpr{}, {}, ResourceFailureScope::kObservable).exceptional ==
+        analysis::ExceptionalCompletion::kMayThrow);
+    Check(NormalValueEffects(EmptyObjectExpr{}, {}, ResourceFailureScope::kExcluded).exceptional ==
+        analysis::ExceptionalCompletion::kImpossible);
     auto unclassified=f.original;unclassified.exception_causes.clear();
     auto unknown_input=f.Input();unknown_input.original=&unclassified;
     const auto unknown=std::get<RecoveryProjection>(PrepareRecoveryProjection(t,projection,unknown_input));

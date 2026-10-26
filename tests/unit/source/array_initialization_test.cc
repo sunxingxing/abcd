@@ -137,7 +137,7 @@ void Counterexamples() {
   forged = built; forged.steps[1] = forged.steps[0]; reject(forged);
   forged = built; forged.arrays[0].allocation = {1}; reject(forged);
   forged = built; forged.metadata.length_reads[2] = 0; reject(forged);
-  forged = built; forged.contract = SourceContract::kLanguageNumericConstructorsV1; reject(forged);
+  forged = built; forged.contract = SourceContract::kLanguageSourceV5; reject(forged);
 }
 void Trees() {
   for (unsigned count : {1U, 200U, 201U, 400U, 800U}) for (bool split : {false, true}) for (bool late : {false, true}) {
@@ -185,7 +185,7 @@ void Trees() {
     for (auto& node : changed.expressions) if (auto* element = std::get_if<ArrayElement>(&node.expression))
       if (auto* spread = std::get_if<ArraySpreadElement>(&element->element)) { spread->iterable = *literal; break; }
     rejected(changed);
-    changed = tree; changed.identity.contract = SourceContract::kLanguageAndHostV1; rejected(changed);
+    changed = tree; changed.identity.contract = SourceContract::kLanguageSourceV5; rejected(changed);
   }
 }
 void LateCounterexamples() {
@@ -279,5 +279,5 @@ int main() {
   }
   auto bad=Make(1,false,false,true);
   Check(std::get<ArrayInitializationError>(BuildArrayInitializations(bad.graph,contract,bad.Constants(),bad.names))==ArrayInitializationError::kCursor);
-  Check(std::get<ArrayInitializationError>(BuildArrayInitializations(bad.graph,SourceContract::kLanguageAndHostV3,bad.Constants(),bad.names))==ArrayInitializationError::kContract);
+  Check(std::get<ArrayInitializationError>(BuildArrayInitializations(bad.graph,static_cast<SourceContract>(0),bad.Constants(),bad.names))==ArrayInitializationError::kContract);
 }

@@ -20,7 +20,7 @@ std::variant<FileFunction, FunctionFileFailure> ReadFunctionValues(
       bytes -= count * width;
     };
     const auto arena = [&]<class T>(const std::vector<T>& values) { admit(values.capacity(), sizeof(T)); };
-    if (identity.profile != header.profile || identity.abc_version != header.version ||
+    if (!IsSourceContract(identity.contract) || identity.profile != header.profile || identity.abc_version != header.version ||
         identity.file_size != header.file_size) throw Error::kIdentity;
     if (file.Size() != header.file_size || file.CheckUnchanged()) throw Error::kChanged;
     if (position.value >= index.methods.size() || !index.methods[position.value].code) throw Error::kMethod;

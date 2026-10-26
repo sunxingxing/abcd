@@ -138,8 +138,7 @@ std::variant<ResolvedSyntax, SyntaxResolutionFailure> ResolveFunctionSyntax(
       const auto* rest = std::get_if<analysis::ValueRestArguments>(&op.operation);
       if (!rest) continue;
       Require(!rest_argument && rest->first_argument == context.Length() &&
-          static_cast<std::uint32_t>(rest->first_argument) + 1 == frame.parameters &&
-          ResourceFailures(identity.contract) == ResourceFailureScope::kExcluded, Error::kParameters);
+          static_cast<std::uint32_t>(rest->first_argument) + 1 == frame.parameters, Error::kParameters);
       rest_argument = rest->first_argument;
     }
     if (rest_argument) {

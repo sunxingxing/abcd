@@ -131,8 +131,7 @@ std::variant<ConstructorForwardingProof, DerivedProjectionError> ProveConstructo
     Require(owner.Callable() == CallableKind::kDerivedConstructor && owner.ConstructorSite() &&
         function.input.MatchesOwner(owner) && owner.Frame() == frame &&
         function.input.Identity() == owner.Identity(), Error::kOwner);
-    Require(ConstructorForwarding(owner.Identity().contract) == ConstructorForwardingSemantics::kSourceRestSpread,
-        Error::kForwardingContract);
+    Require(IsSourceContract(owner.Identity().contract), Error::kOwner);
     Require(function.body.tries.empty() && function.body.handlers.empty() && graph.phases.empty(), Error::kForwardingHandlers);
     Require(owner.Length() == 0, Error::kForwardingParameters);
     Require(graph.arguments && graph.arguments->frame == frame && frame.function && frame.new_target && frame.this_value &&

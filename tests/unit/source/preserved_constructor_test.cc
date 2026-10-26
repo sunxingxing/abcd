@@ -77,7 +77,7 @@ std::string Run(abc::ProfileId profile,Call call,unsigned copies,bool split,bool
   const auto roles=Take<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file,header,index,lookup));
   const auto functions=Take<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file,header,index,lookup));
   RouteInputIdentity identity;identity.profile=profile;identity.file_size=header.file_size;identity.abc_version=header.version;
-  identity.contract=SourceContract::kLanguageNumericConstructorsV1;
+  identity.contract=SourceContract::kLanguageSourceV5;
   const auto creator=Take<FileFunction>(ReadFunctionValues(file,header,index,{0},identity,InputCaptureMode::kClosed));
   test::PreservationCheck(creator.values.classes.classes.size()==1);
   const FamilyDestination destination{Strictness::kStrict,nullptr,FunctionFragment::kClassMember};

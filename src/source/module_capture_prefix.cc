@@ -14,8 +14,7 @@ std::variant<std::optional<ModuleCapturePrefix>, ModulePrefixError> ModuleCaptur
   try {
     const auto none = [] { return std::optional<ModuleCapturePrefix>{}; };
     if (method.offset != input.Method() || method.owner_offset != input.Record() || method.name != "func_main_0" ||
-        !context.OrdinarySynchronous(file,input.Record()) ||
-        ResourceFailures(input.Identity().contract) != ResourceFailureScope::kExcluded) return none();
+        !context.OrdinarySynchronous(file,input.Record())) return none();
     const auto attributes = abc::DecodeMethodAttributes(method.access_flags, header.profile);
     const auto* attr = std::get_if<abc::MethodAttributes>(&attributes);
     if (!attr || attr->sendable || (attr->kind != abc::FunctionKind::kNone && attr->kind != abc::FunctionKind::kBaseConstructor)) return none();

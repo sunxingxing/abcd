@@ -7,6 +7,14 @@
 不新增语言前提；底层 pinned-runtime 分析事实保持原义。历史 Source V1–V10
 身份与前提谓词保留，旧 receipt 不会被静默升级。
 
+2026-10-27（增量 B）：引擎删除八个非 Source 契约和 `WithLanguageConstructors`。
+V1–V10 保留原始数值 ID 8–17 和精确标签；写入、解析与身份验证共用显式 typed registry，
+不再按连续整数强转。退休标签返回 typed identity refusal，不升级为 V10。
+各 Source 版本一致的构造器、捕获 TDZ、rest/spread、lazy import、array spread、callable text
+策略分支已消除，实际所有权、初始化、作用顺序与异常证明继续独立验证。
+显式 host realm binding 以 `RealmBindingOrigin` 保留来源及 `explicit_host`/`stable_global_this`
+序列化标签；`ResourceFailureScope::kObservable` 与原始 pinned-runtime 分析模式继续保留。
+
 当前 CLI 选择 `kSourceContract = kLanguageSourceV10`。`abc_structure --value-source`
 与 `abc_structure --value-source --language-source` 使用同一恢复路径；
 `abc_semantic --function-source/--record-source` 同样默认 V10。输出选择器不变。
@@ -19,10 +27,10 @@
 
 | 前提 | 谓词 | 影响（探索集，2026-10-13） | 状态 |
 |---|---|---|---|
-| 捕获访问（读取与写入）按源语言 TDZ 解释 | `CaptureReads() == kSourceTdz` | 诊断涉及 24 个 record（不是当前新增完成数） | 无自身 handler 的访问及 Round A 转发已实现；Round B 待做 |
-| 原帧转发显式投影为 rest/spread；实例属性赋值保持 `[[Set]]` | `ConstructorForwarding() == kSourceRestSpread` | 16 个 record（`DerivedProjectionError`） | normal 路径显式 rest/spread 投影已实现；验证见 §2 |
-| 惰性导入输出 ArkTS `import lazy`，保持首次访问初始化与 live binding | `LazyImports() == kArkTsLazyImport` | 12 个 record（既有诊断，非新增完成数） | normal/phased 受保护读取已实现，见 §3 |
-| 数组展开 `starrayspread` 按源语言 `[...x]` 输出 | `ArraySpreads() == kSourceIterator` | 8 个 record（历史诊断） | Round 33 私有构造投影；验收见 §4 |
+| 捕获访问（读取与写入）按源语言 TDZ 解释 | 所有 Source 版本共用 TDZ 前提 | 诊断涉及 24 个 record（不是当前新增完成数） | 无自身 handler 的访问及 Round A 转发已实现；Round B 待做 |
+| 原帧转发显式投影为 rest/spread；实例属性赋值保持 `[[Set]]` | 所有 Source 版本共用 rest/spread 前提 | 16 个 record（`DerivedProjectionError`） | normal 路径显式 rest/spread 投影已实现；验证见 §2 |
+| 惰性导入输出 ArkTS `import lazy`，保持首次访问初始化与 live binding | 所有 Source 版本共用 ArkTS lazy 前提 | 12 个 record（既有诊断，非新增完成数） | normal/phased 受保护读取已实现，见 §3 |
+| 数组展开 `starrayspread` 按源语言 `[...x]` 输出 | 所有 Source 版本共用 iterator spread 前提 | 8 个 record（历史诊断） | Round 33 私有构造投影；验收见 §4 |
 
 ## 1. 捕获访问的源语言 TDZ（CaptureReads）
 
@@ -57,8 +65,8 @@ phased 子函数也可记录 `kSourceAccess`；仍有 handler 的方法保持 `k
   `VerifyDeferredCells`、树中声明位置的独立验证）原样复用，见 `guarded-captures.md`。
 - 父 cell 在创建时已有 store（例如 `var` 先存入 `undefined`）的情形不受影响。异常路径的
   `ExceptionScopeFacts` 把 `kSourceAccess` 按 Language 处理，保持严格。
-- 路由回执的契约名称表改为由 `SourceContractName` 按枚举生成，保证每个能写出的契约都能读回
-  （Codex 第二十五轮 R3）；`source_route_test` 对全部枚举值做往返验证。
+- 路由回执的契约名称使用显式 typed registry，保证每个能写出的 Source 契约都能读回
+  （Codex 第二十五轮 R3）；`source_route_test` 对所有注册身份做往返验证，并检查退休 ID/标签拒绝。
 
 **2026-10-21：有原始守卫的写入。** 上述“有 handler 则保持 Language”的实现限制有一项
 逐访问例外：`guarded_stores` 独立重建并验证同一 incoming environment/slot 的 Hole 守卫与
@@ -126,8 +134,8 @@ invocation-frame forwarding。新增数组迭代过程引起的可观察差异�
 不能改为原生类字段声明的 `[[DefineOwnProperty]]`：父类可能有 setter 或只读属性。
 rest 数组分配的资源耗尽差异沿用本契约已有的资源前提，不增加其他可观察差异。
 
-**实现边界。** `ConstructorForwarding()` 在 `kLanguageSourceV1` 及继承它的 V2/V3 启用，独立于旧的
-`Constructors()` 前提。纯转发且已接受的隐式构造器保持原输出。显式投影依次通过
+**实现边界。** 所有保留的 Source 版本共用 native-super 和 rest/spread 前提；
+增量 B 删除已恒定的选择器。纯转发且已接受的隐式构造器保持原输出。显式投影依次通过
 共同帧/协议证明、物理参数与源码 rest 签名分离、树构建、独立复验及普通语法打印。
 第一增量不支持构造器自身 handler、arguments/new.target 的正文观察、需保留的形参或
 默认参数、动态重复转发，以及未转发的正常返回。前后语句通过通用效果、CFG/SSA 和
@@ -207,7 +215,7 @@ record.json 的格式不变。该标记不表示 Node 可执行。请求表畸�
 自有且可枚举的 value 描述符复制到普通取值、字符串专用遍历及 [[Set]] 到标准
 迭代和自有数据属性定义，以及迭代期间 length 变化的行为。包括这些差异引起的
 getter/setter 调用与异常。该前提不授权把任意已有数组修改改为新数组，或丢弃
-可观察索引结果；仅 `ArraySpreads() == kSourceIterator` 开放源码投影。
+可观察索引结果；仅 所有 Source 版本共用 iterator spread 前提 开放源码投影。
 
 **cursor 范围裁决（2026-10-13，Round 33）。** 锁定 ets_runtime
 `RuntimeStArraySpread` 通用迭代分支使用 `int tmp = indexHandle->GetInt(); tmp + 1`
@@ -594,7 +602,7 @@ close 的比较证据只在该结论成立时排除 sentinel 的 Hole 分支。�
 ## Call spread on private argument constructions (LanguageSourceV5)
 
 User approval, 2026-10-19: `--language-source` selects V5. V1–V4 retain their
-meaning. `CallSpread() == kPrivateArgumentsV1` is separate from `ArraySpreads()`:
+meaning. `CallSpread() == kPrivateArgumentsV1` is separate from the shared array-spread premise:
 it permits `obj.f(a, ...b, c)` / a value call only for a verified fresh argument
 array consumed by exactly one APPLY. Arbitrary APPLY arrays remain refused.
 The saved callee and exact receiver, allocation/use/cursor identities, element

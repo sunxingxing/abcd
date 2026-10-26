@@ -35,7 +35,7 @@ std::vector<std::uint8_t> SuperStoreRhsSafety(
   std::size_t head=0,tail=0;
   for(std::size_t i=0;i<n;++i) {
     budget.Step(); const auto& node=tree.expressions[i].expression;
-    inert[i]=NormalValueEffects(node,{},ResourceFailures(tree.identity.contract)).Evaluation()==ExpressionEvaluation::kInert;
+    inert[i]=NormalValueEffects(node,{},kSourceResourceFailures).Evaluation()==ExpressionEvaluation::kInert;
     // Function body formals are initialized before body execution. Other
     // binding reads keep their guard unless common flow proves them separately.
     if(const auto* read=std::get_if<SymbolExpr>(&node))

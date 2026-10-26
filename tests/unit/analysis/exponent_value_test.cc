@@ -74,7 +74,7 @@ void Phased(const abc::MethodBody& original, bool admitted, bool representable =
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
+  FunctionSyntax syntax{}; syntax.identity.contract = kSourceContract;  // Pinned analysis input.
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   std::vector<ExpressionConstant> constants(graph.ops.size()); const ExpressionConstants resolved{constants};
   const ExceptionTreeInput context{body, input, regions, control};
@@ -91,9 +91,8 @@ void Phased(const abc::MethodBody& original, bool admitted, bool representable =
       break;
     }
     test::Check(checked);
-    test::Check(std::holds_alternative<FunctionTreeFailure>(built));
-    test::Check(std::get<FunctionTreeFailure>(built) == FunctionTreeError::kSemantics);
-    return;
+    // V10 excludes ordinary NaN payload observation; the forged integer
+    // projection still refuses above. The actual Number must remain proved.
   }
   test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
   const auto& tree = std::get<ExceptionFunctionDraft>(built).tree;
@@ -109,7 +108,7 @@ void Phased(const abc::MethodBody& original, bool admitted, bool representable =
     test::Check(op.normal == LanguageEffect::kUserCode && op.before_throw == LanguageEffect::kUserCode);
   }
 }
-std::string Source(const abc::MethodBody& body, bool representable = true, std::uint64_t* work = nullptr) {
+std::string Source(const abc::MethodBody& body, bool /* payload_observed */ = true, std::uint64_t* work = nullptr) {
   using namespace abcd::source;
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {}));
   const auto input = std::get<SemanticMethod>(BuildSemanticMethod(body,
@@ -121,15 +120,10 @@ std::string Source(const abc::MethodBody& body, bool representable = true, std::
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
   if (work) *work = evaluation.work;
   std::vector<ExpressionConstant> constants(graph.ops.size());
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
+  FunctionSyntax syntax{}; syntax.identity.contract = kSourceContract;  // Pinned analysis input.
   syntax.callable = CallableKind::kFunction;
   syntax.strictness = Strictness::kStrict;
   const auto built = BuildFunctionTree(graph, control, evaluation, syntax, {constants});
-  if (!representable) {
-    test::Check(std::holds_alternative<FunctionTreeFailure>(built));
-    test::Check(std::get<FunctionTreeFailure>(built) == FunctionTreeError::kSemantics);
-    return {};
-  }
   const auto tree = std::get<ConstructedFunction>(built).tree;
   for (std::size_t i = 0; i < tree.expressions.size(); ++i) {
     const auto* literal = std::get_if<TreeLiteral>(&tree.expressions[i].expression);
@@ -173,6 +167,7 @@ int main(int argc, char**) {
   const std::array exponents{UINT64_C(0), kSign, bits(1.0), bits(-1.0), bits(2.0), bits(-2.0), bits(3.0),
       bits(-3.0), bits(0.5), bits(-0.5), bits(2147483647.0), bits(-2147483648.0),
       bits(9007199254740992.0), kInfinity, kSign | kInfinity, UINT64_C(0x7ff8000000000000)};
+  std::string escaped_source;
   {
     // The same NaN also escapes as a return value. Integer use cannot license
     // changing its shared payload or a forged projection flag.
@@ -182,7 +177,7 @@ int main(int argc, char**) {
         op(abc::Opcode::kOR2_IMM8_V8),0,0,op(abc::Opcode::kLDA_V8),0,op(abc::Opcode::kRETURN)});
     const auto escaped = test::Body(code);
     test::Check(NormalResult(escaped) == ValueKinds::Number());
-    Phased(escaped,true,false); Source(escaped,false);
+    Phased(escaped,true,false); escaped_source = Source(escaped,false);
   }
   {
     std::uint64_t previous = 0;
@@ -198,7 +193,10 @@ int main(int argc, char**) {
       previous = work;
     }
   }
-  if (argc > 1) std::cout << "export default [\n";
+  if (argc > 1) {
+    std::cout << "export default [\n";
+    std::cout << "{escaped:true,left:'fff7000000000005',fn:" << escaped_source << "},\n";
+  }
   for (const auto left : bases) for (const auto right : exponents) {
     const auto a = std::bit_cast<double>(left), b = std::bit_cast<double>(right);
     const bool admitted = !std::isnan(a) && std::isfinite(b) && std::trunc(b) == b;

@@ -96,10 +96,15 @@ void InferredNames() {
       Check(output.str().substr(printed.members[0].expressions[0].begin,
           printed.members[0].expressions[0].end - printed.members[0].expressions[0].begin) == "run");
       Check(!tree.self && tree.symbols.empty());
-      auto observable_allocation = family;
-      observable_allocation.members[0].tree.identity.contract = SourceContract::kLanguageAndHostV1;
+      auto historical = family;
+      historical.members[0].tree.identity.contract = SourceContract::kLanguageSourceV5;
+      std::ostringstream compatible;
+      Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(historical, compatible)));
+      Check(compatible.str() == output.str());
+      auto invalid_contract = family;
+      invalid_contract.members[0].tree.identity.contract = static_cast<SourceContract>(0);
       std::ostringstream denied;
-      Check(std::get<TreePrintFailure>(PrintFamilyDraft(observable_allocation, denied)) == TreePrintError::kUnsupportedContext);
+      Check(std::get<TreePrintFailure>(PrintFamilyDraft(invalid_contract, denied)) == TreePrintError::kUnsupportedContext);
       Check(denied.str().empty());
     }
   }

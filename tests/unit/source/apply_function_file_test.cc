@@ -91,7 +91,7 @@ void Run(abc::ProfileId profile, bool wide, bool caught, bool empty, std::uint32
   const auto sites = std::get<FunctionCreationSites>(FunctionCreationSites::Build(*file, header, index, lookup));
   const auto site = sites.FindOccurrence({kFactory}, {kCaller}, {0}); test::Check(site.has_value());
   auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file->Fingerprint()), header);
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned ABI counterexamples.
+  identity.contract = SourceContract::kLanguageSourceV5;  // Pinned ABI counterexamples.
   const FamilyDestination destination{Strictness::kStrict, nullptr};
   auto prepared = PreparedFamily::PrepareCreated(*file, header, index, lookup, roles, sites, *site, identity, destination);
   if (new_target) {

@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
         constants.forwarding_owner = &context;
         auto built = BuildExpressionForest(candidate.values.graph, evaluation, candidate.frame.parameters, {0}, constants,
             {}, {}, RecoveryMode::kCompleteOnly, {}, {}, {}, CallableKind::kDerivedConstructor,
-            Arithmetic(identity.contract), Constructors(identity.contract), ParameterForm::kInvocationRest);
+            kSourceArithmetic, ParameterForm::kInvocationRest);
         if (const auto* failure = std::get_if<ExpressionFailure>(&built))
           std::cerr << "forest failure " << static_cast<unsigned>(failure->kind) << '\n';
         Check(std::holds_alternative<ExpressionForest>(built));

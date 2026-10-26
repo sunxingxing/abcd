@@ -185,7 +185,7 @@ CaptureParent Parent(CaptureFunction function) {
       function.values.environments ? &*function.values.environments : nullptr,
       CaptureChild(function).Cells(), function.input.Input().instructions,
       function.input.Proof().locals.allocations, ScopeFacts(function.input.Input(), function.input.Proof(),
-          Prefixes(function), CaptureReads(function.input.Identity().contract) == CaptureReadSemantics::kSourceTdz),
+          Prefixes(function), true),
       function.values.initializers.instances};
 }
 void Owner(const CaptureParent& parent, Quota& quota) {
@@ -344,8 +344,7 @@ std::vector<DeferredCellInitialization> Deferred(const CaptureParent& parent, co
     // Guarded reads, or source accesses under the approved source TDZ premise.
     Require(std::holds_alternative<analysis::LocalCell>(binding.cell) &&
         (binding.domain == analysis::CaptureDomain::kGuarded ||
-         (binding.domain == analysis::CaptureDomain::kSourceAccess &&
-          CaptureReads(parent.identity.contract) == CaptureReadSemantics::kSourceTdz)), Error::kCell);
+         binding.domain == analysis::CaptureDomain::kSourceAccess), Error::kCell);
     const auto target = Project(parent, binding.cell, quota);
     const auto* cell = std::get_if<ParentCell>(&target);
     const auto store = Operation(parent, *binding.deferred, quota);
@@ -414,8 +413,7 @@ CaptureParent PhaseClassParent(ClassCreator creator,
           phase.Locals().plan.allocations,
           ScopeFacts(ExceptionScopeFacts{
               input.flow, input.environments, phase.Locals(), before,
-              CaptureReads(creator.Identity().contract) ==
-                  CaptureReadSemantics::kSourceTdz})};
+              true})};
 }
 
 }  // namespace
@@ -622,7 +620,7 @@ std::variant<CaptureCells, CaptureCellFailure> BindCaptureCells(
   try {
     Quota quota(budget); Owners(index, parent, child, creation, quota);
     auto bound = BuildCapturePlan(ScopeFacts(parent.input.Input(), parent.input.Proof(),
-        Prefixes(parent), CaptureReads(parent.input.Identity().contract) == CaptureReadSemantics::kSourceTdz),
+        Prefixes(parent), true),
         site, creation, child.Input().Captures(), quota.Remaining());
     if (const auto* error = std::get_if<CaptureFailure>(&bound)) return InputError(*error);
     auto input = std::get<CapturePlan>(std::move(bound)); quota.Step(input.work);

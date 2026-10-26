@@ -318,7 +318,7 @@ std::uint64_t RunPhased(unsigned count, bool direct, bool print, Selection selec
   // Use the same language-valued ordinary-call contract as the production
   // source route; receiver calls already carry their independent fixed domain.
   const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-      value_work, {}, PendingExceptionValues::kLanguage, modules.loads, {}, NormalCallResults(kSourceContract)));
+      value_work, {}, PendingExceptionValues::kLanguage, modules.loads, {}, kSourceCallResults));
   const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, env, values));
   const PhasedValueInput input{flow, ssa, env, values, proof, frame};
   const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));

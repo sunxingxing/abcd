@@ -74,7 +74,7 @@ struct Fixture {
     const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, arbitrary ? 2 : 1, {}));
     RouteInputIdentity identity;
     identity.profile = profile;
-    if (arbitrary) identity.contract = SourceContract::kLanguageNumericV1;
+    if (arbitrary) identity.contract = SourceContract::kLanguageSourceV5;
     switch (profile) {
       case abc::ProfileId::kDynamic1202: identity.abc_version = {12, 0, 2, 0}; break;
       case abc::ProfileId::kDynamic1206: identity.abc_version = {12, 0, 6, 0}; break;
@@ -106,7 +106,7 @@ struct Fixture {
       IdfQuota value_work{kDefaultSemanticWork};
       const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
           value_work, {}, PendingExceptionValues::kLanguage, {}, {}, CallResultValues::kLanguage,
-          FrameReceiver::kUnknown, Arithmetic(identity.contract)));
+          FrameReceiver::kUnknown, kSourceArithmetic));
       const auto checked = VerifyExceptionInputs(flow, ssa, env, values);
       test::Check(std::holds_alternative<ExceptionInputProof>(checked));
       const auto proof = std::get<ExceptionInputProof>(checked);

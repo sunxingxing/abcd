@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
   const auto header = std::get<abc::Header>(abc::ParseHeader(
       std::span(fingerprint.prefix).first(fingerprint.prefix_size), fingerprint.size));
   auto identity = MakeRouteInputIdentity(fingerprint, header);
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned spread-call proof, no CLI.
+  identity.contract = kSourceContract;  // Native-super source target.
   const auto index = std::get<abc::MetadataIndex>(abc::BuildMetadataIndex(file, header));
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(file, header, index, lookup));
@@ -99,8 +99,8 @@ int main(int argc, char** argv) {
       DerivedProjectionError::kOperand);
   guarded.operand = saved_guard;
   Check(!VerifyDerivedProjection(function, context, protocol));
-  // Initialization projection does not authorize a native spread call. The
-  // array-expansion and lifetime parent-brand contracts still remain open.
+  // Initialization alone does not grant source publication. The common
+  // constructor, ABI, origin and effect proofs must all close independently.
   const auto shape = DescribeEvaluation(call.operation);
   Check(shape && shape->arguments == 0 && shape->roles.size() == 2 &&
       shape->roles[0] == OperandRole::kConstructor && shape->roles[1] == OperandRole::kInput);
@@ -123,31 +123,31 @@ int main(int argc, char** argv) {
   Check(std::holds_alternative<ConstructedFamily>(partial));
   const auto& draft = std::get<ConstructedFamily>(partial);
   const auto& root = draft.members[draft.root.value];
-  Check(!root.tree.recovery_issues.empty() && !root.abi && !root.sources);
+  Check(root.tree.recovery_issues.empty() && root.abi && root.sources);
   std::ostringstream output;
   const auto printed = PrintClassFamilyDraft(draft, *context.ClassContext(), output);
   Check(std::holds_alternative<PrintedFamilyDraft>(printed));
-  Check(std::get<PrintedFamilyDraft>(printed).members[draft.root.value].incomplete);
-  Check(output.view().find("INCOMPLETE") != std::string_view::npos);
-  Check(output.view().find("super(") == std::string_view::npos);
+  Check(std::get<PrintedFamilyDraft>(printed).members[draft.root.value].incomplete == false);
+  Check(output.view().find("INCOMPLETE") == std::string_view::npos);
+  Check(output.view().find("super(") != std::string_view::npos);
   Check(output.view().find("return ") == std::string_view::npos);
   const FamilyDestination destination{Strictness::kStrict, nullptr, FunctionFragment::kClassMember};
   auto ready = PreparedFamily::PrepareConstructor(file, header, index, lookup, roles, sites,
       parent, *creation, identity, destination, {}, RecoveryMode::kAllowPartial);
   Check(std::holds_alternative<PreparedFamily>(ready));
   auto& prepared = std::get<PreparedFamily>(ready);
-  Check(prepared.Receipts().front().stage == SourceStage::kBindingsFrozen);
+  Check(prepared.Receipts().front().stage == SourceStage::kTreeVerified);
   std::ostringstream draft_output;
   Check(std::holds_alternative<PrintedFamilyDraft>(prepared.PrintDraft(destination, draft_output)));
   Check(draft_output.str() == output.str());
   std::ostringstream executable_output;
   const auto denied = FamilyEmission::Write(std::move(prepared), destination, executable_output, {});
-  Check(std::holds_alternative<FamilyEmitFailure>(denied));
-  Check(executable_output.view().empty());
-  Check(std::holds_alternative<FamilyPrepareFailure>(PreparedFamily::PrepareConstructor(
+  Check(std::holds_alternative<FamilyEmission>(denied));
+  Check(executable_output.str() == output.str());
+  Check(std::holds_alternative<PreparedFamily>(PreparedFamily::PrepareConstructor(
       file, header, index, lookup, roles, sites, parent, *creation, identity, destination)));
-  // An incomplete constructor must retain the other real class members and
-  // travel through the enclosing ESM record without upgrading its coverage.
+  // The complete constructor must retain the other real class members and
+  // publish the same verified source target through the enclosing ESM record.
   const auto record = std::find_if(index.records.begin(), index.records.end(),
       [](const auto& candidate) { return candidate.offset.value == 5246; });
   Check(record != index.records.end());
@@ -159,12 +159,12 @@ int main(int argc, char** argv) {
       {}, identity, &sites, &classes);
   Check(std::holds_alternative<PrintedSource>(recovered));
   const auto& source = std::get<PrintedSource>(recovered);
-  Check(source.incomplete);
-  Check(source.text.find("INCOMPLETE") != std::string::npos);
-  Check(source.text.find("UNRECOVERED: unsupported operation; PC 8") != std::string::npos);
+  Check(!source.incomplete);
+  Check(source.text.find("INCOMPLETE") == std::string::npos);
+  Check(source.text.find("UNRECOVERED") == std::string::npos);
   Check(source.text.find("async onBackup()") != std::string::npos);
   Check(source.text.find("async onRestore(bundleVersion)") != std::string::npos);
-  Check(source.text.find("super(") == std::string::npos);
+  Check(source.text.find("super(") != std::string::npos);
   Check(source.text.find("export { EntryBackupAbility as \"default\" }") != std::string::npos);
   if (argc == 3) std::cout << (std::string_view(argv[2]) == "--backup-source" ? std::string(source.text.View()) : output.str());
   Check(!file.CheckUnchanged());

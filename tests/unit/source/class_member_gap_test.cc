@@ -69,7 +69,7 @@ void Run(bool caught, bool malformed = false, std::uint32_t count = 3, std::uint
   }
   const std::uint8_t ctor[]{Op(abc::Opcode::kRETURNUNDEFINED)};
   std::vector<std::uint8_t> rejected{Op(abc::Opcode::kLDA_V8), 4, Op(abc::Opcode::kSTA_V8), 0,
-      Op(abc::Opcode::kLDA_V8), 4, Op(abc::Opcode::kADD2_IMM8_V8), 0, 0,
+      Op(abc::Opcode::kLDHOLE), Op(abc::Opcode::kNOP), Op(abc::Opcode::kADD2_IMM8_V8), 0, 0,
       Op(abc::Opcode::kSTA_V8), 0, Op(abc::Opcode::kRETURN)};
   if (caught) rejected.push_back(Op(abc::Opcode::kRETURNUNDEFINED));
   if (malformed) rejected[1] = 250;
@@ -114,7 +114,7 @@ void Run(bool caught, bool malformed = false, std::uint32_t count = 3, std::uint
   const auto functions = std::get<FunctionCreationSites>(FunctionCreationSites::Build(*file, header, index, lookup));
   const auto classes = std::get<ClassMethodSites>(ClassMethodSites::Build(*file, header, index, lookup));
   auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file->Fingerprint()), header);
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned partial-analysis boundary.
+  identity.contract = kSourceContract;  // A genuine private-value input refusal.
   const auto creator = std::get<FileFunction>(ReadFunctionValues(*file, header, index, {0}, identity, InputCaptureMode::kClosed));
   const auto creation = creator.values.classes.classes.front().operation;
   const auto definitions = defined ? std::span<const ClassDefinitionSite>(creator.values.definitions.sites) : std::span<const ClassDefinitionSite>{};
@@ -132,7 +132,7 @@ void Run(bool caught, bool malformed = false, std::uint32_t count = 3, std::uint
   } else {
     const auto& failed = std::get<SemanticProofFailure>(
         std::get<FunctionInputFailure>(std::get<FunctionFileFailure>(failed_family.cause)).cause);
-    test::Check(failed.kind == SemanticProofError::kInternalValue && failed.pc.value == 9 &&
+    test::Check(failed.kind == SemanticProofError::kInternalValue && failed.pc.value == 6 &&
         failed.work_units != 0 && failed.allocated_bytes != 0);
   }
   auto partial = BuildClassTree(*file, header, index, lookup, roles, functions, classes, creator, creation, identity,

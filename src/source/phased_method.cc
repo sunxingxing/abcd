@@ -158,29 +158,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     std::span<const analysis::PatternSite> patterns) {
   using namespace analysis;
   try {
-    // Recovered scopes/snapshots can allocate at different VM locations.
-    // This route does not prove resource-failure equivalence for contract V1.
-    switch (context.Identity().contract) {
-      case SourceContract::kLanguageAndHostV1: return Error::kContract;
-      case SourceContract::kLanguageAndHostV2:
-      case SourceContract::kLanguageAndHostV3:
-      case SourceContract::kLanguageConstructorsV1:
-      case SourceContract::kLanguageArithmeticConstructorsV1:
-      case SourceContract::kLanguageNumericConstructorsV1:
-      case SourceContract::kLanguageNumericV1:
-      case SourceContract::kLanguageArithmeticV1:
-      case SourceContract::kLanguageSourceV1:
-      case SourceContract::kLanguageSourceV2:
-      case SourceContract::kLanguageSourceV3:
-      case SourceContract::kLanguageSourceV4:
-      case SourceContract::kLanguageSourceV10:
-      case SourceContract::kLanguageSourceV9:
-      case SourceContract::kLanguageSourceV8:
-      case SourceContract::kLanguageSourceV7:
-      case SourceContract::kLanguageSourceV6:
-      case SourceContract::kLanguageSourceV5: break;
-      default: return Error::kContract;
-    }
+    if (!IsSourceContract(context.Identity().contract)) return Error::kContract;
     PhaseBudget quota(budget);
     quota.Admit(sizeof(Storage));
     const auto frame = context.Frame();
@@ -325,8 +303,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     // their original occurrences in FilePhasedFunction; each parent must bind
     // them to initialized cells and complete-family writes close that premise.
     auto values = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-        value_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
-        NormalCallResults(context.Identity().contract), receiver, Arithmetic(context.Identity().contract), ExceptionThrowRefinement::kNone,
+        value_work, {quota.Remaining().bytes}, kSourcePendingExceptions, loads, {},
+        kSourceCallResults, receiver, kSourceArithmetic, ExceptionThrowRefinement::kNone,
         binding && context.Position().value < binding->index.methods.size() && binding->index.methods[context.Position().value].owner_offset == binding->record.record() && binding->record.Attributes(binding->file,binding->record.record()) && !binding->record.ForOwner(binding->file,binding->record.record()) && GlobalScripts(context.Identity().contract) ? GlobalReadValues::kLanguage : GlobalReadValues::kUnknown), Error::kValues);
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
@@ -342,8 +320,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       quota.Step(failure->work_units);
       IdfQuota refined_work{quota.Remaining().work};
       auto refined = PhaseResult<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-          refined_work, {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
-          NormalCallResults(context.Identity().contract), receiver, Arithmetic(context.Identity().contract),
+          refined_work, {quota.Remaining().bytes}, kSourcePendingExceptions, loads, {},
+          kSourceCallResults, receiver, kSourceArithmetic,
           ExceptionThrowRefinement::kGuardedNonHole,
           binding && context.Position().value < binding->index.methods.size() && binding->index.methods[context.Position().value].owner_offset == binding->record.record() && binding->record.Attributes(binding->file,binding->record.record()) && !binding->record.ForOwner(binding->file,binding->record.record()) && GlobalScripts(context.Identity().contract) ? GlobalReadValues::kLanguage : GlobalReadValues::kUnknown), Error::kValues);
       quota.Admit(refined.AllocatedBytes()); quota.Step(refined_work.Consumed());
@@ -358,8 +336,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       quota.Step(failure->work_units);
       IdfQuota current_work{quota.Remaining().work};
       auto current = ExceptionValueFlow::Build(flow, ssa, entries, current_work,
-          {quota.Remaining().bytes}, PendingExceptions(context.Identity().contract), loads, {},
-          NormalCallResults(context.Identity().contract), receiver, Arithmetic(context.Identity().contract),
+          {quota.Remaining().bytes}, kSourcePendingExceptions, loads, {},
+          kSourceCallResults, receiver, kSourceArithmetic,
           ExceptionThrowRefinement::kGuardedCatchPayload,
           binding && context.Position().value < binding->index.methods.size() && binding->index.methods[context.Position().value].owner_offset == binding->record.record() && binding->record.Attributes(binding->file,binding->record.record()) && !binding->record.ForOwner(binding->file,binding->record.record()) && GlobalScripts(context.Identity().contract) ? GlobalReadValues::kLanguage : GlobalReadValues::kUnknown,
           flow_owner, ssa_owner);

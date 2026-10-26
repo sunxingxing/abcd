@@ -266,7 +266,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       opcode(abc::Opcode::kSTOBJBYNAME_IMM8_ID16_V8), 0, 6, 0, 0, opcode(abc::Opcode::kRETURNUNDEFINED)});
   if (input_gap) index.methods[2].code = body(kGetterCode, 1, 3, {
       opcode(abc::Opcode::kLDTHIS), opcode(abc::Opcode::kSTA_V8), 0,
-      opcode(abc::Opcode::kLDTHIS), opcode(abc::Opcode::kADD2_IMM8_V8), 0, 0,
+      opcode(abc::Opcode::kLDHOLE), opcode(abc::Opcode::kADD2_IMM8_V8), 0, 0,
       opcode(abc::Opcode::kSTA_V8), 0, opcode(abc::Opcode::kRETURN)});
   if (capture_cells) {
     const std::vector<std::uint8_t> captured{opcode(abc::Opcode::kLDLEXVAR_IMM4_IMM4), 0, opcode(abc::Opcode::kRETURN)};
@@ -320,7 +320,7 @@ std::string Recover(bool is_static, bool return_prototype = false, int ordinary_
       profile == abc::ProfileId::kDynamic1301 ? abc::AbcVersion{13, 0, 1, 0} : abc::AbcVersion{12, 0, 6, 0}; header.layout = abc::DynamicLayout{}; header.file_size = bytes.size();
   const auto fingerprint = std::get<corpus::FileFingerprint>(file.Fingerprint());
   auto identity = MakeRouteInputIdentity(fingerprint, header);
-  if (input_gap) identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis, no CLI.
+  if (input_gap) identity.contract = kSourceContract;  // A genuine private-value input gap.
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));
   const auto functions = std::get<analysis::FunctionCreationSites>(analysis::FunctionCreationSites::Build(file, header, index, lookup));

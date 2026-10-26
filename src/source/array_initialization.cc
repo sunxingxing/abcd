@@ -70,8 +70,7 @@ class Construction {
       Budget& budget, const EvaluationPlan* phases)
       : g_(graph), contract_(contract), metadata_(metadata), b_(budget), evaluation_(phases) {}
   ArrayInitializationPlan Run(const ArrayInitializationPlan* supplied) {
-    Require(ArraySpreads(contract_) == ArraySpreadSemantics::kSourceIterator &&
-        ResourceFailures(contract_) == ResourceFailureScope::kExcluded, Error::kContract);
+    Require(IsSourceContract(contract_), Error::kContract);
     Require(metadata_.buffers.size() == g_.ops.size() && metadata_.length_reads.size() == g_.ops.size(), Error::kCorrespondence);
     if (evaluation_ && !g_.phases.empty()) {
       const auto live = VerifyElidedPureEvaluations(g_, *evaluation_, b_.Remaining());
@@ -501,7 +500,7 @@ std::variant<ArrayInitializationPlan, ArrayInitializationError> BuildArrayInitia
     const analysis::ValueProgram& graph, SourceContract contract, ExpressionConstants constants,
     std::span<const std::u16string> names, analysis::SemanticBudget quota, const EvaluationPlan* phases) {
   try { Budget budget(quota);
-    Require(ArraySpreads(contract) == ArraySpreadSemantics::kSourceIterator, Error::kContract);
+    Require(IsSourceContract(contract), Error::kContract);
     const auto metadata = Metadata(graph, constants, names, budget);
     return Construction(graph, contract, metadata, budget, phases).Run(nullptr); }
   catch (Error error) { return error; }
@@ -515,7 +514,7 @@ std::variant<std::uint64_t, ArrayInitializationError> VerifyArrayInitializations
     ExpressionConstants constants, std::span<const std::u16string> names,
     analysis::SemanticBudget quota, const EvaluationPlan* phases) {
   try { Budget budget(quota);
-    Require(ArraySpreads(contract) == ArraySpreadSemantics::kSourceIterator, Error::kContract);
+    Require(IsSourceContract(contract), Error::kContract);
     const auto metadata = Metadata(graph, constants, names, budget);
     Require(metadata == plan.metadata, Error::kCorrespondence);
     (void)Construction(graph, contract, metadata, budget, phases).Run(&plan); return budget.Work(); }

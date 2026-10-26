@@ -124,6 +124,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     const ParentModuleInput* module_input, analysis::GlobalReadValues globals,
     const InheritedModuleInput* inherited) {
   try {
+    if (!IsSourceContract(identity.contract)) return FunctionInputFailure{Error::kOwner};
     if (owner && (owner->Identity() != identity || owner->Target() != method ||
         owner->Frame() != frame)) return FunctionInputFailure{Error::kOwner};
     const auto context = owner ? std::optional{DescribeOwner(*owner)} : std::nullopt;
@@ -257,8 +258,8 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       }
     }
     auto verified = analysis::VerifySemanticSource(body, *input, frame.registers, frame.locals,
-        quota.Remaining(), captures, loads, writes, {}, NormalCallResults(identity.contract), receiver,
-        arguments ? &*arguments : nullptr, Arithmetic(identity.contract), globals);
+        quota.Remaining(), captures, loads, writes, {}, kSourceCallResults, receiver,
+        arguments ? &*arguments : nullptr, kSourceArithmetic, globals);
     auto* proof = std::get_if<analysis::SemanticProof>(&verified);
     if (!proof) {
       auto failure = std::get<analysis::SemanticProofFailure>(verified);
@@ -353,7 +354,7 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
       // TDZ throw then leaves the child, through a call already modeled as throwing.
       const auto domain = kind == analysis::LocalAccessKind::kLoad && guarded_load(binding.instruction)
           ? analysis::CaptureDomain::kGuarded
-          : body.tries.empty() && CaptureReads(identity.contract) == CaptureReadSemantics::kSourceTdz
+          : body.tries.empty()
           ? analysis::CaptureDomain::kSourceAccess : analysis::CaptureDomain::kLanguage;
       const auto& instruction = input->instructions[binding.instruction];
       uses.push_back({{*depth, binding.binding.slot}, domain,

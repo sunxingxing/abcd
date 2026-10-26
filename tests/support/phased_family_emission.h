@@ -78,7 +78,7 @@ inline void CheckPhasedFamilyEmission(const corpus::AbcFile& file, const abc::He
   const auto limited = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
       functions, classes, site, identity, destination, {0, 0});
   check(std::get<FamilyPrepareError>(std::get<FamilyPrepareFailure>(limited).cause) == FamilyPrepareError::kResourceLimit);
-  auto old = identity; old.contract = SourceContract::kLanguageAndHostV1;
+  auto old = identity; old.contract = static_cast<SourceContract>(0);
   check(std::holds_alternative<FamilyPrepareFailure>(PreparedFamily::PrepareClass(
       file, header, index, lookup, roles, functions, classes, site, old, destination)));
 }

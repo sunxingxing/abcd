@@ -21,9 +21,9 @@ mutate();
 answer = input;
 export {answer, answer as answerAlias, snapshot};
 `;
-async function setup(source, {cycle = false, defaultExport = true, initial = 42, external, namedGlobal = false, failMutation = false, mutationFailure} = {}) {
+async function setup(source, {cycle = false, defaultExport = true, initial = 42, external, namedGlobal = false, failMutation = false, mutationFailure, onMutate} = {}) {
   const trace = [];
-  const context = vm.createContext({trace, externalCase: external, mutationFailure});
+  const context = vm.createContext({trace, externalCase: external, mutationFailure, onMutate});
   // Define the accessor inside the realm: contextified host accessors can
   // convert a thrown getter into a missing-binding ReferenceError in Node.
   if (external) vm.runInContext(`Object.defineProperty(globalThis, 'external', {get() {
@@ -41,7 +41,7 @@ async function setup(source, {cycle = false, defaultExport = true, initial = 42,
     trace.push('dep'); export let value = ${initial};
     export function mutate() {
       if (this !== undefined) throw new Error('receiver changed');
-      trace.push('mutate'); ${failMutation ? 'throw mutationFailure;' : ''} ++value;
+      trace.push('mutate'); if (onMutate) onMutate(); ${failMutation ? 'throw mutationFailure;' : ''} ++value;
     }
     ${defaultExport ? 'export default 7;' : ''}
   `, './dep.mjs');
@@ -264,6 +264,29 @@ for (const source of [publishedCapture,publishedReference]) {
   assert.equal(reader(),42); assert.equal(root.namespace.answer,reader);
   assert.deepEqual(trace,['side','dep','star','mutate','mutate']);
 }
+
+// Retiring strict captured-read source contracts does not erase the reentrant
+// initialization boundary: the common source TDZ must throw before the commit.
+const reentrantCapture = execFileSync(process.argv[2], ['--reentrant-capture'], {encoding:'utf8'});
+const reentrantReference = publishedReference.replace('let captured;', '')
+  .replace('captured = 42;', 'mutate(); let captured = 42;');
+const reentrantOutcomes = [];
+for (const source of [reentrantCapture, reentrantReference]) {
+  let calls = 0, current;
+  const early = [];
+  const {root, trace} = await setup(source, {onMutate() {
+    if (++calls === 2) {
+      try { early.push({value: current.namespace.answer()}); }
+      catch (error) { early.push({error: error.constructor.name}); }
+    }
+  }});
+  current = root;
+  await root.evaluate();
+  assert.deepEqual(early, [{error: 'ReferenceError'}]);
+  assert.equal(root.namespace.answer(), 42);
+  reentrantOutcomes.push({early, trace});
+}
+assert.deepEqual(reentrantOutcomes[0], reentrantOutcomes[1]);
 
 const capturedDefault = execFileSync(process.argv[2], ['--captured-default'], {encoding:'utf8'});
 const defaultReference = reference.replace('export {answer, answer as answerAlias, snapshot};', `

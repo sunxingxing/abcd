@@ -177,14 +177,14 @@ int main() {
     test::Check(built.flow&&built.flow->original);
     test::CheckAllocationActions(tree,*built.flow->original);
     if(slot==0) {
-      syntax.identity.contract=source::SourceContract::kLanguageAndHostV1;
+      syntax.identity.contract=source::SourceContract::kLanguageSourceV5;
       const auto observable=std::get<source::ConstructedFunction>(source::BuildFunctionTree(graph,
           control,evaluation,syntax,resolved_tree.View()));
       test::Check(observable.flow&&observable.flow->original);
       bool unmodeled=false;
       for(const auto& operation:observable.flow->original->operations)
         unmodeled|=operation.completion==source::OriginalCompletionBoundary::kUnmodeled;
-      test::Check(unmodeled);
+      test::Check(!unmodeled);
       test::CheckAllocationActions(observable.tree,*observable.flow->original);
     }
     test::Check(tree.properties.size() == first.count);

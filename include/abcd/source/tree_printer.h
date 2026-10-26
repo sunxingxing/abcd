@@ -22,7 +22,7 @@ enum class FunctionFragment : std::uint8_t { kClassMember, kConditionalExpressio
 enum class GeneratedExtent : std::uint8_t { kSpan, kBoundary };
 struct PrintedFunction {
   struct RealmBinding {
-    RealmBindingPolicy policy;
+    RealmBindingOrigin origin;
     std::u16string name;
   };
   struct SymbolBinding { std::u16string name; };

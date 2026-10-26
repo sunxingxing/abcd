@@ -49,9 +49,6 @@ std::uint64_t Run(abc::ProfileId profile, SourceContract contract, unsigned copi
   }
   ExpressionConstants resolved{constants, syntax.names.size()}; resolved.derived_constructor = &function;
   const auto built = BuildFunctionTree(graph, control, evaluation, syntax, resolved);
-  if (Constructors(contract) == ConstructorSemantics::kPinnedRuntime) {
-    test::Check(std::holds_alternative<FunctionTreeFailure>(built)); return 0;
-  }
   if (const auto* error = std::get_if<FunctionTreeFailure>(&built)) std::cerr << "tree error " << unsigned(error->kind) << '\n';
   test::Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
@@ -76,7 +73,7 @@ std::uint64_t Run(abc::ProfileId profile, SourceContract contract, unsigned copi
 int main() {
   unsigned cases = 0;
   for (auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
-    for (auto contract : {SourceContract::kLanguageConstructorsV1, SourceContract::kLanguageArithmeticConstructorsV1, SourceContract::kLanguageNumericConstructorsV1})
+    for (auto contract : {SourceContract::kLanguageSourceV1, SourceContract::kLanguageSourceV5, kSourceContract})
       for (bool rest : {false, true}) for (bool split : {false, true}) {
         if (!rest) { Run(profile, contract, 201, split, false, true); ++cases; }
         std::uint64_t previous = 0;
@@ -87,6 +84,5 @@ int main() {
           ++cases;
         }
       }
-  for (auto contract : {SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1}) Run(abc::ProfileId::kDynamic1206, contract, 1, true, true);
-  std::cout << cases << " complete decoded language constructors; old contracts refused\n";
+  std::cout << cases << " complete decoded language constructors; retained source identities verified\n";
 }

@@ -5,6 +5,7 @@
 #include "abcd/analysis/isa_catalog.h"
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
+#include "analysis/numeric_proof.h"
 #include "../../src/analysis/phased_value_import.h"
 #include "../../src/source/exception_tree.h"
 #include "../../src/analysis/register_value_rule.h"
@@ -77,7 +78,7 @@ std::uint64_t Phased(const abc::MethodBody& body, const abc::FrameLayout& frame,
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
+  FunctionSyntax syntax{}; syntax.identity.contract = kSourceContract;  // Raw analysis retains its independent modes.
   syntax.identity.profile = profile;
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   for (unsigned i = 0; i < count; ++i) {
@@ -201,10 +202,10 @@ std::uint64_t Run(abc::Opcode binary, abc::ProfileId profile, unsigned count, bo
     return Phased(body, frame, profile, count, print);
   }
   RouteInputIdentity identity; identity.profile = profile;
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
+  identity.contract = kSourceContract;  // Raw analysis retains its independent modes.
   const auto prepared = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
   if (arguments && !GeneralOperands(binary) && operands != OperandInput::kIntegers && !primitive) {
-    test::Check(!std::holds_alternative<FunctionInput>(prepared)); return 0;
+    test::CheckPinnedNumericRefusal(body, profile, frame); return 0;
   }
   if (!std::holds_alternative<FunctionInput>(prepared)) std::cerr << "Input rejected opcode " << encoded << '\n';
   test::Check(std::holds_alternative<FunctionInput>(prepared));
@@ -213,7 +214,7 @@ std::uint64_t Run(abc::Opcode binary, abc::ProfileId profile, unsigned count, bo
   const auto& graph = values.graph;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
+  FunctionSyntax syntax{}; syntax.identity.contract = kSourceContract;  // Raw analysis retains its independent modes.
   syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   std::vector<ExpressionConstant> constants(graph.ops.size());

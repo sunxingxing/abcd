@@ -20,7 +20,7 @@ std::variant<CreationTreeContext, CreationContextFailure> CreationTreeContext::R
     CreationContextMode mode) {
   try {
     Require(abc::HasPinnedRuntimeSemantics(header.profile), Error::kProfile);
-    Require(identity.profile == header.profile && identity.abc_version == header.version &&
+    Require(IsSourceContract(identity.contract) && identity.profile == header.profile && identity.abc_version == header.version &&
         identity.file_size == header.file_size, Error::kProfile);
     if (file.Size() != header.file_size || file.CheckUnchanged())
       return CreationContextFailure{abc::MetadataError::kFileChanged};

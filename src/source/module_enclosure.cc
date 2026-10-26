@@ -72,7 +72,7 @@ std::variant<ModuleEnclosure, ModuleEnclosureError> ModuleEnclosure::Build(
     const auto loading = [&](abc::ModuleRequestId request) {
       budget.Step();Require(request.value<module->requests.size(),Error::kBinding);
       const bool lazy=!module->request_phases.empty()&&module->request_phases[request.value]==abc::ModuleRequestPhase::kLazy;
-      Require(!lazy||LazyImports(identity.contract)==LazyImportSemantics::kArkTsLazyImport,Error::kContract);
+      Require(!lazy||IsSourceContract(identity.contract),Error::kContract);
       Require(!lazy||context.OrdinarySynchronous(file,context.record()),Error::kModuleKind);
       result.has_lazy_ |= lazy;
       return lazy?analysis::ModuleLoading::kLazy:analysis::ModuleLoading::kOrdinary;

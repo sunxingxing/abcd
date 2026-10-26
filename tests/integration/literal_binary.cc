@@ -4,6 +4,7 @@
 #include "../../src/source/instruction_sources.h"
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
+#include "analysis/numeric_proof.h"
 #include "../../src/analysis/value_edits.h"
 #include "../../src/analysis/value_flow.h"
 
@@ -43,10 +44,10 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool print = fals
   const auto body = test::Body(bytes);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(2, 0, {}));
   RouteInputIdentity identity; identity.profile = profile;
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis fixture.
+  identity.contract = kSourceContract;  // Source target; raw runtime facts are checked separately.
   const auto prepared = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
   if (kind == BinaryCase::kUnknownAdd) {
-    test::Check(!std::holds_alternative<FunctionInput>(prepared)); return 0;
+    test::CheckPinnedNumericRefusal(body, profile, frame); return 0;
   }
   const auto& input = std::get<FunctionInput>(prepared);
   const auto values = std::get<FunctionValues>(BuildFunctionValues(input, body, frame));
@@ -74,7 +75,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool print = fals
     test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   }
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageSourceV5;
   syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"Lookup", u"left"}; syntax.texts = {u"suffix"};
@@ -128,7 +129,7 @@ void OrderedRefusals(abc::ProfileId profile) {
     bytes.insert(bytes.end(), {wire(abc::Opcode::kLDA_V8),0,wire(abc::Opcode::kRETURN)});
     const auto body = test::Body(bytes);
     RouteInputIdentity identity; identity.profile = profile;
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis fixture.
+  identity.contract = kSourceContract;  // Source target; raw runtime facts are checked separately.
     const auto prepared = FunctionInput::Build(identity,{300},{100},body,frame,InputCaptureMode::kClosed);
     test::Check(std::holds_alternative<FunctionInput>(prepared));
     const auto& input = std::get<FunctionInput>(prepared);
@@ -182,7 +183,7 @@ std::uint64_t Ordered(abc::ProfileId profile, std::uint32_t count, OrderedLayout
   }
   const auto body = test::Body(bytes);
   RouteInputIdentity identity; identity.profile = profile;
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis fixture.
+  identity.contract = kSourceContract;  // Source target; raw runtime facts are checked separately.
   const auto prepared = FunctionInput::Build(identity,{300},{100},body,frame,InputCaptureMode::kClosed);
   test::Check(std::holds_alternative<FunctionInput>(prepared));
   const auto& input = std::get<FunctionInput>(prepared);
@@ -195,7 +196,7 @@ std::uint64_t Ordered(abc::ProfileId profile, std::uint32_t count, OrderedLayout
     evaluation.literals->objects[0].form == LiteralForm::kExpression);
   test::Check(std::holds_alternative<std::uint64_t>(VerifyEvaluationPlan(graph,evaluation)));
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3; syntax.identity = identity; syntax.method = input.Method();
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageSourceV5; syntax.identity = identity; syntax.method = input.Method();
   syntax.owner = {0}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.parameters.push_back({NameId{0},NameEvidence::kDebugRange}); syntax.names = {u"condition"};
   for (std::uint32_t i = 0; i < count; ++i) {

@@ -38,7 +38,7 @@ class GlobalCheck {
       std::u16string_view name;
       if (realm) {
         if (scope->realm_binding) Step(scope->realm_binding->name.size());
-        const auto binding = ResolveRealmBinding(tree.identity.contract, scope);
+        const auto binding = ResolveRealmBinding(scope);
         Require(binding.has_value(), Error::kMissingContext);
         name = binding->name;
       } else if (symbol) {
@@ -79,7 +79,7 @@ class GlobalCheck {
         case TreeStructureError::kName: case TreeStructureError::kTarget:
         case TreeStructureError::kOrigin: case TreeStructureError::kUnsupportedSyntax:
         case TreeStructureError::kRegExpSyntax: case TreeStructureError::kRegExpUnproven:
-        case TreeStructureError::kRegExpSource:
+        case TreeStructureError::kRegExpSource: case TreeStructureError::kContract:
           throw Error::kStructure;
       }
     }

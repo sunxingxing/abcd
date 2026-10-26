@@ -250,7 +250,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   {
     const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(file, header, index, lookup));
     auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
-    if (child == ChildBody::kSnapshot) identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned ABI oracle.
+    if (child == ChildBody::kSnapshot) identity.contract = SourceContract::kLanguageSourceV5;  // Pinned ABI oracle.
     if (child == ChildBody::kSnapshot) {
       const auto decoded = std::get<abc::MethodBody>(
           abc::DecodeMethodBody(file, header.profile, target_code));
@@ -296,20 +296,14 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
               roles, sites, range.first, identity, destination);
           test::Check(std::holds_alternative<PreparedFamily>(accepted));
           auto historical = identity;
-          historical.contract = SourceContract::kLanguageAndHostV2;
-          const auto denied = PreparedFamily::PrepareCreated(file, header, index, lookup,
-              roles, sites, range.first, historical, destination);
-          test::Check(std::get<FamilyEnclosureFailure>(std::get<FamilyPrepareFailure>(denied).cause).kind ==
-              FamilyEnclosureError::kCallableText);
-          globals.callable_text = CallableTextPolicy::kRecovered;
+          historical.contract = SourceContract::kLanguageSourceV5;
           const auto old_ready = PreparedFamily::PrepareCreated(file, header, index,
               lookup, roles, sites, range.first, historical, destination);
           test::Check(std::holds_alternative<PreparedFamily>(old_ready));
-          globals.callable_text = CallableTextPolicy::kUnspecified;
-          std::ostringstream revoked;
-          test::Check(std::holds_alternative<FamilyPrepareFailure>(
-              std::get<PreparedFamily>(old_ready).PrintDraft(destination, revoked)) &&
-              revoked.str().empty());
+          std::ostringstream retained;
+          test::Check(!std::holds_alternative<FamilyPrepareFailure>(
+              std::get<PreparedFamily>(old_ready).PrintDraft(destination, retained)) &&
+              !retained.str().empty());
         }
         auto complete = PreparedFamily::PrepareCreated(file, header, index, lookup,
             roles, sites, range.first, identity, destination);
@@ -318,7 +312,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
         test::CheckInputActions(ready.Family().members[0].tree,*ready.Family().members[0].flow.original);
         if (context.Callable() == CallableKind::kArrow) {
           const auto& tree = ready.Family().members[0].tree;
-          globals.callable_text = CallableTextPolicy::kUnspecified;
+
           std::ostringstream permitted;
           test::Check(!std::holds_alternative<FamilyPrepareFailure>(ready.PrintDraft(destination, permitted)) &&
               !permitted.str().empty());
@@ -363,7 +357,7 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
         test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(
             graph, control, plan, ready.Family().members[0].tree, {constants})));
         auto malformed = ready.Family().members[0].tree;
-        malformed.identity.contract = SourceContract::kLanguageAndHostV1;
+        malformed.identity.contract = static_cast<SourceContract>(0);
         test::Check(std::holds_alternative<TreeStructureError>(VerifyTreeStructure(malformed)));
         if (parameters > 1) {
           malformed = ready.Family().members[0].tree;

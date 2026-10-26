@@ -26,7 +26,7 @@ ClassTreeContext::ResolveConstructor(
       budget.work -= count;
     };
     admit(1, sizeof(ClassTreeContext));
-    if (identity.profile != header.profile || identity.file_size != header.file_size ||
+    if (!IsSourceContract(identity.contract) || identity.profile != header.profile || identity.file_size != header.file_size ||
         identity.abc_version != header.version) return fail(Error::kProfile);
     if (file.Size() != header.file_size || file.CheckUnchanged()) return ClassContextFailure{abc::MetadataError::kFileChanged};
     if (!abc::HasPinnedRuntimeSemantics(header.profile)) return fail(Error::kProfile);

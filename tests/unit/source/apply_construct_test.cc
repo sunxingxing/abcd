@@ -169,7 +169,7 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 5, {true, true, true, true}));
   const ClassFile class_file(encoded, profile, arguments, phased ? &body : nullptr);
   auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(class_file.file->Fingerprint()), class_file.header);
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned frame/constructor proof.
+  identity.contract = SourceContract::kLanguageSourceV5;  // Pinned frame/constructor proof.
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(class_file.index.methods));
   const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(*class_file.file, class_file.header, class_file.index, lookup));
   const auto functions = std::get<FunctionCreationSites>(FunctionCreationSites::Build(*class_file.file, class_file.header, class_file.index, lookup));
@@ -263,7 +263,7 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
     stripped.exceptional = ExceptionalCompletion::kImpossible; test::Check(!CanErasePureOp(stripped));
   }
   test::Check(calls.size() == count);
-  const auto scheduled = phased ? BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {SourceContract::kLanguageAndHostV3}) : BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {}, {}, {}, nullptr, {}, {SourceContract::kLanguageAndHostV3});
+  const auto scheduled = phased ? BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {SourceContract::kLanguageSourceV5}) : BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {}, {}, {}, nullptr, {}, {SourceContract::kLanguageSourceV5});
   test::Check(std::holds_alternative<EvaluationPlan>(scheduled));
   const auto evaluation = std::get<EvaluationPlan>(scheduled);
   const auto planned = phased ? BuildPhasedCallPlan(graph, evaluation) : BuildCallPlan(graph, evaluation);
@@ -351,7 +351,7 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
     for (auto& node : wrong.expressions) if (auto* construct = std::get_if<ConstructExpr>(&node.expression))
       construct->arguments = ArgumentRange{0, 0};
     test::Check(std::holds_alternative<TreeSemanticError>(verify(wrong)));
-    wrong = tree; wrong.identity.contract = SourceContract::kLanguageAndHostV1;
+    wrong = tree; wrong.identity.contract = SourceContract::kLanguageSourceV4;
     test::Check(std::holds_alternative<TreeSemanticError>(verify(wrong)));
     if (arguments >= 2 && form != Form::kEmpty) {
       wrong = tree; std::swap(wrong.properties[0].value, wrong.properties[1].value);

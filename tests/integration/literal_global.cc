@@ -38,7 +38,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool buffered = f
   const auto body = Body(count, buffered, direct);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(2, 0, {}));
   RouteInputIdentity identity; identity.profile = profile;
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis fixture.
+  identity.contract = kSourceContract;  // Source target; raw runtime facts are checked separately.
   const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {300}, {100}, body, frame,
       InputCaptureMode::kClosed));
   const auto values = std::get<FunctionValues>(BuildFunctionValues(input, body, frame));
@@ -74,7 +74,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool buffered = f
     test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   }
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageSourceV5;
   syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"Lookup", u"value"};

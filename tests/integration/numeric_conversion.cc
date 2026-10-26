@@ -64,7 +64,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print = false, bo
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExpressionConstants resolved{constants, syntax.names.size()};
   if (count == 1) {
-    auto strict_contract = syntax; strict_contract.identity.contract = SourceContract::kLanguageAndHostV1;
+    auto strict_contract = syntax; strict_contract.identity.contract = static_cast<SourceContract>(0);
     test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, strict_contract, resolved)));
   }
   const auto built = BuildFunctionTree(graph, control, evaluation, std::move(syntax), resolved);
@@ -73,7 +73,7 @@ std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print = false, bo
   test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
   test::Check(std::holds_alternative<InstructionSources>(BuildInstructionSources(input, graph, tree)));
   if (count == 1) {
-    auto strict_contract = tree; strict_contract.identity.contract = SourceContract::kLanguageAndHostV1;
+    auto strict_contract = tree; strict_contract.identity.contract = static_cast<SourceContract>(0);
     test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, strict_contract, resolved)));
     bool checked = false;
     for (std::size_t i = 0; i < tree.expressions.size(); ++i) {

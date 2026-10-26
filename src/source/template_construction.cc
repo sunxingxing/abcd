@@ -101,8 +101,7 @@ class Derive {
     }
     if (!count) return {};
     RequireTree(
-        TaggedTemplates(contract) &&
-            ResourceFailures(contract) == ResourceFailureScope::kExcluded,
+        TaggedTemplates(contract),
         kProof);
     RequireTree(aliases.empty() || aliases.size() == g.values.size(), kProof);
     TemplateConstructions p;

@@ -886,7 +886,6 @@ class OperandCheck {
           }
         } else if constexpr (std::is_same_v<T, analysis::ValueSuperSpread>) {
           RequireMeaning(tree_.callable == CallableKind::kDerivedConstructor &&
-              Constructors(tree_.identity.contract) == ConstructorSemantics::kSourceLanguage &&
               op.use_count == 2 && op.result, Error::kOperand);
           const auto& call = Node<SuperCallExpr>(expression);
           RequireMeaning(call.source == analysis::SuperArgumentSource::kExplicit, Error::kOperand);
@@ -908,8 +907,7 @@ class OperandCheck {
         } else if constexpr (std::is_same_v<T, analysis::ValueConstructApply>) {
           original_.operations[i].intrinsic_expression=expression;
           const auto& construct = Node<ConstructExpr>(expression);
-          RequireMeaning(op.use_count == 2 &&
-              ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kOperand);
+          RequireMeaning(op.use_count == 2, Error::kOperand);
           const auto callee = ResolveEvaluationOperand(evaluation_, input(0));
           const auto* callee_value = std::get_if<analysis::ValueId>(&callee);
           RequireMeaning(callee_value && callee_value->value < graph_.values.size(), Error::kOperand);
@@ -975,11 +973,8 @@ class OperandCheck {
           // initialization completes. Buffered materialization has no user
           // callbacks; folded overwrites keep their own property actions. This
           // correspondence owns fresh identity, not an intermediate heap image.
-          // Observable resource failures still need a buffer-materialization
-          // boundary; absence withdraws proof without rejecting source recovery.
           original_.operations[i].intrinsic_expression=expression;
-          original_.operations[i].completion=operation.literal&&ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kObservable?
-              OriginalCompletionBoundary::kUnmodeled:OriginalCompletionBoundary::kIntrinsicAction;
+          original_.operations[i].completion=OriginalCompletionBoundary::kIntrinsicAction;
           if (operation.literal) {
             const auto& object = Node<ObjectExpr>(expression);
             RequireMeaning(object.kind == kind, Error::kOperator);
@@ -1569,7 +1564,7 @@ class OperandCheck {
     switch (operation) {
       case U::kTemplateObject: throw Error::kUnsupportedOperation;
       case U::kLegacyNegate:
-        RequireMeaning(LegacyNegationEvaluation(graph_, operand, Arithmetic(tree_.identity.contract)), Error::kOperator);
+        RequireMeaning(LegacyNegationEvaluation(graph_, operand, kSourceArithmetic), Error::kOperator);
         Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return expression;
       case U::kNegate: Input(operand, UnaryInput(expression, TreeUnary::kNegate), occurrence); return expression;
       case U::kBitNot: IntegerInput(operand, UnaryInput(expression, TreeUnary::kBitNot), occurrence); return expression;
@@ -1592,7 +1587,7 @@ class OperandCheck {
           original_.operations[current_.value].number_identity=OriginalNumberIdentity{occurrence,expression};
           return {};
         }
-        RequireMeaning(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kOperator);
+
         [[fallthrough]];
       case U::kIncrement: case U::kDecrement: {
         const auto& sequence = Node<SequenceExpr>(expression); LeafOrigin(expression);

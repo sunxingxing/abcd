@@ -534,14 +534,7 @@ class TreePrinter {
         });
       }
     }
-    // Extra allocation is conditional on the final syntax, not merely metadata
-    // carrying a runtime name. Fail preflight while the output is still empty.
-    for (std::size_t i = 0; i < family_->members.size(); ++i) {
-      current_ = i; Step();
-      if (Tree().inferred_name && !NativeName() && (!Tree().self || Tree().self_form == SelfForm::kCreationBinding) &&
-          ResourceFailures(Tree().identity.contract) != ResourceFailureScope::kExcluded)
-        throw Error::kUnsupportedContext;
-    }
+
   }
   bool ProgramBody() const { return module_body_ && (!family_ || current_ == family_->root.value); }
   void CheckDefaultExport() {
@@ -632,10 +625,10 @@ class TreePrinter {
     has_external_binding_ = true;
     if (Result().realm_binding) return;
     if (scope_ && scope_->realm_binding) Step(scope_->realm_binding->name.size());
-    const auto binding = ResolveRealmBinding(Tree().identity.contract, scope_);
+    const auto binding = ResolveRealmBinding(scope_);
     if (!binding) throw Error::kUnsupportedContext;
     Step(binding->name.size()); Admit(binding->name.size(), sizeof(char16_t));
-    Result().realm_binding = PrintedFunction::RealmBinding{binding->policy, std::u16string{binding->name}};
+    Result().realm_binding = PrintedFunction::RealmBinding{binding->origin, std::u16string{binding->name}};
     Admit(Result().realm_binding->name.capacity() - binding->name.size(), sizeof(char16_t));
   }
   void RecordSymbol() {
@@ -833,8 +826,7 @@ class TreePrinter {
       // original AST bits for origin checks; only this textual boundary uses
       // native NaN. Private-tag encodings never acquire a Number premise.
       if (value.bits != std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN()) &&
-          !(Arithmetic(Tree().identity.contract) == analysis::ArithmeticSemantics::kSourceNumeric &&
-            analysis::detail::FloatNumberKinds({value.bits}).IsNumber()))
+          !(analysis::detail::FloatNumberKinds({value.bits}).IsNumber()))
         throw Error::kInvalidLiteral;
       Append("(0 / 0)");
     } else if (std::isinf(number)) {
@@ -2666,7 +2658,7 @@ std::variant<PrintedClassTree, TreePrintFailure, FamilyPrepareFailure> PrintClas
     const auto readiness_work = tree.members.size() + tree.omissions.size() + tree.definitions.size();
     if (readiness_work > budget.work) {PrintCharge(TreePrintBudgetKind::kWork,readiness_work,budget.work,initial.work);return trace.Capture(Failure::kWorkLimit);}
     budget.work -= readiness_work;
-    if (!tree.DraftPrepared() || ResourceFailures(tree.identity.contract) != ResourceFailureScope::kExcluded ||
+    if (!tree.DraftPrepared() ||
         tree.constructor->Identity() != tree.identity ||
         tree.constructor->Family().members[tree.constructor->Family().root.value].tree.method != tree.creation.target)
       return Failure::kUnsupportedContext;

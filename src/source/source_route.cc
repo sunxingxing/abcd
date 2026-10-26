@@ -37,14 +37,6 @@ constexpr std::array kProfiles{
     abc::ProfileId::kDynamic1102, abc::ProfileId::kDynamic1202,
     abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301,
     abc::ProfileId::kDynamic2400, abc::ProfileId::kStatic0107};
-// Derived from the single serialization map, indexed by the dense enum, so
-// every contract that can be written can also be read back.
-constexpr std::size_t kContractCount = static_cast<std::size_t>(SourceContract::kLanguageSourceV10) + 1;
-constexpr auto kContractNames = [] {
-  std::array<std::string_view, kContractCount> names{};
-  for (std::size_t i = 0; i < kContractCount; ++i) names[i] = SourceContractName(static_cast<SourceContract>(i));
-  return names;
-}();
 constexpr std::string_view kRouteNames[]{"value_tree"};
 constexpr std::string_view kStageNames[]{
     "decoded", "input_verified", "values_imported", "values_verified",
@@ -76,12 +68,6 @@ std::optional<UInt> ParseUnsigned(const Json& value) {
 template <typename Enum, std::size_t kCount>
 std::optional<Enum> ParseLabel(std::string_view label,
                                const std::string_view (&names)[kCount]) {
-  for (std::size_t i = 0; i < kCount; ++i)
-    if (names[i] == label) return static_cast<Enum>(i);
-  return {};
-}
-template <typename Enum, std::size_t kCount>
-std::optional<Enum> ParseLabel(std::string_view label, const std::array<std::string_view, kCount>& names) {
   for (std::size_t i = 0; i < kCount; ++i)
     if (names[i] == label) return static_cast<Enum>(i);
   return {};
@@ -135,21 +121,7 @@ std::optional<RouteReceiptError> ValidateRouteReceipt(
       std::find(kProfiles.begin(), kProfiles.end(), identity.profile) ==
           kProfiles.end() ||
       identity.abc_version == abc::AbcVersion{} ||
-      (identity.contract != SourceContract::kLanguageAndHostV1 &&
-       identity.contract != SourceContract::kLanguageAndHostV2 &&
-       identity.contract != SourceContract::kLanguageAndHostV3 &&
-       identity.contract != SourceContract::kLanguageArithmeticV1 &&
-       identity.contract != SourceContract::kLanguageNumericV1 &&
-       identity.contract != SourceContract::kLanguageConstructorsV1 &&
-       identity.contract != SourceContract::kLanguageArithmeticConstructorsV1 &&
-       identity.contract != SourceContract::kLanguageNumericConstructorsV1 &&
-       identity.contract != SourceContract::kLanguageSourceV1 &&
-       identity.contract != SourceContract::kLanguageSourceV2 &&
-       identity.contract != SourceContract::kLanguageSourceV3 &&
-       identity.contract != SourceContract::kLanguageSourceV4 &&
-       identity.contract != SourceContract::kLanguageSourceV5 &&
-       identity.contract != SourceContract::kLanguageSourceV6 &&
-       identity.contract != SourceContract::kLanguageSourceV7 && identity.contract != SourceContract::kLanguageSourceV8 && identity.contract != SourceContract::kLanguageSourceV9 && identity.contract != SourceContract::kLanguageSourceV10))
+      !IsSourceContract(identity.contract))
     return RouteReceiptError::kIdentity;
   const auto valid_entity = [&](const auto& entity) {
     return !entity || (entity->value >= abc::kDynamicHeaderSize &&
@@ -383,8 +355,7 @@ std::variant<MethodRouteReceipt, RouteReceiptError> ParseRouteReceipt(
   const auto contract = identity->find("source_contract");
   if (contract == identity->end() || !contract->is_string())
     return RouteReceiptError::kIdentity;
-  if (const auto value = ParseLabel<SourceContract>(
-          contract->get<std::string>(), kContractNames))
+  if (const auto value = ParseSourceContract(contract->get<std::string>()))
     receipt.identity.contract = *value;
   else
     return RouteReceiptError::kIdentity;

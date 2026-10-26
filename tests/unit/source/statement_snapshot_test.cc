@@ -14,7 +14,6 @@ enum class Form { kReturn, kIf, kLoop, kMultiple, kEffect, kArgument, kLocal, kB
 struct Fixture {
   FunctionTree tree{};
   Fixture(Form form) {
-    if(form==Form::kResourceEnvironment||form==Form::kComposedEnvironment)tree.identity.contract=SourceContract::kLanguageAndHostV1;
     tree.callable=form==Form::kAwait?CallableKind::kAsyncFunction:form==Form::kYield?CallableKind::kGenerator:CallableKind::kFunction;
     tree.strictness=Strictness::kStrict;tree.parameter_scope={0};tree.body_scope={1};tree.body={0};
     tree.scopes={{ScopeKind::kParameters,{}},{ScopeKind::kFunctionBody,ScopeId{0}}};
@@ -248,10 +247,10 @@ std::uint64_t Check(Form form,unsigned count,bool reverse,bool emit) {
 
   // Propagating the observed prefix's immutable value enables a later motion
   // round. Its report remains before the producer; JS verifies both traces.
-  const bool folded=form==Form::kObservedPrefix||form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kCatchReads||form==Form::kObservedInitialRead||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kRequiredPrefix||form==Form::kUnrelatedBinding||form==Form::kFreeNameUnrelated||form==Form::kFreeGetter||form==Form::kThisUnrelated||form==Form::kThisInputShadow||form==Form::kThisValue||form==Form::kNestedReturn||form==Form::kReturnPrefix||form==Form::kTwoSnapshots||form==Form::kPrefixUnrelated||form==Form::kNestedInitializer;
+  const bool folded=form==Form::kObservedPrefix||form==Form::kReturn||form==Form::kIf||form==Form::kLoop||form==Form::kAwait||form==Form::kYield||form==Form::kTypeof||form==Form::kAlias||form==Form::kCatch||form==Form::kCatchReads||form==Form::kObservedInitialRead||form==Form::kInterleavedAlias||form==Form::kDeadInitialRead||form==Form::kDiscardedOperand||form==Form::kTransparentControl||form==Form::kOnceLoop||form==Form::kRedundantWrites||form==Form::kDeadPrefix||form==Form::kEffectPrefix||form==Form::kProjectedPrefix||form==Form::kProjectedSuffix||form==Form::kRequiredPrefix||form==Form::kUnrelatedBinding||form==Form::kFreeNameUnrelated||form==Form::kFreeGetter||form==Form::kThisUnrelated||form==Form::kThisInputShadow||form==Form::kThisValue||form==Form::kNestedReturn||form==Form::kReturnPrefix||form==Form::kTwoSnapshots||form==Form::kPrefixUnrelated||form==Form::kNestedInitializer||form==Form::kResourceEnvironment||form==Form::kComposedEnvironment;
   if(plan.replacements[read.value].has_value()!=folded)std::cerr<<"form="<<static_cast<unsigned>(form)<<" count="<<count<<" reverse="<<reverse<<'\n';
   test::Check(plan.replacements[read.value].has_value()==folded);
-  if(second_read)test::Check(plan.replacements[second_read->value].has_value()==(form==Form::kTwoSnapshots||form==Form::kIndependentDestination));
+  if(second_read)test::Check(plan.replacements[second_read->value].has_value()==(form==Form::kTwoSnapshots||form==Form::kIndependentDestination||form==Form::kComposedEnvironment));
   if(second_declaration) {
     const auto placed=reverse?StmtId{static_cast<std::uint32_t>(tree.statements.size()-1-store.value)}:store;
     const auto original=reverse?StmtId{static_cast<std::uint32_t>(tree.statements.size()-1-second_declaration->value)}:*second_declaration;

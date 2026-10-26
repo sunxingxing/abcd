@@ -229,7 +229,7 @@ struct Check {
                  NormalValueEvaluation(
                      tree.expressions[expr->value].expression,
                      flow.normal_kinds,
-                     ResourceFailures(tree.identity.contract)) ==
+                     kSourceResourceFailures) ==
                      ExpressionEvaluation::kInert);
             port.exception_kind = ParameterExceptionPort::kDomainImpossible;
           }

@@ -174,7 +174,7 @@ void PropertyState(bool emit,bool computed,bool read,bool reverse) {
     std::vector<analysis::ValueKinds> domains(f.tree.expressions.size(),analysis::ValueKinds::Language());domains[key.value]=domain;
     auto projected=projection;projected.normal_kinds=domains;
     const auto known=std::get<RecoveryFlow>(BuildRecoveryFlow(f.tree,projected));
-    const bool required=!domain.IsString()&&(ResourceFailures(f.tree.identity.contract)==ResourceFailureScope::kObservable||!CoercionPrimitive(domain));
+    const bool required=!domain.IsString()&&(kSourceResourceFailures==ResourceFailureScope::kObservable||!CoercionPrimitive(domain));
     Check((known.events[known.properties[0].key_conversion.value].effect==ExpressionEvaluation::kRequired)==required);
     Check(isThrow(known)==required);
   }

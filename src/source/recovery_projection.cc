@@ -156,7 +156,7 @@ RecoveryExpressions AnalyzeRecoveryExpressions(const FunctionTree& tree,
       continue;
     }
     const auto equation=ProjectedRecoveryEquation(input,id);
-    auto evaluation = NormalValueEvaluation(node,facts.kinds,ResourceFailures(tree.identity.contract));
+    auto evaluation = NormalValueEvaluation(node,facts.kinds,kSourceResourceFailures);
     if (const auto* object=std::get_if<ObjectExpr>(&node)) {
       // Spread copying owns callbacks even when its result is discarded and
       // the source expression is an inert binding read. Count each owned

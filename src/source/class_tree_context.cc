@@ -37,7 +37,7 @@ std::variant<ClassTreeContext, ClassContextFailure> ClassTreeContext::Resolve(
     };
     step();
     Require(abc::HasPinnedRuntimeSemantics(header.profile), Error::kProfile);
-    Require(identity.profile == header.profile && identity.file_size == header.file_size &&
+    Require(IsSourceContract(identity.contract) && identity.profile == header.profile && identity.file_size == header.file_size &&
             identity.abc_version == header.version, Error::kProfile);
     if (file.Size() != header.file_size || file.CheckUnchanged())
       return ClassContextFailure{abc::MetadataError::kFileChanged};

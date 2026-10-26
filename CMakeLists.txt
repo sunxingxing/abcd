@@ -1513,6 +1513,8 @@ if(BUILD_TESTING)
   add_executable(legacy_negation_test tests/integration/legacy_negation.cc)
   target_include_directories(legacy_negation_test PRIVATE tests/support)
   target_link_libraries(legacy_negation_test PRIVATE abcd_source)
+  # Its Node oracle also executes the newly complete partial-source fixtures.
+  add_dependencies(legacy_negation_test partial_build_test partial_file_test)
   add_test(NAME legacy_negation_test COMMAND legacy_negation_test)
   add_executable(additive_value_test tests/unit/analysis/additive_value_test.cc)
   target_include_directories(additive_value_test PRIVATE tests/support)
@@ -2716,7 +2718,8 @@ if(BUILD_TESTING)
     add_test(NAME number_conversion_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/number_conversion.mjs $<TARGET_FILE:number_conversion_test>)
     add_test(NAME legacy_negation_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
-      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/legacy_negation.mjs $<TARGET_FILE:legacy_negation_test>)
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/legacy_negation.mjs $<TARGET_FILE:legacy_negation_test>
+      $<TARGET_FILE:partial_build_test> $<TARGET_FILE:partial_file_test>)
     add_test(NAME additive_expression_source_test COMMAND ${ABCD_NODE_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/additive_expression.mjs
       $<TARGET_FILE:additive_expression_test> $<TARGET_FILE:additive_value_test>)

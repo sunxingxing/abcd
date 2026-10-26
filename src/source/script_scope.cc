@@ -123,7 +123,6 @@ ScriptScope Derive(const analysis::ValueProgram& graph,
           effects == 0 &&
           op.exceptional == analysis::ExceptionalCompletion::kImpossible;
       const bool private_allocation =
-          ResourceFailures(contract) == ResourceFailureScope::kExcluded &&
           (effects & ~allocation) == 0 &&
           (op.exceptional == analysis::ExceptionalCompletion::kImpossible ||
            op.exception_cause == analysis::ExceptionCause::kResourceExhaustion);

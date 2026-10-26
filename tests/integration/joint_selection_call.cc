@@ -87,7 +87,7 @@ std::uint64_t Run(unsigned arguments, unsigned copies, abc::ProfileId profile, F
   const auto env = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
   IdfQuota value_work{kDefaultSemanticWork};
   const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries,
-      value_work, {}, PendingExceptionValues::kLanguage, modules.loads, {}, NormalCallResults(kSourceContract)));
+      value_work, {}, PendingExceptionValues::kLanguage, modules.loads, {}, kSourceCallResults));
   const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, env, values));
   const PhasedValueInput input{flow, ssa, env, values, proof, frame};
   const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));

@@ -56,9 +56,6 @@ struct GlobalScope {
   std::span<const std::string_view> import_names{};
   const HostSymbolBinding* symbol_binding = nullptr;
   const HostArgumentSnapshotBinding* argument_snapshot_binding = nullptr;
-  // Additional explicit output premise for historical contracts. V3 itself
-  // permits recovered text; this is never an ABC-derived behavioral proof.
-  CallableTextPolicy callable_text = CallableTextPolicy::kUnspecified;
   // Exact native ESM prelude for this destination. Borrowed names alone cannot
   // certify module owner/slot correspondence. Rechecked at tree publication.
   const ModuleEnclosure* module_enclosure = nullptr;
@@ -78,13 +75,13 @@ struct GlobalScope {
 };
 
 struct RealmBindingView {
-  RealmBindingPolicy policy;
+  RealmBindingOrigin origin;
   std::u16string_view name;
 };
 // Syntax/contract selection only. Callers must separately check actual lexical
 // ancestry and the complete destination; this does not prove non-shadowing.
 [[nodiscard]] std::optional<RealmBindingView> ResolveRealmBinding(
-    SourceContract contract, const GlobalScope* scope);
+    const GlobalScope* scope);
 [[nodiscard]] std::optional<std::u16string_view> ResolveSymbolBinding(const GlobalScope* scope);
 [[nodiscard]] std::optional<std::u16string_view> ResolveArgumentSnapshotBinding(const GlobalScope* scope);
 

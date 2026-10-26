@@ -85,10 +85,10 @@ int main(int argc,char**argv) {
     std::vector<ExceptionLoadFact> loads=locals.loads;
     loads.insert(loads.end(),captures.loads.begin(),captures.loads.end());
     loads.insert(loads.end(),modules.loads.begin(),modules.loads.end());
-    auto values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,Arithmetic(SourceContract::kLanguageSourceV4)),"values");
+    auto values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,kSourceArithmetic),"values");
     auto checked=VerifyExceptionInputs(flow,ssa,env,values,kDefaultSemanticWork,nullptr,ExceptionInputDomain::kHoleTransport);
     if(const auto* failed=std::get_if<ExceptionInputFailure>(&checked);failed && failed->kind==ExceptionInputError::kInternalValue) {
-      values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,Arithmetic(SourceContract::kLanguageSourceV4),ExceptionThrowRefinement::kGuardedNonHole),"refined-values");
+      values=Take<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entry,quota,{},PendingExceptionValues::kLanguage,loads, {},CallResultValues::kLanguage,FrameReceiver::kUnknown,kSourceArithmetic,ExceptionThrowRefinement::kGuardedNonHole),"refined-values");
       checked=VerifyExceptionInputs(flow,ssa,env,values,kDefaultSemanticWork,nullptr,ExceptionInputDomain::kHoleTransport);
     }
     if(const auto* f=std::get_if<ExceptionInputFailure>(&checked)) {

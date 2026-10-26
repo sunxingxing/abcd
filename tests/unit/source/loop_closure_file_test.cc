@@ -1220,7 +1220,7 @@ std::string Emit(abc::ProfileId profile, ParentShape shape, ChildShape child_sha
       std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   auto identity = source::MakeRouteInputIdentity(
       std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
-  if (child_shape == ChildShape::kAwaitArguments) identity.contract = source::SourceContract::kLanguageAndHostV3;  // Pinned ABI oracle.
+  if (child_shape == ChildShape::kAwaitArguments) identity.contract = source::SourceContract::kLanguageSourceV5;  // Pinned ABI oracle.
   if (child_shape == ChildShape::kAwaitArguments || verify_preservation) {
     using namespace source;
     auto roles = std::get<analysis::MethodRoleIndex>(analysis::MethodRoleIndex::Build(file, header, index, lookup));

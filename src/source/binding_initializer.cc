@@ -887,12 +887,6 @@ class Initializers {
       const auto old_owner=ReferenceOwner(*stores[i]),new_owner=ReferenceOwner(*reads[i]);
       if(!old_owner || !new_owner)continue;
       const auto rhs=*definition.value;
-      // Native naming follows the projected destination. Moving a direct
-      // creation can require a computed-name wrapper; retain strict resource
-      // contracts until no additional allocation is proved for that destination.
-      if (ResourceFailures(tree_.identity.contract) != ResourceFailureScope::kExcluded &&
-          (std::holds_alternative<FunctionExpr>(tree_.expressions[rhs.value].expression) ||
-           std::holds_alternative<ClassExpr>(tree_.expressions[rhs.value].expression))) continue;
       source_owners[count]=*old_owner;
       proposed[count++]={SymbolId{static_cast<std::uint32_t>(i)},*uses_[i].declaration,read,rhs,definition.write,statement,
           flow.bindings[i].declaration};
@@ -954,8 +948,7 @@ class Initializers {
         if(!owner||!statement_owners_[owner->value]){retain(*root);continue;}
         const auto environment=statement_owners_[owner->value];
         if(environments[source_owners[i].value]!=environments[environment->value]&&
-            (ResourceFailures(tree_.identity.contract)==ResourceFailureScope::kObservable||
-             trial.expressions.lexical[action.value.value]==LexicalDependency::kEnclosingEnvironment))retain(*root);
+            trial.expressions.lexical[action.value.value]==LexicalDependency::kEnclosingEnvironment)retain(*root);
       }
       demands.resize(demand_count);
       auto analyzed=PlanSnapshotRetention(flow,projected,proposed,demands,budget_.Remaining());
@@ -1195,10 +1188,8 @@ class Initializers {
   }
   void ElideDeadDefinitions() {
     // Source naming recovery preserves NamedEvaluation after an assignment is
-    // projected to its RHS, but can require a naming envelope. Its allocation
-    // equivalence is not proved under the legacy resource-observable contract.
-    // Retain that contract's representation without inspecting producer shapes.
-    if (ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded) return;
+    // projected to its RHS, but can require a naming envelope. Source resource
+    // failures are excluded; identity, naming and reference proofs still apply.
     if(!HasPrivateBindings())return;
     const auto& flow=CurrentFlow();
     const auto& demand=CurrentDemand();
@@ -1235,7 +1226,7 @@ class Initializers {
     Edit<RecoveryField::kDeclarationCompletions>(statement,completion);
   }
   void ElideInitialValues() {
-    if(ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded || !HasPrivateBindings())return;
+    if(!HasPrivateBindings())return;
     auto proposed=FindDeadInitialValues(CurrentFlow(),CurrentDemand(),budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&proposed))throw *error;
     const auto& delta=std::get<InitialValueElisions>(proposed);
@@ -1250,7 +1241,7 @@ class Initializers {
   }
   void ElideUnusedBindings() {
     // The same naming/resource contract as dead-value projection applies.
-    if(ResourceFailures(tree_.identity.contract)!=ResourceFailureScope::kExcluded || !HasPrivateBindings())return;
+    if(!HasPrivateBindings())return;
     const auto& flow=CurrentFlow();
     auto proposed=FindUnusedBindings(flow,CurrentDemand(),budget_.Remaining());
     if(const auto* error=std::get_if<TreeStructureError>(&proposed))throw *error;
@@ -1274,8 +1265,7 @@ class Initializers {
     const auto eligible = [&](SymbolId symbol) {
       const auto& use = uses_[symbol.value];
       return use.private_storage && !use.required_snapshot && use.declaration && MutableBinding(symbol) && !use.escaped && !use.outside_body &&
-          !plan_.aliases[symbol.value] && !plan_.literals[symbol.value] &&
-          (ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded || !use.named_creation);
+          !plan_.aliases[symbol.value] && !plan_.literals[symbol.value];
     };
     bool candidate = false;
     for (const auto& expression : tree_.expressions) {

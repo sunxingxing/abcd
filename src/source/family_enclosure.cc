@@ -100,9 +100,6 @@ class EnclosureCheck {
     for (std::size_t i = 0; i < count; ++i) {
       member_ = FamilyId{static_cast<std::uint32_t>(i)};
       const auto& tree = family_.members[i].tree;
-      if (extent_ == EnclosureExtent::kDestination && tree.invocation == InvocationForm::kArrowMethod)
-        Require(CallableText(tree.identity.contract) == CallableTextPolicy::kRecovered ||
-            (scope_ && scope_->callable_text == CallableTextPolicy::kRecovered), Error::kCallableText);
       std::optional<std::size_t> enclosing;
       if (i == family_.root.value) Require(!family_.parents[i], Error::kLayout);
       else {
@@ -171,7 +168,7 @@ class EnclosureCheck {
           // Publication must resolve it and repeat the full ancestry check.
           if (extent_ == EnclosureExtent::kDestination) {
             if (scope_ && scope_->realm_binding) Step(scope_->realm_binding->name.size());
-            const auto binding = ResolveRealmBinding(tree.identity.contract, scope_);
+            const auto binding = ResolveRealmBinding(scope_);
             Require(binding.has_value(), Error::kMissingContext);
             Destination(binding->name, BindingTarget::kRealm);
             Require(!Shadows(bindings_, binding->name, point), Error::kShadowedGlobal);

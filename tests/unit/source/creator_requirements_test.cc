@@ -107,7 +107,7 @@ void Run(const std::filesystem::path& path,std::size_t count,SourceContract cont
 }
 int main(int argc,char**argv){
   Check(argc==2);const std::filesystem::path root(argv[1]);
-  for(auto contract:{SourceContract::kLanguageNumericConstructorsV1,SourceContract::kLanguageSourceV2}) {
+  for(auto contract:{SourceContract::kLanguageSourceV5,SourceContract::kLanguageSourceV2}) {
     Run(root/"forward.abc",1,contract);
     for(auto n:{200,201,400,800}) {
       Run(root/("forwardwidth"+std::to_string(n)+".abc"),n,contract);

@@ -167,7 +167,7 @@ void FilePreparation(const char* path) {
   const auto functions=Take<FunctionCreationSites>(FunctionCreationSites::Build(*file,header,index,lookup));
   const auto classes=Take<ClassMethodSites>(ClassMethodSites::Build(*file,header,index,lookup));
   auto identity=MakeRouteInputIdentity(hash,header);
-  identity.contract=SourceContract::kLanguageNumericConstructorsV1;
+  identity.contract=SourceContract::kLanguageSourceV5;
   std::optional<abc::MethodPosition> entry;
   for(std::size_t i=0;i<index.methods.size();++i)
     if(index.methods[i].name=="func_main_0") entry=abc::MethodPosition{static_cast<std::uint32_t>(i)};

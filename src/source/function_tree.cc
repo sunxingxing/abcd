@@ -217,7 +217,7 @@ class TreeBuilder {
         static_cast<std::uint32_t>(syntax_.parameters.size()), syntax_.owner,
         constants_, {bytes_, work_}, modules,
         (incoming_ && !incoming_->cells.targets.empty()) || exceptions_ || !syntax_.captures.empty()
-            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_, syntax_.callable, Arithmetic(syntax_.identity.contract), Constructors(syntax_.identity.contract), syntax_.parameter_form, enumeration_ ? &*enumeration_ : nullptr, exceptions_ && exceptions_->for_of?&*exceptions_->for_of:nullptr, iteration_?&*iteration_:nullptr);
+            ? RecoveryMode::kCompleteOnly : recovery_, syntax_.names, logicals_, branch_polarity_, syntax_.callable, kSourceArithmetic, syntax_.parameter_form, enumeration_ ? &*enumeration_ : nullptr, exceptions_ && exceptions_->for_of?&*exceptions_->for_of:nullptr, iteration_?&*iteration_:nullptr);
     if (const auto* error = std::get_if<ExpressionFailure>(&expressions)) {
       if (*error == ExpressionError::kResourceLimit) throw Error::kResourceLimit;
       if (*error == ExpressionError::kWorkLimit) throw Error::kWorkLimit;
@@ -894,8 +894,6 @@ class TreeBuilder {
       Require((AllowsNamedSelf(tree_.callable) || IsArrowCallable(tree_.callable)) && tree_.inferred_name &&
           tree_.inferred_name->value < tree_.names.size(), Error::kBinding);
       if (!CanNameSelf(*tree_.inferred_name)) tree_.self_form = SelfForm::kCreationBinding;
-      if (tree_.self_form == SelfForm::kCreationBinding)
-        Require(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
       tree_.self = forest_.bindings.self;
       self_scope = ScopeId{static_cast<std::uint32_t>(tree_.scopes.size())};
       tree_.scopes.push_back({ScopeKind::kFunctionSelf, tree_.scopes[kParameterScope.value].parent});
@@ -1039,8 +1037,6 @@ class TreeBuilder {
         Require(update->producer.value < graph_.ops.size(), Error::kBinding);
         const auto* unary = std::get_if<analysis::ValueUnary>(&graph_.ops[update->producer.value].operation);
         Require(unary, Error::kBinding);
-        if (unary->op == analysis::UnaryOperator::kToNumeric)
-          Require(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
         reason = TemporaryReason::kNumericUpdate; prefix = u"$update";
       } else Fail(Error::kBinding, std::monostate{}, TreeObligation::kBindings);
       tree_.symbols.push_back({kBodyScope, SyntheticName(prefix, i),

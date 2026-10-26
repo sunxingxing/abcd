@@ -6,6 +6,7 @@
 #include "../../src/source/exception_tree.h"
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
+#include "analysis/numeric_proof.h"
 #include <array>
 #include <iostream>
 #include <sstream>
@@ -58,7 +59,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, unsigned form, uns
   const auto body = Body(profile, binary, form, count, phased);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 3, {}));
   RouteInputIdentity identity; identity.profile = profile;
-  identity.contract = SourceContract::kLanguageArithmeticV1;
+  identity.contract = kSourceContract;
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {300}; syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"left", u"right", u"third"};
@@ -66,9 +67,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, unsigned form, uns
       {NameId{2}, NameEvidence::kDebugRange}};
   if (!phased && form == 0 && count == 1) {
     if (binary == kOperations[0]) {
-      auto pinned = identity; pinned.contract = SourceContract::kLanguageAndHostV3;
-      test::Check(std::holds_alternative<FunctionInputFailure>(FunctionInput::Build(pinned,
-          {300}, {100}, body, frame, InputCaptureMode::kClosed)));
+      test::CheckPinnedNumericRefusal(body, profile, frame);
     }
     const auto private_input = Body(profile, binary, form, count, phased, true);
     test::Check(std::holds_alternative<FunctionInputFailure>(FunctionInput::Build(identity,
@@ -102,7 +101,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, unsigned form, uns
     const auto environments = std::get<EnvironmentFlow>(AnalyzeExceptionEnvironments(flow));
     const auto values = std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow, ssa, entries, quota,
         {}, PendingExceptionValues::kLanguage, {}, {}, CallResultValues::kLanguage,
-        FrameReceiver::kUnknown, Arithmetic(identity.contract)));
+        FrameReceiver::kUnknown, kSourceArithmetic));
     const auto checked = VerifyExceptionInputs(flow, ssa, environments, values);
     test::Check(std::holds_alternative<ExceptionInputProof>(checked));
     const PhasedValueInput input{flow, ssa, environments, values, std::get<ExceptionInputProof>(checked), frame};
@@ -129,14 +128,12 @@ int main(int argc, char**) {
         op(abc::Opcode::kSUB2_IMM8_V8), 0, 0, op(abc::Opcode::kNEG_IMM8), 0, op(abc::Opcode::kRETURN)});
     const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {}));
     RouteInputIdentity identity; identity.profile = abc::ProfileId::kDynamic1206;
-    identity.contract = SourceContract::kLanguageAndHostV3;
-    test::Check(std::holds_alternative<FunctionInputFailure>(FunctionInput::Build(identity,
-        {300}, {100}, body, frame, InputCaptureMode::kClosed)));
-    identity.contract = SourceContract::kLanguageArithmeticV1;
+    test::CheckPinnedNumericRefusal(body, identity.profile, frame);
+    identity.contract = kSourceContract;
     const auto input = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
     test::Check(std::holds_alternative<FunctionInput>(input));
     const auto& proof = std::get<FunctionInput>(input).Proof();
-    test::Check(proof.arithmetic == ArithmeticSemantics::kSourceLanguage);
+    test::Check(proof.arithmetic == ArithmeticSemantics::kSourceNumeric);
   }
 
   if (argc > 1) std::cout << "export default [\n";

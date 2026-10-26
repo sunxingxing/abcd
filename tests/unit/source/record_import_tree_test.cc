@@ -381,9 +381,9 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   const auto classes = std::get<analysis::ClassMethodSites>(analysis::ClassMethodSites::Build(*file, header, index, lookup));
   source::RouteInputIdentity identity; identity.profile = header.profile;
   identity.abc_version = header.version; identity.file_size = header.file_size;
-  if (derived_declaration) identity.contract = source::SourceContract::kLanguageConstructorsV1;
-  if (mode == FixtureCase::kReentrantCapture) identity.contract = source::SourceContract::kLanguageAndHostV3;
-  if (mode == FixtureCase::kPublishedCaptureV1) identity.contract = source::SourceContract::kLanguageAndHostV1;
+  if (derived_declaration) identity.contract = source::kSourceContract;
+  if (mode == FixtureCase::kReentrantCapture) identity.contract = source::kSourceContract;
+  if (mode == FixtureCase::kPublishedCaptureV1) identity.contract = source::kSourceContract;
   if (contract) identity.contract = *contract;
   if (inspect_prefix) {
     const auto loaded = source::ReadFunctionValues(*file,header,index,{0},identity,
@@ -401,7 +401,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     const auto& prefix = std::get<std::optional<source::ModuleCapturePrefix>>(proof);
     const auto has_proof = prefix && std::any_of(prefix->For(function.input).begin(),prefix->For(function.input).end(),
         [](const auto& value){ return value.has_value(); });
-    Check(has_proof == (mode == FixtureCase::kPublishedCapture));
+    Check(has_proof == (mode == FixtureCase::kPublishedCapture || mode == FixtureCase::kPublishedCaptureV1));
     if (has_proof) {
       const auto other = source::ReadFunctionValues(*file,header,index,{0},identity,source::InputCaptureMode::kConditional,{},&context);
       Check(prefix->For(std::get<source::FileFunction>(other).input).empty());
@@ -465,10 +465,6 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
     Check(!std::holds_alternative<source::PrintedSource>(result));
     Check(unlink(path) == 0); return {};
   }
-  if (mode == FixtureCase::kReentrantCapture || mode == FixtureCase::kPublishedCaptureV1) {
-    Check(!std::holds_alternative<source::PrintedSource>(result));
-    Check(unlink(path) == 0); return {};
-  }
   if (mode == FixtureCase::kClassCellHole || mode == FixtureCase::kClassCellUninitialized) {
     Check(!std::holds_alternative<source::PrintedSource>(result));
     Check(unlink(path) == 0); return {};
@@ -512,12 +508,10 @@ int main(int argc, char** argv) {
     for (auto profile : {abc::ProfileId::kDynamic1202, abc::ProfileId::kDynamic1206, abc::ProfileId::kDynamic1301})
       for (auto fixture : {FixtureCase::kValid, FixtureCase::kFunction, FixtureCase::kClassFunction, FixtureCase::kCapture}) {
         const auto baseline = Recover(fixture, profile);
-        for (auto numeric : {source::kSourceContract, source::SourceContract::kLanguageArithmeticV1, source::SourceContract::kLanguageNumericV1})
-          for (bool constructors : {false, true}) {
-            const auto contract = constructors ? source::WithLanguageConstructors(numeric) : numeric;
-            Check(Recover(fixture, profile, false, DirectDefault::kAbsent, ClassDeclarationCase::kAbsent, 0, false, contract) == baseline);
-            ++cases;
-          }
+        for (const auto& entry : source::kSourceContracts) {
+          Check(Recover(fixture, profile, false, DirectDefault::kAbsent, ClassDeclarationCase::kAbsent, 0, false, entry.contract) == baseline);
+          ++cases;
+        }
       }
     std::cout << cases << " typed record contracts; neutral source unchanged\n";
     return 0;
@@ -585,9 +579,11 @@ int main(int argc, char** argv) {
       Recover(fixture,profile);
     std::cout << Recover(fixture); return 0;
   }
+  if (mode == "--reentrant-capture") { std::cout << Recover(FixtureCase::kReentrantCapture); return 0; }
   if (mode == "--published-capture") {
-    Recover(FixtureCase::kReentrantCapture); Recover(FixtureCase::kPublishedCaptureV1);
-    std::cout << Recover(FixtureCase::kPublishedCapture); return 0;
+    const auto canonical = Recover(FixtureCase::kPublishedCapture);
+    Check(Recover(FixtureCase::kPublishedCaptureV1) == canonical);
+    std::cout << canonical; return 0;
   }
   if (mode == "--class-cell") { std::cout << Recover(FixtureCase::kClassCell); return 0; }
   if (mode == "--class-shadow-cell") {

@@ -121,7 +121,7 @@ class ReadResolver {
     const bool lazy = !module_->request_phases.empty() &&
         module_->request_phases[request.value] == abc::ModuleRequestPhase::kLazy;
     if (lazy != (read.loading == analysis::ModuleLoading::kLazy)) throw Error::kBinding;
-    if (lazy && LazyImports(contract_) != LazyImportSemantics::kArkTsLazyImport) throw Error::kContract;
+    if (!IsSourceContract(contract_)) throw Error::kContract;
   }
   // GETMODULENAMESPACE names a module request. Map it once to the unique
   // namespace import entry for that request; an absent or repeated entry has

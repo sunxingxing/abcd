@@ -4,6 +4,8 @@
 #include "../../src/source/instruction_sources.h"
 #include "abcd/source/tree_printer.h"
 #include "analysis/ssa_fixture.h"
+#include "analysis/numeric_proof.h"
+#include "../../src/source/evaluation_plan.h"
 #include "../../src/analysis/phased_value_import.h"
 #include "../../src/source/exception_tree.h"
 #include <array>
@@ -41,16 +43,16 @@ std::uint64_t Run(abc::ProfileId profile, Seed seed, unsigned count, bool admitt
   const auto body = Body(seed, count);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {}));
   RouteInputIdentity identity; identity.profile = profile;
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis fixture.
+  identity.contract = kSourceContract;  // Source target; raw runtime facts are checked separately.
   const auto prepared = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
-  if (!admitted) { test::Check(!std::holds_alternative<FunctionInput>(prepared)); return 0; }
+  if (!admitted) { test::CheckPinnedNumericRefusal(body, profile, frame); return 0; }
   test::Check(std::holds_alternative<FunctionInput>(prepared));
   const auto& input = std::get<FunctionInput>(prepared);
   const auto values = std::get<FunctionValues>(BuildFunctionValues(input, body, frame));
   const auto& graph = values.graph;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3; syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageSourceV5; syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExpressionConstants resolved{constants};
@@ -83,7 +85,7 @@ void Phased(abc::ProfileId profile, Seed seed, bool admitted) {
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageSourceV5; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExpressionConstants resolved{constants};
   const ExceptionTreeInput context{body, input, regions, control};
@@ -109,7 +111,7 @@ void MissingWitness() {
   graph.blocks = {{{0}, 2, {0}, 0}};
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3; syntax.owner = {0}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageSourceV5; syntax.owner = {0}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value"}; syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExpressionConstants resolved{constants, syntax.names.size()};
@@ -117,9 +119,11 @@ void MissingWitness() {
   test::Check(std::holds_alternative<ConstructedFunction>(built));
   const auto& tree = std::get<ConstructedFunction>(built).tree;
   test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
+  test::Check(LegacyNegationEvaluation(graph, ValueId{0}, ArithmeticSemantics::kPinnedRuntime));
   graph.values[0].domain = ValueKinds::NonNaNNumber();
-  test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
-  test::Check(std::holds_alternative<FunctionTreeFailure>(BuildFunctionTree(graph, control, evaluation, syntax, resolved)));
+  test::Check(!LegacyNegationEvaluation(graph, ValueId{0}, ArithmeticSemantics::kPinnedRuntime));
+  test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
+  test::Check(std::holds_alternative<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation, syntax, resolved)));
 }
 
 }

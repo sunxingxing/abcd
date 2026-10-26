@@ -6,6 +6,7 @@
 #include <iostream>
 #include <source_location>
 #include <algorithm>
+#include <array>
 #include <string>
 #include <variant>
 
@@ -39,7 +40,7 @@ RouteInputIdentity SampleIdentity() {
   identity.file_size = 123456;
   identity.abc_version = {{12, 0, 6, 0}};
   identity.profile = abc::ProfileId::kDynamic1206;
-  identity.contract = SourceContract::kLanguageAndHostV2;
+  identity.contract = SourceContract::kLanguageSourceV2;
   return identity;
 }
 
@@ -93,49 +94,10 @@ int main() {
   Check(SourceContractName(SourceContract::kLanguageSourceV10) == "language_source_v10");
   Check(NativeArguments(SourceContract::kLanguageSourceV6));
   Check(!NativeArguments(SourceContract::kLanguageSourceV5));
-  for (unsigned i = 0; i <= static_cast<unsigned>(SourceContract::kLanguageSourceV10); ++i) {
-    const auto contract = static_cast<SourceContract>(i);
-    Check(ExternalExceptionNoHole(contract) == ((contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10))))))
-        ? analysis::ExternalExceptionPolicy::kNoHoleV1 : analysis::ExternalExceptionPolicy::kPinnedRuntime));
-    Check(ConcurrentOutput(contract) == ((contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10))))))) ? ConcurrentOutputPolicy::kArkDirectiveV1 : ConcurrentOutputPolicy::kNotEnabled));
-    Check(SendableOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || (contract==SourceContract::kLanguageSourceV4 || (contract==SourceContract::kLanguageSourceV5 || (contract==SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10))))))) ? SendableOutputPolicy::kArkDirectiveV1 : SendableOutputPolicy::kNotEnabled));
-    Check(SharedModuleOutput(contract) == ((contract==SourceContract::kLanguageSourceV3 || (contract==SourceContract::kLanguageSourceV4 || (contract==SourceContract::kLanguageSourceV5 || (contract==SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10))))))) ? SharedModuleOutputPolicy::kArkDirectiveV1 : SharedModuleOutputPolicy::kNotEnabled));
-    Check(IterationAcquisition(contract) == ((contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10))))))))
-        ? IterationAcquisitionSemantics::kStandardV1 : IterationAcquisitionSemantics::kPinnedRuntime));
-    const bool source = (contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10))))))));
-    Check(LazyImports(contract) == (source ? LazyImportSemantics::kArkTsLazyImport : LazyImportSemantics::kPinnedRuntime));
-    Check(ArraySpreads(contract) == (source ? ArraySpreadSemantics::kSourceIterator : ArraySpreadSemantics::kPinnedRuntime));
-  }
-
-  Check(Arithmetic(kSourceContract) == analysis::ArithmeticSemantics::kSourceNumeric);
-  Check(Arithmetic(SourceContract::kLanguageArithmeticV1) == analysis::ArithmeticSemantics::kSourceLanguage);
-  Check(Arithmetic(SourceContract::kLanguageNumericV1) == analysis::ArithmeticSemantics::kSourceNumeric);
-  for (const auto base : {SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1}) {
-    const auto combined = WithLanguageConstructors(base);
-    Check(Arithmetic(combined) == Arithmetic(base));
-    Check(Constructors(base) == ConstructorSemantics::kPinnedRuntime);
-    Check(Constructors(combined) == ConstructorSemantics::kSourceLanguage);
-    Check(CallableText(combined) == CallableText(base));
-    Check(ResourceFailures(combined) == ResourceFailures(base));
-  }
-  Check(CallableText(SourceContract::kLanguageNumericV1) == CallableText(kSourceContract));
-  Check(CallableText(SourceContract::kLanguageArithmeticV1) == CallableText(kSourceContract));
-  Check(ResourceFailures(SourceContract::kLanguageArithmeticV1) == ResourceFailures(kSourceContract));
-  Check(CallableText(SourceContract::kLanguageAndHostV1) == CallableTextPolicy::kUnspecified);
-  Check(CallableText(SourceContract::kLanguageAndHostV2) == CallableTextPolicy::kUnspecified);
-  Check(CallableText(kSourceContract) == CallableTextPolicy::kRecovered);
-  Check(PendingExceptions(kSourceContract) == PendingExceptions(SourceContract::kLanguageAndHostV2));
-  Check(NormalCallResults(kSourceContract) == NormalCallResults(SourceContract::kLanguageAndHostV2));
-  Check(RealmBinding(kSourceContract) == RealmBinding(SourceContract::kLanguageAndHostV2));
-  Check(ResourceFailures(kSourceContract) == ResourceFailures(SourceContract::kLanguageAndHostV2));
-  // LanguageSourceV1 extends numeric+constructors; its own premises are
-  // reachable only through their predicates.
-  Check(Arithmetic(SourceContract::kLanguageSourceV1) == analysis::ArithmeticSemantics::kSourceNumeric);
-  Check(Constructors(SourceContract::kLanguageSourceV1) == ConstructorSemantics::kSourceLanguage);
-  Check(WithLanguageConstructors(SourceContract::kLanguageSourceV1) == SourceContract::kLanguageSourceV1);
-  Check(CaptureReads(SourceContract::kLanguageSourceV1) == CaptureReadSemantics::kSourceTdz);
-  Check(CaptureReads(SourceContract::kLanguageNumericConstructorsV1) == CaptureReadSemantics::kPinnedRuntime);
-  Check(CaptureReads(kSourceContract) == CaptureReadSemantics::kSourceTdz);
+  Check(kSourceArithmetic == analysis::ArithmeticSemantics::kSourceNumeric);
+  Check(kSourceCallResults == analysis::CallResultValues::kLanguage);
+  Check(kSourcePendingExceptions == analysis::PendingExceptionValues::kLanguage);
+  Check(kSourceResourceFailures == ResourceFailureScope::kExcluded);
   // Central validation (R2): each state below is checked against the stages
   // that could actually prove it.
   const auto valid = [](MethodRouteReceipt receipt) {
@@ -282,9 +244,33 @@ int main() {
     Check(recovered != nullptr);
     Check(SameReceipt(receipt, *recovered));
   }
-  // Every contract that can be written can be read back (dense enum range).
-  for (std::size_t raw = 0; raw <= static_cast<std::size_t>(SourceContract::kLanguageSourceV10); ++raw) {
-    const auto contract = static_cast<SourceContract>(raw);
+  // Independent wire expectations catch accidental label/ID reinterpretation,
+  // including a registry entry that round-trips under its own wrong label.
+  constexpr std::array<std::string_view, 10> historical_labels{
+      "language_source_v1", "language_source_v2", "language_source_v3",
+      "language_source_v4", "language_source_v5", "language_source_v6",
+      "language_source_v7", "language_source_v8", "language_source_v9",
+      "language_source_v10"};
+  static_assert(kSourceContracts.size() == historical_labels.size());
+  for (std::size_t i = 0; i < historical_labels.size(); ++i) {
+    Check(kSourceContracts[i].label == historical_labels[i]);
+    constexpr unsigned kFirstPublishedSourceId = 8;
+    Check(static_cast<unsigned>(kSourceContracts[i].contract) == kFirstPublishedSourceId + i);
+  }
+  // Every registered historical Source identity round-trips without renumbering.
+  for (const auto& entry : kSourceContracts) {
+    const auto contract = entry.contract;
+    Check(IsSourceContract(contract));
+    Check(ParseSourceContract(entry.label) == contract);
+    Check(ExternalExceptionNoHole(contract) == (contract == SourceContract::kLanguageSourceV1 ||
+        contract == SourceContract::kLanguageSourceV2 || contract == SourceContract::kLanguageSourceV3
+        ? analysis::ExternalExceptionPolicy::kPinnedRuntime : analysis::ExternalExceptionPolicy::kNoHoleV1));
+    const bool directives = contract != SourceContract::kLanguageSourceV1 && contract != SourceContract::kLanguageSourceV2;
+    Check(ConcurrentOutput(contract) == (directives ? ConcurrentOutputPolicy::kArkDirectiveV1 : ConcurrentOutputPolicy::kNotEnabled));
+    Check(SendableOutput(contract) == (directives ? SendableOutputPolicy::kArkDirectiveV1 : SendableOutputPolicy::kNotEnabled));
+    Check(SharedModuleOutput(contract) == (directives ? SharedModuleOutputPolicy::kArkDirectiveV1 : SharedModuleOutputPolicy::kNotEnabled));
+    Check(IterationAcquisition(contract) == (contract == SourceContract::kLanguageSourceV1
+        ? IterationAcquisitionSemantics::kPinnedRuntime : IterationAcquisitionSemantics::kStandardV1));
     Check(ComputedFunctionNames(contract)==(contract==SourceContract::kLanguageSourceV10));
     Check(DynamicImports(contract)==(contract==SourceContract::kLanguageSourceV10));
     Check(ModuleNamespaces(contract)==(contract==SourceContract::kLanguageSourceV10));
@@ -294,9 +280,6 @@ int main() {
     Check(ObjectSpreads(contract)==((contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10)))));
     Check(ObjectRests(contract)==((contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10)))));
     Check(NativeNewTarget(contract)==((contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10)))));
-    Check(ConstructorForwarding(contract) == ((contract == SourceContract::kLanguageSourceV1 || contract == SourceContract::kLanguageSourceV2 || (contract == SourceContract::kLanguageSourceV3 || (contract == SourceContract::kLanguageSourceV4 || (contract == SourceContract::kLanguageSourceV5 || (contract == SourceContract::kLanguageSourceV6 || (contract == SourceContract::kLanguageSourceV7 || (contract == SourceContract::kLanguageSourceV8 || (contract == SourceContract::kLanguageSourceV9 || contract == SourceContract::kLanguageSourceV10))))))))
-        ? ConstructorForwardingSemantics::kSourceRestSpread
-        : ConstructorForwardingSemantics::kInvocationFrame));
     auto receipt = RefusedReceipt();
     receipt.identity.contract = contract;
     Check(!ValidateRouteReceipt(receipt));
@@ -305,6 +288,23 @@ int main() {
           SourceContractName(contract));
     Check(SameReceipt(receipt, std::get<MethodRouteReceipt>(ParseRouteReceipt(encoded))));
   }
+
+  for (unsigned raw = 0; raw < 8; ++raw) {
+    auto receipt = RefusedReceipt();
+    receipt.identity.contract = static_cast<SourceContract>(raw);
+    Check(ValidateRouteReceipt(receipt) == RouteReceiptError::kIdentity);
+    Check(std::get<RouteReceiptError>(SerializeRouteReceipt(receipt)) == RouteReceiptError::kIdentity);
+  }
+  for (const auto label : {"language_and_host_v1", "language_and_host_v2", "language_and_host_v3",
+      "language_arithmetic_v1", "language_numeric_v1", "language_constructors_v1",
+      "language_arithmetic_constructors_v1", "language_numeric_constructors_v1"}) {
+    auto json = nlohmann::json::parse(std::get<std::string>(SerializeRouteReceipt(RefusedReceipt())));
+    json["identity"]["source_contract"] = label;
+    Check(!ParseSourceContract(label));
+    Check(std::get<RouteReceiptError>(ParseRouteReceipt(json.dump())) == RouteReceiptError::kIdentity);
+  }
+  static_assert(static_cast<unsigned>(SourceContract::kLanguageSourceV1) == 8);
+  static_assert(static_cast<unsigned>(SourceContract::kLanguageSourceV10) == 17);
 
   // Unknown versions, labels, out-of-range integers, missing fields and
   // contradictory states are rejected; a parse never defaults into success.
@@ -342,7 +342,7 @@ int main() {
          "854fb0d9bbc1df0e", RouteReceiptError::kIdentity);
   reject("[12,0,6,0]", "[12,0,6]", RouteReceiptError::kIdentity);
   reject("\"profile\":4", "\"profile\":99", RouteReceiptError::kIdentity);
-  reject("language_and_host_v2", "language_and_host_v4",
+  reject("language_source_v2", "language_and_host_v2",
          RouteReceiptError::kIdentity);
   reject("\"work_revision\":null", "\"work_revision\":0",
          RouteReceiptError::kSchema);  // revisions are typed absent, invented

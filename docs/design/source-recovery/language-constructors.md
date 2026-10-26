@@ -6,6 +6,13 @@ been removed. Source recovery defaults to `language_source_v10`;
 approved premise and evidence, not current CLI instructions. Pinned runtime
 analysis facts remain valid. See [the current contract](language-source.md).
 
+**Engine retirement (increment B, 2026-10-27).** The non-source target
+identities and their selector plumbing are removed. Old serialized labels are
+rejected with a typed identity error, never reinterpreted as SourceV10. The ten
+historical SourceV1–V10 identities retain their IDs and labels. Pinned-runtime
+numeric/private-value/call/exception facts remain independent analysis inputs;
+constructor/capture/forwarding semantics are shared source premises.
+
 User-approved on 2026-10-06. `--value-source --language-constructors` selects
 native language `super` semantics for retained `ValueSuperSpread` operations.
 It composes independently with `--language-arithmetic` or `--language-numeric`.

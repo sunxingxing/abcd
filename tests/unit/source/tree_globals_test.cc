@@ -212,7 +212,7 @@ void IndexedBindings() {
     constexpr std::uint64_t kWorkPerBindingLogBound = 256;
     Check(std::get<TreeGlobals>(checked).work <= kWorkPerBindingLogBound * count * std::bit_width(count));
     auto realm_tree = tree;
-    realm_tree.identity.contract = SourceContract::kLanguageAndHostV2;
+    realm_tree.identity.contract = SourceContract::kLanguageSourceV5;
     for (auto& node : realm_tree.expressions) node.expression = RealmObjectExpr{};
     const auto realm_checked = VerifyTreeGlobals(realm_tree, &scope);
     Check(std::holds_alternative<TreeGlobals>(realm_checked));
@@ -231,7 +231,7 @@ void IndexedBindings() {
 void RealmContexts() {
   auto tree = Tree();
   tree.expressions[0].expression = RealmObjectExpr{};
-  tree.identity.contract = SourceContract::kLanguageAndHostV2;
+  tree.identity.contract = SourceContract::kLanguageSourceV5;
   GlobalScope scope{};
   Check(std::holds_alternative<TreeGlobals>(VerifyTreeGlobals(tree, &scope)));
   Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, nullptr)) == TreeGlobalError::kMissingContext);
@@ -239,10 +239,10 @@ void RealmContexts() {
   Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
   const HostRealmBinding host{u"$realm"}; scope.realm_binding = &host;
   Check(std::holds_alternative<TreeGlobals>(VerifyTreeGlobals(tree, &scope)));
-  tree.identity.contract = SourceContract::kLanguageAndHostV1;
+  tree.identity.contract = SourceContract::kLanguageSourceV5;
   Check(std::holds_alternative<TreeGlobals>(VerifyTreeGlobals(tree, &scope)));
   scope.realm_binding = nullptr;
-  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kMissingContext);
+  Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
   for (const auto name : {u"", u"with space", u"eval", u"arguments"}) {
     const HostRealmBinding invalid{name}; scope.realm_binding = &invalid;
     Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kMissingContext);
@@ -254,7 +254,7 @@ void RealmContexts() {
 }
 void SymbolContexts() {
   auto tree = Tree(); tree.expressions[0].expression = SymbolConstructorExpr{};
-  for (const auto contract : {SourceContract::kLanguageAndHostV1, SourceContract::kLanguageAndHostV2}) {
+  for (const auto contract : {SourceContract::kLanguageSourceV1, kSourceContract}) {
     tree.identity.contract = contract;
     GlobalScope scope{};
     Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kMissingContext);

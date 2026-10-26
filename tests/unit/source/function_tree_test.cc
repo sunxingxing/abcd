@@ -427,7 +427,7 @@ FlowConstructionCost OriginalStorePhases(abc::ProfileId profile,bool lexical,uns
 void OriginalNumericStages() {
   using namespace analysis;
   for(auto operation:{UnaryOperator::kToNumeric,UnaryOperator::kIncrement,UnaryOperator::kDecrement})for(bool reverse:{false,true}) {
-    Fixture fixture;fixture.callable=CallableKind::kFunction;fixture.identity.contract=SourceContract::kLanguageNumericV1;
+    Fixture fixture;fixture.callable=CallableKind::kFunction;fixture.identity.contract=SourceContract::kLanguageSourceV5;
     const auto number=fixture.Add(0,0,0,ValueUnary{operation},true,{{OperandRole::kInput,ValueId{0}}},LanguageEffect::kUserCode);
     fixture.Add(0,1,1,ValueReturn{},false,{{OperandRole::kReturnValue,*fixture.graph.ops[number.value].result}});
     fixture.graph.blocks={{{0},2,{0},0}};
@@ -1182,7 +1182,7 @@ void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool 
   IdfQuota value_work{kDefaultSemanticWork};
   const auto values=std::get<ExceptionValueFlow>(ExceptionValueFlow::Build(flow,ssa,entries,value_work,{},
       PendingExceptionValues::kLanguage,{},{},CallResultValues::kLanguage,FrameReceiver::kUnknown,
-      Arithmetic(SourceContract::kLanguageNumericV1)));
+      kSourceArithmetic));
   const auto proof=std::get<ExceptionInputProof>(VerifyExceptionInputs(flow,ssa,env,values));
   const PhasedValueInput input{flow,ssa,env,values,proof,frame};
   const auto graph=std::get<ValueProgram>(ImportPhasedValues(input));
@@ -1191,7 +1191,7 @@ void OriginalCatchValues(bool emit=false,unsigned form=0,unsigned copies=0,bool 
   const auto control=std::get<ExceptionControl>(BuildExceptionControl(body,graph,input,regions));
   const ExceptionTreeInput context{body,input,regions,control};
   FunctionSyntax syntax{};syntax.callable=CallableKind::kFunction;syntax.strictness=Strictness::kStrict;
-  syntax.identity.contract=SourceContract::kLanguageNumericV1;syntax.parameters.resize(1);
+  syntax.identity.contract=SourceContract::kLanguageSourceV5;syntax.parameters.resize(1);
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const auto draft=std::get<ExceptionFunctionDraft>(BuildExceptionFunctionDraft(graph,context,evaluation,syntax,{constants,0}));
   const auto& tree=draft.tree;const auto& original=*draft.flow->original;
@@ -2028,10 +2028,10 @@ void CreationSelfTree() {
     reject([](auto& copy) { copy.symbols[copy.self->value].name = *copy.inferred_name; });
     reject([](auto& copy) { copy.symbols[copy.self->value].evidence = NameEvidence::kMetadata; });
     reject([](auto& copy) { copy.symbols[copy.self->value].declaration = DeclarationKind::kLet; });
-    reject([](auto& copy) { copy.identity.contract = SourceContract::kLanguageAndHostV1; });
+    reject([](auto& copy) { copy.identity.contract = static_cast<SourceContract>(0); });
     reject([](auto& copy) { copy.inferred_name.reset(); });
-    syntax.identity.contract = SourceContract::kLanguageAndHostV1;
-    Check(std::holds_alternative<FunctionTreeFailure>(build()));
+    syntax.identity.contract = SourceContract::kLanguageSourceV5;
+    Check(std::holds_alternative<ConstructedFunction>(build()));
   }
 }
 void FrameFunctionTree() {

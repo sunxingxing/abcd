@@ -180,7 +180,7 @@ FamilyCellCost Forwarding(bool phase, Access own, Access child, bool caught, Cap
     test::Check(middle.Cells()->demands[i - 1].creation != middle.Cells()->demands[i].creation);
   if (!original.empty()) test::Check(original.front().domain ==
       (own == Access::kGuarded ? CaptureDomain::kGuarded :
-       contract == SourceContract::kLanguageSourceV1 ? CaptureDomain::kSourceAccess : CaptureDomain::kLanguage));
+       CaptureDomain::kSourceAccess));
   const auto& edge = *family.members[1].incoming;
   const auto bound = BindCaptureCells(fixture.index, family.members[0].function.NormalCapture(),
       middle.Capture(), edge.site, edge.creation);
@@ -291,7 +291,7 @@ int main() {
   Forwarding(false, Access::kRead, Access::kRead, true, CaptureDomain::kLanguage);
   Forwarding(false, Access::kGuarded, Access::kGuarded, false, CaptureDomain::kGuarded);
   Forwarding(false, Access::kRead, Access::kGuarded, false, CaptureDomain::kSourceAccess);
-  for (const auto contract : {SourceContract::kLanguageNumericConstructorsV1, SourceContract::kLanguageSourceV1})
+  for (const auto contract : {SourceContract::kLanguageSourceV5, SourceContract::kLanguageSourceV1})
     for (const auto access : {Access::kRead, Access::kWrite})
       Forwarding(true, Access::kRead, access, true, CaptureDomain::kLanguage, 1, contract);
   Forwarding(true, Access::kRead, Access::kRead, true, CaptureDomain::kLanguage, 2,

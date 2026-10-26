@@ -587,7 +587,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(!sites.FindOccurrence({kMember}, {kCaller}, {0}, site->property + 1));
   auto fingerprint = std::get<corpus::FileFingerprint>(file.Fingerprint());
   auto identity = MakeRouteInputIdentity(fingerprint, header);
-  if (snapshot) identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned ABI oracle, no CLI.
+  if (snapshot) identity.contract = SourceContract::kLanguageSourceV5;  // Pinned ABI oracle, no CLI.
   auto context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);
   Check(std::holds_alternative<ClassTreeContext>(context));
   const auto& value = std::get<ClassTreeContext>(context);
@@ -740,7 +740,7 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       auto enclosure = std::get<ModuleEnclosure>(ModuleEnclosure::Build(
           file, header, module_context, identity, {1}));
       module_scope.module_enclosure = &enclosure;
-      auto other_identity = identity; other_identity.contract = SourceContract::kLanguageAndHostV2;
+      auto other_identity = identity; other_identity.contract = SourceContract::kLanguageSourceV5;
       auto other_enclosure = std::get<ModuleEnclosure>(ModuleEnclosure::Build(
           file, header, module_context, other_identity, {1}));
       GlobalScope foreign_scope{}; foreign_scope.module_enclosure = &other_enclosure;
@@ -878,15 +878,12 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
         {analysis::SemanticBudget{}.bytes, moved.Work()})));
     Check(std::get<PhasedMethodError>(PhasedMethod::Build(owner, decoded,
         {analysis::SemanticBudget{}.bytes, moved.Work() - 1})) == PhasedMethodError::kWorkLimit);
-    auto old_contract = identity; old_contract.contract = SourceContract::kLanguageAndHostV1;
+    auto old_contract = identity; old_contract.contract = SourceContract::kLanguageSourceV5;
     const FunctionContext old_owner{std::get<ClassTreeContext>(ClassTreeContext::Resolve(
         file, header, index, lookup, roles, sites, range.first, old_contract))};
-    Check(std::get<PhasedMethodError>(PhasedMethod::Build(old_owner, decoded)) == PhasedMethodError::kContract);
-    const auto contract_refusal = VerifiedFunction::PrepareClass(
-        file, header, index, lookup, roles, sites, range.first, old_contract);
-    const auto& rejected_contract = std::get<FunctionPrepareFailure>(contract_refusal);
-    Check(rejected_contract.values && rejected_contract.values->failure &&
-        !ValidateRouteReceipt(*rejected_contract.values));
+    Check(std::holds_alternative<PhasedMethod>(PhasedMethod::Build(old_owner, decoded)));
+    Check(std::holds_alternative<VerifiedFunction>(VerifiedFunction::PrepareClass(
+        file, header, index, lookup, roles, sites, range.first, old_contract)));
     auto prepared = VerifiedFunction::PrepareClass(file, header, index, lookup, roles, sites, range.first, identity);
     if (const auto* error = std::get_if<FunctionPrepareFailure>(&prepared))
       std::cerr << "exception preparation error " << static_cast<unsigned>(error->kind) << '\n';

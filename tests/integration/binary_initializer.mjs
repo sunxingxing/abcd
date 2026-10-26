@@ -156,7 +156,8 @@ const view = new DataView(new ArrayBuffer(8));
 const number = hex => { view.setBigUint64(0, BigInt(`0x${hex}`)); return view.getFloat64(0); };
 for (const sample of samples) {
   let expected = number(sample.left);
-  if (sample.binary !== undefined) expected = operations[sample.binary](expected, number(sample.right));
+  if (sample.escaped) { /* Original returns the shared ordinary NaN. */ }
+  else if (sample.binary !== undefined) expected = operations[sample.binary](expected, number(sample.right));
   else if (sample.bitnot) expected = ~expected;
   else if (sample.update === 1) ++expected;
   else if (sample.update === -1) --expected;

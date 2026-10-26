@@ -112,7 +112,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     };
     const auto arena = [&]<class T>(const std::vector<T>& values) { admit(values.capacity(), sizeof(T)); };
     const auto& identity = context.Identity();
-    Require(identity.profile == header.profile && identity.abc_version == header.version &&
+    Require(IsSourceContract(identity.contract) && identity.profile == header.profile && identity.abc_version == header.version &&
         identity.file_size == header.file_size, Error::kIdentity);
     Require(file.Size() == header.file_size && !file.CheckUnchanged(), Error::kChanged);
     const auto position = context.Position().value;
@@ -140,7 +140,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     if (IsGeneratorCallable(context.Callable())) {
       const GeneratorNames names{file, header, index, method.offset};
       auto normalization = NormalizeGenerator(body, frame, header.profile,
-          ResourceFailures(identity.contract), left.bytes, &names,
+          kSourceResourceFailures, left.bytes, &names,
           context.Callable() == CallableKind::kAsyncGenerator ? GeneratorExecution::kAsynchronous : GeneratorExecution::kSynchronous);
       if (const auto* error = std::get_if<FunctionEmitError>(&normalization)) throw PhasedFileFailure{*error};
       if (const auto* error = std::get_if<abc::MetadataError>(&normalization)) throw PhasedFileFailure{*error};
@@ -150,16 +150,6 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       source_pcs = std::move(normalized.source_pcs); yields = std::move(normalized.yields); awaits = std::move(normalized.awaits);
       original.emplace(std::move(body)); body = std::move(normalized.body);
     } else if (IsAsyncCallable(context.Callable())) {
-      Require(identity.contract == SourceContract::kLanguageAndHostV2 ||
-          identity.contract == SourceContract::kLanguageAndHostV3 ||
-          identity.contract == SourceContract::kLanguageArithmeticV1 ||
-          identity.contract == SourceContract::kLanguageNumericV1 ||
-          identity.contract == SourceContract::kLanguageConstructorsV1 ||
-          identity.contract == SourceContract::kLanguageArithmeticConstructorsV1 ||
-          identity.contract == SourceContract::kLanguageNumericConstructorsV1 ||
-          identity.contract == SourceContract::kLanguageSourceV1 ||
-          identity.contract == SourceContract::kLanguageSourceV2 ||
-          (identity.contract == SourceContract::kLanguageSourceV3 || identity.contract == SourceContract::kLanguageSourceV4 || identity.contract == SourceContract::kLanguageSourceV5 || identity.contract == SourceContract::kLanguageSourceV6 || (identity.contract == SourceContract::kLanguageSourceV7 || identity.contract == SourceContract::kLanguageSourceV8 || (identity.contract == SourceContract::kLanguageSourceV9 || identity.contract == SourceContract::kLanguageSourceV10))), Error::kIdentity);
       AsyncCompletion completion = FunctionEmitError::kKind;
       if (context.Concurrent()) {
         auto projected = NormalizeConcurrentAsync(body, frame, header.profile, left);
@@ -334,7 +324,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       covered_capture_store |= std::holds_alternative<analysis::CapturedDepth>(binding.binding.environment) &&
           std::holds_alternative<analysis::LexicalStore>(input.flow.instructions[site.value].operation);
     }
-    if (covered_capture_store && CaptureReads(identity.contract) == CaptureReadSemantics::kSourceTdz && phases.CellEnvironments()) {
+    if (covered_capture_store && phases.CellEnvironments()) {
       // Only raw, identity-bound guarded writes may add a TDZ exception under
       // a user handler. All other captured stores retain Language admission.
       // Dispatch checks both boundaries and sorts/sweeps region events. Prepay
@@ -409,7 +399,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
     // the normalized body keeps no handler: only the proven async/generator
     // completion protocol remains, which turns an early TDZ throw into the
     // same rejection or throw as the source. User handlers keep the strict rule.
-    const auto domain = body.tries.empty() && CaptureReads(identity.contract) == CaptureReadSemantics::kSourceTdz
+    const auto domain = body.tries.empty()
         ? analysis::CaptureDomain::kSourceAccess : analysis::CaptureDomain::kLanguage;
     for (const auto& binding : input.environments.bindings) {
       step(1);

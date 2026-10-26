@@ -196,7 +196,7 @@ int Probe(const char* path, const char* manifest) {
       if (kind && (kind->kind == abc::FunctionKind::kGenerator || kind->kind == abc::FunctionKind::kAsyncGenerator)) {
         const source::GeneratorNames names{file, *header, *index, method.offset};
         const auto result = source::NormalizeGenerator(*body, *frame, header->profile,
-            source::ResourceFailures(source::SourceContract::kLanguageSourceV10), 64 * 1024 * 1024, &names,
+            source::kSourceResourceFailures, 64 * 1024 * 1024, &names,
             kind->kind == abc::FunctionKind::kAsyncGenerator ? source::GeneratorExecution::kAsynchronous
                                                              : source::GeneratorExecution::kSynchronous);
         if (const auto* g = std::get_if<source::GeneratorBody>(&result)) {

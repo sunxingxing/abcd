@@ -576,9 +576,6 @@ class Proof {
     Replay(op);
     if (push) {
       if (initializer) return false;
-      Need(ResourceFailures(phases_.Identity().contract) ==
-               ResourceFailureScope::kExcluded,
-           Error::kInitializer);
       Set(op, {});
     } else if ((load || store) &&
                o.exceptional != ExceptionalCompletion::kImpossible)

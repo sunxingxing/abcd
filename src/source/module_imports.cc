@@ -45,10 +45,8 @@ class ImportWriter {
   void Write() {
     if (!module_.request_phases.empty() && module_.request_phases.size() != module_.requests.size())
       throw ModuleImportFailure{ModuleImportError::kRequestPhases, {}, {}};
-    for (const auto phase : module_.request_phases) {
-      if (phase == abc::ModuleRequestPhase::kLazy && LazyImports(contract_) != LazyImportSemantics::kArkTsLazyImport)
-        throw ModuleImportFailure{ModuleImportError::kContract, {}, {}};
-    }
+    if (!IsSourceContract(contract_))
+      throw ModuleImportFailure{ModuleImportError::kContract, {}, {}};
     for (const auto& entry : module_.indirect_exports) RejectLazy(entry.request);
     for (const auto request : module_.star_exports) RejectLazy(request);
     std::size_t count = 0;

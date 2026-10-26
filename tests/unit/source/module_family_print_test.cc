@@ -147,13 +147,11 @@ void SnapshotNames() {
     Check(output.str().find("let saved") == std::string::npos);
     std::cout << nlohmann::json{{"callable",CallableLabel(kind)},{"place",static_cast<unsigned>(place)},
         {"wanted",wanted},{"source",output.str()}} << '\n';
-    for(auto& member:family.members)member.tree.identity.contract=SourceContract::kLanguageAndHostV1;
+    for(auto& member:family.members)member.tree.identity.contract=SourceContract::kLanguageSourceV5;
     std::ostringstream strict;
     const auto constrained=PrintFamilyDraft(family,strict);
-    if(std::string_view(wanted)=="saved") {
-      Check(std::holds_alternative<PrintedFamilyDraft>(constrained));
-      Check(strict.str().find("const saved") != std::string::npos);
-    } else {Check(std::get<TreePrintFailure>(constrained)==TreePrintError::kUnsupportedContext);Check(strict.str().empty());}
+    Check(std::holds_alternative<PrintedFamilyDraft>(constrained));
+    Check(strict.str() == output.str());
   }
 }
 void Names() {
@@ -180,13 +178,11 @@ void Names() {
           Check((child.find("{[") == std::string::npos) == native);
           std::cout << nlohmann::json{{"callable", CallableLabel(kind)}, {"place", static_cast<unsigned>(place)},
               {"wanted", wanted}, {"key", key}, {"native", native}, {"sequence",sequence}, {"source", output.str()}} << '\n';
-          // The resource gate depends on actual wrapper syntax. It must fail
-          // before emitting even a parent prefix when a wrapper is required.
-          for (auto& member : family.members) member.tree.identity.contract = SourceContract::kLanguageAndHostV1;
+          // Historical Source identities share the same naming/resource premise.
+          for (auto& member : family.members) member.tree.identity.contract = SourceContract::kLanguageSourceV5;
           std::ostringstream constrained;
-          const auto strict = PrintFamilyDraft(family, constrained);
-          if (native) Check(std::holds_alternative<PrintedFamilyDraft>(strict));
-          else { Check(std::get<TreePrintFailure>(strict) == TreePrintError::kUnsupportedContext); Check(constrained.str().empty()); }
+          Check(std::holds_alternative<PrintedFamilyDraft>(PrintFamilyDraft(family, constrained)));
+          Check(constrained.str() == output.str());
         }
 }
 void DefaultNames() {
@@ -210,11 +206,11 @@ void DefaultNames() {
       const auto child = ranges.functions[0];
       Check((output.str().substr(child.begin,child.end-child.begin).find("({[") == std::string::npos) ==
           (std::string_view(wanted) == "default"));
-      for (auto& member : family.members) member.tree.identity.contract = SourceContract::kLanguageAndHostV1;
+      for (auto& member : family.members) member.tree.identity.contract = SourceContract::kLanguageSourceV5;
       std::ostringstream strict_output;
       const auto strict = PrintModuleFamilyDraft(family,strict_output,{}, {},nullptr,default_export);
-      if (std::string_view(wanted) == "default") Check(std::holds_alternative<PrintedFamilyDraft>(strict));
-      else {Check(std::get<TreePrintFailure>(strict) == TreePrintError::kUnsupportedContext); Check(strict_output.str().empty());}
+      Check(std::holds_alternative<PrintedFamilyDraft>(strict));
+      Check(strict_output.str() == output.str());
       std::cout << nlohmann::json{{"callable",CallableLabel(kind)},{"wanted",wanted},{"source",output.str()}} << '\n';
     }
 }
@@ -254,10 +250,10 @@ void NameScale() {
       root.expressions.push_back({FunctionExpr{owner, {0,0}}, {0}});
       root.properties.push_back({NameId{i}, {i}});
       auto child = Naming(CallableKind::kFunction, NamingPlace::kReturn, "", "key").members[0].tree;
-      child.owner = owner; child.identity.contract = SourceContract::kLanguageAndHostV1;
+      child.owner = owner; child.identity.contract = SourceContract::kLanguageSourceV5;
       family.members[i + 1].tree = std::move(child);
     }
-    root.identity.contract = SourceContract::kLanguageAndHostV1;
+    root.identity.contract = SourceContract::kLanguageSourceV5;
     root.expressions.push_back({ObjectExpr{{0,count}, AggregateKind::kArray}, {0}});
     root.statements[1].statement = ReturnStmt{ExprId{count}};
     family.members[0].tree = std::move(root);

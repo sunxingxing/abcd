@@ -47,9 +47,7 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
     std::optional<ImplicitConstructorProof> implicit;
     std::optional<ConstructorForwardingProof> explicit_forward;
     if (forwarding) {
-      const bool native_rest = ConstructorForwarding(owner.Identity().contract) ==
-          ConstructorForwardingSemantics::kSourceRestSpread;
-      Require(owner.Length() == 0, native_rest ? Error::kForwardingParameters : Error::kProtocol);
+      Require(owner.Length() == 0, Error::kForwardingParameters);
       auto elision = ProveImplicitConstructor(function, budget);
       if (const auto* proof = std::get_if<ImplicitConstructorProof>(&elision)) {
         implicit = *proof;
@@ -58,7 +56,7 @@ std::variant<DerivedProjection, Error> ProjectDerivedConstructor(
         Require(proof->work <= budget.work, Error::kWorkLimit); budget.work -= proof->work;
       } else {
         const auto error = std::get<Error>(elision);
-        if (!native_rest || (error != Error::kProtocol && error != Error::kOperand)) throw error;
+        if (error != Error::kProtocol && error != Error::kOperand) throw error;
         // Elision failure grants no body projection. Reprove the full explicit
         // protocol and frame independently; resource/input failures never retry.
         auto checked = ProveConstructorForwarding(function, owner, budget, preserved.sites);

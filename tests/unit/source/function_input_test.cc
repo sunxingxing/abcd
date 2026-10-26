@@ -35,7 +35,7 @@ abc::FrameLayout Frame() {
 }
 RouteInputIdentity Identity() {
   RouteInputIdentity result;
-  result.contract = SourceContract::kLanguageAndHostV3;  // Pinned capture-domain analysis.
+  result.contract = kSourceContract;  // Source capture-domain analysis.
   result.profile = abc::ProfileId::kDynamic1206;
   result.abc_version = {12, 0, 6, 0};
   return result;
@@ -224,7 +224,7 @@ void Occurrences(std::uint32_t count) {
   test::Check(child.Captures().size() == 2 * count && child.CaptureAccesses().size() == child.Captures().size());
   test::Check(child.Proof().captured_reads.size() == count && child.Children().empty());
   for (std::size_t i = 0; i < child.Captures().size(); ++i) {
-    test::Check(child.Captures()[i].domain == CaptureDomain::kLanguage &&
+    test::Check(child.Captures()[i].domain == CaptureDomain::kSourceAccess &&
         child.Captures()[i].cell.depth == CapturedDepth{0} && child.Captures()[i].cell.slot.value == 0);
     test::Check(child.CaptureAccesses()[i].instruction.value == i &&
         child.CaptureAccesses()[i].kind == (i % 2 == 0 ? LocalAccessKind::kLoad : LocalAccessKind::kStore));

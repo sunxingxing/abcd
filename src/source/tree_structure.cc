@@ -81,8 +81,7 @@ void CheckCallable(const FunctionTree& tree) {
     case ParameterForm::kInvocationRest:
       RequireTree(tree.callable == CallableKind::kDerivedConstructor && !tree.ImplicitConstructor() &&
           tree.strictness == Strictness::kStrict && tree.parameters.size() == 1 &&
-          tree.parameters.front().rest && !tree.parameters.front().initializer &&
-          ConstructorForwarding(tree.identity.contract) == ConstructorForwardingSemantics::kSourceRestSpread,
+          tree.parameters.front().rest && !tree.parameters.front().initializer,
           Error::kUnsupportedSyntax);
       break;
     default: throw Error::kUnsupportedSyntax;
@@ -155,7 +154,7 @@ class StructureCheck {
       case InvocationForm::kDeclared: break;
       case InvocationForm::kArrowMethod: {
         RequireTree(IsArrowCallable(tree_.callable) && tree_.strictness == Strictness::kStrict &&
-            tree_.inferred_name && ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded,
+            tree_.inferred_name,
             Error::kUnsupportedSyntax);
         bool snapshot = false;
         for (const auto& node : tree_.expressions) {
@@ -208,8 +207,7 @@ class StructureCheck {
               self.evidence == NameEvidence::kMetadata, Error::kBinding);
           break;
         case SelfForm::kCreationBinding:
-          RequireTree(self.evidence == NameEvidence::kSynthesized &&
-              ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
+          RequireTree(self.evidence == NameEvidence::kSynthesized, Error::kBinding);
           break;
         default: throw Error::kBinding;
       }
@@ -364,8 +362,7 @@ class StructureCheck {
           const auto value = std::bit_cast<double>(number->bits);
           const auto canonical = std::bit_cast<std::uint64_t>(std::numeric_limits<double>::quiet_NaN());
           RequireTree(!std::isnan(value) || number->bits == canonical ||
-              (Arithmetic(tree_.identity.contract) == analysis::ArithmeticSemantics::kSourceNumeric &&
-               analysis::detail::FloatNumberKinds({number->bits}).IsNumber()), Error::kUnsupportedSyntax);
+              (analysis::detail::FloatNumberKinds({number->bits}).IsNumber()), Error::kUnsupportedSyntax);
         }
       } else if constexpr (std::is_same_v<T, SymbolExpr>) {
         scopes_.Reference(expression.symbol);
@@ -376,7 +373,7 @@ class StructureCheck {
         switch (expression.loading) {
           case analysis::ModuleLoading::kOrdinary: break;
           case analysis::ModuleLoading::kLazy:
-            RequireTree(LazyImports(tree_.identity.contract) == LazyImportSemantics::kArkTsLazyImport &&
+            RequireTree(IsSourceContract(tree_.identity.contract) &&
                 tree_.symbols[expression.symbol.value].kind == BindingKind::kModule, Error::kBinding);
             break;
         }
@@ -394,7 +391,7 @@ class StructureCheck {
       } else if constexpr (std::is_same_v<T, RealmObjectExpr> || std::is_same_v<T, SymbolConstructorExpr>) {
         if (destination_) {
           if constexpr (std::is_same_v<T, RealmObjectExpr>) {
-            const auto binding = ResolveRealmBinding(tree_.identity.contract, destination_);
+            const auto binding = ResolveRealmBinding(destination_);
             RequireTree(binding.has_value(), Error::kBinding); scopes_.FreeReference(binding->name);
           } else {
             const auto binding = ResolveSymbolBinding(destination_);
@@ -487,8 +484,7 @@ class StructureCheck {
           RequireTree(binding.has_value(), Error::kBinding); scopes_.FreeReference(*binding);
         }
         RequireTree(expression.owner == tree_.owner && tree_.strictness == Strictness::kStrict &&
-            (!IsArrowCallable(tree_.callable) || tree_.invocation == InvocationForm::kArrowMethod) &&
-            ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kBinding);
+            (!IsArrowCallable(tree_.callable) || tree_.invocation == InvocationForm::kArrowMethod), Error::kBinding);
         RequireTree(expression.slots.first <= tree_.arguments.size() &&
             expression.slots.count <= tree_.arguments.size() - expression.slots.first &&
             expression.slots.count == tree_.parameters.size(), Error::kRange);
@@ -498,8 +494,7 @@ class StructureCheck {
               arguments->count <= tree_.arguments.size() - arguments->first, Error::kRange);
         } else {
           const auto array = std::get<ArrayArguments>(expression.arguments).array;
-          RequireTree(ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded &&
-              array.value < tree_.expressions.size(), Error::kUnsupportedSyntax);
+          RequireTree(array.value < tree_.expressions.size(), Error::kUnsupportedSyntax);
           const auto& child = tree_.expressions[array.value].expression;
           const auto* aggregate = std::get_if<ObjectExpr>(&child);
           RequireTree(std::holds_alternative<EmptyArrayExpr>(child) ||
@@ -523,8 +518,7 @@ class StructureCheck {
             const auto* rest = std::get_if<SymbolExpr>(&tree_.expressions[iterable.value].expression);
             RequireTree(tree_.parameter_form == ParameterForm::kInvocationRest && rest &&
                 rest->symbol == tree_.parameters.front().symbol, Error::kUnsupportedSyntax);
-          } else RequireTree(Constructors(tree_.identity.contract) == ConstructorSemantics::kSourceLanguage &&
-              expression.source == analysis::SuperArgumentSource::kExplicit, Error::kUnsupportedSyntax);
+          } else RequireTree(expression.source == analysis::SuperArgumentSource::kExplicit, Error::kUnsupportedSyntax);
         }
       } else if constexpr (std::is_same_v<T, PatternFailureExpr>) {
       } else if constexpr (std::is_same_v<T, ObjectRestExpr>) {
@@ -548,8 +542,7 @@ class StructureCheck {
           RequireTree(expression.callee.value < tree_.expressions.size() &&
               std::holds_alternative<MemberExpr>(tree_.expressions[expression.callee.value].expression), Error::kUnsupportedSyntax);
       } else if constexpr (std::is_same_v<T, ArrayExpr>) {
-        RequireTree(ArraySpreads(tree_.identity.contract) == ArraySpreadSemantics::kSourceIterator &&
-            ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded, Error::kUnsupportedSyntax);
+        RequireTree(IsSourceContract(tree_.identity.contract), Error::kUnsupportedSyntax);
         RequireTree(expression.elements.first <= tree_.arguments.size() &&
             expression.elements.count <= tree_.arguments.size() - expression.elements.first &&
             expression.buffered <= expression.elements.count, Error::kRange);
@@ -938,7 +931,7 @@ class StructureCheck {
             scopes_.EnclosingReference(child.names[symbol.name.value], &*modules[reference->symbol.value]);
           } else if (destination_) {
             if (std::holds_alternative<RealmObjectExpr>(node.expression)) {
-              const auto binding = ResolveRealmBinding(child.identity.contract, destination_);
+              const auto binding = ResolveRealmBinding(destination_);
               RequireTree(binding.has_value(), Error::kBinding); scopes_.EnclosingReference(binding->name);
             } else if (std::holds_alternative<SymbolConstructorExpr>(node.expression)) {
               const auto binding = ResolveSymbolBinding(destination_);
@@ -983,6 +976,7 @@ static std::variant<TreeStructure, TreeStructureError> VerifyStructure(
   TreePrintSiteScope site(TreePrintSite::kStructureVerification);
   TreePrintLocationScope location(tree);
   try {
+    RequireTree(IsSourceContract(tree.identity.contract), Error::kContract);
     TreeCheckBudget checked(budget);
     std::size_t input_bytes=0;
     if(!BorrowedPrintTrees::Holds(tree)) {

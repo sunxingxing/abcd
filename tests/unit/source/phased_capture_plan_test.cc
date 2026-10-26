@@ -75,7 +75,7 @@ void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool
   // Conditional fragments, not invented file/source receipts. Public owner
   // admission is exercised separately with real file-backed children.
   RouteInputIdentity identity; identity.profile = profile;
-  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned capture-domain proof.
+  identity.contract = kSourceContract;  // Source capture-domain proof.
   constexpr abc::EntityOffset kParent{300}, kChild{400}, kRecord{100};
   const auto child_body = test::Body({op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kFirstCell, op(abc::Opcode::kRETURN)});
   const auto child_input = std::get<FunctionInput>(FunctionInput::Build(identity, kChild, kRecord,
@@ -103,8 +103,12 @@ void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool
     test::Check(std::get<LocalCell>(plan.bindings[0].cell).environment == EnvironmentId{prior_environment ? 1U : 0U});
     const CaptureParent parent{identity, kParent, graph, &working_env, &working_cells,
         flow.instructions, locals.plan.allocations, scopes};
+    // Keep the strict raw Language proof above; the source child's weaker TDZ
+    // requirement has its own correspondence certificate at this same port.
+    const auto source_plan = std::get<CapturePlan>(BuildCapturePlan(scopes, node.instruction,
+        binding, child_input.Captures()));
     auto cells = std::get<CaptureCells>(BindCaptureTargets(parent, {child_input, child_values},
-        node.instruction, binding, plan));
+        node.instruction, binding, source_plan));
     test::Check(cells.targets.size() == 1 && std::get<ParentCell>(cells.targets[0].target).cell == CellId{0});
     const auto verify_cells = [&] { return VerifyCaptureTargets(parent, {child_input, child_values},
         node.instruction, binding, cells); };
@@ -124,13 +128,13 @@ void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool
         node.instruction, binding, cells)) == CaptureCellError::kCell);
     SemanticBudget cell_budget; cell_budget.work = cells.work;
     test::Check(std::holds_alternative<CaptureCells>(BindCaptureTargets(parent, {child_input, child_values},
-        node.instruction, binding, plan, cell_budget)));
+        node.instruction, binding, source_plan, cell_budget)));
     --cell_budget.work;
     test::Check(std::get<CaptureCellFailure>(BindCaptureTargets(parent, {child_input, child_values},
-        node.instruction, binding, plan, cell_budget)) == CaptureCellError::kWorkLimit);
+        node.instruction, binding, source_plan, cell_budget)) == CaptureCellError::kWorkLimit);
     cell_budget = {}; cell_budget.bytes = 0;
     test::Check(std::get<CaptureCellFailure>(BindCaptureTargets(parent, {child_input, child_values},
-        node.instruction, binding, plan, cell_budget)) == CaptureCellError::kResourceLimit);
+        node.instruction, binding, source_plan, cell_budget)) == CaptureCellError::kResourceLimit);
     if (profile == abc::ProfileId::kDynamic1301 && early_store && !prior_environment && creations == 1) {
       // Many original reads AND writes alias one mutable cell. The verifier
       // must cover every occurrence, not accept only the first matching use.

@@ -155,9 +155,11 @@ void Constructors() {
 }
 int main() {
   Constructors();
-  for (unsigned raw=0; raw<=static_cast<unsigned>(SourceContract::kLanguageSourceV5); ++raw) {
-    const auto c=static_cast<SourceContract>(raw);
-    Check(CallSpread(c)==(c==SourceContract::kLanguageSourceV5 ? CallSpreadSemantics::kPrivateArgumentsV1 : CallSpreadSemantics::kPinnedRuntime));
+  for (const auto& entry : kSourceContracts) {
+    const auto c = entry.contract;
+    const bool pinned = c == SourceContract::kLanguageSourceV1 || c == SourceContract::kLanguageSourceV2 ||
+        c == SourceContract::kLanguageSourceV3 || c == SourceContract::kLanguageSourceV4;
+    Check(CallSpread(c) == (pinned ? CallSpreadSemantics::kPinnedRuntime : CallSpreadSemantics::kPrivateArgumentsV1));
   }
   for (unsigned count : {1U,200U,201U,400U,800U}) for (bool split : {false,true}) {
     auto sample=Make(count,true,split); sample.names.push_back(u"input");

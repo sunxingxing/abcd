@@ -236,8 +236,8 @@ void Emit(ProfileCase profile, abc::Opcode constant, bool callback,
     if (constant == abc::Opcode::kLDGLOBAL) {
       test::Check(std::holds_alternative<RealmObjectExpr>(member.tree.expressions[expression.value].expression));
       const auto& binding = emission.Positions().members.front().realm_binding;
-      test::Check(binding && binding->policy == (realm_binding ?
-          RealmBindingPolicy::kExplicitHost : RealmBindingPolicy::kStableGlobalThis));
+      test::Check(binding && binding->origin == (realm_binding ?
+          RealmBindingOrigin::kExplicitHost : RealmBindingOrigin::kStableGlobalThis));
       test::Check(binding->name == (realm_binding ? realm_binding->name : u"globalThis"));
       test::Check(output.view().substr(span.begin, span.end - span.begin) ==
           std::string(binding->name.begin(), binding->name.end()));

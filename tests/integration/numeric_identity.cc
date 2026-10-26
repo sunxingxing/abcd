@@ -39,7 +39,7 @@ abc::MethodBody Body(unsigned count, bool legacy, bool phased = false) {
 std::uint64_t Run(abc::ProfileId profile, unsigned count, bool print = false, bool legacy = false) {
   const auto body = Body(count, legacy);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 1, {}));
-  RouteInputIdentity identity; identity.profile = profile; identity.contract = SourceContract::kLanguageAndHostV1;
+  RouteInputIdentity identity; identity.profile = profile; identity.contract = SourceContract::kLanguageSourceV5;
   const auto prepared = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
   test::Check(std::holds_alternative<FunctionInput>(prepared));
   const auto& input = std::get<FunctionInput>(prepared);
@@ -101,7 +101,7 @@ void Phased(abc::ProfileId profile, unsigned count, bool legacy, bool print = fa
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
-  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV1; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageSourceV5; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value"}; syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
   std::vector<ExpressionConstant> constants(graph.ops.size()); const ExpressionConstants resolved{constants, syntax.names.size()};
   const ExceptionTreeInput context{body, input, regions, control};
