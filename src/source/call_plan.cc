@@ -240,7 +240,7 @@ std::variant<CallPlan, CallPlanFailure> BuildCalls(const analysis::ValueProgram&
       const auto* invoke = std::get_if<ValueInvoke>(&op.operation);
       if (!invoke) continue;
       const auto spread = SpreadArray(graph, evaluation, op, array_uses);
-      if (invoke->receiver == InvokeReceiver::kUndefined || (spread && UndefinedReceiver(graph, evaluation, op))) {
+      if (!NeedsMemberReference(graph, evaluation, OpId{static_cast<std::uint32_t>(i)})) {
         plan.operations[i] = ValueCall{EvalMode::kIndirect, spread};
         continue;
       }
@@ -296,7 +296,7 @@ std::variant<std::uint64_t, CallPlanFailure> VerifyCalls(const analysis::ValuePr
         continue;
       }
       const auto spread = SpreadArray(graph, evaluation, op, array_uses);
-      if (invoke->receiver == InvokeReceiver::kUndefined || (spread && UndefinedReceiver(graph, evaluation, op))) {
+      if (!NeedsMemberReference(graph, evaluation, OpId{static_cast<std::uint32_t>(i)})) {
         const auto* value = std::get_if<ValueCall>(&binding);
         Require(value && value->eval == EvalMode::kIndirect && value->array == spread, Error::kBinding); continue;
       }
@@ -327,6 +327,15 @@ std::variant<std::uint64_t, CallPlanFailure> VerifyCalls(const analysis::ValuePr
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }
 }  // namespace
+bool NeedsMemberReference(const analysis::ValueProgram& graph, const EvaluationPlan& plan,
+    analysis::OpId call) {
+  const auto& op = graph.ops[call.value];
+  const auto kind = plan.operations[call.value].kind;
+  const auto* invoke = std::get_if<analysis::ValueInvoke>(&op.operation);
+  return op.life == analysis::ValueLife::kLive && kind != EvaluationKind::kClassProjection &&
+      kind != EvaluationKind::kForOfEvent && invoke && invoke->receiver == analysis::InvokeReceiver::kExplicit &&
+      !(invoke->form == analysis::CallArgumentForm::kApplyArray && UndefinedReceiver(graph, plan, op));
+}
 std::variant<CallArgumentUses, CallPlanError> IndexCallArgumentUses(
     const analysis::ValueProgram& graph, const EvaluationPlan& evaluation, analysis::SemanticBudget budget) {
   try {

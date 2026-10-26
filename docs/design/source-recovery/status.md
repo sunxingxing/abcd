@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-10-24。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-26。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
@@ -9,6 +9,82 @@
 
 
 
+
+## Phased prefix scheduling stability — review fix (2026-10-26)
+
+- Took option B: run the complete original phased pipeline with predicate-only
+  prefix discovery first. Preserve that schedule when all member References
+  close; retry once with selection enclosures only for an unmet Reference.
+  The census shares CallPlan binding classification, excluding protocol calls
+  and undefined-receiver apply calls from member obligations. Typed `PhasePrefixDomain` selects the independently recomputed equations in
+  builder, refresh, binding and fresh verification. The retry charges original
+  work plus the Reference census and releases original arenas before rebuilding.
+  No names, paths, printed text, layout tests or new source premise participate.
+  Existing complexity and typed resource/refusal obligations remain binding.
+- The regression unit uses a retained getter shared by a predicate and arm in
+  an already-complete value call. It now keeps its original prefix/snapshots;
+  legacy member-call compositions keep their domain too. Forged domain changes
+  refuse; exact/exhausted budgets and 200/201/400/800 scaling cover preserved
+  schedules and the expanded repair. The 114-case Node differential still passes.
+- Fresh o32 whole-record emission restores **OhReport.mjs byte-for-byte** against
+  the read-only `build/review/csr82/ns/o32` baseline: **12,483 bytes**, SHA-256
+  `cfd968198580026d80c5ae584fecd040cea5d7d4f2a94e6b4eacf5e216f3cb47`. `cmp` exits 0.
+  Output: `/private/tmp/abcd-phased-ownership-review-2mz3in37/final-o32`.
+  The review diff/baseline were read only; no cohort tools ran.
+- `cmake --build build/regression --target source_regression abc_structure isa_coverage_probe phase_composition_test -j 8`:
+  passes. `ctest --test-dir build/regression -L source-regression -j 2 --output-on-failure`:
+  **65/65** pass. `python3 tests/isa/phased_member_calls_test.py`: **OK**.
+  Additional related ISA/composition sweep: **14/14** pass.
+  Fresh CameraService failure is structurally identical: entity **13268**,
+  pc **138**, CallPlanError **4** / CallReferenceError **1** / TemporaryReason **4**;
+  the nonempty catch-staging limit is unchanged. Commands and evidence:
+  `build/phased-member-calls/review-stability/`. No commit/push; input ABCs,
+  `samples/` and `build/review/` were not modified.
+
+## Phased member-call argument composition (2026-10-26)
+
+- Extended the shared phased predicate-prefix index with original selection
+  enclosures: condition/arm roots and exact merged-value/phi-edge occurrences.
+  A retained getter used by the predicate and a selected arm can now belong to
+  one argument-local prefix. Existing effect order, canonical-use scope,
+  composition, receiver/call, exception and final-tree/recovery proofs still
+  decide admission. Builder, refresh, original-site binding and fresh selection
+  verification reconstruct the index. Storage is prepaid; added indexing is
+  linear before existing sorts, within O((N+E+U+K) log(N+K)). No source premise
+  was added. Design and staging limit:
+  [call-references.md §5.5](call-references.md#55-complete-phased-argument-subtrees-2026-10-26).
+- Added pinned O0 `phased_member_calls` ABCs, append-only ISA producer, and a
+  **114-case** Node differential: the original concatenation reproducer,
+  templates, before/after await, both nullish arms, optional calls inside member
+  arguments, independent conditional subtrees, getter/argument/coercion/call
+  failures, callee replacement, receiver identity and an independently throwing
+  callee-base getter. A separate live-result fixture preserves the typed catch-staging refusal. Composition units cover
+  equivalent register copies, escaped inputs, unrelated effects, omitted-prefix
+  and per-throw-handler mutations, exact/exhausted budgets and retained-input
+  wrapper scaling at 200/201/400/800.
+- Authoritative build passes:
+  `cmake --build build/regression --target source_regression abc_structure isa_coverage_probe -j 8`.
+  `ctest --test-dir build/regression -L source-regression -j 2 --output-on-failure`:
+  **65/65** pass. `python3 tests/isa/phased_member_calls_test.py`: **OK** (114 Node
+  cases plus the typed refusal). The prior 11 ISA source tests plus
+  `isa_wide_calls_source_test` and the new producer pass: **13/13**; fresh
+  `phase_composition_test` also passes (**14/14** combined sweep).
+  Commands, logs and current record status: `build/phased-member-calls/`.
+- **CameraService remains incomplete**, method entity **13268**, pc **138**:
+  `CallPlanError::kReference` (4), `CallReferenceError::kNotInline` (1),
+  `TemporaryReason::kCrossRegionValue` (4). Fresh whole-record emission to
+  `/private/tmp/abcd-phased-member-final-92e73ds6/record` confirms this; EditPage
+  remains complete. The method has a separate nonempty catch-copy obligation:
+  bytecode register v4 holds the current result and remains live after catch.
+  Every logger-span throw stages that value into the same private catch slot
+  (current graph: source 33, catch phi 19, slot 0). At the length getter pc 119,
+  selection discovery refuses the staged arm before composition can run.
+  Equal snapshots are insufficient placement evidence: catch staging remains
+  statements at original Before ports, and inline emission still rejects
+  `kCatchStaging`. An additional exception-copy placement/coverage certificate
+  and emitter/operand/flow/recovery work are required; this increment preserves
+  the refusal rather than discarding those obligations. No cohort tools ran;
+  input ABCs, `samples/` and `build/review/` were not modified. No commit/push.
 
 ## Classes in phased creators, increment 1 (2026-10-26)
 

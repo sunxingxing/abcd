@@ -11145,6 +11145,10 @@
     {
       "test": "isa_phased_classes_source_test",
       "producer": "tests/isa/phased_classes_test.py"
+    },
+    {
+      "test": "isa_phased_member_calls_source_test",
+      "producer": "tests/isa/phased_member_calls_test.py"
     }
   ]
 }

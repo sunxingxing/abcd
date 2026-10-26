@@ -466,6 +466,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/derived_control_test.py)
     add_test(NAME isa_phased_classes_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/phased_classes_test.py)
+    add_test(NAME isa_phased_member_calls_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/phased_member_calls_test.py)
     add_test(NAME isa_loop_corridors_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/loop_corridors_test.py)
     add_test(NAME isa_derived_source_test COMMAND ${Python3_EXECUTABLE}

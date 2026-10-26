@@ -16,9 +16,18 @@ bool Pure(const ValueOp& op) {
   return op.normal == LanguageEffect::kNone && op.before_throw == LanguageEffect::kNone &&
       op.exceptional == ExceptionalCompletion::kImpossible;
 }
+std::span<const SelectionRegion> PrefixRegions(PhasePrefixDomain domain,
+    std::span<const SelectionRegion> regions) {
+  switch (domain) {
+    case PhasePrefixDomain::kPredicate: return {};
+    case PhasePrefixDomain::kSelection: return regions;
+  }
+  throw EvaluationError::kOwnership;
+}
 class OperandSelections {
  public:
-  OperandSelections(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget)
+  OperandSelections(const ValueProgram& graph, const EvaluationPlan& plan, TreeCheckBudget& budget,
+      std::span<const SelectionRegion> regions)
       : graph_(graph), plan_(plan), budget_(budget), phase_budget_(budget.Remaining()),
         corridors_(graph, plan, phase_budget_) {
     budget.Admit(phase_budget_.Cost().bytes, 1);
@@ -59,7 +68,8 @@ class OperandSelections {
       }
     }
     IndexReferences();
-    predicates_ = IndexPhasePredicatePrefixes(graph, plan, roots_, budget);
+    predicates_ = IndexPhasePredicatePrefixes(graph, plan, roots_, budget,
+        PrefixRegions(plan.phase_prefix_domain, regions));
   }
 
   struct OperandSelection {
@@ -591,13 +601,13 @@ std::vector<PhaseSelectionOperand> FindPhaseSelectionBindings(const ValueProgram
         plan.operations[region.branch.value].kind != EvaluationKind::kLogicalValue;
   }
   if (!needed) return {};
-  OperandSelections proof(graph, plan, budget);
+  OperandSelections proof(graph, plan, budget, regions);
   auto bindings = proof.Bindings(regions); proof.Account(); return bindings;
 }
 void BuildPhaseSelectionOperands(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
   const auto regions = FindPhasedPhiSelections(graph, plan, budget);
   if (regions.empty()) return;
-  OperandSelections proof(graph, plan, budget);
+  OperandSelections proof(graph, plan, budget, regions);
   auto operands = proof.CheckAll(regions);
   proof.Account();
   if (operands.empty()) return;
@@ -670,7 +680,7 @@ static bool RetainSealedSelections(const EvaluationPlan& plan,
 // legitimately moves to the composed root; then adopt those owners.
 bool RefreshPhaseSelectionExecutions(const ValueProgram& graph, EvaluationPlan& plan, TreeCheckBudget& budget) {
   const auto regions = FindPhasedPhiSelections(graph, plan, budget);
-  OperandSelections proof(graph, plan, budget);
+  OperandSelections proof(graph, plan, budget, regions);
   auto operands = proof.CheckAll(regions);
   proof.Account();
   if (!RetainSealedSelections(plan, operands, budget)) return false;
@@ -694,7 +704,7 @@ void VerifyPhaseSelectionOperands(const ValueProgram& graph, const EvaluationPla
   Require(!plan.logical_values.empty() && plan.phase_transports.size() == graph.ops.size() &&
       plan.phase_prefixes.size() == graph.ops.size() && plan.phase_references.size() == graph.ops.size() && plan.phase_children.size() == graph.ops.size());
   const auto regions = FindPhasedPhiSelections(graph, plan, budget);
-  OperandSelections proof(graph, plan, budget);
+  OperandSelections proof(graph, plan, budget, regions);
   auto expected_operands = proof.CheckAll(regions);
   Require(RetainSealedSelections(plan, expected_operands, budget));
   enum class BranchPlacement : std::uint8_t { kNone, kValue, kArm };

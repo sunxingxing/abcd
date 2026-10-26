@@ -5,6 +5,11 @@
 #include "abcd/source/call_reference.h"
 
 namespace abcd::source {
+// Native binding obligation shared by scheduling and fresh call verification.
+// Protocol-owned calls and undefined-receiver apply remain NoCall/value calls;
+// property identity, receiver stability and total order still need their proofs.
+[[nodiscard]] bool NeedsMemberReference(const analysis::ValueProgram&,
+    const EvaluationPlan&, analysis::OpId call);
 [[nodiscard]] std::optional<analysis::OpId> MemberProperty(const analysis::ValueProgram&,
     const EvaluationPlan&, analysis::OpId);
 [[nodiscard]] bool MemberReferenceInline(const analysis::ValueProgram&, const EvaluationPlan&,

@@ -39,6 +39,9 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
   const auto Require = [&](bool condition, Error error) { if (!condition) throw EvaluationFailure{error, witness}; };
   try {
     Require(plan.flow == flow, Error::kUnsupportedOperation);
+    Require(plan.phase_prefix_domain == PhasePrefixDomain::kPredicate ||
+        (flow == EvaluationFlow::kPhased && plan.phase_prefix_domain == PhasePrefixDomain::kSelection),
+        Error::kOwnership);
     Require(flow == EvaluationFlow::kPhased || (plan.checked_compositions.empty() && plan.checked_failures.empty()), Error::kOwnership);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Require(plan.operations.size() == graph.ops.size(), Error::kInvalidGraph);

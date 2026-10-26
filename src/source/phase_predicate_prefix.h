@@ -13,10 +13,14 @@ struct PhasePredicatePrefixes {
   std::vector<analysis::OpId> operations;
   EffectOrder order;
 };
-// Root-use equations identify exclusive decision dependencies. A single indexed
-// must-reach proof retains their execution count/order across arbitrary pure CFG.
-// Catch/Reference/leaf obligations remain with the common operand verifier.
+// Root-use equations identify exclusive decision/selected-arm dependencies.
+// The supplied original regions make a retained input's predicate and arm
+// observations one enclosure, including its exact phi-edge occurrence. Discovery
+// without regions keeps the predicate-only index. A single indexed must-reach
+// proof retains execution count/order; catch/Reference/scope admission remains
+// with the common operand verifier, which recomputes this index independently.
 PhasePredicatePrefixes IndexPhasePredicatePrefixes(const analysis::ValueProgram&,
-    const EvaluationPlan&, std::span<const analysis::OpId> roots, TreeCheckBudget&);
+    const EvaluationPlan&, std::span<const analysis::OpId> roots, TreeCheckBudget&,
+    std::span<const SelectionRegion> regions = {});
 }
 #endif

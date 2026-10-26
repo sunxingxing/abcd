@@ -321,6 +321,85 @@ reread 变异检测），以及 `phconcat` 拒绝类。
 **后续。** 按共识拆分选择验证器；支持嵌套选择、literal、模块与对象操作数；补充等价变体，
 以及深度与数量为 200、201 的规模检查。
 
+### 5.5 Complete phased argument subtrees (2026-10-26)
+
+The expanded `IndexPhasePredicatePrefixes` proof takes the original selection
+regions when checking operand selections. Its reverse-use equations previously treated a
+retained input's predicate observations, selected-arm observations and phi-edge
+observations as competing destinations. That left the input getter materialized
+before the argument, so composition could not move the earlier member Reference
+to its call without reversing getter/argument order.
+
+The index maps condition and arm roots to their selection enclosure and maps
+each original phi edge together with its merged value to the same enclosure.
+This is a candidate ownership equation, not movement permission. The existing
+`PredicatePrefix` effect-order proof must still place every proposed prefix
+before the header in its original order/catch scope; `Scope` checks every
+canonical observation against that region's predicates, arms and exact phi
+occurrences. Competing observations, external effects, unavailable inputs and
+catch changes still refuse. Retained inputs become argument-local assignment
+prefixes, evaluated once. No optional-chain, template, opcode-layout or name
+dispatch was added.
+
+**Stable scheduling (review fix).** `BuildPhasedEvaluationPlan` first runs the
+complete original pipeline with the predicate-only prefix domain, including
+checked-read, member-update and literal composition. If every member Reference
+is already inline at its invocation, retain that plan unchanged. Only an unmet
+Reference requests one fresh build with the selection-enclosure domain. The
+choice uses the shared CallPlan `NeedsMemberReference` classification and typed
+`MemberProperty` / `MemberReferenceInline` facts, never names,
+source text or diagnostics. This preserves previously complete source bytes;
+the richer index is recovery, not a mandatory rescheduling of completed trees.
+
+`PhasePrefixDomain` records which dependency equations own the selection
+certificate. Builder, refresh, original-site binding and independent selection
+verification all reconstruct that domain; the normal route admits only the
+predicate domain. Mutating the domain without its prefix evidence is rejected.
+The successful original attempt reports its work, which is charged together
+with the O(N) Reference census before retry. Its arenas are destroyed before
+the second attempt, so the byte allowance is reused without overlapping plans.
+Failed attempts do not receive a fresh work allowance. There are at most two
+domain builds; the existing complexity bound is unchanged.
+
+The current final-tree certificate retains the base assignment and its binding
+when forming native optional syntax. Removing that storage needs additional
+binding-use/lifetime and origin coverage evidence. This fix takes the stable
+scheduling option instead of claiming that storage-elimination proof.
+
+The existing `Composition` proof then covers the complete argument tree,
+including coercive binaries before/after its selections, before consuming the
+callee Reference. Builder, selection refresh, original-site bindings and fresh
+selection verification all recompute the same enclosure index. Existing
+composition, call binding, tree operand/order, exception correspondence and
+recovery checks remain authoritative; no throwing anchors are ignored. Added
+storage is prepaid O(N+E); indexing is O(N+E+U+K) before the existing effect-order
+and prefix sorts, within O((N+E+U+K) log(N+K)). Here K counts region/condition/arm
+occurrences, not copied CFGs. No source-language premise changes.
+
+Tests: `phase_composition_test` adds a getter shared between predicate and arm,
+equivalent register copies, escaped observations, an unrelated intervening
+getter, omitted-prefix and per-throw-handler mutations, exact/exhausted budgets
+and 200/201/400/800 pure-wrapper scaling with a retained selection input.
+`isa_phased_member_calls_source_test` supplies pinned O0 ABCs, a 114-case Node
+differential, and a separate typed refusal for a live return value requiring
+pre-throw catch staging. The differential covers both nullish arms, optional
+calls nested in member-call arguments, independent conditional subtrees,
+receiver identity, callee replacement, throwing getters/arguments/coercions and
+async fulfillment/rejection before/after await.
+
+**Remaining representation limit: nonempty catch staging.** Matching handler
+and copy sources do not themselves prove where to emit those copies inside an
+expression. `FindPhasedPhiSelections` refuses staged arms; `Composition` also
+requires moved events to have no catch copies. `CopyExpressions::Stage` and
+`TreeBuilder::EmitBlock` still emit staging as statements at each original Before port,
+and `TreeBuilder::EmitDecisionBlock` retains `kCatchStaging`. Do not remove those
+checks to gain a Reference. A future projection needs a checked placement and
+coverage certificate for every original exceptional copy, source availability
+at the chosen staging point, and fresh emitter/operand/flow/recovery verification.
+Uniform snapshots may permit coalescing into a private stage before the earliest
+throw, but equal bundles alone do not authorize that placement. This requires
+additional exception-copy emission work, not a new language premise.
+
 ## 6. Round 37：赋值表达式作为调用实参（2026-10-13）
 
 基线 `c7e4fc1f`。原始 Value IR 的 `ValueNamedWrite` / `ValuePropertyWrite`

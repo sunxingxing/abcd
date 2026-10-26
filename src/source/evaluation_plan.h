@@ -82,6 +82,10 @@ struct PhaseSelectionArm {
 struct PhaseSelectionBinding {
   bool operator==(const PhaseSelectionBinding&) const = default;
 };
+// Proof domain, not movement permission. Preserve the predicate-only schedule
+// if it closes every member Reference; selection enclosure is a bounded retry.
+// Every selection verifier independently reconstructs the selected domain.
+enum class PhasePrefixDomain : std::uint8_t { kPredicate, kSelection };
 struct PhaseSelectionOperand {
   // Direct eager operands and member arguments share control ownership. A
   // member Reference additionally retains its original callee/receiver order.
@@ -170,6 +174,7 @@ struct EvaluationPlan {
   // its original control interval; member operands additionally retain the
   // shared Reference and prefix. Ordinary inline edges differ.
   std::vector<PhaseSelectionOperand> phase_selections;
+  PhasePrefixDomain phase_prefix_domain = PhasePrefixDomain::kPredicate;
   std::vector<std::optional<analysis::OpId>> phase_children;
   // Direct and ancestor callee references, indexed by original operation.
   // Entries are separately checked; they never license a .call substitution.

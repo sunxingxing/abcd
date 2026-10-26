@@ -1,6 +1,7 @@
 #include "phase_predicate_prefix.h"
 #include "phase_corridor.h"
 #include "evaluation_aliases.h"
+#include "logical_regions.h"
 #include <algorithm>
 namespace abcd::source {
 namespace {
@@ -44,7 +45,8 @@ std::vector<OpId> IndexPhaseInlineRoots(const ValueProgram& graph,
   return roots;
 }
 PhasePredicatePrefixes IndexPhasePredicatePrefixes(const analysis::ValueProgram& graph,
-    const EvaluationPlan& plan, std::span<const OpId> roots, TreeCheckBudget& budget) {
+    const EvaluationPlan& plan, std::span<const OpId> roots, TreeCheckBudget& budget,
+    std::span<const SelectionRegion> regions) {
   Require(roots.size() == graph.ops.size());
   struct Edge { OpId source; std::optional<std::size_t> next; };
   std::vector<std::optional<std::size_t>> heads;
@@ -53,6 +55,29 @@ PhasePredicatePrefixes IndexPhasePredicatePrefixes(const analysis::ValueProgram&
   std::vector<std::uint8_t> candidates, foreign;
   std::vector<OpId> queue;
   std::vector<Edge> edges;
+  struct PhiOwner { OpId branch; ValueId merged; };
+  std::vector<std::optional<OpId>> enclosures;
+  std::vector<std::optional<PhiOwner>> phi_owners;
+  budget.Array(enclosures, graph.ops.size()); budget.Array(phi_owners, graph.edges.size());
+  // A selection reads its retained inputs in both its predicates and its
+  // selected arms. These are one source enclosure, not competing consumers.
+  // This index proposes ownership only: PredicatePrefix must still prove the
+  // producer executes before the header, and Scope checks every original use.
+  for (const auto& region : regions) {
+    budget.Step();
+    for (const auto& condition : region.conditions) {
+      budget.Step(); enclosures[roots[condition.branch.value].value] = region.branch;
+    }
+    for (const auto* arm : {&region.right, region.consequent ? &*region.consequent : nullptr}) {
+      budget.Step(); if (!arm) continue;
+      const auto* value = std::get_if<ValueId>(arm);
+      const auto* origin = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+      if (origin) enclosures[roots[origin->op.value].value] = region.branch;
+    }
+    for (const auto input : {region.keep_input, region.evaluate_input}) {
+      budget.Step(); if (input) phi_owners[input->value] = PhiOwner{region.branch, region.merged};
+    }
+  }
   budget.Array(heads, graph.ops.size()); budget.Array(destinations, graph.ops.size());
   budget.Array(pending, graph.ops.size()); budget.Array(candidates, graph.ops.size());
   budget.Array(foreign, graph.ops.size()); budget.Array(queue, graph.ops.size());
@@ -73,15 +98,24 @@ PhasePredicatePrefixes IndexPhasePredicatePrefixes(const analysis::ValueProgram&
     const auto* result = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
     if (!result) continue;
     const auto source = roots[result->op.value]; if (!candidates[source.value]) continue;
-    const auto* owner = std::get_if<OpId>(&use.owner);
-    if (!owner) { foreign[source.value] = 1; continue; }
-    const auto placement = BeforeLogicalFusion(graph, plan, owner->value).kind;
-    if (placement == EvaluationKind::kAlias || placement == EvaluationKind::kElidedPure) continue;
-    const auto target = roots[owner->value]; if (target == source) continue;
+    std::optional<OpId> target;
+    if (const auto* owner = std::get_if<OpId>(&use.owner)) {
+      const auto placement = BeforeLogicalFusion(graph, plan, owner->value).kind;
+      if (placement == EvaluationKind::kAlias || placement == EvaluationKind::kElidedPure) continue;
+      const auto root = roots[owner->value];
+      target = enclosures[root.value].value_or(root);
+    } else if (use.role == OperandRole::kPhiInput && use.incoming) {
+      if (const auto* edge = std::get_if<EdgeId>(&*use.incoming)) {
+        const auto& owner = phi_owners[edge->value];
+        if (owner && std::get<ValueId>(use.owner) == owner->merged) target = owner->branch;
+      }
+    }
+    if (!target) { foreign[source.value] = 1; continue; }
+    if (*target == source) continue;
     // A callee is a Reference acquisition, not a movable value prefix. The
     // existing Reference owner must authorize its receiver/invocation pairing.
     if (use.role == OperandRole::kCallee) foreign[source.value] = 1;
-    edges[edge_count] = {source, heads[target.value]}; heads[target.value] = edge_count++;
+    edges[edge_count] = {source, heads[target->value]}; heads[target->value] = edge_count++;
     ++pending[source.value];
   }
   // Reverse-use Kahn equations: every external consumer must resolve to the

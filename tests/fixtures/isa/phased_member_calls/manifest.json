@@ -1,0 +1,71 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/phased_member_calls/calls.js",
+   "path": "tests/fixtures/isa/phased_member_calls/calls-O0.abc",
+   "sha256": "007258a256143ea9f65a2724490ee658841fbfb31fa5aa3b0277de0f46878d08",
+   "source_sha256": "b2d8a6bdc74ea5f118839df843ccbe43ab0693b2acdfe62415937816e54e25ac",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_member_calls",
+    "--source-file=calls.js",
+    "--output=tests/fixtures/isa/phased_member_calls/calls-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_member_calls/calls.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/phased_member_calls/staged.js",
+   "path": "tests/fixtures/isa/phased_member_calls/staged-O0.abc",
+   "sha256": "e1f99c769d58efcc51b6a55551aa4e0e869df4b3504c458572231ca1fc4c4f86",
+   "source_sha256": "6bf6d2439d02ec78b54a43931918915c7af49d077f97c59d72ae6bb04441e665",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_member_calls_staged",
+    "--source-file=staged.js",
+    "--output=tests/fixtures/isa/phased_member_calls/staged-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_member_calls/staged.js"
+   ],
+   "profile": 6,
+   "refusal": [
+    {
+     "domain": "abcd::source::FunctionTreeError",
+     "value": 1
+    },
+    {
+     "domain": "abcd::source::ExpressionError",
+     "value": 4
+    },
+    {
+     "domain": "abcd::source::CallPlanError",
+     "value": 4
+    },
+    {
+     "domain": "abcd::source::CallReferenceError",
+     "value": 1
+    },
+    {
+     "domain": "abcd::source::EvaluationKind",
+     "value": 1
+    },
+    {
+     "domain": "abcd::source::TemporaryReason",
+     "value": 4
+    }
+   ]
+  }
+ ],
+ "note": "O0 only."
+}

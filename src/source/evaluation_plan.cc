@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "assignment_values.h"
+#include "call_plan.h"
 #include "call_spread_inputs.h"
 #include "evaluation_aliases.h"
 #include "evaluation_failure.h"
@@ -46,7 +47,8 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     bool* proposed = nullptr,
     std::span<const analysis::GuardedRead> guarded = {},
     const ForOfEvaluationInput* for_of = nullptr,
-    const DerivedNativeProtocol* derived = nullptr) {
+    const DerivedNativeProtocol* derived = nullptr,
+    PhasePrefixDomain phased_prefixes = PhasePrefixDomain::kPredicate) {
   EvaluationEvidence witness;
   const auto Require = [&](bool condition, Error error) { if (!condition) throw EvaluationFailure{error, witness}; };
   auto work = budget.work; auto bytes = budget.bytes;
@@ -78,6 +80,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     }
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
     plan.flow = flow;
+    plan.phase_prefix_domain = phased_prefixes;
     plan.call_spread_contract = array_source.contract;
     bool has_notification=false, has_template=false;
     for(std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -772,7 +775,8 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(
     ArraySourceInput array_source,
     std::span<const analysis::GuardedRead> guarded = {},
     const ForOfEvaluationInput* for_of = nullptr,
-    const DerivedNativeProtocol* derived = nullptr) {
+    const DerivedNativeProtocol* derived = nullptr,
+    PhasePrefixDomain phased_prefixes = PhasePrefixDomain::kPredicate) {
   // Reserve two disjoint work allowances before trying an optional projection.
   // A failed subpass need not report partial work: its entire allowance remains
   // charged. The byte allowance is reused only after the failed plan is gone.
@@ -793,7 +797,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(
       graph, {budget.bytes, allowance}, incoming, functions, modules, flow,
       demands, initializers, closure_writes, definitions, receiver_guards,
       entry_demands, self_order, prototype_reads, array_source, attempt,
-      &proposed, guarded, for_of, derived);
+      &proposed, guarded, for_of, derived, phased_prefixes);
   if (auto* plan = std::get_if<EvaluationPlan>(&result)) {
     // Twice actual work also admits this same successful attempt at plan.work.
     plan->work = scan + plan->work * (attempt ? 2 : 1);
@@ -805,7 +809,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(
       graph, {budget.bytes, allowance}, incoming, functions, modules, flow,
       demands, initializers, closure_writes, definitions, receiver_guards,
       entry_demands, self_order, prototype_reads, array_source, false, nullptr,
-      guarded, for_of, derived);
+      guarded, for_of, derived, phased_prefixes);
   if (auto* plan = std::get_if<EvaluationPlan>(&fallback)) plan->work += scan + allowance;
   return fallback;
 }
@@ -832,6 +836,38 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
     std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, ArraySourceInput arrays, std::span<const analysis::GuardedRead> guarded, const ForOfEvaluationInput* for_of) {
-  return BuildEvaluation(graph, budget, incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {}, nullptr, {}, arrays, guarded, for_of);
+  auto remaining = budget;
+  {
+    auto original = BuildEvaluation(graph, remaining, incoming, functions, modules,
+        EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {},
+        nullptr, {}, arrays, guarded, for_of);
+    auto* plan = std::get_if<EvaluationPlan>(&original);
+    if (!plan) return original;
+    if (plan->work > remaining.work) return Error::kWorkLimit;
+    remaining.work -= plan->work;
+    bool unmet = false;
+    for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+      if (!remaining.work) return Error::kWorkLimit;
+      --remaining.work;
+      const analysis::OpId call{static_cast<std::uint32_t>(i)};
+      if (!NeedsMemberReference(graph, *plan, call)) continue;
+      if (const auto property = MemberProperty(graph, *plan, call))
+        unmet |= !MemberReferenceInline(graph, *plan, call, *property);
+    }
+    if (!unmet) {
+      plan->work = budget.work - remaining.work;
+      return original;
+    }
+    // Keep completed schedules byte-stable. The full original pipeline (also
+    // checked reads, literals and member updates) has first refusal. Release
+    // its arenas before retrying once from immutable inputs; charge all known
+    // work and never reuse a failed attempt's unreported work allowance.
+  }
+  auto expanded = BuildEvaluation(graph, remaining, incoming, functions, modules,
+      EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {},
+      nullptr, {}, arrays, guarded, for_of, nullptr, PhasePrefixDomain::kSelection);
+  if (auto* plan = std::get_if<EvaluationPlan>(&expanded))
+    plan->work += budget.work - remaining.work;
+  return expanded;
 }
 }  // namespace abcd::source
