@@ -31,6 +31,13 @@ class CopyExpressions {
       if (edge && !selected_edges_.empty() && selected_edges_[edge->value]) continue;
       if (evaluation_.exceptions) {
         if (const auto* placement = std::get_if<ThrowCopies>(&evaluation_.exceptions->placements[b])) {
+          if (!evaluation_.exception_emission.bundles.empty()) {
+            if (const auto group = evaluation_.exception_emission.bundles[b]) {
+              const auto& shared = evaluation_.exception_emission.groups[*group];
+              if (shared.bundle == b) SharedStage(shared);
+              continue;
+            }
+          }
           bool ordinary=false;
           for(std::size_t i=bundle.first;i<std::size_t(bundle.first)+bundle.count;++i) {
             Step();ordinary|=evaluation_.exceptions->projection!=ExceptionCopyProjection::kForOfClose || evaluation_.phis->projection[i]!=PhiCopyUse::kForOfProtocol;
@@ -157,6 +164,17 @@ class CopyExpressions {
         throw Error::kUnsupportedOperation;
       }
     }, ResolveEvaluationOperand(evaluation_, operand));
+  }
+  void SharedStage(const StageGroup& group) {
+    const auto& original = std::get<ThrowCopies>(evaluation_.exceptions->placements[group.bundle]);
+    const auto origin = Origin(EdgeOrigin{original.edge});
+    const auto first = static_cast<std::uint32_t>(forest_.throw_assignments.size());
+    for (std::uint32_t j = 0; j < group.count; ++j) {
+      Step(); const auto& assignment = evaluation_.exception_emission.assignments[group.first + j];
+      const auto source = Operand(assignment.source, origin);
+      Push(forest_.throw_assignments, Add(AssignmentExpr{SymbolTarget{SlotSymbol(assignment.slot)}, source}, origin));
+    }
+    Push(forest_.throws, ThrowExpressions{ThrowCopies{original.edge, group.entry, group.handler}, first, group.count});
   }
   void Stage(const PhiBundle& bundle, ThrowCopies placement, TreeOriginId origin) {
     const auto first = static_cast<std::uint32_t>(forest_.throw_assignments.size());

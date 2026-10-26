@@ -41,6 +41,7 @@ struct BindingUses {
   std::optional<std::size_t> first_container, last_container;
   bool escaped = false, outside_body = false;
   bool private_storage = false, module_alias = false, named_creation = false;
+  bool required_snapshot = false;
 };
 using DeclarationSite=RecoveryDeclarationSite;
 struct DeclarationEdit { DeclarationSite site; BindingInitializer initializer; StmtId previous; };
@@ -105,6 +106,14 @@ class Initializers {
     budget.Array(loop_entry_occurrences_,tree.statements.size());
     budget.Array(canonical_scopes_,tree.statements.size());
     budget.Array(expression_owners_,tree.expressions.size());budget.Array(expression_projections_,tree.expressions.size());
+    // Shared exception stages are physical prefix writes. Eliminating their
+    // storage would require the deferred catch-entry/bypass certificate; do
+    // not let ordinary copy/slot cleanup silently invent that projection.
+    if (original_) for (const auto& stage : original_->exception_stages) {
+      budget.Step(); const auto& definition = original_->definitions[stage.assignment.value];
+      RequireTree(definition.has_value(), TreeStructureError::kOwnership);
+      uses_[definition->binding.value].required_snapshot = true;
+    }
   }
   BindingInitializers Run() {
     // Syntax-only native iteration has no original-flow correspondence yet.
@@ -794,7 +803,7 @@ class Initializers {
   void ForwardSnapshots() {
     const auto eligible=[&](std::size_t i) {
       const auto& use=uses_[i];
-      return use.private_storage && use.declaration &&
+      return use.private_storage && use.declaration && !use.required_snapshot &&
           !use.escaped && !plan_.aliases[i] && !plan_.literals[i];
     };
     bool candidate=false;
@@ -1264,7 +1273,7 @@ class Initializers {
   void Coalesce() {
     const auto eligible = [&](SymbolId symbol) {
       const auto& use = uses_[symbol.value];
-      return use.private_storage && use.declaration && MutableBinding(symbol) && !use.escaped && !use.outside_body &&
+      return use.private_storage && !use.required_snapshot && use.declaration && MutableBinding(symbol) && !use.escaped && !use.outside_body &&
           !plan_.aliases[symbol.value] && !plan_.literals[symbol.value] &&
           (ResourceFailures(tree_.identity.contract) == ResourceFailureScope::kExcluded || !use.named_creation);
     };
@@ -1759,19 +1768,19 @@ class Initializers {
   }
   void Constants() {
     bool candidate=false;
-    for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&use.declaration&&!use.escaped;}
+    for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&!use.required_snapshot&&use.declaration&&!use.escaped;}
     if(!candidate||!HasPrivateReads())return;
     const auto& values=CurrentConstants();
     std::vector<std::optional<PrimitiveId>> proposed;budget_.Array(proposed,uses_.size());
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();const auto& use=uses_[i];
-      if(use.private_storage&&use.declaration&&!use.escaped&&values.values[i])proposed[i]=values.values[i]->literal;
+      if(use.private_storage&&!use.required_snapshot&&use.declaration&&!use.escaped&&values.values[i])proposed[i]=values.values[i]->literal;
     }
     std::vector<FlowReadConstant> read_proposals;budget_.Array(read_proposals,values.reads.size());std::size_t read_count=0;
     for(const auto& read:values.reads) {
       budget_.Step();const auto* source=std::get_if<FlowBindingValue>(&value_equations_[read.expression.value]);
       RequireTree(source!=nullptr,TreeStructureError::kOwnership);const auto& use=uses_[source->binding.value];
-      if(use.private_storage&&use.declaration&&!use.escaped&&
+      if(use.private_storage&&!use.required_snapshot&&use.declaration&&!use.escaped&&
           (!plan_.read_literals[read.expression.value]||!SameLiteral(*plan_.read_literals[read.expression.value],read.primitive)))
         read_proposals[read_count++]=read;
     }
@@ -1785,7 +1794,7 @@ class Initializers {
   }
   void BindingValues() {
     bool candidate=false;
-    for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body;}
+    for(const auto& use:uses_){budget_.Step();candidate|=use.private_storage&&!use.required_snapshot&&use.declaration&&!use.escaped&&!use.outside_body;}
     if(!candidate||!HasPrivateReads())return;
     const auto& values=CurrentConstants();
     const auto& copies=CurrentCopies();
@@ -1804,7 +1813,7 @@ class Initializers {
       }else {const auto& copy=copies.reads[copy_at++];read={copy.expression,copy.source};}
       budget_.Step();const auto* source=std::get_if<FlowBindingValue>(&value_equations_[read.expression.value]);
       RequireTree(source!=nullptr,TreeStructureError::kOwnership);const auto& use=uses_[source->binding.value];
-      if(use.private_storage&&use.declaration&&!use.escaped&&!use.outside_body&&
+      if(use.private_storage&&!use.required_snapshot&&use.declaration&&!use.escaped&&!use.outside_body&&
           plan_.ReadBinding(read.expression,source->binding)!=read.binding)reads[read_count++]=read;
     }
     reads.resize(read_count);
@@ -1845,7 +1854,7 @@ class Initializers {
     bool candidate=false;
     for(std::size_t i=0;i<uses_.size();++i) {
       budget_.Step();const auto& use=uses_[i];
-      if(!use.private_storage || !use.declaration || use.escaped || plan_.literals[i])continue;
+      if(!use.private_storage || use.required_snapshot || !use.declaration || use.escaped || plan_.literals[i])continue;
       candidate=true;
     }
     if(!candidate)return;
@@ -1896,7 +1905,7 @@ class Initializers {
       }
       if(coverage.writes[i]!=1||use.escaped||!coverage.covered_writes[i]||plan_.literals[i])continue;
       const auto& selected=*coverage.covered_writes[i];
-      if(!use.private_storage || !use.declaration ||
+      if(!use.private_storage || use.required_snapshot || !use.declaration ||
           (selected.kind==FlowDefinitionKind::kAssignment && selected.effect!=FlowWriteEffect::kInert)) {
         // Keep observable writes and source/cell storage as roots. Coverage
         // permits copying their successful value, not deleting their completion.

@@ -25,6 +25,7 @@ struct TreeEdgeCopies {
   std::vector<std::optional<SymbolId>> temporaries;
   // A native logical/conditional expression selects this value without a copy statement.
   std::optional<ExprId> selected;
+  std::optional<std::uint32_t> stage_group;
 };
 struct TreeSelectionTruth {
   // Owns the retained input's source origin, independently of the raw test
@@ -96,6 +97,7 @@ struct TreeFlow {
   // targets, never copied from the builder's BindingPlan.
   std::vector<std::optional<SymbolId>> catch_parameters; // ValueId indexed.
   std::vector<std::optional<SymbolId>> catch_slots; // CatchSlotId indexed.
+  std::vector<ExprId> shared_stages; // ExceptionCopyEmission assignment order.
   std::vector<std::vector<ExprId>> catch_commits; // ExceptionCopies commit order.
   std::vector<OriginalExceptionRegion> exception_regions;
   std::vector<analysis::InactiveExceptionRegion> inactive_regions;

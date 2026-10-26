@@ -141,6 +141,11 @@ PhaseCorridors::PhaseCorridors(const ValueProgram& graph, const EvaluationPlan& 
       if (const auto* raised = std::get_if<ThrowCopies>(&placement)) throws_[raised->operation.value] = b;
     }
   }
+  if (plan.exception_stage_domain == ExceptionStageDomain::kUniform) {
+    TreeCheckBudget snapshots(budget.Remaining());
+    snapshots_ = IndexExceptionSnapshots(graph, plan, snapshots);
+    budget.Charge(snapshots.Bytes(), snapshots.Work());
+  }
   // Roots have no eligible predecessor. A closed cycle stays unindexed.
   for (std::size_t root = 0; root < graph.blocks.size(); ++root) {
     budget.Step(); if (previous[root]) continue;
@@ -238,6 +243,7 @@ bool PhaseCorridors::SameCatch(OpId producer, OpId consumer) {
   if (!exits_[producer.value] || !exits_[consumer.value] ||
       graph_.exceptional_exits[*exits_[producer.value]].handler !=
       graph_.exceptional_exits[*exits_[consumer.value]].handler) return false;
+  if (!snapshots_.empty()) return snapshots_[producer.value] == snapshots_[consumer.value];
   const auto left = throws_[producer.value], right = throws_[consumer.value];
   const auto count = [&](std::optional<std::size_t> bundle) {
     return bundle ? plan_.phis->bundles[*bundle].count : 0U;

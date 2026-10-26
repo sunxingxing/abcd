@@ -16,6 +16,7 @@
 #include "expression_children.h"
 #include "expression_observation.h"
 #include "flow_units.h"
+#include "exception_stage_recovery.h"
 #include "loop_syntax.h"
 #include "parameter_expression_tree.h"
 #include "parameter_recovery.h"
@@ -432,6 +433,7 @@ class FlowBuilder {
     result.source_shadows=std::move(names.shadows);result.binding_presence=std::move(names.presence);
     result.source_names=std::move(names.index);
     ProjectOriginal();
+    VerifyExceptionStageRecovery(result, budget_);
     VerifyForInRecovery(tree_, result, budget_);
     VerifyForOfRecovery(tree_,result,budget_);
     VerifyProtocolForwardingRecovery(tree_,result,budget_);

@@ -42,6 +42,8 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     Require(plan.phase_prefix_domain == PhasePrefixDomain::kPredicate ||
         (flow == EvaluationFlow::kPhased && plan.phase_prefix_domain == PhasePrefixDomain::kSelection),
         Error::kOwnership);
+    Require((plan.exception_stage_domain == ExceptionStageDomain::kOriginal ||
+        (flow == EvaluationFlow::kPhased && plan.exception_stage_domain == ExceptionStageDomain::kUniform)), Error::kOwnership);
     Require(flow == EvaluationFlow::kPhased || (plan.checked_compositions.empty() && plan.checked_failures.empty()), Error::kOwnership);
     Require(plan.revision == graph.revision && plan.cfg_revision == graph.cfg_revision, Error::kRevision);
     Require(plan.operations.size() == graph.ops.size(), Error::kInvalidGraph);
@@ -413,6 +415,11 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationForFlow(
     if (const auto* error = std::get_if<EvaluationFailure>(&module_copies)) return *error;
     step(std::get<std::uint64_t>(module_copies));
     { TreeCheckBudget members({bytes,work});VerifyMemberUpdates(graph,plan,members);admit(members.Bytes(),1);step(members.Work()); }
+    {
+      TreeCheckBudget stages({bytes, work});
+      VerifyExceptionCopyEmission(graph, plan, stages);
+      admit(stages.Bytes(), 1); step(stages.Work());
+    }
     const auto expressions = VerifyPhaseExpressions(graph, plan, {bytes, work});
     if (const auto* error = std::get_if<EvaluationFailure>(&expressions)) return *error;
     const auto& phase_cost = std::get<PhaseEvaluationCost>(expressions);

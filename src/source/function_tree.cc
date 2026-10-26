@@ -1350,8 +1350,9 @@ class TreeBuilder {
         const auto& enclosing = exceptions_->regions.layout.scopes[parent];
         Require(scope.has_value() == enclosing.has_value() &&
             (!scope || (scope->region == enclosing->region && scope->part == enclosing->part)), Error::kOwnership, TreeObligation::kCatchScope);
-        // Catch copies are still statements. Never move them before the LHS or
-        // after a throwing RHS; a nonempty staging bundle remains unsupported.
+        // A shared prefix was emitted at its independently certified entry.
+        // Any remaining local stage still needs statements at this exact port;
+        // never move one across a selected LHS or a throwing RHS.
         Require(!throw_ranges_[id.value] || forest_.throws[*throw_ranges_[id.value]].count == 0, Error::kOwnership, TreeObligation::kCatchStaging);
         if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
           Require(placement.kind == EvaluationKind::kRoot && path.edge_count == 1 &&

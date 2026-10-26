@@ -14,6 +14,8 @@ TreeEdgeFlow::TreeEdgeFlow(const analysis::ValueProgram& graph,
     TreeCheckBudget& budget, const CompletionTreeView& sequences)
     : graph_(graph), evaluation_(evaluation), tree_(tree), sequences_(sequences), flow_(flow),
       declared_(declared), assigned_(assigned), budget_(budget) {
+  budget.Array(flow.shared_stages, evaluation.exception_emission.assignments.size());
+  budget.Array(shared_staged_, evaluation.exception_emission.groups.size());
   if (!evaluation.phis) return;
   budget.Array(flow.phis, graph.values.size());
   budget.Array(bundles_, graph.edges.size());
@@ -53,9 +55,14 @@ TreeEdgeFlow::TreeEdgeFlow(const analysis::ValueProgram& graph,
           budget.Step();ordinary|=evaluation.exceptions->projection!=ExceptionCopyProjection::kForOfClose || evaluation.phis->projection[p]!=PhiCopyUse::kForOfProtocol;
         }
         if(ordinary) {
-          Require(!throws_[stage->operation.value], TreeFlowError::kControl);
-          throws_[stage->operation.value] = i;
-          budget.Array(copies.expressions, bundle.count);
+          if (!evaluation.exception_emission.bundles.empty() && evaluation.exception_emission.bundles[i]) {
+            copies.stage_group = evaluation.exception_emission.bundles[i];
+            visited_[i] = 1;  // Relation coverage, not a second physical statement.
+          } else {
+            Require(!throws_[stage->operation.value], TreeFlowError::kControl);
+            throws_[stage->operation.value] = i;
+            budget.Array(copies.expressions, bundle.count);
+          }
         }
         continue;
       }
@@ -202,6 +209,23 @@ void TreeEdgeFlow::CheckAssignment(analysis::IncomingKey incoming, ExprId expres
 void TreeEdgeFlow::Stage(analysis::OpId operation, const BlockStmt& block,
     std::uint32_t& child) {
   budget_.Step();
+  const auto& emission = evaluation_.exception_emission;
+  if (!emission.entries.empty()) if (const auto g = emission.entries[operation.value]) {
+    Require(!shared_staged_[*g], TreeFlowError::kSequence); shared_staged_[*g] = 1;
+    const auto& group = emission.groups[*g];
+    const auto incoming = evaluation_.phis->bundles[group.bundle].incoming;
+    for (std::uint32_t j = 0; j < group.count; ++j) {
+      budget_.Step(); const auto a = group.first + j;
+      const auto& expected = emission.assignments[a];
+      const auto expression = Assignment(incoming, block, child);
+      const auto& assignment = std::get<AssignmentExpr>(tree_.expressions[expression.value].expression);
+      const auto symbol = std::get<SymbolTarget>(assignment.target).symbol;
+      Bind(flow_.catch_slots[expected.slot.value], symbol, TemporaryReason::kExceptionSnapshot);
+      flow_.shared_stages[a] = expression;
+      flow_.definitions[expression.value] = OriginalSourceDefinition{
+          OriginalSavedDefinition{expected.source, group.entry}, symbol, assignment.value};
+    }
+  }
   if (throws_.empty() || !throws_[operation.value]) return;
   const auto index = *throws_[operation.value];
   Require(!visited_[index], TreeFlowError::kSequence);
@@ -280,6 +304,8 @@ void TreeEdgeFlow::ProtocolOwned(const ForOfEmissionView& view) {
   }
 }
 void TreeEdgeFlow::Finish() {
+  for (const auto staged : shared_staged_) { budget_.Step(); Require(staged, TreeFlowError::kSequence); }
+
   if (!evaluation_.phis) return;
   for (const auto visited : visited_) {
     budget_.Step();

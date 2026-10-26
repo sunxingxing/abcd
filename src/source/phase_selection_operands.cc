@@ -271,7 +271,7 @@ class OperandSelections {
       if ((!std::holds_alternative<ValueNamedRead>(property.operation) &&
            !std::holds_alternative<ValuePropertyRead>(property.operation)) ||
           BeforeLogicalFusion(graph_, plan_, callee.value).kind != EvaluationKind::kRoot ||
-          corridors_.HasCatchCopies(callee) || corridors_.HasCatchCopies(consumer) ||
+          corridors_.NeedsLocalStage(callee) || corridors_.NeedsLocalStage(consumer) ||
           !corridors_.SameCatch(callee, consumer)) return {};
       // Reference evaluation precedes all operands. Existing prefix ownership
       // keeps those snapshots in their original order and catch dispatch.
@@ -283,7 +283,7 @@ class OperandSelections {
       // inert intervals keep evaluation count and order; observable operands
       // outside the selection retain their original snapshots. Reference/key
       // and repeated-input obligations were checked by the shared shape.
-      if (corridors_.HasCatchCopies(consumer) ||
+      if (corridors_.NeedsLocalStage(consumer) ||
           (previous && !Inert(*previous, region.header, true))) return {};
       const auto count = PredicatePrefix(region, execution);
       if (!count) return {};
@@ -310,7 +310,7 @@ class OperandSelections {
       if (!producer) return false;
       owners_[producer->op.value] = region.branch;
       const auto& op = graph_.ops[producer->op.value];
-      if ((placement == Placement::kOriginal && corridors_.HasCatchCopies(producer->op)) ||
+      if ((placement == Placement::kOriginal && corridors_.NeedsLocalStage(producer->op)) ||
           (placement == Placement::kConsumer && op.exceptional == ExceptionalCompletion::kMayThrow &&
            !corridors_.SameCatch(producer->op, execution))) return false;
     }
@@ -388,7 +388,7 @@ class OperandSelections {
                                     graph_.ops[region.branch.value].block,
                                     graph_.ops[region.branch.value].order) ||
           (placement == Placement::kOriginal &&
-           corridors_.HasCatchCopies(id)) ||
+           corridors_.NeedsLocalStage(id)) ||
           (placement == Placement::kConsumer &&
            op.exceptional == ExceptionalCompletion::kMayThrow &&
            !corridors_.SameCatch(id, execution)))
@@ -457,7 +457,7 @@ class OperandSelections {
         for (std::uint32_t i = 0; i < block.op_count; ++i) {
           budget_.Step(); const OpId id{block.first_op.value + i}; const auto& op = graph_.ops[id.value];
           if (op.life != ValueLife::kLive) continue;
-          const bool copies = corridors_.HasCatchCopies(id);
+          const bool copies = corridors_.NeedsLocalStage(id);
           if (Pure(op) && !copies) continue;
           const auto root = copies ? std::optional<OpId>{} : std::optional{roots_[id.value]};
           if (root != position.root) { position.root = root; position.run_start = position.effects; }
@@ -517,7 +517,7 @@ class OperandSelections {
       if ((!std::holds_alternative<ValueNamedRead>(property.operation) &&
            !std::holds_alternative<ValuePropertyRead>(property.operation)) ||
           BeforeLogicalFusion(graph_, plan_, source->op.value).kind != EvaluationKind::kRoot ||
-          corridors_.HasCatchCopies(source->op) || corridors_.HasCatchCopies(*parent) ||
+          corridors_.NeedsLocalStage(source->op) || corridors_.NeedsLocalStage(*parent) ||
           !corridors_.SameCatch(source->op, *parent) || !corridors_.SameCatch(child_call, *parent) ||
           !ReferencePrefix(*source->commit, graph_.ops[child_callee.value].block, child_callee, *parent)) break;
       if (selected.ancestors.size() == selected.ancestors.capacity()) {
@@ -538,7 +538,7 @@ class OperandSelections {
       for (std::uint32_t i = 0; i < block.op_count; ++i) {
         budget_.Step(); const OpId id{block.first_op.value + i}; const auto& op = graph_.ops[id.value];
         if (op.life != ValueLife::kLive) continue;
-        if (corridors_.HasCatchCopies(id)) return false;
+        if (corridors_.NeedsLocalStage(id)) return false;
         const auto kind = BeforeLogicalFusion(graph_, plan_, id.value).kind;
         if (kind == EvaluationKind::kAlias || kind == EvaluationKind::kElidedPure ||
             id == branch || transport_owners_[id.value] == call || std::holds_alternative<ValueJump>(op.operation) || std::holds_alternative<ValueNop>(op.operation)) {

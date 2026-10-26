@@ -24,5 +24,10 @@ struct FlowMotion {
 // The standalone overload constructs its own facts for legacy callers only.
 [[nodiscard]] std::variant<FlowMotion,TreeStructureError> AnalyzeFlowMotion(
     const RecoveryFlow&,const FlowLiveness&,analysis::SemanticBudget = {});
+// Execution-count queries only: supplied boundaries, invocation entry and
+// terminal sinks anchor the universal equations. Reads/effects still execute
+// on the unchanged full-completion graph; this grants no effect-motion proof.
+[[nodiscard]] std::variant<FlowMotion,TreeStructureError> AnalyzeFlowBoundaryMotion(
+    const RecoveryFlow&,std::span<const FlowPoint>,analysis::SemanticBudget = {});
 }
 #endif

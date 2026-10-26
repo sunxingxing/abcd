@@ -16,6 +16,11 @@ class PhaseBudget {
     if (values.capacity() > remaining_.bytes / sizeof(T)) throw EvaluationError::kResourceLimit;
     remaining_.bytes -= values.capacity() * sizeof(T);
   }
+  analysis::SemanticBudget Remaining() const { return remaining_; }
+  void Charge(std::size_t bytes, std::uint64_t work) {
+    if (bytes > remaining_.bytes) throw EvaluationError::kResourceLimit;
+    Step(work); remaining_.bytes -= bytes;
+  }
   PhaseEvaluationCost Cost() const {
     return {initial_.bytes - remaining_.bytes, initial_.work - remaining_.work};
   }
@@ -45,6 +50,9 @@ class PhaseCorridors {
       analysis::UseId use) const;
   bool SameCatch(analysis::OpId producer, analysis::OpId root);
   bool HasCatchCopies(analysis::OpId operation) const;
+  bool NeedsLocalStage(analysis::OpId operation) const {
+    return plan_.exception_stage_domain == ExceptionStageDomain::kOriginal && HasCatchCopies(operation);
+  }
   // The value's only canonical (non-receiver, non-identity) occurrence.
   [[nodiscard]] bool SoleUse(analysis::ValueId value, analysis::UseId use) const {
     const auto& occurrence = uses_[value.value];
@@ -68,6 +76,7 @@ class PhaseCorridors {
   std::vector<PhasePosition> positions_;
   std::vector<PhaseUse> uses_;
   std::vector<std::optional<std::size_t>> exits_, throws_, staged_;
+  std::vector<std::optional<std::uint32_t>> snapshots_;
   std::vector<std::optional<analysis::OpId>> module_peers_;
   std::vector<std::optional<analysis::OpId>> literal_ends_;
 };

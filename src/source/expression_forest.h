@@ -49,7 +49,7 @@ struct ExpressionForest {
   std::vector<EdgeExpressions> edges;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
-  // Disjoint root ranges: stage before a throwing operation, commit only at
+  // Disjoint root ranges: stage at the certified original/prefix port, commit at
   // Catch entry. Neither is an ordinary edge assignment or operation subtree.
   std::vector<ExprId> throw_assignments;
   std::vector<ThrowExpressions> throws;

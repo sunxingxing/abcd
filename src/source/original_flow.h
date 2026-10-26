@@ -84,6 +84,12 @@ struct OriginalSavedDefinition {
   analysis::ValueOperand operand;
   std::variant<analysis::OpId,analysis::IncomingKey> placement;
 };
+struct OriginalStageCoverage {
+  ExprId assignment, root;
+  analysis::OpId entry, operation;
+  analysis::EdgeId edge;
+  analysis::WorkBlockId handler;
+};
 struct OriginalCatchDefinition {analysis::ValueId value;analysis::WorkBlockId handler;};
 // The verified catch clause owns this raw Catch definition. Its block names
 // the exception-phase entry; its source body allocates a unit on each visit.
@@ -277,6 +283,7 @@ struct OriginalFlow {
   std::vector<OriginalInput> inputs;
   std::vector<OriginalInputRange> input_ranges;
   std::vector<std::optional<OriginalSourceDefinition>> definitions; // ExprId indexed.
+  std::vector<OriginalStageCoverage> exception_stages;
   // Declaration commits have their own identity. The initializer denotes a
   // captured input, not the declarative write or its binding activation.
   std::vector<std::optional<OriginalSourceDefinition>> declarations; // StmtId indexed.

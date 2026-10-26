@@ -1,5 +1,5 @@
 // The live result needs a pre-throw catch snapshot throughout the logger call.
-// Staging inside an expression is a separate, still-refused emission obligation.
+// Uniform snapshots are shared before the complete native expression.
 export function run(log, obj, tag, fn) {
   let result = [];
   try {

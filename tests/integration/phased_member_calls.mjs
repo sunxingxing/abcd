@@ -9,6 +9,52 @@ const check = async observe => {
   assert.deepEqual(await observe(b), await observe(a));
   cases++;
 };
+if (!a.template) {
+  // Identity is compared inside each invocation, never across oracle modules.
+  const modes = ['ok', 'fn-throw', 'callee-get', 'argument-get', 'coercion',
+    'length-get', 'call', 'not-callable', 'null', 'undefined', 'null-later',
+    'error-get', 'catch-throw'];
+  for (const mode of modes) for (const resultKind of ['array', 'object', 'function', 'primitive']) await check(m => {
+    const log = [], sentinel = Object.assign(new RangeError('user failure'), {code: 17});
+    const changed = resultKind === 'object' ? {changed: true} : resultKind === 'array' ? ['changed'] :
+      resultKind === 'function' ? function changed() {} : 0;
+    let reads = 0;
+    const camera = {
+      [Symbol.toPrimitive]() {
+        log.push('coerce'); if (mode === 'coercion') throw sentinel; return 'C';
+      },
+      get length() { log.push('length'); if (mode === 'length-get') throw sentinel; return 4; }
+    };
+    const obj = {get cameras() {
+      log.push(['cameras', ++reads]); if (mode === 'argument-get') throw sentinel;
+      if (mode === 'null' || (mode === 'null-later' && reads === 2)) return null;
+      if (mode === 'undefined') return undefined;
+      return camera;
+    }};
+    const base = {get info() {
+      log.push('info-get'); if (['callee-get', 'error-get', 'catch-throw'].includes(mode)) throw sentinel;
+      if (mode === 'not-callable') return 3;
+      return function(...args) {
+        log.push(['info-call', this === base, args]); if (mode === 'call') throw sentinel;
+      };
+    }, get error() {
+      log.push('error-get'); if (mode === 'error-get') throw sentinel;
+      return function(...args) {
+        log.push(['error-call', this === base, args]); if (mode === 'catch-throw') throw sentinel;
+      };
+    }};
+    try {
+      const result = m.run(base, obj, 'T', () => {
+        log.push('fn'); if (mode === 'fn-throw') throw sentinel; return changed;
+      });
+      return {log, outcome: result === changed ? ['changed', resultKind] :
+        ['initial', Array.isArray(result), result.length]};
+    } catch (error) {
+      return {log, outcome: ['throw', error.constructor.name, error === sentinel,
+        error === sentinel ? error.message : undefined]};
+    }
+  });
+} else {
 const modes = ['ok', 'base-get', 'callee-get', 'argument-get', 'coercion', 'length-get',
   'call', 'not-callable', 'null', 'undefined', 'null-later', 'outer-null',
   'replace-callee', 'wait-reject'];
@@ -123,5 +169,6 @@ for (const mode of ['ok', 'null', 'undefined', 'not-callable', 'argument-throw',
   const value = m.optionalCall(base, {get cameras() { log.push('cameras'); return 'C'; }}, 'T', cb);
   return [value instanceof Error ? [value.constructor.name, value === sentinel] : value, log];
 });
+}
 assert.ok(cases >= 20);
 console.log(JSON.stringify({cases}));

@@ -80,7 +80,7 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
         !visited[origin.value], Error::kOrigin);
     visited[origin.value] = 1;
   }
-  if (!flow.copies.empty() || !flow.catch_commits.empty())
+  if (!flow.copies.empty() || !flow.catch_commits.empty() || !flow.shared_stages.empty())
     budget.Array(edge_expressions, tree.expressions.size());
   const auto mark_copy = [&](ExprId root) {
     const auto& assignment = std::get<AssignmentExpr>(tree.expressions[root.value].expression);
@@ -100,6 +100,16 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
         const auto* source = std::get_if<EdgeOrigin>(&origin);
         RequireMeaning(source && source->edge == *edge, Error::kOrigin);
       } else RequireMeaning(std::holds_alternative<EntryOrigin>(origin), Error::kOrigin);
+      mark_copy(root);
+    }
+  }
+  for (std::size_t g = 0; g < evaluation.exception_emission.groups.size(); ++g) {
+    const auto& group = evaluation.exception_emission.groups[g];
+    const auto& placement = std::get<ThrowCopies>(evaluation.exceptions->placements[group.bundle]);
+    for (std::uint32_t j = 0; j < group.count; ++j) {
+      budget.Step(); const auto root = flow.shared_stages[group.first + j];
+      const auto* origin = std::get_if<EdgeOrigin>(&tree.origins[tree.expressions[root.value].origin.value]);
+      RequireMeaning(origin && origin->edge == placement.edge, Error::kOrigin);
       mark_copy(root);
     }
   }

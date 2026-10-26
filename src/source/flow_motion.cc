@@ -4,8 +4,10 @@
 #include <limits>
 namespace abcd::source {
 namespace { enum class Direction { kForward,kBackward };
+enum class Observations { kAll, kBoundaries };
 std::variant<FlowMotion,TreeStructureError> SolveMotion(
-    const RecoveryFlow& flow,std::span<const std::uint8_t> invocation,analysis::SemanticBudget allowance) {
+    const RecoveryFlow& flow,std::span<const std::uint8_t> invocation,analysis::SemanticBudget allowance,
+    std::span<const FlowPoint> boundaries = {}, Observations observations = Observations::kAll) {
   try {
     TreeCheckBudget budget(allowance);FlowMotion result;
     const auto size=flow.events.size();
@@ -14,6 +16,13 @@ std::variant<FlowMotion,TreeStructureError> SolveMotion(
     std::vector<std::optional<FlowPoint>> first;
     std::vector<std::uint8_t> anchors,ready,joined,reachable;
     std::vector<FlowPoint> queue;
+    std::vector<std::uint8_t> requested;
+    if(observations==Observations::kBoundaries) {
+      budget.Array(requested,size);
+      for(const auto point:boundaries) {
+        budget.Step();RequireTree(point.value<size,TreeStructureError::kTarget);requested[point.value]=1;
+      }
+    }
     budget.Array(remaining,size);budget.Array(first,size);budget.Array(anchors,size);
     budget.Array(ready,size);budget.Array(joined,size);budget.Array(queue,size);
     if(invocation.empty())budget.Array(reachable,size);
@@ -49,7 +58,9 @@ std::variant<FlowMotion,TreeStructureError> SolveMotion(
         // Consume the common intrinsic facts; keep read/write identities and
         // opaque completion events as independent observations.
         const auto ordered=event.effects?event.effects->Ordering():event.effect;
-        anchors[i]=event.read || event.definition || ordered==ExpressionEvaluation::kRequired ||
+        const bool observation=observations==Observations::kAll ?
+            event.read || event.definition || ordered==ExpressionEvaluation::kRequired : requested[i]!=0;
+        anchors[i]=observation ||
             !remaining[i] || (!forward && i==flow.entry.value);
         if(anchors[i]){first[i]=FlowPoint{static_cast<std::uint32_t>(i)};ready[i]=1;queue[count++]=*first[i];}
       }
@@ -94,5 +105,9 @@ std::variant<FlowMotion,TreeStructureError> AnalyzeFlowMotion(
     const RecoveryFlow& flow,const FlowLiveness& live,analysis::SemanticBudget allowance) {
   if(live.reachable.size()!=flow.events.size())return TreeStructureError::kOwnership;
   return SolveMotion(flow,live.reachable,allowance);
+}
+std::variant<FlowMotion,TreeStructureError> AnalyzeFlowBoundaryMotion(
+    const RecoveryFlow& flow,std::span<const FlowPoint> boundaries,analysis::SemanticBudget allowance) {
+  return SolveMotion(flow,{},allowance,boundaries,Observations::kBoundaries);
 }
 }

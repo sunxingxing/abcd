@@ -38,7 +38,7 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
   std::vector<std::uint8_t> staged;
   budget.Array(staged, graph.ops.size());
   const auto roots = IndexPhaseInlineRoots(graph, evaluation, budget);
-  if (evaluation.exceptions) for (std::size_t i = 0; i < evaluation.exceptions->placements.size(); ++i) {
+  if (evaluation.exceptions && evaluation.exception_stage_domain == ExceptionStageDomain::kOriginal) for (std::size_t i = 0; i < evaluation.exceptions->placements.size(); ++i) {
     budget.Step();
     const auto* stage = std::get_if<ThrowCopies>(&evaluation.exceptions->placements[i]);
     if (stage && evaluation.phis->bundles[i].count) staged[stage->operation.value] = 1;

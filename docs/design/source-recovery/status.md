@@ -5,10 +5,51 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Shared uniform exception staging — increment 1 (2026-10-26)
 
-
-
-
+- Added `ExceptionCopyEmission` with `StageGroup`/`StageCoverage`: original
+  exceptional bundles remain authoritative; each physical prefix assignment
+  owns its syntax once, with complete per-edge/operation/copy coverage. Uniform
+  snapshots require retained operands available after their establishing Commit,
+  the same handler/slots, and a legal entry before the whole emitted expression.
+  Selection discovery carries pending obligations; evaluation, composition,
+  forest/tree emission, operands, flow, origins and recovery recheck them.
+- Recovery consumes the existing checked module-read/guard and initialized-cell
+  GetValue correspondences. Full-completion dominance plus bidirectional
+  universal boundary histories prove one stage per expression evaluation,
+  including loops; a shared write index rejects slot interference. Shared slots
+  remain physical through copy/storage cleanup because catch-entry bypass and
+  inline comma staging are deferred. The final fallback revisits conservative
+  raw guard-use counts only with the common sole canonical-use proof.
+- Both existing schedules retain first refusal. The uniform trial runs only
+  for an unmet native Reference with nonempty staging, admitting the retained
+  refusal and trial arenas together and reserving downstream work. Known proof
+  work is charged; failed subpasses without full cost reports consume their
+  reserved allowance. New indexes target O((N+E+U+K) log(N+K)), linear storage,
+  prepaid allocation and typed refusals. No source-language premise was added.
+- Promoted `staged.js`: **52** Node cases for failure timing, getters/coercions,
+  nullish arms, call failures and array/object/function/primitive results. Kept
+  the original **114** cases, plus a typed unproved capture/guard refusal.
+  Certificate/physical-tree/recovery mutations cover source, slot, placement,
+  coverage, entry and handler; boundary tests reject one-time staging for a
+  repeated expression. Exact/exhausted budgets and 200/201/400/800 scales pass.
+- Whole-record **CameraService is complete**: `source_status: 0`,
+  `source_complete: true`, no `source_failure`; entity 13268 pc 138 is admitted.
+  **OhReport** is byte-identical to o32 (12,483 bytes, SHA-256
+  `cfd968198580026d80c5ae584fecd040cea5d7d4f2a94e6b4eacf5e216f3cb47`);
+  **EditPage** is byte-identical to o36 (9,294 bytes, SHA-256
+  `46f67c1226d6e78a9cb665230a3edd5d1bd2ca68c886c366ea64e6398437869a`).
+- `cmake --build build/regression --target source_regression abc_structure isa_coverage_probe -j 8`:
+  passes. `ctest --test-dir build/regression -L source-regression -j 2 --output-on-failure`:
+  **65/65** pass (100.53 s). `python3 tests/isa/phased_member_calls_test.py`:
+  **OK**, **166** differential cases plus typed refusal. Related sweep:
+  **14/14** pass (17.86 s); `exception_copies_test`: **1/1** pass.
+  Commands, file list and logs: `build/phased-member-calls/shared-staging/acceptance.md`.
+  Design: [call-references.md §5.6](call-references.md#56-uniform-exception-snapshots-for-composed-phased-expressions-2026-10-26).
+- Remaining limits: nonuniform/unavailable snapshots and unproved guard or
+  suspension compositions keep typed refusals; no general catch/finally work.
+  No commit/push, cohort tools, paired-source engine input, or modifications to
+  input ABCs, `samples/` or `build/review/`.
 
 ## Phased prefix scheduling stability — review fix (2026-10-26)
 

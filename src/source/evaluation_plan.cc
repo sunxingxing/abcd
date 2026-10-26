@@ -48,10 +48,21 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     std::span<const analysis::GuardedRead> guarded = {},
     const ForOfEvaluationInput* for_of = nullptr,
     const DerivedNativeProtocol* derived = nullptr,
-    PhasePrefixDomain phased_prefixes = PhasePrefixDomain::kPredicate) {
+    PhasePrefixDomain phased_prefixes = PhasePrefixDomain::kPredicate,
+    ExceptionStageDomain staging = ExceptionStageDomain::kOriginal,
+    std::uint64_t* spent = nullptr, bool* exact_cost = nullptr) {
   EvaluationEvidence witness;
   const auto Require = [&](bool condition, Error error) { if (!condition) throw EvaluationFailure{error, witness}; };
   auto work = budget.work; auto bytes = budget.bytes;
+  bool measured = false;
+  struct WorkReport {
+    std::uint64_t* output; std::uint64_t initial; const std::uint64_t& remaining;
+    const bool& measured; bool* exact;
+    ~WorkReport() {
+      if (output) *output = measured ? initial - remaining : initial;
+      if (exact) *exact = measured;
+    }
+  } report{spent, budget.work, work, measured, exact_cost};
   try {
     Require(incoming == IncomingCells::kReject || incoming == IncomingCells::kConditional, Error::kUnsupportedOperation);
 
@@ -81,6 +92,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     EvaluationPlan plan{graph.revision, graph.cfg_revision, {}};
     plan.flow = flow;
     plan.phase_prefix_domain = phased_prefixes;
+    plan.exception_stage_domain = staging;
     plan.call_spread_contract = array_source.contract;
     bool has_notification=false, has_template=false;
     for(std::size_t i = 0; i < graph.ops.size(); ++i) {
@@ -663,18 +675,30 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     admit(phase_cost.bytes, 1); step(phase_cost.work);
     if (flow == EvaluationFlow::kPhased) {
       TreeCheckBudget selection_budget({bytes, work});
-      BuildPhaseSelectionOperands(graph, plan, selection_budget);
-      BuildPhasedObjectOperands(graph, plan, selection_budget);
-      witness = {}; witness.obligation = EvaluationObligation::kProjection;
-      ComposePhaseExpressions(graph, plan, selection_budget);
-      witness = {}; witness.obligation = EvaluationObligation::kProjection;
-      ComposeCheckedCalls(graph, plan, selection_budget);
-      BuildMemberUpdates(graph, plan, selection_budget);
-      if (!MemberUpdates(plan).updates.empty()) ComposePhaseExpressions(graph, plan, selection_budget);
-      BuildLiteralFieldForests(graph, plan, selection_budget);
-      if (!plan.literal_fields.objects.empty()) {
+      try {
+        BuildPhaseSelectionOperands(graph, plan, selection_budget);
         BuildPhasedObjectOperands(graph, plan, selection_budget);
+        witness = {}; witness.obligation = EvaluationObligation::kProjection;
         ComposePhaseExpressions(graph, plan, selection_budget);
+        witness = {}; witness.obligation = EvaluationObligation::kProjection;
+        ComposeCheckedCalls(graph, plan, selection_budget);
+        BuildMemberUpdates(graph, plan, selection_budget);
+        if (!MemberUpdates(plan).updates.empty()) ComposePhaseExpressions(graph, plan, selection_budget);
+        BuildLiteralFieldForests(graph, plan, selection_budget);
+        if (!plan.literal_fields.objects.empty()) {
+          BuildPhasedObjectOperands(graph, plan, selection_budget);
+          ComposePhaseExpressions(graph, plan, selection_budget);
+        }
+        try {
+          plan.exception_emission = BuildExceptionCopyEmission(graph, plan, selection_budget);
+        } catch (Error error) {
+          // This pass charges its complete failed proof through selection_budget.
+          // Other failed subpasses may omit partial cost: reserve their full grant.
+          measured = error == Error::kCatchState;
+          throw;
+        }
+      } catch (...) {
+        admit(selection_budget.Bytes(), 1); step(selection_budget.Work()); throw;
       }
       admit(selection_budget.Bytes(), 1); step(selection_budget.Work());
     }
@@ -738,6 +762,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
     if (plan.self_order) plan.allocated_bytes += plan.self_order->AllocatedBytes();
     if (plan.cells) plan.allocated_bytes += plan.cells->allocated_bytes;
     if (plan.exceptions) plan.allocated_bytes += plan.exceptions->allocated_bytes;
+    plan.allocated_bytes += plan.exception_emission.AllocatedBytes();
     for (const auto& function : plan.functions) {
       step(); plan.allocated_bytes += function.captures.capacity() * sizeof(CellId);
     }
@@ -746,6 +771,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       step(); plan.allocated_bytes += route.branches.capacity() * sizeof(analysis::OpId);
     }
     plan.work = budget.work - work;
+    measured = true;
     return plan;
   } catch (TreeStructureError error) {
     return error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit;
@@ -776,7 +802,9 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(
     std::span<const analysis::GuardedRead> guarded = {},
     const ForOfEvaluationInput* for_of = nullptr,
     const DerivedNativeProtocol* derived = nullptr,
-    PhasePrefixDomain phased_prefixes = PhasePrefixDomain::kPredicate) {
+    PhasePrefixDomain phased_prefixes = PhasePrefixDomain::kPredicate,
+    ExceptionStageDomain staging = ExceptionStageDomain::kOriginal,
+    std::uint64_t* spent = nullptr, bool* exact_cost = nullptr) {
   // Reserve two disjoint work allowances before trying an optional projection.
   // A failed subpass need not report partial work: its entire allowance remains
   // charged. The byte allowance is reused only after the failed plan is gone.
@@ -793,24 +821,35 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluation(
   const bool attempt = has_write && has_call;
   const auto allowance = attempt ? (budget.work - scan) / 2 : budget.work - scan;
   bool proposed = false;
+  std::uint64_t cost = 0;
+  bool precise = false;
   auto result = BuildEvaluationAttempt(
       graph, {budget.bytes, allowance}, incoming, functions, modules, flow,
       demands, initializers, closure_writes, definitions, receiver_guards,
       entry_demands, self_order, prototype_reads, array_source, attempt,
-      &proposed, guarded, for_of, derived, phased_prefixes);
+      &proposed, guarded, for_of, derived, phased_prefixes, staging, &cost, &precise);
   if (auto* plan = std::get_if<EvaluationPlan>(&result)) {
     // Twice actual work also admits this same successful attempt at plan.work.
     plan->work = scan + plan->work * (attempt ? 2 : 1);
+    if (spent) *spent = plan->work;
+    if (exact_cost) *exact_cost = true;
     return result;
   }
+  if (spent) *spent = scan + cost * (attempt ? 2 : 1);
+  if (exact_cost) *exact_cost = precise;
   const auto error = std::get<EvaluationFailure>(result);
   if (!proposed || error == Error::kResourceLimit || error == Error::kWorkLimit) return result;
   auto fallback = BuildEvaluationAttempt(
       graph, {budget.bytes, allowance}, incoming, functions, modules, flow,
       demands, initializers, closure_writes, definitions, receiver_guards,
       entry_demands, self_order, prototype_reads, array_source, false, nullptr,
-      guarded, for_of, derived, phased_prefixes);
-  if (auto* plan = std::get_if<EvaluationPlan>(&fallback)) plan->work += scan + allowance;
+      guarded, for_of, derived, phased_prefixes, staging, &cost, &precise);
+  if (spent) *spent = scan + allowance + cost;
+  if (exact_cost) *exact_cost = precise;
+  if (auto* plan = std::get_if<EvaluationPlan>(&fallback)) {
+    plan->work += scan + allowance;
+    if (spent) *spent = plan->work;
+  }
   return fallback;
 }
 }  // namespace
@@ -866,8 +905,45 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildPhasedEvaluationPlan(
   auto expanded = BuildEvaluation(graph, remaining, incoming, functions, modules,
       EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {},
       nullptr, {}, arrays, guarded, for_of, nullptr, PhasePrefixDomain::kSelection);
-  if (auto* plan = std::get_if<EvaluationPlan>(&expanded))
-    plan->work += budget.work - remaining.work;
+  auto* prior = std::get_if<EvaluationPlan>(&expanded);
+  if (!prior) return expanded;
+  if (prior->work > remaining.work) return Error::kWorkLimit;
+  remaining.work -= prior->work;
+  bool unmet = false, has_staging = false;
+  if (prior->exceptions) for (const auto& slot : prior->exceptions->staging) {
+    if (!remaining.work) return Error::kWorkLimit;
+    --remaining.work; has_staging |= slot.has_value();
+  }
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    if (!remaining.work) return Error::kWorkLimit;
+    --remaining.work;
+    const analysis::OpId call{static_cast<std::uint32_t>(i)};
+    if (!NeedsMemberReference(graph, *prior, call)) continue;
+    if (const auto property = MemberProperty(graph, *prior, call))
+      unmet |= !MemberReferenceInline(graph, *prior, call, *property);
+  }
+  if (!unmet || !has_staging) { prior->work = budget.work - remaining.work; return expanded; }
+  // Keep the located legacy refusal if a uniform snapshot cannot close. Both
+  // live arenas are admitted. Known failed-proof work is charged exactly;
+  // failures without a complete work report consume their full reserved quota.
+  if (prior->allocated_bytes > remaining.bytes) return Error::kResourceLimit;
+  // Keep a disjoint downstream allowance even when a failed subpass cannot
+  // report its partial work. Double successful/precise cost makes plan.work
+  // sufficient to rebuild this same bounded trial with the reported grant.
+  const auto allowance = remaining.work / 2;
+  std::uint64_t stage_work = 0;
+  bool exact_stage_cost = false;
+  auto staged = BuildEvaluation(graph, {remaining.bytes - prior->allocated_bytes, allowance},
+      incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers,
+      closure_writes, {}, {}, {}, nullptr, {}, arrays, guarded, for_of, nullptr,
+      PhasePrefixDomain::kSelection, ExceptionStageDomain::kUniform, &stage_work, &exact_stage_cost);
+  if (auto* plan = std::get_if<EvaluationPlan>(&staged)) {
+    plan->work = budget.work - remaining.work + plan->work * 2;
+    return staged;
+  }
+  const auto failure = std::get<EvaluationFailure>(staged);
+  if (failure == Error::kResourceLimit || failure == Error::kWorkLimit) return staged;
+  prior->work = budget.work - remaining.work + stage_work * (exact_stage_cost ? 2 : 1);
   return expanded;
 }
 }  // namespace abcd::source

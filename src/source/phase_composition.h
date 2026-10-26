@@ -12,7 +12,8 @@ namespace abcd::source {
 // final-ownership tree of one execution root in source post-order and matches
 // it against the actual normal path ending at that root: single-entry,
 // copy-free edges, each selection crossed from its header to its own join.
-// Every moved throw point keeps the root's handler and has no catch copies.
+// Every moved throw point keeps the root's handler and snapshot. Nonempty
+// copies require the independently closed ExceptionCopyEmission certificate.
 //
 // Requires committed phase selections. Only adds root->inline edges for trees
 // containing a selection; a tree is committed whole or not at all, and the

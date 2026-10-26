@@ -1164,12 +1164,31 @@ class OperandCheck {
     if (!evaluation_.phis) return;
     RequireMeaning(flow_.copies.size() == evaluation_.phis->bundles.size(), Error::kOperand);
     edge_input_ = true;
+    const auto& emission = evaluation_.exception_emission;
+    RequireMeaning(flow_.shared_stages.size() == emission.assignments.size(), Error::kOperand);
+    budget_.Array(original_.exception_stages, emission.coverage.size());
+    std::size_t covered = 0;
+    for (const auto& cover : emission.coverage) {
+      budget_.Step();
+      const auto root = flow_.shared_stages[cover.assignment];
+      origin_ = tree_.expressions[root.value].origin;
+      Input(evaluation_.phis->copies[cover.copy].source, Node<AssignmentExpr>(root).value);
+      const auto& group = emission.groups[cover.group];
+      RequireMeaning(flow_.expressions[group.root.value].has_value(), Error::kOperand);
+      original_.exception_stages[covered++] = {root, *flow_.expressions[group.root.value],
+          group.entry, cover.operation, cover.edge, group.handler};
+    }
     for (std::size_t i = 0; i < flow_.copies.size(); ++i) {
       budget_.Step();
       const auto& copies = flow_.copies[i];
       if (evaluation_.exceptions &&
           std::holds_alternative<ThrowCopies>(evaluation_.exceptions->placements[i])) {
         const auto& bundle = evaluation_.phis->bundles[i];
+        if (!emission.bundles.empty() && emission.bundles[i]) {
+          RequireMeaning(copies.stage_group == emission.bundles[i] && copies.expressions.empty() && copies.temporaries.empty(), Error::kOperand);
+          continue;
+        }
+        RequireMeaning(!copies.stage_group, Error::kOperand);
         bool ordinary=false;
         for(std::uint32_t j=0;j<bundle.count;++j) {
           budget_.Step();ordinary|=evaluation_.exceptions->projection!=ExceptionCopyProjection::kForOfClose || evaluation_.phis->projection[bundle.first+j]!=PhiCopyUse::kForOfProtocol;

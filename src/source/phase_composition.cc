@@ -158,14 +158,14 @@ class Composition {
       // intervening events/copies, independently of numeric OpId/PC adjacency.
       if (!module_end) checked_source_[consumer.value] = consumer;
       const auto guard = module_end.value_or(GuardedPeer(plan_, consumer).value_or(consumer));
-      if (module_end && (!corridors_.SameCatch(consumer, guard) || corridors_.HasCatchCopies(guard))) return fail();
+      if (module_end && (!corridors_.SameCatch(consumer, guard) || corridors_.NeedsLocalStage(guard))) return fail();
       const auto& end = graph_.ops[guard.value];
       const auto preceding = Next({end.block, end.order});
       if (preceding.kind != Stop::Kind::kEvent || preceding.op != consumer) return fail();
       valid_[consumer.value] = events_[consumer.value] = 1;
       if (checked_mode_) checked_tree_[consumer.value] = !module_end;
       if (transitive_) {
-        if (corridors_.HasCatchCopies(guard) || !corridors_.SameCatch(consumer, guard)) return fail();
+        if (corridors_.NeedsLocalStage(guard) || !corridors_.SameCatch(consumer, guard)) return fail();
         thrower_[consumer.value] = guard;
       }
       last_[consumer.value] = guard; begin_[consumer.value] = preceding.after;
@@ -192,7 +192,8 @@ class Composition {
     }
     if (op.life != ValueLife::kLive || excluded_[consumer.value] ||
         (!PhaseCorridors::Expression(op.operation) && !PhaseCorridors::ConsumesOperands(op.operation))) return fail();
-    // A moved throw point keeps this consumer's handler and needs no staging.
+    // A moved throw point keeps this consumer's handler and snapshot. Pending
+    // uniform staging is closed only after final expression ownership is known.
     // A pure transport is not a throw site. Retain a representative of the
     // original subtree's catch-equivalent events until its execution root is
     // known; never invent an exception exit on the copy/binary operation.
@@ -200,8 +201,8 @@ class Composition {
     std::optional<OpId> subtree_thrower;
     const auto fits_catch = [&](OpId thrower) {
       if (!transitive_)
-        return may_throw && corridors_.SameCatch(thrower, consumer) && !corridors_.HasCatchCopies(thrower);
-      if (corridors_.HasCatchCopies(thrower) ||
+        return may_throw && corridors_.SameCatch(thrower, consumer) && !corridors_.NeedsLocalStage(thrower);
+      if (corridors_.NeedsLocalStage(thrower) ||
           (subtree_thrower && !corridors_.SameCatch(thrower, *subtree_thrower)) ||
           (may_throw && !corridors_.SameCatch(thrower, consumer))) return false;
       subtree_thrower = thrower;
@@ -314,7 +315,7 @@ class Composition {
       if (may_throw) {
         if (subtree_thrower && !corridors_.SameCatch(*subtree_thrower, consumer)) return fail();
         // The root itself has not moved: its own staging is allowed. Any
-        // parent that tries to absorb it must reject HasCatchCopies below.
+        // parent must prove the same snapshot and a supported staging placement.
         subtree_thrower = consumer;
       }
       thrower_[consumer.value] = subtree_thrower;
@@ -510,9 +511,13 @@ class Composition {
     // statement/decision is a separate obligation; do not extend this repair
     // into it or change unrelated selections' ownership.
     if (transitive_ && seed_[producer.value]) return false;
+    // Initial scheduling counts raw guard uses. The uniform fallback may
+    // revisit that conservative reason; Fusable still proves the sole actual
+    // canonical occurrence, including receiver/guard ownership independently.
     return placement.kind == EvaluationKind::kRoot &&
         (placement.temporary != TemporaryReason::kMultipleUses ||
-         (checked_mode_ && GuardedInput(plan_,producer))) &&
+         (checked_mode_ && GuardedInput(plan_,producer)) ||
+         plan_.exception_stage_domain == ExceptionStageDomain::kUniform) &&
         placement.temporary != TemporaryReason::kPredicateSnapshot && !excluded_[producer.value] &&
         !(producer.value < plan_.literal_fields.prefix_fields.size() && plan_.literal_fields.prefix_fields[producer.value]) &&
         !region_of_[producer.value] && !Owned(producer) && !Transport(producer) && Fusable(producer, consumer, use);
@@ -590,7 +595,7 @@ class Composition {
     return stop;
   }
   // Every throw point between a committed selection's header and its join:
-  // nullopt if they disagree or carry catch copies; otherwise one
+  // nullopt if they disagree or need unplaceable local copies; otherwise one
   // representative (or none). Every normal path must reach the join.
   std::optional<std::optional<OpId>> RegionThrower(std::size_t index) {
     if (region_state_[index] == 1) return region_throw_[index];
@@ -615,7 +620,7 @@ class Composition {
         budget_.Step(); const OpId id{work.first_op.value + i};
         const auto& op = graph_.ops[id.value];
         if (op.life != ValueLife::kLive || !EvaluationMayThrow(graph_, plan_, id)) continue;
-        if (corridors_.HasCatchCopies(id) || (thrower && !corridors_.SameCatch(id, *thrower))) return std::nullopt;
+        if (corridors_.NeedsLocalStage(id) || (thrower && !corridors_.SameCatch(id, *thrower))) return std::nullopt;
         if (!thrower) thrower = id;
       }
       bool exits = false;

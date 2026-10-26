@@ -43,7 +43,7 @@ class TreeEdgeFlow {
   std::vector<std::uint8_t> visited_;
   std::optional<std::size_t> entry_;
   std::vector<std::optional<std::size_t>> throws_, catches_;
-  std::vector<std::uint8_t> committed_;
+  std::vector<std::uint8_t> committed_, shared_staged_;
 };
 }  // namespace abcd::source
 #endif

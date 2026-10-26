@@ -478,3 +478,65 @@ It only repairs unmet member references using a verified read + named HoleGuard
 atom; already-valid reference plans keep their placements. See
 [guarded-captures.md §11](guarded-captures.md#11-checked-capture-arguments-round-44)
 for event identity, catch-state limits, independent verification and tests.
+
+
+### 5.6 Uniform exception snapshots for composed phased expressions (2026-10-26)
+
+`ExceptionCopies` remains the authoritative original per-throw snapshot/commit
+plan. `ExceptionCopyEmission` adds a source scheduling certificate: each
+`StageGroup` names an execution root, its earliest dominating member Before
+port, handler and flat `(CatchSlotId, resolved operand)` assignments;
+`StageCoverage` maps each original exceptional edge/operation/copy to exactly
+one physical assignment. No throwing operation or exceptional edge disappears.
+The typed uniform domain carries pending obligations through selection discovery;
+final evaluation verification independently reconstructs the complete certificate.
+
+Exact snapshot signatures are interned once, including slot identity and resolved
+operands. Every covered throw must agree. Retained SSA operands must already be
+available at entry after their establishing Commit; no producer or mutable cell
+read is replayed. Whole-expression order/control proofs still own single
+evaluation, receiver identity, coercions and selected-arm execution. Module
+read/guard regions and initialized cell guards use their existing checked native
+GetValue correspondence, including the original catch snapshots. Raw guard uses
+may conservatively mark a load as multiply used; only this final fallback can
+revisit that scheduling reason, and the common canonical-use proof remains
+mandatory. No fixed opcode sequence, layout, name or number of selections admits
+movement. Suspension and conflicting snapshots/handlers remain typed refusals.
+
+The forest owns each prefix assignment once. Tree flow consumes it at its
+certified entry, records relation coverage separately from owned expression
+roots, and preserves catch commits. Operands recheck every covered original RHS;
+origins retain the representative edge and independently checked coverage.
+Recovery checks current physical definitions (including declaration projection),
+full-completion dominance and bidirectional universal boundary histories (one
+stage execution per expression, including loops), canonical private slot identity, absence of competing
+writes in the current expression owner, and the exact native catch context for
+every original port. It consumes existing module/capture guard correspondences;
+a lexical/control anchor does not supply a throwing action. Shared stage storage
+is retained by ordinary copy/storage cleanup: removing it would require the
+separately deferred catch-entry/bypass certificate. Inline comma staging is also
+deferred.
+
+Both existing scheduling domains have first refusal. Only an unmet native
+member Reference with nonempty staging requests the uniform retry. Original
+successful schedules are returned unchanged. A retained refusal plan and trial
+arenas are admitted together. Trial and downstream work allowances are disjoint;
+successful/fully measured proof cost is doubled for exact-grant reproducibility,
+and an unreported failed subpass consumes its reserved allowance. A failed proof
+retains the original CallReferenceError rather than exhausting the downstream
+refusal machinery. Resource/work failures remain typed and terminal.
+
+For N operations/values, E edges, U uses and K exceptional-copy occurrences,
+new indexes, canonical snapshots and coverage use O((N+E+U+K) log(N+K)) work
+and linear storage. Equal-sized snapshot rows bound lexicographic comparisons
+by total copy volume; signatures avoid comparing whole bundles at each ancestor.
+Recovery uses one shared dominator/write index, not a graph traversal per slot.
+All allocations and sorting/comparison work are charged. No new source premise.
+
+Tests promote `phased_member_calls/staged.js` to a 52-case Node differential,
+retain the existing 114 cases, and keep an unproved captured-read/guard fixture
+as an explicit typed Reference refusal. Composition mutations cover source,
+slot, entry and missing coverage, physical RHS/target/placement, and recovery
+entry/handler correspondence; exact/exhausted grants and 200/201/400/800 wrapper
+scales remain exercised. CameraService whole-record emission and the two supplied
+already-complete source baselines are separate acceptance evidence.

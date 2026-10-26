@@ -15,6 +15,7 @@
 #include "concurrent_completion.h"
 #include "abcd/source/evaluation_failure.h"
 #include "exception_copies.h"
+#include "exception_copy_emission.h"
 #include "literal_plan.h"
 #include "cell_evaluation.h"
 #include "module_guards.h"
@@ -151,6 +152,8 @@ struct EvaluationPlan {
   EvaluationFlow flow = EvaluationFlow::kNormal;
   SourceContract call_spread_contract = kSourceContract;
   std::optional<ExceptionCopies> exceptions;
+  ExceptionStageDomain exception_stage_domain = ExceptionStageDomain::kOriginal;
+  ExceptionCopyEmission exception_emission;
   // Flat, independently checked copy/phi identities in either flow. Exact
   // imports retain original transport anchors; optimization is optional.
   // Catch bindings and unresolved mutable phi

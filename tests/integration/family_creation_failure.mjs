@@ -30,8 +30,9 @@ try {
   }
   for(const [o,record,method,pc,op,family,occurrence,constructor,literal,descendantPc] of cases) {
    const row=manifests.get(o).find(r=>r.entity===record);
-   if(o===18 && !(record===63861 && label==='old')){
-    // Descendant class preparation now closes the original gate. Keep the real
+   if((o===18 || o===36) && !(record===63861 && label==='old')){
+    // Descendant class preparation now closes the original gate (o36: phased
+    // creator classes, 19a88ab9). Keep the real
     // instruction/pool/reachability assertions below as well as source checks.
     assert.equal(row.source_status,0,JSON.stringify(row));
     const cli=JSON.parse(run(semantic,[inputs.get(o),String(method),'--record-source',...flags]));
