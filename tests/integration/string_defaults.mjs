@@ -38,7 +38,7 @@ console.log(JSON.stringify(results));
     assert.equal(group[1].value,group[2].value);
   }
   let mutations=0;
-  for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for(const [label,flags] of [['default',[]],['source',['--language-source']]]) {
     const abc=join(fixtures,'defaults.abc'),out=join(dir,label);
     invoke(structure,[abc,out,'--value-source',...flags]);
     const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);

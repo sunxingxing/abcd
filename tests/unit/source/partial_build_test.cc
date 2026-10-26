@@ -21,6 +21,7 @@ std::variant<ConstructedFunction, FunctionTreeFailure> Build(
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(0, 1, {false, false, false, false}));
   RouteInputIdentity identity;
   identity.profile = abc::ProfileId::kDynamic1206;
+  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis fixture.
   identity.abc_version = {12, 0, 6, 0};
   auto input_result = FunctionInput::Build(identity, {200}, {100}, body, frame, InputCaptureMode::kConditional);
   if (const auto* failure = std::get_if<FunctionInputFailure>(&input_result))
@@ -55,8 +56,8 @@ std::string Print(const FunctionTree& tree) {
   return output.str();
 }
 void DecodedPrefix() {
-  // Deprecated NEG still needs a numeric/tag-exclusion proof. Conversion now recovers;
-  // preserve the partial-output boundary on an actual unsupported domain.
+  // Pinned runtime analysis still requires numeric/tag exclusion for deprecated
+  // NEG. This fixture exercises that partial boundary without the CLI contract.
   const auto bytes = {kDebugger, kLoad, std::uint8_t{0}, kNegate, kNegateHigh, std::uint8_t{0}, kReturnUndefined};
   const auto complete = Build(bytes, RecoveryMode::kCompleteOnly);
   test::Check(std::holds_alternative<FunctionTreeFailure>(complete));

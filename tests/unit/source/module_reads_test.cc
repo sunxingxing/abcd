@@ -96,7 +96,7 @@ int main() {
   auto lazy=Reads(analysis::ModuleSpace::kExternal,0);
   std::get<analysis::ValueModuleRead>(lazy.ops[0].operation).loading=analysis::ModuleLoading::kLazy;
   Check(std::holds_alternative<ModuleReads>(ResolveModuleReads(file,header,&module,lazy,{},SourceContract::kLanguageSourceV1)));
-  Expect(ResolveModuleReads(file,header,&module,lazy),ModuleReadError::kContract);
+  Check(std::holds_alternative<ModuleReads>(ResolveModuleReads(file,header,&module,lazy)));
   Expect(ResolveModuleReads(file,header,&module,Reads(analysis::ModuleSpace::kExternal,0),{},SourceContract::kLanguageSourceV1),ModuleReadError::kBinding);
   module.request_phases[1]=abc::ModuleRequestPhase::kEager;
   Expect(ResolveModuleReads(file,header,&module,lazy,{},SourceContract::kLanguageSourceV1),ModuleReadError::kBinding);

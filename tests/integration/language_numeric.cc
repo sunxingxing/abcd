@@ -75,7 +75,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode unary, unsigned form, unsi
   if (!phased && form == 0 && count == 1) {
     if (unary == kOperations[0] || unary == kOperations[1] || unary == kOperations[2] ||
         unary == kOperations[5] || unary == kOperations[6] || unary == kOperations[7]) {
-      for (const auto contract : {kSourceContract, SourceContract::kLanguageArithmeticV1}) {
+      for (const auto contract : {SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1}) {
         auto pinned = identity; pinned.contract = contract;
         test::Check(std::holds_alternative<FunctionInputFailure>(FunctionInput::Build(pinned,
             {300}, {100}, body, frame, InputCaptureMode::kClosed)));
@@ -99,7 +99,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode unary, unsigned form, unsi
     const auto tree = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation, syntax, resolved)).tree;
     test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
     test::Check(std::holds_alternative<InstructionSources>(BuildInstructionSources(input, graph, tree)));
-    auto changed_contract = tree; changed_contract.identity.contract = kSourceContract;
+    auto changed_contract = tree; changed_contract.identity.contract = SourceContract::kLanguageSourceV9;
     test::Check(std::holds_alternative<InstructionSourceError>(BuildInstructionSources(input, graph, changed_contract)));
     if (unary == kOperations[5] && form == 0 && count == 1) {
       auto stale = tree; stale.identity.contract = SourceContract::kLanguageArithmeticV1;
@@ -109,7 +109,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode unary, unsigned form, unsi
       test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(internal, control, evaluation, tree, resolved)));
     }
     if (form >= 5) {
-      auto pinned_text = tree; pinned_text.identity.contract = kSourceContract;
+      auto pinned_text = tree; pinned_text.identity.contract = SourceContract::kLanguageAndHostV3;
       std::ostringstream refused;
       test::Check(std::holds_alternative<TreePrintFailure>(PrintFunctionTree(pinned_text, refused)));
       auto private_bits = tree;
@@ -157,6 +157,7 @@ int main(int argc, char**) {
         op(abc::Opcode::kSUB2_IMM8_V8), 0, 0, op(abc::Opcode::kNEG_IMM8), 0, op(abc::Opcode::kRETURN)});
     const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {}));
     RouteInputIdentity identity; identity.profile = abc::ProfileId::kDynamic1206;
+    identity.contract = SourceContract::kLanguageAndHostV3;
     test::Check(std::holds_alternative<FunctionInputFailure>(FunctionInput::Build(identity,
         {300}, {100}, body, frame, InputCaptureMode::kClosed)));
     identity.contract = SourceContract::kLanguageNumericV1;

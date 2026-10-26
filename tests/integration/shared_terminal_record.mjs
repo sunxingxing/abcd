@@ -54,7 +54,7 @@ function observe(code) {
 const expected=observe(original),dir=mkdtempSync(join(tmpdir(),'abcd-shared-terminal-record-'));
 try {
   assert.equal(expected.length,4176);
-  for(const [name,flags]of[['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+  for(const [name,flags]of[['default',[]],['source',['--language-source']]]){
     const out=join(dir,name),p=spawnSync(structure,[input,out,'--value-source',...flags],{encoding:'utf8'});
     assert.equal(p.status,0,p.stderr);
     const record=JSON.parse(readFileSync(join(out,'manifest.json'))).records.find(r=>r.entity===13920);

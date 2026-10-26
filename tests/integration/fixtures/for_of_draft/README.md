@@ -1,5 +1,8 @@
 # Unpublished native for-of draft fixtures (II-b)
 
+Current target: `language_source_v10`; `--language-source` is optional. The same
+complete-source and Node-oracle assertions apply to the default invocation.
+
 These sources are independent test oracles. The engine/draft builder reads only
 ABC. No publication receipt is made: production must still return
 `TreeObligation::kForOfRecovery`. Rendering a draft through the direct AST

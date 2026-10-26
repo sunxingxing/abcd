@@ -8,7 +8,7 @@ import vm from 'node:vm';
 const [tool, root] = process.argv.slice(2);
 // Generate solely from ABC before opening the independent paired oracle.
 const result = JSON.parse(execFileSync(tool, [join(root, 'modules.abc'), '32895',
-  '--record-source', '--value-source', '--language-arithmetic'], {encoding: 'utf8', timeout: 60_000}));
+  '--record-source', '--value-source', '--language-source'], {encoding: 'utf8', timeout: 60_000}));
 assert.equal(result.record, 32779);
 assert.equal(result.source_complete, true);
 assert.equal(result.legacy_writer_used, undefined);

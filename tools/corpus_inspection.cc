@@ -19,6 +19,7 @@
 
 #include "abcd/abc/metadata_index.h"
 #include "process_limit.h"
+#include "source_cli_options.h"
 #include "abcd/corpus/manifest.h"
 #include "method_inspection.h"
 #include "module_inspection.h"
@@ -443,6 +444,10 @@ int Run(int argc, char** argv, InspectionStage stage) {
 }  // namespace
 
 int RunCorpusInspection(int argc, char** argv, InspectionStage stage) {
+  if (const auto removed = abcd::tools::FindRemovedSourceOption(argc, argv)) {
+    abcd::tools::ReportRemovedSourceOption(std::cerr, *removed);
+    return EXIT_FAILURE;
+  }
   try {
     return Run(argc, argv, stage);
   } catch (const std::bad_alloc&) {

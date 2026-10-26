@@ -45,10 +45,10 @@ const directory = mkdtempSync(join(tmpdir(), 'abcd-navigation-graph-'));
 const sources = {};
 try {
   const output = join(directory, 'output');
-  execFileSync(tool, [abc, output, '--value-source', '--language-numeric', '--language-constructors'],
+  execFileSync(tool, [abc, output, '--value-source', '--language-source'],
     {encoding: 'utf8', timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
-  assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
+  assert.equal(manifest.source_contract, 'language_source_v10');
   if (allViews) for (const record of manifest.records) if (record.source?.startsWith('sources/shopping/'))
     records.push([record.entity, record.source.slice('sources/'.length, -'.mjs'.length)]);
   const byEntity = new Map(manifest.records.map(record => [record.entity, record]));

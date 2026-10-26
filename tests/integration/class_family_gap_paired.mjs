@@ -9,10 +9,10 @@ const run = spawnSync(tool, [abc, '14684', '--record-source', '--value-source'],
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout.trim());
 assert.equal(report.record, 14411);
-assert.equal(report.source_complete, false);
+assert.equal(report.source_complete, true);
 assert.equal(report.executable, false);
 assert.equal(report.legacy_writer_used, undefined);
-assert.match(report.source, /UNRECOVERED class definition.*method 14882; failed method 14712; parent 14656/);
+assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED/);
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
 const lengths = [undefined, null, false, true, -3, -0, 0, 1, 2, 6, 7, 200, 201, 6.5, NaN, '5', 1n, Symbol('length')];
 

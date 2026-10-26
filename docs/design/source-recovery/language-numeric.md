@@ -1,5 +1,11 @@
 # Explicit language numeric semantics
 
+**Historical / superseded CLI (2026-10-26).** The selector described below has
+been removed. Source recovery defaults to `language_source_v10`;
+`--language-source` is its optional alias. The remainder records the original
+approved premise and evidence, not current CLI instructions. Pinned runtime
+analysis facts remain valid. See [the current contract](language-source.md).
+
 User-approved on 2026-10-06. `SourceContract::kLanguageNumericV1`, selected
 with `--value-source --language-numeric`, includes the binary arithmetic
 premise of [LanguageArithmeticV1](language-arithmetic.md) and the language

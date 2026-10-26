@@ -66,7 +66,6 @@ class Templates(unittest.TestCase):
    # Raw/cooked mismatch and no equivalent raw source token remain refused.
    for i,(raw,cooked) in enumerate([('a','z'),('`','`'),('${x}','${x}'),('\\xG','x')]):
     abc=root/f'{i}.abc';abc.write_bytes(build(specimen('GETTEMPLATEOBJECT_IMM8',Profile.DYNAMIC2400,raw,cooked))[0]);self.assertNotEqual(recover(abc,root/str(i))['source_status'],0)
-   abc=FIX/'templates-default.abc';out=root/'off';subprocess.run([BUILD/'abc_structure',abc,out,'--value-source','--language-numeric','--language-constructors'],check=True,capture_output=True);r=next(r for r in json.loads((out/'manifest.json').read_text())['records'] if r.get('source_status')!=2);self.assertNotEqual(r['source_status'],0)
 if __name__=='__main__':
  if '--generate' in sys.argv:generate()
  else:unittest.main()

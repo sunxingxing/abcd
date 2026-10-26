@@ -59,7 +59,7 @@ std::uint64_t Run(abc::ProfileId profile, SourceContract contract, unsigned copi
   const auto verified = VerifyTreeSemantics(graph, control, evaluation, tree, resolved);
   test::Check(std::holds_alternative<TreeSemantics>(verified));
   test::Check(std::holds_alternative<InstructionSources>(BuildInstructionSources(function.input, graph, tree)));
-  auto stale = tree; stale.identity.contract = kSourceContract;
+  auto stale = tree; stale.identity.contract = SourceContract::kLanguageSourceV9;
   test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, stale, resolved)));
   auto missing = resolved; missing.derived_constructor = nullptr;
   test::Check(std::holds_alternative<TreeSemanticError>(VerifyTreeSemantics(graph, control, evaluation, tree, missing)));
@@ -87,6 +87,6 @@ int main() {
           ++cases;
         }
       }
-  for (auto contract : {kSourceContract, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1}) Run(abc::ProfileId::kDynamic1206, contract, 1, true, true);
+  for (auto contract : {SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1}) Run(abc::ProfileId::kDynamic1206, contract, 1, true, true);
   std::cout << cases << " complete decoded language constructors; old contracts refused\n";
 }

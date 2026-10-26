@@ -27,7 +27,7 @@ console.log(JSON.stringify(runs));
   const run=path=>spawnSync(process.execPath,[runner,path],{encoding:'utf8',maxBuffer:16*1024*1024});
   const source=join(dir,'original.mjs');copyFileSync(join(fixture,'switch_fallthrough.js'),source);
   const expected=run(source);assert.equal(expected.status,0,expected.stderr);assert.equal(JSON.parse(expected.stdout).length,3150);
-  for(const [name,flags] of [['previous',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for(const [name,flags] of [['default',[]],['source',['--language-source']]]) {
     const out=join(dir,name),exported=spawnSync(structure,[join(fixture,'switch_fallthrough.abc'),out,'--value-source',...flags],{encoding:'utf8'});
     assert.equal(exported.status,0,exported.stderr);
     const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);assert.equal(records.length,1);

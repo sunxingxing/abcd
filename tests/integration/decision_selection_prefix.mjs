@@ -33,7 +33,7 @@ try {
  const run=file=>{const p=spawnSync(process.execPath,[runner,file],{encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024});assert.equal(p.status,0,p.stderr);return JSON.parse(p.stdout);};
  const expected=run(oracle);assert.ok(expected.every(r=>!r.trace.includes('valueOf')));
  let comparisons=0,mutants=0;
- for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+ for(const [label,flags] of [['default',[]],['source',['--language-source']]]) {
    const out=join(dir,label),abc=join(fixtures,'prefix.abc');
    const p=spawnSync(structure,[abc,out,'--value-source',...flags],{encoding:'utf8',timeout:30000});assert.equal(p.status,0,p.stderr);
    const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);

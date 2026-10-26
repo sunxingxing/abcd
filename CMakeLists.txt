@@ -1498,9 +1498,10 @@ if(BUILD_TESTING)
   target_include_directories(comparison_call_test PRIVATE tests/support)
   target_link_libraries(comparison_call_test PRIVATE abcd_source)
   add_test(NAME comparison_call_test COMMAND comparison_call_test)
-  add_test(NAME language_arithmetic_cli_test COMMAND ${CMAKE_COMMAND}
+  add_test(NAME source_contract_cli_test COMMAND ${CMAKE_COMMAND}
     -DABCD_SEMANTIC=$<TARGET_FILE:abc_semantic> -DABCD_STRUCTURE=$<TARGET_FILE:abc_structure>
-    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/language_arithmetic_cli.cmake)
+    -DABCD_PYTHON=${Python3_EXECUTABLE}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/source_contract_cli.cmake)
   add_executable(numeric_conversion_test tests/integration/numeric_conversion.cc)
   target_include_directories(numeric_conversion_test PRIVATE tests/support)
   target_link_libraries(numeric_conversion_test PRIVATE abcd_source)

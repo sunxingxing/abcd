@@ -20,7 +20,7 @@ const records = [
   assert.equal(bytes.length,identity.size);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),identity.sha256);
   const report = JSON.parse(execFileSync(tool,[abc,String(method),'--record-source','--value-source',
-    '--language-numeric','--language-constructors'],{encoding:'utf8',timeout:60000,maxBuffer:8 * 1024 * 1024}));
+    '--language-source'],{encoding:'utf8',timeout:60000,maxBuffer:8 * 1024 * 1024}));
   assert.equal(report.record,entity); assert.equal(report.route,'value_tree');
   assert.equal(report.source_complete,true); assert.equal(report.legacy_writer_used, undefined);
   assert.doesNotMatch(report.source,/INCOMPLETE|UNRECOVERED/);

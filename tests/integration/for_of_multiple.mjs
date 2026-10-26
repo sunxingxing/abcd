@@ -22,12 +22,6 @@ try {
   const expected = (await import('data:text/javascript;base64,' +
       Buffer.from(readFileSync(join(fixtures, 'multi.js'))).toString('base64'))).scan;
   assert.equal(actual.length, expected.length);
-  const previous=join(root,'previous');
-  execFileSync(engine,[join(fixtures,'multi.abc'),previous,'--value-source',
-      '--language-numeric','--language-constructors']);
-  const old=JSON.parse(readFileSync(join(previous,'manifest.json'))).records.find(r=>r.source_status!==2);
-  assert.equal(old.source_status,3);
-  assert.ok(old.source_failure.causes.some(c=>c.domain==='abcd::source::ExceptionControlError' && c.value===4));
   const modes = ['normal', 'break', 'return', 'throw', 'continue'];
   const outcomes = ['object', 'missing', 'null', 'getter-throw', 'call-throw', 'primitive'];
   let cases = 0;

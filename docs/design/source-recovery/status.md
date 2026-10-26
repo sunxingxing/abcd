@@ -1,9 +1,64 @@
 # 当前状态
 
-更新时间：2026-10-26。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-27。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
+
+## Sole CLI source target, increment A (2026-10-27)
+
+- User decision 2026-10-26: retain `--language-source` as the sole target.
+  `kSourceContract` now selects existing `kLanguageSourceV10`; no language flag
+  and `--language-source` are aliases. Manifests/receipts retain the exact
+  `language_source_v10` label. This adds no premise. Source-output selectors
+  and raw analysis semantics remain separate.
+- Both source CLIs reject arithmetic/numeric/constructor selectors before input
+  access or output staging. `ExportError::kArguments` is appended (13), with the
+  existing `usage:` prefix. Shared typed removed-option diagnostics also guard
+  corpus inspection, scan and capability arguments. Inspection/publication and
+  inherited-default call sites were audited; there is one shared default.
+- Migrated CLI harnesses to V10, removed obsolete contract-off rows, and retained
+  semantic oracles, exact remaining refusals and explicit pinned analysis/ABI
+  fixtures. Contract mutations now use an actually different retained identity.
+  The consolidated CLI test checks alias identity, permutations/duplicates,
+  conflicting views, removed routes, exact errors and filesystem non-effects.
+  Source-regression membership stays at 65.
+- Full rebuild exposed a stale synthetic phased-construction fixture: it passed
+  a normal-parent class without the required phase binding. The fixture now
+  encodes its real handler and creator occurrence, then uses shared creator
+  preparation/binding and the parent capture tree. All production verifiers are
+  unchanged; the existing construction Node oracles pass.
+- ISA recovery/evidence uses one canonical `language_source_v10` key and checks
+  manifest identity independently of argv. Retired evidence is rejected, never
+  relabelled. Deprecated recovery snapshots were measured anew without changing
+  ABCs. The default ledger cache is keyed by production binary fingerprint;
+  explicit output directories retain strict cache identity checks.
+- Acceptance: `cmake --build build/regression --target source_regression
+  abc_structure abc_semantic isa_coverage_probe -j 8` passed; the full make tree
+  was also built. `ctest --test-dir build/regression -L '^source-regression$'
+  -j 2 --output-on-failure` passed **65/65**. CLI/importer/probe and corrected
+  construction checks passed. Full CTest before/after swept **964** tests;
+  final status after migration reruns is **930 pass / 34 persistent pre-existing
+  failures**, with no newly failing test. The faithful isolated baseline has
+  **929 pass / 35 failures**, including a community ability worker termination;
+  that test passes under V10. Registration replacement is arithmetic CLI →
+  consolidated source CLI. Full names, status changes and runner corrections:
+  `build/contract-a/ctest-comparison.md`; machine-readable comparison alongside.
+- All 40 exploration inputs were emitted in both invocation forms and compared
+  to read-only `build/review/csr88/ns`: **1007 records / 617 complete**, zero
+  status/cause differences, zero complete-source byte changes, and identical
+  default/alias manifests. Direct-run evidence:
+  `build/contract-a/cohort-final/comparison.json`. No cohort tool or review
+  output was modified; dated corpus evaluations were preserved without append.
+- `python3 tests/isa/coverage_matrix.py` passed: **222 SupportedVerified /
+  21 SupportedUnverified / 61 Unmeasured / 28 NonExecutable**, unchanged.
+  Current binary-bound evidence is under `build/isa-language-source-v10/`;
+  command logs and the complete changed-file list are in `build/contract-a/`.
+- Increment B remains pending: retired engine variants/policy branches and the
+  dense label registry are deliberately retained in A. Preserve typed historical
+  Source V1–V10 identities, explicit realm-binding provenance and live runtime
+  proof inputs when performing B. Iterator-close and renewal work remains parked.
+  No commit or push was performed for this increment.
 
 ## Guarded catch payloads with current-activation evidence (2026-10-26)
 

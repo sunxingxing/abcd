@@ -20,7 +20,7 @@ const records = [
   const bytes = readFileSync(abc);
   assert.equal(bytes.length,identity.size);
   assert.equal(createHash('sha256').update(bytes).digest('hex'),identity.sha256);
-  const report = JSON.parse(execFileSync(tool,[abc,String(method),'--record-source','--value-source','--language-constructors'],
+  const report = JSON.parse(execFileSync(tool,[abc,String(method),'--record-source','--value-source','--language-source'],
     {encoding:'utf8',timeout:60000,maxBuffer:8 * 1024 * 1024}));
   assert.equal(report.record,entity); assert.equal(report.route,'value_tree');
   assert.equal(report.source_complete,true); assert.equal(report.legacy_writer_used, undefined);

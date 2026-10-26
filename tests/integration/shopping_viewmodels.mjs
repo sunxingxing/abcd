@@ -27,10 +27,10 @@ const records = [
 const sources = {}, reference = {}, temporary = mkdtempSync(join(tmpdir(),'abcd-shopping-viewmodels-'));
 try {
   const output = join(temporary,'output');
-  execFileSync(tool,[abc,output,'--value-source','--language-numeric','--language-constructors'],{timeout:60_000});
+  execFileSync(tool,[abc,output,'--value-source','--language-source'],{timeout:60_000});
   const manifest = JSON.parse(readFileSync(join(output,'manifest.json')));
   assert.equal(manifest.sha256,identity.sha256);assert.equal(manifest.source_route,'value_tree');
-  assert.equal(manifest.source_contract,'language_numeric_constructors_v1');
+  assert.equal(manifest.source_contract,'language_source_v10');
   for(const [entity,name] of records) {
     const row = manifest.records.find(row=>row.entity===entity);assert.ok(row);
     assert.equal(row.source_complete,true);assert.equal(row.source_status,0);

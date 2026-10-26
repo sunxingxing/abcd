@@ -62,10 +62,10 @@ void Instructions() {
     graph.origins.push_back({{0}, {0}, {}});
     graph.ops.push_back({imported, {0}, 0, {0}, 0, {}, raw.effects.normal,
                         raw.effects.before_throw, raw.effects.exceptional, {0}});
-    const auto failure = source::NameSettingRefusal(graph, {0});
+    const auto failure = source::NameSettingRefusal(graph, {0}, false, source::SourceContract::kLanguageSourceV9);
     Check(named ? !failure : (failure && failure->evaluation.plan_cause == source::EvaluationPlanCause{source::LiteralError::kNameSettingProof}));
     graph.ops[0].operation = ValueNamedWrite{{0}};
-    Check(!source::NameSettingRefusal(graph, {0}));
+    Check(!source::NameSettingRefusal(graph, {0}, false, source::SourceContract::kLanguageSourceV9));
     // Width, operand kind, and frame mutations are malformed, never a different
     // property operation. The zero PC is a real location, not absence.
     Check(std::holds_alternative<SemanticFailure>(lift(decoded, 0)));

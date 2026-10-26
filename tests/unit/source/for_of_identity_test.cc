@@ -110,7 +110,7 @@ void Case(const char* path,unsigned padding,unsigned entity=451) {
     }
     auto protocol=Take<ForOfIdentityIndex>(std::move(protocol_result),"forof");
     Take<std::uint64_t>(verify(protocol),"verify-forof");
-    for(auto contract:{kSourceContract,SourceContract::kLanguageSourceV1}) {
+    for(auto contract:{SourceContract::kLanguageSourceV1}) {
       auto refused=IndexForOfIdentities(body,graph,input,plan,control,owner,contract);
       test::Check(std::get<ForOfIdentityFailure>(refused).kind==ForOfIdentityError::kAcquisitionSemantics);
     }

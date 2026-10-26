@@ -21,10 +21,10 @@ const records = [abilityName, 'commons/Index', 'commons/src/main/ets/utils/Windo
 const sources = {}, reference = {}, temporary = mkdtempSync(join(tmpdir(), 'abcd-immersive-ability-'));
 try {
   const output = join(temporary, 'output');
-  execFileSync(tool, [abc, output, '--value-source', '--language-numeric', '--language-constructors'],
+  execFileSync(tool, [abc, output, '--value-source', '--language-source'],
     {encoding: 'utf8', timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
-  assert.equal(manifest.sha256, identity.sha256); assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
+  assert.equal(manifest.sha256, identity.sha256); assert.equal(manifest.source_contract, 'language_source_v10');
   for (const name of records) {
     const record = manifest.records.find(row => row.source === `sources/${name}.mjs`);
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);

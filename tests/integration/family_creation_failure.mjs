@@ -22,7 +22,7 @@ const run=(tool,args,status=0)=>{
  assert.ifError(p.error);assert.equal(p.status,status,p.stderr);return p.stdout;
 };
 try {
- for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+ for(const [label,flags] of [['default',[]],['source',['--language-source']]]) {
   const manifests=new Map();
   for(const [o,abc] of inputs) {
    const out=join(dir,`${label}-${o}`);run(structure,[abc,out,'--value-source',...flags]);
@@ -30,7 +30,7 @@ try {
   }
   for(const [o,record,method,pc,op,family,occurrence,constructor,literal,descendantPc] of cases) {
    const row=manifests.get(o).find(r=>r.entity===record);
-   if((o===18 || o===36) && !(record===63861 && label==='old')){
+   if((o===18 || o===36)){
     // Descendant class preparation now closes the original gate (o36: phased
     // creator classes, 19a88ab9). Keep the real
     // instruction/pool/reachability assertions below as well as source checks.
@@ -39,12 +39,7 @@ try {
     assert.equal(cli.source_complete,true);assert.equal(cli.source_failure,undefined);
     assert.equal(cli.source,readFileSync(join(dir,`${label}-${o}`,row.source),'utf8'));
     run(process.execPath,['--check',join(dir,`${label}-${o}`,row.source)]);
-   }else if(record===63861 && label==='old'){
-    assert.equal(row.source_status,3);
-    const f=row.source_failure;assert.equal(f.method,64229);assert.equal(f.pc,62);
-    assert.deepEqual(f.causes,[{domain:'abcd::source::CaptureCellError',value:3},{domain:'abcd::source::CaptureError',value:1},{domain:'abcd::source::ScopeError',value:3}]);
-    assert.equal(f.capture.slot,7);assert.equal(f.capture.ordinal,2);
-    const cli=JSON.parse(run(semantic,[inputs.get(o),String(method),'--record-source',...flags],1));assert.deepEqual(cli.source_failure,f);
+
    }else{
    assert.equal(row.source_status,3);
    const cli=JSON.parse(run(semantic,[inputs.get(o),String(method),'--record-source',...flags],1));

@@ -21,7 +21,7 @@ try{
  const oracle=join(dir,'oracle.mjs');writeFileSync(oracle,readFileSync(join(dirname(abc),'flow.js')));
  const expected=new Map();
  for(const name of ['checked','ignored','rethrow','cleanup'])for(const mode of ['success','reject','getter','call','fallback','result'])expected.set(name+mode,await trace(oracle,name,mode));
- for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+ for(const [label,flags] of [['default',[]],['source',['--language-source']]]){
   const out=join(dir,label);run(structure,[abc,out,'--value-source',...flags]);
   const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);assert.equal(records.length,1);
   const record=records[0];assert.equal(record.source_status,0,JSON.stringify(record));

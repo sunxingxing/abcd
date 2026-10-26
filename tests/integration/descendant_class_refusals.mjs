@@ -8,7 +8,7 @@ const run=(tool,args,status=0)=>{const p=spawnSync(tool,args,{encoding:'utf8',ti
 const dir=mkdtempSync(join(tmpdir(),'abcd-class-refusals-'));
 try{
  for(const [name,reason] of [['deferred',16],['heritage',17],['nested',19]]){ // member completes (creator_classes_cli_test)
-  for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+  for(const [label,flags] of [['default',[]],['source',['--language-source']]]){
    const abc=join(fixtures,name+'.abc'),out=join(dir,name+'-'+label);
    run(structure,[abc,out,'--value-source',...flags]);
    const row=JSON.parse(readFileSync(join(out,'manifest.json'))).records.find(r=>r.source_status!==2);

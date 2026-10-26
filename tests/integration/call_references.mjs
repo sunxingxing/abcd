@@ -25,7 +25,7 @@ try {
   const exportRecord = name => {
     const output = join(directory, 'out-' + name);
     const run = spawnSync(structure, [join(fixtures, name + '.abc'), output, '--value-source',
-      '--language-numeric', '--language-constructors'], {encoding: 'utf8'});
+      '--language-source'], {encoding: 'utf8'});
     assert.equal(run.status, 0, run.stderr);
     const manifest = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
     const records = manifest.records.filter(record => record.source_status !== 2);

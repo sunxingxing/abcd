@@ -75,6 +75,7 @@ void Run(abc::ProfileId profile, bool early_store, bool hole_store = false, bool
   // Conditional fragments, not invented file/source receipts. Public owner
   // admission is exercised separately with real file-backed children.
   RouteInputIdentity identity; identity.profile = profile;
+  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned capture-domain proof.
   constexpr abc::EntityOffset kParent{300}, kChild{400}, kRecord{100};
   const auto child_body = test::Body({op(abc::Opcode::kLDLEXVAR_IMM4_IMM4), kFirstCell, op(abc::Opcode::kRETURN)});
   const auto child_input = std::get<FunctionInput>(FunctionInput::Build(identity, kChild, kRecord,

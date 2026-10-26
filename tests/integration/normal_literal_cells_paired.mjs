@@ -74,7 +74,7 @@ try {
   ]) {
     const output = join(temporary, record.app);
     // ABC-only generation precedes opening the paired source as the oracle.
-    execFileSync(tool, [join(root, record.app, 'modules.abc'), output, '--value-source', '--language-arithmetic'], {timeout: 60_000});
+    execFileSync(tool, [join(root, record.app, 'modules.abc'), output, '--value-source', '--language-source'], {timeout: 60_000});
     const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
     const entry = manifest.records.find(row => row.entity === record.entity);
     assert.equal(entry.source_complete, true); assert.equal(entry.legacy_writer_used, undefined);

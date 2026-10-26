@@ -32,7 +32,7 @@ for(mode of ['normal','callee-throw','noncallable','first-throw','pick-throw','p
 console.log(JSON.stringify({count,trace}));`);
  const expected=run(process.execPath,[runner,oracle]);assert.equal(JSON.parse(expected).count,176);
  let comparisons=0,mutations=0;
- for(const [name,flags] of [['previous',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+ for(const [name,flags] of [['default',[]],['source',['--language-source']]]){
   const out=join(dir,name);run(engine,[join(fixtures,'fields.abc'),out,'--value-source',...flags]);
   const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
   assert.equal(records.length,1);assert.equal(records[0].source_status,0,JSON.stringify(records[0]));

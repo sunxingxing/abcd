@@ -1649,7 +1649,9 @@ void GlobalTree() {
   Check(std::get<TreeGlobalError>(VerifyTreeGlobals(tree, &scope)) == TreeGlobalError::kShadowed);
   Check(std::get<TreeSemanticError>(fixture.Verify(tree)) == TreeSemanticError::kConstant);
   std::get<ValueGlobalRead>(fixture.graph.ops[0].operation).lookup = GlobalLookup::kVar;
-  Check(std::get<FunctionTreeFailure>(fixture.Build()) == FunctionTreeError::kExpression);
+  // V10 constructs this lookup; the independent semantic verifier still
+  // rejects the mutated reference/constant correspondence.
+  Check(std::get<FunctionTreeFailure>(fixture.Build()) == FunctionTreeError::kSemantics);
 }
 void ConstructorGuardAnchors() {
   using namespace analysis;

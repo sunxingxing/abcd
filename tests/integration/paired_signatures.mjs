@@ -33,10 +33,10 @@ try {
     assert.equal(bytes.length, identity.size);
     assert.equal(createHash('sha256').update(bytes).digest('hex'), identity.sha256);
     const output = join(directory, relative);
-    execFileSync(tool, [abc, output, '--value-source', '--language-numeric', '--language-constructors'], {timeout: 60_000});
+    execFileSync(tool, [abc, output, '--value-source', '--language-source'], {timeout: 60_000});
     const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
     assert.equal(manifest.sha256, identity.sha256);
-    assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
+    assert.equal(manifest.source_contract, 'language_source_v10');
     const methodCounts = new Map();
     const inventory = verifyRecordInventory(bytes, manifest, row => {
       const metadata = JSON.parse(readFileSync(join(output, row.metadata)));

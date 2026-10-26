@@ -39,10 +39,6 @@ class WideCalls(unittest.TestCase):
      if n>=256 and any(k in source.stem for k in ['direct','template']):self.assertIn(catalog()['WIDE_CALLRANGE_PREF_IMM16_V8']['opcode'],ops)
      out=root/str(i);r=recover(abc,out);self.assertEqual(r['source_status'],0,r);emitted=out/r['source'];subprocess.run(['node','--check',emitted],check=True,capture_output=True)
      result=json.loads(subprocess.check_output(['node',ROOT/'tests/integration/isa_wide_calls.mjs',source,emitted],text=True));record_node(abc,out,source,__file__,result['cases'],BUILD/'abc_structure',exclusions=('V7: raw/cooked index descriptors and per-site identity',))
- def test_previous_contract_refuses(self):
-  with tempfile.TemporaryDirectory() as d:
-   out=Path(d)/'off';subprocess.run([BUILD/'abc_structure',FIX/'calls300-direct-default.abc',out,'--value-source','--language-numeric','--language-constructors'],check=True,capture_output=True)
-   self.assertTrue(any(r.get('source_status') not in (0,2) for r in json.loads((out/'manifest.json').read_text())['records']))
 if __name__=='__main__':
  if '--generate' in sys.argv:generate()
  else:unittest.main()

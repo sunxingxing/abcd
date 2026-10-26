@@ -12,7 +12,7 @@ const temporary = mkdtempSync(join(tmpdir(), 'abcd-parameter-origins-'));
 let generated, generatedIndex;
 try {
   const output = join(temporary, 'output');
-  execFileSync(tool, [abc, output, '--value-source', '--language-numeric', '--language-constructors'],
+  execFileSync(tool, [abc, output, '--value-source', '--language-source'],
     {timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
   const record = manifest.records.find(record => record.entity === 14411);

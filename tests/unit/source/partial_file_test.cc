@@ -76,7 +76,8 @@ void FileDraft(bool nested) {
     index.methods[2].access_flags = index.methods[3].access_flags = index.methods[1].access_flags;
   }
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
-  const auto identity = source::MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
+  auto identity = source::MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
+  identity.contract = source::SourceContract::kLanguageAndHostV3;  // Pinned partial-analysis boundary.
   std::ostringstream positions;
   const auto report = InspectFamilyValues(file, header, index, lookup, {1}, identity, nullptr,
       positions, FamilyInspectMode::kSourceDraft);

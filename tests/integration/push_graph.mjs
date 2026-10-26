@@ -17,10 +17,10 @@ assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
 const directory = mkdtempSync(join(tmpdir(), 'abcd-push-graph-'));
 try {
   const output = join(directory, 'output');
-  execFileSync(tool, [abc, output, '--value-source', '--language-numeric', '--language-constructors'],
+  execFileSync(tool, [abc, output, '--value-source', '--language-source'],
     {encoding: 'utf8', timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
-  assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
+  assert.equal(manifest.source_contract, 'language_source_v10');
   for (const record of manifest.records) if (record.source) {
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     assert.equal(record.source_route, 'value_tree');

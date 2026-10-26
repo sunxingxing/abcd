@@ -90,12 +90,13 @@ def specimen(spec, profile, count=1):
 
 def measure(path, temp):
     manifests = []
-    for flag, options in [('previous', ['--language-numeric', '--language-constructors']),
-                          ('source', ['--language-source'])]:
+    for flag, options in [('language_source_v10', [])]:
         out = temp/flag
         result = run([BUILD/'abc_structure', path, out, '--value-source', *options])
         assert result.returncode == 0, (path, result.stderr)
-        manifests.append(out/'manifest.json')
+        manifest = out/'manifest.json'
+        assert json.loads(manifest.read_text())['source_contract'] == 'language_source_v10'
+        manifests.append(manifest)
     result = run([BUILD/'isa_coverage_probe', path, *manifests])
     assert result.returncode == 0, (path, result.stderr)
     return [r for line in result.stdout.splitlines()
@@ -175,6 +176,7 @@ def generate():
         print(name, 'profiles=6', flush=True)
     SPEC.write_text(json.dumps({'schema': 1, 'baseline': '41f6b2a1',
         'scope': '47 deprecated variants, six separately measured container profiles',
+        'recovery_contract': 'language_source_v10',
         'disassembler': str(DISASM), 'disassembler_sha256': sha(DISASM),
         'variants': variants}, indent=2)+'\n')
     registry = ROOT/'tests/isa/coverage_manifest.json'
@@ -187,6 +189,7 @@ def generate():
 class Deprecated(unittest.TestCase):
     def test_catalog_and_all_profile_fixtures(self):
         data = json.loads(SPEC.read_text())
+        self.assertEqual(data['recovery_contract'], 'language_source_v10')
         specs = data['variants']
         self.assertEqual(len(specs), 47)
         self.assertEqual({s['name'] for s in specs}, set(selected()))

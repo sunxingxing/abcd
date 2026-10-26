@@ -24,8 +24,6 @@ class Namespaces(unittest.TestCase):
     self.assertEqual(observed,expected,abc)
     record_node(abc,out,source,__file__,len(expected),BUILD/'abc_structure',
                 exclusions=['ark-native-cjs-namespace'],dependencies=[HARNESS])
-    old=root/(str(i)+'-old');subprocess.run([BUILD/'abc_structure',abc,old,'--value-source','--language-numeric','--language-constructors'],check=True,capture_output=True)
-    refused=json.loads((old/'manifest.json').read_text())['records'][-1];self.assertNotEqual(refused['source_status'],0)
  def test_scale(self):
   compiler=json.loads((FIX/'manifest.json').read_text())['compiler']
   with tempfile.TemporaryDirectory() as d:

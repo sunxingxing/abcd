@@ -22,6 +22,7 @@
 
 #include "abcd/source/record_program.h"
 #include "process_limit.h"
+#include "source_cli_options.h"
 
 namespace {
 using nlohmann::json;
@@ -170,6 +171,10 @@ int Run(const std::vector<std::filesystem::path>& exports,
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (const auto removed = abcd::tools::FindRemovedSourceOption(argc, argv)) {
+    abcd::tools::ReportRemovedSourceOption(std::cerr, *removed);
+    return EXIT_FAILURE;
+  }
   const auto limit = abcd::tools::EstablishProcessLimit();
   if (!abcd::tools::ProcessLimitAcceptable(limit)) {
     abcd::tools::ReportLimitFailure(std::cerr, limit);

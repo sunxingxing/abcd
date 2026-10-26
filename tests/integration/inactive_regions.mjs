@@ -25,7 +25,7 @@ try {
     // O0 has two inactive regions and one reachable handler. The default
     // optimizer emits zero-size handler ranges, an explicitly refused extent.
     run(proof,[abc]);
-    for(const flags of [['--language-numeric','--language-constructors'],['--language-source']]) {
+    for(const flags of [[], ['--language-source']]) {
       const out=join(root,mode+flags[0]);run(structure,[abc,out,'--value-source',...flags]);
       const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
       assert.equal(records.length,1);

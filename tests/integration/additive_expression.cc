@@ -32,6 +32,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, std::int32_t seed,
   const auto body = test::Body(bytes);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {}));
   RouteInputIdentity identity; identity.profile = profile;
+  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis fixture.
   const auto prepared = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
   if (!admitted) { test::Check(!std::holds_alternative<FunctionInput>(prepared)); return 0; }
   test::Check(std::holds_alternative<FunctionInput>(prepared));
@@ -40,7 +41,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, std::int32_t seed,
   const auto& graph = values.graph;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
-  FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3; syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExpressionConstants resolved{constants};

@@ -29,12 +29,11 @@ try {
     }
   }
   assert.equal(spreads, 8); assert.ok(caught > 0); assert.ok(computed >= 2);
-  for (const [i, flags] of [[], ['--language-numeric', '--language-constructors']].entries()) {
+  for (const [i, flags] of [[], ['--language-source']].entries()) {
     const old = join(root, 'old' + i); run(structure, [input, old, '--value-source', ...flags]);
     const rejected = JSON.parse(readFileSync(join(old, 'manifest.json'))).records.find(r => r.source_status !== 2);
-    assert.equal(rejected.source_status, 3);
-    // Default arithmetic can fail earlier on the mixed cursor increment.
-    if (flags.length) assert.ok((rejected.source_failure?.causes ?? rejected.source_causes).some(c => c.domain.endsWith('ArrayInitializationError') && c.value === 0), JSON.stringify(rejected));
+    assert.equal(rejected.source_status, 0);
+    assert.equal(readFileSync(join(old, rejected.source), 'utf8'), text);
   }
   const evaluate = (name, code) => {
     const path = join(root, name + '.mjs'); writeFileSync(path, code);

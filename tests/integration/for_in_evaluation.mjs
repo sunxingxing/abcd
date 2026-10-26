@@ -10,29 +10,13 @@ const run = (exe,args,status=0) => {
 };
 const temp=mkdtempSync(join(tmpdir(),'abcd-for-in-evaluation-'));
 try {
-  for(const [i,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for(const [i,flags] of [['default',[]],['source',['--language-source']]]) {
     const out=join(temp,i);run(structure,[abc,out,'--value-source',...flags]);
     const rows=JSON.parse(readFileSync(join(out,'manifest.json'),'utf8')).records;
-    for(const [record,method,pc,causes] of [
-      // 21089 completes since 2026-10-23: its for-in RHS read shares the
-      // acquisition's transparent region (see the completion list below).
-      // Private declaration-prefix rest proof now passes. Keep each contract's
-      // real next refusal and the strict CLI/manifest correspondence.
-      [53454,i==='old'?54291:undefined,undefined,
-        [[i==='old'?'ArrayInitializationError':'FamilyEnclosureError',i==='old'?0:1]]],
-    ]) {
-      if(record===53454 && i==='source')continue;
-      const row=rows.find(r=>r.entity===record);assert.equal(row.source_complete,false);assert.equal(row.source,undefined);
-      const f=row.source_failure;
-      assert.deepEqual(f.causes,causes.map(([type,value])=>({domain:`abcd::source::${type}`,value})));
-      assert.equal(f.method,method);assert.equal(f.pc,pc);assert.equal(f.working_pc,pc);
-      const report=JSON.parse(run(semantic,[abc,String(method??54264),'--record-source','--value-source',...flags],1));
-      assert.deepEqual(report.source_failure,f);
-    }
     // Round 60 discharges Filter's later decision-edge phi transfer; the record
     // now publishes its native loops. Keep strict CLI/manifest source correspondence
     // instead of the obsolete m44496 PC252 DecisionEdgeCopies refusal.
-    for(const [entity,method] of [[29268,29450],[43537,44496],[21089,21280],...(i==='source'?[[53454,53795],[52417,52655]]:[])]) {
+    for(const [entity,method] of [[29268,29450],[43537,44496],[21089,21280],...[ [53454,53795],[52417,52655] ]]) {
       const complete=rows.find(r=>r.entity===entity);assert.equal(complete.source_complete,true);
       const report=JSON.parse(run(semantic,[abc,String(method),'--record-source','--value-source',...flags]));
       assert.equal(report.source_complete,true);assert.equal(report.source,readFileSync(join(out,complete.source),'utf8'));

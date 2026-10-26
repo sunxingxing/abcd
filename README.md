@@ -1,5 +1,12 @@
 # ABC Decompiler
 
+2026-10-26：源码恢复只以 `language_source_v10` 为目标。省略语言选项与
+`--language-source` 完全等价；制品和 receipt 仍发布精确版本名。
+`--language-arithmetic`、`--language-numeric`、`--language-constructors`
+已移除，任何组合/顺序均在文件访问前报 typed usage error。此变更选择既有 V10，
+不新增语言前提；底层 pinned-runtime 分析事实保持原义。历史 Source V1–V10
+身份与前提谓词保留，旧 receipt 不会被静默升级。
+
 C++20 项目，目标是从动态 ABC 恢复语义可信的 JS/TS/ArkTS，并为每个 record
 分别输出文件。参考版本固定为官方 `OpenHarmony-v7.0-Release`，旧版 ABC 仍在范围内。
 

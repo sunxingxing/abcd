@@ -29,7 +29,9 @@ enum class CaptureReadSemantics : std::uint8_t { kPinnedRuntime, kSourceTdz };
 // V3 additionally permits recovered callable source text to differ. Runtime
 // behavior, scopes, parameters, results and effects still require proof.
 // User approval: 2026-09-27; see source-contract-v3.md. Never reinterpret V2.
-inline constexpr SourceContract kSourceContract = SourceContract::kLanguageAndHostV3;
+// The sole CLI target (2026-10-26). Historical identities keep their meanings;
+// selecting this default adds no premise beyond the already approved V10.
+inline constexpr SourceContract kSourceContract = SourceContract::kLanguageSourceV10;
 
 // User-approved 2026-10-13: explicit rest/spread may observe array iteration;
 // invocation identity, argument values and the retained body still require proof.
@@ -64,7 +66,7 @@ constexpr ConstructorForwardingSemantics ConstructorForwarding(SourceContract co
 // it does not claim measured equivalence to a particular Ark binary. See
 // language-arithmetic.md. LanguageNumericV1 also covers unary numeric rules,
 // explicitly approved on 2026-10-06; see language-numeric.md. Neither opt-in
-// changes default V3 or constructor/host premises.
+// changed the historical V3 or constructor/host premises. The CLI now defaults to V10.
 constexpr analysis::ArithmeticSemantics Arithmetic(SourceContract contract) {
   switch (contract) {
     case SourceContract::kLanguageAndHostV1:

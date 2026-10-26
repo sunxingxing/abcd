@@ -38,6 +38,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool buffered = f
   const auto body = Body(count, buffered, direct);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(2, 0, {}));
   RouteInputIdentity identity; identity.profile = profile;
+  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis fixture.
   const auto input = std::get<FunctionInput>(FunctionInput::Build(identity, {300}, {100}, body, frame,
       InputCaptureMode::kClosed));
   const auto values = std::get<FunctionValues>(BuildFunctionValues(input, body, frame));
@@ -62,7 +63,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool buffered = f
     test::Check(std::get<EvaluationFailure>(BuildEvaluationPlan(blocked_values.graph)) == EvaluationError::kUnsupportedOperation);
     auto unsupported = graph;
     std::get<ValueGlobalRead>(unsupported.ops[global_reads.front().value].operation).lookup = GlobalLookup::kVar;
-    test::Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(unsupported)));
+    test::Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(unsupported, {}, {}, {}, {}, nullptr, nullptr, SourceContract::kLanguageSourceV8)));
     auto shared = graph;
     for (const auto& op : graph.ops) if (std::holds_alternative<ValueReturn>(op.operation))
       test::Check(!ReplaceUse(shared, op.first_use, *graph.ops[global_reads.front().value].result));
@@ -73,7 +74,7 @@ std::uint64_t Run(abc::ProfileId profile, std::uint32_t count, bool buffered = f
     test::Check(std::holds_alternative<EvaluationFailure>(VerifyEvaluationPlan(graph, forged)));
   }
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
-  FunctionSyntax syntax{};
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;
   syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"Lookup", u"value"};

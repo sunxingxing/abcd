@@ -30,7 +30,8 @@ int main(int argc, char** argv) {
   const auto fingerprint = std::get<corpus::FileFingerprint>(file.Fingerprint());
   const auto header = std::get<abc::Header>(abc::ParseHeader(
       std::span(fingerprint.prefix).first(fingerprint.prefix_size), fingerprint.size));
-  const auto identity = MakeRouteInputIdentity(fingerprint, header);
+  auto identity = MakeRouteInputIdentity(fingerprint, header);
+  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned spread-call proof, no CLI.
   const auto index = std::get<abc::MetadataIndex>(abc::BuildMetadataIndex(file, header));
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(index.methods));
   const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(file, header, index, lookup));

@@ -32,7 +32,7 @@ const m = await import(process.argv[2]);
 console.log(JSON.stringify({early:m.early,late:m.late,trace}));
 `);
   const run = (file, mode) => spawnSync(process.execPath, [runner, file, mode], {encoding:'utf8'});
-  for (const [label, flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for (const [label, flags] of [['default',[]],['source',['--language-source']]]) {
     const output = join(dir, label);
     const exported = spawnSync(structure, [join(fixtures,'calls.abc'),output,'--value-source',...flags],{encoding:'utf8'});
     assert.equal(exported.status,0,exported.stderr);

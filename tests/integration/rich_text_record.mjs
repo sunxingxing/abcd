@@ -20,10 +20,10 @@ const prefix = 'entry/src/main/ets/', page = prefix + 'pages/PasteBoard', consta
 const names = [page, constants, ...['ShareDitect', 'PageA', 'PageB'].map(name => prefix + 'pages/' + name)];
 try {
   const output = join(temporary, 'output');
-  execFileSync(tool, [join(root, 'modules.abc'), output, '--value-source', '--language-numeric', '--language-constructors'],
+  execFileSync(tool, [join(root, 'modules.abc'), output, '--value-source', '--language-source'],
     {encoding: 'utf8', timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
-  assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
+  assert.equal(manifest.source_contract, 'language_source_v10');
   for (const record of manifest.records) if (record.source || record.incomplete_source)
     assert.equal(record.source_contract, manifest.source_contract);
   for (const name of names) {

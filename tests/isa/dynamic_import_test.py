@@ -18,9 +18,6 @@ class Imports(unittest.TestCase):
     emitted=out/record['source'];subprocess.run(['node','--check',emitted],check=True,capture_output=True)
     observed=json.loads(subprocess.check_output(['node',ROOT/'tests/integration/dynamic_import.mjs',source,emitted],text=True))
     record_node(abc,out,source,__file__,observed['cases'],BUILD/'abc_structure',exclusions=observed['exclusions'],dependencies=[ROOT/'tests/integration/dynamic_import.mjs'])
-    old=root/(str(i)+'-old');subprocess.run([BUILD/'abc_structure',abc,old,'--value-source','--language-numeric','--language-constructors'],check=True,capture_output=True)
-    refused=json.loads((old/'manifest.json').read_text())['records'][-1];self.assertNotEqual(refused['source_status'],0)
-    self.assertIn({'domain':'abcd::source::EvaluationInputCheck','value':11},refused['source_failure']['causes'])
  def test_scale(self):
   compiler=json.loads((FIX/'manifest.json').read_text())['compiler']
   with tempfile.TemporaryDirectory() as d:

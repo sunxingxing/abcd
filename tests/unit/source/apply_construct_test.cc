@@ -1,5 +1,8 @@
 #include "../../../src/source/function_values.h"
 #include "../../../src/source/class_tree.h"
+#include "../../../src/source/creator_classes.h"
+#include "../../../src/source/phased_function_file.h"
+#include "../../../src/source/capture_tree.h"
 #include <unistd.h>
 #include "../../../src/source/function_tree.h"
 #include "../../../src/source/tree_semantics.h"
@@ -84,23 +87,22 @@ abc::MethodBody Body(bool wide, std::uint32_t count, std::uint32_t arguments,
   }
   return body;
 }
-// Class bodies are decoded and prepared from an unchanged file. The main
-// low-level phase fixture adds its explicit handler graph; the class creation
-// precedes that region and shares the normal file's exact original site.
+// Class bodies and the phased creator are prepared from the same immutable
+// file. Phased class roots must bind through the real Before/Commit certificate.
 struct ClassFile {
   static constexpr std::uint32_t kPool = 64, kClass = 160, kArray = 192,
-      kCaller = 256, kCtor = 300, kName = 1536, kValue = 1552,
-      kCtorCode = 2048, kCallerCode = 4096;
+      kEntry = 240, kCaller = 256, kCtor = 300, kName = 1536, kValue = 1552,
+      kCtorCode = 2048, kEntryCode = 3072, kCallerCode = 4096;
   std::unique_ptr<corpus::AbcFile> file;
   abc::Header header;
   abc::MetadataIndex index;
   std::string path;
-  ClassFile(std::span<const std::uint8_t> code, abc::ProfileId profile, std::uint32_t arguments) {
-    std::vector<std::uint8_t> bytes(kCallerCode + code.size() + 16);
+  ClassFile(std::span<const std::uint8_t> code, abc::ProfileId profile, std::uint32_t arguments, const abc::MethodBody* phases = nullptr) {
+    std::vector<std::uint8_t> bytes(kCallerCode + code.size() + 64);
     const auto word = [&](std::size_t at, std::uint32_t value) {
       for (std::size_t i = 0; i < sizeof(value); ++i) bytes[at + i] = static_cast<std::uint8_t>(value >> (8 * i));
     };
-    const std::uint32_t pool[]{kCtor, kClass, kArray, kName, kValue};
+    const std::uint32_t pool[]{kCtor, kClass, kArray, kName, kValue, kCaller};
     for (std::size_t p = 0; p < std::size(pool); ++p) word(kPool + p * sizeof(std::uint32_t), pool[p]);
     word(kClass, 2); bytes[kClass + 4] = static_cast<std::uint8_t>(abc::LiteralTag::kInteger); word(kClass + 5, 0);
     word(kArray, arguments * 2);
@@ -114,25 +116,42 @@ struct ClassFile {
     };
     text(kName, "ctor"); text(kValue, "value");
     const auto write_body = [&](std::uint32_t at, std::uint32_t locals, std::uint32_t args,
-                                std::span<const std::uint8_t> payload) {
+                                std::span<const std::uint8_t> payload, const abc::MethodBody* exceptions = nullptr) {
       auto cursor = at;
       const auto uleb = [&](std::uint32_t value) {
         do {const auto byte = static_cast<std::uint8_t>(value & 0x7f); value >>= 7;
           bytes[cursor++] = byte | (value ? 0x80 : 0); } while (value);
       };
-      uleb(locals); uleb(args); uleb(static_cast<std::uint32_t>(payload.size())); uleb(0);
+      uleb(locals); uleb(args); uleb(static_cast<std::uint32_t>(payload.size())); uleb(exceptions ? exceptions->tries.size() : 0);
       std::copy(payload.begin(), payload.end(), bytes.begin() + cursor);
-      return abc::CodeInfo{{at}, {cursor}, locals, args, static_cast<std::uint32_t>(payload.size()), 0};
+      const auto instructions = cursor;
+      cursor += payload.size();
+      if (exceptions) {
+        for (const auto& region : exceptions->tries) {
+          uleb(region.offset.value); uleb(region.length); uleb(region.handler_count);
+          for (const auto& handler : exceptions->handlers) {
+            uleb(0);  // Catch-all type index in the pinned code-item format.
+            uleb(handler.offset.value); uleb(handler.length);
+          }
+        }
+      }
+      return abc::CodeInfo{{at}, {instructions}, locals, args, static_cast<std::uint32_t>(payload.size()), exceptions ? static_cast<std::uint32_t>(exceptions->tries.size()) : 0};
     };
     const std::uint8_t ctor[]{Op(abc::Opcode::kLDA_V8), 3, Op(abc::Opcode::kRETURN)};
-    index.methods.resize(2);
+    index.methods.resize(3);
     index.methods[0].offset = {kCaller}; index.methods[0].owner_offset = {128};
+    constexpr unsigned kFunctionKindShift = 8;  // Pinned dynamic access flags.
+    index.methods[0].access_flags = static_cast<std::uint32_t>(abc::FunctionKind::kBaseConstructor) << kFunctionKindShift;
     index.methods[0].name = "factory"; index.methods[0].name_utf16_length = 7;
-    index.methods[0].code = write_body(kCallerCode, 3, 5, code);
+    index.methods[0].code = write_body(kCallerCode, 3, 5, code, phases);
     index.methods[1].offset = {kCtor}; index.methods[1].owner_offset = {128};
     index.methods[1].name = "Known"; index.methods[1].name_utf16_length = 5;
     index.methods[1].code = write_body(kCtorCode, 0, 5, ctor);
-    index.regions.push_back({kCaller, kCallerCode, {}, {std::size(pool), kPool}, {}, {}});
+    const std::uint8_t entry[]{Op(abc::Opcode::kDEFINEFUNC_IMM8_ID16_IMM8), 0, 5, 0, 2, Op(abc::Opcode::kRETURN)};
+    index.methods[2].offset = {kEntry}; index.methods[2].owner_offset = {128};
+    index.methods[2].name = "entry"; index.methods[2].name_utf16_length = 5;
+    index.methods[2].code = write_body(kEntryCode, 0, 3, entry);
+    index.regions.push_back({kEntry, kCallerCode, {}, {std::size(pool), kPool}, {}, {}});
     char temporary[] = "/tmp/abcd-apply-class-XXXXXX";
     const auto fd = mkstemp(temporary); test::Check(fd >= 0);
     test::Check(write(fd, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size())); test::Check(close(fd) == 0);
@@ -145,25 +164,57 @@ struct ClassFile {
 };
 void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
          std::uint32_t arguments, Form form, bool member, bool print = false) {
-  const auto body = Body(wide, count, arguments, form, phased, member);
-  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 5, {true, true, true, true}));
   std::vector<std::uint8_t> encoded;
-  const auto normal_body = Body(wide, count, arguments, form, false, member, &encoded);
-  const ClassFile class_file(encoded, profile, arguments);
-  const auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(class_file.file->Fingerprint()), class_file.header);
+  const auto body = Body(wide, count, arguments, form, phased, member, &encoded);
+  const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(3, 5, {true, true, true, true}));
+  const ClassFile class_file(encoded, profile, arguments, phased ? &body : nullptr);
+  auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(class_file.file->Fingerprint()), class_file.header);
+  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned frame/constructor proof.
   const auto lookup = std::get<abc::MethodLookup>(abc::MethodLookup::Build(class_file.index.methods));
   const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(*class_file.file, class_file.header, class_file.index, lookup));
   const auto functions = std::get<FunctionCreationSites>(FunctionCreationSites::Build(*class_file.file, class_file.header, class_file.index, lookup));
   const auto classes = std::get<ClassMethodSites>(ClassMethodSites::Build(*class_file.file, class_file.header, class_file.index, lookup));
-  const auto creator_result = ReadFunctionValues(*class_file.file, class_file.header, class_file.index, {0}, identity, InputCaptureMode::kClosed);
-  test::Check(std::holds_alternative<FileFunction>(creator_result));
-  const auto& creator = std::get<FileFunction>(creator_result);
-  test::Check(creator.values.classes.classes.size() == 1);
-  const auto class_operation = creator.values.classes.classes.front().operation;
-  auto class_result = BuildClassTree(*class_file.file, class_file.header, class_file.index, lookup, roles, functions, classes, creator, class_operation, identity);
-  test::Check(std::holds_alternative<ClassTree>(class_result));
-  const auto definition = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(class_result)));
-  if (count <= 2) {
+  std::optional<FilePhasedFunction> phase_creator;
+  std::optional<CreatorClasses> class_plan;
+  std::shared_ptr<ClassTree> definition;
+  if (phased) {
+    const auto occurrence = functions.Find({ClassFile::kCaller});
+    test::Check(occurrence.count == 1);
+    auto creation_context = CreationTreeContext::Resolve(
+        *class_file.file, class_file.header, class_file.index, lookup, roles,
+        functions, occurrence.first, identity);
+    test::Check(std::holds_alternative<CreationTreeContext>(creation_context));
+    const FunctionContext context{std::get<CreationTreeContext>(std::move(creation_context))};
+    auto loaded = FilePhasedFunction::Read(*class_file.file, class_file.header,
+                                         class_file.index, context);
+    test::Check(std::holds_alternative<FilePhasedFunction>(loaded));
+    phase_creator.emplace(std::get<FilePhasedFunction>(std::move(loaded)));
+    const ClassCreator creator{*phase_creator};
+    const CreatorClassInput input{*class_file.file, class_file.header, class_file.index,
+        lookup, roles, functions, classes, creator, identity, {{ClassFile::kCaller}, {0}, {0}}};
+    auto discovered = DiscoverCreatorClasses(input);
+    test::Check(std::holds_alternative<CreatorClasses>(discovered));
+    auto plan = std::get<CreatorClasses>(std::move(discovered));
+    const GlobalScope globals{};
+    test::Check(std::holds_alternative<CreatorClassCost>(PrepareCreatorClasses(
+        input, plan, &globals, {0}, RecoveryMode::kCompleteOnly)));
+    test::Check(std::holds_alternative<CreatorClassCost>(BindCreatorClasses(
+        *class_file.file, class_file.header, class_file.index, lookup, creator, nullptr, plan)));
+    test::Check(plan.tasks.size() == 1);
+    definition = plan.tasks[0].tree;
+    test::Check(definition->phase_binding.has_value());
+    class_plan.emplace(std::move(plan));
+  } else {
+    auto creator_result = ReadFunctionValues(*class_file.file, class_file.header, class_file.index, {0}, identity, InputCaptureMode::kClosed);
+    test::Check(std::holds_alternative<FileFunction>(creator_result));
+    const auto& creator = std::get<FileFunction>(creator_result);
+    test::Check(creator.values.classes.classes.size() == 1);
+    const auto class_operation = creator.values.classes.classes.front().operation;
+    auto class_result = BuildClassTree(*class_file.file, class_file.header, class_file.index, lookup, roles, functions, classes, creator, class_operation, identity);
+    test::Check(std::holds_alternative<ClassTree>(class_result));
+    definition = std::make_shared<ClassTree>(std::get<ClassTree>(std::move(class_result)));
+  }
+  if (!phased && count <= 2) {
     const auto scope = std::get<ClassParentScope>(CheckClassParentScope(*definition));
     test::Check(scope.independent && scope.work != 0);
     test::Check(std::get<ClassTreeError>(CheckClassParentScope(*definition, scope.work - 1)) == ClassTreeError::kWorkLimit);
@@ -212,7 +263,7 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
     stripped.exceptional = ExceptionalCompletion::kImpossible; test::Check(!CanErasePureOp(stripped));
   }
   test::Check(calls.size() == count);
-  const auto scheduled = phased ? BuildPhasedEvaluationPlan(graph) : BuildEvaluationPlan(graph);
+  const auto scheduled = phased ? BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {SourceContract::kLanguageAndHostV3}) : BuildEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {}, {}, {}, nullptr, {}, {SourceContract::kLanguageAndHostV3});
   test::Check(std::holds_alternative<EvaluationPlan>(scheduled));
   const auto evaluation = std::get<EvaluationPlan>(scheduled);
   const auto planned = phased ? BuildPhasedCallPlan(graph, evaluation) : BuildCallPlan(graph, evaluation);
@@ -235,7 +286,8 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
   FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = {256};
   // This synthetic caller encloses an independently prepared constructor.
   // Its function identity must not collide with that family's owner namespace.
-  for(const auto& child:definition->constructor->Family().members)
+  if (class_plan) syntax.owner.value = static_cast<std::uint32_t>(class_plan->tasks[0].owners->end);
+  else for(const auto& child:definition->constructor->Family().members)
     syntax.owner.value=std::max(syntax.owner.value,child.tree.owner.value+1);
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"Ctor", u"input", u"ctor", u"value"};
@@ -254,7 +306,8 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
     if (const auto* array = std::get_if<ValueArrayAllocation>(&graph.ops[i].operation); array && array->literal)
       constants[i] = AggregateConstant{0, arguments, AggregateKind::kArray};
   }
-  const ExpressionConstants resolved{constants, syntax.names.size(), 0, {}, properties};
+  ExpressionConstants resolved{constants, syntax.names.size(), 0, {}, properties};
+  if (phase_creator) resolved.class_creator = ClassCreator{*phase_creator};
   FunctionTree tree;
   std::optional<ControlPlan> control;
   std::optional<ExceptionPlan> regions;
@@ -265,7 +318,17 @@ void Run(abc::ProfileId profile, bool wide, bool phased, std::uint32_t count,
     exception_control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, *input, *regions));
     context.emplace(ExceptionTreeInput{body, *input, *regions, *exception_control});
     const auto built = BuildExceptionFunctionDraft(graph, *context, evaluation, syntax, resolved, {});
-    test::Check(std::holds_alternative<ExceptionFunctionDraft>(built)); tree = std::get<ExceptionFunctionDraft>(built).tree;
+    test::Check(std::holds_alternative<ExceptionFunctionDraft>(built));
+    const auto& draft = std::get<ExceptionFunctionDraft>(built);
+    test::Check(draft.flow.has_value());
+    const CaptureTree parent{draft.tree, *draft.flow};
+    const CreatorClassInput class_input{*class_file.file, class_file.header, class_file.index,
+        lookup, roles, functions, classes, ClassCreator{*phase_creator}, identity,
+        {{ClassFile::kCaller}, {0}, {0}}};
+    const GlobalScope globals{};
+    test::Check(std::holds_alternative<CreatorClassCost>(FinishCreatorClasses(
+        class_input, *class_plan, &globals, {0}, &parent, RecoveryMode::kCompleteOnly)));
+    tree = draft.tree;
   } else {
     control = std::get<ControlPlan>(BuildControlPlan(graph));
     const auto built = BuildFunctionTree(graph, *control, evaluation, syntax, resolved);

@@ -59,7 +59,7 @@ class ImportTest(unittest.TestCase):
     def lookup(self):
         return {**self.row, 'encoding': {'opcode': self.row['opcode']},
                 'lift': {'status': 'ok', 'semantic_family': self.row['semantic_family']},
-                'recovery': {'v4': {'record_status': 0}}}
+                'recovery': {'language_source_v10': {'record_status': 0}}}
 
     def test_global_operation_is_part_of_event(self):
         def row(operation):
@@ -93,10 +93,16 @@ class ImportTest(unittest.TestCase):
         index = self.index(); index.import_file(self.path)
         bad = self.lookup(); bad['lift']['status'] = 'refused'
         with self.assertRaises(ValueError): index.lookup(bad)
-        bad = self.lookup(); bad['recovery']['v4']['record_status'] = 3
+        bad = self.lookup(); bad['recovery']['language_source_v10']['record_status'] = 3
         with self.assertRaises(ValueError): index.lookup(bad)
         bad = self.lookup(); bad['encoding']['opcode'] += 1
         with self.assertRaises(ValueError): index.lookup(bad)
+
+    def test_retired_contract_is_not_upgraded(self):
+        self.evidence['contract'] = 'language_numeric_constructors_v1'
+        self.persist()
+        with self.assertRaisesRegex(ValueError, 'unknown oracle recovery contract'):
+            self.index().import_file(self.path)
 
     def test_stale_artifact(self):
         Path(self.evidence['original']['path']).write_text('changed')

@@ -21,7 +21,7 @@ try{
  let comparisons=0,mutations=0;
  for(const name of ['branches','variant','loop']){
   const abc=join(fixtures,name+'.abc'),oracle=join(dir,name+'-oracle.mjs');writeFileSync(oracle,readFileSync(join(fixtures,name+'.js')));
-  for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+  for(const [label,flags] of [['default',[]],['source',['--language-source']]]){
    const out=join(dir,name+'-'+label);run(structure,[abc,out,'--value-source',...flags]);
    const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
    assert.equal(records.length,1);const record=records[0];assert.equal(record.source_status,0,JSON.stringify(record));

@@ -35,7 +35,7 @@ console.log(JSON.stringify({result,error,trace,setter,plain:[plain.foo.name,plai
 `);
   const oracle=join(dir,'oracle.mjs');copyFileSync(join(fixture,'names.js'),oracle);
   const expected=new Map(['normal','first','second','third'].map(mode=>[mode,run(process.execPath,[runner,oracle,mode])]));
-  for(const [label,flags] of [['previous',['--language-numeric','--language-constructors']],['v4',['--language-source']]]) {
+  for(const [label,flags] of [['default',[]],['v4',['--language-source']]]) {
     const output=join(dir,label);run(structure,[join(fixture,'names.abc'),output,'--value-source',...flags]);
     const records=JSON.parse(readFileSync(join(output,'manifest.json'))).records.filter(r=>r.source_status!==2);
     assert.equal(records.length,1);assert.equal(records[0].source_status,0,JSON.stringify(records[0]));

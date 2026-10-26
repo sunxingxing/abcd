@@ -132,7 +132,7 @@ void ComputedProof() {
       return VerifyLiteralPlan(g, p, {}, {}, {}, {}, nullptr, nullptr, contract);
     };
     Check(std::holds_alternative<std::uint64_t>(verify(graph, plan)));
-    Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(graph)));
+    Check(std::holds_alternative<LiteralError>(BuildLiteralPlan(graph, {}, {}, {}, {}, nullptr, nullptr, SourceContract::kLanguageSourceV9)));
     auto wrong = graph;
     std::get<ValueComputedOwnWrite>(wrong.ops[2].operation).name_setting = PropertyNameSetting::kNone;
     Check(std::holds_alternative<LiteralError>(verify(wrong, plan)));

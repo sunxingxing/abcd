@@ -53,6 +53,9 @@ void ReceiverAndUnsupportedAbi() {
       const auto& plan = std::get<BindingPlan>(built);
       Check(plan.symbols.empty());
       Check(std::holds_alternative<ReceiverEntryBinding>(plan.values[0]));
+    } else if (std::holds_alternative<analysis::NewTargetEntry>(entry)) {
+      Check(std::holds_alternative<BindingPlan>(built));
+      Check(std::holds_alternative<NewTargetEntryBinding>(std::get<BindingPlan>(built).values[0]));
     } else {
       Check(std::get<BindingError>(built) == BindingError::kUnsupportedEntry);
     }
@@ -98,6 +101,9 @@ void SpreadProtocolEntry() {
       Check(std::holds_alternative<UnboundValue>(std::get<BindingPlan>(built).values[0]));
       // It remains a protocol operand, never a fabricated source local.
       Check(!std::get<BindingPlan>(built).self);
+    } else if (std::holds_alternative<NewTargetEntry>(entry)) {
+      Check(std::holds_alternative<BindingPlan>(built));
+      Check(std::holds_alternative<NewTargetEntryBinding>(std::get<BindingPlan>(built).values[0]));
     } else Check(std::get<BindingError>(built) == BindingError::kUnsupportedEntry);
     graph.uses[1].role = OperandRole::kArgument;
     Check(std::holds_alternative<EvaluationFailure>(BuildEvaluationPlan(graph)));

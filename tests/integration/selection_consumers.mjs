@@ -42,7 +42,7 @@ try {
  const memberRun=file=>{const r=spawnSync(process.execPath,[memberRunner,file],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout;};
  const memberExpected=memberRun(memberOracle);
 
- for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+ for(const [label,flags] of [['default',[]],['source',['--language-source']]]){
   const output=join(dir,label),abc=join(fixtures,'consumers.abc');
   const r=spawnSync(structure,[abc,output,'--value-source',...flags],{encoding:'utf8',timeout:30000});assert.equal(r.status,0,r.stderr);
   const records=JSON.parse(readFileSync(join(output,'manifest.json'))).records.filter(r=>r.source_status!==2);assert.equal(records.length,1);assert.equal(records[0].source_status,0,JSON.stringify(records[0]));

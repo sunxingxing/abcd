@@ -16,13 +16,13 @@ class CoverageTest(unittest.TestCase):
         ev={'opcode':entry['opcodes'][0], 'evidence':entry['evidence_id']}
         row={'profile':entry['profile'], 'encoding':{'opcode':ev['opcode']},
              'lift':{'status':'refused','cause':{'domain':'SemanticError','value':7},'non_executable':ev},
-             'recovery':{flag:{'record_first_refusal':{'non_executable':ev}} for flag in ('previous','v4')}}
+             'recovery':{flag:{'record_first_refusal':{'non_executable':ev}} for flag in ('language_source_v10',)}}
         self.assertTrue(validate_non_executable(entry,row,root))
         bad=copy.deepcopy(row);bad['lift']['status']='ok'
         with self.assertRaises(ValueError):validate_non_executable(entry,bad,root)
         bad=copy.deepcopy(row);bad['lift']['non_executable']['evidence']=9
         with self.assertRaises(ValueError):validate_non_executable(entry,bad,root)
-        bad=copy.deepcopy(row);bad['recovery']['previous']['record_first_refusal']=None
+        bad=copy.deepcopy(row);bad['recovery']['language_source_v10']['record_first_refusal']=None
         with self.assertRaises(ValueError):validate_non_executable(entry,bad,root)
         bad=copy.deepcopy(entry);bad['evidence_sha256']='0'*64
         with self.assertRaises(ValueError):validate_non_executable(bad,row,root)
@@ -69,19 +69,19 @@ class CoverageTest(unittest.TestCase):
         site = next(json.loads(line) for line in raw.stdout.splitlines()
                     if json.loads(line)['type'] == 'instruction')
         failure = {'method':site['method'], 'pc':0, 'causes':[{'domain':'test::Failure','value':1}]}
-        manifest = {'sha256':fingerprint(fixture), 'records':[{'entity':site['record'],
+        manifest = {'source_contract':'language_source_v10', 'sha256':fingerprint(fixture), 'records':[{'entity':site['record'],
                     'source_status':3, 'source_failure':failure}]}
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / 'manifest.json'
             path.write_text(json.dumps(manifest))
-            joined = subprocess.run([sys.argv[1], str(fixture), str(path), str(path)],
+            joined = subprocess.run([sys.argv[1], str(fixture), str(path)],
                                     text=True, capture_output=True, check=True)
             row = next(json.loads(line) for line in joined.stdout.splitlines()
                        if json.loads(line)['type'] == 'instruction')
-            self.assertEqual(failure, row['recovery']['v4']['method_first_refusal'])
-            self.assertEqual(0, row['recovery']['previous']['record_first_refusal']['pc'])
+            self.assertEqual(failure, row['recovery']['language_source_v10']['method_first_refusal'])
+            self.assertEqual(0, row['recovery']['language_source_v10']['record_first_refusal']['pc'])
             manifest['sha256'] = 'stale'; path.write_text(json.dumps(manifest))
-            refused = subprocess.run([sys.argv[1], str(fixture), str(path), str(path)],
+            refused = subprocess.run([sys.argv[1], str(fixture), str(path)],
                                      text=True, capture_output=True)
             self.assertNotEqual(0, refused.returncode)
             self.assertEqual('', refused.stdout)

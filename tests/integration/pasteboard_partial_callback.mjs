@@ -7,20 +7,20 @@ import {editExpression} from './expression_edits.mjs';
 
 const [tool, abc, paired, presentation] = process.argv.slice(2);
 const named = presentation === 'local-names';
-const selectors = named ? ['--language-numeric', '--language-constructors'] : [];
+const selectors = named ? ['--language-source'] : [];
 const run = spawnSync(tool, [abc, '5001', '--record-source', '--value-source', ...selectors], {encoding: 'utf8', timeout: 60_000});
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout.trim());
-assert.equal(report.record, 4767); assert.equal(report.source_complete, named);
-assert.equal(report.source_contract, named ? 'language_numeric_constructors_v1' : 'language_and_host_v3');
+assert.equal(report.record, 4767); assert.equal(report.source_complete, true);
+assert.equal(report.source_contract, 'language_source_v10');
 assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, undefined);
 assert.ok(report.source.includes('onWindowStageCreate('));
-if (named) {
+{
   // The scope literal names storage receiving the entry value. Its spelling
   // can name the formal while the captured cell keeps a distinct identity.
   assert.match(report.source, /onWindowStageCreate\(windowStage\)/);
   assert.doesNotMatch(report.source, /INCOMPLETE|UNRECOVERED/);
-} else assert.ok(report.source.includes('INCOMPLETE'));
+}
 const reference = stripTypeScriptTypes(readFileSync(paired, 'utf8'));
 const values = [undefined, null, false, 0, -0, NaN, '', 'text', 1n, Symbol('value'), {}, []];
 async function observe(source, serialized, failAt, mutate) {
@@ -65,7 +65,7 @@ let cases = 0;
 for (const value of values) for (const mutate of [false, true]) for (let failAt = 0; failAt <= 9; ++failAt) {
   assert.deepEqual(await observe(report.source, value, failAt, mutate), await observe(reference, value, failAt, mutate)); ++cases;
 }
-if (named) {
+{
   // Mutate the captured formal's initialization whether represented as a
   // declaration or a store. Native let initializers must not defeat the oracle.
   const broken = editExpression(report.source, node =>

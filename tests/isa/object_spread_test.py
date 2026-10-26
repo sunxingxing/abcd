@@ -32,11 +32,4 @@ class ObjectSpread(unittest.TestCase):
                     emitted=out/record['source'];self.assertIn('...',emitted.read_text());subprocess.run(['node','--check',emitted],check=True,capture_output=True)
                     result=json.loads(subprocess.check_output(['node',ROOT/'tests/integration/isa_object_spread.mjs',source,emitted],text=True))
                     record_node(abc,out,source,__file__,result['cases'],BUILD/'abc_structure',exclusions=['V7 CopyDataProperties preserves source accessors instead of invoking getters; accessor/Proxy descriptor-vs-value observations are excluded from the Ark equivalence claim. Node compares the two native sources only.'])
-    def test_premise_off(self):
-        with tempfile.TemporaryDirectory() as d:
-            for mode in ['default','o0']:
-                out=Path(d)/mode
-                subprocess.run([BUILD/'abc_structure',FIX/('spread-'+mode+'.abc'),out,'--value-source','--language-numeric','--language-constructors'],check=True,capture_output=True)
-                record=next(r for r in json.loads((out/'manifest.json').read_text())['records'] if r.get('source_status')!=2)
-                self.assertNotEqual(record['source_status'],0,record);self.assertTrue(record.get('source_failure') or record.get('source_omitted_members'))
 if __name__=='__main__':unittest.main()

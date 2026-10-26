@@ -17,11 +17,11 @@ const directory=mkdtempSync(join(tmpdir(),'abcd-entryability-load-error-'));
 let actual;
 try {
   const output=join(directory,'output');
-  execFileSync(tool,[join(root,'modules.abc'),output,'--value-source','--language-numeric','--language-constructors'],{encoding:'utf8',timeout:60_000});
+  execFileSync(tool,[join(root,'modules.abc'),output,'--value-source','--language-source'],{encoding:'utf8',timeout:60_000});
   const manifest=JSON.parse(readFileSync(join(output,'manifest.json')));
   const record=manifest.records.find(row=>row.source==='sources/entry/src/main/ets/entryability/EntryAbility.mjs');
   assert.equal(record.source_complete,true);assert.equal(record.legacy_writer_used, undefined);
-  assert.equal(manifest.source_contract,'language_numeric_constructors_v1');
+  assert.equal(manifest.source_contract,'language_source_v10');
   actual=readFileSync(join(output,record.source),'utf8');
 } finally {rmSync(directory,{recursive:true,force:true});}
 // The paired TypeScript is read only by this independent test, after generation.

@@ -36,7 +36,7 @@ for(const flag of [false,true])for(const result of [false,true]) {
 console.log(JSON.stringify({cases,trace}));`);
   const expected=run(process.execPath,[runner,original]);assert.equal(JSON.parse(expected).cases,144);
   let cases=0,mutations=0;
-  for(const [label,flags] of [['previous',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for(const [label,flags] of [['default',[]],['source',['--language-source']]]) {
     const out=join(temporary,label);run(engine,[join(fixtures,'conditions.abc'),out,'--value-source',...flags]);
     const record=JSON.parse(readFileSync(join(out,'manifest.json'))).records.find(r=>r.source_status!==2);
     assert.equal(record?.source_status,0,JSON.stringify(record));

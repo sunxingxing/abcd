@@ -45,7 +45,7 @@ m.update(23); const changed=invoke(m.pick);
 console.log(JSON.stringify({early,late,changed,trace}));
 `);
   const exec=(file, mode, chosen)=>run(process.execPath,[runner,file,mode,chosen]);
-  for (const [label,flags] of [['previous',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for (const [label,flags] of [['default',[]],['source',['--language-source']]]) {
     const out=join(dir,fixture+'-'+label);
     const exported=run(structure,[join(fixtures,fixture+'.abc'),out,'--value-source',...flags]);
     assert.equal(exported.status,0,exported.stderr);

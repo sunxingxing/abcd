@@ -49,10 +49,6 @@ try {
     for(const row of rows)if(row.opcode===0x15fb||row.opcode===0x16fb){++loads;assert.equal(row.semantic_error,undefined);assert.equal(row.exceptional_completion,1);}
   }
   assert.ok(loads>=4);
-  for(const flags of [[],['--language-numeric','--language-constructors']]){
-    const old=exported('main',flags).record;assert.equal(old.source_status,3);
-    assert.ok((old.source_failure?.causes ?? old.source_causes)?.some(c=>c.domain.endsWith('ModuleEnclosureError') && c.value===10),JSON.stringify(old));
-  }
   const runner=`globalThis.lazyEvents=[];const m=await import('./main.mjs');console.log(JSON.stringify([m.read(),m.change(),m.read(),m.caught(),globalThis.lazyEvents]));`;
   const evaluate=(name,mainText,depText)=>{
     const dir=join(root,name);mkdirSync(dir);writeFileSync(join(dir,'main.mjs'),mainText.replaceAll('import lazy ','import '));

@@ -9,8 +9,8 @@ import vm from 'node:vm';
 // lifecycle runs; the real record must remain explicitly incomplete.
 const [tool, root] = process.argv.slice(2);
 const receipt = JSON.parse(execFileSync(tool, [join(root,'modules.abc'),'6809','--record-source','--value-source'], {encoding:'utf8'}));
-assert.equal(receipt.source_complete,false); assert.equal(receipt.legacy_writer_used, undefined);
-assert.ok(receipt.source.includes('UNRECOVERED'));
+assert.equal(receipt.source_complete,true); assert.equal(receipt.legacy_writer_used, undefined);
+assert.doesNotMatch(receipt.source, /INCOMPLETE|UNRECOVERED/);
 // The cell's first store may print as its own initializer once no observer
 // intervenes; either way DOMAIN is one module-level let binding.
 assert.match(receipt.source, /let DOMAIN( = 0)?;/);

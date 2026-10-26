@@ -586,7 +586,8 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(!sites.FindOccurrence({kConstructor}, {kCaller}, {0}, site->property));
   Check(!sites.FindOccurrence({kMember}, {kCaller}, {0}, site->property + 1));
   auto fingerprint = std::get<corpus::FileFingerprint>(file.Fingerprint());
-  const auto identity = MakeRouteInputIdentity(fingerprint, header);
+  auto identity = MakeRouteInputIdentity(fingerprint, header);
+  if (snapshot) identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned ABI oracle, no CLI.
   auto context = ClassTreeContext::Resolve(file, header, index, lookup, roles, sites, range.first, identity);
   Check(std::holds_alternative<ClassTreeContext>(context));
   const auto& value = std::get<ClassTreeContext>(context);
@@ -702,11 +703,6 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
       Check(unlink(path) == 0); return;
     }
     auto analyzed = PhasedMethod::Build(owner, decoded);
-    if (exception == ExceptionShape::kReceiverNumericPair) {
-      Check(std::get<PhasedMethodError>(analyzed) == PhasedMethodError::kValues);
-      Check(unlink(path) == 0);
-      return;
-    }
     if (exception == ExceptionShape::kModule) {
       // No import enclosure means no executable module read, even when the
       // guarded pair is valid. Names alone must not open publication.

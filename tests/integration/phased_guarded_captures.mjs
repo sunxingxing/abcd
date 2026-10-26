@@ -13,7 +13,7 @@ try {
 const m = await import(process.argv[2]);
 console.log(JSON.stringify({early:m.early,late:m.late,trace:globalThis.trace}));`);
   const run = path => spawnSync(process.execPath, [runner, path], {encoding:'utf8'});
-  for (const [flags, label] of [[['--language-numeric', '--language-constructors'], 'old'], [['--language-source'], 'source']]) {
+  for (const [flags, label] of [[[], 'default'], [['--language-source'], 'source']]) {
     for (const name of ['read', 'forward', 'write']) {
       const output = join(dir, label + '-' + name);
       const exported = spawnSync(structure, [join(fixtures, name + '.abc'), output, '--value-source', ...flags], {encoding:'utf8'});
@@ -21,14 +21,6 @@ console.log(JSON.stringify({early:m.early,late:m.late,trace:globalThis.trace}));
       const records = JSON.parse(readFileSync(join(output, 'manifest.json'))).records.filter(r => r.source_status !== 2);
       assert.equal(records.length, 1);
       const record = records[0];
-      if (name === 'write' && label === 'old') {
-        assert.equal(record.source_status, 3);
-        assert.deepEqual(record.source_failure.causes.map(c => [c.domain, c.value]), [
-          ['abcd::source::CaptureCellError', 3], ['abcd::source::CaptureError', 1], ['abcd::source::ScopeError', 3]]);
-        assert.equal(record.source_failure.capture.requested, 0); // Previous contract keeps Language.
-        assert.ok(Number.isInteger(record.source_failure.capture.pc));
-        continue;
-      }
       assert.equal(record.source_status, 0, JSON.stringify(record));
       const original = join(dir, label + '-' + name + '.mjs');
       copyFileSync(join(fixtures, name + '.js'), original);

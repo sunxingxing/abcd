@@ -34,7 +34,7 @@ console.log(JSON.stringify(runs));
   const original=join(dir,'original.mjs');copyFileSync(join(fixture,'switch_optional.js'),original);
   const expected=run(original);assert.equal(expected.status,0,expected.stderr);
   assert.equal(JSON.parse(expected.stdout).length,800);
-  for(const [name,flags] of [['previous',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for(const [name,flags] of [['default',[]],['source',['--language-source']]]) {
     const out=join(dir,name);
     const exported=spawnSync(structure,[join(fixture,'switch_optional.abc'),out,'--value-source',...flags],{encoding:'utf8'});
     assert.equal(exported.status,0,exported.stderr);

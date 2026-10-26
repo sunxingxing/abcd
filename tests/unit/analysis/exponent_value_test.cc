@@ -74,7 +74,8 @@ void Phased(const abc::MethodBody& original, bool admitted, bool representable =
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
-  FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
+  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   std::vector<ExpressionConstant> constants(graph.ops.size()); const ExpressionConstants resolved{constants};
   const ExceptionTreeInput context{body, input, regions, control};
   const auto built = BuildExceptionFunctionDraft(graph, context, evaluation, syntax, resolved);
@@ -120,7 +121,7 @@ std::string Source(const abc::MethodBody& body, bool representable = true, std::
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
   if (work) *work = evaluation.work;
   std::vector<ExpressionConstant> constants(graph.ops.size());
-  FunctionSyntax syntax{};
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
   syntax.callable = CallableKind::kFunction;
   syntax.strictness = Strictness::kStrict;
   const auto built = BuildFunctionTree(graph, control, evaluation, syntax, {constants});

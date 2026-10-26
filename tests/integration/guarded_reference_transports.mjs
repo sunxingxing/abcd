@@ -32,7 +32,7 @@ console.log(JSON.stringify({early:m.early,pure:m.pure(),results,trace}));
   const modes=['none','getter','call','left','right','numeric','bigint','rewrite','receiver','null','undefined','provider-null','provider-undefined'];
   let compared=0,mutations=0,refused=0;
   for(const abc of ['transport.abc','transport-default.abc'])for(const [label,flags] of [
-    ['previous',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+    ['default',[]],['source',['--language-source']]]){
     const out=join(dir,abc+'-'+label);
     const exported=run(structure,[join(fixtures,abc),out,'--value-source',...flags]);assert.equal(exported.status,0,exported.stderr);
     const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);

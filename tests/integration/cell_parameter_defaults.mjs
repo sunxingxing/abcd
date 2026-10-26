@@ -29,7 +29,7 @@ async function trace(path) {
 try {
   const fixture=dirname(abc);const oracle=join(dir,'oracle.mjs');writeFileSync(oracle,readFileSync(join(fixture,'behavior.js')));
   const expected=await trace(oracle);
-  for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for(const [label,flags] of [['default',[]],['source',['--language-source']]]) {
     const out=exported(abc,join(dir,label),flags);
     const f=out.meta.methods.find(m=>m.runtime_name==='f');assert.ok(f);
     const ins=instructions(abc,f.entity);

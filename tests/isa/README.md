@@ -1,5 +1,15 @@
 # Measured ISA ledger
 
+2026-10-26：源码恢复只以 `language_source_v10` 为目标。省略语言选项与
+`--language-source` 完全等价；制品和 receipt 仍发布精确版本名。
+`--language-arithmetic`、`--language-numeric`、`--language-constructors`
+已移除，任何组合/顺序均在文件访问前报 typed usage error。此变更选择既有 V10，
+不新增语言前提；底层 pinned-runtime 分析事实保持原义。历史 Source V1–V10
+身份与前提谓词保留，旧 receipt 不会被静默升级。
+
+当前 ledger 只测量 `language_source_v10`；默认输出按生产 binary 指纹分目录，
+显式 `--output` 仍严格校验缓存身份。旧合同的证据不会被改标或计入 V10。
+
 This is test tooling, not an admission table. No production source is selected by
 an opcode name, fixture path, classification, or diagnostic string.
 

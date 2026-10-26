@@ -21,9 +21,9 @@ const sources = {}, reference = {}, directory = mkdtempSync(join(tmpdir(), 'abcd
 try {
   // All three real records finish ABC-only generation before paired TS is read.
   const output = join(directory, 'output');
-  execFileSync(tool, [abc, output, '--value-source', '--language-numeric', '--language-constructors'], {timeout: 60_000});
+  execFileSync(tool, [abc, output, '--value-source', '--language-source'], {timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
-  assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
+  assert.equal(manifest.source_contract, 'language_source_v10');
   for (const [name, entity, path] of records) {
     const record = manifest.records.find(row => row.entity === entity);
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);

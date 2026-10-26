@@ -66,7 +66,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, unsigned form, uns
       {NameId{2}, NameEvidence::kDebugRange}};
   if (!phased && form == 0 && count == 1) {
     if (binary == kOperations[0]) {
-      auto pinned = identity; pinned.contract = kSourceContract;
+      auto pinned = identity; pinned.contract = SourceContract::kLanguageAndHostV3;
       test::Check(std::holds_alternative<FunctionInputFailure>(FunctionInput::Build(pinned,
           {300}, {100}, body, frame, InputCaptureMode::kClosed)));
     }
@@ -88,7 +88,7 @@ std::uint64_t Run(abc::ProfileId profile, abc::Opcode binary, unsigned form, uns
     const auto tree = std::get<ConstructedFunction>(BuildFunctionTree(graph, control, evaluation, syntax, resolved)).tree;
     test::Check(std::holds_alternative<TreeSemantics>(VerifyTreeSemantics(graph, control, evaluation, tree, resolved)));
     test::Check(std::holds_alternative<InstructionSources>(BuildInstructionSources(input, graph, tree)));
-    auto changed_contract = tree; changed_contract.identity.contract = kSourceContract;
+    auto changed_contract = tree; changed_contract.identity.contract = SourceContract::kLanguageSourceV9;
     test::Check(std::holds_alternative<InstructionSourceError>(BuildInstructionSources(input, graph, changed_contract)));
     test::Check(!std::get<PrintedFunction>(PrintFunctionTree(tree, output)).incomplete);
   } else {
@@ -129,6 +129,7 @@ int main(int argc, char**) {
         op(abc::Opcode::kSUB2_IMM8_V8), 0, 0, op(abc::Opcode::kNEG_IMM8), 0, op(abc::Opcode::kRETURN)});
     const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {}));
     RouteInputIdentity identity; identity.profile = abc::ProfileId::kDynamic1206;
+    identity.contract = SourceContract::kLanguageAndHostV3;
     test::Check(std::holds_alternative<FunctionInputFailure>(FunctionInput::Build(identity,
         {300}, {100}, body, frame, InputCaptureMode::kClosed)));
     identity.contract = SourceContract::kLanguageArithmeticV1;

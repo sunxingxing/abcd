@@ -562,7 +562,8 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     const auto verify_iteration=[&](const ForOfIterationProof& value){return VerifyForOfIterations(body,graph,input,plan,control,owner,SourceContract::kLanguageSourceV4,protocol,value);};
     Take<std::uint64_t>(verify_iteration(iteration),"verify-iteration");
     test::Check(iteration.references.size()==protocol.loops.size()*3);
-    auto bad_reference=iteration;bad_reference.references[0].root=protocol.loops[0].advance;
+    auto bad_reference=iteration;bad_reference.references[0].root=protocol.loops[0].done;
+    test::Check(bad_reference.references[0].root!=iteration.references[0].root);
     test::Check(std::holds_alternative<ForOfIterationFailure>(verify_iteration(bad_reference)));
     bad_reference=iteration;std::swap(bad_reference.references[1].use,bad_reference.references[2].use);
     test::Check(std::holds_alternative<ForOfIterationFailure>(verify_iteration(bad_reference)));
@@ -585,7 +586,7 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     Take<ForOfEvents>(event_build({elow,SemanticBudget{}.work}),"events-exact-bytes");
     test::Check(elow>0 && std::get<ForOfIterationFailure>(event_build({elow-1,SemanticBudget{}.work})).kind==ForOfIterationError::kResourceLimit);
     std::cout<<"references="<<iteration.references.size()<<" events="<<events.events.size()<<" commits="<<events.commits.size()<<" ports="<<events.ports.size()<<'\n';
-    for(const auto contract:{kSourceContract,SourceContract::kLanguageSourceV1})test::Check(std::get<ForOfIterationFailure>(ProveForOfIterations(body,graph,input,plan,control,owner,contract,protocol)).kind==ForOfIterationError::kAcquisitionSemantics);
+    for(const auto contract:{SourceContract::kLanguageSourceV1})test::Check(std::get<ForOfIterationFailure>(ProveForOfIterations(body,graph,input,plan,control,owner,contract,protocol)).kind==ForOfIterationError::kAcquisitionSemantics);
     auto altered=iteration;altered.iterations[0].advance=altered.iterations[0].decision;
     test::Check(std::holds_alternative<ForOfIterationFailure>(verify_iteration(altered)));
     altered=iteration;std::swap(altered.iterations[0].success,altered.iterations[0].exhausted);
@@ -629,7 +630,7 @@ void Case(const char* path,unsigned padding,unsigned entity=451,unsigned shift=0
     Take<ForOfIterationProof>(advancing_build({ilow,SemanticBudget{}.work}),"iteration-exact-bytes");
     test::Check(ilow>0 && std::get<ForOfIterationFailure>(advancing_build({ilow-1,SemanticBudget{}.work})).kind==ForOfIterationError::kResourceLimit);
     std::cout<<"advancing="<<iteration.iterations.size()<<" definitions="<<iteration.definitions.size()<<" phis="<<iteration.phis.size()<<" work="<<iteration.work<<'\n';
-    for(auto contract:{kSourceContract,SourceContract::kLanguageSourceV1}) {
+    for(auto contract:{SourceContract::kLanguageSourceV1}) {
       auto refused=IndexForOfIdentities(body,graph,input,plan,control,owner,contract);
       test::Check(std::get<ForOfIdentityFailure>(refused).kind==ForOfIdentityError::kAcquisitionSemantics);
     }

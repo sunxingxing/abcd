@@ -41,6 +41,7 @@ std::uint64_t Run(abc::ProfileId profile, Seed seed, unsigned count, bool admitt
   const auto body = Body(seed, count);
   const auto frame = std::get<abc::FrameLayout>(abc::BuildFrameLayout(1, 0, {}));
   RouteInputIdentity identity; identity.profile = profile;
+  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis fixture.
   const auto prepared = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
   if (!admitted) { test::Check(!std::holds_alternative<FunctionInput>(prepared)); return 0; }
   test::Check(std::holds_alternative<FunctionInput>(prepared));
@@ -49,7 +50,7 @@ std::uint64_t Run(abc::ProfileId profile, Seed seed, unsigned count, bool admitt
   const auto& graph = values.graph;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
-  FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3; syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExpressionConstants resolved{constants};
@@ -82,7 +83,7 @@ void Phased(abc::ProfileId profile, Seed seed, bool admitted) {
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
-  FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExpressionConstants resolved{constants};
   const ExceptionTreeInput context{body, input, regions, control};
@@ -108,7 +109,7 @@ void MissingWitness() {
   graph.blocks = {{{0}, 2, {0}, 0}};
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
-  FunctionSyntax syntax{}; syntax.owner = {0}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3; syntax.owner = {0}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.names = {u"value"}; syntax.parameters = {{NameId{0}, NameEvidence::kDebugRange}};
   std::vector<ExpressionConstant> constants(graph.ops.size());
   const ExpressionConstants resolved{constants, syntax.names.size()};

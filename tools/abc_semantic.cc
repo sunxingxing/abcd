@@ -33,6 +33,7 @@
 #include "abcd/source/source_route.h"
 #include "abcd/abc/pool_reference.h"
 #include "process_limit.h"
+#include "source_cli_options.h"
 #include "value_source_inspect.h"
 
 namespace {
@@ -365,10 +366,16 @@ int Inspect(const std::filesystem::path& path, std::uint32_t entity,
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (const auto removed = abcd::tools::FindRemovedSourceOption(argc, argv)) {
+    auto failure = abcd::tools::RemovedSourceOptionFailure(*removed);
+    failure["error"] = static_cast<unsigned>(InspectError::kArguments);
+    ReportFailure(std::move(failure));
+    return EXIT_FAILURE;
+  }
   if (argc < 3 || argc > 7) {
     std::cerr << "usage: abc_semantic INPUT.abc METHOD_ENTITY [--instructions]\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --function-source|--record-source|--record-print-budget\n"
-                 "                    [--language-arithmetic|--language-numeric] [--language-constructors] | [--language-source]\n"
+                 "                    [--language-source] (the default contract)\n"
                                   "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-values\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --conditional-family\n"
                  "       abc_semantic INPUT.abc METHOD_ENTITY --family-source-draft\n"
@@ -393,14 +400,11 @@ int main(int argc, char** argv) {
   // order before any file access.
   std::optional<source::SourceForm> form;
   unsigned forms = 0, instructions = 0, value_routes = 0;
-  unsigned language_arithmetic = 0, language_numeric = 0, language_constructors = 0, language_source = 0;
+  unsigned language_source = 0;
   unsigned conditional_values = 0, conditional_families = 0, family_drafts = 0, print_budget = 0;
   for (int i = 3; i < argc; ++i) {
     const std::string_view option{argv[i]};
-    if (option == "--language-arithmetic") ++language_arithmetic;
-    else if (option == "--language-constructors") ++language_constructors;
-    else if (option == "--language-numeric") ++language_numeric;
-    else if (option == "--language-source") ++language_source;
+    if (option == "--language-source") ++language_source;
     else if (option == "--family-source-draft") ++family_drafts;
     else if (option == "--conditional-family") ++conditional_families;
     else if (option == "--conditional-values") ++conditional_values;
@@ -412,10 +416,9 @@ int main(int argc, char** argv) {
     else return Fail(InspectError::kArguments);
   }
   const unsigned views = conditional_values + conditional_families + family_drafts;
-  const bool contract_options = language_constructors || language_arithmetic || language_numeric || language_source;
+  const bool contract_options = language_source != 0;
   if (forms > 1 || instructions > 1 || value_routes > 1 || views > 1 ||
-      language_constructors > 1 || language_arithmetic + language_numeric > 1 || language_source > 1 ||
-      (language_source && (language_constructors || language_arithmetic || language_numeric)) ||
+      language_source > 1 ||
       forms + instructions + views > 1 || (contract_options && !forms && !value_routes) ||
       (value_routes && (instructions || views)))
     return Fail(InspectError::kArguments);
@@ -438,10 +441,8 @@ int main(int argc, char** argv) {
         Inspect(argv[1], entity, std::nullopt, InspectDetail::kInstructions));
   // A bare --value-source keeps its historical meaning of the function form.
   if (value_routes && !form) form = source::SourceForm::kFunction;
-  const auto numeric_contract = language_numeric ? source::SourceContract::kLanguageNumericV1 : language_arithmetic ? source::SourceContract::kLanguageArithmeticV1 : source::kSourceContract;
   return RunWithProcessReport(limit, [&] {
   return Inspect(argv[1], entity, form, InspectDetail::kSummary, print_budget?ValueSourceScope::kRecordPrintBudget:ValueSourceScope::kMember,
-      language_source ? source::SourceContract::kLanguageSourceV10
-      : language_constructors ? source::WithLanguageConstructors(numeric_contract) : numeric_contract);
+      source::kSourceContract);
   });
 }

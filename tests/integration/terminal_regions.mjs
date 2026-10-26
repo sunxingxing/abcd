@@ -41,7 +41,7 @@ console.log(JSON.stringify(runs));
   const run = file => spawnSync(process.execPath, [runner, file], {encoding:'utf8'});
   const original = join(dir, 'original.mjs'); copyFileSync(join(fixture, 'terminal.js'), original);
   const expected = run(original); assert.equal(expected.status, 0, expected.stderr);
-  for (const [label, flags] of [['old', ['--language-numeric', '--language-constructors']], ['source', ['--language-source']]]) {
+  for (const [label, flags] of [['default', []], ['source', ['--language-source']]]) {
     const output = join(dir, label);
     const exported = spawnSync(structure, [join(fixture, 'terminal.abc'), output, '--value-source', ...flags], {encoding:'utf8'});
     assert.equal(exported.status, 0, exported.stderr);

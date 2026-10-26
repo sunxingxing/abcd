@@ -14,12 +14,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const [structure, fixtures] = process.argv.slice(2);
-const complete = ['probe', 'twice', 'mutate', 'parentread', 'rhs', 'forward', 'forwardmixed', 'laterblock',
+const complete = ['childwrite', 'forwardwrite', 'ownwrite', 'probe', 'twice', 'mutate', 'parentread', 'rhs', 'forward', 'forwardmixed', 'laterblock',
   'recursion', 'initthrow', 'fnowner', 'ownread'];
 const refused = {
-  childwrite: {domain: 'abcd::source::ScopeError', value: 3},
-  forwardwrite: {domain: 'abcd::source::ScopeError', value: 3},
-  ownwrite: {domain: 'abcd::source::ScopeError', value: 3},
   // Round 68 proves the earlier allocation dominates this creation. The
   // owner still fails evaluation; no source is published. Round 75 preserves
   // the actual missing evaluation-shape leaf instead of collapsing it.
@@ -46,7 +43,7 @@ try {
   const exportRecord = name => {
     const output = join(directory, 'out-' + name);
     const run = spawnSync(structure, [join(fixtures, name + '.abc'), output, '--value-source',
-      '--language-numeric', '--language-constructors'], {encoding: 'utf8'});
+      '--language-source'], {encoding: 'utf8'});
     assert.equal(run.status, 0, run.stderr);
     const manifest = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
     const records = manifest.records.filter(record => record.source_status !== 2);

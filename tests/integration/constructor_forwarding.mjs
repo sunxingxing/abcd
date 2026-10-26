@@ -87,13 +87,9 @@ try {
   const oracle = readFileSync(join(fixtures, 'oracle.mjs'), 'utf8');
   assert.match(source, /constructor\(\.\.\./);
   assert.match(source, /super\(\.\.\./);
-  for (const flags of [[], ['--language-arithmetic'], ['--language-numeric'], ['--language-constructors'],
-    ['--language-arithmetic', '--language-constructors'], ['--language-numeric', '--language-constructors']]) {
-    const previous = exportRecord(flags).record;
-    assert.equal(previous.source_status, 3, JSON.stringify(previous));
-    const causes = previous.source_failure?.causes ?? previous.source_causes;
-    assert.ok(causes.some(cause => cause.domain.endsWith('DerivedProjectionError') && cause.value === 1), JSON.stringify(previous));
-  }
+  const defaultExport = exportRecord([]);
+  assert.equal(defaultExport.record.source_complete, true);
+  assert.equal(readFileSync(join(defaultExport.output, defaultExport.record.source), 'utf8'), source);
   const pureOld = exportRecord([], 'pure'), pureNew = exportRecord(['--language-source'], 'pure');
   assert.equal(pureOld.record.source_complete, true);
   assert.equal(pureNew.record.source_complete, true);
@@ -122,5 +118,5 @@ try {
     assert.notEqual(mutants[i], source, 'mutation not applied ' + i);
     assert.notDeepEqual(await observe(mutants[i]), await observe(oracle), 'mutation escaped ' + i);
   }
-  console.log(`${cases} Node assignment-oracle scenarios; ${mutants.length} mutations detected; six previous CLI contracts refused`);
+  console.log(`${cases} Node assignment-oracle scenarios; ${mutants.length} mutations detected; default/alias source identity verified`);
 } finally {rmSync(directory, {recursive: true, force: true});}

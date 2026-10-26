@@ -1,5 +1,12 @@
 # 验收、证据与实施交接
 
+2026-10-26：源码恢复只以 `language_source_v10` 为目标。省略语言选项与
+`--language-source` 完全等价；制品和 receipt 仍发布精确版本名。
+`--language-arithmetic`、`--language-numeric`、`--language-constructors`
+已移除，任何组合/顺序均在文件访问前报 typed usage error。此变更选择既有 V10，
+不新增语言前提；底层 pinned-runtime 分析事实保持原义。历史 Source V1–V10
+身份与前提谓词保留，旧 receipt 不会被静默升级。
+
 2026-10-12：Push新增公开API的独立实际调用，补齐原整图未执行CustomButton及部分
 accessor/getEntryName的证据缺口。错误CustomButton宽度能逃过旧基线，新增场景已
 检出；另覆盖callback、entry名称、getter/setter错误。111场景/430故障/86换绑/

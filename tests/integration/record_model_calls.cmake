@@ -27,7 +27,7 @@ string(JSON contract GET "${manifest}" source_contract)
 string(JSON route GET "${manifest}" source_route)
 if(NOT indexed OR NOT actual_sha STREQUAL expected_sha OR
    NOT manifest_sha STREQUAL actual_sha OR NOT actual_size EQUAL expected_size OR
-   NOT contract STREQUAL "language_and_host_v3" OR NOT route STREQUAL "value_tree")
+   NOT contract STREQUAL "language_source_v10" OR NOT route STREQUAL "value_tree")
   message(FATAL_ERROR "model input identity or source contract mismatch")
 endif()
 string(JSON count GET "${manifest}" counts records)

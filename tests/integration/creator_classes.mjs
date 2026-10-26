@@ -16,7 +16,7 @@ try {
  const original=await load(fixture.replace(/\.abc$/,'.js'));
  const trace=m=>{const o=new m.Outer();const L1=o.factory(1),L2=o.factory('x');
   return [new L1().read(),new L2().read(),L1===L2,L1.name,typeof L1.prototype.read,Object.getOwnPropertyNames(m.Outer.prototype)];};
- for(const [name,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+ for(const [name,flags] of [['default',[]],['source',['--language-source']]]) {
   const out=join(dir,name);run(structure,[fixture,out,'--value-source',...flags]);
   const rows=JSON.parse(readFileSync(join(out,'manifest.json'))).records;
   const row=rows.find(r=>r.source&&r.source_status===0);assert.ok(row);

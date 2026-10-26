@@ -22,7 +22,7 @@ for(const n of [0,1,3])for(const mode of ['none','break','throw','replace']){
 }
 console.log(JSON.stringify(trace));`);
  const expected=run(process.execPath,[runner,oracle]);let comparisons=0;
- for(const [name,flags] of [['previous',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+ for(const [name,flags] of [['default',[]],['source',['--language-source']]]){
   const out=join(dir,name);run(engine,[join(fixtures,'capture.abc'),out,'--value-source',...flags]);
   const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
   assert.equal(records.length,1);assert.equal(records[0].source_status,0,JSON.stringify(records[0]));

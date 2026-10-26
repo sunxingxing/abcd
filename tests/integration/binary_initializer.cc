@@ -77,7 +77,8 @@ std::uint64_t Phased(const abc::MethodBody& body, const abc::FrameLayout& frame,
   const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
-  FunctionSyntax syntax{}; syntax.identity.profile = profile;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
+  syntax.identity.profile = profile;
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   for (unsigned i = 0; i < count; ++i) {
     const auto name = std::string("field") + std::to_string(i); syntax.names.emplace_back(name.begin(), name.end());
@@ -200,6 +201,7 @@ std::uint64_t Run(abc::Opcode binary, abc::ProfileId profile, unsigned count, bo
     return Phased(body, frame, profile, count, print);
   }
   RouteInputIdentity identity; identity.profile = profile;
+  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
   const auto prepared = FunctionInput::Build(identity, {300}, {100}, body, frame, InputCaptureMode::kClosed);
   if (arguments && !GeneralOperands(binary) && operands != OperandInput::kIntegers && !primitive) {
     test::Check(!std::holds_alternative<FunctionInput>(prepared)); return 0;
@@ -211,7 +213,8 @@ std::uint64_t Run(abc::Opcode binary, abc::ProfileId profile, unsigned count, bo
   const auto& graph = values.graph;
   const auto control = std::get<ControlPlan>(BuildControlPlan(graph));
   const auto evaluation = std::get<EvaluationPlan>(BuildEvaluationPlan(graph));
-  FunctionSyntax syntax{}; syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
+  syntax.identity = identity; syntax.method = input.Method(); syntax.owner = {0};
   syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   std::vector<ExpressionConstant> constants(graph.ops.size());
   for (unsigned i = 0; i < count; ++i) {

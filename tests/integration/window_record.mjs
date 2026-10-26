@@ -10,7 +10,7 @@ assert.equal(createHash('sha256').update(readFileSync(abc)).digest('hex'),
   '8de95a4c6579b38133367422d43ffac146cba5e8222a874df4c3d7942380dc6a');
 // Finish ABC-only generation before reading the independent paired module.
 const report = JSON.parse(execFileSync(tool, [abc, '8431', '--record-source',
-  '--value-source', '--language-numeric'], {encoding: 'utf8', timeout: 60_000}));
+  '--value-source', '--language-source'], {encoding: 'utf8', timeout: 60_000}));
 assert.equal(report.record, 7618); assert.equal(report.source_complete, true);
 assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, undefined);
 assert.equal(report.executable, false);

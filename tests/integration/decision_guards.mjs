@@ -44,7 +44,7 @@ console.log(JSON.stringify({result,error,accesses,calls,trace}));
     return expected.stdout;
   };
   const mismatches=[];
-  for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for(const [label,flags] of [['default',[]],['source',['--language-source']]]) {
     const output=join(dir,label),abc=join(fixtures,'guards.abc');
     const exported=spawnSync(structure,[abc,output,'--value-source',...flags],{encoding:'utf8',timeout:30000});
     assert.equal(exported.status,0,exported.stderr);

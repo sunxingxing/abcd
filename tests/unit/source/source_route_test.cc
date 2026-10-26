@@ -85,13 +85,9 @@ bool SameReceipt(const MethodRouteReceipt& left,
 }
 }  // namespace
 
-// Not executed while the user's test pause is in force (task T00). The
-// assertions document the versioned, identity-bound receipt boundary, the
-// central validator; run via
-// `ctest --test-dir build -R '^source_route_test$'` after the pause is
-// lifted.
+// Versioned, identity-bound receipt boundary and contract predicates.
 int main() {
-  Check(kSourceContract == SourceContract::kLanguageAndHostV3);
+  Check(kSourceContract == SourceContract::kLanguageSourceV10);
   Check(GlobalScripts(SourceContract::kLanguageSourceV9));
   Check(!GlobalScripts(SourceContract::kLanguageSourceV8));
   Check(SourceContractName(SourceContract::kLanguageSourceV10) == "language_source_v10");
@@ -111,10 +107,10 @@ int main() {
     Check(ArraySpreads(contract) == (source ? ArraySpreadSemantics::kSourceIterator : ArraySpreadSemantics::kPinnedRuntime));
   }
 
-  Check(Arithmetic(kSourceContract) == analysis::ArithmeticSemantics::kPinnedRuntime);
+  Check(Arithmetic(kSourceContract) == analysis::ArithmeticSemantics::kSourceNumeric);
   Check(Arithmetic(SourceContract::kLanguageArithmeticV1) == analysis::ArithmeticSemantics::kSourceLanguage);
   Check(Arithmetic(SourceContract::kLanguageNumericV1) == analysis::ArithmeticSemantics::kSourceNumeric);
-  for (const auto base : {kSourceContract, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1}) {
+  for (const auto base : {SourceContract::kLanguageAndHostV3, SourceContract::kLanguageArithmeticV1, SourceContract::kLanguageNumericV1}) {
     const auto combined = WithLanguageConstructors(base);
     Check(Arithmetic(combined) == Arithmetic(base));
     Check(Constructors(base) == ConstructorSemantics::kPinnedRuntime);
@@ -139,7 +135,7 @@ int main() {
   Check(WithLanguageConstructors(SourceContract::kLanguageSourceV1) == SourceContract::kLanguageSourceV1);
   Check(CaptureReads(SourceContract::kLanguageSourceV1) == CaptureReadSemantics::kSourceTdz);
   Check(CaptureReads(SourceContract::kLanguageNumericConstructorsV1) == CaptureReadSemantics::kPinnedRuntime);
-  Check(CaptureReads(kSourceContract) == CaptureReadSemantics::kPinnedRuntime);
+  Check(CaptureReads(kSourceContract) == CaptureReadSemantics::kSourceTdz);
   // Central validation (R2): each state below is checked against the stages
   // that could actually prove it.
   const auto valid = [](MethodRouteReceipt receipt) {

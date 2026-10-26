@@ -85,17 +85,17 @@ class NativeFrame(unittest.TestCase):
                     emitted=out/record['source'];subprocess.run(['node','--check',emitted],check=True,capture_output=True)
                     result=json.loads(subprocess.check_output(['node',ROOT/'tests/integration/isa_native_frame.mjs',source,emitted,e['kind']],text=True))
                     record_node(abc,out,source,__file__,result['cases'],BUILD/'abc_structure',exclusions=['LDNEWTARGET: interpreter fatal/no-op behavior excluded by V7; source follows AOT'] if e['kind']=='LDNEWTARGET' else [])
-    def test_refused_premise_and_owner(self):
+    def test_refused_lexical_owner(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d)
             for i,(kind,contract,arrow) in enumerate([
-                ('LDNEWTARGET',False,False),('unused-new-target',False,False),('LDNEWTARGET',True,True),
+                ('LDNEWTARGET',True,True),
                 ('LDTHISBYNAME_IMM8_ID16',True,True),('STTHISBYNAME_IMM8_ID16',True,True)]):
                 module=specimen('LDNEWTARGET' if kind=='unused-new-target' else kind,Profile.DYNAMIC1206)
                 if kind=='unused-new-target':module=replace(module,functions=(replace(module.functions[0],instructions=(encode(catalog()['LDNEWTARGET']),encode(catalog()['RETURNUNDEFINED']))),))
                 if arrow: module=replace(module,functions=(replace(module.functions[0],kind=FunctionKind.ARROW),))
                 abc=root/(str(i)+'.abc');abc.write_bytes(build(module)[0]);out=root/str(i)
-                subprocess.run([BUILD/'abc_structure',abc,out,'--value-source',*(['--language-source'] if contract else ['--language-numeric','--language-constructors'])],check=True,capture_output=True)
+                subprocess.run([BUILD/'abc_structure',abc,out,'--value-source','--language-source'],check=True,capture_output=True)
                 record=next(r for r in json.loads((out/'manifest.json').read_text())['records'] if r.get('source_status')!=2)
                 self.assertNotEqual(record['source_status'],0,record)
                 self.assertTrue(record.get('source_failure') or record.get('source_omitted_members'),record)

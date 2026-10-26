@@ -37,7 +37,7 @@ try {
  const runner=join(dir,'runner.mjs');writeFileSync(runner,harness);
  const evaluate=p=>run(process.execPath,[runner,pathToFileURL(resolve(p)).href]);
  let comparisons=0,mutations=0,published=0,refused=0;
- for(const [contract,flags] of [['previous',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+ for(const [contract,flags] of [['default',[]],['source',['--language-source']]]){
  for(const name of ['async','sync','nested']){
   const oracle=join(dir,name+'-oracle.mjs');writeFileSync(oracle,readFileSync(join(fixtures,name+'.js')));
   for(const mode of ['O0','default']){
@@ -52,14 +52,6 @@ try {
     // builds reach the same zero-length user handler shape as sync.
     assert.ok(domains.includes('abcd::analysis::CatchRegionError'),JSON.stringify(record));
     assert.equal(record.source_failure.causes.at(-1).value,1);++refused;continue;
-   }
-   if(contract==='previous' && name==='async'){
-    // Scope/activation is admitted; this fixture's guarded array-return value
-    // reaches a separate existing evaluation-ownership obligation.
-    assert.equal(record.source_status,3,JSON.stringify(record));
-    assert.deepEqual(record.source_failure.causes,[
-      {domain:'abcd::source::EvaluationError',value:5},
-      {domain:'abcd::source::EvaluationObligation',value:0}]);++refused;continue;
    }
    assert.equal(record.source_status,0,JSON.stringify(record));++published;
    const output=join(out,record.source);run(process.execPath,['--check',output]);

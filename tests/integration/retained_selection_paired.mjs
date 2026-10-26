@@ -11,7 +11,7 @@ const run = spawnSync(tool, [abc, entry ? '5652' : '4386', '--record-source', '-
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout.trim());
 assert.equal(report.record, entry ? 5374 : 4224);
-assert.equal(report.source_complete, false);
+assert.equal(report.source_complete, true);
 assert.equal(report.executable, false);
 assert.equal(report.legacy_writer_used, undefined);
 assert.ok(report.source.includes('onCreate(') && report.source.includes('onNewWant('));

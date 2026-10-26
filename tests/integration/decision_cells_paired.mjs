@@ -44,7 +44,7 @@ let scenarios = 0;
 try {
   // Only ABC enters the engine; the paired oracle is opened after generation.
   const output = join(temporary, 'output');
-  execFileSync(tool, [join(root, 'MultiCommunityApplication/modules.abc'), output, '--value-source', '--language-arithmetic'], {timeout: 60_000});
+  execFileSync(tool, [join(root, 'MultiCommunityApplication/modules.abc'), output, '--value-source', '--language-source'], {timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
   const record = manifest.records.find(record => record.entity === 48945);
   assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);

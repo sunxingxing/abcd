@@ -105,6 +105,7 @@ struct RecoveryRecords {
     constexpr std::size_t kManifestBytes=1024*1024;
     if (std::filesystem::file_size(path)>kManifestBytes) throw std::length_error("manifest budget");
     std::ifstream stream(path); stream >> document;
+    if (document.at("source_contract") != "language_source_v10") throw std::invalid_argument("manifest contract");
     if (document.at("sha256")!=digest) throw std::invalid_argument("manifest fingerprint");
     for (const auto& record:document.at("records")) {
       if (!records.emplace(record.at("entity").get<std::uint32_t>(), &record).second)
@@ -135,7 +136,7 @@ struct RecoveryRecords {
     return result;
   }
 };
-int Probe(const char* path, const char* previous, const char* v4) {
+int Probe(const char* path, const char* manifest) {
   auto opened = corpus::AbcFile::Open(path);
   const auto* owner = std::get_if<std::unique_ptr<corpus::AbcFile>>(&opened);
   if (!owner) { std::cout << Json{{"type","file_failure"},{"domain","FileError"},{"value",unsigned(std::get<corpus::FileError>(opened))}} << '\n'; return 1; }
@@ -144,9 +145,8 @@ int Probe(const char* path, const char* previous, const char* v4) {
   const auto* hash = std::get_if<corpus::FileFingerprint>(&fingerprint);
   if (!hash) { std::cout << Json{{"type","file_failure"},{"domain","FileError"},{"value",unsigned(std::get<corpus::FileError>(fingerprint))}} << '\n'; return 1; }
   std::ostringstream hex; for (auto b : hash->sha256.bytes) hex << std::hex << std::setw(2) << std::setfill('0') << unsigned(b);
-  RecoveryRecords previous_records, v4_records;
-  if (previous) previous_records.Read(previous, hex.str());
-  if (v4) v4_records.Read(v4, hex.str());
+  RecoveryRecords records;
+  if (manifest) records.Read(manifest, hex.str());
   const auto parsed = abc::ParseHeader(std::span(hash->prefix).first(hash->prefix_size), hash->size);
   const auto* header = std::get_if<abc::Header>(&parsed);
   if (!header) {
@@ -163,8 +163,7 @@ int Probe(const char* path, const char* previous, const char* v4) {
   for (const auto& method : index->methods) {
     Json base{{"sha256",hex.str()}, {"profile",unsigned(header->profile)},
       {"record",method.owner_offset.value}, {"method",method.offset.value}};
-    base["recovery"]={{"previous",previous_records.At(method.owner_offset.value, method.offset.value)},
-                      {"v4",v4_records.At(method.owner_offset.value, method.offset.value)}};
+    base["recovery"]={{"language_source_v10", records.At(method.owner_offset.value, method.offset.value)}};
     if (!method.code) { base["type"]="method_no_code"; std::cout << base << '\n'; continue; }
     const auto& code = *method.code;
     const auto decoded = abc::DecodeMethodBody(file, header->profile, code, {64 * 1024 * 1024});
@@ -291,9 +290,9 @@ int main(int argc,char** argv) {
   const auto limit=abcd::tools::EstablishProcessLimit();
   if (!abcd::tools::ProcessLimitAcceptable(limit)) return 1;
   try {
-    if (argc!=2 && argc!=4) return 2;
+    if (argc!=2 && argc!=3) return 2;
     if (std::string_view(argv[1])=="--catalog") Catalog();
-    else { const auto code=Probe(argv[1],argc==4 ? argv[2] : nullptr,argc==4 ? argv[3] : nullptr); nlohmann::json report; abcd::tools::ReportProcessMemory(report,limit); std::cerr << report << '\n'; return code; }
+    else { const auto code=Probe(argv[1],argc==3 ? argv[2] : nullptr); nlohmann::json report; abcd::tools::ReportProcessMemory(report,limit); std::cerr << report << '\n'; return code; }
     return std::cout ? 0 : 1;
   } catch (const std::length_error&) { std::cerr << "{\"type\":\"manifest_resource_failure\"}\n"; return 1;
   } catch (const std::bad_alloc&) { std::cerr << Json{{"type","resource_failure"},{"domain","ProbeError"},{"value",unsigned(ProbeError::kAllocation)}} << '\n'; return 1;

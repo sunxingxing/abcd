@@ -9,7 +9,7 @@ import {editExpression} from './expression_edits.mjs';
 const [tool,abc,paired,outputRoot]=process.argv.slice(2);
 mkdirSync(outputRoot,{recursive:true});const directory=join(mkdtempSync(join(outputRoot,'callback-')),'export');
 // Complete ABC-only generation before opening the independent paired source.
-const run=spawnSync(tool,[abc,directory,'--value-source','--language-numeric','--language-constructors'],{encoding:'utf8',timeout:60_000});
+const run=spawnSync(tool,[abc,directory,'--value-source','--language-source'],{encoding:'utf8',timeout:60_000});
 assert.equal(run.status,0,run.stderr);
 const manifest=JSON.parse(readFileSync(join(directory,'manifest.json'),'utf8'));
 const record=manifest.records.find(value=>value.source?.endsWith('/pages/PasteBoard.mjs'));

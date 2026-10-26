@@ -59,7 +59,7 @@ void Run(std::uint32_t count, abc::ProfileId profile,
   const auto proof = std::get<ExceptionInputProof>(VerifyExceptionInputs(flow, ssa, env, values));
   const PhasedValueInput input{flow, ssa, env, values, proof, frame};
   const auto graph = std::get<ValueProgram>(ImportPhasedValues(input));
-  const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+  const auto evaluation = std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {SourceContract::kLanguageAndHostV3}));
   const auto binding = BuildPhasedBindingPlan(graph, evaluation, 1);
   if (returned == ReturnedEntry::kCallable || returned == ReturnedEntry::kNewTarget) {
     const auto observed = returned == ReturnedEntry::kCallable ? 0 : count + 1;
@@ -111,7 +111,8 @@ void Run(std::uint32_t count, abc::ProfileId profile,
   const auto regions = std::get<ExceptionPlan>(BuildExceptionPlan(body, graph, input));
   const auto control = std::get<ExceptionControl>(BuildExceptionControl(body, graph, input, regions));
   const ExceptionTreeInput context{body, input, regions, control};
-  FunctionSyntax syntax{}; syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
+  FunctionSyntax syntax{}; syntax.identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned analysis input.
+  syntax.callable = CallableKind::kFunction; syntax.strictness = Strictness::kStrict;
   syntax.parameters.resize(1); syntax.names = {u"value"};
   std::vector<ExpressionConstant> constants(graph.ops.size()); constants[getter] = NameId{0};
   // The shared tree builder invokes independent graph checks at several

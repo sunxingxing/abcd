@@ -41,7 +41,7 @@ console.log(JSON.stringify(runs));
   const original = join(dir, 'original.mjs'); copyFileSync(join(fixture, 'shared.js'), original);
   const expected = run(original); assert.equal(expected.status, 0, expected.stderr);
   assert.equal(JSON.parse(expected.stdout).length, 1440);
-  for (const [label, flags] of [['old',['--language-numeric','--language-constructors']], ['source',['--language-source']]]) {
+  for (const [label, flags] of [['default',[]], ['source',['--language-source']]]) {
     const output = join(dir, label);
     const exported = spawnSync(structure, [join(fixture,'shared.abc'), output, '--value-source', ...flags], {encoding:'utf8'});
     assert.equal(exported.status, 0, exported.stderr);

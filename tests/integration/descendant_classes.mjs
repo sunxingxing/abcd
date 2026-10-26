@@ -26,7 +26,7 @@ try{
  const runner=join(dir,'runner.mjs');writeFileSync(runner,harness);
  const oracle=join(dir,'oracle.mjs');writeFileSync(oracle,readFileSync(fixture.replace(/\.abc$/,'.js')));
  const expected=run(process.execPath,[runner,pathToFileURL(oracle).href]);
- for(const [name,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+ for(const [name,flags] of [['default',[]],['source',['--language-source']]]){
   const out=join(dir,name);run(structure,[fixture,out,'--value-source',...flags]);
   const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
   assert.equal(records.length,1);assert.equal(records[0].source_status,0,JSON.stringify(records[0]));

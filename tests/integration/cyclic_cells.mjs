@@ -21,7 +21,7 @@ try {
  `);
  const observed=file=>JSON.parse(run(process.execPath,[runner,file]));
  const expected=observed(oracle);let comparisons=0,mutants=0;
- for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+ for(const [label,flags] of [['default',[]],['source',['--language-source']]]) {
   const out=join(dir,label),abc=join(fixtures,'cells.abc');
   run(structure,[abc,out,'--value-source',...flags]);
   const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);

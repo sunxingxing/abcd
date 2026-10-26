@@ -7,12 +7,17 @@
 
 #include "abcd/corpus/scan.h"
 #include "process_limit.h"
+#include "source_cli_options.h"
 
 namespace {
 constexpr int kRequiredArguments = 4;
 constexpr int kRootArgumentWidth = 2;
 
 int Run(int argc, char** argv) {
+  if (const auto removed = abcd::tools::FindRemovedSourceOption(argc, argv)) {
+    abcd::tools::ReportRemovedSourceOption(std::cerr, *removed);
+    return EXIT_FAILURE;
+  }
   if (argc < kRequiredArguments || (argc - 2) % kRootArgumentWidth != 0) {
     std::cerr
         << "usage: abc_scan MANIFEST CORPUS_ID ROOT [CORPUS_ID ROOT ...]\n";

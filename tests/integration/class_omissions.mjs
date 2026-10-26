@@ -13,7 +13,7 @@ const cases=[
 ];
 const run=(tool,args)=>{const p=spawnSync(tool,args,{encoding:'utf8',timeout:120000,maxBuffer:32*1024*1024});assert.ifError(p.error);assert.equal(p.status,0,p.stderr);return p;};
 try{
- for(const flags of [['--language-numeric','--language-constructors'],['--language-source']])
+ for(const flags of [[], ['--language-source']])
  for(const [cohort,record,entry,witness] of cases){
   const abc=inputs.get(cohort),out=join(dir,`${cohort}-${flags.length}`);
   run(structure,[abc,out,'--value-source',...flags]);

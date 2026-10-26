@@ -34,7 +34,7 @@ function run(f,mode,outcome){const log=[],error={code:23,message:'failure'};let 
  try{log.push(['result',f(xs,seen)]);}catch(e){log.push(['throw',e.constructor.name]);}return log;}
 let count=0;for(const mode of ['normal','break','throw'])for(const outcome of ['object','missing','null','getter','call','primitive']){assert.deepEqual(run(fn(actual),mode,outcome),run(fn(original),mode,outcome));++count;}
 if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
- for(const [contract,flags] of [['source',['--language-source']],['previous',['--language-numeric','--language-constructors']]])
+ for(const [contract,flags] of [['source',['--language-source']],['default',[]]])
  for(const name of ['handler','close','loop','member'])for(const mode of ['O0','default']){
   const out=join(scratch,`${contract}-${name}-${mode}`);
   run(engine,[join(fixtures,name+(mode==='O0'?'':'.default')+'.abc'),out,'--value-source',...flags]);
@@ -44,7 +44,7 @@ if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
    assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::PhasedMethodError',value:5},{domain:'abcd::source::ExceptionPlanError',value:2},{domain:'abcd::analysis::CatchRegionError',value:1}]);
    ++refused;continue;
   }
-  if((name==='close'||name==='member')&&contract==='source') {
+  if((name==='close'||name==='member')) {
    assert.equal(r.source_status,0,JSON.stringify(r));++published;
    const output=join(out,r.source);run(process.execPath,['--check',output]);
    const reference=join(scratch,name+'-original.mjs');writeFileSync(reference,readFileSync(join(fixtures,name+'.js')));
@@ -60,7 +60,7 @@ if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
    const check=run(process.execPath,['--input-type=module','-e',`const m=await import(${JSON.stringify(pathToFileURL(resolve(output)).href)});console.log(new m.Tool().good(), typeof new m.Tool().query);`]);
    assert.equal(check.trim(),'7 undefined');++partial;continue;
   }
-  if(name==='loop' && contract==='source') {
+  if(name==='loop') {
    assert.equal(r.source_status,3,JSON.stringify(r));
    assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::FunctionTreeError',value:0},{domain:'abcd::source::EvaluationError',value:3},{domain:'abcd::source::EvaluationObligation',value:0},{domain:'abcd::source::TreeObligation',value:16}]);
    assert.equal(r.source_failure.pc,25);

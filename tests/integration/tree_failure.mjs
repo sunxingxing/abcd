@@ -43,19 +43,12 @@ try {
         // Native for-of III publishes only after initial and recovery proofs;
         // the old contract still has the original control refusal.
         assert.match(report.source,/for \([^)]* of /);
-        const old=run(semantic,[abc,String(method),'--record-source','--value-source','--language-numeric','--language-constructors']);
-        assert.equal(old.status,1);
-        assert.deepEqual(JSON.parse(old.stdout).source_failure.causes,[
-          {domain:'abcd::source::PhasedMethodError',value:6},
-          {domain:'abcd::source::ExceptionControlError',value:4}]);
+
       }
       if(entity===24892) {
         assert.equal(row.source_language,'arkts');assert.match(row.source,/\.ets$/);
         assert.match(report.source,/^"use shared";/);
-        const old=run(semantic,[abc,String(method),'--record-source','--language-numeric','--language-constructors']);
-        assert.equal(old.status,1);const refused=JSON.parse(old.stdout);
-        assert.deepEqual(refused.source_causes,[{domain:'abcd::source::RecordModuleKindError',value:1}]);
-        assert.equal(refused.source_pc,undefined);
+
       }
 
       continue;

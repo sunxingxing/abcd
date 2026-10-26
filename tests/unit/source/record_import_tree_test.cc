@@ -382,6 +382,7 @@ std::string Recover(FixtureCase mode, abc::ProfileId profile = abc::ProfileId::k
   source::RouteInputIdentity identity; identity.profile = header.profile;
   identity.abc_version = header.version; identity.file_size = header.file_size;
   if (derived_declaration) identity.contract = source::SourceContract::kLanguageConstructorsV1;
+  if (mode == FixtureCase::kReentrantCapture) identity.contract = source::SourceContract::kLanguageAndHostV3;
   if (mode == FixtureCase::kPublishedCaptureV1) identity.contract = source::SourceContract::kLanguageAndHostV1;
   if (contract) identity.contract = *contract;
   if (inspect_prefix) {

@@ -19,9 +19,6 @@ class Names(unittest.TestCase):
      emitted=out/record['source'];subprocess.run(['node','--check',emitted],check=True,capture_output=True)
      observed=json.loads(subprocess.check_output(['node',ROOT/'tests/integration/computed_names.mjs',source,emitted],text=True))
      record_node(abc,out,source,__file__,observed['cases'],BUILD/'abc_structure',exclusions=observed['exclusions'],dependencies=[ROOT/'tests/integration/computed_names.mjs'])
-     previous=root/(str(i)+'-previous');subprocess.run([BUILD/'abc_structure',abc,previous,'--value-source','--language-numeric','--language-constructors'],check=True,capture_output=True)
-     old=json.loads((previous/'manifest.json').read_text())['records'][-1];self.assertNotEqual(old['source_status'],0)
-     self.assertIn({'domain':'abcd::source::LiteralError','value':10},old['source_failure']['causes'])
  def test_scale(self):
   manifest=json.loads((FIX/'manifest.json').read_text())
   with tempfile.TemporaryDirectory() as d:

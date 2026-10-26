@@ -8,7 +8,7 @@ const [tool, abc, paired] = process.argv.slice(2);
 const run = spawnSync(tool, [abc, '3753', '--record-source', '--value-source'], {encoding: 'utf8', timeout: 60_000});
 assert.equal(run.status, 0, run.stderr);
 const output = JSON.parse(run.stdout.trim());
-assert.equal(output.record, 3444); assert.equal(output.source_complete, false);
+assert.equal(output.record, 3444); assert.equal(output.source_complete, true);
 assert.equal(output.executable, false); assert.equal(output.legacy_writer_used, undefined);
 assert.ok(output.source.includes('registerDefaultEvent()') && output.source.includes('registerIMEvent()'));
 assert.equal(output.source.match(/\?\./g)?.length, 2);

@@ -44,7 +44,7 @@ try {
     return run.stdout.trim();
   };
   for (const [flag, args] of [
-    ['previous', ['--language-numeric', '--language-constructors']], ['source', ['--language-source']],
+    ['default', []], ['source', ['--language-source']],
   ]) {
     for (const name of ['self', 'late', 'multiple', 'phased', 'heritage', 'reentrant', 'static_early', 'loop']) {
       const out = join(directory, flag + '-' + name);

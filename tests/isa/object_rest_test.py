@@ -79,8 +79,6 @@ class ObjectRest(unittest.TestCase):
     out=root/f'bad{i}';subprocess.run([BUILD/'abc_structure',abc,out,'--value-source','--language-source'],check=True,capture_output=True);record=next(r for r in json.loads((out/'manifest.json').read_text())['records'] if r.get('source_status')!=2);self.assertNotEqual(record['source_status'],0);self.assertTrue(record.get('source_failure') or record.get('source_causes'))
    for profile in [Profile.DYNAMIC1206,Profile.DYNAMIC2400]:
     abc=root/('unguarded-'+profile.name+'.abc');abc.write_bytes(build(specimen('CREATEOBJECTWITHEXCLUDEDKEYS_IMM8_V8_V8',profile,False))[0]);out=root/('unguarded-'+profile.name);subprocess.run([BUILD/'abc_structure',abc,out,'--value-source','--language-source'],check=True,capture_output=True);record=next(r for r in json.loads((out/'manifest.json').read_text())['records'] if r.get('source_status')!=2);self.assertNotEqual(record['source_status'],0)
-   for mode in ['default','o0']:
-    out=root/mode;subprocess.run([BUILD/'abc_structure',FIX/('rest-'+mode+'.abc'),out,'--value-source','--language-numeric','--language-constructors'],check=True,capture_output=True);record=next(r for r in json.loads((out/'manifest.json').read_text())['records'] if r.get('source_status')!=2);self.assertNotEqual(record['source_status'],0)
 if __name__=='__main__':
  if '--generate' in sys.argv:generate()
  else:unittest.main()

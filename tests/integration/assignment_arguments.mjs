@@ -16,7 +16,7 @@ try {
     const original = join(directory, name+'.mjs');
     copyFileSync(join(fixtures, name+'.js'), original);
     const expected = evaluate(original);
-    for (const flags of [['--language-numeric','--language-constructors'],['--language-source']]) {
+    for (const flags of [[], ['--language-source']]) {
       const output = join(directory, name+flags[0]);
       const r = spawnSync(structure,[join(fixtures,name+'.abc'),output,'--value-source',...flags],{encoding:'utf8'});
       assert.equal(r.status,0,r.stderr);

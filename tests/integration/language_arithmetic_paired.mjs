@@ -57,9 +57,9 @@ try {
   const generated = [];
   for (const item of cases) {
     const output = join(temporary, item.input);
-    execFileSync(tool, [join(root,item.input,'modules.abc'), output, ...(item.name === 'Content' ? ['--language-arithmetic', '--value-source'] : ['--value-source', '--language-arithmetic'])], {timeout: 60_000});
+    execFileSync(tool, [join(root,item.input,'modules.abc'), output, ...(item.name === 'Content' ? ['--language-source', '--value-source'] : ['--value-source', '--language-source'])], {timeout: 60_000});
     const manifest = JSON.parse(readFileSync(join(output,'manifest.json')));
-    assert.equal(manifest.source_contract, 'language_arithmetic_v1');
+    assert.equal(manifest.source_contract, 'language_source_v10');
     const record = manifest.records.find(record => record.entity === item.entity);
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     const text = readFileSync(join(output,record.source), 'utf8');

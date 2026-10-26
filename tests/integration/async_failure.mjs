@@ -17,7 +17,7 @@ const cases=[[9,7596,7950,3459,3537,25,true],[32,23058,23306,99,131,13,false],
 const dir=mkdtempSync(join(tmpdir(),'abcd-async-failure-'));
 const run=(exe,args,status=0)=>{const r=spawnSync(exe,args,{encoding:'utf8',timeout:120000,maxBuffer:32*1024*1024});assert.ifError(r.error);assert.equal(r.status,status,r.stderr);return r.stdout;};
 try{
- for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]){
+ for(const [label,flags] of [['default',[]],['source',['--language-source']]]){
   const manifests=new Map();
   for(const [n,input] of inputs){const out=join(dir,label+n);run(structure,[input,out,'--value-source',...flags]);manifests.set(n,JSON.parse(readFileSync(join(out,'manifest.json'))).records);}
   for(const [n,record,method,pc,handler,slot,confined] of cases){
@@ -28,7 +28,7 @@ try{
     const cli=JSON.parse(run(semantic,[inputs.get(n),String(method),'--record-source',...flags]));
     assert.equal(cli.source_complete,true);assert.equal(cli.source,readFileSync(join(dir,label+n,r.source),'utf8'));continue;
    }
-   if(record===23058 && label==='source') {
+   if(record===23058) {
     assert.equal(r.source_status,0);assert.equal(r.source_complete,true);assert.ok(r.source);
     const cli=JSON.parse(run(semantic,[inputs.get(n),String(method),'--record-source',...flags]));
     const file=join(dir,label+n,r.source);assert.equal(cli.source_complete,true);assert.equal(cli.source,readFileSync(file,'utf8'));
@@ -43,39 +43,13 @@ try{
     }
     continue;
    }
-   if(record===58223 && label==='source'){
+   if(record===58223){
     // Since 2026-10-24 the root m58418's multi-store deferred `timer` binds;
     // only member m60551 (asyncRunSpecs: destructuring for-of in a for-of) is omitted.
     assert.equal(r.source_status,4);assert.deepEqual(r.source_omitted_members.map(o=>o.method),[60551]);continue;
    }
    assert.equal(r.source_status,3);assert.equal(r.source,undefined);
-   // The input-register proof authorizes no effectful IteratorClose projection.
-   if(record===23058){
-    const f=r.source_failure;assert.equal(f.method,23306);assert.equal(f.pc,149);assert.equal(f.working_pc,125);
-    assert.deepEqual(f.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
-    assert.equal(f.exception_region.region,0);assert.equal(f.exception_region.body_pc,149);assert.equal(f.exception_region.handler_pc,174);
-    assert.equal(f.exception_region.exits.length,2);
-    const cli=JSON.parse(run(semantic,[inputs.get(n),String(method),'--record-source',...flags],1));assert.deepEqual(cli.source_failure,f);continue;
-   }
-   if(record===58223){
-    // Since 2026-10-23 the hoisted `done` creation before ASYNCFUNCTIONENTER is
-    // an admitted prelude and its multi-store `timer` capture has a dominating
-    // declaring store. Since the for-of body-scope slice (also 2026-10-23)
-    // m61706 completes under --language-source (the for-of route needs the
-    // external-exception premise); the record then stops at async m61057.
-    const f=r.source_failure;assert.equal(f.class,'unproved');
-    // m61057's for-of with a nested user try, m59447's async `arguments`
-    // prelude and m60061's refined follows complete as well; the record then
-    // returns to its root m58418, a deferred-cell request from child m59227
-    // (captured for-in loop variables in m61403 complete since 2026-10-24).
-    if(label==='source'){assert.equal(f.method,58418);
-      assert.deepEqual(f.causes,[{domain:'abcd::source::FamilyTreeError',value:5},{domain:'abcd::source::DeferredCellError',value:2}]);continue;}
-    else {assert.equal(f.method,61706);assert.equal(f.pc,643);}
-    assert.deepEqual(f.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}]);
-    const rows=run(semantic,[inputs.get(n),String(method),'--instructions']).trim().split('\n').map(JSON.parse);
-    const actual=rows.find(r=>r.pc===pc);assert.ok(actual);assert.equal(actual.opcode,0x33);assert.equal(actual.operands[1].method_entity,59227);
-    continue;
-   }
+
    const f=r.source_failure;assert.equal(f.class,'unproved');assert.equal(f.method,method);assert.equal(f.pc,pc);
    assert.equal(f.working_pc,undefined);assert.deepEqual(f.async.location,{method,pc});
    const expected=[{domain:'abcd::source::FunctionEmitError',value:1},
@@ -92,5 +66,5 @@ try{
    else{assert.equal(actual.opcode,0x33);assert.equal(actual.operands[1].method_entity,59227);}
   }
  }
- console.log('async failures: two prior completions, event completes under source with 360 Node cases, old-contract close and prelude refusals unchanged; CLI/manifest equality');
+ console.log('async failures: two prior completions, event completes under source with 360 Node cases, default/alias typed remaining refusals; CLI/manifest equality');
 }finally{rmSync(dir,{recursive:true,force:true});}

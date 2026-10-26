@@ -60,7 +60,5 @@ try {
  const nestedOut=join(dir,'nested-refused');run(structure,[join(fixture,'nested_refused.abc'),nestedOut,'--value-source','--language-source']);
  const nestedRecords=JSON.parse(readFileSync(join(nestedOut,'manifest.json'))).records;
  assert.ok(nestedRecords.some(r=>r.source_failure?.causes?.some(c=>c.domain==='abcd::source::ArrayInitializationError'&&c.value===11)));
- const old=join(dir,'old');run(structure,[join(fixture,'calls.abc'),old,'--value-source','--language-numeric','--language-constructors']);
- const refused=JSON.parse(readFileSync(join(old,'manifest.json'))).records.find(r=>r.entity===metadata.record);
- assert.notEqual(refused.source_status,0);assert.ok(refused.source_failure.causes.some(c=>c.domain==='abcd::source::CallSpreadError'&&c.value===9));
+
 } finally {rmSync(dir,{recursive:true,force:true});}

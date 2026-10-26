@@ -5,12 +5,12 @@ import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 const [tool, abc, paired] = process.argv.slice(2);
 // Generate from ABC alone before opening the independent reference. The
-// incomplete class is never constructed; only these complete methods execute.
-const run = spawnSync(tool, [abc, '8202', '--record-source', '--value-source', '--language-arithmetic'],
+// recovered class is not constructed; these complete methods execute.
+const run = spawnSync(tool, [abc, '8202', '--record-source', '--value-source', '--language-source'],
   {encoding: 'utf8', timeout: 60_000});
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout);
-assert.equal(report.record, 7618); assert.equal(report.source_complete, false);
+assert.equal(report.record, 7618); assert.equal(report.source_complete, true);
 assert.equal(report.executable, false); assert.equal(report.legacy_writer_used, undefined);
 // Node does not parse ArkTS decorators. This fixture supplies an identity
 // Observed decorator for the unused WindowInfo class in both modules; it does

@@ -6,7 +6,7 @@ const [structure,fixtures,semantic]=process.argv.slice(2);
 const temp=mkdtempSync(join(tmpdir(),'abcd-delete-'));
 try{
  const evaluate=file=>{const r=spawnSync(process.execPath,[join(fixtures,'harness.mjs'),file],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout;};
- for(const flags of [['--language-numeric','--language-constructors'],['--language-source']]) {
+ for(const flags of [[], ['--language-source']]) {
   const out=join(temp,'array'+flags[0]);
   const r=spawnSync(structure,[join(fixtures,'phased_array.abc'),out,'--value-source',...flags],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);
   const record=JSON.parse(readFileSync(join(out,'manifest.json'))).records.find(r=>r.source_status!==2);
@@ -16,7 +16,7 @@ try{
  }
  for(const name of ['normal','phased']){
   const original=join(temp,name+'.mjs');copyFileSync(join(fixtures,name+'.js'),original);const oracle=evaluate(original);
-  for(const flags of [['--language-numeric','--language-constructors'],['--language-source']]){
+  for(const flags of [[], ['--language-source']]){
    const output=join(temp,name+flags[0]);const abc=join(fixtures,name+'.abc');
    const r=spawnSync(structure,[abc,output,'--value-source',...flags],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);
    const record=JSON.parse(readFileSync(join(output,'manifest.json'))).records.find(r=>r.source_status!==2);

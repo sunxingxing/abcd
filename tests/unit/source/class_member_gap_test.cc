@@ -113,7 +113,8 @@ void Run(bool caught, bool malformed = false, std::uint32_t count = 3, std::uint
   const auto roles = std::get<MethodRoleIndex>(std::move(role_result));
   const auto functions = std::get<FunctionCreationSites>(FunctionCreationSites::Build(*file, header, index, lookup));
   const auto classes = std::get<ClassMethodSites>(ClassMethodSites::Build(*file, header, index, lookup));
-  const auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file->Fingerprint()), header);
+  auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file->Fingerprint()), header);
+  identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned partial-analysis boundary.
   const auto creator = std::get<FileFunction>(ReadFunctionValues(*file, header, index, {0}, identity, InputCaptureMode::kClosed));
   const auto creation = creator.values.classes.classes.front().operation;
   const auto definitions = defined ? std::span<const ClassDefinitionSite>(creator.values.definitions.sites) : std::span<const ClassDefinitionSite>{};

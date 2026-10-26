@@ -68,6 +68,13 @@ corpus and streams JSON that includes peak RSS. `abc_modules` needs
 `--bundle-descriptor VALUE` for bundle files that have module fields. These synchronous
 validators are not the intended asynchronous method-task interface.
 
+Source recovery has one target: `language_source_v10` (the shared `kSourceContract`).
+Omitting the language flag and passing `--language-source` select the same target.
+The removed `--language-arithmetic`, `--language-numeric`, and `--language-constructors`
+options return typed usage errors before file access. Published contracts keep their exact
+version labels; raw analysis APIs retain their runtime semantics. Historical Source V1–V10
+identities remain distinct; retired receipts are never silently upgraded.
+
 Source output has exactly one route, the pass-based value-tree pipeline; the legacy and shared
 writers were removed on 2026-10-12. `abc_structure INPUT.abc OUT_DIR [--value-source]` exports
 structure only, or structure plus value-tree source per record (`--source`/`--shared-source`

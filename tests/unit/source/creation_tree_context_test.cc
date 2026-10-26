@@ -249,7 +249,8 @@ void Run(std::uint32_t count, abc::FunctionKind kind, ChildBody child,
   std::string retained_source;
   {
     const auto roles = std::get<MethodRoleIndex>(MethodRoleIndex::Build(file, header, index, lookup));
-    const auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
+    auto identity = MakeRouteInputIdentity(std::get<corpus::FileFingerprint>(file.Fingerprint()), header);
+    if (child == ChildBody::kSnapshot) identity.contract = SourceContract::kLanguageAndHostV3;  // Pinned ABI oracle.
     if (child == ChildBody::kSnapshot) {
       const auto decoded = std::get<abc::MethodBody>(
           abc::DecodeMethodBody(file, header.profile, target_code));

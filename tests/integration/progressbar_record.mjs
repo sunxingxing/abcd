@@ -19,10 +19,10 @@ const temporary = mkdtempSync(join(tmpdir(), 'abcd-progressbar-record-'));
 const page = 'entry/src/main/ets/pages/ProgressBar', constants = 'entry/src/main/ets/common/CommonConstants';
 try {
   const output = join(temporary, 'output');
-  execFileSync(tool, [join(root, 'modules.abc'), output, '--value-source', '--language-numeric', '--language-constructors'],
+  execFileSync(tool, [join(root, 'modules.abc'), output, '--value-source', '--language-source'],
     {encoding: 'utf8', timeout: 60_000});
   const manifest = JSON.parse(readFileSync(join(output, 'manifest.json')));
-  assert.equal(manifest.source_contract, 'language_numeric_constructors_v1');
+  assert.equal(manifest.source_contract, 'language_source_v10');
   for (const name of [page, constants]) {
     const record = manifest.records.find(record => record.source === 'sources/' + name + '.mjs');
     assert.equal(record.source_complete, true); assert.equal(record.source_route, 'value_tree'); assert.equal(record.legacy_writer_used, undefined);

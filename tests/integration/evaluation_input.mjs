@@ -22,7 +22,7 @@ const dir=mkdtempSync(join(tmpdir(),'abcd-evaluation-input-'));
 try {
  for(const [ci,[record,method]] of cases.entries()) {
   const abc=join(config.roots[cohort.root],cohort.inputs[ordinals[ci]].path);
-  for(const [name,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for(const [name,flags] of [['default',[]],['source',['--language-source']]]) {
    const out=join(dir,`${ci}-${name}`),p=run(structure,[abc,out,'--value-source',...flags]);
    assert.equal(p.status,0,p.stderr);
    const row=JSON.parse(readFileSync(join(out,'manifest.json'))).records.find(r=>r.entity===record);

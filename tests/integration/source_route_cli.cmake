@@ -142,19 +142,17 @@ string(FIND "${text}" "UNRECOVERED" unrecovered_at)
 if(NOT incomplete_at EQUAL -1 OR NOT unrecovered_at EQUAL -1)
   message(FATAL_ERROR "complete record carries gap markers: ${report}")
 endif()
-# Negative: record 4767 (owner of method 4917) keeps an unsupported
-# constructor operation. It is reported incomplete, with explicit typed gap
-# markers in the partial text, never as complete source.
+# This record's constructor now completes under the sole source contract.
 execute_process(COMMAND "${ABCD_SEMANTIC}" "${ABCD_SAMPLE}" "4917"
   --record-source --value-source RESULT_VARIABLE status OUTPUT_VARIABLE report ERROR_QUIET)
 string(JSON record GET "${report}" record)
 string(JSON complete GET "${report}" source_complete)
-string(JSON executable GET "${report}" executable)
 string(JSON text GET "${report}" source)
-string(FIND "${text}" "/* INCOMPLETE: partial decompilation; not executable-equivalent. */" banner_at)
-string(FIND "${text}" "/* UNRECOVERED: unsupported operation; PC " reason_at)
-if(NOT record EQUAL 4767 OR complete OR executable OR banner_at EQUAL -1 OR reason_at EQUAL -1)
-  message(FATAL_ERROR "incomplete record lost its typed gap: ${report}")
+string(FIND "${text}" "INCOMPLETE" banner_at)
+string(FIND "${text}" "UNRECOVERED" reason_at)
+if(NOT status EQUAL 0 OR NOT record EQUAL 4767 OR NOT complete OR
+   NOT banner_at EQUAL -1 OR NOT reason_at EQUAL -1)
+  message(FATAL_ERROR "source-contract record did not complete: ${report}")
 endif()
 
 # A bare --value-source selects the function form; it never prints the

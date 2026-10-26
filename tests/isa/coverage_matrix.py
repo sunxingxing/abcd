@@ -74,7 +74,7 @@ def validate_non_executable(entry, row, root):
         or lift['cause'].get('value') != 7 or
         lift.get('non_executable') != {'opcode': row['encoding']['opcode'], 'evidence': entry['evidence_id']}):
         raise ValueError('non-executable classification without typed runtime refusal')
-    for flag in ('previous','v4'):
+    for flag in ('language_source_v10',):
         failure = row['recovery'][flag]['record_first_refusal']
         if not failure or failure.get('non_executable') != lift['non_executable']:
             raise ValueError('non-executable classification without record refusal')
@@ -92,7 +92,7 @@ def recovery_manifest(structure, path, output, flags, digest):
     data = json.loads(manifest.read_text())
     if data['sha256'] != digest:
         raise ValueError('recovery fingerprint mismatch')
-    expected_contract = 'language_source_v10' if '--language-source' in flags else 'language_numeric_constructors_v1'
+    expected_contract = 'language_source_v10'
     if data.get('source_contract') != expected_contract:
         raise ValueError('recovery contract mismatch')
     return data
@@ -112,7 +112,12 @@ def inputs(root):
 def run(args):
     root = pathlib.Path(args.root).resolve()
     build = root / 'build/regression'
-    out = pathlib.Path(args.output).resolve(); out.mkdir(parents=True, exist_ok=True)
+    structure_hash = fingerprint(build / 'abc_structure')
+    # The no-argument run has a separate cache per production binary. Explicit
+    # output directories retain strict identity checks; old evidence is never upgraded.
+    out = (pathlib.Path(args.output) if args.output else
+           build.parent / 'isa-language-source-v10' / structure_hash).resolve()
+    out.mkdir(parents=True, exist_ok=True)
     specs = catalog(build / 'isa_coverage_probe', build / 'generated/abcd/abc/generated_isa.h')
     by_opcode = {s['opcode']: s for s in specs}
     registry_document = json.loads((root / 'tests/isa/coverage_manifest.json').read_text())
@@ -121,7 +126,7 @@ def run(args):
     stats = {}; files = []; first = []; failures = []; unattributed = []; non_executable = {}
     if any(e.get('classification') == 'NonExecutable' for e in registry):
         subprocess.run([sys.executable, root / 'tests/isa/constructed_branches_test.py'], check=True)
-    flags = {'previous': ['--language-numeric', '--language-constructors'], 'v4': ['--language-source']}
+    flags = {'language_source_v10': []}
     def state(profile, opcode):
         key = (profile, opcode)
         if key not in stats:
@@ -131,7 +136,6 @@ def run(args):
                           'oracles': collections.Counter(), 'oracle_examples': {}}
         return stats[key]
     probe_hash = fingerprint(build / 'isa_coverage_probe')
-    structure_hash = fingerprint(build / 'abc_structure')
     provenance = {'structure_sha256':structure_hash, 'flags':flags}
     cache_identity = out / 'recovery_identity.json'
     if cache_identity.exists() and json.loads(cache_identity.read_text()) != provenance:
@@ -319,7 +323,7 @@ def run(args):
     unsupported_first = [e for e in first if any(
         c['domain'] == 'abcd::analysis::SemanticError' and c['value'] == 1
         for c in e['failure'].get('causes', []))]
-    result = {'schema': 1, 'probe_sha256': probe_hash, 'structure_sha256': structure_hash, 'engine_revision': subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
+    result = {'schema': 2, 'probe_sha256': probe_hash, 'structure_sha256': structure_hash, 'engine_revision': subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
               'classification_scope': 'Per-profile occurrence oracles; variant display is existential and lists verified_profiles, never a transfer to other profile rows',
               'oracle_runs': oracle_runs, 'oracle_occurrences': oracle_index.count,
               'files': files, 'failures': failures, 'first_refusals': first, 'unsupported_first_refusals': unsupported_first, 'unattributed_first_refusals': unattributed, 'rows': variants, 'profile_rows': profile_rows, 'families': family_rollups,
@@ -335,10 +339,10 @@ def run(args):
         measured = ', '.join(str(p['profile']) for p in r['profiles'] if p['occurrences']) or 'none'
         lines.append(f'| {r["name"]} | {FAMILIES[r["family"]]} | {r["occurrences"]} | {measured} | {','.join(map(str,r['verified_profiles'])) or 'none'} | {r["classification"]} |')
     lines += ['', '## Family impact (distinct records, not summed opcode hits)', '',
-              '| Family | Variants observed / total | Occurrences | Cohort records | Located first refusal previous / V4 |',
+              '| Family | Variants observed / total | Occurrences | Cohort records | Located first refusal V10 |',
               '|---|---:|---:|---:|---|']
-    for f in sorted(family_rollups, key=lambda x: -x['current_first_refusal']['v4']):
-        lines.append(f'| {f["family"]} | {f["observed_variants"]} / {f["variants"]} | {f["occurrences"]} | {f["cohort_records_containing"]} | {f["current_first_refusal"]["previous"]} / {f["current_first_refusal"]["v4"]} |')
+    for f in sorted(family_rollups, key=lambda x: -x['current_first_refusal']['language_source_v10']):
+        lines.append(f'| {f["family"]} | {f["observed_variants"]} / {f["variants"]} | {f["occurrences"]} | {f["cohort_records_containing"]} | {f["current_first_refusal"]["language_source_v10"]} |')
     lines += ['', '## Current unsupported instruction first refusals (exploration)', '',
               '| Flags | Input / record | Method / original PC | Decoded opcode |',
               '|---|---|---|---|']
@@ -349,5 +353,5 @@ def run(args):
     print(json.dumps(result['classes']))
 
 if __name__ == '__main__':
-    parser=argparse.ArgumentParser(); parser.add_argument('--root',default='.'); parser.add_argument('--output',required=True); parser.add_argument('--limit',type=int)
+    parser=argparse.ArgumentParser(); parser.add_argument('--root',default='.'); parser.add_argument('--output'); parser.add_argument('--limit',type=int)
     run(parser.parse_args())

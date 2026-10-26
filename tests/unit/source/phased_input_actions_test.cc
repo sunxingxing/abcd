@@ -39,10 +39,10 @@ void Run(Input kind,abc::ProfileId profile,unsigned copies,bool emit) {
   const ArgumentFrameFact invocation{frame};
   const auto proof=std::get<ExceptionInputProof>(VerifyExceptionInputs(flow,ssa,env,values,kDefaultSemanticWork,&invocation));
   const PhasedValueInput input{flow,ssa,env,values,proof,frame};const auto graph=std::get<ValueProgram>(ImportPhasedValues(input));
-  const auto evaluation=std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph));
+  const auto evaluation=std::get<EvaluationPlan>(BuildPhasedEvaluationPlan(graph, {}, IncomingCells::kReject, {}, {}, {}, {}, analysis::ClosureWrites::kUnknown, {SourceContract::kLanguageAndHostV3}));
   const auto regions=std::get<ExceptionPlan>(BuildExceptionPlan(body,graph,input));
   const auto control=std::get<ExceptionControl>(BuildExceptionControl(body,graph,input,regions));
-  FunctionSyntax syntax{};syntax.callable=CallableKind::kFunction;syntax.strictness=Strictness::kStrict;syntax.parameters.resize(1);
+  FunctionSyntax syntax{};syntax.identity.contract=SourceContract::kLanguageAndHostV3;syntax.callable=CallableKind::kFunction;syntax.strictness=Strictness::kStrict;syntax.parameters.resize(1);
   syntax.names={u"holder",u"probe"};syntax.inferred_name=NameId{0};syntax.identity.profile=profile;
   std::vector<ExpressionConstant> operations(graph.ops.size());
   for(unsigned i=0;i<graph.ops.size();++i)if(std::holds_alternative<ValueGlobalRead>(graph.ops[i].operation))operations[i]=NameId{1};

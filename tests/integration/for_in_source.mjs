@@ -38,7 +38,7 @@ function trace(fn, create, mode, throwVisit, deletion = false) {
   return log;
 }
 try {
-  for (const [name, flags] of [['old', ['--language-numeric', '--language-constructors']], ['source', ['--language-source']]]) {
+  for (const [name, flags] of [['default', []], ['source', ['--language-source']]]) {
     const out = join(directory, name);
     run(structure, [abc, out, '--value-source', ...flags]);
     const records = JSON.parse(readFileSync(join(out, 'manifest.json'))).records.filter(r => r.source_status !== 2);

@@ -46,7 +46,7 @@ console.log(JSON.stringify(runs));
   });
   const expected=run(...originals); assert.equal(expected.status,0,expected.stderr);
   assert.equal(JSON.parse(expected.stdout).length,2016);
-  for (const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+  for (const [label,flags] of [['default',[]],['source',['--language-source']]]) {
     const files = ['decision','finally'].map(name => {
       const dest=join(dir,label+'-'+name);
       const exported=spawnSync(structure,[join(fixture,name+'.abc'),dest,'--value-source',...flags],{encoding:'utf8'});

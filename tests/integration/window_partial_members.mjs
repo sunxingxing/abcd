@@ -9,9 +9,9 @@ const run = spawnSync(tool, [abc, '8202', '--record-source', '--value-source'], 
 assert.equal(run.status, 0, run.stderr);
 const result = JSON.parse(run.stdout.trim());
 assert.ok(result.source.includes('setImmersiveType(type)'));
-assert.equal(result.record, 7618); assert.equal(result.source_complete, false);
+assert.equal(result.record, 7618); assert.equal(result.source_complete, true);
 assert.equal(result.executable, false); assert.equal(result.legacy_writer_used, undefined);
-assert.equal((result.source.match(/UNRECOVERED class member/g) ?? []).length, 2);
+assert.doesNotMatch(result.source, /INCOMPLETE|UNRECOVERED/);
 // The paired TS enters only this independent oracle. The decorator belongs to
 // WindowInfo, which is not constructed or tested here; both modules load with
 // identity Observed. The enum requires the standard TypeScript transform mode.

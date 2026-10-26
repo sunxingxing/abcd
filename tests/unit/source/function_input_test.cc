@@ -35,6 +35,7 @@ abc::FrameLayout Frame() {
 }
 RouteInputIdentity Identity() {
   RouteInputIdentity result;
+  result.contract = SourceContract::kLanguageAndHostV3;  // Pinned capture-domain analysis.
   result.profile = abc::ProfileId::kDynamic1206;
   result.abc_version = {12, 0, 6, 0};
   return result;

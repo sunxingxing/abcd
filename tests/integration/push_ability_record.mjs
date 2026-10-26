@@ -8,7 +8,7 @@ import vm from 'node:vm';
 const [tool, abc, pairedPath] = process.argv.slice(2);
 // Finish ABC-only generation before opening the independent reference source.
 const report = JSON.parse(execFileSync(tool, [abc, '3753', '--record-source',
-  '--value-source', '--language-constructors'], {encoding: 'utf8', timeout: 60_000}));
+  '--value-source', '--language-source'], {encoding: 'utf8', timeout: 60_000}));
 assert.equal(report.record, 3444); assert.equal(report.source_complete, true);
 assert.equal(report.route, 'value_tree'); assert.equal(report.legacy_writer_used, undefined);
 const serviceReport = JSON.parse(execFileSync(tool, [abc, '12208', '--record-source', '--value-source'],

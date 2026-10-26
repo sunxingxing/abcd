@@ -98,7 +98,7 @@ try {
       item.relative_path === `push-kit-sample-code-clientdemo-arkts/${file}`);
     assert.equal(createHash('sha256').update(bytes).digest('hex'), identity.sha256);
     assert.equal(bytes.length, identity.size); assert.equal(manifest.sha256, identity.sha256);
-    assert.equal(manifest.source_route, 'value_tree'); assert.equal(manifest.source_contract, 'language_and_host_v3');
+    assert.equal(manifest.source_route, 'value_tree'); assert.equal(manifest.source_contract, 'language_source_v10');
     const record = manifest.records.find(item => item.entity === entity);
     assert.equal(record.source_complete, true); assert.equal(record.legacy_writer_used, undefined);
     const generated = readFileSync(join(output, record.source), 'utf8');

@@ -5,7 +5,7 @@ import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 const [tool, abc, paired] = process.argv.slice(2);
 // ABC-only generation finishes before the independent reference is opened.
-const run = spawnSync(tool, [abc, '8431', '--record-source', '--value-source', '--language-numeric'],
+const run = spawnSync(tool, [abc, '8431', '--record-source', '--value-source', '--language-source'],
   {encoding: 'utf8', timeout: 60_000});
 assert.equal(run.status, 0, run.stderr);
 const report = JSON.parse(run.stdout);

@@ -6,13 +6,13 @@ DevEco Studio's bundled es2abc (`--bc-version` 24.0.0.0), command
 
 | Fixture | Premise | Expected |
 |---|---|---|
-| `earlywrite` | A hoisted function writes the binding before its declaration runs (the VM write completes; the source throws) | complete under `--language-source`: source and output both throw `ReferenceError`; refused otherwise with the `ScopeError` chain |
-| `hoisted` | Hoisted functions read later `const`/`let` bindings while a host callback runs before the stores | complete under `--language-source`, Node-equal (standalone es2abc may guard these reads, so the previous contract's outcome is not pinned) |
+| `earlywrite` | A hoisted function writes the binding before its declaration runs (the VM write completes; the source throws) | complete under `--language-source`: source and output both throw `ReferenceError`; identical under the default invocation |
+| `hoisted` | Hoisted functions read later `const`/`let` bindings while a host callback runs before the stores | complete under the default and `--language-source`, Node-equal |
 
 `harness.mjs` defines `globalThis.SCALE`, `globalThis.OFFSET` and `globalThis.CALL` and reports the
 exported values.
 
-Handler-covered reads and writes are tested in `family_cells_test` with
+Historical pinned-contract evidence (not a CLI target): handler-covered reads and writes are tested in `family_cells_test` with
 successfully imported file-backed phased IR. It asserts the access is Language,
 is forwarded across the phased middle function, and causes the normal parent to
 refuse with `CaptureCellError::kInput > CaptureError::kScope > ScopeError::kInitialization`.

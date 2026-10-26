@@ -32,7 +32,7 @@ try {
   const text=run(oracle,mode,name);assert.ok(!text.includes('valueOf'));expected.set(name+'/'+mode,text);
  }
  let comparisons=0,mutants=0;
- for(const [label,flags] of [['old',['--language-numeric','--language-constructors']],['source',['--language-source']]]) {
+ for(const [label,flags] of [['default',[]],['source',['--language-source']]]) {
   const out=join(dir,label),abc=join(fixtures,'candidates.abc');
   const exported=spawnSync(structure,[abc,out,'--value-source',...flags],{encoding:'utf8',timeout:30000});assert.equal(exported.status,0,exported.stderr);
   const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
