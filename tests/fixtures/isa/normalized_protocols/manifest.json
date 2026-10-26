@@ -1,0 +1,116 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/normalized_protocols/async.js",
+   "path": "tests/fixtures/isa/normalized_protocols/async-O0.abc",
+   "sha256": "b58db2fb7bb3558e8af556cca1a650fbc2f3de2c268bc0e7a8c1d60bb2c7999e",
+   "source_sha256": "5d68bcaf012b9aa2d7b5d247dc0c557c33c51f0e8a45e99e7aa6e0e673cfcd8e",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=normalized_async",
+    "--source-file=async.js",
+    "--output=tests/fixtures/isa/normalized_protocols/async-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/normalized_protocols/async.js"
+   ],
+   "profile": 6,
+   "kind": "async"
+  },
+  {
+   "source": "tests/fixtures/isa/normalized_protocols/generators.js",
+   "path": "tests/fixtures/isa/normalized_protocols/generators-O0.abc",
+   "sha256": "d690980d1516384e2027645bde957fd8663f946926103a332be34a88f4b580f3",
+   "source_sha256": "4fe33066e5f0ad620352064db5c5c944bf86db0613b74726833d0b510c48c47b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=normalized_generators",
+    "--source-file=generators.js",
+    "--output=tests/fixtures/isa/normalized_protocols/generators-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/normalized_protocols/generators.js"
+   ],
+   "profile": 6,
+   "kind": "generators"
+  },
+  {
+   "source": "tests/fixtures/isa/normalized_protocols/async_generators.js",
+   "path": "tests/fixtures/isa/normalized_protocols/async_generators-O0.abc",
+   "sha256": "2591fdcee26981a6602db706c37be236aac1c548bcc631458fa4e628f416ce98",
+   "source_sha256": "4063c7203a9af4ff64ad336e7da48d5b724cc63ff14f511822ed7455525c287d",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=normalized_async_generators",
+    "--source-file=async_generators.js",
+    "--output=tests/fixtures/isa/normalized_protocols/async_generators-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/normalized_protocols/async_generators.js"
+   ],
+   "profile": 6,
+   "kind": "async_generators",
+   "refusal": {
+    "domain": "abcd::source::FunctionEmitError",
+    "value": 1
+   }
+  },
+  {
+   "source": "tests/fixtures/isa/normalized_protocols/concurrent.js",
+   "path": "tests/fixtures/isa/normalized_protocols/concurrent-O0.abc",
+   "sha256": "f0784f6597e04b6c5c8d3c007f6adb04ce4c3e3c979d874f800c75eeb26c8a92",
+   "source_sha256": "44966379495c9cb20dbd7dc036959c29c3cd61482b930d8ee27ae0db4810089b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=normalized_concurrent",
+    "--source-file=concurrent.js",
+    "--output=tests/fixtures/isa/normalized_protocols/concurrent-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/normalized_protocols/concurrent.js"
+   ],
+   "profile": 6,
+   "kind": "concurrent",
+   "refusal": {
+    "domain": "abcd::source::ConcurrentError",
+    "value": 17
+   }
+  },
+  {
+   "source": "tests/fixtures/isa/normalized_protocols/async_generator_after.js",
+   "path": "tests/fixtures/isa/normalized_protocols/async_generator_after-O0.abc",
+   "sha256": "e144c9be075c6a3dff6069f83a42e8dfcca5e5e770cc8603eeaa0771a4e7c658",
+   "source_sha256": "f71cddb5728b97bdd2a2c93bd05e1dee6c9a6321330922d500096a339ca971db",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=normalized_async_generator_after",
+    "--source-file=async_generator_after.js",
+    "--output=tests/fixtures/isa/normalized_protocols/async_generator_after-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/normalized_protocols/async_generator_after.js"
+   ],
+   "profile": 6,
+   "kind": "async_generator_after",
+   "refusal": {
+    "domain": "abcd::source::FunctionEmitError",
+    "value": 1
+   }
+  }
+ ],
+ "note": "O0 normalization composition. Async-generator pattern protocols currently refuse in NormalizeGenerator before folding (kKind); concurrent patterns refuse final pre-fold correspondence (kCorrespondence). Both remain typed negative cases."
+}

@@ -371,8 +371,16 @@ std::variant<ArrayPatternBody, abc::MetadataError> NormalizeArrayPatterns(
       else result.source_pcs.assign(pcs.begin(), pcs.end());
       return result;
     }
+    if (matches.size() > bytes / sizeof(FoldRange))
+      return abc::MetadataError::kResourceLimit;
+    result.folds.reserve(matches.size());
+    if (result.folds.capacity() > bytes / sizeof(FoldRange))
+      return abc::MetadataError::kResourceLimit;
+    bytes -= result.folds.capacity() * sizeof(FoldRange);
     std::vector<bool> drop(body.instructions.size()), consumed(body.tries.size());
     for (const auto& match : matches) {
+      result.folds.push_back({body.instructions[match.begin].offset,
+                             body.instructions[match.end].offset});
       for (std::size_t k = match.begin; k < match.end; ++k) drop[k] = true;
       for (const auto k : match.kept) drop[k] = false;
       for (const auto r : match.regions) consumed[r] = true;

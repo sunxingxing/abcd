@@ -187,17 +187,42 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       }
       original.emplace(std::move(body)); body = std::move(normalized);
     }
-    // Fold certified array-pattern protocols; kept instructions keep their
-    // offsets, and removed ones never reach the input or its positions.
+    // Folding compacts WORKING byte offsets; source_pcs keeps immutable original
+    // coordinates. Compose every surviving await/yield stream unconditionally,
+    // including concurrent async. Origin resume/RETURN-route PCs stay original.
     std::vector<analysis::PatternSite> patterns;
     {
       const GeneratorNames names{file, header, index, method.offset};
       auto folded = NormalizeArrayPatterns(body, source_pcs, frame, names, left.bytes);
       if (const auto* error = std::get_if<abc::MetadataError>(&folded)) throw PhasedFileFailure{*error};
       auto normalized = std::get<ArrayPatternBody>(std::move(folded));
+      // The remapper borrows both live bodies; include all returned arenas in
+      // the live grant before allocating its verification scratch.
+      arena(normalized.body.instructions); arena(normalized.body.tries); arena(normalized.body.handlers);
+      arena(normalized.source_pcs); arena(normalized.sites);
+      arena(normalized.folds);
+      const ProtocolRebaseInput relocation{body, normalized.body, source_pcs,
+          normalized.source_pcs, normalized.folds, awaits, yields, header.profile};
+      const auto rebase_error = [](ProtocolRebaseError error) -> PhasedFileFailure {
+        switch (error) {
+          case ProtocolRebaseError::kResourceLimit: return Error::kResourceLimit;
+          case ProtocolRebaseError::kWorkLimit: return Error::kWorkLimit;
+          case ProtocolRebaseError::kInput:
+          case ProtocolRebaseError::kAnchor:
+          case ProtocolRebaseError::kCollision:
+          case ProtocolRebaseError::kDispatch: return abc::MetadataError::kRead;
+        }
+        return abc::MetadataError::kRead;
+      };
+      auto remapped = RebaseProtocols(relocation, left);
+      if (const auto* error = std::get_if<ProtocolRebaseError>(&remapped)) throw rebase_error(*error);
+      auto protocols = std::get<RebasedProtocols>(std::move(remapped));
+      admit(protocols.allocated_bytes); step(protocols.work);
+      const auto checked = VerifyRebasedProtocols(relocation, protocols, left);
+      if (const auto* error = std::get_if<ProtocolRebaseError>(&checked)) throw rebase_error(*error);
+      step(std::get<std::uint64_t>(checked));
+      awaits = std::move(protocols.awaits); yields = std::move(protocols.yields);
       if (!normalized.sites.empty()) {
-        arena(normalized.body.instructions); arena(normalized.body.tries); arena(normalized.body.handlers);
-        arena(normalized.sites);
         source_pcs = std::move(normalized.source_pcs);
         if (!original) original.emplace(body);
         body = std::move(normalized.body); patterns = std::move(normalized.sites);

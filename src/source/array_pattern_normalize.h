@@ -8,6 +8,7 @@
 #include "abcd/abc/method_body.h"
 #include "abcd/analysis/semantic_ir.h"
 #include "generator_delegate.h"
+#include "protocol_rebase.h"
 
 namespace abcd::source {
 struct ArrayPatternBody {
@@ -16,6 +17,9 @@ struct ArrayPatternBody {
   std::vector<abc::CodeOffset> source_pcs;
   // Lifter certificates, sorted by PC; empty when nothing was folded.
   std::vector<analysis::PatternSite> sites;
+  // Ranges whose instruction meanings/removal are owned by pattern folding.
+  // A surviving protocol certificate must not intersect these input ranges.
+  std::vector<FoldRange> folds;
 };
 // Fold each exact pinned es2panda array-pattern protocol (O0 register shape,
 // docs/design/source-recovery/array-patterns.md) whose elements are holes or

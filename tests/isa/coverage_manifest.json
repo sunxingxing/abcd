@@ -11149,6 +11149,10 @@
     {
       "test": "isa_phased_member_calls_source_test",
       "producer": "tests/isa/phased_member_calls_test.py"
+    },
+    {
+      "test": "isa_normalized_protocols_source_test",
+      "producer": "tests/isa/normalized_protocols_test.py"
     }
   ]
 }

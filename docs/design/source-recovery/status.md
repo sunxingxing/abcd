@@ -5,6 +5,67 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Normalization composition: await/yield coordinates after array-pattern folding (2026-10-26)
+
+- Soundness fix, applied **unconditionally**, with no legacy-first gate:
+  `protocol_rebase.{h,cc}` composes surviving `AwaitSite.pc`/`mode_pc` and
+  `YieldSite.pc`/optional `mode_pc` through the fold's original-provenance map.
+  These are working **byte offsets**, not instruction indices. Original resume,
+  rejection, continuation and yield RETURN-route evidence stays original.
+  Surviving original anchors cannot be absorbed by a fold. The old
+  `array_patterns.awaited` fixture folded only after its sole await, so neither
+  await anchor moved; it did not exercise this ordering.
+- Array folding publishes its input fold ranges. The producer and independent
+  verifier check injective coverage, opcode/operand/branch identity, anchor
+  provenance, collisions, intact retained protocol intervals and selected catch
+  correspondence. Removed anchors never map into replacement instructions.
+  Invalid composition refuses as typed `MetadataError::kRead`; resource/work
+  limits retain their typed phases. No opcode or source premise was added.
+  The new shared mapping/dispatch pass targets O((I+T+H+A+Y) log(I+T+H)) with
+  prepaid mapping, claims, certificate vectors and dispatch scratch.
+- All streams enter the shared composition before phased import: ordinary and
+  concurrent async, synchronous and asynchronous generators. The fixture has
+  **187 Node differential cases** (55 async, 132 generator) for patterns before,
+  between and after suspension, multiple folds, catch/rejection, iterator
+  effects/errors, NEXT/THROW/RETURN and object/error identity. Unit mutations
+  cover removed/split anchors, corrupted input/output modes, anchor collision,
+  original RETURN routes and changed handlers, plus exact/exhausted byte/work
+  budgets and 200/201/400/800 sizes.
+- Existing owner limitations remain typed negative fixtures: async-generator
+  array-pattern examples fail `FunctionEmitError::kKind` before folding;
+  concurrent async remaps its awaits, then fails `ConcurrentError::kCorrespondence`
+  in its pre-fold one-to-one publication check. These are not stale-certificate
+  admissions or claims of new source support. Design: [array-patterns.md](array-patterns.md).
+- Authoritative build passes:
+  `cmake --build build/regression --target source_regression abc_structure isa_coverage_probe -j 8`.
+  `ctest --test-dir build/regression -L '^source-regression$' -j 2 --output-on-failure`:
+  **65/65 pass**, 101.60 s. Both `python3 tests/isa/array_patterns_test.py` and
+  `python3 tests/isa/normalized_protocols_test.py` are **OK**. The new unit passes.
+- Related command:
+  `ctest --test-dir build/regression -R '(async|generator|await|protocol_rebase|array_pattern|normalized_protocols)' -j 2 --output-on-failure`:
+  **39/42 pass**, 18.99 s. Three pre-existing failures reproduce with committed
+  HEAD versions of both changed existing translation units, linked before the
+  unchanged archive (no stash/worktree/source replacement):
+  `file_generator_return_source_test` and `file_generator_return_loop_source_test`
+  hit draft `TreePrintError::kResourceLimit` at loop_closure_file_test.cc:1311;
+  `async_semantics_test` aborts with `std::bad_variant_access`. The untouched older
+  build reproduces them too. No expectations or budgets were weakened.
+- Direct `abc_structure` comparisons against read-only `csr85` outputs across
+  all 40 inputs per flag set: **616/616 language-source** and **549/549
+  language-numeric + language-constructors** previously complete records remain
+  byte-identical; **zero text changes**. An initial plain-default invocation did
+  not match the `no` baseline's numeric/constructor contract; that comparison
+  was stopped and rerun with its actual flags. No cohort tool was run.
+- Whole-record **o32/58223 service is partial** (`source_status: 4`), not complete.
+  The stale-await refusal at m60551 original1015/working711 is gone. The next
+  omitted member is m60551 (`asyncRunSpecs`), original **2193**, working **1497**,
+  `ExceptionInputError::kInternalValue` (1), exception node1226/value48, at
+  `ADD2_IMM8_V8` (v19). This separate value-domain proof gap remains refused.
+- Evidence: `build/normalized-protocols/` contains build/test logs, the direct
+  byte comparison and service receipt, baseline source/object replay and its
+  failure logs. No input ABC, paired source, `samples/` or `build/review/` changed;
+  no commit/push. The pre-existing untracked `sample.tar.gz` remains untouched.
+
 ## Shared uniform exception staging — increment 1 (2026-10-26)
 
 - Added `ExceptionCopyEmission` with `StageGroup`/`StageCoverage`: original
