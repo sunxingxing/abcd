@@ -42,9 +42,16 @@ std::vector<PhaseReachability> CheckPhaseInput(const PhasedValueInput& input, Ph
       input.values, quota.Remaining().work,
       input.proof.arguments ? &*input.proof.arguments : nullptr,
       ExceptionInputDomain::kHoleTransport, input.proof.initialized_modules, quota.Remaining().bytes);
-  if (const auto* failure = std::get_if<ExceptionInputFailure>(&checked))
+  if (const auto* failure = std::get_if<ExceptionInputFailure>(&checked)) {
+    // A fresh guarded-payload verifier can exhaust its own arena. Preserve
+    // that typed limit through import; it is not a mismatched certificate.
+    if(failure->throw_domain==ExceptionThrowDomainError::kResourceLimit)
+      throw ValueImportFailure{PhaseError::kResourceLimit,failure->pc};
+    if(failure->throw_domain==ExceptionThrowDomainError::kWorkLimit)
+      throw ValueImportFailure{PhaseError::kWorkLimit,failure->pc};
     throw ValueImportFailure{failure->kind == ExceptionInputError::kResourceLimit
         ? PhaseError::kWorkLimit : PhaseError::kInputMismatch, failure->pc};
+  }
   const auto& proof = std::get<ExceptionInputProof>(checked);
   quota.Work(proof.work_units);
   RequirePhase(proof.guarded == input.proof.guarded && proof.arguments == input.proof.arguments && proof.reads == input.proof.reads &&

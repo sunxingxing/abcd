@@ -85,6 +85,7 @@ struct FailureCause {
 // deepest (true leaf) cause: once full, middle causes are dropped, the leaf
 // slot is replaced and truncated is set.
 inline constexpr std::size_t kMaxFailureCauses = 8;
+inline constexpr std::size_t kMaxFailureDomainBytes = 128;
 struct FailureCauseChain {
   std::array<FailureCause, kMaxFailureCauses> entries{};
   std::uint8_t count = 0;
@@ -143,6 +144,7 @@ constexpr std::string_view FailureDomain() {
 // Appends one typed cause; a full chain records truncation instead.
 template <class E>
 void AppendFailureCause(FailureCauseChain& chain, E value) {
+  static_assert(FailureDomain<E>().size() < kMaxFailureDomainBytes);
   chain.Append({std::string(FailureDomain<E>()), static_cast<std::uint32_t>(value)});
 }
 

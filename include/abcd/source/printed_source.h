@@ -17,6 +17,7 @@
 #include "abcd/source/cleanup_origin.h"
 #include "abcd/source/exception_region_failure.h"
 #include "abcd/source/parameter_default.h"
+#include "abcd/source/tree_failure.h"
 #include "abcd/source/source_contract.h"
 #include "abcd/source/source_text.h"
 
@@ -28,6 +29,7 @@ enum class ExceptionInputError : std::uint8_t;
 }
 namespace abcd::source {
 enum class ExceptionControlError : std::uint8_t;
+struct FailureCauseChain;
 enum class SourceError : std::uint8_t {
   kUnsupportedOperation,
   kMissingTarget,
@@ -92,6 +94,10 @@ enum class VmSlotUse : std::uint8_t { kUnknown, kNone, kRequired };
 enum class RegisterUse : std::uint8_t { kUnused, kUsed };
 // A diagnostic only: neither the missing member nor its descendant is emitted.
 // The cause remains typed; domain strings are produced only at JSON boundaries.
+struct OmissionCauseId {
+  std::uint32_t value;
+  auto operator<=>(const OmissionCauseId&) const = default;
+};
 struct OmittedClassMember {
   abc::EntityOffset constructor;
   abc::EntityOffset member;
@@ -106,6 +112,8 @@ struct OmittedClassMember {
   std::optional<analysis::InternalValueEvidence> internal_value;
   std::optional<ExceptionControlError> control;
   std::optional<ExceptionRegionEvidence> exception_region;
+  std::optional<OmissionCauseId> additional_causes;
+  std::optional<TreeLocation> protocol_location;
 };
 struct PrintedSource {
   SourceText text;
@@ -124,6 +132,7 @@ struct PrintedSource {
   bool incomplete = false;
   bool arkts = false;
   std::vector<OmittedClassMember> omitted_members;
+  std::vector<std::shared_ptr<const FailureCauseChain>> omission_causes;
   std::vector<EnvironmentCleanupSite> environment_cleanup;
 };
 enum class SourceForm : std::uint8_t { kFunction, kRecord };

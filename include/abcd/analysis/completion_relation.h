@@ -75,9 +75,11 @@ struct CompletionRelationFailure {
   std::optional<CompletionEdge> edge;
   std::optional<SsaValueId> value;
 };
+enum class CompletionReplay : std::uint8_t { kAwaits, kAllProtocols };
 struct CompletionRelationBudget {
   SemanticBudget resources;
   std::size_t states = std::numeric_limits<std::size_t>::max();
+  CompletionReplay replay = CompletionReplay::kAwaits;
 };
 struct CompletionRelationCost { std::size_t peak_bytes, states; std::uint64_t work; };
 // Matching immutable synchronous body/ExceptionFlow/ExceptionSsa, built by the

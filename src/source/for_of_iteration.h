@@ -1,11 +1,8 @@
 #ifndef ABCD_SOURCE_FOR_OF_ITERATION_H_
 #define ABCD_SOURCE_FOR_OF_ITERATION_H_
 #include "for_of_identity.h"
+#include "abcd/source/for_of_failure.h"
 namespace abcd::source {
-enum class ForOfIterationError : std::uint8_t {
-  kInput, kIdentity, kEntry, kAdvance, kDone, kBinding, kActivation,
-  kCorrespondence, kAcquisitionSemantics, kResourceLimit, kWorkLimit
-};
 struct ForOfIterationFailure {
   ForOfIterationError kind;
   std::optional<IteratorProtocolId> protocol;

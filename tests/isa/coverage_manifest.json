@@ -11165,6 +11165,10 @@
     {
       "test": "isa_environment_renewal_source_test",
       "producer": "tests/isa/environment_renewal_test.py"
+    },
+    {
+      "test": "isa_completion_ports_source_test",
+      "producer": "tests/isa/completion_ports_test.py"
     }
   ]
 }

@@ -24,6 +24,7 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
   if(const auto* f=std::get_if<ForOfIterationFailure>(&checked))throw *f;
   q.Step(std::get<std::uint64_t>(checked));
   const auto& control=source.control;ForOfEmissionView out;
+  out.completion_ports=source.ownership.Summary().completion_ports;
   const auto copy=[&](auto& to,const auto& from){q.Array(to,from.size());std::copy(from.begin(),from.end(),to.begin());};
   const auto& f=source.ownership.Forwarding();copy(out.forwarding.regions,f.regions);copy(out.forwarding.blocks,f.blocks);copy(out.forwarding.operations,f.operations);copy(out.forwarding.exits,f.exits);
   q.Array(out.loops,plan.identity.loops.size());q.Array(out.wrappers,control.skeleton.loops.size());
@@ -60,6 +61,29 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
     q.Require(arm || node.next,Error::kEntry);
     const auto& acquire=g.ops[loop.acquisition.value];q.Require(acquire.use_count==1);
     out.loops[i]={loop.protocol,id,*header,decision,arm?*arm:*node.next,*success,*exhausted,acquire.first_use,loop.key};
+  }
+  if(out.completion_ports) {
+    std::pmr::vector<std::uint8_t> ready(control.skeleton.loops.size(),0,&q.memory);
+    std::pmr::vector<std::optional<IteratorProtocolId>> nearest(control.skeleton.loops.size(),{},&q.memory);
+    std::pmr::vector<LoopId> path(&q.memory);
+    for(std::uint32_t l=0;l<nearest.size();++l) {
+      if(ready[l])continue;std::optional<LoopId> current=LoopId{l};path.clear();
+      while(current) {
+        q.Step();q.Require(current->value<nearest.size());if(ready[current->value])break;
+        q.Require(path.size()<nearest.size());
+        path.push_back(*current);current=control.skeleton.loops[current->value].parent;
+      }
+      auto parent=current?nearest[current->value]:std::nullopt;
+      for(auto p=path.size();p!=0;--p) {
+        q.Step();const auto id=path[p-1].value;
+        if(out.wrappers[id])parent=IteratorProtocolId{*out.wrappers[id]};
+        nearest[id]=parent;ready[id]=1;
+      }
+    }
+    for(auto& loop:out.loops) {
+      q.Step();const auto parent=control.skeleton.loops[loop.loop.value].parent;
+      loop.enclosing=parent?nearest[parent->value]:std::nullopt;
+    }
   }
   for(const auto& node:control.skeleton.nodes) {
     q.Step();const auto* transfer=std::get_if<LoopTransfer>(&node.synthetic);
@@ -100,7 +124,7 @@ std::variant<std::uint64_t,ForOfIterationFailure> VerifyForOfEmissionView(
   auto built=BuildForOfEmissionView(g,i,p,b);if(const auto* f=std::get_if<ForOfIterationFailure>(&built))return *f;
   const auto& actual=std::get<ForOfEmissionView>(built);const auto cost=view.loops.size()+view.wrappers.size()+view.closes.size()+view.ports.size()+view.close_blocks.size()+view.forwarding.regions.size()+view.forwarding.blocks.size()+view.forwarding.operations.size()+view.forwarding.exits.size();
   if(cost>b.work-actual.work)return ForOfIterationFailure{Error::kWorkLimit};
-  if(!(actual.forwarding==view.forwarding) || actual.loops!=view.loops || actual.wrappers!=view.wrappers || actual.closes!=view.closes || actual.ports!=view.ports || actual.close_blocks!=view.close_blocks)return ForOfIterationFailure{Error::kCorrespondence};
+  if(actual.completion_ports!=view.completion_ports || !(actual.forwarding==view.forwarding) || actual.loops!=view.loops || actual.wrappers!=view.wrappers || actual.closes!=view.closes || actual.ports!=view.ports || actual.close_blocks!=view.close_blocks)return ForOfIterationFailure{Error::kCorrespondence};
   return actual.work+cost;
 }
 }

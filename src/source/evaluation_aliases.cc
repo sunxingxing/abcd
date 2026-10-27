@@ -49,6 +49,12 @@ std::optional<ValueId> AliasInput(const ValueProgram& graph, const ValueOp& op) 
   if (value.domain.IsEmpty() || value.domain.Join(admitted) != admitted) return {};
   return *source;
 }
+bool PayloadTransport(const ValueProgram& graph,const EvaluationPlan& plan,OpId id) {
+  if(!plan.for_of || !plan.for_of->completion_ports || !ForOfOperation(plan,id))return false;
+  const auto& op=graph.ops[id.value];return op.result && !ForOfValue(plan,*op.result) &&
+      std::holds_alternative<ValueCopy>(op.operation) && CanErasePureOp(op) &&
+      graph.values[op.result->value].domain.IsLanguage();
+}
 ValueIdentities IdentityFacts(const ValueProgram& graph, AliasQuota& quota) {
   auto indexed = AnalyzeValueIdentities(graph, quota.Remaining());
   if (const auto* error = std::get_if<ValueSimplifyError>(&indexed))
@@ -97,7 +103,7 @@ std::variant<EvaluationAliasCost, EvaluationFailure> BuildEvaluationAliases(
     }
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       quota.Step();
-      if (plan.operations[i].kind == EvaluationKind::kElidedPure || ForOfOperation(plan,{static_cast<std::uint32_t>(i)})) continue;
+      if (plan.operations[i].kind == EvaluationKind::kElidedPure || (ForOfOperation(plan,{static_cast<std::uint32_t>(i)}) && !PayloadTransport(graph,plan,{static_cast<std::uint32_t>(i)}))) continue;
       const auto& op = graph.ops[i];
       if (const auto source = AliasInput(graph, op)) {
         Require(*source != *op.result, Error::kOwnership);
@@ -122,7 +128,7 @@ std::variant<EvaluationAliasCost, EvaluationFailure> BuildEvaluationAliases(
       const auto* result = std::get_if<OpResult>(&graph.values[i].origin);
       const auto root = identities.canonical[i];
       if (!result || root == value || !SourceIdentityRoot(graph, root) ||
-          (plan.operations[result->op.value].kind == EvaluationKind::kElidedPure || ForOfOperation(plan,result->op))) continue;
+          (plan.operations[result->op.value].kind == EvaluationKind::kElidedPure || (ForOfOperation(plan,result->op) && !PayloadTransport(graph,plan,result->op)))) continue;
       // The equation index certifies actual pure copies, including first
       // materializations of a collapsed phi. Real mutable phi/catch roots keep
       // their original first snapshot; later ordinary aliases still compress.
@@ -177,7 +183,7 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyEvaluationAliases(
         Require(!result || plan.operations[result->op.value].kind != EvaluationKind::kAlias, Error::kOwnership);
         continue;
       }
-      Require(result && (plan.operations[result->op.value].kind == EvaluationKind::kAlias || std::holds_alternative<ValueCopyProperties>(graph.ops[result->op.value].operation)), Error::kOwnership);
+      Require(result && (plan.operations[result->op.value].kind == EvaluationKind::kAlias || PayloadTransport(graph,plan,result->op) || std::holds_alternative<ValueCopyProperties>(graph.ops[result->op.value].operation)), Error::kOwnership);
       const auto& op = graph.ops[result->op.value];
       const auto source = AliasInput(graph, op);
       Require(op.result == ValueId{static_cast<std::uint32_t>(i)} &&

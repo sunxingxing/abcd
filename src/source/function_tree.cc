@@ -109,7 +109,7 @@ class TreeBuilder {
       if(const auto* f=std::get_if<ForOfIterationFailure>(&view)) {
         if(f->kind==ForOfIterationError::kResourceLimit)throw Error::kResourceLimit;
         if(f->kind==ForOfIterationError::kWorkLimit)throw Error::kWorkLimit;
-        Fail(Error::kControl,ForOfEvaluationFailure(graph_,*f),TreeObligation::kForOfCorrespondence);
+        Fail(Error::kControl,ForOfEvaluationFailure(graph_,*f,evaluation_.for_of->completion_ports.get()),TreeObligation::kForOfCorrespondence);
       }
       iteration_=std::get<ForOfEmissionView>(std::move(view));Admit(iteration_->allocated_bytes,1);Step(iteration_->work);
     }

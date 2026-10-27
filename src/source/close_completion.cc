@@ -1,6 +1,7 @@
 #include "close_completion.h"
 #include "close_boundary.h"
 #include "close_loop_body.h"
+#include "completion_ports.h"
 
 #include "../analysis/idf_scratch.h"
 #include "../analysis/value_phi.h"
@@ -38,14 +39,14 @@ class Proof {
  public:
   Proof(const abc::MethodBody& body,abc::ProfileId profile,const ValueProgram& g,const PhasedValueInput& in,
       const ExceptionPlan& plan,const IteratorKeys& keys,const IteratorProtocolScan& scan,
-      SemanticBudget budget,bool verify,SourceContract contract):body_(body),profile_(profile),g_(g),in_(in),plan_(plan),keys_(keys),scan_(scan),q_(budget),
+      SemanticBudget budget,bool verify,SourceContract contract,const CompletionPorts* ports,CompletionReplay replay):body_(body),profile_(profile),g_(g),in_(in),plan_(plan),keys_(keys),scan_(scan),q_(budget),
       before_(&q_.memory),commit_(&q_.memory),op_(&q_.memory),calls_(&q_.memory),
-      pred_offsets_(&q_.memory),preds_(&q_.memory),marks_(&q_.memory),body_ports_(&q_.memory),body_members_(&q_.memory),verify_(verify),contract_(contract) {
+      pred_offsets_(&q_.memory),preds_(&q_.memory),marks_(&q_.memory),body_ports_(&q_.memory),body_members_(&q_.memory),verify_(verify),contract_(contract),ports_(ports),replay_(ports?CompletionReplay::kAllProtocols:replay) {
     constexpr std::uint64_t kWorkPerInput=4096;
     const auto n=std::uint64_t(in.flow.nodes.size())+g.uses.size()+g.values.size()+scan.regions.size()+1;
     q_.Require(n<=UINT32_MAX,CloseCompletionError::kResourceLimit);
     q_.left=q_.initial=std::min(q_.left,kWorkPerInput*n*(1+std::bit_width(n)));
-    auto derived=DeriveCloseEntries(body,profile,g,in,plan,keys,scan,q_.Remaining());
+    auto derived=DeriveCloseEntries(body,profile,g,in,plan,keys,scan,q_.Remaining(),replay_);
     if(const auto* f=std::get_if<CloseEntryFailure>(&derived))Fail(*f);
     entries_=std::get<CloseEntries>(std::move(derived));
     q_.memory.Observe(entries_.peak_bytes);q_.Step(entries_.work);q_.memory.Retain(Retained(entries_));
@@ -53,7 +54,7 @@ class Proof {
       // The independent backwards entry/guard derivation is essential: exit
       // tuples alone cannot establish what completion entered this close.
       q_.memory.Observe(q_.memory.Available());
-      const auto checked=VerifyCloseEntries(body,profile,g,in,plan,keys,scan,entries_,q_.Remaining());
+      const auto checked=VerifyCloseEntries(body,profile,g,in,plan,keys,scan,entries_,q_.Remaining(),replay_);
       if(const auto* f=std::get_if<CloseEntryFailure>(&checked))Fail(*f);
       q_.Step(std::get<std::uint64_t>(checked));
     }
@@ -65,7 +66,7 @@ class Proof {
     Index();BodyDominance();
   }
   CloseCompletionSummary Run() {
-    CloseCompletionSummary out{keys_.method,g_.revision,g_.cfg_revision};
+    CloseCompletionSummary out{keys_.method,g_.revision,g_.cfg_revision};out.replay=replay_;
     std::size_t count=0;for(const auto& c:entries_.closes){q_.Step();count+=c.entries.size();}
     q_.Reserve(out.entries,count);q_.Reserve(out.regions,entries_.closes.size());
     // Close semantics first, body boundaries second. Every inline copy must
@@ -127,7 +128,7 @@ class Proof {
         At(e,CloseObligation::kReference)=references[r];
         At(e,CloseObligation::kPriority)=Priority(c,i,region);
         At(e,CloseObligation::kOwnership)=ownership;
-        if(!nested[c.protocol.value])At(e,CloseObligation::kNested)={CloseProofState::kVerified,{}};
+        if(!nested[c.protocol.value] || (ports_ && ownership.state==CloseProofState::kVerified))At(e,CloseObligation::kNested)={CloseProofState::kVerified,{}};
         else At(e,CloseObligation::kNested)=Missing(c,CloseCompletionError::kNested,{},i);
         out.entries.push_back(std::move(e));
       }
@@ -305,7 +306,7 @@ class Proof {
     const CloseOutcomeQuery query{g_.phases[g_.ops[c.read.value].block.value].input,
         g_.phases[g_.ops[r.call->value].block.value].input,ExternalExceptionNoHole(contract_)};
     auto result=AnalyzeCloseOutcomeRelation(body_,profile_,in_.frame.registers,in_.flow,in_.ssa,
-        query,incoming,c.exits,{q_.Remaining()});
+        query,incoming,c.exits,{q_.Remaining(),std::numeric_limits<std::size_t>::max(),replay_});
     if(const auto* f=std::get_if<CompletionRelationFailure>(&result))
       throw CloseCompletionFailure{f->kind==CompletionRelationError::kResourceLimit?CloseCompletionError::kResourceLimit:
           f->kind==CompletionRelationError::kWorkLimit?CloseCompletionError::kWorkLimit:CloseCompletionError::kCorrespondence,
@@ -316,7 +317,7 @@ class Proof {
         r.outcomes->comparisons.capacity()*sizeof(NonThrowingComparison)+r.outcomes->catch_payloads.capacity()*sizeof(CatchPayloadFact)+r.outcomes->events.capacity()*sizeof(CloseEventFact));
     if(verify_) {
       const auto verified=VerifyCloseOutcomeRelation(body_,profile_,in_.frame.registers,in_.flow,in_.ssa,
-          query,incoming,c.exits,*r.outcomes,{q_.Remaining()});
+          query,incoming,c.exits,*r.outcomes,{q_.Remaining(),std::numeric_limits<std::size_t>::max(),replay_});
       if(const auto* f=std::get_if<CompletionRelationFailure>(&verified))
         throw CloseCompletionFailure{f->kind==CompletionRelationError::kResourceLimit?CloseCompletionError::kResourceLimit:
             f->kind==CompletionRelationError::kWorkLimit?CloseCompletionError::kWorkLimit:CloseCompletionError::kCorrespondence,
@@ -363,7 +364,7 @@ class Proof {
   }
   CloseObligationResult Ownership(const DerivedClose& c,CloseCompletionRegion& r) {
     if(!r.outcomes)return Missing(c,CloseCompletionError::kOwnership);
-    const CloseBodyIndex body_index{&in_.flow,before_,commit_,&body_dom_,body_ports_,body_members_};
+    const CloseBodyIndex body_index{&in_.flow,before_,commit_,&body_dom_,body_ports_,body_members_,ports_,replay_};
     auto proof=ProveCloseBoundary(body_,profile_,in_.flow,in_.frame.registers,plan_,scan_,c,r,q_.Remaining(),verify_,&body_index);
     if(const auto* f=std::get_if<CloseCompletionFailure>(&proof))throw *f;
     r.boundary=std::get<CloseBoundaryProof>(std::move(proof));
@@ -401,11 +402,25 @@ class Proof {
   std::uint32_t generation_=0;
   bool verify_;
   SourceContract contract_;
+  const CompletionPorts* ports_;
+  CompletionReplay replay_;
 };
 std::variant<CloseCompletionSummary,CloseCompletionFailure> Build(const abc::MethodBody& body,abc::ProfileId profile,
     const ValueProgram& g,const PhasedValueInput& in,const ExceptionPlan& plan,const IteratorKeys& keys,
-    const IteratorProtocolScan& scan,SemanticBudget budget,bool verify,SourceContract contract) {
-  try {return Proof(body,profile,g,in,plan,keys,scan,budget,verify,contract).Run();}
+    const IteratorProtocolScan& scan,SemanticBudget budget,bool verify,SourceContract contract,
+    std::shared_ptr<const CompletionPorts> ports,CompletionReplay replay) {
+  try {
+    std::uint64_t checked_work=0;
+    if(ports) {
+      auto checked=VerifyCompletionPorts(body,profile,g,in,plan,keys,scan,*ports,budget,contract);
+      if(const auto* e=std::get_if<CompletionPortFailure>(&checked))return CloseCompletionFailure{
+        e->kind==CompletionPortError::kResourceLimit?CloseCompletionError::kResourceLimit:
+        e->kind==CompletionPortError::kWorkLimit?CloseCompletionError::kWorkLimit:CloseCompletionError::kCorrespondence};
+      checked_work=std::get<std::uint64_t>(checked);budget.work-=checked_work;
+    }
+    auto result=Proof(body,profile,g,in,plan,keys,scan,budget,verify,contract,ports.get(),replay).Run();
+    result.work+=checked_work;result.completion_ports=std::move(ports);return result;
+  }
   catch(const CloseCompletionFailure& f){return f;}
   catch(const std::bad_alloc&){return CloseCompletionFailure{CloseCompletionError::kResourceLimit};}
   catch(const std::length_error&){return CloseCompletionFailure{CloseCompletionError::kResourceLimit};}
@@ -437,18 +452,19 @@ std::optional<ClosePriorityReason> ClosePriorityMismatch(const analysis::Pending
 }
 std::variant<CloseCompletionSummary,CloseCompletionFailure> AnalyzeCloseCompletion(const abc::MethodBody& body,
     abc::ProfileId profile,const ValueProgram& g,const PhasedValueInput& in,const ExceptionPlan& plan,
-    const IteratorKeys& keys,const IteratorProtocolScan& scan,SemanticBudget budget,SourceContract contract) {
-  return Build(body,profile,g,in,plan,keys,scan,budget,false,contract);
+    const IteratorKeys& keys,const IteratorProtocolScan& scan,SemanticBudget budget,SourceContract contract,
+    std::shared_ptr<const CompletionPorts> ports,CompletionReplay replay) {
+  return Build(body,profile,g,in,plan,keys,scan,budget,false,contract,std::move(ports),replay);
 }
 std::variant<std::uint64_t,CloseCompletionFailure> VerifyCloseCompletion(const abc::MethodBody& body,
     abc::ProfileId profile,const ValueProgram& g,const PhasedValueInput& in,const ExceptionPlan& plan,
     const IteratorKeys& keys,const IteratorProtocolScan& scan,const CloseCompletionSummary& supplied,SemanticBudget budget,SourceContract contract) {
-  auto rebuilt=Build(body,profile,g,in,plan,keys,scan,budget,true,contract);
+  auto rebuilt=Build(body,profile,g,in,plan,keys,scan,budget,true,contract,supplied.completion_ports,supplied.replay);
   if(const auto* f=std::get_if<CloseCompletionFailure>(&rebuilt))return *f;
   const auto& expected=std::get<CloseCompletionSummary>(rebuilt);auto work=expected.work;
   const auto step=[&](){if(work==budget.work)return false;++work;return true;};
   if(expected.method!=supplied.method || expected.revision!=supplied.revision || expected.cfg_revision!=supplied.cfg_revision ||
-      expected.entries.size()!=supplied.entries.size() || expected.regions.size()!=supplied.regions.size())
+      expected.replay!=supplied.replay || expected.entries.size()!=supplied.entries.size() || expected.regions.size()!=supplied.regions.size())
     return CloseCompletionFailure{CloseCompletionError::kCorrespondence};
   for(std::size_t i=0;i<expected.entries.size();++i) {
     if(!step())return CloseCompletionFailure{CloseCompletionError::kWorkLimit};

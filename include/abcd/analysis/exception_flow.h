@@ -32,6 +32,8 @@ struct ExceptionFlow {
   // Borrowed normalization is retained for independent raw-event replay.
   // This does not certify the async owner or its original resume correspondence.
   std::vector<AwaitSite> awaits;
+  std::vector<YieldSite> yields;
+  std::vector<PatternSite> patterns;
 };
 using ExceptionFlowResult = std::variant<ExceptionFlow, SemanticFailure,
                                          FlowFailure, DispatchFailure>;

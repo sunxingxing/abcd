@@ -2,7 +2,7 @@
 #define ABCD_SOURCE_FOR_OF_EVALUATION_H_
 #include "evaluation_plan.h"
 namespace abcd::source {
-EvaluationFailure ForOfEvaluationFailure(const analysis::ValueProgram&,ForOfIterationFailure);
+EvaluationFailure ForOfEvaluationFailure(const analysis::ValueProgram&,ForOfIterationFailure,const CompletionPorts* = nullptr);
 std::optional<EvaluationFailure> BuildForOfEvaluation(const analysis::ValueProgram&,
     const ForOfEvaluationInput*,EvaluationPlan&,analysis::SemanticBudget&);
 std::variant<std::uint64_t,EvaluationFailure> VerifyForOfEvaluation(const analysis::ValueProgram&,

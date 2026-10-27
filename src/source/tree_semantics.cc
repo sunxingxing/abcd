@@ -6,6 +6,7 @@
 
 #include "../analysis/value_phi.h"
 #include "class_initialization_ports.h"
+#include "completion_ports.h"
 #include "exception_tree.h"
 #include "original_flow.h"
 #include "parameter_expression_tree.h"
@@ -50,7 +51,21 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
       const auto copy=[&](auto& to,const auto& from){checked.Array(to,from.size());std::copy(from.begin(),from.end(),to.begin());};
       RequireTree(exceptions&&exceptions->for_of,TreeStructureError::kOwnership);
       std::vector<std::optional<OriginalCloseMember>> members;checked.Array(members,exceptions->input.flow.nodes.size());
-      for(const auto& region:exceptions->for_of->ownership.Summary().regions)for(const auto& member:region.members){checked.Step();RequireTree(member.node.value<members.size(),TreeStructureError::kOwnership);const auto old=members[member.node.value];RequireTree(!old||old->protocol==region.protocol,TreeStructureError::kOwnership);members[member.node.value]=OriginalCloseMember{region.protocol,member.role};}
+      for(const auto& region:exceptions->for_of->ownership.Summary().regions)for(const auto& member:region.members){
+        checked.Step();RequireTree(member.node.value<members.size(),TreeStructureError::kOwnership);
+        auto& old=members[member.node.value];
+        if(old && old->protocol!=region.protocol) {
+          const auto* ports=retained.view.completion_ports.get();
+          checked.Step(2*(1+std::bit_width(ports?ports->members.size():0)));
+          RequireTree(ports && CompletionPortOwns(*ports,member.node,old->protocol) &&
+              CompletionPortOwns(*ports,member.node,region.protocol),TreeStructureError::kOwnership);
+          const auto event=[](CloseMemberRole role){return role==CloseMemberRole::kReturnRead ||
+              role==CloseMemberRole::kReturnCall || role==CloseMemberRole::kResultCheck;};
+          RequireTree(!event(old->role) || !event(member.role),TreeStructureError::kOwnership);
+          if(event(old->role) || (!event(member.role) && old->protocol<region.protocol))continue;
+        }
+        old=OriginalCloseMember{region.protocol,member.role};
+      }
       checked.Array(retained.close_members,graph.phases.size());
       for(std::uint32_t b=0;b<graph.phases.size();++b){checked.Step();RequireTree(graph.phases[b].input.value<members.size(),TreeStructureError::kOwnership);retained.close_members[b]=members[graph.phases[b].input.value];}
       const auto& plan=*evaluation.for_of;

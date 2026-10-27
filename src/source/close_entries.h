@@ -70,7 +70,7 @@ struct CloseEntries {
 [[nodiscard]] std::variant<CloseEntries, CloseEntryFailure> DeriveCloseEntries(
     const abc::MethodBody&, abc::ProfileId, const analysis::ValueProgram&,
     const analysis::PhasedValueInput&, const ExceptionPlan&, const IteratorKeys&,
-    const IteratorProtocolScan&, analysis::SemanticBudget = {});
+    const IteratorProtocolScan&, analysis::SemanticBudget = {}, analysis::CompletionReplay = analysis::CompletionReplay::kAwaits);
 // Rebuilds indexes and derivations from immutable inputs. Producer discovery
 // uses forward dominator stacks; verification discovers guards backwards on
 // dominance ancestors. Neither producer entries nor its relation are used to
@@ -79,6 +79,6 @@ struct CloseEntries {
 [[nodiscard]] std::variant<std::uint64_t, CloseEntryFailure> VerifyCloseEntries(
     const abc::MethodBody&, abc::ProfileId, const analysis::ValueProgram&,
     const analysis::PhasedValueInput&, const ExceptionPlan&, const IteratorKeys&,
-    const IteratorProtocolScan&, const CloseEntries&, analysis::SemanticBudget = {});
+    const IteratorProtocolScan&, const CloseEntries&, analysis::SemanticBudget = {}, analysis::CompletionReplay = analysis::CompletionReplay::kAwaits);
 }  // namespace abcd::source
 #endif

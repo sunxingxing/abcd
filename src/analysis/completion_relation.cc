@@ -135,8 +135,12 @@ template<bool Outcomes> class Relation {
     work_limit_=std::min(budget.resources.work,kWorkPerInput*input*(1+std::bit_width(input)));
     arena_.LimitWork(work_limit_);
     const auto dispatch=raw_.Select(profile);
-    raw_.Allocate();detail::NormalizedRawSemantics semantics(profile,frame,flow.awaits,flow.frame?&*flow.frame:nullptr);
-    raw_.Connect(dispatch,profile,frame,nullptr,flow.awaits.empty()?nullptr:&semantics);
+    raw_.Allocate();
+    const bool all=budget.replay==CompletionReplay::kAllProtocols;
+    detail::NormalizedRawSemantics semantics(profile,frame,flow.awaits,flow.frame?&*flow.frame:nullptr,
+        all?std::span<const YieldSite>{flow.yields}:std::span<const YieldSite>{},
+        all?std::span<const PatternSite>{flow.patterns}:std::span<const PatternSite>{});
+    raw_.Connect(dispatch,profile,frame,nullptr,(!all && flow.awaits.empty())?nullptr:&semantics);
     const auto nodes=raw_.Nodes();
     if(flow.instructions.size()!=body.instructions.size()) Fail(CompletionRelationError::kInput);
     raw_to_flow_.resize(nodes.size());flow_to_raw_.resize(flow.nodes.size());

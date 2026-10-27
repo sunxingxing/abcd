@@ -3,6 +3,7 @@
 
 #include "abcd/analysis/environment_renewal.h"
 #include "class_creator.h"
+#include "completion_ports.h"
 #include "exception_tree.h"
 #include "function_context.h"
 #include "module_aliases.h"
@@ -52,6 +53,7 @@ struct PhasedControlFailure {
   // Progress past a pre-existing omitted-member input gap does not discard
   // the surrounding partial class. Never grants a body or new omission kind.
   std::optional<PhasedInputFailure> input_gap;
+  std::optional<CompletionPortFailure> completion_ports_failure;
 };
 // Owns original exception analyses and the checked working body before child
 // evaluation. Family discovery must inspect actual creation operations here,
@@ -77,7 +79,9 @@ class PhasedBody {
       std::span<const analysis::YieldSite> yields = {},
       std::span<const analysis::LanguageLoadFact> initialized_modules = {},
       const ModuleSlotSet* entry_modules = nullptr,
-      std::span<const analysis::PatternSite> patterns = {});
+      std::span<const analysis::PatternSite> patterns = {},
+      const ExceptionControlRegionFailure* completion_retry = nullptr,
+      std::size_t retained_bytes = 0, std::uint64_t retained_work = 0);
   const analysis::ValueProgram& Graph() const;
   const PhasedClassSites& Classes() const;
   const RouteInputIdentity& Identity() const;

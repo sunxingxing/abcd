@@ -3,6 +3,7 @@
 #include "tree_print_trace.h"
 #include "borrowed_print_trees.h"
 #include "record_print_sink.h"
+#include "abcd/analysis/detail/prepaid_shared.h"
 #include "abcd/source/counting_sink.h"
 #include "cell_names.h"
 #include "deferred_failure.h"
@@ -696,6 +697,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       ++omission_work;
     };
     std::vector<OmittedClassMember> omitted_members;
+    std::vector<std::shared_ptr<const FailureCauseChain>> omission_causes;
     std::vector<const FunctionTree*> omission_trees;
     const auto grow_omissions = [&](auto& items) {
       if (items.size() < items.capacity()) return;
@@ -738,6 +740,19 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           if (const auto* proof = std::get_if<PhasedControlFailure>(&gap.failure)) {
             const auto& region = std::get<ExceptionControlRegionFailure>(proof->cause);
             item.control = region.kind; item.exception_region = region.exception_region;
+            if (proof->completion_ports_failure) {
+              item.protocol_location=proof->completion_ports_failure->location;
+              retain((kMaxFailureCauses + 1) * kMaxFailureDomainBytes);
+              analysis::detail::IdfScratch memory{budget.bytes};std::size_t charged=0;
+              auto causes = std::allocate_shared<FailureCauseChain>(
+                  analysis::detail::PrepaidSharedAllocator<FailureCauseChain>{memory,charged});
+              retain(charged);
+              CollectFailureCauses(*proof->completion_ports_failure, *causes);
+              if(omission_causes.size()>=UINT32_MAX)throw fail(Error::kRecordBudget);
+              grow_omissions(omission_causes);
+              item.additional_causes=OmissionCauseId{static_cast<std::uint32_t>(omission_causes.size())};
+              omission_causes.push_back(std::move(causes));
+            }
           }
           omitted_members.push_back(item);
         };
@@ -917,6 +932,7 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     source.text = sink.Finish();
     source.incomplete = printed.incomplete;source.arkts=printed.arkts;
     source.omitted_members = std::move(omitted_members);
+    source.omission_causes=std::move(omission_causes);
     source.environment_cleanup = std::move(cleanup_sites);
     return source;
   } catch (const RecordProgramFailure& failure) { return failure; }

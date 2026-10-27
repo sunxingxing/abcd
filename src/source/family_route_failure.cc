@@ -45,6 +45,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     else if constexpr (requires { error.reason; }) merge(error.reason);
     else static_assert(requires { error.kind; });
     if constexpr (requires { error.renewal; }) if (error.renewal) merge(*error.renewal);
+    if constexpr (requires { error.completion_ports_failure; }) if (error.completion_ports_failure) merge(*error.completion_ports_failure);
     if constexpr (requires { error.throw_domain; }) if(error.throw_domain) merge(*error.throw_domain);
     if constexpr (std::is_same_v<T, analysis::SemanticFailure>) merge(error.ssa_cause);
     if constexpr (std::is_same_v<T, analysis::RegisterUseFailure>)
@@ -94,6 +95,11 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     }
     if constexpr (std::is_same_v<T, SendableFailure>) {result.sendable=error;result.method=error.method;result.pc=error.pc;result.working_pc=error.working_pc;}
     if constexpr (std::is_same_v<T, ConcurrentFailure>) result.concurrent=error;
+    if constexpr (std::is_same_v<T, CompletionPortFailure>) if(error.location) {
+      result.method=error.location->method;result.pc=error.location->pc;result.working_pc=error.location->working_pc;
+      result.tree=TreeFailureEvidence{TreeObligation::kForOfCorrespondence,*error.location};
+    }
+    if constexpr (std::is_same_v<T, EvaluationFailure>) if(error.evaluation.protocol_region) result.exception_region=error.evaluation.protocol_region;
     if constexpr (std::is_same_v<T, EvaluationFailure>) if(error.evaluation.concurrent) result.concurrent=error.evaluation.concurrent;
     if constexpr (std::is_same_v<T, AsyncCompletionFailure>) {
       result.async = error.async; result.method = error.async.location.method;

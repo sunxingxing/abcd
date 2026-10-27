@@ -487,6 +487,13 @@ class OperandCheck {
           InputAt(0, Node<DynamicImportExpr>(expression).specifier);
         } else if constexpr (std::is_same_v<T, analysis::ValueArrayPattern>) {
           const auto& pattern=Node<ArrayPatternExpr>(expression);
+          if(original_.iterations && original_.iterations->view.completion_ports) {
+            // The pattern owner certifies one native acquire/step/close action.
+            // Retain its own exception port inside the enclosing iterator;
+            // the internal record result never substitutes for that action.
+            original_.operations[i].intrinsic_expression=expression;
+            original_.operations[i].completion=OriginalCompletionBoundary::kIntrinsicAction;
+          }
           RequireMeaning(ArrayPatternAcquisition(tree_.identity.contract) && pattern.action==operation.action, Error::kUnsupportedOperation);
           InputAt(0, pattern.operand);
         } else if constexpr (std::is_same_v<T, analysis::ValueNewTarget>) {

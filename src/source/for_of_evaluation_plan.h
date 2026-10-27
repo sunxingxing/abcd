@@ -16,12 +16,19 @@ struct ForOfUseDisposition {
   std::optional<IteratorProtocolId> protocol;
   bool operator==(const ForOfUseDisposition&) const = default;
 };
+struct ForOfNativeOutput {
+  analysis::ValueId value;
+  analysis::UseId occurrence;
+  bool operator==(const ForOfNativeOutput&) const = default;
+};
 struct ForOfEvaluationPlan {
+  std::shared_ptr<const CompletionPorts> completion_ports;
   ForOfIdentityIndex identity;
   ForOfIterationProof iteration;
   ForOfEvents events;
   std::vector<std::optional<ForOfMember>> operations, values;
   std::vector<ForOfUseDisposition> uses;
+  std::vector<ForOfNativeOutput> outputs;
   // Ordinary source binding aliases, separately indexed from private protocol
   // values. Their storage survives a body evaluation, not the whole invocation.
   std::vector<std::optional<IteratorProtocolId>> bindings;

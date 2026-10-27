@@ -1,6 +1,7 @@
 #include "../analysis/normalized_raw_semantics.h"
 #include "close_boundary.h"
 #include "close_loop_body.h"
+#include "completion_ports.h"
 #include "abcd/analysis/raw_event_graph.h"
 #include <algorithm>
 #include <bit>
@@ -25,8 +26,12 @@ class Boundary {
     const auto n=std::uint64_t(flow.nodes.size())+plan.regions.size()+1;
     Require(n<=UINT32_MAX && plan.layout.regions.size()==plan.regions.size() && body.instructions.size()==flow.instructions.size());
     limit_=std::min(budget.work,4096*n*(1+std::bit_width(n)));arena_.LimitWork(limit_);
-    auto dispatch=raw_.Select(profile);raw_.Allocate();analysis::detail::NormalizedRawSemantics semantics(profile,frame,flow.awaits,flow.frame?&*flow.frame:nullptr);
-    raw_.Connect(dispatch,profile,frame,nullptr,flow.awaits.empty()?nullptr:&semantics);
+    auto dispatch=raw_.Select(profile);raw_.Allocate();
+    const bool all=entry_dominators && entry_dominators->replay==CompletionReplay::kAllProtocols;
+    analysis::detail::NormalizedRawSemantics semantics(profile,frame,flow.awaits,flow.frame?&*flow.frame:nullptr,
+        all?std::span<const YieldSite>{flow.yields}:std::span<const YieldSite>{},
+        all?std::span<const PatternSite>{flow.patterns}:std::span<const PatternSite>{});
+    raw_.Connect(dispatch,profile,frame,nullptr,(!all && flow.awaits.empty())?nullptr:&semantics);
     member_.resize(flow.nodes.size());flow_raw_.resize(flow.nodes.size());
     reachable_.resize(raw_.Nodes().size());raw_flow_.resize(raw_.Nodes().size());
     for(const auto& m:r_.members){arena_.Step();Require(m.node.value<member_.size());member_[m.node.value]=true;}
@@ -141,6 +146,9 @@ class Boundary {
     }
     for(const auto& region:scan_.regions) {
       arena_.Step();Require(region.region.value<associated.size());
+      if(entry_dominators_ && entry_dominators_->completion_ports &&
+          entry_dominators_->completion_ports->wrappers[region.region.value])
+        body_wrapper[region.region.value]=true;
       if(region.protocol==c_.protocol && region.role==IteratorRegionRole::kEnclosingHandler) {
         body_wrapper[region.region.value]=true;
         const auto range=plan_.layout.regions[region.region.value].body;

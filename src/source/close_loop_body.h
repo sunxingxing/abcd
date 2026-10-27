@@ -23,6 +23,8 @@ struct CloseBodyIndex {
   // Ports retain ORIGINAL edge identity. Empty spans preserve the old proof.
   std::span<const CloseBodyPort> ports;
   std::span<const CloseBodyMember> members;
+  const CompletionPorts* completion_ports = nullptr;
+  analysis::CompletionReplay replay=analysis::CompletionReplay::kAwaits;
 };
 // Original control only; source ranges are checked AFTER the body is derived.
 // Return protection stays close code; only the body wrapper receives this role.

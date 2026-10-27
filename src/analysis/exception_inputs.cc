@@ -42,7 +42,9 @@ std::variant<ExceptionInputProof, ExceptionInputFailure> VerifyExceptionInputs(
       proof.work_units += arena.Work();
       proof.guarded = values.GuardedPayloads();
     } catch (const ExceptionThrowDomainFailure& error) {
-      auto failure = fail(Error::kMismatchedAnalysis); failure.throw_domain = error.kind; return failure;
+      auto failure = fail(error.kind==ExceptionThrowDomainError::kResourceLimit ||
+          error.kind==ExceptionThrowDomainError::kWorkLimit?Error::kResourceLimit:Error::kMismatchedAnalysis);
+      failure.throw_domain = error.kind; return failure;
     } catch (const RawEventFailure& error) {
       return fail(error.kind == RawEventError::kWorkLimit || error.kind == RawEventError::kResourceLimit
           ? Error::kResourceLimit : Error::kMismatchedAnalysis);

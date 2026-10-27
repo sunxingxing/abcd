@@ -36,6 +36,10 @@ struct TreeRegion {
 class FlowCheck {
   std::vector<std::optional<std::uint32_t>> switch_entries_, switch_tests_;
   std::vector<std::optional<StmtId>> switch_statements_;
+  struct IterationPayloadCheck {ForOfExitPayload expected;ExprId expression;TreeLocation location;};
+  std::vector<IterationPayloadCheck> iteration_payloads_;
+  std::size_t iteration_payload_count_=0;
+  bool sealing_iteration_payloads_=false;
   mutable TreeLocation location_;
   struct LocationScope {
     const FlowCheck& owner; TreeLocation previous;
@@ -520,6 +524,11 @@ class FlowCheck {
     if (enumeration_) edges_->Forwarded(*enumeration_);
     if(iteration_)edges_->ProtocolOwned(*iteration_);
     edges_->Finish();
+    sealing_iteration_payloads_=true;
+    for(std::size_t p=0;p<iteration_payload_count_;++p) {
+      budget_.Step();const auto& check=iteration_payloads_[p];LocationScope location(*this,check.location);
+      IterationPayload(check.expected,check.expression);
+    }
     Arrays();
     Objects();
     ExpressionScopes();
@@ -1753,6 +1762,14 @@ class FlowCheck {
     Require(count == tree_.properties.size(), Error::kPlacement);
   }
   void IterationPayload(const ForOfExitPayload& expected,ExprId id) {
+    if(iteration_ && iteration_->completion_ports && !sealing_iteration_payloads_) {
+      // Control traversal schedules arms after their join. Defer identity
+      // queries until ALL actual phi/catch/snapshot assignments are witnessed;
+      // no successful builder binding is borrowed and no check is dropped.
+      if(iteration_payloads_.empty())budget_.Array(iteration_payloads_,graph_.ops.size()+control_.nodes.size());
+      Require(iteration_payload_count_<iteration_payloads_.size(),Error::kResourceLimit);
+      iteration_payloads_[iteration_payload_count_++]={expected,id,location_};return;
+    }
     Require(id.value<tree_.expressions.size(),Error::kPlacement);
     if(const auto* v=std::get_if<analysis::ValueId>(&expected)) {
       const auto* symbol=std::get_if<SymbolExpr>(&tree_.expressions[id.value].expression);Require(symbol,Error::kPlacement);

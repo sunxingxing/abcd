@@ -3,6 +3,7 @@
 #include "abcd/source/evaluation_failure.h"
 #include "tree_failure_json.h"
 #include "concurrent_failure_json.h"
+#include "exception_region_json.h"
 namespace abcd::source {
 inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
   nlohmann::json j{{"obligation", static_cast<unsigned>(v.obligation)}, {"location", TreeLocationJson(v.location)}};
@@ -20,6 +21,8 @@ inline nlohmann::json EvaluationFailureJson(const EvaluationEvidence& v) {
   }, v.plan_cause);
   if (v.protocol_context) j["protocol_context"] = static_cast<unsigned>(*v.protocol_context);
   if(v.concurrent)j["concurrent"]=ConcurrentJson(*v.concurrent);
+  if(v.for_of)j["for_of"]=static_cast<unsigned>(*v.for_of);
+  if(v.protocol_region)j["protocol_region"]=ExceptionRegionJson(*v.protocol_region);
   if (v.for_in) {
     const auto& f = *v.for_in;
     nlohmann::json item{{"kind", static_cast<unsigned>(f.kind)}};
@@ -111,6 +114,8 @@ inline std::optional<EvaluationEvidence> ParseEvaluationFailure(const nlohmann::
         !FailureOptionalId(c,"route_exit",evidence.route_exit)) return {};
     v.logical_coverage = evidence;
   }
+  if(j.contains("for_of")){if(!FailureNumber(j,"for_of",n)||n>static_cast<unsigned>(ForOfIterationError::kWorkLimit))return {};v.for_of=static_cast<ForOfIterationError>(n);}
+  if(j.contains("protocol_region")){v.protocol_region=ParseExceptionRegionJson(j["protocol_region"]);if(!v.protocol_region)return {};}
   if (j.contains("input_check")) { if (!FailureNumber(j,"input_check",n) || n > static_cast<unsigned>(EvaluationInputCheck::kDynamicImportPremise)) return {}; v.input_check = static_cast<EvaluationInputCheck>(n); }
   if (!FailureOptionalId(j,"use",v.use) || !FailureOptionalId(j,"value",v.value) ||
       !FailureOptionalId(j,"selection_edge",v.selection_edge) || !FailureOptionalId(j,"expected_consumer",v.expected_consumer) || !FailureOptionalId(j,"actual_consumer",v.actual_consumer)) return {};

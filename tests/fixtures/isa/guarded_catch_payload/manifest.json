@@ -41,15 +41,23 @@
    "profile": 6,
    "refusal": [
     {
-     "domain": "abcd::source::PhasedMethodError",
-     "value": 6
+     "domain": "abcd::source::FunctionTreeError",
+     "value": 9
     },
     {
-     "domain": "abcd::source::ExceptionControlError",
+     "domain": "abcd::source::TreeSemanticError",
+     "value": 0
+    },
+    {
+     "domain": "abcd::source::TreeFlowError",
      "value": 4
+    },
+    {
+     "domain": "abcd::source::TreeObligation",
+     "value": 10
     }
    ]
   }
  ],
- "note": "O0; real JS guarded close payloads and catch selections."
+ "note": "O0; real JS guarded close payloads and catch selections. Combined ownership now closes; final tree placement remains an exact typed negative."
 }

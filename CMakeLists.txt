@@ -225,6 +225,7 @@ target_sources(abcd_source PRIVATE src/source/cell_lifetime.cc src/source/phased
 target_sources(abcd_source PRIVATE src/source/cell_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/cell_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/environment_renewal_binding.cc)
+target_sources(abcd_source PRIVATE src/source/completion_ports.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_names.cc)
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
 target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
@@ -471,6 +472,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/guarded_catch_payload_test.py)
     add_test(NAME isa_environment_renewal_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/environment_renewal_test.py)
+    add_test(NAME isa_completion_ports_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_test.py)
     add_test(NAME environment_renewal_scale_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/environment_renewal_scale.py)
     add_test(NAME isa_derived_control_source_test COMMAND ${Python3_EXECUTABLE}
@@ -654,6 +657,16 @@ if(BUILD_TESTING)
   target_link_libraries(method_lookup_test PRIVATE abcd_abc)
   add_test(NAME method_lookup_test COMMAND method_lookup_test)
   add_executable(environment_renewal_test tests/unit/analysis/environment_renewal_test.cc)
+  add_executable(completion_ports_test tests/unit/source/completion_ports_test.cc)
+  target_link_libraries(completion_ports_test PRIVATE abcd_source abcd_corpus)
+  target_compile_definitions(completion_ports_test PRIVATE ABCD_COMPLETION_PORTS_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/completion_ports/ports-O0.abc")
+  add_test(NAME completion_ports_test COMMAND completion_ports_test)
+  add_test(NAME completion_ports_ordinary_try_test COMMAND completion_ports_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/completion_ports/ports-O0.abc caught)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME completion_ports_scale_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_scale_test.py)
+  endif()
   target_link_libraries(environment_renewal_test PRIVATE abcd_source abcd_corpus)
   target_compile_definitions(environment_renewal_test PRIVATE ABCD_ENVIRONMENT_RENEWAL_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/environment_renewal/renewal-O0.abc")
   add_test(NAME environment_renewal_test COMMAND environment_renewal_test)

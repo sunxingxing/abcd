@@ -62,7 +62,7 @@ if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
   }
   if(name==='loop') {
    assert.equal(r.source_status,3,JSON.stringify(r));
-   assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::FunctionTreeError',value:0},{domain:'abcd::source::EvaluationError',value:3},{domain:'abcd::source::EvaluationObligation',value:0},{domain:'abcd::source::TreeObligation',value:16}]);
+   assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::FunctionTreeError',value:0},{domain:'abcd::source::EvaluationError',value:3},{domain:'abcd::source::EvaluationObligation',value:0},{domain:'abcd::source::ForOfIterationError',value:3},{domain:'abcd::source::TreeObligation',value:16}]);
    assert.equal(r.source_failure.pc,25);
    assert.match(run(join(dirname(engine),'close_completion_probe'),
      [join(fixtures,'loop.abc'),String(r.source_failure.method),'--control']), /protocol-control units=/);

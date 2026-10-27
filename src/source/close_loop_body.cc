@@ -1,4 +1,5 @@
 #include "close_loop_body.h"
+#include "completion_ports.h"
 #include "../analysis/idf_scratch.h"
 #include "abcd/analysis/dominators.h"
 #include <algorithm>
@@ -15,16 +16,23 @@ struct NodeLess {
     if(!*left)throw CloseCompletionFailure{CloseCompletionError::kWorkLimit};--*left;return a<b;
   }
 };
+struct RouteLess {
+  std::uint64_t* left;
+  bool operator()(std::uint32_t a,std::uint32_t b)const {
+    if(!*left)throw CloseCompletionFailure{CloseCompletionError::kWorkLimit};--*left;return a<b;
+  }
+};
 class Body {
  public:
   Body(const ExceptionFlow& flow,const ExceptionPlan& plan,const DerivedClose& close,TryId region,
       SemanticBudget budget,bool reverse,const CloseBodyIndex* shared):flow_(flow),plan_(plan),c_(close),region_(region),memory_(budget.bytes),
       left_(budget.work),initial_(budget.work),owned_before_(&memory_),owned_commit_(&memory_),
-      body_(NodeLess{&left_},&memory_),prefix_(NodeLess{&left_},&memory_),suffix_(NodeLess{&left_},&memory_),reverse_(reverse) {
+      qualified_seen_(RouteLess{&left_},&memory_),body_(NodeLess{&left_},&memory_),prefix_(NodeLess{&left_},&memory_),suffix_(NodeLess{&left_},&memory_),reverse_(reverse) {
     Require(region.value<plan.layout.regions.size());
     if(shared) {
       Require(shared->flow==&flow && shared->before.size()==flow.instructions.size() && shared->commit.size()==flow.instructions.size());
       before_=shared->before;commit_=shared->commit;ports_=shared->ports;members_=shared->members;
+      completion_ports_=shared->completion_ports;
     } else {
       owned_before_.resize(flow.instructions.size());owned_commit_.resize(flow.instructions.size());
       for(std::uint32_t n=0;n<flow.nodes.size();++n) {
@@ -60,6 +68,13 @@ class Body {
       for(std::uint8_t j=0;j<node.successor_count;++j) {
         Step();const auto e=static_cast<std::uint8_t>(reverse_?node.successor_count-j-1:j);
         const auto& arc=node.successors[e];const CompletionEdge edge{id,e};
+        if(completion_ports_)if(const auto port=GlobalPort(edge)) {
+          if(arc.kind==ExceptionArcKind::kException)dispatch.push_back(edge);else exits.push_back(edge);
+          const auto& entry=completion_ports_->entries[*port];
+          if(entry.protocol!=c_.protocol && completion_ports_->roots[*port])
+            Follow(*completion_ports_->roots[*port],todo,dispatch,exits);
+          continue;
+        }
         if(arc.kind==ExceptionArcKind::kException) {
           if(ThrowEntry(edge))dispatch.push_back(edge);
           else if(Nested(arc.target)){if(body_.insert(arc.target).second)todo.push_back(arc.target);}
@@ -112,6 +127,18 @@ class Body {
     Sort(todo);Sort(dispatch);Sort(exits);
     Reserve(out.ordinary,todo.size());Reserve(out.transport,todo.size());
     for(const auto id:todo){Step();out.ordinary.push_back(id);if(prefix_.contains(id) || suffix_.contains(id))out.transport.push_back(id);}
+    if(completion_ports_) {
+      const auto& members=completion_ports_->range_members;
+      Step(1+std::bit_width(members.size()));
+      auto member=std::lower_bound(members.begin(),members.end(),range.begin,
+          [](const auto& item,InstructionId begin){return item.instruction<begin;});
+      for(;member!=members.end() && member->instruction<range.end;++member) {
+        Step();if(body_.contains(member->node))continue;
+        if(out.protocol.size()==out.protocol.capacity())Reserve(out.protocol,out.protocol.empty()?1:out.protocol.size()*2);
+        out.protocol.push_back(member->node);
+      }
+      std::sort(out.protocol.begin(),out.protocol.end(),[&](auto a,auto b){Step();return a<b;});
+    } else {
     auto begin=std::lower_bound(members_.begin(),members_.end(),CloseBodyMember{c_.protocol,{}},
         [&](const auto& a,const auto& b){Step();return a<b;});
     for(auto it=begin;it!=members_.end() && it->protocol==c_.protocol;++it) {
@@ -123,6 +150,7 @@ class Body {
         }
         out.protocol.push_back(it->node);
       }
+    }
     }
     Reserve(out.dispatch,dispatch.size());out.dispatch.assign(dispatch.begin(),dispatch.end());
     Reserve(out.exits,exits.size());out.exits.assign(exits.begin(),exits.end());
@@ -155,8 +183,46 @@ class Body {
     return std::binary_search(ports_.begin(),ports_.end(),CloseBodyPort{c_.protocol,edge});
   }
   bool Member(ExceptionNodeId n) {
+    if(completion_ports_) {
+      const auto& members=completion_ports_->members;
+      Step(1+std::bit_width(members.size()));
+      const auto it=std::lower_bound(members.begin(),members.end(),CompletionPortMember{n,{},{}},
+          [](const auto& a,const auto& b){return a<b;});
+      return it!=members.end() && it->node==n;
+    }
     Step(1+std::bit_width(members_.size()));
     return std::binary_search(members_.begin(),members_.end(),CloseBodyMember{c_.protocol,n});
+  }
+  std::optional<std::uint32_t> GlobalPort(CompletionEdge edge) {
+    const auto& entries=completion_ports_->entries;Step(1+std::bit_width(entries.size()));
+    const auto it=std::lower_bound(entries.begin(),entries.end(),edge,
+        [](const auto& a,auto b){return a.original.edge<b;});
+    return it!=entries.end() && it->original.edge==edge?std::optional{static_cast<std::uint32_t>(it-entries.begin())}:std::nullopt;
+  }
+  void Follow(std::uint32_t first,std::pmr::vector<ExceptionNodeId>& body,
+      std::pmr::vector<CompletionEdge>& dispatch,std::pmr::vector<CompletionEdge>& exits) {
+    std::pmr::vector<std::uint32_t> pending(&memory_);pending.push_back(first);
+    for(std::size_t at=0;at<pending.size();++at) {
+      Step();const auto id=pending[at];Require(id<completion_ports_->qualified.size());
+      // Sparse per-query visitation: unrelated global routes do not require
+      // a full inventory-sized clear for every protected body.
+      if(!qualified_seen_.insert(id).second)continue;
+      const auto& route=completion_ports_->qualified[id];const auto& entry=completion_ports_->entries[route.entry];
+      // Reaching THIS iterator's close leaves its body. Foreign close forests
+      // may instead resume ordinary code or an ordinary user catch inside it.
+      if(entry.protocol==c_.protocol)continue;
+      for(auto i=route.first;i<route.first+route.count;++i) {
+        Step();const auto& transition=completion_ports_->transitions[i];
+        if(transition.next){pending.push_back(*transition.next);continue;}
+        const auto& port=completion_ports_->exits[transition.exit];const auto* edge=std::get_if<CompletionEdge>(&port.original.exit);
+        if(!edge)continue;
+        const auto& arc=Node(edge->source).successors[edge->successor];
+        if(arc.kind==ExceptionArcKind::kException)dispatch.push_back(*edge);else exits.push_back(*edge);
+        if(Member(arc.target)){Missing(CloseOwnershipGap::kBodyExit,arc.target,*edge);continue;}
+        if(arc.target==c_.iteration.exit || arc.target==c_.iteration.loop_header)continue;
+        if(body_.insert(arc.target).second)body.push_back(arc.target);
+      }
+    }
   }
   bool ThrowEntry(CompletionEdge edge) {
     // Sorted once; no entry-count x body-size scan. The Catch identity must
@@ -211,6 +277,8 @@ class Body {
   std::span<const std::optional<ExceptionNodeId>> before_,commit_;
   std::span<const CloseBodyPort> ports_;
   std::span<const CloseBodyMember> members_;
+  const CompletionPorts* completion_ports_=nullptr;
+  std::pmr::set<std::uint32_t,RouteLess> qualified_seen_;
   std::pmr::set<ExceptionNodeId,NodeLess> body_,prefix_,suffix_;
   std::pmr::vector<CompletionEdge> entries_{&memory_};
   std::pmr::vector<InstructionId> nested_{&memory_};

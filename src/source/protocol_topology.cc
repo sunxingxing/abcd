@@ -1,4 +1,5 @@
 #include "exception_topology.h"
+#include "completion_ports.h"
 #include <algorithm>
 #include <limits>
 namespace abcd::source {
@@ -72,7 +73,7 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
     Require(!raw[site.input.value]);raw[site.input.value]=id;phase[b]=id;
     t.mapping.units[id.value]=PhaseControlUnit{{b}};
   }
-  std::size_t port=0;
+  std::size_t port=0,entry_count=0;
   std::uint32_t local=0;
   std::vector<CloseOutcomeLeaving> ordered_ports;
   std::optional<OpId> previous_read;
@@ -82,10 +83,6 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
         [&](const auto& a,OpId read){q.Work();return a.read<read;});
     // Regions are original OpId ordered by the certificate producer.
     Require(region!=summary.regions.end() && region->read==entry.read && region->protocol==entry.protocol);
-    const ControlId id{static_cast<std::uint32_t>(count++)};
-    ProtocolCloseUnit unit{};unit.protocol=entry.protocol;unit.entry=entry.source;unit.pending=entry.pending;
-    Require(!region->boundary->regions.empty());
-    unit.first_port=static_cast<std::uint32_t>(port);
     // Relation entry numbers are local to each return-read occurrence.
     if(previous_read!=entry.read) {
       // Each port table is indexed once, never scanned once per close entry.
@@ -95,16 +92,25 @@ ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionP
       std::sort(ordered_ports.begin(),ordered_ports.end(),[&](const auto& a,const auto& b){q.Work();return a.entry<b.entry;});
       previous_read=entry.read;local=0;
     } else ++local;
+    // An entry whose source is already inside a proved close is an implicit
+    // continuation, not another native return/throw action. Its original
+    // edge and every outcome remain in the independently verified port owner.
+    if(summary.completion_ports && members[entry.source.source.value])continue;
+    const ControlId id{static_cast<std::uint32_t>(count++)};
+    ProtocolCloseUnit unit{};unit.protocol=entry.protocol;unit.entry=entry.source;unit.pending=entry.pending;
+    Require(!region->boundary->regions.empty());
+    unit.first_port=static_cast<std::uint32_t>(port);
     auto p=std::lower_bound(ordered_ports.begin(),ordered_ports.end(),local,
         [&](const auto& a,std::uint32_t b){q.Work();return a.entry<b;});
     for(;p!=ordered_ports.end() && p->entry==local;++p) {
       q.Work();Require(port<t.mapping.protocol_ports.size());t.mapping.protocol_ports[port++]=*p;++unit.port_count;
     }
-    Require(unit.port_count!=0);t.mapping.units[id.value]=unit;entries[i]={entry.source,id.value};
+    Require(unit.port_count!=0);t.mapping.units[id.value]=unit;entries[entry_count++]={entry.source,id.value};
   }
   // Each relation exit occurs once per entry; no duplicated storage is charged
   // by the entry table. Inputs remain borrowed under their owner's live grant.
-  Require(port==ports);t.mapping.units.resize(count);
+  Require(summary.completion_ports || port==ports);t.mapping.protocol_ports.resize(port);
+  t.mapping.units.resize(count);entries.resize(entry_count);
   std::sort(entries.begin(),entries.end(),[&](const auto& a,const auto& b){q.Work();return a<b;});
   for(std::size_t i=1;i<entries.size();++i){q.Work();Require(entries[i-1].edge!=entries[i].edge);}
   q.Size(t.blocks,count);q.Size(t.owners,count);q.Size(t.entries,count);

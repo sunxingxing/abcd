@@ -1,6 +1,7 @@
 #include "recovery_flow.h"
 #include "recovery_scratch.h"
 #include "flow_dominance.h"
+#include "completion_ports.h"
 namespace abcd::source {
 namespace {
 using namespace analysis;
@@ -43,6 +44,25 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
   for(const auto& phase:raw.phases){budget.Step();raw_nodes=std::max(raw_nodes,std::size_t{phase.input.value}+1);}
   std::pmr::vector<std::optional<WorkBlockId>> raw_blocks(raw_nodes,{},&scratch);
   for(std::uint32_t b=0;b<raw.phases.size();++b){budget.Step();const auto n=raw.phases[b].input.value;Need(!raw_blocks[n]);raw_blocks[n]=WorkBlockId{b};}
+  const auto* certificate=native.view.completion_ports.get();
+  std::pmr::vector<std::optional<StmtId>> enclosing(tree.statements.size(),{},&scratch);
+  if(certificate) {
+    struct Task {StmtId id;std::optional<StmtId> loop;};
+    std::pmr::vector<Task> tasks(&scratch);tasks.push_back({tree.body,{}});
+    std::pmr::vector<std::uint8_t> seen(tree.statements.size(),0,&scratch);
+    for(std::size_t i=0;i<tasks.size();++i) {
+      budget.Step();const auto [id,parent]=tasks[i];Need(id.value<seen.size()&&!seen[id.value]);seen[id.value]=1;
+      enclosing[id.value]=parent;
+      const auto add=[&](StmtId child,std::optional<StmtId> loop){tasks.push_back({child,loop});};
+      std::visit([&](const auto& node){using T=std::decay_t<decltype(node)>;
+        if constexpr(std::is_same_v<T,BlockStmt>)for(std::uint32_t n=0;n<node.child_count;++n){budget.Step();add(tree.children[node.first_child+n],parent);}
+        else if constexpr(std::is_same_v<T,IfStmt>){add(node.consequent,parent);if(node.alternate)add(*node.alternate,parent);}
+        else if constexpr(std::is_same_v<T,TryStmt>){add(node.body,parent);if(node.handler)add(node.handler->body,parent);if(node.finalizer)add(*node.finalizer,parent);}
+        else if constexpr(std::is_same_v<T,ForOfStmt>)add(node.body,id);
+        else if constexpr(std::is_same_v<T,LoopStmt>||std::is_same_v<T,ForInStmt>||std::is_same_v<T,SwitchStmt>||std::is_same_v<T,SwitchCaseStmt>)add(node.body,parent);
+      },tree.statements[id.value].statement);
+    }
+  }
   std::pmr::vector<std::uint8_t> claimed(tree.statements.size(),0,&scratch);
   std::pmr::vector<LiveBinding> writes(&scratch);writes.reserve(native.loops.size());
   std::pmr::vector<std::optional<std::uint32_t>> close_entries(f.events.size(),{},&scratch);
@@ -55,7 +75,15 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
     Need(!claimed[statement.value]);claimed[statement.value]=1;
     const auto* syntax=std::get_if<ForOfStmt>(&tree.statements[statement.value].statement);Need(syntax&&syntax->binding==ForOfBinding::kAssignment);
     const auto& binding=native.bindings[l];Need(syntax->target==binding.target&&syntax->iterable==binding.iterable&&syntax->body==binding.body&&tree.statements[statement.value].origin==binding.origin);
-    auto& port=*f.iterations[statement.value];Need(port.statement==statement&&!port.finalizer&&port.rhs==f.expressions[syntax->iterable.value]&&f.normal_exits[syntax->iterable.value]==port.events[0].before);
+    auto& port=*f.iterations[statement.value];
+    if(certificate) {
+      const auto expected=native.view.loops[l].enclosing;
+      Need(!expected || expected->value<native.statements.size());
+      const auto parent=expected?std::optional{native.statements[expected->value]}:std::nullopt;
+      Need(port.enclosing==parent && port.enclosing==enclosing[statement.value]);
+    }
+    Need(port.statement==statement);Need(!port.finalizer);Need(port.rhs==f.expressions[syntax->iterable.value]);
+    Need(f.normal_exits[syntax->iterable.value]==port.events[0].before);
     Need(port.throw_close<f.iteration_closes.size());const auto& close=f.iteration_closes[port.throw_close];
     Need(close.loop==statement&&close.pending==PendingCompletionKind::kThrow&&close.target==port.thrown&&close.thrown==port.thrown);Close(f,close,budget);
     Need(f.statement_semantics[statement.value]&&f.statement_semantics[statement.value]->repeat_point==port.events[2].before);
@@ -98,13 +126,60 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
   for(const auto& close:f.iteration_closes){
     budget.Step();Need(close.loop.value<f.iterations.size()&&f.iterations[close.loop.value]&&claimed[close.loop.value]);const auto& ports=*f.iterations[close.loop.value];
     Need(close.thrown==ports.thrown);
-    switch(close.pending){
+    if(certificate && close.pending!=PendingCompletionKind::kThrow && close.target.value<close_entries.size() && close_entries[close.target.value]) {
+      const auto& next=f.iteration_closes[*close_entries[close.target.value]];
+      Need(ports.enclosing && next.loop==*ports.enclosing && next.pending==close.pending);
+    } else switch(close.pending){
       case PendingCompletionKind::kThrow:Need(close.target==ports.thrown);break;
       case PendingCompletionKind::kReturn:Need(close.target==f.terminal);break;
       case PendingCompletionKind::kBreak:Need(close.target==ports.exit);break;
-      case PendingCompletionKind::kContinue:case PendingCompletionKind::kNormal:Need(false);break;
+      case PendingCompletionKind::kContinue:Need(certificate && ports.enclosing && f.iterations[ports.enclosing->value] && close.target==f.iterations[ports.enclosing->value]->events[2].before);break;
+      case PendingCompletionKind::kNormal:Need(false);break;
     }
     Close(f,close,budget);
+  }
+  // Resolve original completion cuts backwards through the acyclic port
+  // graph. An unobserved Throw transport performs ZERO native close events;
+  // this is checked from the independently replayed outcome, never from a
+  // handler interval or from its being compiler-generated.
+  std::pmr::vector<std::optional<FlowPoint>> routes(&scratch);
+  const auto terminal=[&](const PendingCompletion& pending)->FlowPoint {
+    Need(pending.kind==PendingCompletionKind::kThrow);
+    if(std::holds_alternative<CompletionCaller>(pending.target))return f.terminal;
+    const auto target=std::get<ExceptionNodeId>(pending.target);
+    Need(target.value<raw_blocks.size() && raw_blocks[target.value]);
+    const auto block=*raw_blocks[target.value];Need(!native.view.close_blocks[block.value]);
+    const auto mapped=FindOriginalPhase(f,block,ExceptionPhase::kCatch);Need(mapped);return *mapped;
+  };
+  if(certificate) {
+    routes.resize(certificate->qualified.size());
+    Need(certificate->first_exit.size()==certificate->entries.size()+1 && certificate->order.size()==certificate->entries.size());
+    std::pmr::vector<std::uint32_t> rank(certificate->entries.size(),0,&scratch),order(&scratch);
+    for(std::uint32_t i=0;i<certificate->order.size();++i){budget.Step();Need(certificate->order[i]<rank.size());rank[certificate->order[i]]=i;}
+    order.reserve(routes.size());for(std::uint32_t i=0;i<routes.size();++i)order.push_back(i);
+    std::sort(order.begin(),order.end(),[&](auto x,auto y){budget.Step();return rank[certificate->qualified[x].entry]>rank[certificate->qualified[y].entry];});
+    for(const auto id:order) {
+      budget.Step();const auto& route=certificate->qualified[id];Need(route.entry<certificate->entries.size());
+      const auto& entry=certificate->entries[route.entry];
+      if(entry.original.pending.kind!=PendingCompletionKind::kThrow)continue;
+      if(route.executes) {
+        Need(entry.protocol.value<native.statements.size());const auto statement=native.statements[entry.protocol.value];
+        Need(f.iterations[statement.value]);const auto close=f.iterations[statement.value]->throw_close;
+        Need(close<f.iteration_closes.size());routes[id]=f.iteration_closes[close].entry;continue;
+      }
+      std::optional<FlowPoint> destination;
+      Need(route.count && route.first<=certificate->transitions.size() && route.count<=certificate->transitions.size()-route.first);
+      for(auto p=route.first;p<route.first+route.count;++p) {
+        budget.Step();const auto& transition=certificate->transitions[p];Need(transition.exit<certificate->exits.size());
+        const auto& exit=certificate->exits[transition.exit];Need(exit.entry==route.entry);
+        Need(exit.original.outcome.kind==CloseOutcomeKind::kUnproved && exit.original.outcome.gap==CloseOutcomeGap::kNotObserved && exit.original.pending==entry.original.pending);
+        std::optional<FlowPoint> target;
+        if(transition.next){Need(*transition.next<routes.size());target=routes[*transition.next];Need(target);}
+        else target=terminal(exit.original.pending);
+        Need(!destination || destination==target);destination=target;
+      }
+      routes[id]=destination;
+    }
   }
   // B's immutable entry-qualified ports must agree with the standard native
   // completion priority. A close-error identity is not the pending payload.
@@ -115,6 +190,30 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
     if(out.pending.kind==PendingCompletionKind::kThrow) {
       const auto statement=native.statements[port.protocol.value];
       const auto& loop=*f.iterations[statement.value];
+      if(certificate) {
+        const auto e=std::lower_bound(certificate->entries.begin(),certificate->entries.end(),original.entry,
+            [&](const auto& entry,auto edge){budget.Step();return entry.original.edge<edge;});
+        Need(e!=certificate->entries.end() && e->original.edge==original.entry && e->protocol==port.protocol && e->original.pending==port.pending);
+        const auto index=static_cast<std::uint32_t>(e-certificate->entries.begin());
+        const auto first=certificate->first_exit[index],last=certificate->first_exit[index+1];
+        const auto p=std::lower_bound(certificate->exits.begin()+first,certificate->exits.begin()+last,out,
+            [&](const auto& exit,const auto& value){budget.Step();return exit.original<value;});
+        Need(p!=certificate->exits.begin()+last && p->original==out);
+        Need(index<certificate->roots.size() && certificate->roots[index]);
+        const auto root=*certificate->roots[index];Need(root<certificate->qualified.size());
+        const auto& route=certificate->qualified[root];Need(route.entry==index && route.executes);
+        const auto exit_id=static_cast<std::uint32_t>(p-certificate->exits.begin());
+        const auto first_transition=certificate->transitions.begin()+route.first;
+        const auto last_transition=first_transition+route.count;
+        const auto transition=std::lower_bound(first_transition,last_transition,exit_id,
+            [&](const auto& item,auto value){budget.Step();return item.exit<value;});
+        if(transition==last_transition || transition->exit!=exit_id) {
+          Need(out.outcome.kind==CloseOutcomeKind::kUnproved && out.outcome.gap==CloseOutcomeGap::kNotObserved);
+          continue; // Certified false guard arm has no read/call/check event.
+        }
+        const auto target=transition->next?routes[*transition->next]:std::optional{terminal(out.pending)};
+        Need(target && *target==loop.thrown);
+      } else {
       if(const auto* target=std::get_if<ExceptionNodeId>(&out.pending.target)) {
         Need(target->value<raw_blocks.size() && raw_blocks[target->value]);
         const auto block=*raw_blocks[target->value];
@@ -129,6 +228,7 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
           Need(handler && *handler==loop.thrown);
         }
       } else Need(loop.thrown==f.terminal);
+      }
     }
     if(port.pending.kind==PendingCompletionKind::kThrow){
       Need(out.pending==port.pending);
@@ -206,16 +306,41 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
       }
     }
     else if(!f.original_exceptions[e]) {
-      const auto block=raw.operations[exit.op.value].block;Need(block.value<native.close_members.size()&&native.close_members[block.value]&&native.close_members[block.value]->protocol==owner);
-      std::optional<FlowPoint> before;auto thrown=close.thrown;auto kind=FlowIterationFailureKind::kPrivate;
+      const auto block=raw.operations[exit.op.value].block;Need(block.value<native.close_members.size()&&native.close_members[block.value]);
+      const auto source_owner=native.close_members[block.value]->protocol;
+      if(!certificate)Need(source_owner==owner);
+      Need(source_owner.value<native.statements.size());const auto source_statement=native.statements[source_owner.value];
+      const auto& source_port=*f.iterations[source_statement.value];const auto& source_close=f.iteration_closes[source_port.throw_close];
+      std::optional<FlowPoint> before;auto thrown=source_close.thrown;auto kind=FlowIterationFailureKind::kPrivate;
       switch(native.close_members[block.value]->role){
-        case CloseMemberRole::kReturnRead:before=close.read;thrown=close.getter_error;kind=FlowIterationFailureKind::kCloseRead;break;
-        case CloseMemberRole::kReturnCall:before=close.call;thrown=close.call_error;kind=FlowIterationFailureKind::kCloseCall;break;
-        case CloseMemberRole::kResultCheck:before=close.check;thrown=close.primitive;kind=FlowIterationFailureKind::kCloseCheck;break;
+        case CloseMemberRole::kReturnRead:before=source_close.read;thrown=source_close.getter_error;kind=FlowIterationFailureKind::kCloseRead;break;
+        case CloseMemberRole::kReturnCall:before=source_close.call;thrown=source_close.call_error;kind=FlowIterationFailureKind::kCloseCall;break;
+        case CloseMemberRole::kResultCheck:before=source_close.check;thrown=source_close.primitive;kind=FlowIterationFailureKind::kCloseCheck;break;
         case CloseMemberRole::kUnproved:Need(false);break;
         case CloseMemberRole::kScalar:case CloseMemberRole::kCatch:case CloseMemberRole::kCompletion:case CloseMemberRole::kComparison:case CloseMemberRole::kInfeasible:break;
       }
-      f.original_exceptions[e]=FlowIterationException{*owner,e,before,thrown,kind};
+      f.original_exceptions[e]=FlowIterationException{source_owner,e,before,thrown,kind};
+    }
+  }
+  struct CloseTail {FlowPoint target;StmtId loop;};
+  std::pmr::vector<std::optional<CloseTail>> tails(f.iteration_closes.size(),{},&scratch);
+  std::pmr::vector<std::uint8_t> tail_state(tails.size(),0,&scratch);
+  std::pmr::vector<std::uint32_t> tail_path(&scratch);
+  if(certificate)for(std::uint32_t start=0;start<tails.size();++start) {
+    if(tails[start])continue;auto current=start;tail_path.clear();
+    for(;;) {
+      budget.Step();Need(current<tails.size() && tail_state[current]!=1);
+      if(tails[current])break;
+      tail_state[current]=1;tail_path.push_back(current);const auto& close=f.iteration_closes[current];
+      const auto next=close.target.value<close_entries.size()?close_entries[close.target.value]:std::nullopt;
+      if(!next){tails[current]=CloseTail{close.target,close.loop};break;}
+      Need(f.iteration_closes[*next].pending==close.pending);current=*next;
+    }
+    for(auto i=tail_path.size();i!=0;--i) {
+      budget.Step();const auto at=tail_path[i-1];if(!tails[at]) {
+        const auto next=close_entries[f.iteration_closes[at].target.value];Need(next && tails[*next]);tails[at]=tails[*next];
+      }
+      tail_state[at]=2;
     }
   }
   for(const auto& exit:native.exits){
@@ -227,7 +352,10 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
       const auto* jump=std::get_if<BreakStmt>(&node.statement);Need(jump&&jump->target==statement);
       std::optional<FlowPoint> entry;for(auto e=f.events[f.statements[exit.statement.value].value].outgoing;e;e=f.edges[*e].outgoing){budget.Step();if(f.edges[*e].completion==FlowCompletion::kJump){Need(!entry);entry=f.edges[*e].to;}}
       Need(entry&&entry->value<close_entries.size()&&close_entries[entry->value]);const auto& c=f.iteration_closes[*close_entries[entry->value]];
-      Need(c.loop==statement&&c.pending==PendingCompletionKind::kBreak&&c.target==p.exit&&c.thrown==p.thrown);
+      if(certificate) {
+        Need(enclosing[exit.statement.value] && c.loop==*enclosing[exit.statement.value] && c.pending==PendingCompletionKind::kBreak);
+        const auto& tail=tails[*close_entries[entry->value]];Need(tail && tail->loop==statement && tail->target==p.exit);
+      } else Need(c.loop==statement&&c.pending==PendingCompletionKind::kBreak&&c.target==p.exit&&c.thrown==p.thrown);
     }
   }
   // The binding is available before PutValue, not merely after a successful

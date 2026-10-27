@@ -1,4 +1,5 @@
 #include "for_of_identity.h"
+#include "completion_ports.h"
 #include "../analysis/idf_scratch.h"
 #include "../analysis/value_phi.h"
 #include "abcd/analysis/dominators.h"
@@ -29,6 +30,7 @@ class Proof {
       :g(graph),in(input),q(quota),commits(&q.memory),keys(&q.memory),
        original_ops(&q.memory),instruction_ops(&q.memory),close(&q.memory),offsets(&q.memory),targets(&q.memory) {}
   void Index(const IteratorKeys& names,const CloseCompletionSummary& summary) {
+    ports=summary.completion_ports.get();
     q.Require(g.phases.size()==g.blocks.size());
     q.Require(names.revision==g.revision && names.cfg_revision==g.cfg_revision);
     auto canonical=AnalyzeValueIdentities(g,q.Remaining());
@@ -54,7 +56,12 @@ class Proof {
     for(const auto& r:summary.regions)for(const auto& member:r.members) {
       q.Step();q.Require(member.node.value<original_ops.size());
       if(const auto op=original_ops[member.node.value]) {
-        q.Require(!close[op->value] || close[op->value]==r.protocol);close[op->value]=r.protocol;
+        if(close[op->value] && close[op->value]!=r.protocol) {
+          q.Step(2*(1+std::bit_width(ports?ports->members.size():0)));
+          q.Require(ports && CompletionPortOwns(*ports,member.node,*close[op->value]) &&
+              CompletionPortOwns(*ports,member.node,r.protocol));
+          close[op->value]=std::min(*close[op->value],r.protocol);
+        } else close[op->value]=r.protocol;
       }
     }
     offsets.resize(g.blocks.size()+1);
@@ -162,7 +169,12 @@ class Proof {
       if(const auto* phi=std::get_if<ValueId>(&use.owner))q.Require(plan.values[phi->value]==member,ForOfIdentityError::kEscape);
       else {
         const auto owner=std::get<OpId>(use.owner);q.witness.operation=owner;
-        q.Require(plan.operations[owner.value] && plan.operations[owner.value]->protocol==member.protocol,ForOfIdentityError::kEscape);
+        bool supported=plan.operations[owner.value] && plan.operations[owner.value]->protocol==member.protocol;
+        if(!supported && ports && plan.operations[owner.value] && plan.operations[owner.value]->role==ForOfRole::kClose) {
+          q.Step(1+std::bit_width(ports->members.size()));
+          supported=CompletionPortOwns(*ports,g.phases[g.ops[owner.value].block.value].input,member.protocol);
+        }
+        q.Require(supported,ForOfIdentityError::kEscape);
         const auto role=plan.operations[owner.value]->role;
         q.Require(role==ForOfRole::kTransport || role==ForOfRole::kClose ||
           (member.role==ForOfRole::kAcquisition && ((role==ForOfRole::kCachedNext && use.role==OperandRole::kBase)||(role==ForOfRole::kAdvance && use.role==OperandRole::kReceiver))) ||
@@ -174,6 +186,7 @@ class Proof {
   }
  private:
   const ValueProgram& g;const PhasedValueInput& in;Quota& q;
+  const CompletionPorts* ports=nullptr;
   ValueIdentities ids;DominatorTree dom;
   std::pmr::vector<std::optional<WorkBlockId>> commits;
   std::pmr::vector<std::optional<IteratorKey>> keys;
@@ -193,7 +206,7 @@ std::variant<ForOfIdentityIndex,ForOfIdentityFailure> IndexForOfIdentities(const
     auto checked=VerifyExceptionControl(body,graph,input,regions,control,q.Remaining(),&ownership);
     if(const auto* e=std::get_if<ExceptionControlError>(&checked))q.Fail(*e==ExceptionControlError::kResourceLimit?ForOfIdentityError::kResourceLimit:*e==ExceptionControlError::kWorkLimit?ForOfIdentityError::kWorkLimit:ForOfIdentityError::kCorrespondence);
     q.Step(std::get<std::uint64_t>(checked));
-    auto derived=DeriveCloseEntries(body,ownership.Profile(),graph,input,regions,ownership.Keys(),ownership.Scan(),q.Remaining());
+    auto derived=DeriveCloseEntries(body,ownership.Profile(),graph,input,regions,ownership.Keys(),ownership.Scan(),q.Remaining(),ownership.Summary().replay);
     if(const auto* e=std::get_if<CloseEntryFailure>(&derived))q.Fail(e->kind==CloseEntryError::kResourceLimit?ForOfIdentityError::kResourceLimit:e->kind==CloseEntryError::kWorkLimit?ForOfIdentityError::kWorkLimit:ForOfIdentityError::kCorrespondence);
     auto entries=std::get<CloseEntries>(std::move(derived));q.memory.Observe(entries.peak_bytes);q.Step(entries.work);
     // Delegated scratch is released before this call returns. Transfer every

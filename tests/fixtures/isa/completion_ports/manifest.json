@@ -1,0 +1,93 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/completion_ports/ports.js",
+   "path": "tests/fixtures/isa/completion_ports/ports-O0.abc",
+   "source_sha256": "1accf6986401ac3ddc0d94d0cf07da03ace3389264bf58ff0a020f671371d2d9",
+   "sha256": "7654e236d1c9ee358eaf1c2bc5ce67325d88184697fbac4bbe4b7aef63cbc031",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=completion_ports",
+    "--source-file=ports.js",
+    "--output=tests/fixtures/isa/completion_ports/ports-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/completion_ports/ports.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/completion_ports/outer_continue.js",
+   "path": "tests/fixtures/isa/completion_ports/outer_continue-O0.abc",
+   "source_sha256": "6785b913a2042c3ff666530f3532f355ae370d82f2c1e7b40ac074da63eab7fd",
+   "sha256": "c5736bc3997c55a632af818949140f9d9bcb0f9e7b3e88d330c635c3265d04e7",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=completion_ports_outer_continue",
+    "--source-file=outer_continue.js",
+    "--output=tests/fixtures/isa/completion_ports/outer_continue-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/completion_ports/outer_continue.js"
+   ],
+   "profile": 6,
+   "refusal": {
+    "domain": "abcd::source::CloseEntryError",
+    "value": 2
+   }
+  },
+  {
+   "source": "tests/fixtures/isa/completion_ports/single_iteration.js",
+   "path": "tests/fixtures/isa/completion_ports/single_iteration-O0.abc",
+   "refusal": {
+    "domain": "abcd::source::ForOfIterationError",
+    "value": 2
+   },
+   "profile": 6,
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=completion_ports_single_iteration",
+    "--source-file=single_iteration.js",
+    "--output=tests/fixtures/isa/completion_ports/single_iteration-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/completion_ports/single_iteration.js"
+   ],
+   "source_sha256": "4fb84c634cd7807057f3fd2bf901b6d51eff67251c00cfcda11e829adedb59de",
+   "sha256": "d759db2d5f261c45293603e550220307a3e9a6f4da1e76058edd1d0663afc106"
+  },
+  {
+   "source": "tests/fixtures/isa/completion_ports/user_try_ports.js",
+   "path": "tests/fixtures/isa/completion_ports/user_try_ports-O0.abc",
+   "refusal": {
+    "domain": "abcd::source::ExceptionControlError",
+    "value": 6
+   },
+   "profile": 6,
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=completion_ports_user_try_ports",
+    "--source-file=user_try_ports.js",
+    "--output=tests/fixtures/isa/completion_ports/user_try_ports-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/completion_ports/user_try_ports.js"
+   ],
+   "source_sha256": "6cc63e52d9313814156ae154fedb1fb1e15482bca82a0325ef9954580348ac2b",
+   "sha256": "f8333832641ad42b36d8eb719ba6785a4adce7f7e8604a646221eea78f34eac2"
+  }
+ ],
+ "note": "Synchronous nested completion ports; async bodies retain synchronous iteration."
+}

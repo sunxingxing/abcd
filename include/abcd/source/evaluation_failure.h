@@ -3,6 +3,8 @@
 #include "abcd/source/tree_failure.h"
 #include "abcd/source/evaluation_plan_cause.h"
 #include "abcd/source/for_in_failure.h"
+#include "abcd/source/for_of_failure.h"
+#include "abcd/source/exception_region_failure.h"
 #include "abcd/source/concurrent_failure.h"
 #include "abcd/source/evaluation_kind.h"
 namespace abcd::source {
@@ -50,6 +52,8 @@ struct EvaluationEvidence {
   std::optional<ProtocolContextCheck> protocol_context;
   std::optional<EvaluationInputCheck> input_check;
   std::optional<ForInFailure> for_in;
+  std::optional<ForOfIterationError> for_of;
+  std::optional<ExceptionRegionEvidence> protocol_region;
   std::optional<ConcurrentFailure> concurrent;
   std::optional<SnapshotCandidateEvidence> snapshot_candidate;
   std::optional<LogicalCoverageEvidence> logical_coverage;

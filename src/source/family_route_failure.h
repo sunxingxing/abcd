@@ -20,6 +20,10 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
   } else if constexpr (requires { std::variant_size<T>::value; }) {
     std::visit([&](const auto& nested) { CollectFailureCauses(nested, out); }, error);
   } else {
+    if constexpr (std::is_same_v<T, EvaluationFailure>) if(error.evaluation.protocol_region) {
+      CollectFailureCauses(PhasedMethodError::kControl,out);
+      CollectFailureCauses(ExceptionControlError::kMultipleExits,out);
+    }
     if constexpr (requires { error.kind; }) CollectFailureCauses(error.kind, out);
     if constexpr (std::is_same_v<T, AsyncCompletionFailure>) CollectFailureCauses(error.async.check, out);
     if constexpr (requires { error.cause; }) CollectFailureCauses(error.cause, out);
@@ -27,6 +31,10 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);
     if constexpr (requires { error.renewal; })
       if (error.renewal) CollectFailureCauses(*error.renewal, out);
+    if constexpr (requires { error.derivation; }) if(error.derivation) CollectFailureCauses(*error.derivation,out);
+    if constexpr (requires { error.relation; }) if(error.relation) CollectFailureCauses(*error.relation,out);
+    if constexpr (requires { error.completion_ports_failure; })
+      if (error.completion_ports_failure) CollectFailureCauses(*error.completion_ports_failure, out);
     if constexpr (requires { error.throw_domain; }) if (error.throw_domain) CollectFailureCauses(*error.throw_domain, out);
     if constexpr (requires { error.concurrent; }) if (error.concurrent) CollectFailureCauses(*error.concurrent, out);
     if constexpr (std::is_same_v<T, ConcurrentFailure>) if (error.metadata) CollectFailureCauses(*error.metadata, out);
@@ -41,6 +49,7 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
       CollectFailureCauses(error.evaluation.plan_cause, out);
       if (error.evaluation.input_check) CollectFailureCauses(*error.evaluation.input_check, out);
       if (error.evaluation.for_in) CollectFailureCauses(error.evaluation.for_in->kind, out);
+      if (error.evaluation.for_of) CollectFailureCauses(*error.evaluation.for_of,out);
       if (error.evaluation.concurrent) CollectFailureCauses(*error.evaluation.concurrent,out);
     }
     if constexpr (requires { error.tree; })

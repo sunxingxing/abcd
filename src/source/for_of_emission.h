@@ -10,6 +10,7 @@ struct ForOfEmissionLoop {
   analysis::UseId iterable;
   analysis::ValueId binding;
   bool exhaustion_only=true;
+  std::optional<IteratorProtocolId> enclosing;
   bool operator==(const ForOfEmissionLoop&) const = default;
 };
 // A close remains effectful. These are entry-qualified native completion
@@ -26,6 +27,7 @@ struct ForOfEmissionClose {
   bool operator==(const ForOfEmissionClose&) const = default;
 };
 struct ForOfEmissionView {
+  std::shared_ptr<const CompletionPorts> completion_ports;
   ProtocolForwarding forwarding;
   std::vector<ForOfEmissionLoop> loops;
   std::vector<std::optional<std::uint32_t>> wrappers;

@@ -75,6 +75,7 @@ struct FlowIteration {
   std::optional<FlowPoint> finalizer;
   std::array<FlowIterationEvent,kForOfEventCount> events;
   std::uint32_t throw_close;
+  std::optional<StmtId> enclosing;
 };
 // Native ports are separate even when a VM result has no source expression.
 struct FlowEnumeration {

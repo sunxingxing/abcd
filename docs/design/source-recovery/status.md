@@ -5,6 +5,70 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Verified iterator completion ports (2026-10-27)
+
+- Added a legacy-first `completion_ports` fact owner and independent verifier.
+  The actual typed `kMultipleExits` region/two-exit witness is replayed and
+  retained. Original cut edges, pending SSA payloads/copies/phis, protection
+  contexts, activation gates, distinct bypass/validation resumes and complete
+  transition coverage compose the existing close proofs. Other protocols'
+  wrappers are never inferred from overlapping intervals. No source premise,
+  for-await support or new array-pattern form was added.
+- Persistent closed-iterator contexts and memoized raw/native routes prove
+  inside-out order and zero extra closes on closed-handler re-entry. Internally
+  caught errors become pending only at the proven priority selection. One native
+  return stays at its initiating action. Close/ownership/control, evaluation,
+  operands/origins, tree flow and recovery independently check the evidence.
+  A shared instruction-range index avoids scanning all members per protected
+  range. Live iterable and return outputs remain ordinary source observations.
+- The pinned O0 fixture passes **6,578 Node comparisons** over eleven exports,
+  plus three exact typed negatives. Certificate mutations cover activation,
+  original edges, payloads, guards, protection, routes, range/port coverage and
+  limits. Register/copy/block invariance and 200/201/geometric growth pass.
+  Unrelated multi-exit user tries retain refusal. Omission diagnostics retain
+  trivial records through typed indexes into separately budgeted cause owners.
+- The original goal methods advance, but neither whole record is complete.
+  DataDriver m42717/m42744 pass; **m42798 getSuiteStress** next hits the legacy
+  AST ownership census (orphan expression59, original **pc542**; published
+  FunctionTreeError9 / TreeSemanticError0 / TreeFlowError1 / TreeObligation10).
+  Service m60551 passes the original313 completion-port gap, then keeps a partial
+  omission for an **acyclic inner iterator at original452 / working428**:
+  CompletionPortError::kTarget9 / ForOfIterationError::kAdvance3. The old region8
+  witness, continuations340/363 and ordinary user try [434,2118) remain intact.
+  General AST ownership and acyclic-loop source placement are separate follow-ups;
+  no special-case implementation was added for either.
+- Final required make targets and the full Debug build pass; source-regression
+  passes **65/65** in **120.57 s**, and the related sweep passes **26/26**. The
+  direct fixture and scaling reruns pass. All **40** no-flag inputs
+  compare against read-only `csr91/def`: **618 → 618 / 1007**, zero regressions,
+  zero text changes over **3,601,791** existing complete-source bytes, and no newly
+  complete records. Only the two target failure diagnostics change. CLI peak RSS
+  was **50,298,880 bytes** in the last binary sweep
+  (`cohort-accepted/comparison.json`). Final ISA ledger totals remain
+  **222 verified / 21 unverified / 61 unmeasured / 28 non-executable**, with
+  1,163 measured inputs and 53 oracle producers.
+- The guarded-catch combined negative now passes close ownership and reaches
+  TreeFlowError::kPlacement4. Its exact four-cause refusal expectation was
+  updated; all other oracles remain. Two integration expectations now include
+  the precise ForOfIterationError3 cause; the for-in CLI integration pins the
+  new m42798 leaf and separately retains the old raw bypass/validation targets.
+  All three exact reruns pass. Charged work for 100/200/201/400/800
+  added instructions is **72730274 / 92786122 / 92986674 / 142953642 /
+  229728906**, within the N log N bound (fixed port incidence count).
+- Full Debug CTest completed **971** cases in **3174.56 s**: initially **38**
+  failures (the known 34, three stale diagnostic assertions, and an empty-
+  diagnostic community worker failure). The three exact assertion refreshes
+  pass; community ability passes an unchanged isolated rerun in **206.86 s**.
+  The reconciled result is **937 pass / 34 persistent**, zero newly failing
+  and zero newly passing existing tests. No community harness assertion or
+  worker limit was relaxed. All four new registrations pass. Raw sweep and
+  rerun receipts, not a claim that the initial full command passed, are kept in
+  `ctest-full.xml`, `ctest-expectation-rerun.xml`, `ctest-community-rerun.xml`
+  and `ctest-comparison.json`.
+- Design, costs and typed gaps: [completion-ports.md](completion-ports.md).
+  Logs and own cohort output: `build/completion-ports/`; `build/review`, samples
+  and input ABCs are untouched. No commit or push.
+
 ## Certified environment renewal: body reset (2026-10-27)
 
 - Added the sparse environment-token/correspondence owner and an independent

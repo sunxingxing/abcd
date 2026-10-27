@@ -68,7 +68,7 @@ class Derivation {
  public:
   Derivation(const abc::MethodBody& body,abc::ProfileId profile,const ValueProgram& graph,
       const PhasedValueInput& input,const ExceptionPlan& regions,const IteratorKeys& keys,
-      const IteratorProtocolScan& scan,SemanticBudget budget,bool verify)
+      const IteratorProtocolScan& scan,SemanticBudget budget,bool verify,CompletionReplay replay)
       : body_(body),profile_(profile),g_(graph),in_(input),regions_(regions),keys_(keys),scan_(scan),q_(budget),
         before_(&q_.memory),commit_(&q_.memory),catch_(&q_.memory),copy_(&q_.memory),deps_(&q_.memory),
         ready_(&q_.memory),normal_(&q_.memory),original_(&q_.memory),guards_(&q_.memory),
@@ -77,7 +77,7 @@ class Derivation {
         exhausted_(&q_.memory),success_(&q_.memory),value_read_(&q_.memory),value_ambiguous_(&q_.memory),calls_(&q_.memory),state_checked_(&q_.memory),
         value_stamps_(&q_.memory),guard_owner_(&q_.memory),region_offsets_(&q_.memory),region_index_(&q_.memory),
         close_guards_(&q_.memory),branch_aliases_(&q_.memory),alias_slots_(&q_.memory),boundaries_(&q_.memory),
-        writes_(&q_.memory),read_offsets_(&q_.memory),phi_offsets_(&q_.memory),phi_values_(&q_.memory),verify_(verify) {
+        writes_(&q_.memory),read_offsets_(&q_.memory),phi_offsets_(&q_.memory),phi_values_(&q_.memory),verify_(verify),replay_(replay) {
     // Dense loop/entry contexts are a resource refusal, not quadratic admitted
     // work. This grant includes delegated analyses and all sparse graph walks.
     constexpr std::uint64_t kWorkPerInput=4096;
@@ -425,16 +425,26 @@ class Derivation {
       const auto canonical=Canonical({function->value});auto& call=calls_[canonical.value];
       ++call.count;call.arguments=std::get<ValueInvoke>(op.operation).arguments;
       call.receiver=receiver?std::optional{ValueId{Canonical({receiver->value}).value}}:std::nullopt;
-      const auto protocol=callee[canonical.value];if(!protocol)continue;
+      const auto protocol=callee[canonical.value];if(!protocol){
+        continue;
+      }
       q_.Require(receiver && Canonical({receiver->value}).value==scan_.candidates[protocol->value].iterator.value,CloseEntryError::kAcquisition);
       const auto raw=g_.phases[op.block.value].input;q_.Require(normal_[raw.value].has_value(),CloseEntryError::kLoop,raw);
-      const auto loop=loops_.owners[normal_[raw.value]->value];
+      auto loop=loops_.owners[normal_[raw.value]->value];
+      if(replay_==CompletionReplay::kAllProtocols) {
+        const auto acquisition=scan_.candidates[protocol->value].acquisition.before;
+        const auto commit=commit_[Node(acquisition).instruction.value];
+        // An always-abrupt inner iterator has no backedge. The nearest
+        // natural loop may belong to an enclosing iterator, which reacquires
+        // this one on every lap. Its header is not this activation's header.
+        if(loop && (!commit || !Dominates(*commit,original_[loops_.loops[loop->value].header.value])))loop.reset();
+      }
       q_.Require(!protocol_advance_[protocol->value],CloseEntryError::kLoop,raw);
       protocol_loop_[protocol->value]=loop;protocol_advance_[protocol->value]=raw;
     }
     std::pmr::vector<std::optional<IteratorProtocolId>> results(g_.values.size(),{},&q_.memory),done(g_.values.size(),{},&q_.memory);
     for(std::size_t p=0;p<protocol_advance_.size();++p) {
-      q_.Require(protocol_advance_[p].has_value(),CloseEntryError::kLoop);
+      q_.Require(protocol_advance_[p].has_value(),CloseEntryError::kLoop,scan_.candidates[p].acquisition.before);
       const auto& op=g_.ops[Node(*protocol_advance_[p]).instruction.value];q_.Require(op.result.has_value());
       results[Canonical({op.result->value}).value]=IteratorProtocolId{static_cast<std::uint32_t>(p)};
     }
@@ -659,6 +669,7 @@ class Derivation {
   Continuation Continue(ExceptionNodeId n,std::optional<LoopId> loop,ExceptionNodeId exhausted,CompletionEdge incoming) {
     const auto stamp=Stamp();
     std::optional<ExceptionNodeId> continuation;
+    auto completion_exit=exhausted;
     for(;;) {
       q_.Step();q_.Require(stamps_[n.value]!=stamp,CloseEntryError::kContinuation,n);stamps_[n.value]=stamp;
       // Derive the eventual completion through an enclosing close's bypass,
@@ -671,10 +682,15 @@ class Derivation {
             loop_begin_[outer->value]<loop_begin_[loop->value] &&
             loop_begin_[loop->value]<loop_end_[outer->value],CloseEntryError::kContinuation,n);
         if(!continuation)continuation=n;
+        if(replay_==CompletionReplay::kAllProtocols) {
+          q_.Require(exhausted_[next->protocol.value].has_value(),CloseEntryError::kContinuation,n);
+          const auto exit=*exhausted_[next->protocol.value];
+          completion_exit=Boundary(Node(exit.source).successors[exit.successor].target);
+        }
         n=GuardFor(next->read.before).bypass;continue;
       }
       const auto& node=Node(n);const auto& instruction=Instruction(n);
-      if(n==exhausted)
+      if(n==completion_exit)
         return {{PendingCompletionKind::kBreak,{},n},incoming.source,incoming,continuation};
       if(node.phase==ExceptionPhase::kBefore) {
         if(const auto* ret=std::get_if<ReturnOperation>(&instruction.operation)) {
@@ -822,7 +838,7 @@ class Derivation {
     Exits(close,region.region);
     std::pmr::vector<CompletionEntry> entries(&q_.memory);
     for(const auto& e:close.entries)entries.push_back(e.entry);
-    auto relation=AnalyzeCompletionRelation(body_,profile_,in_.frame.registers,in_.flow,in_.ssa,entries,close.exits,{q_.Remaining()});
+    auto relation=AnalyzeCompletionRelation(body_,profile_,in_.frame.registers,in_.flow,in_.ssa,entries,close.exits,{q_.Remaining(),std::numeric_limits<std::size_t>::max(),replay_});
     if(const auto* failure=std::get_if<CompletionRelationFailure>(&relation))
       throw CloseEntryFailure{failure->kind==CompletionRelationError::kResourceLimit?CloseEntryError::kResourceLimit:
           failure->kind==CompletionRelationError::kWorkLimit?CloseEntryError::kWorkLimit:CloseEntryError::kCorrespondence,
@@ -861,6 +877,7 @@ class Derivation {
   std::pmr::vector<std::uint32_t> read_offsets_,phi_offsets_;
   std::pmr::vector<SsaValueId> phi_values_;
   bool verify_;
+  CompletionReplay replay_;
   std::uint32_t generation_=0;
 };
 bool Same(const CompletionEntry& a,const CompletionEntry& b) {
@@ -868,9 +885,9 @@ bool Same(const CompletionEntry& a,const CompletionEntry& b) {
 }
 std::variant<CloseEntries,CloseEntryFailure> Build(const abc::MethodBody& body,
     abc::ProfileId profile,const ValueProgram& graph,const PhasedValueInput& input,
-    const ExceptionPlan& regions,const IteratorKeys& keys,const IteratorProtocolScan& scan,SemanticBudget budget,bool reverse) {
+    const ExceptionPlan& regions,const IteratorKeys& keys,const IteratorProtocolScan& scan,SemanticBudget budget,bool reverse,CompletionReplay replay) {
   try {
-    Derivation proof(body,profile,graph,input,regions,keys,scan,budget,reverse);
+    Derivation proof(body,profile,graph,input,regions,keys,scan,budget,reverse,replay);
     try{return proof.Run(reverse);}catch(CloseEntryFailure f){if(!f.protocol)f.protocol=proof.current_protocol_;if(!f.read)f.read=proof.current_read_;return f;}
   }catch(CloseEntryFailure f){return f;}
   catch(const std::bad_alloc&){return CloseEntryFailure{CloseEntryError::kResourceLimit};}
@@ -879,14 +896,14 @@ std::variant<CloseEntries,CloseEntryFailure> Build(const abc::MethodBody& body,
 }
 std::variant<CloseEntries,CloseEntryFailure> DeriveCloseEntries(const abc::MethodBody& body,
     abc::ProfileId profile,const ValueProgram& graph,const PhasedValueInput& input,
-    const ExceptionPlan& regions,const IteratorKeys& keys,const IteratorProtocolScan& scan,SemanticBudget budget) {
-  return Build(body,profile,graph,input,regions,keys,scan,budget,false);
+    const ExceptionPlan& regions,const IteratorKeys& keys,const IteratorProtocolScan& scan,SemanticBudget budget,CompletionReplay replay) {
+  return Build(body,profile,graph,input,regions,keys,scan,budget,false,replay);
 }
 std::variant<std::uint64_t,CloseEntryFailure> VerifyCloseEntries(const abc::MethodBody& body,
     abc::ProfileId profile,const ValueProgram& graph,const PhasedValueInput& input,
     const ExceptionPlan& regions,const IteratorKeys& keys,const IteratorProtocolScan& scan,
-    const CloseEntries& supplied,SemanticBudget budget) {
-  const auto rebuilt=Build(body,profile,graph,input,regions,keys,scan,budget,true);
+    const CloseEntries& supplied,SemanticBudget budget,CompletionReplay replay) {
+  const auto rebuilt=Build(body,profile,graph,input,regions,keys,scan,budget,true,replay);
   if(const auto* f=std::get_if<CloseEntryFailure>(&rebuilt))return *f;
   const auto& expected=std::get<CloseEntries>(rebuilt);
   auto work=expected.work;

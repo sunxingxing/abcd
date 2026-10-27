@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <stdexcept>
 
 #include "binding_initializer.h"
@@ -60,13 +61,27 @@ struct Context {
 struct Statement {StmtId id;Context context;};
 struct Expression {ExprId id;Context context;};
 struct IterationEnclosure { std::optional<StmtId> loop; };
+struct NativeCloseRouteKey {
+  StmtId loop;
+  std::optional<StmtId> stop;
+  analysis::PendingCompletionKind pending;
+  Point target;
+  FlowCompletion completion;
+  auto operator<=>(const NativeCloseRouteKey&) const = default;
+};
+struct NativeCloseRouteLess {
+  TreeCheckBudget* budget;
+  bool operator()(const NativeCloseRouteKey& a,const NativeCloseRouteKey& b)const {
+    budget->Step();return a<b;
+  }
+};
 using Task=std::variant<Statement,Expression>;
 enum class ReadState : std::uint8_t {kUnseen,kPending,kDone};
 class FlowBuilder {
  public:
   FlowBuilder(const FunctionTree& tree,LegacyFlowProjection projection,analysis::SemanticBudget budget,RecoveryFlow storage)
       : tree_(tree), projection_(projection), budget_(budget), memory_(budget_),
-        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), statement_scopes_(&memory_), loop_entries_(&memory_), native_bindings_(&memory_), loop_members_(&memory_), member_next_(&memory_), loop_bodies_(&memory_), repeats_(&memory_), iteration_scopes_(&memory_), result_(std::move(storage)) {
+        statements_(&memory_), expressions_(&memory_), exits_(&memory_), tasks_(&memory_), seen_(&memory_), reads_(&memory_), read_states_(&memory_), initializers_(&memory_), catch_parameters_(&memory_), scope_lifetimes_(&memory_), statement_scopes_(&memory_), loop_entries_(&memory_), native_bindings_(&memory_), loop_members_(&memory_), member_next_(&memory_), loop_bodies_(&memory_), repeats_(&memory_), iteration_scopes_(&memory_), close_routes_(NativeCloseRouteLess{&budget_},&memory_), result_(std::move(storage)) {
     events_=std::move(result_.events);events_.clear();edges_=std::move(result_.edges);edges_.clear();
     definitions_=std::move(result_.definitions);definitions_.clear();references_=std::move(result_.references);references_.clear();
     names_=std::move(result_.names);names_.clear();
@@ -1230,6 +1245,38 @@ class FlowBuilder {
     Append(result_.iteration_closes,std::move(close));return id;
   }
   void Abrupt(Point point,Point target,const Context& context,FlowCompletion completion,std::optional<analysis::PendingCompletionKind> transfer={},std::optional<StmtId> destination={}) {
+    if(context.iteration && result_.original && result_.original->iterations &&
+        result_.original->iterations->view.completion_ports && completion!=FlowCompletion::kResumeReturn) {
+      RequireTree(!context.finalizer,Error::kUnsupportedSyntax);
+      std::optional<StmtId> stop;
+      if(completion==FlowCompletion::kJump) {
+        RequireTree(destination && destination->value<iteration_scopes_.size() &&
+            iteration_scopes_[destination->value],Error::kOwnership);
+        stop=iteration_scopes_[destination->value]->loop;
+        if(transfer==analysis::PendingCompletionKind::kContinue &&
+            std::holds_alternative<ForOfStmt>(tree_.statements[destination->value].statement))stop=destination;
+      }
+      const auto pending=transfer.value_or(analysis::PendingCompletionKind::kReturn);
+      std::pmr::vector<StmtId> path(&memory_);
+      auto loop=context.iteration;auto continuation=target;
+      while(loop && loop!=stop) {
+        budget_.Step();RequireTree(loop->value<iteration_scopes_.size() &&
+            iteration_scopes_[loop->value] && path.size()<iteration_scopes_.size(),Error::kOwnership);
+        const NativeCloseRouteKey key{*loop,stop,pending,target,completion};
+        if(const auto found=close_routes_.find(key);found!=close_routes_.end()) {
+          continuation=found->second;break;
+        }
+        path.push_back(*loop);loop=iteration_scopes_[loop->value]->loop;
+      }
+      for(auto i=path.size();i!=0;--i) {
+        budget_.Step();const auto id=path[i-1];
+        RequireTree(id.value<result_.iterations.size() && result_.iterations[id.value],Error::kOwnership);
+        const auto c=Close(id,pending,continuation,result_.iterations[id.value]->thrown,completion);
+        continuation=result_.iteration_closes[c].entry;
+        close_routes_.emplace(NativeCloseRouteKey{id,stop,pending,target,completion},continuation);
+      }
+      Link(point,continuation,completion);return;
+    }
     if(context.iteration && completion!=FlowCompletion::kResumeReturn) {
       const auto loop=*context.iteration;
       bool leaves = true;
@@ -1849,11 +1896,12 @@ class FlowBuilder {
         Link(ports[static_cast<std::size_t>(ForOfEventKind::kValueRead)].commit,write);Link(done,context.next,FlowCompletion::kTaken);Link(done,value,FlowCompletion::kNotTaken);
         repeats_[at.id.value]=next;exits_[at.id.value]=context.next;
         auto body_context=context.Child(next,at.id,FlowStatementRetention::kRequired);body_context.thrown=thrown;body_context.iteration=at.id;
-        RequireTree(!context.iteration && !context.finalizer,Error::kUnsupportedSyntax); // Nested completion transport remains separately gated.
+        RequireTree(!context.finalizer && (!context.iteration ||
+            result_.original->iterations->view.completion_ports),Error::kUnsupportedSyntax);
         const auto body=Stmt(node.body,body_context);Link(commit,body);
         const auto rhs=Expr(node.iterable,context.Operand(acquire));Link(start,rhs);
         semantics.progress=FlowStatementProgress::kMayRepeat;semantics.repeat_point=next;semantics.entry_value=node.iterable;
-        result_.iterations[at.id.value]=FlowIteration{at.id,rhs,done,write,commit,body,context.next,context.thrown,context.finalizer,ports,close};
+        result_.iterations[at.id.value]=FlowIteration{at.id,rhs,done,write,commit,body,context.next,context.thrown,context.finalizer,ports,close,context.iteration};
       } else if constexpr(std::is_same_v<T,ForInStmt>) {
         RequireTree(node.binding == ForInBinding::kAssignment, Error::kUnsupportedSyntax);
         // RHS once; exhaustion bypasses PutValue entirely. Continue returns to
@@ -2044,6 +2092,7 @@ class FlowBuilder {
   std::pmr::vector<std::optional<LoopBodyProgram>> loop_bodies_;
   std::pmr::vector<Point> repeats_;
   std::pmr::vector<std::optional<IterationEnclosure>> iteration_scopes_;
+  std::pmr::map<NativeCloseRouteKey,Point,NativeCloseRouteLess> close_routes_;
   std::vector<DiscardedEvaluation> discarded_;
   std::vector<FlowReference> references_;
   std::vector<FlowNameReference> names_;

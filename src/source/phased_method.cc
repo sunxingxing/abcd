@@ -10,6 +10,7 @@
 #include "abcd/analysis/exception_locals.h"
 #include "abcd/analysis/exception_modules.h"
 #include "function_object.h"
+#include "for_of_emission.h"
 #include "module_aliases.h"
 
 namespace abcd::source {
@@ -156,7 +157,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     analysis::ClosureWrites writes, std::span<const analysis::AwaitSite> awaits,
     std::span<const abc::CodeOffset> source_pcs, std::span<const analysis::YieldSite> yields,
     std::span<const analysis::LanguageLoadFact> initialized_modules, const ModuleSlotSet* entry_modules,
-    std::span<const analysis::PatternSite> patterns) {
+    std::span<const analysis::PatternSite> patterns,
+    const ExceptionControlRegionFailure* completion_retry,std::size_t retained_bytes,std::uint64_t retained_work) {
   using namespace analysis;
   try {
     if (!IsSourceContract(context.Identity().contract)) return Error::kContract;
@@ -361,7 +363,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
             flow, ssa, entries, value_work, {quota.Remaining().bytes},
             kSourcePendingExceptions, loads, {}, kSourceCallResults, receiver,
             kSourceArithmetic,
-            environments.renewal
+            (environments.renewal || completion_retry)
                 ? ExceptionThrowRefinement::kGuardedCatchPayload
                 : ExceptionThrowRefinement::kNone,
             binding &&
@@ -375,8 +377,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
                     GlobalScripts(context.Identity().contract)
                 ? GlobalReadValues::kLanguage
                 : GlobalReadValues::kUnknown,
-            environments.renewal ? flow_owner : nullptr,
-            environments.renewal ? ssa_owner : nullptr),
+            (environments.renewal || completion_retry) ? flow_owner : nullptr,
+            (environments.renewal || completion_retry) ? ssa_owner : nullptr),
         Error::kValues);
     quota.Admit(values.AllocatedBytes()); quota.Step(value_work.Consumed());
     const auto arguments = frame.extra_arguments ? std::optional{ArgumentFrameFact{frame}} : std::nullopt;
@@ -558,6 +560,107 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       } else return PhaseError(std::get<IteratorScanFailure>(scanned),Error::kControl);
     }
     auto controlled = BuildExceptionControl(body, imported.graph, input, regions, quota.Remaining(),protocols?&*protocols:nullptr);
+    if(const auto* refused=std::get_if<ExceptionControlRegionFailure>(&controlled);
+        refused && refused->kind==ExceptionControlError::kMultipleExits && acquisition && binding) {
+      const auto original=*refused;
+      if(!completion_retry && !values.GuardedPayloads()) {
+        // The old input proof permits internal Hole transport. A user catch
+        // outside an inlined close needs the existing guarded payload proof
+        // before values are imported. Restart under the remaining grant;
+        // every legacy owner stays live and charged until the retry returns.
+        return Build(context,body,quota.Remaining(),binding,capture_mode,writes,awaits,
+            source_pcs,yields,initialized_modules,entry_modules,patterns,&original,
+            retained_bytes+quota.Bytes(),retained_work+quota.Work());
+      }
+      if(completion_retry && (completion_retry->region!=original.region || completion_retry->exits!=original.exits)) {
+        auto failed=PhasedControlFailure{Error::kControl,*completion_retry,context.Target(),{},{},input_gap};
+        failed.completion_ports_failure=CompletionPortFailure{CompletionPortError::kCorrespondence};return failed;
+      }
+      auto failed=PhasedControlFailure{Error::kControl,original,context.Target(),
+          original.exception_region?original.exception_region->body_pc:std::nullopt,
+          original.exception_region?std::optional{original.exception_region->working_body_pc}:std::nullopt,input_gap};
+      const auto stop=[&](CompletionPortFailure failure) {
+        auto result=failed;
+        if(const auto limit=CompletionPortLimit(failure))result.kind=*limit==CompletionPortError::kResourceLimit?Error::kResourceLimit:Error::kWorkLimit;
+        result.completion_ports_failure=std::move(failure);return result;
+      };
+      // Legacy sealing consumes its candidate buffers. Retry discovery is
+      // charged separately while the immutable legacy input owners stay live.
+      auto resolved=ResolveIteratorKeys({binding->file,binding->header,binding->index},context.Target(),imported.graph,quota.Remaining());
+      if(!std::holds_alternative<IteratorKeys>(resolved)) {
+        const auto limit=std::visit([](const auto& value){
+          if constexpr(std::is_same_v<std::decay_t<decltype(value)>,IteratorKeys>)return Error::kControl;
+          else return PhaseError(value,Error::kControl);
+        },resolved);
+        return stop(CompletionPortFailure{limit==Error::kResourceLimit?CompletionPortError::kResourceLimit:
+            limit==Error::kWorkLimit?CompletionPortError::kWorkLimit:CompletionPortError::kInput});
+      }
+      auto retry_keys=std::get<IteratorKeys>(std::move(resolved));
+      quota.Admit(retry_keys.retained_bytes);quota.Step(retry_keys.work);
+      auto scanned=ScanIteratorProtocols(imported.graph,input,regions,retry_keys,quota.Remaining());
+      if(!std::holds_alternative<IteratorProtocolScan>(scanned)) {
+        const auto limit=PhaseError(std::get<IteratorScanFailure>(scanned),Error::kControl);
+        return stop(CompletionPortFailure{limit==Error::kResourceLimit?CompletionPortError::kResourceLimit:
+            limit==Error::kWorkLimit?CompletionPortError::kWorkLimit:CompletionPortError::kInput});
+      }
+      auto retry_scan=std::get<IteratorProtocolScan>(std::move(scanned));
+      quota.Admit(retry_scan.retained_bytes);quota.Step(retry_scan.work);
+      auto derived=DeriveCompletionPorts(body,binding->header.profile,imported.graph,input,regions,
+          retry_keys,retry_scan,original,quota.Remaining(),context.Identity().contract);
+      if(const auto* error=std::get_if<CompletionPortFailure>(&derived)) {
+        return stop(*error);
+      }
+      auto ports=std::get<CompletionPorts>(std::move(derived));
+      quota.Admit(ports.allocated_bytes);quota.Step(ports.work);
+      auto evidence=quota.Shared<CompletionPorts>(std::move(ports));
+      auto analyzed=AnalyzeCloseCompletion(body,binding->header.profile,imported.graph,input,regions,
+          retry_keys,retry_scan,quota.Remaining(),context.Identity().contract,evidence);
+      if(const auto* error=std::get_if<CloseCompletionFailure>(&analyzed)) {
+        return stop(CompletionPortFailure{CompletionPortError::kCorrespondence,{},{},*error});
+      }
+      auto summary=std::get<CloseCompletionSummary>(std::move(analyzed));
+      RetainCloseSummary(quota,summary);quota.Step(summary.work);
+      auto sealed=VerifyProtocolRegionOwnership(body,binding->header.profile,imported.graph,input,regions,
+          std::move(retry_keys),std::move(retry_scan),std::move(summary),quota.Remaining(),context.Identity().contract);
+      if(const auto* error=std::get_if<CloseCompletionFailure>(&sealed)) {
+        return stop(CompletionPortFailure{CompletionPortError::kCoverage,{},{},*error});
+      }
+      auto owner=std::get<VerifiedProtocolRegionOwnership>(std::move(sealed));
+      quota.Step(owner.VerificationWork());protocols.emplace(std::move(owner));
+      controlled=BuildExceptionControl(body,imported.graph,input,regions,quota.Remaining(),&*protocols);
+      if(!std::holds_alternative<ExceptionControl>(controlled)) {
+        std::visit([&](const auto& error){
+          if constexpr(!std::is_same_v<std::decay_t<decltype(error)>,ExceptionControl>)
+            failed.completion_ports_failure=CompletionPortFailure{CompletionPortError::kTarget,{},{},error};
+        },controlled);
+        return stop(*failed.completion_ports_failure);
+      }
+      // Facts alone do not admit source. Ask the existing control-placement
+      // consumer before replacing the legacy typed refusal/partial omission.
+      // An acyclic iterator needs its own source representation; it cannot
+      // borrow an enclosing loop's native wrapper.
+      const auto& placement=std::get<ExceptionControl>(controlled);
+      const ForOfEvaluationInput source{body,input,regions,placement,*protocols,context.Identity().contract};
+      constexpr std::uint64_t kPlacementWorkPerInput=65536;
+      const auto size=std::uint64_t(imported.graph.ops.size())+imported.graph.uses.size()+imported.graph.edges.size()+1;
+      if(size>UINT32_MAX)return stop(CompletionPortFailure{CompletionPortError::kResourceLimit});
+      auto allowance=quota.Remaining();allowance.work=std::min(allowance.work,kPlacementWorkPerInput*size*(1+std::bit_width(size)));
+      quota.Step(allowance.work);
+      auto evaluation=BuildForOfEvaluationPlan(imported.graph,source,allowance);
+      const auto placement_failure=[&](const ForOfIterationFailure& error) {
+        CompletionPortFailure failure{CompletionPortError::kTarget,{},{},error.kind};
+        if(error.operation)failure.location=OperationLocation(imported.graph,*error.operation,context.Target());
+        return stop(std::move(failure));
+      };
+      if(const auto* error=std::get_if<ForOfIterationFailure>(&evaluation))return placement_failure(*error);
+      const auto& plan=std::get<ForOfEvaluationPlan>(evaluation);
+      quota.Admit(plan.allocated_bytes);
+      auto view_budget=quota.Remaining();view_budget.work=std::min(view_budget.work,kPlacementWorkPerInput*size*(1+std::bit_width(size)));
+      quota.Step(view_budget.work);
+      auto view=BuildForOfEmissionView(imported.graph,source,plan,view_budget);
+      if(const auto* error=std::get_if<ForOfIterationFailure>(&view))return placement_failure(*error);
+      quota.Admit(std::get<ForOfEmissionView>(view).allocated_bytes);
+    }
     if (const auto* failure=std::get_if<ExceptionControlRegionFailure>(&controlled)) {
       if (input_gap) { input_gap->allocated_bytes = quota.Bytes(); input_gap->work = quota.Work(); }
       return PhasedControlFailure{Error::kControl,*failure,context.Target(),
@@ -607,8 +710,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
                                           std::move(control),
                                           std::move(protocols),
                                           std::move(protocol_body),
-                                          quota.Bytes(),
-                                          quota.Work()}));
+                                          retained_bytes+quota.Bytes(),
+                                          retained_work+quota.Work()}));
   } catch (Error error) { return error;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }

@@ -1,5 +1,6 @@
 #include "../../../src/source/exception_plan.h"
 #include "../../../src/source/exception_control.h"
+#include "../../../src/source/completion_ports.h"
 #include "../../../src/source/exception_tree.h"
 #include "../../../src/source/tree_flow.h"
 #include "../../../src/source/tree_semantics.h"
@@ -333,6 +334,11 @@ void DecodedControl(const abc::MethodBody& body, abc::ProfileId profile,
     if (*expected == ExceptionControlError::kMultipleExits) {
       const auto& failure = std::get<ExceptionControlRegionFailure>(rejected);
       test::Check(failure.kind == *expected && failure.exception_region.has_value());
+      const IteratorKeys keys{{0},graph.revision,graph.cfg_revision};
+      const IteratorProtocolScan scan{{0},graph.revision,graph.cfg_revision};
+      const auto ports=DeriveCompletionPorts(body,profile,graph,input,regions,keys,scan,failure);
+      test::Check(std::holds_alternative<CompletionPortFailure>(ports));
+      test::Check(std::get<CompletionPortFailure>(ports).kind==CompletionPortError::kCoverage);
       const auto& evidence = *failure.exception_region;
       test::Check(evidence.region == failure.region && evidence.exits == failure.exits);
       test::Check(evidence.working_body_pc == body.tries[failure.region.value].offset);

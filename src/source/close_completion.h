@@ -6,6 +6,7 @@
 #include "abcd/analysis/close_outcome_relation.h"
 
 namespace abcd::source {
+struct CompletionPorts;
 // These are separate obligations: a priority fact never grants region ownership.
 enum class CloseObligation : std::uint8_t {
   kGuard, kReference, kPriority, kOwnership, kNested, kCount
@@ -129,6 +130,8 @@ struct CloseCompletionSummary {
   std::vector<CloseCompletionRegion> regions;
   std::size_t peak_bytes = 0;
   std::uint64_t work = 0;
+  std::shared_ptr<const CompletionPorts> completion_ports;
+  analysis::CompletionReplay replay=analysis::CompletionReplay::kAwaits;
 };
 // Standalone synchronous diagnostic analysis. Derives/validates its own entries;
 // not caller-supplied assumptions. A result can contain missing obligations;
@@ -138,7 +141,8 @@ struct CloseCompletionSummary {
 [[nodiscard]] std::variant<CloseCompletionSummary, CloseCompletionFailure> AnalyzeCloseCompletion(
     const abc::MethodBody&, abc::ProfileId, const analysis::ValueProgram&,
     const analysis::PhasedValueInput&, const ExceptionPlan&, const IteratorKeys&,
-    const IteratorProtocolScan&, analysis::SemanticBudget = {}, SourceContract = kSourceContract);
+    const IteratorProtocolScan&, analysis::SemanticBudget = {}, SourceContract = kSourceContract,
+    std::shared_ptr<const CompletionPorts> = {}, analysis::CompletionReplay = analysis::CompletionReplay::kAwaits);
 // Revalidates entries using A3a's backwards proof, recomputes raw membership,
 // references and the exit relation from immutable inputs. Supplied flags,
 // members, omissions and telemetry are never inputs to discovery.

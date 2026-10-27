@@ -22,7 +22,7 @@ std::vector<EvaluationUses> IndexEvaluationUses(const analysis::ValueProgram& gr
     budget.Step(); const auto& use = graph.uses[i];
     if(TemplateHidden(plan,{static_cast<std::uint32_t>(i)}))continue;
     if (MemberUpdateWire(plan,{static_cast<std::uint32_t>(i)})) continue;
-    if ((plan.concurrent && plan.concurrent->uses[i]) || use.life != ValueLife::kLive || IsIdentityPhiInput(plan,use) || (plan.for_in && plan.for_in->uses[i])) continue;
+    if ((plan.concurrent && plan.concurrent->uses[i]) || use.life != ValueLife::kLive || IsIdentityPhiInput(plan,use) || (plan.for_in && plan.for_in->uses[i]) || (plan.for_of && plan.for_of->completion_ports && plan.for_of->uses[i].protocol)) continue;
     const auto producer = EvaluationProducer(graph, plan, UseId{static_cast<std::uint32_t>(i)});
     if (!producer) continue;
     const auto id = *producer;
@@ -47,6 +47,17 @@ std::vector<EvaluationUses> IndexEvaluationUses(const analysis::ValueProgram& gr
     auto& occurrence = result[id.value];
     if (occurrence.first) occurrence.multiple = true;
     else occurrence.first = UseId{static_cast<std::uint32_t>(i)};
+  }
+  if(plan.for_of && plan.for_of->completion_ports)for(const auto& output:plan.for_of->outputs) {
+    budget.Step();const auto operand=ResolveEvaluationOperand(plan,ValueOperand{output.value});
+    const auto* value=std::get_if<ValueId>(&operand);const auto* root=value?std::get_if<OpResult>(&graph.values[value->value].origin):nullptr;
+    if(!root)continue;
+    // A native completion observes its certified payload even when the VM's
+    // only physical readers are private restore/return copies. The occurrence
+    // is real and independently rebound by the port owner, never fabricated.
+    auto& use=result[root->op.value];
+    if(!use.first)use.first=output.occurrence;
+    else if(use.first!=output.occurrence)use.multiple=true;
   }
   return result;
 }

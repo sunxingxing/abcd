@@ -105,9 +105,9 @@ try {
   // These stronger forms reach independent downstream gates. Do not count
   // their refusal or source-only oracle as an engine-output differential.
   const expected = {
-    stop: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['TreeObligation', 16]],
-    finish: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['TreeObligation', 16]],
-    throwing: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['TreeObligation', 16]],
+    stop: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['ForOfIterationError', 3], ['TreeObligation', 16]],
+    finish: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['ForOfIterationError', 3], ['TreeObligation', 16]],
+    throwing: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['ForOfIterationError', 3], ['TreeObligation', 16]],
   };
   for (const [name, causes] of Object.entries(expected)) {
     const {record} = exportRecord(name); assert.equal(record.source_complete, false);

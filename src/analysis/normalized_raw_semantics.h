@@ -9,8 +9,9 @@ namespace abcd::analysis::detail {
 class NormalizedRawSemantics final : public RawEventSemantics {
  public:
   NormalizedRawSemantics(abc::ProfileId profile,std::uint64_t frame,
-      std::span<const AwaitSite> awaits,const abc::FrameLayout* layout=nullptr)
-      :lifter_(profile,frame,awaits,layout) {}
+      std::span<const AwaitSite> awaits,const abc::FrameLayout* layout=nullptr,
+      std::span<const YieldSite> yields={}, std::span<const PatternSite> patterns={})
+      :lifter_(profile,frame,awaits,layout,yields,patterns) {}
   InstructionLift Lift(const abc::BodyInstruction& site) override {return lifter_.Lift(site);}
   bool Complete() const override {return lifter_.Complete();}
  private:
