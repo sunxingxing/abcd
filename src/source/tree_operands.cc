@@ -1,3 +1,4 @@
+#include "iterator_continuation.h"
 #include <algorithm>
 #include <bit>
 #include <limits>
@@ -1677,8 +1678,16 @@ class OperandCheck {
 
 void CheckTreeOperands(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    const TreeFlow& flow, ExpressionConstants constants, TreeCheckBudget& budget, OriginalFlow& original) {
+    const TreeFlow& flow, ExpressionConstants constants, TreeCheckBudget& budget, OriginalFlow& original, const ForOfEvaluationInput* iteration) {
   VerifyPhasedDefaultInput(graph, tree, budget);
+  if (iteration && iteration->control.continuations) {
+    auto checked = VerifyIteratorContinuations(iteration->body, graph, iteration->input,
+        iteration->regions, iteration->ownership, *iteration->control.continuations, budget.Remaining());
+    if (const auto* f = std::get_if<ForOfPlacementFailure>(&checked))
+      throw f->kind == ForOfPlacementError::kResourceLimit ? TreeStructureError::kResourceLimit :
+          f->kind == ForOfPlacementError::kWorkLimit ? TreeStructureError::kWorkLimit : TreeStructureError::kOwnership;
+    budget.Step(std::get<std::uint64_t>(checked));
+  }
   budget.Admit(1, sizeof(OperandCheck));
   OperandCheck(graph, evaluation, tree, flow, constants, budget, original).Run();
 }

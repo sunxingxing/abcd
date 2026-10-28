@@ -1,9 +1,51 @@
 # 当前状态
 
-更新时间：2026-10-27。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-28。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
+
+## Certified iterator exhaustion continuation (2026-10-28)
+
+- Added source-control-owned `IteratorContinuationProof`, activated only after
+  the real typed orphan-expression census and a sealed close-boundary proof of
+  a misplaced exhaustion continuation. The exhausted edge's lexical follow is
+  constrained outside the native loop. Physical CFG/SSA, close ownership,
+  exception ports and the strict census stay unchanged. No source premise was
+  added; acyclic/headerless native iterator placement remains deferred.
+- One owned phased retry rebuilds control, evaluation and syntax together. ABI,
+  captures, operands/origins, tree flow and recovery use that same view. Fresh
+  control/operand/origin checks derive the certificate independently; immutable
+  original close/copy/protection facts and actual native completion actions are
+  rechecked by recovery. Failed retries retain the typed census witness and
+  `ForOfPlacementError` cause. Original and retry peak storage/work are charged.
+- The pinned O0 fixture passes **3,997 Node comparisons** across seven exports:
+  effectful exhaustion, conditional return subtrees, captures, throwing
+  getters/coercions and close-priority/identity observations. Certificate
+  mutations and coherent register/copy/block variants cover the refusal and
+  invariance obligations. The 100/200/201/400/800 growth test passes, with fixed
+  protocol count; it is not a dense-product scaling claim.
+- Required build targets and the complete Debug build pass; the final
+  source-regression label passes **65/65** in **222.54 s**; the related sweep
+  passes **33/33** in **192.82 s**. ISA totals stay **222 verified / 21
+  unverified / 61 unmeasured / 28 non-executable**, over **1,165** inputs and
+  **54** oracle producers. Full Debug CTest finishes **943 pass / 34 known
+  failures out of 977** in **3,171.03 s**: zero newly failing, zero changed
+  existing statuses, six new passing tests, no skipped or missing tests.
+  Final receipts are in `build/iter-continuation/acceptance.md`.
+- All **40** no-flag cohort inputs compare against read-only `csr92/def`:
+  **618 → 619 / 1007**, zero regressions and zero text changes over **3,601,791**
+  existing complete-source bytes. The only new completion is **o32/42397
+  DataDriver**, including m42798. Other typed failures are identical. CLI peak
+  RSS is **49,004,544 bytes**. Input hashes were checked before and after.
+- Service remains partial at m60551's acyclic inner iterator, protocol location
+  **original452 / working428**, with CompletionPortError9 /
+  ForOfIterationError3 and the unchanged original313 multi-exit witness.
+  Increment B is not included. The stale `for_in_evaluation` DataDriver refusal
+  assertion now requires exact complete CLI/source correspondence; its raw
+  bypass/validation edge oracle and all other assertions remain.
+- Design: [iterator-continuation.md](iterator-continuation.md). Raw build/test,
+  cohort and ledger evidence lives under `build/iter-continuation/`.
 
 ## Verified iterator completion ports (2026-10-27)
 

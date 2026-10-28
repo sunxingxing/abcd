@@ -50,10 +50,19 @@ struct FilePhasedFunction::Storage {
   std::size_t bytes;
   std::uint64_t work;
 };
-FilePhasedFunction::FilePhasedFunction(std::unique_ptr<const Storage> storage) : storage_(std::move(storage)) {}
+FilePhasedFunction::FilePhasedFunction(std::unique_ptr<Storage> storage) : storage_(std::move(storage)) {}
 FilePhasedFunction::FilePhasedFunction(FilePhasedFunction&&) noexcept = default;
 FilePhasedFunction& FilePhasedFunction::operator=(FilePhasedFunction&&) noexcept = default;
 FilePhasedFunction::~FilePhasedFunction() = default;
+std::variant<std::uint64_t, ForOfPlacementFailure> FilePhasedFunction::RetryIteratorContinuation(
+    const TreeCensusFailure& census, analysis::SemanticBudget budget) {
+  const auto bytes = storage_->phases.AllocatedBytes();
+  const auto work = storage_->phases.Work();
+  auto result = storage_->phases.RetryIteratorContinuation(storage_->body,census,budget);
+  storage_->bytes += storage_->phases.AllocatedBytes() - bytes;
+  storage_->work += storage_->phases.Work() - work;
+  return result;
+}
 const abc::MethodBody& FilePhasedFunction::Body() const { return storage_->body; }
 const abc::MethodBody& FilePhasedFunction::OriginalBody() const {
   return storage_->original ? *storage_->original : storage_->body;
@@ -427,7 +436,7 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
       accesses.push_back({before.instruction, load ? analysis::LocalAccessKind::kLoad : analysis::LocalAccessKind::kStore});
     }
     Require(!file.CheckUnchanged(), Error::kChanged);
-    return FilePhasedFunction(std::make_unique<const Storage>(Storage{std::move(body), std::move(original), std::move(phases), std::move(parameter_defaults),
+    return FilePhasedFunction(std::make_unique<Storage>(Storage{std::move(body), std::move(original), std::move(phases), std::move(parameter_defaults),
         std::move(locals), std::move(guarded), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), std::move(entry_modules), std::move(module_reads), method.owner_offset,
         budget.bytes - left.bytes, budget.work - left.work}));
   } catch (GuardedStoreError error) { return PhasedFileFailure{error};

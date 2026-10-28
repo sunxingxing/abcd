@@ -27,7 +27,8 @@ std::vector<std::optional<analysis::CatchScope>> ProjectExceptionScopes(
 ExceptionTopology ProjectExceptionControl(const analysis::ValueProgram& graph,
     const ExceptionPlan& regions, ControlQuota& quota);
 ExceptionTopology ProjectProtocolControl(const analysis::ValueProgram&, const ExceptionPlan&,
-    const analysis::PhasedValueInput&, const VerifiedProtocolRegionOwnership&, ControlQuota&);
+    const analysis::PhasedValueInput&, const VerifiedProtocolRegionOwnership&, ControlQuota&,
+    std::shared_ptr<const IteratorContinuationProof> = {});
 // Wrap an already sealed control projection with the remaining ordinary tries.
 // Original operations/edges remain in graph; no synthetic ValueProgram is made.
 ExceptionTopology ComposeOrdinaryEnclosures(ExceptionTopology, const ExceptionPlan&,

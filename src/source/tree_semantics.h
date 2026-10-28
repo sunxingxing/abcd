@@ -13,6 +13,7 @@ struct TreeSemanticFailure {
   TreeSemanticError kind = TreeSemanticError::kFlow;
   std::variant<std::monostate, TreeFlowError> cause;
   TreeLocation location;
+  std::optional<TreeCensusFailure> census;
 };
 struct TreeSemantics {
   analysis::IrRevision value_revision;

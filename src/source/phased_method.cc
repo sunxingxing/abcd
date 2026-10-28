@@ -40,6 +40,11 @@ struct PhasedBody::Storage {
     return {*flow, *ssa, environments, values, proof, frame};
   }
 };
+struct PhasedBody::ContinuationRetry {
+  ExceptionControl control;
+  std::size_t bytes;
+  std::uint64_t work;
+};
 struct PhasedMethod::Storage {
   PhasedBody body;
   EvaluationPlan evaluation;
@@ -135,21 +140,55 @@ const PhasedClassSites& PhasedBody::Classes() const {
 }
 const RouteInputIdentity& PhasedBody::Identity() const { return storage_->identity; }
 abc::EntityOffset PhasedBody::Target() const { return storage_->target; }
-const ControlPlan& PhasedBody::Control() const { return storage_->control.skeleton; }
+const ControlPlan& PhasedBody::Control() const { return continuation_ ? continuation_->control.skeleton : storage_->control.skeleton; }
 const ModuleAliases* PhasedBody::Modules() const { return storage_->aliases ? &*storage_->aliases : nullptr; }
 const analysis::ValueEnvironments* PhasedBody::CellEnvironments() const {
   return storage_->cell_environments ? &*storage_->cell_environments : nullptr;
 }
 const CellPlan* PhasedBody::Cells() const { return storage_->cells ? &*storage_->cells : nullptr; }
 ExceptionTreeInput PhasedBody::TreeInput(const abc::MethodBody& body) const {
-  return {body, storage_->Input(), storage_->regions, storage_->control,ForOfInput()};
+  return {body, storage_->Input(), storage_->regions, continuation_ ? continuation_->control : storage_->control,ForOfInput()};
 }
 std::optional<ForOfEvaluationInput> PhasedBody::ForOfInput() const {
   if(!storage_->protocols)return {};
-  return ForOfEvaluationInput{*storage_->protocol_body,storage_->Input(),storage_->regions,storage_->control,*storage_->protocols,storage_->identity.contract};
+  return ForOfEvaluationInput{*storage_->protocol_body,storage_->Input(),storage_->regions,continuation_ ? continuation_->control : storage_->control,*storage_->protocols,storage_->identity.contract};
 }
-std::size_t PhasedBody::AllocatedBytes() const { return storage_->bytes; }
-std::uint64_t PhasedBody::Work() const { return storage_->work; }
+std::size_t PhasedBody::AllocatedBytes() const { return storage_->bytes + (continuation_ ? continuation_->bytes : 0); }
+std::uint64_t PhasedBody::Work() const { return storage_->work + (continuation_ ? continuation_->work : 0); }
+std::variant<std::uint64_t, ForOfPlacementFailure> PhasedBody::RetryIteratorContinuation(
+    const abc::MethodBody& body, const TreeCensusFailure& activation, analysis::SemanticBudget budget) {
+  using E = ForOfPlacementError;
+  try {
+    if (continuation_ || !storage_->protocols) return ForOfPlacementFailure{E::kActivation, {}, {}, activation};
+    PhaseBudget q(budget); q.Admit(sizeof(ContinuationRetry));
+    const auto& original = storage_->protocol_body ? *storage_->protocol_body : body;
+    auto result = ProveIteratorContinuations(original, storage_->graph, storage_->Input(), storage_->regions,
+        *storage_->protocols, storage_->control, activation, q.Remaining());
+    if (const auto* f = std::get_if<ForOfPlacementFailure>(&result)) return *f;
+    auto proof = std::get<IteratorContinuationProof>(std::move(result)); q.Admit(proof.allocated_bytes); q.Step(proof.work);
+    auto shared = q.Shared<IteratorContinuationProof>(std::move(proof));
+    auto planned = BuildExceptionControl(original, storage_->graph, storage_->Input(), storage_->regions,
+        q.Remaining(), &*storage_->protocols, shared);
+    if (!std::holds_alternative<ExceptionControl>(planned)) {
+      const auto kind = std::visit([](const auto& f) {
+        using T = std::decay_t<decltype(f)>;
+        if constexpr (std::is_same_v<T,ExceptionControl>) return E::kCorrespondence;
+        else {
+          const auto e = [&] { if constexpr(std::is_enum_v<T>) return f; else return f.kind; }();
+          return e == ExceptionControlError::kResourceLimit ? E::kResourceLimit :
+              e == ExceptionControlError::kWorkLimit ? E::kWorkLimit : E::kContinuation;
+        }
+      }, planned);
+      return ForOfPlacementFailure{kind, {}, {}, activation};
+    }
+    auto control = std::get<ExceptionControl>(std::move(planned)); q.Admit(control.allocated_bytes); q.Step(control.work);
+    auto retry = std::make_unique<ContinuationRetry>(ContinuationRetry{std::move(control), q.Bytes(), q.Work()});
+    const auto work = retry->work; continuation_ = std::move(retry); return work;
+  } catch (PhasedMethodError e) {
+    return ForOfPlacementFailure{e == PhasedMethodError::kWorkLimit ? E::kWorkLimit : E::kResourceLimit, {}, {}, activation};
+  } catch (const std::bad_alloc&) { return ForOfPlacementFailure{E::kResourceLimit, {}, {}, activation};
+  } catch (const std::length_error&) { return ForOfPlacementFailure{E::kResourceLimit, {}, {}, activation}; }
+}
 
 std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailure, PhasedModuleFailure, PhasedImportFailure, PhasedControlFailure> PhasedBody::Build(
     const FunctionContext& context, const abc::MethodBody& body, analysis::SemanticBudget budget,

@@ -11169,6 +11169,10 @@
     {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
+    },
+    {
+      "test": "isa_iterator_continuation_source_test",
+      "producer": "tests/isa/iterator_continuation_test.py"
     }
   ]
 }

@@ -1,4 +1,5 @@
 #include "for_of_emission.h"
+#include "iterator_continuation.h"
 #include "../analysis/idf_scratch.h"
 #include <stdexcept>
 namespace abcd::source {
@@ -25,6 +26,9 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
   q.Step(std::get<std::uint64_t>(checked));
   const auto& control=source.control;ForOfEmissionView out;
   out.completion_ports=source.ownership.Summary().completion_ports;
+  out.continuations=source.control.continuations;
+  if (out.continuations) q.Require(CheckIteratorContinuationInputs(ContinuationInput(g),
+      *out.continuations,[&](std::uint64_t n){q.Step(n);}));
   const auto copy=[&](auto& to,const auto& from){q.Array(to,from.size());std::copy(from.begin(),from.end(),to.begin());};
   const auto& f=source.ownership.Forwarding();copy(out.forwarding.regions,f.regions);copy(out.forwarding.blocks,f.blocks);copy(out.forwarding.operations,f.operations);copy(out.forwarding.exits,f.exits);
   q.Array(out.loops,plan.identity.loops.size());q.Array(out.wrappers,control.skeleton.loops.size());
@@ -62,7 +66,7 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
     const auto& acquire=g.ops[loop.acquisition.value];q.Require(acquire.use_count==1);
     out.loops[i]={loop.protocol,id,*header,decision,arm?*arm:*node.next,*success,*exhausted,acquire.first_use,loop.key};
   }
-  if(out.completion_ports) {
+  if(out.completion_ports || out.continuations) {
     std::pmr::vector<std::uint8_t> ready(control.skeleton.loops.size(),0,&q.memory);
     std::pmr::vector<std::optional<IteratorProtocolId>> nearest(control.skeleton.loops.size(),{},&q.memory);
     std::pmr::vector<LoopId> path(&q.memory);
@@ -124,7 +128,7 @@ std::variant<std::uint64_t,ForOfIterationFailure> VerifyForOfEmissionView(
   auto built=BuildForOfEmissionView(g,i,p,b);if(const auto* f=std::get_if<ForOfIterationFailure>(&built))return *f;
   const auto& actual=std::get<ForOfEmissionView>(built);const auto cost=view.loops.size()+view.wrappers.size()+view.closes.size()+view.ports.size()+view.close_blocks.size()+view.forwarding.regions.size()+view.forwarding.blocks.size()+view.forwarding.operations.size()+view.forwarding.exits.size();
   if(cost>b.work-actual.work)return ForOfIterationFailure{Error::kWorkLimit};
-  if(actual.completion_ports!=view.completion_ports || !(actual.forwarding==view.forwarding) || actual.loops!=view.loops || actual.wrappers!=view.wrappers || actual.closes!=view.closes || actual.ports!=view.ports || actual.close_blocks!=view.close_blocks)return ForOfIterationFailure{Error::kCorrespondence};
+  if(actual.continuations!=view.continuations || actual.completion_ports!=view.completion_ports || !(actual.forwarding==view.forwarding) || actual.loops!=view.loops || actual.wrappers!=view.wrappers || actual.closes!=view.closes || actual.ports!=view.ports || actual.close_blocks!=view.close_blocks)return ForOfIterationFailure{Error::kCorrespondence};
   return actual.work+cost;
 }
 }

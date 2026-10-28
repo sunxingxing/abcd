@@ -33,6 +33,8 @@ class FilePhasedFunction {
       const FunctionContext& context, analysis::SemanticBudget budget = {},
       const PhasedModuleBinding* modules = nullptr, InputCaptureMode mode = InputCaptureMode::kClosed, const ParentModuleInput* parent_modules = nullptr,
       const InheritedModuleInput* inherited = nullptr);
+  std::variant<std::uint64_t, ForOfPlacementFailure> RetryIteratorContinuation(
+      const TreeCensusFailure&, analysis::SemanticBudget);
   const abc::MethodBody& Body() const;
   const abc::MethodBody& OriginalBody() const;
   const PhasedBody& Phases() const;
@@ -54,8 +56,8 @@ class FilePhasedFunction {
   std::uint64_t Work() const;
  private:
   struct Storage;
-  explicit FilePhasedFunction(std::unique_ptr<const Storage> storage);
-  std::unique_ptr<const Storage> storage_;
+  explicit FilePhasedFunction(std::unique_ptr<Storage> storage);
+  std::unique_ptr<Storage> storage_;
 };
 [[nodiscard]] std::variant<std::uint64_t, FunctionInputError> VerifyInitializedModuleReads(
     const FunctionInput&, analysis::InstructionId, const FilePhasedFunction&, analysis::SemanticBudget = {});

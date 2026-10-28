@@ -12,7 +12,8 @@ struct Visit {
 }  // namespace
 void ExtendLoopExitCorridors(ControlGraphView graph,
                              std::span<const ControlNodeId> entries,
-                             ControlLoopLayout& loops, ControlQuota& quota) {
+                             ControlLoopLayout& loops, ControlQuota& quota,
+                             std::span<const LoopExitConstraint> constraints) {
   // A natural loop contains nodes on backedge paths, not necessarily the
   // code between a side exit and its shared destination. Absorb
   // only exit arms whose incoming edges all belong to this lexical loop;
@@ -91,6 +92,20 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
     quota.Work();
     root[entry.value] = true;
   }
+  std::vector<std::optional<ControlArcId>> forced;
+  std::vector<std::optional<std::size_t>> constrained_sources;
+  std::vector<std::optional<LoopId>> headers;
+  if (!constraints.empty()) {
+    quota.Size(forced, loop_count); quota.Size(constrained_sources, graph.NodeCount());
+    quota.Size(headers, graph.NodeCount());
+    for (std::uint32_t l = 0; l < loop_count; ++l) { quota.Work(); headers[loops.loops[l].header.value] = LoopId{l}; }
+  }
+  for (std::size_t c = 0; c < constraints.size(); ++c) {
+    quota.Work(); const auto& cut = constraints[c];
+    if (cut.source.value >= graph.NodeCount() || cut.header.value >= headers.size() ||
+        !headers[cut.header.value] || constrained_sources[cut.source.value]) throw ControlError::kInvalidGraph;
+    constrained_sources[cut.source.value] = c;
+  }
   std::size_t count = 0;
   for (std::uint32_t e = 0; e < graph.ArcCount(); ++e) {
     quota.Work();
@@ -99,11 +114,23 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
     ++incoming[edge.target.value];
     predecessor[edge.target.value] = edge.source;
     const auto owner = loops.owners[edge.source.value];
+    if (!constrained_sources.empty()) if (const auto c = constrained_sources[edge.source.value]) {
+      const auto& cut = constraints[*c];
+      if (edge.kind == cut.kind) {
+        const auto loop = *headers[cut.header.value];
+        if (owner != loop || !outside(loop, loops.owners[edge.target.value]) || forced[loop.value])
+          throw ControlError::kLoopExits;
+        forced[loop.value] = id;
+      }
+    }
     if (owner && outside(*owner, loops.owners[edge.target.value])) {
       ++exits[owner->value];
       next[e] = seeds[owner->value];
       seeds[owner->value] = id;
     }
+  }
+  for (const auto& cut : constraints) {
+    quota.Work(); if (!forced[headers[cut.header.value]->value]) throw ControlError::kLoopExits;
   }
   // Summarize private linear terminal arms once, backwards. A shared join,
   // root, branch, or normal region port stops the summary. No per-loop walks.
@@ -149,6 +176,7 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
     bool following_preserving = false, following_abrupt = false;
     for (auto seed = seeds[l]; seed; seed = next[seed->value]) {
       quota.Work();
+      if (!forced.empty() && forced[l] && seed != forced[l]) continue;
       const auto edge = graph.Arc(*seed);
       const bool preserve = preserving[edge.target.value];
       const bool terminal = abrupt[edge.target.value];
@@ -173,7 +201,7 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
       const auto& node = graph.Node(target);
       if (owner != loop || exits[l] < 2 ||
           !outside(loop, loops.owners[target.value]) || root[target.value] ||
-          preserving[target.value] ||
+          preserving[target.value] || (!forced.empty() && forced[l] && graph.Arc(*forced[l]).target == target) ||
           (node.arc_count == 0 && node.termination != ControlTermination::kAbrupt))
         continue;
       if (!candidate[target.value]) candidate[target.value] = loop;
@@ -190,7 +218,7 @@ void ExtendLoopExitCorridors(ControlGraphView graph,
     // shared jump). Two distinct exits are never structurable, so converge
     // them by absorbing that corridor too. Loops already exiting to a single
     // target are untouched. O(exits + absorbed arcs) for this loop.
-    if (!following) continue;
+    if (!following || (!forced.empty() && forced[l])) continue;
     const auto retained = graph.Arc(*following).target;
     const auto& corridor = graph.Node(retained);
     if (loops.owners[retained.value] == loop || root[retained.value] || incoming[retained.value] != 1 ||

@@ -29,6 +29,8 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     if constexpr (requires { error.cause; }) CollectFailureCauses(error.cause, out);
     else if constexpr (requires { error.error; }) CollectFailureCauses(error.error, out);
     else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);
+    if constexpr (std::is_same_v<T,FunctionTreeFailure>) if (error.placement) CollectFailureCauses(*error.placement,out);
+    if constexpr (requires { error.census; }) if (error.census) CollectFailureCauses(*error.census, out);
     if constexpr (requires { error.renewal; })
       if (error.renewal) CollectFailureCauses(*error.renewal, out);
     if constexpr (requires { error.derivation; }) if(error.derivation) CollectFailureCauses(*error.derivation,out);
@@ -56,6 +58,7 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
       if (error.tree) {
         CollectFailureCauses(error.tree->obligation, out);
         if (error.tree->ownership) CollectFailureCauses(*error.tree->ownership, out);
+        if (error.tree->census) CollectFailureCauses(*error.tree->census, out);
       }
     if constexpr (requires { error.deferred; })
       if (error.deferred) CollectFailureCauses(error.deferred->reason, out);

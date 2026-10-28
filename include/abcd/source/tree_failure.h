@@ -29,6 +29,18 @@ struct TreeLocation {
   std::optional<abc::CodeOffset> pc, working_pc;
   bool operator==(const TreeLocation&) const = default;
 };
+enum class TreeCensusError : std::uint8_t { kNone, kOrphanExpression };
+struct TreeCensusFailure {
+  TreeCensusError kind = TreeCensusError::kNone;
+  ExprId expression;
+  TreeOriginId origin;
+  std::optional<analysis::OpId> operation;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
+  bool operator==(const TreeCensusFailure& b) const {
+    return kind == b.kind && expression == b.expression && origin == b.origin && operation == b.operation;
+  }
+};
 enum class ExpressionOwnershipError : std::uint8_t { kMissingExpression, kPlacement };
 enum class DecisionPrefixError : std::uint8_t {
   kSyntheticNode, kControlUnit, kPhaseUnit, kBlock, kCommitPredicate,
@@ -40,6 +52,7 @@ struct TreeFailureEvidence {
   TreeLocation location;
   std::optional<TreeLocation> expected_owner, actual_owner;
   std::optional<ExpressionOwnershipError> ownership;
+  std::optional<TreeCensusFailure> census;
   std::optional<EvaluationKind> placement;
   std::optional<TreeLocation> decision_entry;
   std::optional<DecisionPrefixError> decision_prefix;

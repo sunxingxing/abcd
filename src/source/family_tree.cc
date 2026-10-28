@@ -295,8 +295,8 @@ class FamilyTrees {
         Require(member.context.has_value() && member.incoming.has_value(), FamilyTreeError::kContext);
       } else Require(!member.incoming && !member.context, FamilyTreeError::kContext);
       const auto& context = i ? *member.context : *root;
-      const auto& function = member.function;
-      const auto* phase = function.Phase();
+      auto& function = member.function;
+      auto* phase = function.Phase();
       if (!phase) {
         const auto& input = function.Normal().input;
         Require(!input.HasOwner() || input.MatchesOwner(context), FamilyTreeError::kContext);
@@ -381,7 +381,7 @@ class FamilyTrees {
           Step(1); return !HasClassPrototypeKey(site, syntax.View(), syntax.syntax.names, syntax.syntax.texts);
         });
       }
-      const auto for_of=phase?phase->Phases().ForOfInput():std::optional<ForOfEvaluationInput>{};
+      auto for_of=phase?phase->Phases().ForOfInput():std::optional<ForOfEvaluationInput>{};
       auto evaluated =
           phase
               ? BuildPhasedEvaluationPlan(graph, left_,
@@ -417,6 +417,7 @@ class FamilyTrees {
       }
       auto evaluation = Take<EvaluationPlan, EvaluationFailure>(std::move(evaluated));
       Account(evaluation);
+      const auto mark_deferred = [&] {
       if (!deferred[i].empty()) {
         if (!evaluation.cells)
           DeferredFailure(family, i, DeferredCellError::kBinding, &deferred[i].front());
@@ -429,6 +430,8 @@ class FamilyTrees {
         // its charge while the new deferred table stays alive with evaluation.
         Admit(evaluation.cells->deferred.capacity(), sizeof(std::optional<analysis::OpId>));
       }
+      };
+      mark_deferred();
       std::optional<IncomingCaptureTree> incoming;
       if (member.incoming) {
         const auto parent = member.incoming->parent.value;
@@ -472,9 +475,41 @@ class FamilyTrees {
       }
       auto constructed = [&]() -> ConstructedFunction {
         if (phase) {
-          auto draft = Take<ExceptionFunctionDraft, FunctionTreeFailure>(BuildExceptionFunctionDraft(graph,
-              phase->Phases().TreeInput(phase->Body()), evaluation, std::move(syntax.syntax), constants, left_,
-              incoming ? &*incoming : nullptr));
+          auto result = BuildExceptionFunctionDraft(graph, phase->Phases().TreeInput(phase->Body()),
+              evaluation, std::move(syntax.syntax), constants, left_, incoming ? &*incoming : nullptr, &syntax.syntax);
+          if (const auto* failure = std::get_if<FunctionTreeFailure>(&result);
+              failure && failure->tree && failure->tree->census &&
+              failure->tree->census->kind == TreeCensusError::kOrphanExpression) {
+            // A census failure never authorizes deletion. The control owner must
+            // first prove that its certified exhaustion suffix was misplaced.
+            Admit(failure->allocated_bytes,1); Step(failure->work);
+            const auto before = phase->Phases().AllocatedBytes();
+            auto retried = phase->RetryIteratorContinuation(*failure->tree->census,left_);
+            if (const auto* error = std::get_if<ForOfPlacementFailure>(&retried)) {
+              if (error->kind != ForOfPlacementError::kActivation) {
+                auto rejected = *failure; rejected.placement = *error;
+                if (error->kind == ForOfPlacementError::kResourceLimit) rejected.kind = FunctionTreeError::kResourceLimit;
+                if (error->kind == ForOfPlacementError::kWorkLimit) rejected.kind = FunctionTreeError::kWorkLimit;
+                throw FamilyTreeFailure{member_,rejected};
+              }
+            } else {
+              Admit(phase->Phases().AllocatedBytes()-before,1); Step(std::get<std::uint64_t>(retried));
+              for_of.reset();
+              if (auto fresh = phase->Phases().ForOfInput()) for_of.emplace(*fresh);
+              array_source.names = syntax.syntax.names;
+              auto rebuilt = BuildPhasedEvaluationPlan(graph,left_,
+                  i == 0 && !family.root_capture ? IncomingCells::kReject : IncomingCells::kConditional,
+                  member.children,module_evaluations,demands,{},phase->Locals().writes,array_source,guarded,
+                  for_of ? &*for_of : nullptr);
+              evaluation = Take<EvaluationPlan,EvaluationFailure>(std::move(rebuilt)); Account(evaluation);
+              mark_deferred();
+              // The semantic constant owner is unchanged; names/captures were
+              // moved back from the failed builder rather than copied eagerly.
+              result = BuildExceptionFunctionDraft(graph,phase->Phases().TreeInput(phase->Body()),
+                  evaluation,std::move(syntax.syntax),constants,left_,incoming ? &*incoming : nullptr);
+            }
+          }
+          auto draft = Take<ExceptionFunctionDraft,FunctionTreeFailure>(std::move(result));
           return {std::move(draft.tree), draft.allocated_bytes, draft.work, std::move(draft.flow)};
         }
         return Take<ConstructedFunction, FunctionTreeFailure>(BuildFunctionTree(graph, control,

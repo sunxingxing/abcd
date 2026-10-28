@@ -7,6 +7,7 @@
 #include "../analysis/value_phi.h"
 #include "class_initialization_ports.h"
 #include "completion_ports.h"
+#include "iterator_continuation.h"
 #include "exception_tree.h"
 #include "original_flow.h"
 #include "parameter_expression_tree.h"
@@ -23,13 +24,14 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
   if (failure) *failure = {};
   using Error = TreeSemanticError;
   try {
+    TreeCensusFailure census;
     auto checked_flow = exceptions
-        ? VerifyExceptionTreeFlow(graph, *exceptions, evaluation, tree, budget, control_check, failure ? &failure->location : nullptr)
-        : VerifyTreeFlow(graph, control, evaluation, tree, budget, failure ? &failure->location : nullptr);
+        ? VerifyExceptionTreeFlow(graph, *exceptions, evaluation, tree, budget, control_check, failure ? &failure->location : nullptr, &census)
+        : VerifyTreeFlow(graph, control, evaluation, tree, budget, failure ? &failure->location : nullptr, &census);
     auto* flow = std::get_if<TreeFlow>(&checked_flow);
     if (!flow) {
       const auto error = std::get<TreeFlowError>(checked_flow);
-      if (failure) failure->cause = error;
+      if (failure) { failure->cause = error; if (census.kind != TreeCensusError::kNone) failure->census = census; }
       if (error == TreeFlowError::kResourceLimit) return Error::kResourceLimit;
       if (error == TreeFlowError::kWorkLimit) return Error::kWorkLimit;
       return Error::kFlow;
@@ -46,6 +48,13 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
       RequireTree(flow->for_of.has_value(),TreeStructureError::kOwnership);
       original->iterations.emplace(); auto& retained=*original->iterations;
       retained.view=std::move(flow->for_of->view);
+      if (retained.view.continuations) {
+        checked.Admit(sizeof(IteratorContinuationProof)+retained.view.continuations->allocated_bytes,1);
+        RequireTree(exceptions && exceptions->for_of,TreeStructureError::kOwnership);
+        retained.continuation_facts.emplace();
+        RetainIteratorContinuationFacts(exceptions->regions,exceptions->for_of->ownership,
+            *retained.view.continuations,*retained.continuation_facts,checked);
+      }
       retained.statements=std::move(flow->for_of->statements);
       retained.closes=std::move(flow->for_of->closes);
       const auto copy=[&](auto& to,const auto& from){checked.Array(to,from.size());std::copy(from.begin(),from.end(),to.begin());};
@@ -117,8 +126,8 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     }
     VerifyPhasedDefaultInput(graph, tree, checked);
     original->phased_defaults = tree.phased_defaults;
-    CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked,*original);
-    CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked);
+    CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked,*original, exceptions && exceptions->for_of ? &*exceptions->for_of : nullptr);
+    CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked, exceptions && exceptions->for_of ? &*exceptions->for_of : nullptr);
     RetainClassInitializationPorts(graph, tree, *original, checked);
     if(evaluation.object_rest)RetainObjectRests(graph,evaluation,tree,*flow,*original,checked);
     IndexOriginalInputs(*original,checked);

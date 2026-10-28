@@ -1,4 +1,5 @@
 #include "exception_topology.h"
+#include "iterator_continuation.h"
 
 #include <algorithm>
 #include <limits>
@@ -100,8 +101,10 @@ class Composition {
       quota_.Work(); Require(loop.header.value < t_.blocks.size());
     }
     t_.loops = {std::move(forest.loops), std::move(forest.owners)};
+    const auto cuts = t_.mapping.continuations ? IteratorContinuationConstraints(
+        graph_, t_.mapping, *t_.mapping.continuations, quota_) : std::vector<LoopExitConstraint>{};
     ExtendLoopExitCorridors(ControlGraphView{ControlProjection{
-        graph_.revision, graph_.cfg_revision, nodes, arcs}}, roots, t_.loops, quota_);
+        graph_.revision, graph_.cfg_revision, nodes, arcs}}, roots, t_.loops, quota_, cuts);
     t_.loops.owners.resize(t_.blocks.size());
   }
   void Inherit() {

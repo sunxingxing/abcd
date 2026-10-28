@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_TREE_STRUCTURE_H_
 
 #include "abcd/source/source_tree.h"
+#include "abcd/source/tree_failure.h"
 
 namespace abcd::source {
 struct GlobalScope;
@@ -28,7 +29,7 @@ struct TreeStructure {
 // TDZ/initialization, effects, CFG edges and ABI facts need semantic validation.
 [[nodiscard]] std::variant<TreeStructure, TreeStructureError>
 VerifyTreeStructure(const FunctionTree& tree,
-                    analysis::SemanticBudget budget = {}, const GlobalScope* destination = nullptr);
+                    analysis::SemanticBudget budget = {}, const GlobalScope* destination = nullptr, TreeCensusFailure* census = nullptr);
 // Conditional syntax only. Ordinary verification/printing rejects this class
 // draft until actual creator enclosure and recovery ports have been checked.
 [[nodiscard]] std::variant<TreeStructure, TreeStructureError>

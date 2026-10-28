@@ -51,6 +51,9 @@ inline std::optional<TreeLocation> ParseTreeLocation(const nlohmann::json& j) {
 }
 inline nlohmann::json TreeFailureJson(const TreeFailureEvidence& v) {
   nlohmann::json j{{"obligation", static_cast<unsigned>(v.obligation)}, {"location", TreeLocationJson(v.location)}};
+  if (v.census) j["census"] = {{"kind", static_cast<unsigned>(v.census->kind)},
+      {"expression", v.census->expression.value}, {"origin", v.census->origin.value}};
+  if (v.census && v.census->operation) j["census"]["operation"] = v.census->operation->value;
   if (v.expected_owner) j["expected_owner"] = TreeLocationJson(*v.expected_owner);
   if (v.actual_owner) j["actual_owner"] = TreeLocationJson(*v.actual_owner);
   if (v.ownership) j["ownership"] = static_cast<unsigned>(*v.ownership);
@@ -65,6 +68,14 @@ inline std::optional<TreeFailureEvidence> ParseTreeFailure(const nlohmann::json&
   if (!j.is_object() || !FailureNumber(j, "obligation", kind) || kind > static_cast<unsigned>(TreeObligation::kForOfRecovery) || !j.contains("location")) return {};
   auto location = ParseTreeLocation(j["location"]); if (!location) return {};
   TreeFailureEvidence v{static_cast<TreeObligation>(kind), *location};
+  if (j.contains("census")) {
+    const auto& c = j["census"]; std::uint32_t k, expression, origin;
+    if (!c.is_object() || !FailureNumber(c,"kind",k) || k != static_cast<unsigned>(TreeCensusError::kOrphanExpression) ||
+        !FailureNumber(c,"expression",expression) || !FailureNumber(c,"origin",origin)) return {};
+    TreeCensusFailure census{static_cast<TreeCensusError>(k),ExprId{expression},TreeOriginId{origin}};
+    if (c.contains("operation")) { std::uint32_t operation; if (!FailureNumber(c,"operation",operation)) return {}; census.operation=analysis::OpId{operation}; }
+    v.census = census;
+  }
   if (j.contains("expected_owner")) { v.expected_owner = ParseTreeLocation(j["expected_owner"]); if (!v.expected_owner) return {}; }
   if (j.contains("actual_owner")) { v.actual_owner = ParseTreeLocation(j["actual_owner"]); if (!v.actual_owner) return {}; }
   if (j.contains("ownership")) { std::uint32_t n; if (!FailureNumber(j,"ownership",n) || n > static_cast<unsigned>(ExpressionOwnershipError::kPlacement)) return {}; v.ownership = static_cast<ExpressionOwnershipError>(n); }

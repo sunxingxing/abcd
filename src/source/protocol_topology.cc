@@ -13,10 +13,12 @@ struct EntryIndex {
 };
 }
 ExceptionTopology ProjectProtocolControl(const ValueProgram& g, const ExceptionPlan& plan,
-    const PhasedValueInput& input, const VerifiedProtocolRegionOwnership& ownership, ControlQuota& q) {
+    const PhasedValueInput& input, const VerifiedProtocolRegionOwnership& ownership, ControlQuota& q,
+    std::shared_ptr<const IteratorContinuationProof> continuations) {
   const auto& summary=ownership.Summary();
   Require(summary.revision==g.revision && summary.cfg_revision==g.cfg_revision);
   ExceptionTopology t;
+  t.mapping.continuations = std::move(continuations);
   std::vector<bool> members;
   std::vector<std::optional<ControlId>> raw, phase;
   std::vector<EntryIndex> entries;

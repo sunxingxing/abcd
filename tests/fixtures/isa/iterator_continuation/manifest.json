@@ -1,0 +1,44 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "fixtures": [
+    {
+      "source": "tests/fixtures/isa/iterator_continuation/choose.js",
+      "path": "tests/fixtures/isa/iterator_continuation/choose-O0.abc",
+      "source_sha256": "0d955c86b4c208066bb5b4b8b598229f413b01fa100c56ff75a53c864c0b0beb",
+      "sha256": "1c84d366b791c61b9129a7447b015e1baa022e95409515596c714cf1c7826b6a",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=iterator_continuation",
+        "--source-file=choose.js",
+        "--output=tests/fixtures/isa/iterator_continuation/choose-O0.abc",
+        "--opt-level=0",
+        "tests/fixtures/isa/iterator_continuation/choose.js"
+      ],
+      "profile": 6
+    },
+    {
+      "source": "tests/fixtures/isa/iterator_continuation/variants.js",
+      "path": "tests/fixtures/isa/iterator_continuation/variants-O0.abc",
+      "source_sha256": "c8429d3150457aa09540ed03dbc3b4201f3406cfb08c0b00b5be8d6af345413d",
+      "sha256": "d55b4f4c4718a73799e5a0984d006fcf97f90b0ab0c4ee5aeeff945c420aa9aa",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=iterator_continuation_variants",
+        "--source-file=variants.js",
+        "--output=tests/fixtures/isa/iterator_continuation/variants-O0.abc",
+        "--opt-level=0",
+        "tests/fixtures/isa/iterator_continuation/variants.js"
+      ],
+      "profile": 6
+    }
+  ]
+}

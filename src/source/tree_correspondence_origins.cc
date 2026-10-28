@@ -1,3 +1,4 @@
+#include "iterator_continuation.h"
 #include "environment_renewal_binding.h"
 #include "phased_parameter_defaults.h"
 #include "tree_correspondence.h"
@@ -18,8 +19,16 @@ bool SameSite(const Origin& tree, const analysis::ValueOrigin& input) {
 }  // namespace
 
 void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget) {
+    const EvaluationPlan& evaluation, const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget, const ForOfEvaluationInput* iteration) {
   VerifyPhasedDefaultInput(graph, tree, budget);
+  if (iteration && iteration->control.continuations) {
+    auto checked = VerifyIteratorContinuations(iteration->body, graph, iteration->input,
+        iteration->regions, iteration->ownership, *iteration->control.continuations, budget.Remaining());
+    if (const auto* f = std::get_if<ForOfPlacementFailure>(&checked))
+      throw f->kind == ForOfPlacementError::kResourceLimit ? TreeStructureError::kResourceLimit :
+          f->kind == ForOfPlacementError::kWorkLimit ? TreeStructureError::kWorkLimit : TreeStructureError::kOwnership;
+    budget.Step(std::get<std::uint64_t>(checked));
+  }
   RequireMeaning(tree.origins.size() >= graph.origins.size(), Error::kOrigin);
   for (std::size_t i = 0; i < graph.origins.size(); ++i) {
     budget.Step();

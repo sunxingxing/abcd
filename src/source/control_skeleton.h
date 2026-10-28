@@ -36,11 +36,16 @@ class ControlQuota {
  private:
   analysis::SemanticBudget remaining_;
 };
+struct LoopExitConstraint {
+  ControlNodeId header, source;
+  analysis::FlowEdgeKind kind;
+};
 // Extend lexical ownership through exit arms, inner loops first. Internal
 // joins require unanimous incoming ownership; external joins/roots stop it.
 // Natural-loop discovery and original adjacency stay unchanged.
 void ExtendLoopExitCorridors(ControlGraphView graph, std::span<const ControlNodeId> entries,
-    ControlLoopLayout& loops, ControlQuota& quota);
+    ControlLoopLayout& loops, ControlQuota& quota,
+    std::span<const LoopExitConstraint> constraints = {});
 [[nodiscard]] ControlPlan BuildControlSkeleton(const analysis::ValueProgram& graph,
     std::span<const ControlId> entries, ControlQuota& quota);
 [[nodiscard]] ControlPlan BuildControlSkeleton(ControlGraphView graph,

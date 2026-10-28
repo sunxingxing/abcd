@@ -4,6 +4,7 @@
 #include "abcd/analysis/environment_renewal.h"
 #include "class_creator.h"
 #include "completion_ports.h"
+#include "iterator_continuation.h"
 #include "exception_tree.h"
 #include "function_context.h"
 #include "module_aliases.h"
@@ -82,6 +83,10 @@ class PhasedBody {
       std::span<const analysis::PatternSite> patterns = {},
       const ExceptionControlRegionFailure* completion_retry = nullptr,
       std::size_t retained_bytes = 0, std::uint64_t retained_work = 0);
+  // One certified placement transition before family publication. Raw owned
+  // analyses stay immutable; every subsequent view selects the same retry.
+  std::variant<std::uint64_t, ForOfPlacementFailure> RetryIteratorContinuation(
+      const abc::MethodBody&, const TreeCensusFailure&, analysis::SemanticBudget);
   const analysis::ValueProgram& Graph() const;
   const PhasedClassSites& Classes() const;
   const RouteInputIdentity& Identity() const;
@@ -100,6 +105,8 @@ class PhasedBody {
   struct Storage;
   explicit PhasedBody(std::unique_ptr<const Storage> storage);
   std::unique_ptr<const Storage> storage_;
+  struct ContinuationRetry;
+  std::unique_ptr<const ContinuationRetry> continuation_;
 };
 }  // namespace abcd::source
 #endif

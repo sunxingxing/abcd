@@ -70,6 +70,8 @@ class TreeBuilder {
         control_(control),
         evaluation_(evaluation),
         syntax_(std::move(syntax)),
+        initial_names_(syntax_.names.size()), initial_texts_(syntax_.texts.size()),
+        initial_captures_(syntax_.captures.size()),
         constants_(constants),
         budget_(budget),
         bytes_(budget.bytes),
@@ -80,6 +82,15 @@ class TreeBuilder {
         recovery_(recovery),
         class_input_(class_input) {}
 
+  FunctionSyntax ReleaseFailedSyntax() {
+    if (!tree_.names.empty()) syntax_.names = std::move(tree_.names);
+    if (!tree_.texts.empty()) syntax_.texts = std::move(tree_.texts);
+    syntax_.names.resize(initial_names_); syntax_.texts.resize(initial_texts_);
+    syntax_.captures.resize(initial_captures_);
+    if (tree_.concurrent) syntax_.concurrent = std::move(tree_.concurrent);
+    return std::move(syntax_);
+  }
+  analysis::SemanticBudget Cost() const { return {budget_.bytes-bytes_,budget_.work-work_}; }
   ExceptionFunctionDraft Build() {
     if (class_input_) {
       Require(purpose_ == TreeBuildPurpose::kClassInitializerDraft &&
@@ -2114,6 +2125,11 @@ class TreeBuilder {
       if (error == TreeSemanticError::kWorkLimit) throw Error::kWorkLimit;
       if (error == TreeSemanticError::kResourceLimit) throw Error::kResourceLimit;
       witness_.location = semantic_failure.location;
+      witness_.census = semantic_failure.census;
+      if (semantic_failure.census) {
+        Admit(semantic_failure.census->allocated_bytes, 1);
+        Step(semantic_failure.census->work);
+      }
       Fail(Error::kSemantics, semantic_failure, TreeObligation::kSemantics);
     }
     Require(semantics->allocated_bytes >= storage->bytes, Error::kSemantics);
@@ -2205,6 +2221,7 @@ class TreeBuilder {
   std::vector<std::uint8_t> original_prefixes_;
   const EvaluationPlan& evaluation_;
   FunctionSyntax syntax_;
+  std::size_t initial_names_, initial_texts_, initial_captures_;
   ExpressionConstants constants_;
   analysis::SemanticBudget budget_;
   std::size_t bytes_;
@@ -2311,13 +2328,18 @@ BuildClassInitializerTreeDraft(const analysis::ValueProgram& graph,
 std::variant<ExceptionFunctionDraft, FunctionTreeFailure> BuildExceptionFunctionDraft(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, FunctionSyntax syntax,
-    ExpressionConstants constants, analysis::SemanticBudget budget, const IncomingCaptureTree* incoming) {
+    ExpressionConstants constants, analysis::SemanticBudget budget, const IncomingCaptureTree* incoming, FunctionSyntax* failed_syntax) {
+  TreeBuilder builder(graph, exceptions.control.skeleton, evaluation,
+      std::move(syntax), constants, budget, incoming, &exceptions);
   try {
-    auto built = TreeBuilder(graph, exceptions.control.skeleton, evaluation,
-        std::move(syntax), constants, budget, incoming, &exceptions).Build();
-    return built;
+    return builder.Build();
   } catch (Error error) { return error;
-  } catch (const FunctionTreeFailure& failure) { return failure;
+  } catch (FunctionTreeFailure failure) {
+    const auto cost = builder.Cost(); failure.allocated_bytes = cost.bytes; failure.work = cost.work;
+    if (failed_syntax && failure.tree && failure.tree->census &&
+        failure.tree->census->kind == TreeCensusError::kOrphanExpression)
+      *failed_syntax = builder.ReleaseFailedSyntax();
+    return failure;
   } catch (const std::bad_alloc&) { return Error::kResourceLimit;
   } catch (const std::length_error&) { return Error::kResourceLimit; }
 }

@@ -15,6 +15,7 @@ class FamilyFunction {
   FamilyFunction(FilePhasedFunction function) : input_(std::move(function)) {}
   FileFunction& Normal() { return std::get<FileFunction>(input_); }
   const FileFunction& Normal() const { return std::get<FileFunction>(input_); }
+  FilePhasedFunction* Phase() { return std::get_if<FilePhasedFunction>(&input_); }
   const FilePhasedFunction* Phase() const { return std::get_if<FilePhasedFunction>(&input_); }
   const abc::MethodBody& Body() const { return Phase() ? Phase()->Body() : Normal().body; }
   const analysis::ValueProgram& Graph() const { return Phase() ? Phase()->Phases().Graph() : Normal().values.graph; }

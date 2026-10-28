@@ -167,6 +167,7 @@ class Enclosure {
     std::vector<bool> seen;q_.Size(seen,next_);std::size_t unique=0;
     for(std::size_t i=0;i<roots;++i){q_.Work();const auto r=out_.entries[i];Require(r.value<seen.size());if(!seen[r.value]){seen[r.value]=true;out_.entries[unique++]=r;}}
     out_.entries.resize(unique);
+    out_.mapping.continuations=std::move(base_.mapping.continuations);
     out_.mapping.protocol_ports=std::move(base_.mapping.protocol_ports);
     out_.mapping.inactive_phases=std::move(base_.mapping.inactive_phases);
     // The shared ordinary try/loop composer receives a lexical layout with

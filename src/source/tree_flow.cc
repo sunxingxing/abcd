@@ -1762,7 +1762,7 @@ class FlowCheck {
     Require(count == tree_.properties.size(), Error::kPlacement);
   }
   void IterationPayload(const ForOfExitPayload& expected,ExprId id) {
-    if(iteration_ && iteration_->completion_ports && !sealing_iteration_payloads_) {
+    if(iteration_ && (iteration_->completion_ports || iteration_->continuations) && !sealing_iteration_payloads_) {
       // Control traversal schedules arms after their join. Defer identity
       // queries until ALL actual phi/catch/snapshot assignments are witnessed;
       // no successful builder binding is borrowed and no check is dropped.
@@ -2309,17 +2309,36 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     analysis::SemanticBudget budget, const ExceptionTreeInput* exceptions,
-    TreeControlCheck control_check, TreeLocation* failure_location) {
+    TreeControlCheck control_check, TreeLocation* failure_location, TreeCensusFailure* census) {
   if (failure_location) *failure_location = {};
   try {
     // Partial syntax is printable, but cannot certify correspondence to a whole
     // function. Keep the old semantic route from interpreting a gap as a no-op.
     Require(tree.recovery_issues.empty(), Error::kStructure);
     Require(tree.value_revision == graph.revision && tree.cfg_revision == graph.cfg_revision, Error::kRevision);
-    const auto structure = VerifyTreeStructure(tree, budget);
+    const auto structure = VerifyTreeStructure(tree, budget, nullptr, census);
     if (const auto* error = std::get_if<TreeStructureError>(&structure)) {
       if (*error == TreeStructureError::kResourceLimit) return Error::kResourceLimit;
       if (*error == TreeStructureError::kWorkLimit) return Error::kWorkLimit;
+      if (census && census->kind == TreeCensusError::kOrphanExpression &&
+          census->origin.value < tree.origins.size()) {
+        const auto* site = std::get_if<OriginalSite>(&tree.origins[census->origin.value]);
+        if (site) {
+          if (graph.ops.size() > budget.work - std::min(budget.work, census->work))
+            return Error::kWorkLimit;
+          census->work += graph.ops.size();
+          for (std::uint32_t i = 0; i < graph.ops.size(); ++i) {
+            const auto& op = graph.ops[i]; const auto& origin = graph.origins[op.origin.value];
+            if (origin.site != site->site || origin.pc != site->pc) continue;
+            if (census->operation) { census->operation.reset(); break; }
+            census->operation = analysis::OpId{i};
+          }
+          if (failure_location) {
+            if (census->operation) *failure_location = OperationLocation(graph, *census->operation, tree.method);
+            failure_location->expression = census->expression;
+          }
+        }
+      }
       return Error::kStructure;
     }
     TreeCheckBudget checked(budget);
@@ -2385,13 +2404,13 @@ std::variant<TreeFlow, TreeFlowError> VerifyFlow(
 std::variant<TreeFlow, TreeFlowError> VerifyTreeFlow(
     const analysis::ValueProgram& graph, const ControlPlan& control,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    analysis::SemanticBudget budget, TreeLocation* failure_location) {
-  return VerifyFlow(graph, control, evaluation, tree, budget, nullptr, TreeControlCheck::kFresh, failure_location);
+    analysis::SemanticBudget budget, TreeLocation* failure_location, TreeCensusFailure* census) {
+  return VerifyFlow(graph, control, evaluation, tree, budget, nullptr, TreeControlCheck::kFresh, failure_location, census);
 }
 std::variant<TreeFlow, TreeFlowError> VerifyExceptionTreeFlow(
     const analysis::ValueProgram& graph, const ExceptionTreeInput& exceptions,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
-    analysis::SemanticBudget budget, TreeControlCheck control_check, TreeLocation* failure_location) {
-  return VerifyFlow(graph, exceptions.control.skeleton, evaluation, tree, budget, &exceptions, control_check, failure_location);
+    analysis::SemanticBudget budget, TreeControlCheck control_check, TreeLocation* failure_location, TreeCensusFailure* census) {
+  return VerifyFlow(graph, exceptions.control.skeleton, evaluation, tree, budget, &exceptions, control_check, failure_location, census);
 }
 }  // namespace abcd::source

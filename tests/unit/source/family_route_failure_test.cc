@@ -16,6 +16,22 @@ void Failures() {
         refused.causes.View().back().value==static_cast<unsigned>(cause));
   }
 
+  FunctionTreeFailure census{FunctionTreeError::kSemantics};
+  census.cause = TreeSemanticFailure{TreeSemanticError::kFlow};
+  census.tree.emplace();
+  census.tree->census = TreeCensusFailure{TreeCensusError::kOrphanExpression, {3}, {7}, analysis::OpId{11}};
+  auto census_route = FamilyRouteFailure(census);
+  Check(census_route.tree && census_route.tree->census == census.tree->census);
+  Check(census_route.causes.View().back().domain == FailureDomain<TreeCensusError>() &&
+      census_route.causes.View().back().value == static_cast<unsigned>(TreeCensusError::kOrphanExpression));
+  census.placement = ForOfPlacementFailure{ForOfPlacementError::kCoverage, {}, {}, *census.tree->census};
+  census_route = FamilyRouteFailure(census);
+  bool placement = false;
+  for (const auto& cause : census_route.causes.View())
+    placement |= cause.domain == FailureDomain<ForOfPlacementError>() &&
+        cause.value == static_cast<unsigned>(ForOfPlacementError::kCoverage);
+  Check(placement);
+
   auto projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyPrepareError::kResourceLimit});
   Check(projected.failure_class == RouteFailureClass::kMemoryLimit);
   FamilyTreeFailure tree{{2}, FamilyWriteFailure{FamilyWriteError::kWorkLimit, {2}, abc::CodeOffset{31}}};

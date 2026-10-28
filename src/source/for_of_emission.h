@@ -28,6 +28,7 @@ struct ForOfEmissionClose {
 };
 struct ForOfEmissionView {
   std::shared_ptr<const CompletionPorts> completion_ports;
+  std::shared_ptr<const IteratorContinuationProof> continuations;
   ProtocolForwarding forwarding;
   std::vector<ForOfEmissionLoop> loops;
   std::vector<std::optional<std::uint32_t>> wrappers;

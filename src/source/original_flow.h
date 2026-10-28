@@ -9,6 +9,7 @@
 #include "cell_parameter_default.h"
 #include "for_in_emission.h"
 #include "for_of_emission.h"
+#include "iterator_continuation.h"
 #include "abcd/analysis/exception_regions.h"
 #include <memory>
 namespace abcd::source {
@@ -219,6 +220,7 @@ struct OriginalIterationInput { IteratorProtocolId protocol; analysis::UseId use
 struct OriginalCloseMember { IteratorProtocolId protocol; CloseMemberRole role; };
 struct OriginalIterationBinding { SymbolId target; ExprId iterable; StmtId body; TreeOriginId origin; };
 struct OriginalIterations {
+  std::optional<IteratorContinuationFacts> continuation_facts;
   ForOfEmissionView view;
   ForOfEvents events;
   std::vector<std::optional<OriginalCloseMember>> close_members;

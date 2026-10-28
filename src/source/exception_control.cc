@@ -1,4 +1,5 @@
 #include "exception_topology.h"
+#include "iterator_continuation.h"
 
 #include <new>
 #include <stdexcept>
@@ -83,7 +84,8 @@ void CheckProjection(const ValueProgram& graph, ExceptionTopology& topology,
 std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, ExceptionControlRegionFailure> BuildExceptionControl(
     const abc::MethodBody& body, const ValueProgram& graph,
     const PhasedValueInput& input, const ExceptionPlan& regions, SemanticBudget budget,
-    const VerifiedProtocolRegionOwnership* protocols) {
+    const VerifiedProtocolRegionOwnership* protocols,
+    std::shared_ptr<const IteratorContinuationProof> continuations) {
   try {
     ControlQuota quota(budget);
     CheckInput(body, graph, input, regions, quota);
@@ -95,7 +97,15 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
             failure->kind==CloseCompletionError::kWorkLimit?Error::kWorkLimit:Error::kStructure;
       quota.Work(std::get<std::uint64_t>(checked));
     }
-    auto topology = protocols?ProjectProtocolControl(graph,regions,input,*protocols,quota):
+    if (continuations) {
+      Require(protocols != nullptr, Error::kInput);
+      auto checked = VerifyIteratorContinuations(body, graph, input, regions, *protocols, *continuations, quota.Remaining());
+      if (const auto* f = std::get_if<ForOfPlacementFailure>(&checked))
+        throw f->kind == ForOfPlacementError::kResourceLimit ? Error::kResourceLimit :
+            f->kind == ForOfPlacementError::kWorkLimit ? Error::kWorkLimit : Error::kStructure;
+      quota.Work(std::get<std::uint64_t>(checked));
+    }
+    auto topology = protocols?ProjectProtocolControl(graph,regions,input,*protocols,quota,continuations):
         ProjectExceptionControl(graph, regions, quota);
     const ControlGraphView view{ControlProjection{graph.revision, graph.cfg_revision, topology.blocks, topology.edges}};
     auto skeleton = [&] {
@@ -112,7 +122,8 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
           quota.Work(forest.work);quota.Admit(forest.allocated_bytes,1);
           if(forest.loops.empty())return BuildControlSkeleton(view,topology.entries,quota);
           ControlLoopLayout layout{std::move(forest.loops),std::move(forest.owners)};
-          ExtendLoopExitCorridors(view,roots,layout,quota);
+          const auto cuts = continuations ? IteratorContinuationConstraints(graph, topology.mapping, *continuations, quota) : std::vector<LoopExitConstraint>{};
+          ExtendLoopExitCorridors(view,roots,layout,quota,cuts);
           std::vector<ScopedControlEntry> scoped;quota.Size(scoped,roots.size());
           for(std::size_t i=0;i<roots.size();++i)scoped[i]={roots[i],{}};
           return BuildLoopControl(view,scoped,std::move(layout),quota);
@@ -198,6 +209,7 @@ std::variant<std::uint64_t, ExceptionControlError> VerifyExceptionControl(
     const ExceptionControl& control, SemanticBudget budget,
     const VerifiedProtocolRegionOwnership* protocols) {
   try {
+    const auto continuations = control.continuations;
     ControlQuota quota(budget);
     CheckInput(body, graph, input, regions, quota);
     if(protocols) {
@@ -208,7 +220,15 @@ std::variant<std::uint64_t, ExceptionControlError> VerifyExceptionControl(
             failure->kind==CloseCompletionError::kWorkLimit?Error::kWorkLimit:Error::kStructure;
       quota.Work(std::get<std::uint64_t>(checked));
     }
-    auto topology = protocols?ProjectProtocolControl(graph,regions,input,*protocols,quota):
+    if (continuations) {
+      Require(protocols != nullptr, Error::kInput);
+      auto checked = VerifyIteratorContinuations(body, graph, input, regions, *protocols, *continuations, quota.Remaining());
+      if (const auto* f = std::get_if<ForOfPlacementFailure>(&checked))
+        throw f->kind == ForOfPlacementError::kResourceLimit ? Error::kResourceLimit :
+            f->kind == ForOfPlacementError::kWorkLimit ? Error::kWorkLimit : Error::kStructure;
+      quota.Work(std::get<std::uint64_t>(checked));
+    }
+    auto topology = protocols?ProjectProtocolControl(graph,regions,input,*protocols,quota,continuations):
         ProjectExceptionControl(graph, regions, quota);
     if(protocols && topology.ports.empty()) {
       const ControlGraphView view{ControlProjection{graph.revision,graph.cfg_revision,topology.blocks,topology.edges}};

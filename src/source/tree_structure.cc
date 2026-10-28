@@ -102,13 +102,13 @@ class StructureCheck {
  public:
   StructureCheck(const FunctionTree& tree, TreeCheckBudget& budget,
                  std::vector<ScopeId>& expression_scopes,
-                 const GlobalScope* destination, bool class_draft = false)
+                 const GlobalScope* destination, bool class_draft = false, TreeCensusFailure* census = nullptr)
       : tree_(tree),
         budget_(budget),
         scopes_(tree, budget),
         expression_scopes_(expression_scopes),
         destination_(destination),
-        class_draft_(class_draft) {
+        class_draft_(class_draft), census_(census) {
     budget.Array(expression_scopes_, tree.expressions.size());
     budget.Array(expressions_, tree.expressions.size());
     budget.Array(array_elements_, tree.expressions.size());
@@ -312,7 +312,14 @@ class StructureCheck {
     if (tree_.capture_scope) scopes_.Leave(*tree_.capture_scope);
     if (tree_.module_scope) scopes_.Leave(*tree_.module_scope);
     scopes_.Finish();
-    for (const auto seen : expressions_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
+    for (std::uint32_t i = 0; i < expressions_.size(); ++i) {
+      budget_.Step();
+      if (!expressions_[i] && census_) {
+        *census_ = {TreeCensusError::kOrphanExpression, ExprId{i},
+            tree_.expressions[i].origin, {}, budget_.Bytes(), budget_.Work()};
+      }
+      RequireTree(expressions_[i], Error::kOwnership);
+    }
     for (const auto seen : statements_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : children_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
     for (const auto seen : arguments_) { budget_.Step(); RequireTree(seen, Error::kOwnership); }
@@ -955,6 +962,7 @@ class StructureCheck {
   std::vector<ScopeId>& expression_scopes_;
   const GlobalScope* destination_;
   bool class_draft_ = false;
+  TreeCensusFailure* census_;
   std::vector<std::uint8_t> expressions_;
   std::vector<std::uint8_t> statements_;
   std::vector<std::uint8_t> children_;
@@ -971,7 +979,8 @@ class StructureCheck {
 
 static std::variant<TreeStructure, TreeStructureError> VerifyStructure(
     const FunctionTree& tree, analysis::SemanticBudget budget,
-    const GlobalScope* destination, bool class_draft) {
+    const GlobalScope* destination, bool class_draft, TreeCensusFailure* census = nullptr) {
+  if (census) *census = {};
   TreePrintTrace trace(true);
   TreePrintSiteScope site(TreePrintSite::kStructureVerification);
   TreePrintLocationScope location(tree);
@@ -1009,7 +1018,7 @@ static std::variant<TreeStructure, TreeStructureError> VerifyStructure(
     TreeStructure result{tree.value_revision, tree.cfg_revision};
     result.maximum_depth =
         StructureCheck(tree, checked, result.expression_scopes, destination,
-                       class_draft)
+                       class_draft, census)
             .Run();
     CheckTreeOrigins(tree, checked);
     result.allocated_bytes = checked.Bytes(); result.work = checked.Work();
@@ -1022,8 +1031,8 @@ static std::variant<TreeStructure, TreeStructureError> VerifyStructure(
 }
 std::variant<TreeStructure, TreeStructureError> VerifyTreeStructure(
     const FunctionTree& tree, analysis::SemanticBudget budget,
-    const GlobalScope* destination) {
-  return VerifyStructure(tree, budget, destination, false);
+    const GlobalScope* destination, TreeCensusFailure* census) {
+  return VerifyStructure(tree, budget, destination, false, census);
 }
 std::variant<TreeStructure, TreeStructureError> VerifyClassInitializerStructure(
     const FunctionTree& tree, analysis::SemanticBudget budget) {

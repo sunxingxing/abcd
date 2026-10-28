@@ -9,6 +9,7 @@
 #include "function_syntax.h"
 #include "tree_flow.h"
 #include "tree_semantics.h"
+#include "iterator_continuation.h"
 
 namespace abcd::source {
 struct ConstructedFunction {
@@ -29,8 +30,11 @@ struct FunctionTreeFailure {
   std::variant<std::monostate, ExpressionFailure, ControlError, ExceptionControlError, CompletionError,
       TreeFlowError, TreeStructureError, TreeSemanticFailure, EvaluationFailure> cause;
   std::optional<TreeFailureEvidence> tree;
+  std::optional<ForOfPlacementFailure> placement;
   FunctionTreeFailure(FunctionTreeError value) : kind(value) {}  // NOLINT: implicit kind.
   std::optional<abc::EntityOffset> method;
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
   FunctionTreeFailure(FunctionTreeError value, ExpressionFailure expression,
       std::optional<abc::EntityOffset> target = {}) : kind(value), cause(expression), method(target) {}
   bool operator==(FunctionTreeError value) const { return kind == value; }
