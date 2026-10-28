@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {verifyNavigationGraph} from './navigation_graph_state.mjs';
 import {verifyWindowNavigationGraph} from './window_navigation_graph.mjs';
+import {cachedVerdict} from './result_cache.mjs';
 
 const [tool, root, mode, shardIndex, shardCount] = process.argv.slice(2);
 assert.ok(mode === undefined || ['--minigame', '--all-views', '--window'].includes(mode));
@@ -108,5 +109,7 @@ if (allViews) {
   assert.match(sources['shopping/src/main/ets/view/Home'], /TabBarBuilder\(tabBar, index, parent = null\)/);
   assert.match(sources['shopping/src/main/ets/view/Home'], /this\.activeTabIndex === index/);
 }
-console.log(JSON.stringify(await (realWindow ? verifyWindowNavigationGraph(sources, reference)
-  : verifyNavigationGraph(sources, reference, {connected, allViews, shard}))));
+console.log(JSON.stringify(await cachedVerdict(
+  {tool, name: 'navigation_graph', inputs: {sources, reference, mode: mode ?? null, shard}},
+  () => realWindow ? verifyWindowNavigationGraph(sources, reference)
+    : verifyNavigationGraph(sources, reference, {connected, allViews, shard}))));

@@ -10,6 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {editExpression, memberName, callsMember} from './expression_edits.mjs';
 import {classMethodProfiles} from './record_style.mjs';
 import {verifySignatures} from './signature_shapes.mjs';
+import {cachedVerdict} from './result_cache.mjs';
 
 const [tool, root, option] = process.argv.slice(2);
 assert.ok(option === undefined || option === '--ability');
@@ -54,6 +55,8 @@ for (const name of Object.keys(sources)) {
   assert.doesNotMatch(sources[name], /\b(?:goto|switchPc|UNRECOVERED|INCOMPLETE)\b/);
 }
 
+// The runtime graph below is memoized by content; see result_cache.mjs.
+async function verifyCommunityGraph() {
 const worker = fileURLToPath(new URL('./community_graph_worker.mjs', import.meta.url));
 const run = request => {
   try {
@@ -175,6 +178,9 @@ if (ability) {
     ++equivalents;
   }
 }
-console.log(JSON.stringify({cases: completed, faults, swaps, mutations, equivalents, boundaryCounts,
+return {cases: completed, faults, swaps, mutations, equivalents, boundaryCounts,
   events: {min: Math.min(...events), max: Math.max(...events)}, viewClasses: views.size, renderedViewClasses: rendered.size,
-  generatedModules: 45, ability, platformExecution: false}));
+  generatedModules: 45, ability, platformExecution: false};
+}
+console.log(JSON.stringify(await cachedVerdict(
+  {tool, name: 'community_graph', inputs: {sources, reference, ability}}, verifyCommunityGraph)));

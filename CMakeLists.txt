@@ -2470,7 +2470,9 @@ if(BUILD_TESTING)
       # keeping each directed integration job inside the existing CTest timeout.
       # The large graph workers must not compete with other CTest jobs: two
       # parallel replays timed out at different batches, whose isolated replay
-      # passed. This scheduling bound leaves engine concurrency unchanged.
+      # passed (re-confirmed 2026-10-28: four parallel shards saturate 10 cores
+      # and other graph workers then miss their 60 s limit). Unchanged inputs
+      # reuse the passing verdict through result_cache.mjs instead.
       foreach(ABCD_SHOPPING_GRAPH_SHARD RANGE 0 3)
         add_test(NAME shopping_navigation_graph_source_test_${ABCD_SHOPPING_GRAPH_SHARD}
           COMMAND ${ABCD_NODE_EXECUTABLE} --experimental-vm-modules

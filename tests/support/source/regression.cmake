@@ -27,3 +27,17 @@ if(ABCD_SOURCE_REGRESSION)
     "${PROJECT_SOURCE_DIR}/tests/support/source/regression_assertions.cc")
   add_custom_target(source_regression DEPENDS ${targets} source_regression_assertions)
 endif()
+
+# Whole-application runtime differentials (minutes each, memoized by content
+# in tests/integration/result_cache.mjs). Exclude with `-LE corpus-graph` for
+# quick reviews; the commit gate runs the full suite, where unchanged inputs
+# reuse the passing verdict. ABCD_TEST_CACHE=off forces recomputation.
+foreach(name IN ITEMS navigation_graph_source_test minigame_navigation_graph_source_test
+    window_navigation_graph_source_test community_graph_source_test
+    community_ability_graph_source_test shopping_navigation_graph_source_test_0
+    shopping_navigation_graph_source_test_1 shopping_navigation_graph_source_test_2
+    shopping_navigation_graph_source_test_3)
+  if(TEST "${name}")
+    set_property(TEST "${name}" APPEND PROPERTY LABELS corpus-graph)
+  endif()
+endforeach()

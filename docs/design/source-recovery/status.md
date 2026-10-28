@@ -5,6 +5,27 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 测试耗时治理：整应用差分按内容缓存（2026-10-28，cc）
+
+- **测量**：全量 CTest 983 项，共 4,755 s。其中 16 项超过 60 s，合计占 75%。
+  shopping 导航图的 4 个 shard 单项约 9 min，均为 RUN_SERIAL，合计占 45%。
+  该图的 26,580 个用例中有 95.6% 是 fault 注入；每个用例都要分别对 reference
+  与 emitted 完整重放约 29.7k 个事件。
+- **A 结果缓存**：新增 `tests/integration/result_cache.mjs`，navigation_graph 与
+  community_graph 两个 harness 都改为经它运行，并用于这 9 个整应用测试。
+  - 缓存键为 SHA-256，覆盖 emitted 源码、paired reference、用例参数、
+    `tests/integration/*.mjs` 的全部内容以及 Node 版本，任何一项变化都会失效。
+  - 每次运行仍执行导出与完整性断言，缓存只省掉对未变输入的运行期差分重放，
+    且只记录通过的结论。
+  - 需要强制重算时设置 `ABCD_TEST_CACHE=off`。
+  - 实测：9 项冷启动约 22 min（并行），热启动 4.9 s。
+- **C 标签**：上述 9 项打 `corpus-graph` 标签。快速评审用 `-LE corpus-graph`；
+  提交前仍跑全量，未变的输入直接命中缓存。
+- **B 已撤回**：取消 shopping shard 的 RUN_SERIAL 后，4 个 shard 并行占满 10 核，
+  minigame 与 community 的 worker 因此超出 60 s 上限（单独重跑均通过）。
+  RUN_SERIAL 保留，原因已写入 CMake 注释。
+- **未做 D**：缩减 fault 值域的笛卡尔积会改变测试设计，需要用户另行决定。
+
 ## 第 620 条：在现有 owner 内统一规则，不新增机制（2026-10-28，cc）
 
 - **结果**：o32 service（58223）由 partial 变为完整，cohort 达到 **620/1007**；
