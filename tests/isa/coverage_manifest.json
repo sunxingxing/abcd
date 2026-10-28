@@ -11167,6 +11167,10 @@
       "producer": "tests/isa/environment_renewal_test.py"
     },
     {
+      "test": "isa_protected_conditions_source_test",
+      "producer": "tests/isa/protected_conditions_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },

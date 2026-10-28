@@ -40,7 +40,7 @@ class CopyExpressions {
           }
           bool ordinary=false;
           for(std::size_t i=bundle.first;i<std::size_t(bundle.first)+bundle.count;++i) {
-            Step();ordinary|=evaluation_.exceptions->projection!=ExceptionCopyProjection::kForOfClose || evaluation_.phis->projection[i]!=PhiCopyUse::kForOfProtocol;
+            Step();ordinary|=!ProtocolConsumedCopy(*evaluation_.exceptions,*evaluation_.phis,i);
           }
           if(ordinary) {
             const auto origin = Origin(edge ? TreeOrigin{EdgeOrigin{*edge}} : TreeOrigin{EntryOrigin{}});
@@ -180,7 +180,7 @@ class CopyExpressions {
     const auto first = static_cast<std::uint32_t>(forest_.throw_assignments.size());
     for (std::size_t i = bundle.first; i < std::size_t(bundle.first) + bundle.count; ++i) {
       Step();
-      if(evaluation_.exceptions->projection==ExceptionCopyProjection::kForOfClose && evaluation_.phis->projection[i]==PhiCopyUse::kForOfProtocol)continue;
+      if(ProtocolConsumedCopy(*evaluation_.exceptions,*evaluation_.phis,i))continue;
       const auto slot = evaluation_.exceptions->staging[i];
       Require(slot.has_value(), Error::kBinding);
       const auto source = Operand(evaluation_.phis->copies[i].source, origin);

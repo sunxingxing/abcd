@@ -50,6 +50,8 @@ class PhaseCorridors {
       analysis::UseId use) const;
   bool SameCatch(analysis::OpId producer, analysis::OpId root);
   bool HasCatchCopies(analysis::OpId operation) const;
+  // The op's single result use is owned by a phi (a selection-arm value).
+  bool PhiRoot(analysis::OpId operation) const;
   bool NeedsLocalStage(analysis::OpId operation) const {
     return plan_.exception_stage_domain == ExceptionStageDomain::kOriginal && HasCatchCopies(operation);
   }

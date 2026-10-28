@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "O0; logical conditions in protected regions (user try / async), throwing operands under non-throwing comparisons, single-pass for-of with array pattern inside a user try.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/protected_conditions/conditions.js",
+   "path": "tests/fixtures/isa/protected_conditions/conditions-O0.abc",
+   "sha256": "9a164da664e054a64497f2e4c056294ec52736701bc1781d613e2bd1c060b2d7",
+   "source_sha256": "c918eb371cff6c67f5da4b1d318d7ddee67d4d6d778fc0838d3e1c7c238d5e2c",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=protected_conditions",
+    "--source-file=conditions.js",
+    "--output=tests/fixtures/isa/protected_conditions/conditions-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/protected_conditions/conditions.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

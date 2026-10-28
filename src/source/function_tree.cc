@@ -1137,6 +1137,15 @@ class TreeBuilder {
     WitnessScope witness(*this, TreeObligation::kDecisionEdgeCopies, location);
     Require(false, Error::kControl);
   }
+  // One rule for a protected branch, shared by ordinary and decision blocks.
+  // Its successors belong to Commit; the condition (an expression root or a
+  // logical value owned by its root) may be emitted there only across an
+  // empty Before->Commit boundary with no phi writes.
+  bool BranchCommitAdmissible(EvaluationKind kind, std::uint32_t edge_count,
+                              analysis::EdgeId first_edge) const {
+    return (kind == EvaluationKind::kRoot || kind == EvaluationKind::kLogicalValue) &&
+           edge_count == 1 && !HasCopies(first_edge);
+  }
   bool HasCopies(analysis::EdgeId edge) const {
     return !edge_ranges_.empty() && edge_ranges_[edge.value] &&
         forest_.edges[*edge_ranges_[edge.value]].count != 0;
@@ -1194,8 +1203,7 @@ class TreeBuilder {
       if (exceptions_ && std::holds_alternative<analysis::ValueBranch>(op.operation)) {
         // Branch successors belong to Commit. Its condition may be emitted
         // there only across an empty Before->Commit boundary, never phi writes.
-        Require((evaluation.kind == EvaluationKind::kRoot || evaluation.kind == EvaluationKind::kLogicalValue) && block.edge_count == 1 &&
-            !HasCopies(block.first_edge), Error::kControl);
+        Require(BranchCommitAdmissible(evaluation.kind, block.edge_count, block.first_edge), Error::kControl);
         continue;
       }
       if (exceptions_ && throw_ranges_[id.value]) {
@@ -1363,8 +1371,7 @@ class TreeBuilder {
         // never move one across a selected LHS or a throwing RHS.
         Require(!throw_ranges_[id.value] || forest_.throws[*throw_ranges_[id.value]].count == 0, Error::kOwnership, TreeObligation::kCatchStaging);
         if (std::holds_alternative<analysis::ValueBranch>(op.operation)) {
-          Require(placement.kind == EvaluationKind::kRoot && path.edge_count == 1 &&
-              !HasCopies(path.first_edge), Error::kControl);
+          Require(BranchCommitAdmissible(placement.kind, path.edge_count, path.first_edge), Error::kControl);
           continue;
         }
       }

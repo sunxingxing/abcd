@@ -5,6 +5,36 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 第 620 条：在现有 owner 内统一规则，不新增机制（2026-10-28，cc）
+
+- **结果**：o32 service（58223）由 partial 变为完整，cohort 达到 **620/1007**；
+  零回退，零状态或 omission 变化。
+- **改动**（9 个生产文件，+65/−20，没有新增 owner、证书、retry 或 Error 枚举）：
+  1. **异常拷贝的唯一解释**：`exception_copies.h` 新增 `ProtocolConsumedCopy` 和
+     `StagedCopyCount`。selection 发现与 corridor 的 `HasCatchCopies`/`SameCatch`
+     原先读原始 bundle 计数，把已被 for-of 协议消费的拷贝误当作可执行暂存（这是
+     pc 2208 的根因）。另外 8 处内联的重复判定一并改为调用这两个函数。
+  2. **受保护分支的同一条 Commit 规则**：builder 的 `EmitDecisionBlock` 与
+     `EmitBlock` 共用 `BranchCommitAdmissible`（允许 kRoot 或 kLogicalValue）；
+     TreeFlow 的决策路径用同一条规则复核。修复前，受保护区域内带值的 `&&`
+     嵌在 `||` 决策里时，只有 decision 路径拒绝。
+  3. **不可抛出的 selection-arm 根**：`SameCatch` 补上"消费者不可抛出、结果只流向
+     phi"的情形。此时消费者自身就是执行根；若抛出点无需暂存，且两者按序位于同一
+     无拷贝 fallthrough corridor，则分派不变。纯中间节点仍沿用"证据来自最终执行根"
+     的规则。只放宽到 phi 根，是 cohort 验证后的收窄：不加 phi 根限制时，
+     有 5 条记录回退。
+  4. **TreeFlow 映射一致**：校验 condition blocks 时改经 `SourceBlock`
+     映射投影控制单元，与 builder 一致（原来误用控制节点的原始 block 号）。
+- **证据**：
+  - source-regression 65/65；
+  - 新 fixture `protected_conditions`：5 个导出，215 个 Node 差分用例；
+    植入的重排变体能被检出；
+  - cohort `csr96/def` 对 `csr94/def`：619→620，零回退，零状态或 omission 变化；
+  - 7 条完整记录文本变化，逐条核对为语义等价：消除临时变量，
+    读取与调用的次数和顺序都不变；`p ? a : p` 与 `p && a` 等值。
+- **对照审计原则**：Codex 未合入的方案为同一问题新建 owner 加 retry，约千行；
+  本次只修正现有 owner 之间解释不一致的地方。
+
 ## 统一方案审计：停用 Codex，cc 独立推进（2026-10-28）
 
 - 用户决定停止 Codex，由 cc 独立完成剩余工作，并把"不过度设计、方案统一贯通、

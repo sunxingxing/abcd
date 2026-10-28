@@ -39,25 +39,8 @@
    "source_sha256": "f2903a80eb1c16fd52b63f8e8ccbe6bc8c6575924c2def8d626e55e094cdcc3f",
    "sha256": "3e1f2047182aedc75bebe06f617b18cf0f3a0fd8a5e58a8dbc940626a867e5fa",
    "profile": 6,
-   "refusal": [
-    {
-     "domain": "abcd::source::FunctionTreeError",
-     "value": 9
-    },
-    {
-     "domain": "abcd::source::TreeSemanticError",
-     "value": 0
-    },
-    {
-     "domain": "abcd::source::TreeFlowError",
-     "value": 4
-    },
-    {
-     "domain": "abcd::source::TreeObligation",
-     "value": 10
-    }
-   ]
+   "note": "Completes since 2026-10-28 (TreeFlow maps projected condition units via SourceBlock); the source comment predates that."
   }
  ],
- "note": "O0; real JS guarded close payloads and catch selections. Combined ownership now closes; final tree placement remains an exact typed negative."
+ "note": "O0; real JS guarded close payloads and catch selections. Combined ownership and final tree placement now close; both fixtures carry Node differentials."
 }

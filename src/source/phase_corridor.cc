@@ -238,15 +238,38 @@ std::size_t PhaseCorridors::EffectCount(OpId op) const {
   }
   return 1;
 }
+bool PhaseCorridors::PhiRoot(OpId operation) const {
+  const auto& op = graph_.ops[operation.value];
+  if (!op.result) return false;
+  const auto& use = uses_[op.result->value];
+  return use.first && !use.multiple &&
+      std::holds_alternative<ValueId>(graph_.uses[use.first->value].owner);
+}
 bool PhaseCorridors::SameCatch(OpId producer, OpId consumer) {
   producer = EvaluationThrowSite(plan_, producer); consumer = EvaluationThrowSite(plan_, consumer);
+  // A consumer that cannot throw has no dispatch of its own. When its value
+  // flows only into a phi (a selection-arm value), it is its own execution
+  // root: no later root can carry the catch evidence. Moving the producer's
+  // throw to that point keeps its dispatch exactly when the throw needs no
+  // catch staging and both lie, in order, in one no-copy fallthrough corridor
+  // (single entry, no copy edge between). Pure intermediates keep the rule
+  // that evidence comes from their eventual execution root.
+  if (exits_[producer.value] && !exits_[consumer.value] && plan_.exceptions &&
+      !EvaluationMayThrow(graph_, plan_, consumer) && PhiRoot(consumer)) {
+    const auto& start = positions_[graph_.ops[producer.value].block.value];
+    const auto& end = positions_[graph_.ops[consumer.value].block.value];
+    return start.head && start.head == end.head && start.order < end.order &&
+        start.copies == end.copies && !HasCatchCopies(producer);
+  }
   if (!exits_[producer.value] || !exits_[consumer.value] ||
       graph_.exceptional_exits[*exits_[producer.value]].handler !=
       graph_.exceptional_exits[*exits_[consumer.value]].handler) return false;
   if (!snapshots_.empty()) return snapshots_[producer.value] == snapshots_[consumer.value];
   const auto left = throws_[producer.value], right = throws_[consumer.value];
-  const auto count = [&](std::optional<std::size_t> bundle) {
-    return bundle ? plan_.phis->bundles[*bundle].count : 0U;
+  const auto count = [&](std::optional<std::size_t> bundle) -> std::uint32_t {
+    if (!bundle) return 0U;
+    budget_.Step(plan_.phis->bundles[*bundle].count);
+    return StagedCopyCount(*plan_.exceptions, *plan_.phis, *bundle);
   };
   if (count(left) != count(right)) return false;
   if (!count(left)) return true;
@@ -254,12 +277,12 @@ bool PhaseCorridors::SameCatch(OpId producer, OpId consumer) {
   const auto& b = plan_.phis->bundles[*right];
   for (std::size_t c = a.first; c < std::size_t(a.first) + a.count; ++c) {
     budget_.Step();
-    if(plan_.exceptions->projection==ExceptionCopyProjection::kForOfClose && plan_.phis->projection[c]==PhiCopyUse::kForOfProtocol)continue;
+    if(ProtocolConsumedCopy(*plan_.exceptions,*plan_.phis,c))continue;
     staged_[plan_.exceptions->staging[c]->value] = c;
   }
   for (std::size_t c = b.first; c < std::size_t(b.first) + b.count; ++c) {
     budget_.Step();
-    if(plan_.exceptions->projection==ExceptionCopyProjection::kForOfClose && plan_.phis->projection[c]==PhiCopyUse::kForOfProtocol)continue;
+    if(ProtocolConsumedCopy(*plan_.exceptions,*plan_.phis,c))continue;
     const auto prior = staged_[plan_.exceptions->staging[c]->value];
     if (!prior || *prior < a.first || *prior >= std::size_t(a.first) + a.count ||
         !SameOperand(ResolveEvaluationOperand(plan_, plan_.phis->copies[*prior].source),
@@ -269,7 +292,7 @@ bool PhaseCorridors::SameCatch(OpId producer, OpId consumer) {
 }
 bool PhaseCorridors::HasCatchCopies(OpId operation) const {
   const auto bundle = throws_[EvaluationThrowSite(plan_, operation).value];
-  return bundle && plan_.phis->bundles[*bundle].count != 0;
+  return bundle && StagedCopyCount(*plan_.exceptions, *plan_.phis, *bundle) != 0;
 }
 std::optional<bool> PhaseCorridors::FuseSemantics(OpId producer, OpId consumer, UseId use) const {
   if (GuardedPeer(plan_, consumer)) return {};

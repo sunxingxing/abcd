@@ -44,36 +44,16 @@ try{
     continue;
    }
    if(record===58223){
-    // A failed refinement must retain the independently omittable member and
-    // the rest of the verified record. The new typed cause stays diagnostic.
-    assert.equal(r.source_status,4);assert.equal(r.source_complete,false);
-    assert.equal(r.source,undefined);assert.ok(r.incomplete_source);
-    assert.equal(r.source_failure,undefined);
-    assert.equal(r.source_omitted_members.length,1);
-    const omission=r.source_omitted_members[0];
-    assert.equal(omission.member,60551);assert.equal(omission.method,60551);
-    assert.equal(omission.pc,313);assert.equal(omission.working_pc,310);
-    assert.deepEqual(omission.causes,[
-      {domain:'abcd::source::PhasedMethodError',value:6},
-      {domain:'abcd::source::ExceptionControlError',value:4},
-      {domain:'abcd::source::CompletionPortError',value:9},
-      {domain:'abcd::source::ForOfIterationError',value:3}]);
-    const failure=omission.later_failure;
-    assert.equal(failure.location.method,60551);
-    assert.equal(failure.location.pc,2208);assert.equal(failure.location.working_pc,1512);
-    assert.deepEqual(failure.causes,[
-      {domain:'abcd::source::FunctionTreeError',value:1},
-      {domain:'abcd::source::ExpressionError',value:4},
-      {domain:'abcd::source::CallPlanError',value:4},
-      {domain:'abcd::source::CallReferenceError',value:1},
-      {domain:'abcd::source::EvaluationKind',value:1},
-      {domain:'abcd::source::TemporaryReason',value:4}]);
-    assert.deepEqual(failure.call_reference,{call:619,kind:1,placement:1,property:588,temporary:4});
+    // Complete since 2026-10-28: the asyncRunSpecs member (60551) closes once
+    // copy staging, protected logical conditions and projected condition
+    // blocks share one interpretation. CLI and export must agree byte-for-byte.
+    assert.equal(r.source_status,0);assert.equal(r.source_complete,true);assert.ok(r.source);
+    assert.equal(r.source_omitted_members,undefined);assert.equal(r.source_failure,undefined);
     const cli=JSON.parse(run(semantic,[inputs.get(n),String(method),'--record-source',...flags]));
-    assert.equal(cli.source_complete,false);assert.deepEqual(cli.source_omitted_members,r.source_omitted_members);
-    const file=join(dir,label+n,r.incomplete_source);
+    const file=join(dir,label+n,r.source);assert.equal(cli.source_complete,true);
     assert.equal(cli.source,readFileSync(file,'utf8'));run(process.execPath,['--check',file]);
-    assert.match(cli.source,/UNRECOVERED class member/);continue;
+    assert.doesNotMatch(cli.source,/UNRECOVERED|INCOMPLETE/);
+    assert.match(cli.source,/asyncRunSpecs\(/);continue;
    }
    assert.equal(r.source_status,3);assert.equal(r.source,undefined);
 

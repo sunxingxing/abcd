@@ -52,7 +52,7 @@ TreeEdgeFlow::TreeEdgeFlow(const analysis::ValueProgram& graph,
       if (const auto* stage = std::get_if<ThrowCopies>(&evaluation.exceptions->placements[i])) {
         bool ordinary=false;
         for(std::size_t p=bundle.first;p<std::size_t(bundle.first)+bundle.count;++p) {
-          budget.Step();ordinary|=evaluation.exceptions->projection!=ExceptionCopyProjection::kForOfClose || evaluation.phis->projection[p]!=PhiCopyUse::kForOfProtocol;
+          budget.Step();ordinary|=!ProtocolConsumedCopy(*evaluation.exceptions,*evaluation.phis,p);
         }
         if(ordinary) {
           if (!evaluation.exception_emission.bundles.empty() && evaluation.exception_emission.bundles[i]) {
@@ -233,7 +233,7 @@ void TreeEdgeFlow::Stage(analysis::OpId operation, const BlockStmt& block,
   const auto& bundle = evaluation_.phis->bundles[index];
   for (std::uint32_t i = 0; i < bundle.count; ++i) {
     budget_.Step();
-    if(evaluation_.exceptions->projection==ExceptionCopyProjection::kForOfClose && evaluation_.phis->projection[bundle.first+i]==PhiCopyUse::kForOfProtocol)continue;
+    if(ProtocolConsumedCopy(*evaluation_.exceptions,*evaluation_.phis,bundle.first+i))continue;
     const auto slot = evaluation_.exceptions->staging[bundle.first + i];
     Require(slot.has_value(), TreeFlowError::kSnapshot);
     const auto expression = Assignment(bundle.incoming, block, child);

@@ -41,7 +41,9 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
   if (evaluation.exceptions && evaluation.exception_stage_domain == ExceptionStageDomain::kOriginal) for (std::size_t i = 0; i < evaluation.exceptions->placements.size(); ++i) {
     budget.Step();
     const auto* stage = std::get_if<ThrowCopies>(&evaluation.exceptions->placements[i]);
-    if (stage && evaluation.phis->bundles[i].count) staged[stage->operation.value] = 1;
+    if (!stage) continue;
+    budget.Step(evaluation.phis->bundles[i].count);
+    if (StagedCopyCount(*evaluation.exceptions, *evaluation.phis, i)) staged[stage->operation.value] = 1;
   }
   std::optional<LiteralEventView> literal_events;
   if (!evaluation.literal_arm_inputs.empty())

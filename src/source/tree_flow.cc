@@ -976,7 +976,10 @@ class FlowCheck {
           for (std::uint32_t i = 0; i < path.op_count; ++i) {
             const analysis::OpId op{path.first_op.value + i};
             if (exceptions_ && std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation)) {
-              Require(evaluation_.operations[op.value].kind == EvaluationKind::kRoot &&
+              // Same Commit rule as ordinary blocks; a logical-value branch is
+              // checked against its selection after this loop.
+              const auto kind = evaluation_.operations[op.value].kind;
+              Require((kind == EvaluationKind::kRoot || kind == EvaluationKind::kLogicalValue) &&
                   path.edge_count == 1 && !edges_->HasCopies(path.first_edge), Error::kControl);
               continue;
             }
@@ -1160,7 +1163,8 @@ class FlowCheck {
       }
       if (!current.conditions.empty()) {
         for (const auto id : current.condition_blocks) {
-          budget_.Step(); const auto& block = graph_.blocks[control_.nodes[id.value].block.value];
+          // Projected control units are not phase blocks; map like the builder.
+          budget_.Step(); const auto& block = graph_.blocks[SourceBlock(control_.nodes[id.value]).value];
           for (std::uint32_t i = 0; i < block.op_count; ++i) {
             budget_.Step(); const analysis::OpId op{block.first_op.value + i};
             if (std::holds_alternative<analysis::ValueBranch>(graph_.ops[op.value].operation) ||

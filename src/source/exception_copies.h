@@ -39,6 +39,25 @@ struct ExceptionCopies {
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };
+// The single interpretation of an exceptional copy occurrence. A copy that
+// the verified for-of protocol consumes has no executable source staging:
+// its destination is owned by the native close, not by a catch slot. Every
+// consumer (selection discovery, corridors, operands, flow) asks this owner
+// instead of reading raw bundle counts, so all stages agree.
+inline bool ProtocolConsumedCopy(const ExceptionCopies& exceptions, const PhiCopies& phis,
+                                 std::size_t copy) {
+  return exceptions.projection == ExceptionCopyProjection::kForOfClose &&
+         phis.projection[copy] == PhiCopyUse::kForOfProtocol;
+}
+// Executable staging copies of one bundle; O(bundle size).
+inline std::uint32_t StagedCopyCount(const ExceptionCopies& exceptions, const PhiCopies& phis,
+                                     std::size_t bundle) {
+  const auto& b = phis.bundles[bundle];
+  std::uint32_t staged = 0;
+  for (std::size_t c = b.first; c < std::size_t(b.first) + b.count; ++c)
+    staged += !ProtocolConsumedCopy(exceptions, phis, c);
+  return staged;
+}
 enum class ExceptionCopyError : std::uint8_t {
   kRevision, kPhi, kPlacement, kSlot, kCommit, kResourceLimit, kWorkLimit
 };
