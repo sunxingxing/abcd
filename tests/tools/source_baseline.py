@@ -56,10 +56,13 @@ def main():
         elif status == 3:
             refusals[cause_key(record.get('source_failure', {}).get('causes'))] += 1
     syntax_errors = []
-    for path in published:
-        check = subprocess.run(['node', '--check', path], capture_output=True, text=True)
-        if check.returncode:
-            syntax_errors.append(str(path.relative_to(out)))
+    checker = Path(__file__).with_name('check_source_syntax.mjs')
+    for first in range(0, len(published), 200):
+        check = subprocess.run(['node', '--experimental-vm-modules', '--no-warnings', checker,
+                                *map(str, published[first:first + 200])], capture_output=True, text=True)
+        for line in check.stdout.splitlines():
+            failure = json.loads(line)
+            syntax_errors.append({'path': str(Path(failure['path']).relative_to(out)), 'error': failure['error']})
     executable = statuses['complete'] + statuses['partial'] + statuses['refused']
     summary = {
         'input': str(abc), 'exit_code': run.returncode, 'wall_seconds': round(elapsed, 1),
