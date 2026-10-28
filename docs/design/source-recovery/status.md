@@ -5,6 +5,21 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 统一方案审计：停用 Codex，cc 独立推进（2026-10-28）
+
+- 用户决定停止 Codex，由 cc 独立完成剩余工作，并把"不过度设计、方案统一贯通、
+  不针对样本一对一处理"列为常设原则。审计结论与执行计划见
+  [unified-design-audit.md](unified-design-audit.md)。
+- 样本特例检查：`src/`、`include/`、`tools/` 中没有样本名、方法号、记录号，
+  也没有 pc 字面量准入。
+- 过度设计：存在 5 条由类型化拒绝触发的重试路线。其中 3 条（completion ports、
+  iterator continuation、single-pass）是同一个迭代器激活对象的不同属性，
+  计划聚合为 `IteratorActivation`。异常拷贝的解释同样计划统一。
+- Codex 未完成的 projected-snapshots WIP 不合入，已归档于
+  `build/review/codex/snap-wip/`。第 620 条将在现有的 `exception_copy_emission`
+  owner 内修复，不新增机制。
+- 当前 cohort：619/1007，o32 service 为 partial（只缺 m60551）。
+
 ## Certified single-pass iterator scopes (2026-10-28)
 
 - **Review fix: monotone partial publication.** The initial B comparison checked
