@@ -5,6 +5,22 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## ISA：长跳转、debugger 与宽命名词法环境（2026-10-29，cc）
+
+- 新 fixture `long_forms`：同一份 pinned es2abc 构建三份源码。
+  - `debugger`（`--debug-info` 时保留 `DEBUGGER`）；
+  - 300 个被捕获的 `let`（`--debug-info` 时生成 `WIDE_NEWLEXENVWITHNAME` 和宽 LD/STLEXVAR）；
+  - 超过 32 KiB 的循环体（`JMP_IMM32`/`JEQZ_IMM32`）。
+- Node 差分 harness `long_forms.mjs` 用记录型 Proxy 比较返回值，以及属性读取、调用
+  （含 ToPrimitive）的顺序。改动参数或常量的变异都能被检出。
+- 台账重新生成：**225 verified / 18 unverified / 61 unmeasured / 28 non-executable**
+  （之前 222/21/61/28）。`isa-coverage.md` 换为本次生成的版本（原表停留在 10-22）。
+- 观察：同类循环体到 1,400 条语句时，记录在 enclosure 阶段触发 memory_limit（RSS 仅
+  64 MB）。这是预算限制而不是语义问题，单独跟进。
+- 剩余 unmeasured 中，非 deprecated 部分需要真正的功能：私有字段（5 个 opcode）、
+  `for await`、箭头函数内的 super 调用、computed class field、sendable env、
+  hot-patch 变量。deprecated 变体只出现在旧 profile 的语料中。
+
 ## try 内带寄存器拷贝的 import 读取；嵌套 catch 的 handler 范围（2026-10-29，cc）
 
 - **根因**：big.abc 中 4,419 条 `ExceptionInputError::kInternalValue` 抽样全部是

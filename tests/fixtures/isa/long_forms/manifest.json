@@ -1,0 +1,63 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Long/wide forms: DEBUGGER and WIDE_NEWLEXENVWITHNAME/WIDE_LD/STLEXVAR (--debug-info), JMP_IMM32/JEQZ_IMM32 (a >32 KiB loop body).",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/long_forms/debugger.js",
+   "path": "tests/fixtures/isa/long_forms/debugger.abc",
+   "sha256": "ce64e21959c1902e08fc4a7e2d8da424a019924fbbfca199931c9c9e09a44746",
+   "source_sha256": "a8141f858bfac08d7661a3034526db643170f13bbc5d4e8ad6e7075b6d1e233e",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=debugger",
+    "--source-file=debugger.js",
+    "--output=tests/fixtures/isa/long_forms/debugger.abc",
+    "--debug-info",
+    "tests/fixtures/isa/long_forms/debugger.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/long_forms/wide_lexical.js",
+   "path": "tests/fixtures/isa/long_forms/wide_lexical.abc",
+   "sha256": "5eb4688fc4a2d1920ec1bf97415a141e4e4c175fa5a85ec429c2965550dd3bc9",
+   "source_sha256": "748c9458c25753253e0cc7f5cf6ba2b6ee74758e40a18201af1da3b7ec91cbe6",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=wide_lexical",
+    "--source-file=wide_lexical.js",
+    "--output=tests/fixtures/isa/long_forms/wide_lexical.abc",
+    "--debug-info",
+    "tests/fixtures/isa/long_forms/wide_lexical.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/long_forms/long_jumps.js",
+   "path": "tests/fixtures/isa/long_forms/long_jumps.abc",
+   "sha256": "0d7929f9864ce831bf9199a0a41dfb64bf971be4690ef8ea07f40cec2828d7fe",
+   "source_sha256": "edd18e30f610c62e21b3b96014637d9bfa6c6c0a5acef4c4b63c2e5086840f3f",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=long_jumps",
+    "--source-file=long_jumps.js",
+    "--output=tests/fixtures/isa/long_forms/long_jumps.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/long_forms/long_jumps.js"
+   ],
+   "profile": 6
+  }
+ ]
+}
