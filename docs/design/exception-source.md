@@ -453,6 +453,18 @@ Tests and RSS remain paused. Deferred coverage includes module TDZ behavior,
 guard bypass entries, local catches, unreachable loads, exact fused spans and
 byte/work admission boundaries.
 
+### Register Copies Between Load and Guard (2026-10-29)
+
+es2abc emits `ldexternalmodulevar; sta vN; throw.undefinedifholewithname`.
+The normal route already admits pure acc-to-register copies between a load and
+its guard. `ProveExceptionModules` now applies the same rule. Each copy is a
+non-throwing step with a single entry, the fact records the guard instruction,
+and the phased plan checks the read → copies → guard block chain (`GuardChain`).
+On a guard throw to a local Catch, a copied register holds Hole, while the
+source assignment never ran. Certification therefore requires that no copied
+value is a phi input on the guard's exception arc. With pruned SSA, this means
+the copy is dead in the handler. A caller exit discards the frame.
+
 ### Shared AST and Printing Entry
 
 `BuildExceptionSourceAst` rechecks exceptional input values and adapts the

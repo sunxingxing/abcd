@@ -20,6 +20,9 @@ struct ModuleReadSite {
 // still checks the read's value at the read's position. Cost is the gap length.
 [[nodiscard]] bool CopyOnlyModuleGuardInterval(const analysis::ValueProgram&,
                                                analysis::OpId read, analysis::OpId guard);
+// The same op check without the block constraint, for phased graphs whose
+// copies occupy their own phase blocks (checked by VerifyModulePhaseOrder).
+[[nodiscard]] bool PureCopies(const analysis::ValueProgram&, analysis::OpId read, analysis::OpId guard);
 struct ModuleGuards {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;

@@ -1,5 +1,7 @@
 #include "abcd/analysis/exception_modules.h"
 
+#include <algorithm>
+#include <bit>
 #include <stdexcept>
 #include "idf_scratch.h"
 
@@ -15,9 +17,9 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
   enum class Entries : std::uint8_t { kNone, kSingle, kMultiple };
   try {
     ExceptionModules result;
-    const auto charge = [&] {
-      if (result.work_units == budget.work) throw Error::kResourceLimit;
-      ++result.work_units;
+    const auto charge = [&](std::uint64_t work = 1) {
+      if (work > budget.work - result.work_units) throw Error::kResourceLimit;
+      result.work_units += work;
     };
     if (flow.nodes.empty() || flow.nodes.size() > UINT32_MAX ||
         flow.instructions.size() > UINT32_MAX) return Error::kInvalidFlow;
@@ -79,6 +81,25 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
     };
     reserve(result.reads);
     reserve(result.loads);
+    // (exception source node, value) for phi inputs carried by an exception
+    // arc: such a value is live in a handler. A Hole copied before a guard
+    // that throws to a local Catch must not be one of them.
+    struct Carried { std::uint32_t node, value; };
+    std::pmr::vector<Carried> carried{&memory};
+    for (const auto& input : ssa.AllInputs()) {
+      charge();
+      const auto* edge = std::get_if<SsaEdge>(&input.edge);
+      if (!edge || edge->source.value >= flow.nodes.size()) continue;
+      const auto& source = flow.nodes[edge->source.value];
+      if (edge->successor >= source.successor_count) return Error::kInvalidFlow;
+      if (source.successors[edge->successor].kind == ExceptionArcKind::kException)
+        carried.push_back({edge->source.value, input.value.value});
+    }
+    const auto by_site = [](const Carried& a, const Carried& b) {
+      return a.node < b.node || (a.node == b.node && a.value < b.value);
+    };
+    std::sort(carried.begin(), carried.end(), by_site);
+    charge(carried.size() * std::bit_width(carried.size()) + 1);
     struct Exit { std::optional<ExceptionNodeId> handler; };
     const auto route = [&](ExceptionNodeId id, ExceptionNodeId commit) -> std::optional<Exit> {
       const auto& node = flow.nodes[id.value];
@@ -118,12 +139,23 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
         result.loads.push_back({*sites[i].commit, ExceptionLoadProof::kLanguage});
         continue;
       }
-      if (i + 1 == sites.size()) continue;
-      const auto* guard = std::get_if<HoleGuard>(&flow.instructions[i + 1].operation);
+      // es2abc may copy the loaded value to registers before its guard
+      // (`sta vN`); each copy is a non-throwing single-entry step.
+      std::size_t at = i + 1;
+      const auto copy = [&](std::size_t k) {
+        const auto* assignment = std::get_if<ScalarAssignment>(&flow.instructions[k].operation);
+        const auto* from = assignment ? std::get_if<ScalarValue>(&assignment->expression) : nullptr;
+        return assignment && assignment->completion == CompletionEffect::kNormal &&
+            std::holds_alternative<abc::RegisterId>(assignment->destination) && from &&
+            std::holds_alternative<Accumulator>(*from);
+      };
+      while (at < sites.size() && copy(at)) { charge(); ++at; }
+      if (at == sites.size()) continue;
+      const auto* guard = std::get_if<HoleGuard>(&flow.instructions[at].operation);
       if (!guard || !std::holds_alternative<Accumulator>(guard->value) ||
           !std::holds_alternative<HoleNameSlot>(guard->name)) continue;
       const auto& load_effect = flow.instructions[i].effects;
-      const auto& guard_effect = flow.instructions[i + 1].effects;
+      const auto& guard_effect = flow.instructions[at].effects;
       if (!load_effect.normal_registers.write ||
           !std::holds_alternative<Accumulator>(*load_effect.normal_registers.write) ||
           guard_effect.normal_registers.write ||
@@ -131,24 +163,50 @@ std::variant<ExceptionModules, ExceptionModuleError> ProveExceptionModules(
           load_effect.before_throw != load_effect.normal ||
           guard_effect.normal != LanguageEffect::kGuard ||
           guard_effect.before_throw != LanguageEffect::kGuard) continue;
-      if (!sites[i].before || !sites[i].commit || !sites[i + 1].before || !sites[i + 1].commit)
+      if (!sites[i].before || !sites[i].commit || !sites[at].before || !sites[at].commit)
         return Error::kInvalidFlow;
       const auto before = *sites[i].before;
       const auto commit = *sites[i].commit;
-      const auto next = *sites[i + 1].before;
-      const auto& completed = flow.nodes[commit.value];
+      const auto next = *sites[at].before;
+      // Every step from the load Commit to the guard Before is a single
+      // fallthrough into a single-entry node; copies take their normal arc.
+      const auto falls_to = [&](ExceptionNodeId from, ExceptionNodeId to) {
+        const auto& node = flow.nodes[from.value];
+        return node.successor_count == 1 && node.successors.front().kind == ExceptionArcKind::kFallthrough &&
+            node.successors.front().target == to && incoming[to.value] == Entries::kSingle;
+      };
+      bool chained = true;
+      auto last = commit;
+      for (auto k = i + 1; chained && k < at; ++k) {
+        charge();
+        if (!sites[k].before || !sites[k].commit) return Error::kInvalidFlow;
+        const auto& step = flow.nodes[sites[k].before->value];
+        chained = falls_to(last, *sites[k].before) && !step.exception && step.successor_count == 1 &&
+            step.successors.front().kind == ExceptionArcKind::kNormal &&
+            step.successors.front().target == *sites[k].commit && sites[k].written;
+        last = *sites[k].commit;
+      }
       const auto load_exit = route(before, commit);
-      const auto guard_exit = route(next, *sites[i + 1].commit);
-      if (!load_exit || !guard_exit || load_exit->handler != guard_exit->handler ||
+      const auto guard_exit = route(next, *sites[at].commit);
+      if (!chained || !falls_to(last, next) || !load_exit || !guard_exit ||
+          load_exit->handler != guard_exit->handler ||
           flow.nodes[before.value].exception->target != flow.nodes[next.value].exception->target ||
-          completed.successor_count != 1 ||
-          completed.successors.front().kind != ExceptionArcKind::kFallthrough ||
-          completed.successors.front().target != next ||
-          incoming[next.value] != Entries::kSingle || !sites[i].written) continue;
-      // The only intervening write is load's accumulator. A shared Catch
-      // overwrites it before handler code; no general register is relocated.
+          !sites[i].written) continue;
+      // A local Catch would observe each copied Hole unless its value is dead
+      // on the guard's exception arc (pruned SSA: no phi input there).
+      bool hidden = true;
+      for (auto k = i + 1; hidden && guard_exit->handler && k < at; ++k) {
+        charge(std::bit_width(carried.size()) + 1);
+        const auto value = ssa.Write(*sites[k].commit);
+        if (!value) return Error::kInvalidFlow;
+        hidden = !std::binary_search(carried.begin(), carried.end(), Carried{next.value, value->value}, by_site);
+      }
+      if (!hidden) continue;
+      // Besides dead copies, the only intervening write is load's accumulator.
+      // A shared Catch overwrites it before handler code.
       result.reads.push_back({InstructionId{static_cast<std::uint32_t>(i)},
-          load_exit->handler ? ModuleReadProof::kCatchGuarded : ModuleReadProof::kCallerGuarded});
+          load_exit->handler ? ModuleReadProof::kCatchGuarded : ModuleReadProof::kCallerGuarded,
+          std::nullopt, InstructionId{static_cast<std::uint32_t>(at)}});
       result.loads.push_back({commit, load_exit->handler
           ? ExceptionLoadProof::kCatchGuardedModule : ExceptionLoadProof::kCallerGuardedModule});
     }

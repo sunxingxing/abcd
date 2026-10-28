@@ -28,32 +28,32 @@
 字段）Node 无法直接解析。最初直接用 `node --check` 报出的 209 个"错误"全部属于
 这两种合法形式。
 
-## 当前（commit c2a0319d：phased 模块入口 + code_size 0 handler）
+## 当前（2026-10-29：try 内 guarded import 拷贝 + 嵌套 catch 范围）
 
 | 指标 | 值 |
 |---|---:|
-| 墙钟时间 | 50.0 s |
-| 峰值 RSS | 159.8 MB |
-| 完整 / 部分 / 拒绝 | 1,460 / 83 / 12,376 |
-| 完整率（占可执行记录） | 10.49% |
-| 已发布源码 | 完整 2.15 MB，部分 0.19 MB |
+| 墙钟时间 | 54.8 s |
+| 峰值 RSS | 170.9 MB |
+| 完整 / 部分 / 拒绝 | 1,522 / 1 / 12,396 |
+| 完整率（占可执行记录） | 10.93% |
+| 已发布源码 | 完整 2.39 MB，部分 0.00 MB |
 | 语法错误 | 0 |
 
-`CleanupError::kHandler` 已不再出现。模块入口进入 phased 路线后，原先被它遮住的
-函数级原因成为主要拒绝原因：
+历程：1,176（最初）→ 1,460（phased 模块入口）→ 1,522（本次）。
+`CleanupError::kHandler` 与 `ExceptionInputError:1` 已不再是主要原因。当前主要拒绝原因：
 
 | 原因 | 记录数 |
 |---|---:|
-| `ExceptionInputError:1` | 4,419 |
-| `CreationContextError:3`（phased 创建者内带静态字段的类） | 3,212 |
-| `FamilyCreationCheck:13` | 1,222 |
-| `SemanticProofError:3 > InternalValueReason:6` | 606 |
-| `EvaluationShapeError:0` | 490 |
-| `DefaultBodyError:2` | 409 |
-| `FamilyTreeError:2` | 362 |
-| `FamilyCreationCheck:17` | 320 |
-| `AwaitRegionError:1` | 312 |
-| `CatchRegionError:3`（normal 流进入 catch，如优化后的 for-of） | 203 |
+| `CreationContextError:3`（phased creator 中类的 static_initializer） | 4,342 |
+| `FamilyFileError:1 > FamilyCreationCheck:17` | 2,233 |
+| `FamilyFileError:1 > FamilyCreationCheck:13` | 1,480 |
+| `SemanticProofError:3 > InternalValueReason:6`（未加 guard 的 local module 读取等） | 749 |
+| `PhasedMethodError:5 > ExceptionPlanError:2 > CatchRegionError:3`（normal 流进入 catch，如优化后的 for-of） | 558 |
+| `EvaluationError:2 > EvaluationObligation:0 > EvaluationShapeError:0` | 496 |
+| `DefaultBodyError:2` | 491 |
+| `FunctionEmitError:1 > AsyncCompletionCheck:19 > AwaitRegionError:1` | 438 |
+| `FamilyTreeError:2` | 383 |
+| `FamilyFileError:1 > FamilyCreationCheck:16` | 271 |
 
 下面两节记录的是最初基线（commit 91701e09）。
 

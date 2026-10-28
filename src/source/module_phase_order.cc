@@ -3,6 +3,7 @@
 #include <new>
 #include <stdexcept>
 #include <type_traits>
+#include <vector>
 #include "evaluation_flow.h"
 
 namespace abcd::source {
@@ -38,6 +39,32 @@ EdgeId NormalEdge(const ValueProgram& graph, WorkBlockId id, ModuleBudget& budge
   }
   Require(found.has_value(), Error::kOrder);
   return *found;
+}
+// The normal edges from a guarded read's Before block to its guard's Before
+// block: read Commit, then for each intervening pure register copy its
+// single-op Before block and empty Commit. Every block on the chain has one
+// edge, and each successor has exactly one incoming edge.
+std::vector<EdgeId> GuardChain(const ValueProgram& graph, const std::vector<std::uint32_t>& incoming,
+                               OpId read, OpId guard, ModuleBudget& budget) {
+  std::vector<EdgeId> chain;
+  auto block = graph.ops[read.value].block;
+  for (auto op = read;;) {
+    Require(graph.phases[block.value].phase == ExceptionPhase::kBefore &&
+        graph.phases[block.value].operation == op, Error::kOrder);
+    const auto edge = NormalEdge(graph, block, budget);
+    const auto commit = graph.edges[edge.value].target;
+    Require(graph.phases[commit.value].phase == ExceptionPhase::kCommit &&
+        graph.phases[commit.value].operation == op && graph.blocks[commit.value].op_count == 0 &&
+        graph.blocks[commit.value].edge_count == 1 && incoming[commit.value] == 1, Error::kOrder);
+    const auto next = NormalEdge(graph, commit, budget);
+    chain.push_back(edge); chain.push_back(next);
+    block = graph.edges[next.value].target;
+    op = OpId{op.value + 1};
+    Require(op.value <= guard.value && incoming[block.value] == 1 && graph.ops[op.value].block == block, Error::kOrder);
+    if (op == guard) return chain;
+    Require(std::holds_alternative<ValueCopy>(graph.ops[op.value].operation) &&
+        graph.blocks[block.value].op_count == 1 && graph.blocks[block.value].edge_count == 1, Error::kOrder);
+  }
 }
 bool SameOperand(const ValueOperand& a, const ValueOperand& b) {
   if (a.index() != b.index()) return false;
@@ -79,16 +106,11 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyModulePhaseOrder(
         continue;
       }
       const auto read = module.pair.read, guard = *module.pair.guard;
-      Require(read.value < graph.ops.size() && guard.value < graph.ops.size(), Error::kInvalidGraph);
-      const auto before = graph.ops[read.value].block, after = graph.ops[guard.value].block;
-      const auto commit = graph.edges[NormalEdge(graph, before, budget).value].target;
-      Require(graph.phases[before.value].operation == read && graph.phases[after.value].operation == guard &&
-          graph.phases[before.value].phase == ExceptionPhase::kBefore &&
-          graph.phases[after.value].phase == ExceptionPhase::kBefore &&
-          graph.phases[commit.value].phase == ExceptionPhase::kCommit &&
-          graph.phases[commit.value].operation == read && graph.blocks[commit.value].op_count == 0 &&
-          graph.blocks[commit.value].edge_count == 1 && incoming[after.value] == 1 &&
-          graph.edges[NormalEdge(graph, commit, budget).value].target == after, Error::kOrder);
+      Require(read.value < guard.value && guard.value < graph.ops.size(), Error::kInvalidGraph);
+      const auto after = graph.ops[guard.value].block;
+      GuardChain(graph, incoming, read, guard, budget);
+      Require(graph.phases[after.value].operation == guard &&
+          graph.phases[after.value].phase == ExceptionPhase::kBefore, Error::kOrder);
       Require(exits[read.value] && exits[guard.value] &&
           graph.exceptional_exits[*exits[read.value]].handler ==
           graph.exceptional_exits[*exits[guard.value]].handler, Error::kOrder);
@@ -107,6 +129,9 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyModuleCatchCopies(
     // Called after independent phi/staging verification. Index once, then compare
     // equal slot sources; do not assume bundle copy order or scan per load.
     std::vector<std::optional<std::size_t>> normal, throws, staged;
+    std::vector<std::uint32_t> incoming;
+    budget.Array(incoming, graph.blocks.size());
+    for (const auto& edge : graph.edges) { budget.Step(); ++incoming[edge.target.value]; }
     budget.Array(normal, graph.edges.size()); budget.Array(throws, graph.ops.size());
     budget.Array(staged, plan.exceptions->slots.size());
     for (std::size_t b = 0; b < plan.phis->bundles.size(); ++b) {
@@ -120,9 +145,8 @@ std::variant<std::uint64_t, EvaluationFailure> VerifyModuleCatchCopies(
     for (const auto& module : plan.modules) {
       budget.Step(); if (!module.pair.guard) continue;
       const auto read = module.pair.read, guard = *module.pair.guard;
-      const auto edge = NormalEdge(graph, graph.ops[read.value].block, budget);
-      const auto commit = graph.edges[edge.value].target;
-      Require(!normal[edge.value] && !normal[NormalEdge(graph, commit, budget).value], Error::kOrder);
+      for (const auto edge : GuardChain(graph, incoming, read, guard, budget))
+        Require(!normal[edge.value], Error::kOrder);
       const auto load_bundle = throws[read.value], guard_bundle = throws[guard.value];
       Require(count(load_bundle) == count(guard_bundle), Error::kOrder);
       if (count(load_bundle) == 0) continue;

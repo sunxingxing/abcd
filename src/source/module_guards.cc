@@ -10,19 +10,25 @@
 #include "tree_checks.h"
 
 namespace abcd::source {
+bool PureCopies(const analysis::ValueProgram& graph, analysis::OpId read, analysis::OpId guard) {
+  if (guard.value <= read.value || guard.value >= graph.ops.size()) return false;
+  for (auto k = read.value + 1; k < guard.value; ++k) {
+    const auto& op = graph.ops[k];
+    if (!std::holds_alternative<analysis::ValueCopy>(op.operation) ||
+        op.normal != analysis::LanguageEffect::kNone || op.before_throw != analysis::LanguageEffect::kNone ||
+        op.exceptional != analysis::ExceptionalCompletion::kImpossible) return false;
+  }
+  return true;
+}
 bool CopyOnlyModuleGuardInterval(const analysis::ValueProgram& graph,
                                  analysis::OpId read, analysis::OpId guard) {
-  if (guard.value <= read.value || guard.value >= graph.ops.size()) return false;
+  if (!PureCopies(graph, read, guard)) return false;
   const auto& load = graph.ops[read.value];
   const auto& check = graph.ops[guard.value];
   if (load.block != check.block || check.order <= load.order ||
       std::uint64_t{check.order} - load.order != std::uint64_t{guard.value} - read.value) return false;
-  for (auto k = read.value + 1; k < guard.value; ++k) {
-    const auto& op = graph.ops[k];
-    if (op.block != load.block || !std::holds_alternative<analysis::ValueCopy>(op.operation) ||
-        op.normal != analysis::LanguageEffect::kNone || op.before_throw != analysis::LanguageEffect::kNone ||
-        op.exceptional != analysis::ExceptionalCompletion::kImpossible) return false;
-  }
+  for (auto k = read.value + 1; k < guard.value; ++k)
+    if (graph.ops[k].block != load.block) return false;
   return true;
 }
 namespace {

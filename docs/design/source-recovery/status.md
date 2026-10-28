@@ -1,9 +1,55 @@
 # 当前状态
 
-更新时间：2026-10-28。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-29。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
+
+## try 内带寄存器拷贝的 import 读取；嵌套 catch 的 handler 范围（2026-10-29，cc）
+
+- **根因**：big.abc 中 4,419 条 `ExceptionInputError::kInternalValue` 抽样全部是
+  同一形态。es2abc 对 import 读取生成 `ldexternalmodulevar`（以及 lazy、local 形式），
+  随后 `sta vN`，再执行 `throw.undefinedifholewithname`。normal 路线早已接受 load 与
+  guard 之间只隔纯寄存器拷贝的配对（`CopyOnlyModuleGuardInterval`），但 exception
+  路线的 `ProveExceptionModules` 要求两者严格相邻，因此 try 内的每个 import 读取都会被拒。
+- **统一修复**：exception 路线采用与 normal 路线相同的规则，不新增机制。
+  - `ProveExceptionModules` 允许 load 与 guard 之间隔着不会抛出的 acc→寄存器拷贝，
+    每一步都是单入口的 fallthrough。fact 中记录 guard 指令，phased lowering 不再假设
+    guard 就是 `site+1`。
+  - **本地 catch 的可观察性**：guard 抛出时，拷贝目标寄存器里是 Hole，而源码中的赋值
+    根本没有执行。所以只有当拷贝值在 guard 的异常弧上不是任何 phi 的输入（pruned SSA
+    下即为 dead）时才认证。实现上先对 phi 输入建一次有序索引，复杂度 O(P log P)。
+    caller 出口则会丢弃整个帧，不受此限制。
+  - 求值阶段：`VerifyModulePhaseOrder` 与 `VerifyModuleCatchCopies` 沿
+    `GuardChain`（read → 拷贝 → guard 的单边 phase 块链）检查，链上的任何 normal 边
+    都不允许放置 phi 拷贝。`PureCopies` 从 `CopyOnlyModuleGuardInterval` 中拆出，
+    两条路线共用。
+- **嵌套 catch 的 handler 范围**（修正上一条的推断规则）：handler 起点自身代码里
+  开始的 try 是嵌套在该 handler 中的，它的 catch 只能经异常弧到达，现在也计入外层
+  handler 的范围。原规则会把 `catch { try {…} catch {…} }` 判为 kCrossingScopes，
+  导致 lottie `markerParser` 由完整退为拒绝。上一条记录的 1,460 测于这条规则的
+  最终修改之前，没有覆盖这一回退。
+- **证据**：
+  - `exception_module_copies_test`：caller 出口与 dead 拷贝获得认证，handler 读取拷贝
+    寄存器时拒绝；
+  - `handler_extent_test` 新增嵌套 catch 用例，推断结果等于记录的范围；
+  - 新 fixture `guarded_imports`（default 与 O0）：Node 差分 4 个场景，覆盖 call、
+    别名、算术与 new，植入的变异能被检出；
+  - cohort `csr103/def` 对 `csr101/def`：620/1007，零状态变化，零文本变化；
+  - 相关 CTest（module/guard/exception/phased 共 209 项）中，失败的都在已知清单内。
+- **big.abc**（commit 前当前树）：完成数 1,460 → **1,522**，部分 83 → 1，拒绝
+  12,396；语法错误为 0；耗时 54.8 s，峰值 RSS 171 MB。两次都完整的记录零文本变化，
+  没有完整 → 拒绝的记录。
+  - 35 条部分输出变为拒绝：它们被省略的成员原本卡在 input gap，这是唯一可省略的
+    原因类型；现在越过 input 后，停在之后的真实缺口（kNormalEntry、控制流
+    多出口等）。这些原因在其他 558 条记录里本来就是整条拒绝。省略策略保持不变，
+    没有扩大为"任意失败都可省略"。
+- **剩余阻塞**：
+  - `CreationContextError::kKind`（4,342），即 phased creator 中类的
+    static_initializer；
+  - FamilyCreationCheck:17 / :13（2,233 / 1,480）；
+  - 未加 guard 的 local module 读取（749）；
+  - kNormalEntry（558）。
 
 ## 模块入口 try/catch 与 code_size 0 handler（2026-10-28，cc）
 

@@ -61,9 +61,9 @@ class PhasePairs {
       case analysis::ModuleReadProof::kNamespace: throw Error::kUnsupportedProof;
     }
     const auto site = fact.instruction.value;
-    Require(std::uint64_t{site} + 1 < graph_.input.sites.size() &&
-        graph_.input.sites[site] && graph_.input.sites[site + 1], Error::kOrigin);
-    return {*graph_.input.sites[site], *graph_.input.sites[site + 1]};
+    Require(fact.guard && fact.guard->value > site && fact.guard->value < graph_.input.sites.size() &&
+        graph_.input.sites[site] && graph_.input.sites[fact.guard->value], Error::kOrigin);
+    return {*graph_.input.sites[site], *graph_.input.sites[fact.guard->value]};
   }
  private:
   analysis::SemanticBudget initial_, remaining_;

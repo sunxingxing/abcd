@@ -109,10 +109,10 @@ std::variant<ModuleEvaluationIndex, EvaluationFailure> IndexModuleEvaluations(
       require(entry.pair.guard->value > i && entry.pair.guard->value < graph.ops.size(), Error::kOwnership);
       require(entry.pair.guard->value - i <= work, Error::kWorkLimit);
       work -= entry.pair.guard->value - i;
-      // Phased owners keep exact adjacency; normal flow admits only pure
-      // register copies between the read and its guard.
+      // Only pure register copies may separate the read and its guard. Phased
+      // owners check their block chain in VerifyModulePhaseOrder.
       require(graph.phases.empty() ? CopyOnlyModuleGuardInterval(graph, entry.pair.read, *entry.pair.guard)
-                                   : std::uint64_t{i} + 1 == entry.pair.guard->value, Error::kOwnership);
+                                   : PureCopies(graph, entry.pair.read, *entry.pair.guard), Error::kOwnership);
       const auto& guard = graph.ops[entry.pair.guard->value];
       const auto* check = std::get_if<analysis::ValueGuard>(&guard.operation);
       require(guard.life == analysis::ValueLife::kLive && check && check->name && !guard.result &&

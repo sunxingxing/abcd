@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Guarded import reads copied to registers before their Hole guard inside try/catch (default and O0).",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/guarded_imports/imports.js",
+   "path": "tests/fixtures/isa/guarded_imports/imports-default.abc",
+   "sha256": "8cef6dfca0ee4faf69633773aff8f42b0829442dd779dfe1592639bd795174c0",
+   "source_sha256": "36700369caabb82ad4dc853deb645e288073494c411a4544b75fe2d3186b5748",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=guarded_imports",
+    "--source-file=imports.js",
+    "--output=tests/fixtures/isa/guarded_imports/imports-default.abc",
+    "tests/fixtures/isa/guarded_imports/imports.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/guarded_imports/imports.js",
+   "path": "tests/fixtures/isa/guarded_imports/imports-O0.abc",
+   "sha256": "911da15eb8dbb2b72fa6933213da7a4185200a056d85c4640ea895ed40647e1d",
+   "source_sha256": "36700369caabb82ad4dc853deb645e288073494c411a4544b75fe2d3186b5748",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=guarded_imports",
+    "--source-file=imports.js",
+    "--output=tests/fixtures/isa/guarded_imports/imports-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/guarded_imports/imports.js"
+   ],
+   "profile": 6
+  }
+ ]
+}
