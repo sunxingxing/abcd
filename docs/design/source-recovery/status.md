@@ -5,6 +5,17 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 待用户决定：箭头函数内的 `super()`（2026-10-29，cc 调查）
+
+- `SUPERCALLARROWRANGE`（及其 wide 形式）是 Unmeasured。运行时
+  （interpreter-inl.cpp:3629，`GetNewTarget(sp)`）取的是箭头函数自身帧中的
+  new.target，普通调用时为 `undefined`。因此会走 `RuntimeSuperCall`
+  （runtime_stubs-inl.h:2779），以 `Construct(superFunc, newTarget = undefined)`
+  构造，实例的原型是 `B.prototype`。标准 JS 则使用外层构造函数的 new.target（`D`）。
+- 反编译成 `() => super(...)` 在 Ark 上可以按原指令往返编译，但在标准引擎上可观察到
+  原型不同。这属于新的 source premise，需要用户批准后才能实现；在此之前继续拒绝
+  （`DerivedProjectionError::kProtocol`）。
+
 ## 对象字面量的 computed key 与 index key（2026-10-29，cc）
 
 - `{[k]: v}` 由 es2abc 编译为 `DEFINEFIELDBYVALUE`：先求 v，在 define 时才把 k 转为
