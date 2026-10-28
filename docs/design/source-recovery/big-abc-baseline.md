@@ -28,6 +28,35 @@
 字段）Node 无法直接解析。最初直接用 `node --check` 报出的 209 个"错误"全部属于
 这两种合法形式。
 
+## 当前（commit c2a0319d：phased 模块入口 + code_size 0 handler）
+
+| 指标 | 值 |
+|---|---:|
+| 墙钟时间 | 50.0 s |
+| 峰值 RSS | 159.8 MB |
+| 完整 / 部分 / 拒绝 | 1,460 / 83 / 12,376 |
+| 完整率（占可执行记录） | 10.49% |
+| 已发布源码 | 完整 2.15 MB，部分 0.19 MB |
+| 语法错误 | 0 |
+
+`CleanupError::kHandler` 已不再出现。模块入口进入 phased 路线后，原先被它遮住的
+函数级原因成为主要拒绝原因：
+
+| 原因 | 记录数 |
+|---|---:|
+| `ExceptionInputError:1` | 4,419 |
+| `CreationContextError:3`（phased 创建者内带静态字段的类） | 3,212 |
+| `FamilyCreationCheck:13` | 1,222 |
+| `SemanticProofError:3 > InternalValueReason:6` | 606 |
+| `EvaluationShapeError:0` | 490 |
+| `DefaultBodyError:2` | 409 |
+| `FamilyTreeError:2` | 362 |
+| `FamilyCreationCheck:17` | 320 |
+| `AwaitRegionError:1` | 312 |
+| `CatchRegionError:3`（normal 流进入 catch，如优化后的 for-of） | 203 |
+
+下面两节记录的是最初基线（commit 91701e09）。
+
 ## 拒绝原因分布与根因
 
 | 原因 | 记录数 | 根因 |
