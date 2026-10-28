@@ -1,4 +1,4 @@
-# phased creator 中的类成员投影（2026-10-29，设计稿，未实现）
+# phased creator 中的类成员投影（2026-10-29，设计稿；原型已撤回）
 
 ## 问题
 
@@ -45,3 +45,31 @@ try { f(); } catch (e) {}
 - fixture 差分：模块入口 try 加静态字段、实例字段、computed member；
 - 负例：try 内的类仍被拒绝；
 - cohort 零回退、零文本变化；big.abc 完成数上升，且无"完整 → 拒绝"。
+
+## 原型结论（2026-10-29，已撤回，未提交代码）
+
+原型依次打通了以下环节：creation 模式按 kind 选择、`FindClassInitializerCalls` 在
+phased 图上改用 `VerifyPhasedValueFlow`、family tree 把调用传给 phased 求值计划。
+随后发现另外三个真实前提，原方案低估了工作量：
+
+1. **寄存器拷贝**：phased 图有意保留 `ValueCopy`（异常拷贝模型依赖寄存器槽）。
+   normal 路线由 `SimplifyValues` 折叠这些拷贝，而类分析（识别、投影的"调用前无
+   观察"检查、求值、类树）都按无拷贝图写成。原型给识别器加了按拷贝根比较，识别
+   得以通过，但投影又把类值的拷贝当作调用前的观察而拒绝。逐处打补丁会把拷贝语义
+   散布到每个类分析里，不符合统一方案。
+2. **自引用静态字段**：`static y = A.x` 会让 es2abc 生成 `newlexenv` 加环境清理
+   handler（`sta; poplexenv; lda; throw`）。这样的 handler 在异常端口上等同于
+   caller 出口，但 class 本身走的是 record 路线的 class-self（`ClassInitializationPorts`）
+   机制，需要一并接入。
+3. **实例字段**：`FindClassPrototypeReads` 只支持 normal 图。
+
+## 可选方向（需要先定设计，再实现）
+
+- **A. phased 拷贝折叠**：对异常弧上没有被任何 phi 读取的拷贝，把它的使用直接改为
+  指向源值（与 guarded import 的 dead-copy 判定同一个条件），之后类分析无需修改。
+  这需要同时整理审计中列出的"异常拷贝模型合并"，影响面最大，收益也最大（会顺带
+  简化其他 phased 识别器）。
+- **B. 拷贝根视图**：提供一个只读的 copy-root 查询，让类分析统一通过它比较身份。
+  改动局部，但要在每个类分析里逐一接入。
+
+推荐 A：它是同一条规则的推广，没有为类分析单独开口。
