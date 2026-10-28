@@ -1,4 +1,5 @@
 #include "class_creator.h"
+#include "class_initializers.h"
 
 #include <algorithm>
 #include <new>
@@ -51,7 +52,7 @@ std::span<const ClassDefinitionSite> ClassCreator::Definitions() const {
                  : Normal()->values.definitions.sites;
 }
 std::span<const ClassInitializerCall> ClassCreator::Initializers() const {
-  return Phase() ? std::span<const ClassInitializerCall>{}
+  return Phase() ? std::span<const ClassInitializerCall>{Phase()->Phases().Classes().initializers}
                  : Normal()->values.initializers.calls;
 }
 std::span<const ClassInstanceInitializer> ClassCreator::Instances() const {
@@ -204,6 +205,15 @@ BuildPhasedClassSites(const analysis::ValueProgram& graph,
       step();
       if (sites.sources[i - 1].pc == sites.sources[i].pc) return Error::kInput;
     }
+    auto calls = FindClassInitializerCalls(graph, budget);
+    if (const auto* error = std::get_if<ClassInitializerError>(&calls))
+      return *error == ClassInitializerError::kResourceLimit ? Error::kResourceLimit :
+          *error == ClassInitializerError::kWorkLimit ? Error::kWorkLimit : Error::kInput;
+    auto& initializers = std::get<ClassInitializerCalls>(calls);
+    if (initializers.allocated_bytes > budget.bytes) return Error::kResourceLimit;
+    if (initializers.work > budget.work) return Error::kWorkLimit;
+    budget.bytes -= initializers.allocated_bytes; budget.work -= initializers.work;
+    sites.initializers = std::move(initializers.calls);
     sites.allocated_bytes = initial.bytes - budget.bytes;
     sites.work = initial.work - budget.work;
     return sites;

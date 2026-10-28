@@ -3,16 +3,10 @@
 #include "abcd/analysis/value_ir.h"
 #include <span>
 #include "class_definitions.h"
+#include "class_initializer_call.h"
 #include "class_prototype.h"
 namespace abcd::source {
 class ClassSelfOrder;
-struct ClassInitializerCall {
-  analysis::OpId creation;
-  analysis::OpId method;
-  analysis::OpId call;
-  analysis::ValueId receiver;
-  bool operator==(const ClassInitializerCall&) const = default;
-};
 // es2abc instance fields: a zero-length DEFINEMETHOD whose home object is the
 // class's own prototype read, stored once into a lexical slot. The class
 // constructor loads that slot and CALLINITs it on its instance. This records

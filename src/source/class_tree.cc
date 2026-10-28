@@ -635,7 +635,7 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
         ++next_owner;
       } else {
         auto body = Take<ClassInitializerFunction>(ReadClassInitializerFunction(
-            file, header, index, lookup, roles, functions, *creator.Normal(),
+            file, header, index, lookup, roles, functions, creator,
             *initializer, budget,
             globals && globals->module_enclosure
                 ? &globals->module_enclosure->Context()

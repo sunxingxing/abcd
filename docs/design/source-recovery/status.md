@@ -5,6 +5,19 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## phased creator 的静态字段（第一步，2026-10-29，cc）
+
+- 方案改为只读的 `CopyRoot` 查询（B）。A 会编辑 phased 图，破坏 import 对应校验。
+- phased creator（含 phased 模块入口）现在可以投影没有自引用的类静态字段：
+  - creation 与 call 只能抛给 caller，或抛给只做原样转发的 cleanup handler；
+  - 识别、投影与求值都按拷贝根比较身份。
+  详见 [phased-class-members.md](phased-class-members.md)。
+- 证据：
+  - fixture `phased_static_fields`（default、O0）Node 差分通过；
+  - cohort `csr105/def` 零变化；big.abc 1,522 条，无回退；
+  - 相关 181 项 CTest 中，失败的都在已知清单内。
+- 剩余：big.abc 中 4,342 条是自引用的类，需要把 class-self 证明接入 phased creator。
+
 ## ISA：长跳转、debugger 与宽命名词法环境（2026-10-29，cc）
 
 - 新 fixture `long_forms`：同一份 pinned es2abc 构建三份源码。

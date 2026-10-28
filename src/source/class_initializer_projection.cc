@@ -1,4 +1,5 @@
 #include "class_initializers.h"
+#include "../analysis/value_edits.h"
 #include "class_self_order.h"
 #include "effect_order.h"
 #include <algorithm>
@@ -219,9 +220,38 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
         require(HasOrderedEffect(op), Error::kFlow); effects[id.value] = call.creation;
       };
       project(call.method); project(call.call);
-      for (auto use = graph.values[call.receiver.value].first_use; use; use = graph.uses[use->value].next) {
+      // No use, or (phased graphs) only dead pure register copies of it.
+      const auto unobserved = [&](ValueId value) {
+        for (std::size_t hops = 0; hops <= graph.ops.size(); ++hops) {
+          step(); const auto first = graph.values[value.value].first_use;
+          if (!first) return true;
+          const auto& use = graph.uses[first->value];
+          const auto* copy_id = std::get_if<OpId>(&use.owner);
+          if (graph.phases.empty() || use.next || !copy_id) return false;
+          const auto& copy = graph.ops[copy_id->value];
+          if (copy.life != ValueLife::kLive || !std::holds_alternative<ValueCopy>(copy.operation) ||
+              !CanErasePureOp(copy) || !copy.result) return false;
+          value = *copy.result;
+        }
+        return false;
+      };
+      // Observers of the class value, through pure register copies (phased
+      // graphs keep them; normal graphs have none). A copy is no observation;
+      // its own uses are. Each copy has one operand, so each use is seen once.
+      require(creation.result.has_value());
+      std::vector<ValueId> aliases{*creation.result};
+      admit(1, sizeof(ValueId));
+      for (std::size_t next_alias = 0; next_alias < aliases.size(); ++next_alias)
+      for (auto use = graph.values[aliases[next_alias].value].first_use; use; use = graph.uses[use->value].next) {
         step(); const auto& occurrence = graph.uses[use->value];
         const auto* owner = std::get_if<OpId>(&occurrence.owner);
+        if (owner && graph.ops[owner->value].result && std::holds_alternative<ValueCopy>(graph.ops[owner->value].operation) &&
+            !graph.phases.empty()) {
+          std::uint64_t hops = 0;
+          if (CopyRoot(graph, *graph.ops[owner->value].result, hops) == *creation.result) {
+            step(hops); admit(1, sizeof(ValueId)); aliases.push_back(*graph.ops[owner->value].result); continue;
+          }
+        }
         if (!owner) {
           require(occurrence.incoming && std::holds_alternative<EdgeId>(*occurrence.incoming), Error::kFlow);
           const auto& edge = graph.edges[std::get<EdgeId>(*occurrence.incoming).value];
@@ -249,8 +279,7 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
         if (order.Before(graph, call.call, op.block, op.order)) continue;
         require(std::holds_alternative<ValueNamedRead>(op.operation) &&
             std::get<ValueNamedRead>(op.operation).lookup == PropertyLookup::kObject && op.use_count == 1 &&
-            occurrence.role == OperandRole::kBase && op.result &&
-            !graph.values[op.result->value].first_use, Error::kFlow);
+            occurrence.role == OperandRole::kBase && op.result && unobserved(*op.result), Error::kFlow);
         // Named-read spelling remains an explicit source-level obligation.
         project(*owner); result.prototypes.push_back(*owner);
       }

@@ -119,8 +119,13 @@ std::variant<PhasedCreations, PhasedCreationFailure> BindPhasedCreations(
       // index still names the original DEFINEFUNC, including after await.
       const auto occurrence = sites.FindOccurrence(target, parent.Target(), origin.original.value_or(origin.pc));
       require(occurrence.has_value(), Error::kOccurrence);
+      // DEFINEMETHOD (class static initializers, computed members) carries an
+      // accumulator home object; DEFINEFUNC is an ordinary function creation.
+      const auto mode = lifted.kind == analysis::CreationKind::kMethod &&
+              lifted.home_object == analysis::HomeObjectInput::kAccumulator
+          ? CreationContextMode::kMethodBody : CreationContextMode::kFunction;
       auto resolved = CreationTreeContext::Resolve(file, header, index, lookup, roles,
-          sites, *occurrence, parent.Identity(), left);
+          sites, *occurrence, parent.Identity(), left, mode);
       if (const auto* error = std::get_if<CreationContextFailure>(&resolved))
         throw PhasedCreationFailure{current, *error};
       auto context = std::get<CreationTreeContext>(std::move(resolved));

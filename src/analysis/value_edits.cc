@@ -18,6 +18,23 @@ void Unlink(ValueProgram& graph, UseId id) {
 
 }  // namespace
 
+ValueId CopyRoot(const ValueProgram& graph, ValueId value, std::uint64_t& steps) {
+  // A copy's operand is defined before it, so the chain is acyclic; the
+  // bound below only guards malformed input.
+  for (std::size_t hops = 0; hops <= graph.ops.size(); ++hops) {
+    ++steps;
+    if (value.value >= graph.values.size()) return value;
+    const auto* produced = std::get_if<OpResult>(&graph.values[value.value].origin);
+    if (!produced || produced->op.value >= graph.ops.size()) return value;
+    const auto& copy = graph.ops[produced->op.value];
+    if (copy.life != ValueLife::kLive || !std::holds_alternative<ValueCopy>(copy.operation) ||
+        copy.use_count != 1 || copy.first_use.value >= graph.uses.size() || !CanErasePureOp(copy)) return value;
+    const auto* source = std::get_if<ValueId>(&graph.uses[copy.first_use.value].operand);
+    if (!source) return value;
+    value = *source;
+  }
+  return value;
+}
 bool CanErasePureOp(const ValueOp& op) {
   if (op.normal != LanguageEffect::kNone ||
       op.before_throw != LanguageEffect::kNone ||

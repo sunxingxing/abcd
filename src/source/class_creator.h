@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "../analysis/value_heritage.h"
+#include "class_initializer_call.h"
 #include "abcd/analysis/exception_inputs.h"
 #include "abcd/source/source_route.h"
 
@@ -43,6 +44,8 @@ struct PhasedClassSites {
     analysis::InstructionId instruction;
   };
   std::vector<Source> sources;
+  // Static-field initializer calls whose ops never throw to a local handler.
+  std::vector<ClassInitializerCall> initializers;
   std::size_t allocated_bytes = 0;
   std::uint64_t work = 0;
 };

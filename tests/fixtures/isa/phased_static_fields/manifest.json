@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Class static fields (no self reference) created by a phased module entry outside any local handler (default and O0).",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/phased_static_fields/fields.js",
+   "path": "tests/fixtures/isa/phased_static_fields/fields-default.abc",
+   "sha256": "eb3ba23e4f5f5fc35f573fbc79cf3a01a3f9f93e1265854cf4eabca50ca1786d",
+   "source_sha256": "82155e46f6ea464fa0e1147d7a4b9b13a1d4443e19dc56f07f51b1c9534b8b90",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_static_fields",
+    "--source-file=fields.js",
+    "--output=tests/fixtures/isa/phased_static_fields/fields-default.abc",
+    "tests/fixtures/isa/phased_static_fields/fields.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/phased_static_fields/fields.js",
+   "path": "tests/fixtures/isa/phased_static_fields/fields-O0.abc",
+   "sha256": "c308853a0eaf0bbce1bd5bf4c78f189a9854bcf7a90d3fb39e0975d5acc7ee17",
+   "source_sha256": "82155e46f6ea464fa0e1147d7a4b9b13a1d4443e19dc56f07f51b1c9534b8b90",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_static_fields",
+    "--source-file=fields.js",
+    "--output=tests/fixtures/isa/phased_static_fields/fields-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_static_fields/fields.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

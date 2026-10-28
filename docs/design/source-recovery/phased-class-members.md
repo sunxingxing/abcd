@@ -1,4 +1,4 @@
-# phased creator 中的类成员投影（2026-10-29，设计稿；原型已撤回）
+# phased creator 中的类成员投影（2026-10-29；第一步已实现）
 
 ## 问题
 
@@ -73,3 +73,41 @@ phased 图上改用 `VerifyPhasedValueFlow`、family tree 把调用传给 phased
   改动局部，但要在每个类分析里逐一接入。
 
 推荐 A：它是同一条规则的推广，没有为类分析单独开口。
+
+## 修正（2026-10-29）：采用 B，A 不可行
+
+phased 图要接受 `VerifyImportedPhases` 的逐 PC 对应校验（导入后的图不允许编辑），
+所以方向 A（折叠拷贝）与现有不变量冲突。改为 B：在 `value_edits.h` 中提供只读的
+`CopyRoot` 查询（沿纯的、单操作数的 `ValueCopy` 回溯）。normal 图已经简化，没有
+拷贝，因此对 normal 路线是恒等映射。
+
+## 第一步实现（不自引用的静态字段）
+
+- `phased_creations`：DEFINEMETHOD（accumulator home）按 `kMethodBody` 解析。
+- `FindClassInitializerCalls`：
+  - phased 图使用 `VerifyPhasedValueFlow`；
+  - home、receiver 与 callee 都按拷贝根比较；method 的值可以经单用途拷贝到达 call；
+  - 只有当 creation 与 call 都不会抛给本地 handler 时才接受。只把捕获值原样转发给
+    caller 的 handler（`AnalyzeExceptionForwarding`，例如环境清理
+    `poplexenv; throw`）视为 caller 出口；
+  - 实例初始化器仍只支持 normal 图。
+- `PhasedClassSites::initializers` 经 `ClassCreator::Initializers()` 传给
+  `ProjectClassMembers`、phased 求值计划与 `ReadClassInitializerFunction`（参数改为
+  `ClassCreator`）。
+- `ProjectClassMembers`：
+  - 类值的观察者沿纯拷贝传递收集（拷贝本身不算观察）；
+  - 只被死拷贝使用的 `prototype` 读取视为未使用。
+- phased 调度跳过 `kClassProjection` 的 op。
+- `descendant_classes` 删除了一刀切的 `kClassStaticInitialization` 拒绝。family
+  root 为 phased 入口时，类也走这条路径。尚不能准备的后代类，在后面的
+  `kClassPreparationInput` 处拒绝。
+- 证据：
+  - fixture `phased_static_fields`（default 与 O0）：Node 差分 3 个场景；
+  - cohort 零变化；big.abc 仍为 1,522 条。
+
+## 剩余
+
+big.abc 的这 4,342 条几乎都是自引用形态（成员或静态字段里引用类名），会产生
+类绑定的词法槽和 class-self 证明（`FindClassSelfStores`、`ClassSelfOrder`、
+`ConsumeClassSelfInitialization`），而这些目前只支持 normal creator。下一步把
+class-self 接入 `ClassCreator`，复用同一个拷贝根查询。

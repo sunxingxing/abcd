@@ -21,6 +21,12 @@ enum class ValueEditError : std::uint8_t {
 [[nodiscard]] std::optional<ValueEditError> ErasePureOp(
     ValueProgram& candidate, OpId op);
 [[nodiscard]] bool CanErasePureOp(const ValueOp& op);
+// Read-only identity through pure register copies: follow live, effect-free
+// single-operand ValueCopy producers to the first non-copy value. Phased graphs
+// keep these copies (their import correspondence forbids edits); simplified
+// normal graphs have none, so this is the identity there. `steps` receives the
+// chain length for the caller's work budget; a malformed graph stops early.
+[[nodiscard]] ValueId CopyRoot(const ValueProgram& graph, ValueId value, std::uint64_t& steps);
 // Retention sets must be closed under every live operand dependency. Checks
 // this before deleting dead cycles; no transient state escapes the candidate.
 [[nodiscard]] std::optional<ValueEditError> EraseUnmarkedValues(

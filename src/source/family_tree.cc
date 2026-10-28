@@ -399,7 +399,8 @@ class FamilyTrees {
                                               ? IncomingCells::kReject
                                               : IncomingCells::kConditional,
                                           member.children, module_evaluations,
-                                          demands, {}, phase->Locals().writes,
+                                          demands, phase->Phases().Classes().initializers,
+                                          phase->Locals().writes,
                                           array_source, guarded,
                                           for_of ? &*for_of : nullptr)
               : BuildEvaluationPlan(
