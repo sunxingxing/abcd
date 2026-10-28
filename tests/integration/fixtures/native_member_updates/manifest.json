@@ -68,7 +68,7 @@
     {
       "mode": "default",
       "abc": "catches-default.abc",
-      "publishes": false
+      "publishes": true
     }
   ]
 }

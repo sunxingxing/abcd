@@ -69,15 +69,23 @@ std::variant<std::uint64_t, ModuleAliasTreeError> VerifyModuleAliasTree(
           expected.target.owner == bindings.owner && actual.target == expected.target &&
           actual.symbol.value < tree.symbols.size(), Error::kTarget);
       const auto& symbol = tree.symbols[actual.symbol.value];
-      Require(symbol.kind == BindingKind::kModule && symbol.scope == *tree.module_scope, Error::kTarget);
-      // Fresh binding evidence grants writes only for proved initialized slots.
-      // Child aliases never become initializer-owned declarations.
       Require(next_write == writes.size() || writes[next_write] >= expected.target, Error::kTarget);
       const bool written = next_write < writes.size() && writes[next_write] == expected.target;
       if (written) ++next_write;
-      Require(expected.access == (written ? ModuleAccess::kMutable : ModuleAccess::kReadOnly), Error::kAccess);
-      Require(!expected.local && !actual.local && actual.access == expected.access &&
-          symbol.declaration == (expected.access == ModuleAccess::kMutable ? DeclarationKind::kLet : DeclarationKind::kConst), Error::kAccess);
+      if (expected.local) {
+        // Only the record's module entry owns local bindings: it declares
+        // them (`let`, mutable) at its proved first stores.
+        Require(bindings.entry && actual.local && symbol.kind == BindingKind::kLocal &&
+            expected.access == ModuleAccess::kMutable && actual.access == ModuleAccess::kMutable &&
+            symbol.declaration == DeclarationKind::kLet, Error::kAccess);
+      } else {
+        Require(symbol.kind == BindingKind::kModule && symbol.scope == *tree.module_scope, Error::kTarget);
+        // Fresh binding evidence grants writes only for proved initialized slots.
+        // Child aliases never become initializer-owned declarations.
+        Require(expected.access == (written ? ModuleAccess::kMutable : ModuleAccess::kReadOnly), Error::kAccess);
+        Require(!actual.local && actual.access == expected.access &&
+            symbol.declaration == (expected.access == ModuleAccess::kMutable ? DeclarationKind::kLet : DeclarationKind::kConst), Error::kAccess);
+      }
       Require(expected.name.value >= bindings.first_name.value &&
           expected.name.value - bindings.first_name.value < bindings.names.size() &&
           symbol.name.value < tree.names.size() && symbol.evidence == expected.evidence, Error::kName);

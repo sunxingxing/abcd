@@ -18,6 +18,10 @@
 #include <sstream>
 #include <type_traits>
 #include "function_file.h"
+#include "environment_cleanup.h"
+#include "family_tree.h"
+#include "function_context.h"
+#include "abcd/analysis/transparent_rethrow.h"
 #include "class_tree.h"
 #include "creator_classes.h"
 #include "family_route_failure.h"
@@ -130,18 +134,48 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     }, std::get<ModuleBindingNameFailure>(named));
     retain(local_names->allocated_bytes);
     if (local_names->locals.size() != slots->slot_count()) return fail(Error::kExport);
+    // Entries whose exception regions are not all environment-cleanup handlers
+    // (real top-level try/catch) are built as a phased family root, like any
+    // phased creator. The route is chosen from the handler shapes, not from a
+    // refusal; cleanup-only entries keep the record route unchanged.
+    std::optional<FunctionContext> entry_context;
+    if (functions && index.methods[entry.value].code && index.methods[entry.value].code->try_count) {
+      const auto& method = index.methods[entry.value];
+      auto decoded = abc::DecodeMethodBody(file, header.profile, *method.code, {budget.bytes});
+      auto* body = std::get_if<abc::MethodBody>(&decoded);
+      if (!body) return fail_with(Error::kBody, std::get<abc::BodyFailure>(decoded));
+      analysis::EraseTransparentRethrowRegions(*body);
+      if (!body->tries.empty() && !OnlyEnvironmentCleanupHandlers(*body)) {
+        const auto call = abc::ReadCallType(file, header, index, method.annotations, {budget.bytes});
+        const auto* type = std::get_if<abc::CallType>(&call);
+        if (!type) return fail_with(Error::kRead, std::get<abc::MetadataError>(call));
+        const auto framed = abc::BuildFrameLayout(method.code->registers, method.code->arguments,
+            abc::DecodeCallFlags(type->value));
+        const auto* frame = std::get_if<abc::FrameLayout>(&framed);
+        if (!frame) return fail(Error::kFrame);
+        entry_context.emplace(EntryTreeContext{identity, entry, method.offset, *frame});
+      }
+    }
+    std::optional<ConstructedFunction> entry_result;
+    ConstructedFunction* result = nullptr;
+    GlobalScope class_scope{};
+    std::optional<ConstructedFamily> module_family;
+    // class_scope.record_bindings borrows these until printing completes.
+    std::vector<std::string> lexical_names;
+    std::vector<std::string_view> lexical_views;
     std::optional<FileFunction> standalone;
     std::optional<FileFamily> family;
     FileFunction* function = nullptr;
     if (functions) {
       auto read = ReadFunctionFamily(file, header, index, lookup, roles, *functions, entry, identity,
-          {budget.bytes}, &context, nullptr, owner, FamilyClassMode::kRetainRoot, nullptr, {}, nullptr, classes);
+          {budget.bytes}, &context, entry_context ? &*entry_context : nullptr, owner, FamilyClassMode::kRetainRoot, nullptr, {}, nullptr, classes);
       if (const auto* error = std::get_if<FamilyFileFailure>(&read))
         return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
       family.emplace(std::get<FileFamily>(std::move(read)));
       retain(family->allocated_bytes);
-      if (family->members.empty() || family->members.front().function.Phase()) return fail(Error::kBody);
-      function = &family->members.front().function.Normal();
+      if (family->members.empty() || (family->members.front().function.Phase() != nullptr) != entry_context.has_value())
+        return fail(Error::kBody);
+      if (!entry_context) function = &family->members.front().function.Normal();
     } else {
       auto loaded = ReadFunctionValues(file, header, index, entry, identity,
           InputCaptureMode::kClosed, {budget.bytes}, &context);
@@ -166,9 +200,63 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       standalone.emplace(std::move(*function)); function = &*standalone;
       retain(function->allocated_bytes);
     }
+    std::vector<EnvironmentCleanupSite> cleanup_sites;
+    std::vector<std::u16string> names;
+    std::vector<std::u16string> aliases;
+    std::vector<std::size_t> alias_slots;
+    // Reserve vector arenas and their possible growth allocation together;
+    // payloads are charged separately. Name uniqueness uses sorted indices.
+    constexpr std::size_t kEntryStorage = 2 * (3 * sizeof(std::u16string) +
+        sizeof(ModuleSyntax) + 2 * sizeof(std::size_t));
+    const auto entries = external + module->local_exports.size() + module->indirect_exports.size();
+    if (entries > budget.bytes / kEntryStorage) return fail(Error::kRecordBudget);
+    retain(entries * kEntryStorage);
+    names.reserve(external + slots->slot_count()); aliases.reserve(module->local_exports.size());
+    alias_slots.reserve(module->local_exports.size());
+    for (const auto& name : enclosure->Names()) {
+      retain(4 * (name.size() + 1) * sizeof(char16_t));
+      names.emplace_back(name.begin(), name.end());
+    }
+    for (std::size_t slot = 0; slot < local_names->locals.size(); ++slot) {
+      const auto& name = local_names->locals[slot];
+      retain(4 * (name.size() + 1) * sizeof(char16_t));
+      names.push_back(name);
+    }
+    for (std::size_t row = 0; row < module->local_exports.size(); ++row) {
+      const auto& item = module->local_exports[row];
+      auto exported = abc::ReadStringEntity(file, header, item.exported, budget.strings);
+      auto* alias = std::get_if<std::u16string>(&exported);
+      if (!alias) return fail(Error::kRead);
+      retain(alias->capacity() * sizeof(char16_t) + sizeof(std::u16string) + sizeof(std::size_t));
+      aliases.push_back(std::move(*alias)); alias_slots.push_back(external + local_names->rows[row]);
+    }
+    if (names.size() != external + slots->slot_count()) return fail(Error::kExport);
+    std::vector<std::size_t> order(names.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](auto a, auto b) { return names[a] < names[b]; });
+    for (std::size_t i = 1; i < order.size(); ++i)
+      if (names[order[i - 1]] == names[order[i]]) return fail(Error::kExport);
+    // Direct reexports and local aliases share one public export namespace.
+    // Star ambiguity is intentionally resolved by native ESM linking instead.
+    std::vector<std::u16string> indirect_names;
+    indirect_names.reserve(module->indirect_exports.size());
+    std::vector<std::u16string_view> export_order;
+    export_order.reserve(aliases.size() + module->indirect_exports.size());
+    for (const auto& name : aliases) export_order.push_back(name);
+    for (const auto& item : module->indirect_exports) {
+      auto read = abc::ReadStringEntity(file, header, item.exported, budget.strings);
+      auto* name = std::get_if<std::u16string>(&read);
+      if (!name) return fail(Error::kRead);
+      retain((name->capacity() + 1) * sizeof(char16_t));
+      indirect_names.push_back(std::move(*name));
+      export_order.push_back(indirect_names.back());
+    }
+    std::sort(export_order.begin(), export_order.end());
+    if (std::adjacent_find(export_order.begin(), export_order.end()) != export_order.end())
+      return fail(Error::kExport);
+    if (!entry_context) {
     const auto& graph = function->values.graph;
     if (function->frame.parameters) return fail(Error::kFrame);
-    std::vector<EnvironmentCleanupSite> cleanup_sites;
     if (function->cleanup) {
       const auto& cleanup = *function->cleanup;
       const auto count = cleanup.Proof().Pops().size() + cleanup.Proof().Handlers().size() + cleanup.Proof().Moves().size();
@@ -225,7 +313,6 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       if (!name || name->value >= constants->names.size() || constants->names[name->value] != u"prototype")
         return fail(Error::kInitializer);
     }
-    GlobalScope class_scope{};
     class_scope.module_enclosure = enclosure;
     FunctionSyntax syntax{};
     syntax.identity = identity; syntax.method = index.methods[entry.value].offset; syntax.owner = {family ? 0U : 1U};
@@ -247,22 +334,10 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       }
       proposed_names = !syntax.locals.empty();
     }
-    std::vector<std::u16string> names;
-    std::vector<std::u16string> aliases;
-    std::vector<std::size_t> alias_slots;
-    // Reserve vector arenas and their possible growth allocation together;
-    // payloads are charged separately. Name uniqueness uses sorted indices.
-    constexpr std::size_t kEntryStorage = 2 * (3 * sizeof(std::u16string) +
-        sizeof(ModuleSyntax) + 2 * sizeof(std::size_t));
-    const auto entries = external + module->local_exports.size() + module->indirect_exports.size();
-    if (entries > budget.bytes / kEntryStorage) return fail(Error::kRecordBudget);
-    retain(entries * kEntryStorage);
-    names.reserve(external + slots->slot_count()); aliases.reserve(module->local_exports.size());
-    alias_slots.reserve(module->local_exports.size()); syntax.modules.reserve(external + slots->slot_count());
-    const auto added_names = external + slots->slot_count();
-    if (added_names > (budget.bytes / sizeof(std::u16string)))
-      return fail(Error::kRecordBudget);
-    const auto name_count = constants->names.size() + added_names;
+    // The entry tree's module symbol table: imports read-only, locals mutable,
+    // in the shared metadata order above.
+    syntax.modules.reserve(names.size());
+    const auto name_count = constants->names.size() + names.size();
     if (name_count < constants->names.size()) return fail(Error::kRecordBudget);
     if (name_count > constants->names.capacity()) {
       if (name_count > budget.bytes / sizeof(std::u16string)) return fail(Error::kRecordBudget);
@@ -270,57 +345,14 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
       constants->names.reserve(name_count);
       retain((constants->names.capacity() - name_count) * sizeof(std::u16string));
     }
-    for (const auto& name : enclosure->Names()) {
-      retain(4 * (name.size() + 1) * sizeof(char16_t));
-      const auto symbol = static_cast<std::uint32_t>(names.size());
-      names.emplace_back(name.begin(), name.end());
-      syntax.modules.push_back({{owner, {symbol}},
-          {static_cast<std::uint32_t>(constants->names.size())}, ModuleAccess::kReadOnly,
-          NameEvidence::kMetadata, false});
-      constants->names.push_back(names.back());
+    for (std::size_t symbol = 0; symbol < names.size(); ++symbol) {
+      const bool local = symbol >= external;
+      syntax.modules.push_back({{owner, {static_cast<std::uint32_t>(symbol)}},
+          {static_cast<std::uint32_t>(constants->names.size())},
+          local ? ModuleAccess::kMutable : ModuleAccess::kReadOnly,
+          local ? local_names->evidence[symbol - external] : NameEvidence::kMetadata, local});
+      constants->names.push_back(names[symbol]);
     }
-    for (std::size_t slot = 0; slot < local_names->locals.size(); ++slot) {
-      const auto& name = local_names->locals[slot];
-      retain(4 * (name.size() + 1) * sizeof(char16_t));
-      names.push_back(name);
-      const auto symbol = static_cast<std::uint32_t>(names.size() - 1);
-      syntax.modules.push_back({{owner, {symbol}},
-          {static_cast<std::uint32_t>(constants->names.size())}, ModuleAccess::kMutable,
-          local_names->evidence[slot], true});
-      constants->names.push_back(name);
-    }
-    for (std::size_t row = 0; row < module->local_exports.size(); ++row) {
-      const auto& item = module->local_exports[row];
-      auto exported = abc::ReadStringEntity(file, header, item.exported, budget.strings);
-      auto* alias = std::get_if<std::u16string>(&exported);
-      if (!alias) return fail(Error::kRead);
-      retain(alias->capacity() * sizeof(char16_t) + sizeof(std::u16string) + sizeof(std::size_t));
-      aliases.push_back(std::move(*alias)); alias_slots.push_back(external + local_names->rows[row]);
-    }
-    if (names.size() != external + slots->slot_count()) return fail(Error::kExport);
-    std::vector<std::size_t> order(names.size());
-    std::iota(order.begin(), order.end(), 0);
-    std::sort(order.begin(), order.end(), [&](auto a, auto b) { return names[a] < names[b]; });
-    for (std::size_t i = 1; i < order.size(); ++i)
-      if (names[order[i - 1]] == names[order[i]]) return fail(Error::kExport);
-    // Direct reexports and local aliases share one public export namespace.
-    // Star ambiguity is intentionally resolved by native ESM linking instead.
-    std::vector<std::u16string> indirect_names;
-    indirect_names.reserve(module->indirect_exports.size());
-    std::vector<std::u16string_view> export_order;
-    export_order.reserve(aliases.size() + module->indirect_exports.size());
-    for (const auto& name : aliases) export_order.push_back(name);
-    for (const auto& item : module->indirect_exports) {
-      auto read = abc::ReadStringEntity(file, header, item.exported, budget.strings);
-      auto* name = std::get_if<std::u16string>(&read);
-      if (!name) return fail(Error::kRead);
-      retain((name->capacity() + 1) * sizeof(char16_t));
-      indirect_names.push_back(std::move(*name));
-      export_order.push_back(indirect_names.back());
-    }
-    std::sort(export_order.begin(), export_order.end());
-    if (std::adjacent_find(export_order.begin(), export_order.end()) != export_order.end())
-      return fail(Error::kExport);
     auto bound = BindModuleAliases(file, header, index, function->input, function->values,
         context, owner, {}, {budget.bytes});
     auto* bindings = std::get_if<ModuleAliases>(&bound);
@@ -560,8 +592,9 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     const auto view = constants->View();
     syntax.names = std::move(constants->names); syntax.texts = std::move(constants->texts);
     auto constructed = BuildFunctionTree(graph, *control, *evaluation, std::move(syntax), view, {budget.bytes});
-    auto* result = std::get_if<ConstructedFunction>(&constructed);
-    if (!result) return fail_from(Error::kValue, constructed);
+    auto* built = std::get_if<ConstructedFunction>(&constructed);
+    if (!built) return fail_from(Error::kValue, constructed);
+    entry_result.emplace(std::move(*built)); result = &*entry_result;
     retain(result->allocated_bytes);
     // Recheck the actual emitted tree against the complete metadata inventory.
     // Entry-body locals and imports occupy the same native ESM scope even
@@ -582,8 +615,6 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
           symbol.name.value >= result->tree.names.size() ||
           result->tree.names[symbol.name.value] != names[slot]) return fail_with(Error::kModule, RecordModuleProofError::kSymbolBinding);
     }
-    std::vector<std::string> lexical_names;
-    std::vector<std::string_view> lexical_views;
     retain(result->tree.symbols.size() * (sizeof(std::string) + sizeof(std::string_view)));
     lexical_names.reserve(result->tree.symbols.size()); lexical_views.reserve(result->tree.symbols.size());
     retain((lexical_names.capacity() - result->tree.symbols.size()) * sizeof(std::string));
@@ -638,7 +669,6 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
     // missing realm/intrinsic bindings still fail their existing checks.
     const auto globals = VerifyTreeGlobals(result->tree, &class_scope, {budget.bytes});
     if (!std::holds_alternative<TreeGlobals>(globals)) return fail(Error::kValue);
-    std::optional<ConstructedFamily> module_family;
     if (!children.empty()) {
       // Final construction/default/class correspondence already owns the
       // original facts. Do not replay verification or retain a second copy.
@@ -652,6 +682,69 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
       module_family.emplace(std::get<ConstructedFamily>(std::move(assembled)));
       retain(module_family->allocated_bytes);
+      auto destination = VerifyFamilyDestination(*module_family, &class_scope, {budget.bytes}, ModuleRole::kInitializer);
+      if (const auto* error = std::get_if<FamilyEnclosureFailure>(&destination))
+        return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
+    }
+    } else {
+      auto built = BuildFileFamilyTrees(file, header, index, std::move(*family), *entry_context,
+          {budget.bytes}, &context, owner, &lookup, RecoveryMode::kCompleteOnly);
+      if (const auto* error = std::get_if<FamilyTreeFailure>(&built))
+        return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
+      module_family.emplace(std::get<ConstructedFamily>(std::move(built)));
+      retain(module_family->allocated_bytes);
+      class_scope.module_enclosure = enclosure;
+      class_scope.module_local_names = std::span<const std::u16string>(names).subspan(external);
+      class_scope.module_local_evidence = local_names->evidence;
+      // Same inventory obligation as the record route: every local slot is an
+      // entry-owned binding with its metadata spelling, declared exactly once.
+      {
+        const auto& root = module_family->members[module_family->root.value].tree;
+        const auto locals = names.size() - external;
+        retain(locals * (sizeof(std::optional<SymbolId>) + 1));
+        std::vector<std::optional<SymbolId>> symbols(locals);
+        std::vector<std::uint8_t> declared(locals);
+        for (const auto& alias : root.modules) {
+          const auto slot = alias.target.symbol.value;
+          if (alias.target.owner != owner || slot >= names.size() || alias.symbol.value >= root.symbols.size())
+            return fail_with(Error::kModule, RecordModuleProofError::kSymbolRange);
+          if (slot < external) continue;
+          const auto& symbol = root.symbols[alias.symbol.value];
+          if (!alias.local || alias.access != ModuleAccess::kMutable || symbol.kind != BindingKind::kLocal ||
+              symbol.evidence != local_names->evidence[slot - external] || symbols[slot - external] ||
+              symbol.name.value >= root.names.size() || root.names[symbol.name.value] != names[slot])
+            return fail_with(Error::kModule, RecordModuleProofError::kSymbolBinding);
+          symbols[slot - external] = alias.symbol;
+        }
+        for (const auto& statement : root.statements) {
+          const auto* declaration = std::get_if<DeclarationStmt>(&statement.statement);
+          if (!declaration) continue;
+          for (std::size_t slot = 0; slot < locals; ++slot)
+            if (symbols[slot] == declaration->symbol) {
+              if (declared[slot]) return fail(Error::kInitializer);
+              declared[slot] = 1;
+            }
+        }
+        if (std::find(declared.begin(), declared.end(), 0) != declared.end()) return fail(Error::kInitializer);
+      }
+      {
+        // Record lexical names for the same destination checks as the record route.
+        const auto& root = module_family->members[module_family->root.value].tree;
+        retain(root.symbols.size() * (sizeof(std::string) + sizeof(std::string_view)));
+        lexical_names.reserve(root.symbols.size()); lexical_views.reserve(root.symbols.size());
+        for (const auto& symbol : root.symbols) {
+          if (symbol.kind == BindingKind::kModule) continue;
+          const auto& name = root.names[symbol.name.value];
+          if (std::any_of(name.begin(), name.end(), [](char16_t c) { return c > u'\x7f'; })) continue;
+          retain(name.size() + 1);
+          lexical_names.emplace_back(name.begin(), name.end());
+        }
+        for (const auto& name : lexical_names) lexical_views.push_back(name);
+        std::sort(lexical_views.begin(), lexical_views.end());
+        class_scope.record_bindings = lexical_views;
+      }
+      const auto globals = VerifyTreeGlobals(module_family->members[module_family->root.value].tree, &class_scope, {budget.bytes});
+      if (!std::holds_alternative<TreeGlobals>(globals)) return fail(Error::kValue);
       auto destination = VerifyFamilyDestination(*module_family, &class_scope, {budget.bytes}, ModuleRole::kInitializer);
       if (const auto* error = std::get_if<FamilyEnclosureFailure>(&destination))
         return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};

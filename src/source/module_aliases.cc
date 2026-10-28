@@ -24,6 +24,7 @@ struct AliasSource {
   const ModuleGuards& guards;
   const ModuleSlotSet* entry_modules;
   ModuleAccess access;
+  bool entry = false;
   std::variant<std::reference_wrapper<const FunctionInput>,
       std::reference_wrapper<const analysis::PhasedValueInput>> input;
 };
@@ -87,6 +88,7 @@ class AliasBinder {
       result_.evaluations.push_back({pair, read.read,
           {result_.owner, {static_cast<std::uint32_t>(base + read.binding_slot.value)}}});
     }
+    result_.entry = input_.entry;
     ResolveWrites(external);
     ResolveGuardNames();
     DecodeNames();
@@ -154,8 +156,12 @@ class AliasBinder {
       Step(text.size()); Admit(text.size(), sizeof(char16_t)); Admit(1, sizeof(char16_t));
       auto& copy = result_.names.emplace_back(text);
       Admit(copy.capacity() - text.size(), sizeof(char16_t));
-      result_.aliases.push_back({target, name, writable ? ModuleAccess::kMutable : ModuleAccess::kReadOnly,
-          local ? local_bindings->evidence[slot] : NameEvidence::kMetadata});
+      // The module entry owns (declares) the record's local bindings, exactly
+      // as the record adapter's entry syntax does; every other member refers
+      // to them as module bindings.
+      const bool owned = local && input_.entry;
+      result_.aliases.push_back({target, name, writable || owned ? ModuleAccess::kMutable : ModuleAccess::kReadOnly,
+          local ? local_bindings->evidence[slot] : NameEvidence::kMetadata, owned});
       first = end;
     }
     if (file_.CheckUnchanged()) throw abc::MetadataError::kFileChanged;
@@ -196,7 +202,7 @@ class AliasBinder {
       // Reuse the immutable creation-time premise, across arbitrary child CFG
       // and effects. Never infer initialization from a metadata export row.
       Step(ModuleSlotSet::kPathWork);
-      if (!input_.entry_modules || !input_.entry_modules->Contains(write->slot)) {
+      if (!input_.entry && (!input_.entry_modules || !input_.entry_modules->Contains(write->slot))) {
         Require(op.origin.value < graph.origins.size(), Error::kCoverage);
         throw ModuleAliasFailure{Error::kInitialization, graph.origins[op.origin.value].pc};
       }
@@ -348,7 +354,7 @@ std::variant<ModuleAliases, ModuleAliasFailure> BindModuleAliases(
       values.record != input.Record() || values.capture_mode != input.Mode())
     return ModuleAliasFailure{Error::kIdentity};
   return BindAliases(file, header, index, {input.Identity(), input.Method(), input.Record(),
-      values.graph, values.modules, &input.EntryModules(), access, std::cref(input)}, context, owner, first_name, budget);
+      values.graph, values.modules, &input.EntryModules(), access, false, std::cref(input)}, context, owner, first_name, budget);
 }
 std::variant<ModuleAliases, ModuleAliasFailure> BindPhasedModuleAliases(
     const corpus::AbcFile& file, const abc::Header& header,
@@ -356,6 +362,6 @@ std::variant<ModuleAliases, ModuleAliasFailure> BindPhasedModuleAliases(
     const RecordModuleContext& context, ModuleOwnerId owner, NameId first_name,
     analysis::SemanticBudget budget) {
   return BindAliases(file, header, index, {input.identity, input.method, input.record,
-      input.graph, input.guards, input.entry_modules, ModuleAccess::kMutable, std::cref(input.phases)}, context, owner, first_name, budget);
+      input.graph, input.guards, input.entry_modules, ModuleAccess::kMutable, input.entry, std::cref(input.phases)}, context, owner, first_name, budget);
 }
 }  // namespace abcd::source

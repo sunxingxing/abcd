@@ -174,4 +174,25 @@ std::variant<EnvironmentCleanup, CleanupFailure> EnvironmentCleanup::Build(
   } catch (const std::bad_alloc&) { return CleanupFailure{Error::kResourceLimit};
   } catch (const std::length_error&) { return CleanupFailure{Error::kResourceLimit}; }
 }
+bool OnlyEnvironmentCleanupHandlers(const abc::MethodBody& body) {
+  for (const auto& handler : body.handlers) {
+    if (handler.type) return false;
+    const auto start = std::lower_bound(body.instructions.begin(), body.instructions.end(), handler.offset,
+        [](const auto& instruction, auto offset) { return instruction.offset.value < offset.value; });
+    if (start == body.instructions.end() || start->offset != handler.offset) return false;
+    const std::uint64_t end = handler.length ? std::uint64_t(handler.offset.value) + handler.length
+                                             : std::numeric_limits<std::uint64_t>::max();
+    bool popped = false, thrown = false;
+    for (auto it = start; it != body.instructions.end() && it->offset.value < end; ++it) {
+      const auto opcode = it->decoded.opcode;
+      if (opcode == abc::Opcode::kTHROW_PREF_NONE) { thrown = true; break; }
+      if (opcode == abc::Opcode::kPOPLEXENV || opcode == abc::Opcode::kDEPRECATED_POPLEXENV_PREF_NONE) {
+        popped = true; continue;
+      }
+      if (opcode != abc::Opcode::kSTA_V8 && opcode != abc::Opcode::kLDA_V8) return false;
+    }
+    if (!popped || !thrown) return false;
+  }
+  return true;
+}
 }  // namespace abcd::source

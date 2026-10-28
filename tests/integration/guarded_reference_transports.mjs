@@ -38,13 +38,15 @@ console.log(JSON.stringify({early:m.early,pure:m.pure(),results,trace}));
     const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
     assert.equal(records.length,1);
     if(abc==='transport-default.abc'){
-      // Existing default-optimizer handler layout is not admitted by the raw
-      // CatchRegion proof. It is a refusal, never a differential pass.
+      // The default optimizer's zero-size handler extent is now inferred; this
+      // build then stops at the member-call Reference crossing a selection in
+      // the protected region. It is a refusal, never a differential pass.
       assert.equal(records[0].source_status,3);
-      assert.deepEqual(records[0].source_failure.causes,[
-        {domain:'abcd::source::PhasedMethodError',value:5},
-        {domain:'abcd::source::ExceptionPlanError',value:2},
-        {domain:'abcd::analysis::CatchRegionError',value:1}]);
+      assert.deepEqual(records[0].source_failure.causes.slice(0,4),[
+        {domain:'abcd::source::FunctionTreeError',value:1},
+        {domain:'abcd::source::ExpressionError',value:4},
+        {domain:'abcd::source::CallPlanError',value:4},
+        {domain:'abcd::source::CallReferenceError',value:1}]);
       ++refused;continue;
     }
     assert.equal(records[0].source_status,0,JSON.stringify(records[0]));

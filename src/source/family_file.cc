@@ -117,7 +117,7 @@ class FamilyReader {
         literal_method = methods[cursor.literal - 1]; ++stack_.back().literal;
       } else if (!buffered) ++stack_.back().next;
       auto& member = result_.members[cursor.member.value];
-      const bool prepared_record_root=cursor.member==FileFamily::kRoot && class_mode_==FamilyClassMode::kRetainRoot;
+      const bool prepared_record_root=cursor.member==FileFamily::kRoot && class_mode_==FamilyClassMode::kRetainRoot && !parent.Phase();
       // The existing explicit family DFS owns the creator occurrence. Discover
       // its class work only at the actual barrier, preserving first-failure order.
       if (!member.class_projection && class_sites_ && !prepared_record_root &&
@@ -625,8 +625,10 @@ class FamilyReader {
           instruction.origin.value_or(member.function.Body().instructions[child.value].offset)).size();
     }
     Grow(member.children, creations);
-    if (id == FileFamily::kRoot && class_mode_ == FamilyClassMode::kRetainRoot) {
-      Require(!member.function.Phase(), Error::kUnsupportedFlow);
+    // A normal record entry's classes are prepared by the record adapter. A
+    // phased module entry is an ordinary phased creator: its classes follow
+    // the family path below, like any other phased parent.
+    if (id == FileFamily::kRoot && class_mode_ == FamilyClassMode::kRetainRoot && !member.function.Phase()) {
       SelfOrder(member.function.Normal(),id);
       const auto& values = member.function.Normal().values;
       const auto& order = member.function.Normal().self_order;

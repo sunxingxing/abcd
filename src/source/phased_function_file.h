@@ -46,6 +46,9 @@ class FilePhasedFunction {
   std::span<const CaptureUse> Captures() const;
   std::span<const InputCaptureAccess> CaptureAccesses() const;
   bool MatchesOwner(const FunctionContext& context) const;
+  // Read for the record's module entry (no creation site); it owns its
+  // record's bindings and proves its own local-load premises.
+  bool IsModuleEntry() const;
   bool MatchesModuleCreation(const FunctionInput&, analysis::InstructionId) const;
   std::span<const InputModuleRead> InitializedModuleReads() const;
   const ModuleSlotSet& EntryModules() const;

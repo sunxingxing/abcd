@@ -1,3 +1,4 @@
+#include "abcd/analysis/module_initialization.h"
 #include "phased_method.h"
 
 #include <limits>
@@ -335,6 +336,17 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     quota.Admit(initialized_modules.size(), sizeof(LanguageLoadFact));
     std::vector<LanguageLoadFact> initialized(initialized_modules.begin(), initialized_modules.end());
     quota.Admit(initialized.capacity() - initialized_modules.size(), sizeof(LanguageLoadFact));
+    if (context.EntryContext()) {
+      // The module entry owns its record's bindings: nothing is initialized at
+      // its start, and its own stores initialize later local loads.
+      if (!initialized.empty()) return Error::kModules;
+      auto proved = ProveEntryModuleLoads(flow, quota.Remaining());
+      if (const auto* error = std::get_if<ModuleInitializationError>(&proved))
+        return *error == ModuleInitializationError::kWorkLimit ? Error::kWorkLimit :
+            *error == ModuleInitializationError::kResourceLimit ? Error::kResourceLimit : Error::kModules;
+      initialized = std::get<std::vector<LanguageLoadFact>>(std::move(proved));
+      quota.Admit(initialized.capacity(), sizeof(LanguageLoadFact));
+    }
     quota.Step(initialized.size());
     auto modules = PhaseResult<ExceptionModules>(ProveExceptionModules(flow, ssa,
         quota.Remaining(), initialized), Error::kValues);
@@ -558,7 +570,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
         if (method.offset != context.Target() || method.owner_offset != binding->record.record())
           return Error::kModules;
         const PhasedModuleInput selected{context.Identity(), method.offset, method.owner_offset,
-            input, imported.graph, *guards, entry_modules};
+            input, imported.graph, *guards, entry_modules, context.EntryContext() != nullptr};
         auto bound = BindPhasedModuleAliases(binding->file, binding->header,
             binding->index, selected, binding->record, binding->owner, {}, quota.Remaining());
         if (const auto* failure = std::get_if<ModuleAliasFailure>(&bound))

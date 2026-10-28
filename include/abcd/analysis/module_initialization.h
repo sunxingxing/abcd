@@ -2,6 +2,8 @@
 #define ABCD_ANALYSIS_MODULE_INITIALIZATION_H_
 #include "abcd/analysis/module_slot_set.h"
 #include "abcd/analysis/semantic_ir.h"
+#include "abcd/analysis/exception_flow.h"
+#include "abcd/analysis/register_value_flow.h"
 namespace abcd::analysis {
 // Abstract effects of genuine normal-flow sites. IDs index the supplied
 // program, not VM registers. Owners retain original or working provenance.
@@ -36,5 +38,15 @@ BuildModuleInitialization(std::span<const ModuleStateSite>, const NormalFlow&,
 [[nodiscard]] std::variant<ModuleInitialization, ModuleInitializationError>
 BuildModuleInitialization(const SemanticMethod&, const ModuleSlotSet& entry,
                           SemanticBudget budget = {});
+// Exception-aware owner adapter for the method that owns the record's own
+// bindings (the module entry). One site per ExceptionFlow node: a store takes
+// effect at its Commit node and a local load snapshots at its Before node.
+// Exceptional arcs leave Before nodes, so a handler (and any join after it)
+// sees the state before the throwing instruction. Returns the sorted local
+// loads whose slot is initialized on every path. As for inherited premises,
+// a load immediately followed by its own HoleGuard keeps the guard-pair
+// proof; store operands remain independently verified Language.
+[[nodiscard]] std::variant<std::vector<LanguageLoadFact>, ModuleInitializationError>
+ProveEntryModuleLoads(const ExceptionFlow& flow, SemanticBudget budget = {});
 }  // namespace abcd::analysis
 #endif

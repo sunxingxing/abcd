@@ -1,0 +1,27 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "O0; a module entry with real top-level try/catch (caught and empty catch) takes the phased route.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/module_entry_try/entry.js",
+   "path": "tests/fixtures/isa/module_entry_try/entry-O0.abc",
+   "sha256": "14b55db62c27966c2e6cf18653fe55d41ba4ce2e581681372aa275b32a1edd3e",
+   "source_sha256": "16be9a629b5f419d511b8d639061948c0fbf009a36f6e407898fc007db8da20b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=module_entry_try",
+    "--source-file=entry.js",
+    "--output=tests/fixtures/isa/module_entry_try/entry-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/module_entry_try/entry.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

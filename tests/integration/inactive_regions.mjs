@@ -23,22 +23,13 @@ try {
     const abc=join(fixtures,`inactive-${mode}.abc`);
     // Decode actual try tables and lift the actual instructions. Both compiler
     // O0 has two inactive regions and one reachable handler. The default
-    // optimizer emits zero-size handler ranges, an explicitly refused extent.
+    // optimizer records zero-size handler ranges; their extent is inferred
+    // from the normal join, so both builds run the same differential oracle.
     run(proof,[abc]);
     for(const flags of [[], ['--language-source']]) {
       const out=join(root,mode+flags[0]);run(structure,[abc,out,'--value-source',...flags]);
       const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
       assert.equal(records.length,1);
-      if(mode==='default') {
-        assert.equal(records[0].source_status,3);
-        const failure=records[0].source_failure;
-        assert.deepEqual(failure.causes.map(c=>[c.domain,c.value]),[
-          ['abcd::source::PhasedMethodError',5],['abcd::source::ExceptionPlanError',2],['abcd::analysis::CatchRegionError',1]]);
-        assert.ok(failure.exception_region);assert.ok(Number.isInteger(failure.method));
-        const report=JSON.parse(run(semantic,[abc,String(failure.method),'--record-source','--value-source',...flags],1));
-        assert.deepEqual(report.source_failure,failure);
-        continue;
-      }
       assert.equal(records[0].source_status,0,JSON.stringify(records));
       const text=readFileSync(join(out,records[0].source),'utf8');
       assert.equal((text.match(/catch \(/g)||[]).length,1);

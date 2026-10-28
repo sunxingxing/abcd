@@ -73,22 +73,89 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
         throw fail(Error::kBoundary, target);
       return {static_cast<std::uint32_t>(found - body.instructions.begin())};
     };
+    // es2abc may record a catch handler's code_size as 0; the pinned
+    // interpreter uses only its start. Its extent is then the code that only
+    // the catch entry reaches: from the handler start to the first
+    // instruction reachable from the method entry without an exceptional arc
+    // (the normal join), or the end of the code. Computed only when needed.
+    std::vector<std::uint8_t> normal;
+    std::vector<std::optional<ExceptionNodeId>> before_of;
+    const bool inferred = std::any_of(body.handlers.begin(), body.handlers.end(),
+        [](const auto& handler) { return handler.length == 0; });
+    if (inferred) {
+      reserve(normal, flow.nodes.size()); normal.resize(flow.nodes.size());
+      reserve(before_of, count); before_of.resize(count);
+      for (std::size_t n = 0; n < flow.nodes.size(); ++n) {
+        charge(); const auto& node = flow.nodes[n];
+        if (node.instruction.value >= count) return fail(Error::kInvalidFlow);
+        if (node.phase == ExceptionPhase::kBefore) before_of[node.instruction.value] = ExceptionNodeId{static_cast<std::uint32_t>(n)};
+      }
+      pending.clear(); normal[0] = 1; pending.push_back({0});
+      for (std::size_t head = 0; head < pending.size(); ++head) {
+        charge(); const auto& node = flow.nodes[pending[head].value];
+        for (const auto& arc : std::span(node.successors).first(node.successor_count)) {
+          charge();
+          if (arc.kind == ExceptionArcKind::kException || arc.target.value >= normal.size() || normal[arc.target.value]) continue;
+          normal[arc.target.value] = 1; pending.push_back(arc.target);
+        }
+      }
+    }
+    // Code only the catch entry reaches: walk non-exceptional arcs from the
+    // handler start, never entering normally reachable code (the join). The
+    // extent ends after the last instruction reached, so a handler ending in
+    // throw/return stops there and a following sibling handler stays outside.
+    std::vector<std::uint32_t> mark;
+    std::uint32_t generation = 0;
+    if (inferred) { reserve(mark, flow.nodes.size()); mark.resize(flow.nodes.size()); }
+    const auto handler_extent = [&](InstructionId begin) -> std::uint32_t {
+      ++generation;
+      auto end = begin.value;
+      pending.clear();
+      const auto start = before_of[begin.value];
+      if (!start || normal[start->value]) return end;  // empty catch at the join
+      mark[start->value] = generation; pending.push_back(*start);
+      for (std::size_t head = 0; head < pending.size(); ++head) {
+        charge(); const auto& node = flow.nodes[pending[head].value];
+        end = std::max(end, node.instruction.value + 1);
+        for (const auto& arc : std::span(node.successors).first(node.successor_count)) {
+          charge();
+          if (arc.kind == ExceptionArcKind::kException || arc.target.value >= mark.size() ||
+              normal[arc.target.value] || mark[arc.target.value] == generation) continue;
+          mark[arc.target.value] = generation; pending.push_back(arc.target);
+        }
+      }
+      return end;
+    };
     for (std::size_t i = 0; i < body.tries.size(); ++i) {
       charge();
       const auto& region = body.tries[i];
       if (region.handler_count != 1 || region.first_handler >= body.handlers.size())
         return fail(Error::kHandlerShape, region.offset, TryId{static_cast<std::uint32_t>(i)});
       const auto& handler = body.handlers[region.first_handler];
-      if (handler.type || !region.length || !handler.length)
+      // A zero-length protected range protects no instruction, so dispatch
+      // never selects it. It is admitted only as an inactive region below.
+      if (handler.type)
         return fail(Error::kHandlerShape, handler.offset, TryId{static_cast<std::uint32_t>(i)});
+      const auto handler_begin = boundary(handler.offset.value);
+      InstructionId handler_end = handler_begin;
+      if (handler.length) handler_end = boundary(std::uint64_t(handler.offset.value) + handler.length);
+      else {
+        // A handler whose start is itself the normal join is an empty catch
+        // block ([b, b)): the pending exception is discarded and execution
+        // continues at the join, exactly like a catch that falls through.
+        // Bounded by O(R*I) when inferred handlers nest (O(n^2) ceiling).
+        if (handler_begin.value >= count)
+          return fail(Error::kHandlerShape, handler.offset, TryId{static_cast<std::uint32_t>(i)});
+        handler_end = InstructionId{handler_extent(handler_begin)};
+      }
       CatchRegion candidate{{boundary(region.offset.value),
                              boundary(std::uint64_t(region.offset.value) + region.length)},
-                            {boundary(handler.offset.value),
-                             boundary(std::uint64_t(handler.offset.value) + handler.length)},
+                            {handler_begin, handler_end},
                             HandlerId{region.first_handler}, {}, {}};
-      if (candidate.body.begin >= candidate.body.end ||
+      if (candidate.body.begin > candidate.body.end || (candidate.body.begin == candidate.body.end && region.length) ||
           candidate.body.end > candidate.handler.begin ||
-          candidate.handler.begin >= candidate.handler.end)
+          candidate.handler.begin > candidate.handler.end ||
+          (candidate.handler.begin == candidate.handler.end && handler.length))
         return fail(Error::kHandlerShape, handler.offset, TryId{static_cast<std::uint32_t>(i)});
       result.regions.push_back(candidate);
       order.push_back({static_cast<std::uint32_t>(i)});
@@ -138,7 +205,11 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
         if (pure + other > last - first) return fail(Error::kInvalidFlow);
         region.inactive = InactiveExceptionRegion{{r}, region.body, region.handler,
             pure, other, last - first - pure - other};
-      } else order[active++] = {r};
+      } else {
+        // An empty protected range is only meaningful as an inactive region.
+        if (first == last) return fail(Error::kHandlerShape, abc::CodeOffset{}, TryId{r});
+        order[active++] = {r};
+      }
     }
     order.resize(active);
     std::sort(order.begin(), order.end(), [&](TryId a, TryId b) {

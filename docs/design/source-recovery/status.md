@@ -5,6 +5,68 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 模块入口 try/catch 与 code_size 0 handler（2026-10-28，cc）
+
+big.abc 的拒绝原因中有 88% 来自同一根因：模块入口 `func_main_0` 含有真实的顶层
+try/catch。按设计 [phased-module-entry.md](phased-module-entry.md) 分两部分交付，
+都是扩展现有 owner，没有新增并行机制。
+
+- **模块入口走 phased 路线**
+  - **选路**：`OnlyEnvironmentCleanupHandlers` 对 handler 做结构分类，由环境清理
+    owner 负责。全部是环境清理 handler 时继续走 record 路线，输出字节不变；
+    否则以 `EntryTreeContext` 作为 family root，像普通 phased creator 一样构建。
+  - **模块绑定的声明与访问**：
+    - 入口自有的 local 绑定由 entry 声明（`local` 加 mutable `let`）；子成员
+      仍只能引用这些绑定，`VerifyModuleAliasTree` 的 entry 模式按此独立校验。
+    - 首次写入的判定与 record 路线一致：根语句序列中每个 slot 的首个 store 作为
+      声明，其余 store 必须被它支配。
+    - local load 的初始化事实由新增的 `ProveEntryModuleLoads` 在 ExceptionFlow 上
+      证明：store 在 Commit 生效，异常弧从 Before 节点出发，因此 catch 及其后的
+      汇合点看到的是抛出前的状态。`VerifyFamilyWrites` 会独立重算并要求完全一致。
+  - **记录装配**：模块名、导出别名等元数据前移，两条路线共用。phased 分支复核
+    inventory（每个 local slot 恰好声明一次）、globals 与 destination。
+- **code_size 0 的 catch handler**：新编译器常把 handler 的 code_size 记为 0，而
+  解释器本来就只使用 handler 起点。handler 的范围改为：从 handler 起点出发、只沿
+  非异常弧可达、且不进入正常可达代码（汇合点）的指令，范围终止于其中最后一条。
+  - 以 throw 或 return 结束的 handler 就此终止，其后的兄弟 handler 不会被并入；
+    第一版按"下一个汇合点"截断，会把兄弟 handler 并入，已由 fixture 的
+    kCrossingScopes 暴露并修正。
+  - 起点本身就是汇合点时，即为空 catch `[b, b)`。
+  - 零长度的受保护范围不保护任何指令，因此只能作为 inactive region 接受；
+    若它仍是活动 region，则保留 kHandlerShape 拒绝。
+- **测试**：五个原先钉住 kHandlerShape 拒绝的测试，现在让 default 构建跑完整
+  oracle：
+  - `inactive_regions`、`capture_scope`、`native_member_updates` 的
+    catches-default，以及 `exception_throw_domain` 的 handler：完整 oracle，
+    其中 `capture_scope` 与 `exception_throw_domain` 还包含变异检出。
+  - 其余三个优化后的 for-of 布局，以及 `guarded_reference_transports`，现在停在
+    下一个真实缺口：kNormalEntry 与 CallReferenceError。
+- **证据**：
+  - 新 fixture `module_entry_try`：Node 差分 4 个场景，植入的变异能被检出；
+  - `handler_extent_test`：推断结果与记录的范围一致，覆盖空 catch 和延伸到代码末尾两种情形；
+  - source-regression 65/65；
+  - cohort `csr100/def` 对 `csr98/def`：620/1007，零状态变化，零文本变化；
+  - big.abc 完成数 1,176 → 1,460，语法错误为 0；耗时 50 s，峰值 RSS 160 MB。
+- **剩余阻塞**（big.abc 新的主要原因）：
+  - ExceptionInputError::kInternalValue（4,419）；
+  - phased creator 中带静态字段的 class，其 static_initializer 报 `CreationContextError::kKind`（3,212）；
+  - FamilyCreationCheck:13（1,222）；
+  - 模块顶层 `this` 被箭头函数捕获（打印阶段 kUnsupportedContext，record 路线同样拒绝）；
+  - catch 内带选择的成员调用（CallReferenceError::kCrossRegionValue）。
+
+## 可读性：尾部 continue 与 return void 0（2026-10-28，cc）
+
+- `ReadableStatements` 新增 `omit_continues`：自身循环体尾部位置的 `continue`
+  省略。沿块与未投影的 if 分支下探，不进入 try 或 switch。尾部 `continue` 与
+  落到循环体末尾等价，都会执行 update 或 test 后进入下一轮。省略后 if 分支变空时，
+  沿用已有的 kInvert/kDropElse 改写。
+- `ElidedUndefinedReturn`：`return void 0;` 打印为 `return;`。async generator
+  不适用，因为 `return expr` 会执行 Await(expr)，比 `return;` 多一个 job；
+  `tail_completions` 的 job 顺序测试捕获了这一差异，现已排除。printer、位置测试与
+  `instruction_positions` 共用这一条规则。
+- cohort：24 个文件共 88 处 `continue;` 被移除，8 处 if 反转（取反准确）；115 个文件
+  共 469 处 `return void 0;` 变为 `return;`；零状态变化。
+
 ## 测试耗时治理：整应用差分按内容缓存（2026-10-28，cc）
 
 - **测量**：全量 CTest 983 项，共 4,755 s。其中 16 项超过 60 s，合计占 75%。

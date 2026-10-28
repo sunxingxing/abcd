@@ -87,7 +87,7 @@
           },
           {
             "domain": "abcd::analysis::CatchRegionError",
-            "value": 1
+            "value": 3
           }
         ]
       },

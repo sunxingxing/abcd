@@ -1,3 +1,4 @@
+#include "abcd/analysis/module_initialization.h"
 #include "family_writes.h"
 
 #include <limits>
@@ -373,6 +374,22 @@ class WriteCheck {
       Require(source.owner != nullptr, Error::kOwner);
       ExternalModules(source.owner->EntryModules(),
                       source.owner->InitializedModuleReads());
+    } else if (source.owner && source.owner->IsModuleEntry()) {
+      // The module entry proves its own local-load premises over its exception
+      // flow. Recompute them independently and require the exact same facts.
+      const auto& input = source.function.TreeInput(source.body).input;
+      Step(input.flow.nodes.size());
+      auto proved = analysis::ProveEntryModuleLoads(input.flow, left_);
+      if (const auto* error = std::get_if<analysis::ModuleInitializationError>(&proved))
+        Fail(*error == analysis::ModuleInitializationError::kWorkLimit ? Error::kWorkLimit :
+             *error == analysis::ModuleInitializationError::kResourceLimit ? Error::kResourceLimit : Error::kOwner);
+      const auto& facts = std::get<std::vector<analysis::LanguageLoadFact>>(proved);
+      const auto& premises = input.proof.initialized_modules;
+      Require(facts.size() == premises.size() && source.owner->InitializedModuleReads().empty() &&
+          source.owner->EntryModules().Empty(), Error::kOwner);
+      for (std::size_t i = 0; i < facts.size(); ++i) {
+        Step(); Require(facts[i].instruction == premises[i].instruction, Error::kOwner);
+      }
     } else
       Require(source.function.TreeInput(source.body)
                       .input.proof.initialized_modules.empty() &&

@@ -334,4 +334,62 @@ BuildModuleInitialization(const SemanticMethod& input,
     return Error::kResourceLimit;
   }
 }
+std::variant<std::vector<LanguageLoadFact>, ModuleInitializationError>
+ProveEntryModuleLoads(const ExceptionFlow& flow, SemanticBudget budget) {
+  using Error = ModuleInitializationError;
+  try {
+    const auto count = flow.nodes.size();
+    if (!count || count >= UINT32_MAX) return Error::kInput;
+    if (count > budget.work) return Error::kWorkLimit;
+    budget.work -= count;
+    const std::size_t width = sizeof(ModuleStateSite) + sizeof(FlowBlock);
+    if (count > budget.bytes / width) return Error::kResourceLimit;
+    budget.bytes -= count * width;
+    std::vector<ModuleStateSite> sites(count);
+    NormalFlow normal;
+    normal.blocks.resize(count);
+    for (std::size_t i = 0; i < count; ++i) {
+      const auto& node = flow.nodes[i];
+      if (node.instruction.value >= flow.instructions.size() || node.successor_count > kMaxNormalSuccessors)
+        return Error::kInput;
+      const auto& instruction = flow.instructions[node.instruction.value];
+      auto& block = normal.blocks[i];
+      block.first_instruction = static_cast<std::uint32_t>(i);
+      block.instruction_count = 1;
+      block.successor_count = node.successor_count;
+      for (std::uint8_t e = 0; e < node.successor_count; ++e) {
+        const auto target = node.successors[e].target.value;
+        if (target >= count) return Error::kInput;
+        block.successors[e] = {BlockId{target}, node.successors[e].kind == ExceptionArcKind::kFallthrough
+            ? FlowEdgeKind::kFallthrough : FlowEdgeKind::kTaken};
+      }
+      sites[i].pc = instruction.pc;
+      if (node.phase == ExceptionPhase::kBefore)
+        if (const auto* load = std::get_if<ModuleLoad>(&instruction.operation);
+            load && load->space == ModuleSpace::kLocal && !load->request_namespace) sites[i].snapshot = true;
+      if (node.phase == ExceptionPhase::kCommit)
+        if (const auto* store = std::get_if<ModuleStore>(&instruction.operation)) sites[i].store = store->slot;
+    }
+    auto built = BuildModuleInitialization(sites, normal, {}, budget);
+    if (const auto* error = std::get_if<Error>(&built)) return *error;
+    const auto& initialized = std::get<ModuleInitialization>(built);
+    std::vector<LanguageLoadFact> facts;
+    if (initialized.states.size() > budget.bytes / sizeof(LanguageLoadFact)) return Error::kResourceLimit;
+    facts.reserve(initialized.states.size());
+    for (const auto& state : initialized.states) {
+      if (state.instruction.value >= count) return Error::kInput;
+      const auto instruction = flow.nodes[state.instruction.value].instruction.value;
+      const auto* load = std::get_if<ModuleLoad>(&flow.instructions[instruction].operation);
+      if (!load || !state.slots.Contains(load->slot)) continue;
+      if (instruction + 1 < flow.instructions.size() &&
+          std::holds_alternative<HoleGuard>(flow.instructions[instruction + 1].operation)) continue;
+      facts.push_back({InstructionId{instruction}});
+    }
+    std::sort(facts.begin(), facts.end(), [](auto a, auto b) { return a.instruction < b.instruction; });
+    facts.erase(std::unique(facts.begin(), facts.end(),
+        [](auto a, auto b) { return a.instruction == b.instruction; }), facts.end());
+    return facts;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
 }  // namespace abcd::analysis

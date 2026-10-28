@@ -44,15 +44,8 @@ try {
    const out=join(dir,contract+'-'+name+'-'+mode);run(structure,[join(fixtures,name+(mode==='O0'?'':'.default')+'.abc'),out,'--value-source',...flags]);
    const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
    assert.equal(records.length,1);const record=records[0];
-   if(mode==='default'){
-    assert.equal(record.source_status,3,JSON.stringify(record));
-    const domains=record.source_failure.causes.map(c=>c.domain);
-    // Since the optimizer's `sta c; lda c` completion catch and code_size-0
-    // completion handler are accepted (2026-10-23), async/nested default
-    // builds reach the same zero-length user handler shape as sync.
-    assert.ok(domains.includes('abcd::analysis::CatchRegionError'),JSON.stringify(record));
-    assert.equal(record.source_failure.causes.at(-1).value,1);++refused;continue;
-   }
+   // Default builds record zero-size catch handlers; their extent is inferred
+   // from the normal join (2026-10-28), so they run the same oracles as O0.
    assert.equal(record.source_status,0,JSON.stringify(record));++published;
    const output=join(out,record.source);run(process.execPath,['--check',output]);
    const expected=evaluate(oracle);assert.equal(evaluate(output),expected,name);++comparisons;

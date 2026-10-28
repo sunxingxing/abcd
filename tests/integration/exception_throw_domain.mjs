@@ -39,9 +39,13 @@ if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
   const out=join(scratch,`${contract}-${name}-${mode}`);
   run(engine,[join(fixtures,name+(mode==='O0'?'':'.default')+'.abc'),out,'--value-source',...flags]);
   const [r]=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
-  if(mode==='default') {
+  // Default builds record zero-size handlers (extent inferred from the normal
+  // join) and empty protected ranges (inactive). The nested handler build then
+  // runs the same oracle as O0; the optimized for-of layouts still enter a
+  // protected range by a normal edge and keep that typed refusal.
+  if(mode==='default' && name!=='handler') {
    assert.equal(r.source_status,3,JSON.stringify(r));
-   assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::PhasedMethodError',value:5},{domain:'abcd::source::ExceptionPlanError',value:2},{domain:'abcd::analysis::CatchRegionError',value:1}]);
+   assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::PhasedMethodError',value:5},{domain:'abcd::source::ExceptionPlanError',value:2},{domain:'abcd::analysis::CatchRegionError',value:3}]);
    ++refused;continue;
   }
   if((name==='close'||name==='member'||name==='loop')) {

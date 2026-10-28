@@ -474,6 +474,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/environment_renewal_test.py)
     add_test(NAME isa_protected_conditions_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/protected_conditions_test.py)
+    add_test(NAME isa_module_entry_try_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/module_entry_try_test.py)
     add_test(NAME isa_completion_ports_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_test.py)
     add_test(NAME single_pass_scale_test COMMAND ${Python3_EXECUTABLE}
@@ -767,6 +769,10 @@ if(BUILD_TESTING)
   target_link_libraries(control_decision_test PRIVATE abcd_source abcd_json)
   add_test(NAME control_decision_test COMMAND control_decision_test)
   add_executable(control_plan_test tests/unit/source/control_plan_test.cc)
+  add_executable(handler_extent_test tests/unit/analysis/handler_extent_test.cc)
+  target_link_libraries(handler_extent_test PRIVATE abcd_analysis)
+  target_include_directories(handler_extent_test PRIVATE tests/support)
+  add_test(NAME handler_extent_test COMMAND handler_extent_test)
   add_executable(inactive_exception_test tests/unit/source/inactive_exception_test.cc)
   target_link_libraries(inactive_exception_test PRIVATE abcd_source abcd_json)
   target_include_directories(inactive_exception_test PRIVATE tests/support)

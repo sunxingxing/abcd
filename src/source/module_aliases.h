@@ -33,6 +33,9 @@ struct ModuleAliases {
   // These are assignments only; declaration ownership stays in the record.
   std::vector<ModuleWriteBinding> writes;
   std::vector<ModuleEvaluation> signature_evaluations;
+  // Bound for the record's module entry: its local aliases are entry-owned
+  // declarations (local, mutable `let`), never references.
+  bool entry = false;
 };
 enum class ModuleAliasError : std::uint8_t {
   kIdentity, kCoverage, kGuardName, kResourceLimit, kWorkLimit, kInitialization
@@ -68,6 +71,10 @@ struct PhasedModuleInput {
   const analysis::ValueProgram& graph;
   const ModuleGuards& guards;
   const ModuleSlotSet* entry_modules = nullptr;
+  // The record's module entry: its stores initialize the record's own
+  // bindings. Each is bound as a candidate here; the family first-store
+  // adapter proves which store declares and that it dominates the others.
+  bool entry = false;
 };
 // Caller-owned record table and file/index, reused across sibling methods.
 // Do not rediscover packaging or scan every record for every method.

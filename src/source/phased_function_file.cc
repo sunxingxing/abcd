@@ -20,7 +20,8 @@ struct PhasedOwner {
   Strictness mode;
   abc::FrameLayout frame;
   std::uint32_t length;
-  std::variant<analysis::FunctionCreation, analysis::ClassCreation> creation;
+  // monostate: the record's module entry, which has no creation site.
+  std::variant<std::monostate, analysis::FunctionCreation, analysis::ClassCreation> creation;
   bool operator==(const PhasedOwner&) const = default;
 };
 PhasedOwner DescribeOwner(const FunctionContext& context) {
@@ -28,6 +29,8 @@ PhasedOwner DescribeOwner(const FunctionContext& context) {
     return {site->creator, site->pc, site->property, context.Callable(), context.Mode(), context.Frame(), context.Length(), site->creation};
   if (const auto* site = context.ConstructorSite())
     return {site->creator, site->pc, {}, context.Callable(), context.Mode(), context.Frame(), context.Length(), site->creation};
+  if (const auto* entry = context.EntryContext())
+    return {entry->Target(), {}, {}, context.Callable(), context.Mode(), context.Frame(), 0, std::monostate{}};
   const auto* site = context.CreationSite();
   return {site->creator, site->pc, {}, context.Callable(), context.Mode(), context.Frame(), context.Length(), site->creation};
 }
@@ -89,10 +92,15 @@ bool FilePhasedFunction::MatchesModuleCreation(const FunctionInput& parent, anal
   const auto& instruction = parent.Input().instructions[creation.value];
   if (owner.pc != instruction.pc) return false;
   return std::visit([&](const auto& expected) {
-    const auto* actual = std::get_if<std::decay_t<decltype(expected)>>(&instruction.operation);
-    return actual && *actual == expected;
+    using T = std::decay_t<decltype(expected)>;
+    if constexpr (std::is_same_v<T, std::monostate>) return false;  // An entry is never created.
+    else {
+      const auto* actual = std::get_if<T>(&instruction.operation);
+      return actual && *actual == expected;
+    }
   }, owner.creation);
 }
+bool FilePhasedFunction::IsModuleEntry() const { return std::holds_alternative<std::monostate>(storage_->owner.creation); }
 abc::EntityOffset FilePhasedFunction::Record() const { return storage_->record; }
 std::size_t FilePhasedFunction::AllocatedBytes() const { return storage_->bytes; }
 std::uint64_t FilePhasedFunction::Work() const { return storage_->work; }

@@ -25,6 +25,11 @@ using CleanupFailure = std::variant<CleanupError, analysis::SemanticFailure,
 // environment identities itself; no source names or sample identities enter.
 // This is NOT permission to erase exception tables: a residual owner must also
 // prove normal-path correspondence and retain the cleanup instructions' PCs.
+// Structural route selector over the decoded body (after transparent-rethrow
+// erasure): true when every handler is the catch-all shape Build proves, i.e.
+// only acc/register moves and lexical-environment pops followed by THROW.
+// It chooses the module-entry route; it never replaces Build's proof.
+[[nodiscard]] bool OnlyEnvironmentCleanupHandlers(const abc::MethodBody& body);
 class EnvironmentCleanup {
  public:
   EnvironmentCleanup(EnvironmentCleanup&&) noexcept = default;

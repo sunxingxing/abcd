@@ -80,5 +80,5 @@ try {
     recordNodeEvidence({abc:join(fixture,input.abc),output:out,original:catchesSource,producer:import.meta.url,cases:cases-evidenceStart,engine});
     if(process.env.ABCD_REVIEW_OUT){const root=resolve(process.env.ABCD_REVIEW_OUT,'catch-'+input.mode);mkdirSync(root,{recursive:true});writeFileSync(join(root,'original.mjs'),readFileSync(catchesSource));writeFileSync(join(root,'emitted.mjs'),readFileSync(file));}
   }
-  console.log(`native_member_updates: ${cases} differential cases; ${mutations} observed mutants; O0/default native + O0 catch publish; optimized catch retains kHandlerShape`);
+  console.log(`native_member_updates: ${cases} differential cases; ${mutations} observed mutants; O0/default native and catch builds publish (zero-size handler extents inferred)`);
 } finally{rmSync(temp,{recursive:true,force:true});}

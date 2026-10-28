@@ -9,6 +9,7 @@
 #include "deferred_failure.h"
 #include "derived_projection.h"
 #include "abcd/analysis/dominators.h"
+#include "../analysis/value_flow.h"
 
 #include <limits>
 #include <bit>
@@ -190,10 +191,18 @@ class FamilyTrees {
           syntax.syntax.modules.push_back(alias);
         }
       }
+      // A phased module entry initializes its own record bindings. Mirror the
+      // record first-store adapter: the first store of each slot in the root
+      // statement sequence declares it; every other store must be dominated by
+      // that declaration. Ordinary members only ever assign.
+      std::vector<std::uint8_t> declares;
+      if (aliases && phase && i == 0 && context.EntryContext()) declares = EntryDeclarations(*phase, graph, *aliases);
       if (aliases) for (const auto& write : aliases->writes) {
         Step(1); Require(write.operation.value < syntax.operations.size() && !write.binding.initialize,
             FamilyTreeError::kModules);
-        syntax.operations[write.operation.value] = write.binding;
+        auto binding = write.binding;
+        binding.initialize = !declares.empty() && declares[write.operation.value];
+        syntax.operations[write.operation.value] = binding;
       }
       if(!class_plans.creators.empty() && class_plans.creators[i])
         for(const auto& task:class_plans.creators[i]->tasks){
@@ -833,6 +842,51 @@ class FamilyTrees {
       guards.push_back({static_cast<std::uint32_t>(i)});
     }
     return guards;
+  }
+  // First store per slot along the root control sequence (never inside a
+  // branch, loop, try or catch body). O(N) plus one shared dominance proof.
+  std::vector<std::uint8_t> EntryDeclarations(const FilePhasedFunction& phase,
+      const analysis::ValueProgram& graph, const ModuleAliases& aliases) {
+    const auto& control = phase.Phases().Control();
+    std::vector<std::uint8_t> declares;
+    Reserve(declares, graph.ops.size()); declares.resize(graph.ops.size());
+    std::vector<std::optional<analysis::OpId>> first;
+    std::uint32_t slots = 0;
+    for (const auto& write : aliases.writes) {
+      Step(1);
+      slots = std::max<std::uint32_t>(slots, std::get<analysis::ValueModuleWrite>(graph.ops[write.operation.value].operation).slot.value + 1);
+    }
+    Reserve(first, slots); first.resize(slots);
+    for (std::optional<ControlId> at = control.entry; at; at = control.nodes[at->value].next) {
+      Step(1); const auto& node = control.nodes[at->value];
+      if (!std::holds_alternative<std::monostate>(node.synthetic) || node.block.value >= graph.blocks.size()) continue;
+      const auto& block = graph.blocks[node.block.value];
+      for (std::uint32_t k = 0; k < block.op_count; ++k) {
+        Step(1); const analysis::OpId id{block.first_op.value + k};
+        const auto& op = graph.ops[id.value];
+        const auto* store = std::get_if<analysis::ValueModuleWrite>(&op.operation);
+        if (!store || op.life != analysis::ValueLife::kLive || store->slot.value >= slots || first[store->slot.value]) continue;
+        first[store->slot.value] = id; declares[id.value] = 1;
+      }
+    }
+    std::optional<analysis::ValueFlowProof> flow;
+    for (const auto& write : aliases.writes) {
+      Step(1); const auto id = write.operation;
+      if (declares[id.value]) continue;
+      const auto slot = std::get<analysis::ValueModuleWrite>(graph.ops[id.value].operation).slot.value;
+      Require(first[slot].has_value(), FamilyTreeError::kModules);
+      const auto& declaration = graph.ops[first[slot]->value];
+      const auto& op = graph.ops[id.value];
+      if (declaration.block == op.block) { Require(declaration.order < op.order, FamilyTreeError::kModules); continue; }
+      if (!flow) {
+        auto checked = analysis::VerifyValueFlow(graph, left_);
+        Require(std::holds_alternative<analysis::ValueFlowProof>(checked), FamilyTreeError::kModules);
+        flow.emplace(std::get<analysis::ValueFlowProof>(std::move(checked)));
+        Admit(flow->allocated_bytes, 1);
+      }
+      Require(flow->dominators.Dominates({declaration.block.value}, {op.block.value}), FamilyTreeError::kModules);
+    }
+    return declares;
   }
   void ProjectDefaults(FileFamily& family, const FunctionContext* root) {
     for (std::size_t i = 0; i < family.members.size(); ++i) {
