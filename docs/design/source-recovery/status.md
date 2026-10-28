@@ -23,7 +23,10 @@
     抛异常的 toString key、symbol），植入的变异能被检出；
   - `isa_object_proto` 的 `['__proto__']` 拒绝原因从 kMissingShape 推进到
     kLiteralRhsAvailability；
-  - cohort `csr106/def` 零变化；big.abc 1,522 条，零状态变化、零文本变化。
+  - cohort `csr106/def` 零变化；big.abc 1,522 条，零状态变化、零文本变化；
+  - 全量 CTest：991 项，失败的 34 项都在已知清单内。
+- ISA 台账：**227 verified / 16 unverified / 61 unmeasured / 28 non-executable**
+  （新增 `CALLTHISRANGEWITHNAME`、`CALLRUNTIME_DEFINEFIELDBYINDEX`）。
 
 ## phased creator 的静态字段（第一步，2026-10-29，cc）
 
