@@ -5,6 +5,26 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 对象字面量的 computed key 与 index key（2026-10-29，cc）
+
+- `{[k]: v}` 由 es2abc 编译为 `DEFINEFIELDBYVALUE`：先求 v，在 define 时才把 k 转为
+  属性键；源码语义则是先转换 k、再求 v。数字键（`{0: x}` 在 computed key 之后）
+  使用 `DEFINEFIELDBYINDEX`。原先只有带 name setting 的 computed 写入
+  （premise 管控）能进入字面量，因此 `{[k]: 1}` 都被拒绝。
+- 统一规则：`IsComputedLiteralDefinition` 涵盖 name-setting store 与 define-field
+  两种形式。define-field 只有在 key 与 value 都在分配之前求出（或是常量）时才作为
+  字面量成员，这样两种求值顺序之间没有任何效果，等价性是精确的，不需要新 premise。
+  `{[k]: g()}` 仍然拒绝（kDefinition）。`TreeOperands` 与 `TreeStructure`
+  按相同规则独立校验。
+- 新 fixture `long_forms/callable_names`（`--enable-callable-name`，API 24）
+  覆盖 `CALLTHIS0..3WITHNAME` 与 `CALLTHISRANGEWITHNAME`。
+- 证据：
+  - fixture `computed_literals`（default、O0）Node 差分 24 个用例（含会记录日志或
+    抛异常的 toString key、symbol），植入的变异能被检出；
+  - `isa_object_proto` 的 `['__proto__']` 拒绝原因从 kMissingShape 推进到
+    kLiteralRhsAvailability；
+  - cohort `csr106/def` 零变化；big.abc 1,522 条，零状态变化、零文本变化。
+
 ## phased creator 的静态字段（第一步，2026-10-29，cc）
 
 - 方案改为只读的 `CopyRoot` 查询（B）。A 会编辑 phased 图，破坏 import 对应校验。

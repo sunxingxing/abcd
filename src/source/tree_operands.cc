@@ -769,11 +769,18 @@ class OperandCheck {
           const auto previous=edge_input_;edge_input_=true;InputAt(1,property.value);edge_input_=previous;
         } else if constexpr (std::is_same_v<T,
                                             analysis::ValueComputedOwnWrite>) {
-          RequireMeaning(ComputedFunctionNames(tree_.identity.contract) && flow_.initializers[i], Error::kUnsupportedOperation);
+          // Either the premise-gated name-setting store, or a plain
+          // CreateDataProperty definition (`[k]: v`, inputs computed early).
+          const bool naming = operation.kind == analysis::OwnWriteKind::kStore &&
+              operation.name_setting == analysis::PropertyNameSetting::kPropertyKey;
+          const bool definition = operation.kind == analysis::OwnWriteKind::kDefineField &&
+              operation.name_setting == analysis::PropertyNameSetting::kNone;
+          RequireMeaning((definition || (naming && ComputedFunctionNames(tree_.identity.contract))) &&
+              flow_.initializers[i], Error::kUnsupportedOperation);
           const auto property_id = *flow_.initializers[i];
           const auto& property = tree_.properties[property_id.value];
           RequireMeaning(!property.key && property.computed_key && property.effect == ObjectPropertyEffect::kDefine &&
-              property.name_setting == operation.name_setting && operation.kind == analysis::OwnWriteKind::kStore, Error::kOperator);
+              property.name_setting == operation.name_setting, Error::kOperator);
           original_.operations[i].intrinsic_property = property_id;
           const auto previous = edge_input_; edge_input_ = true;
           InputAt(1, *property.computed_key); InputAt(2, property.value);

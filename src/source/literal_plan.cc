@@ -164,8 +164,8 @@ class LiteralPath {
       const auto* computed = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation);
       computed_names_ |= op.life == analysis::ValueLife::kLive && computed &&
           computed->name_setting == analysis::PropertyNameSetting::kPropertyKey;
-      if (op.life != analysis::ValueLife::kLive || op.use_count != 2 ||
-          !(IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) ||
+      if (op.life != analysis::ValueLife::kLive || op.use_count != (computed ? 3U : 2U) ||
+          !(IsComputedLiteralDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) ||
             std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
       const auto base = Resolve(graph.uses[op.first_use.value].operand);
       const auto* value = std::get_if<analysis::ValueId>(&base);
@@ -930,7 +930,15 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
               std::holds_alternative<analysis::ValueClassCreation>(graph.ops[result->op.value].operation)),
               Error::kNameSettingProof);
         }
-        if (const auto* computed = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation)) {
+        if (const auto* computed = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation);
+            computed && computed->name_setting == analysis::PropertyNameSetting::kNone) {
+          // DEFINEFIELDBYVALUE converts its key after the value is evaluated;
+          // `{[k]: v}` converts it first. Both inputs must already be computed
+          // before the allocation, so no effect lies between the two orders.
+          Require(computed->kind == analysis::OwnWriteKind::kDefineField && !nested, Error::kDefinition);
+          const analysis::UseId key_use{op.first_use.value + 1};
+          EarlyValue(graph, allocation, path.Resolve(graph.uses[key_use.value].operand), path, id, key_use, failure);
+        } else if (const auto* computed = std::get_if<analysis::ValueComputedOwnWrite>(&op.operation)) {
           Require(ComputedFunctionNames(contract) && computed->kind == analysis::OwnWriteKind::kStore &&
               computed->name_setting == analysis::PropertyNameSetting::kPropertyKey && nested &&
               std::holds_alternative<analysis::ValueFunctionCreation>(graph.ops[result->op.value].operation), Error::kNameSettingProof);
@@ -953,7 +961,7 @@ std::variant<std::uint64_t, LiteralError> VerifyLiterals(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const bool own = (projected.empty() || !projected[i]) && graph.ops[i].life == analysis::ValueLife::kLive && !IsReceiverField(graph, graph.ops[i]) &&
-          (IsComputedNamedDefinition(graph.ops[i].operation) || std::holds_alternative<analysis::ValueCopyProperties>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
+          (IsComputedLiteralDefinition(graph.ops[i].operation) || std::holds_alternative<analysis::ValueCopyProperties>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueOwnWrite>(graph.ops[i].operation) || std::holds_alternative<analysis::ValueIndexedWrite>(graph.ops[i].operation));
       Require(owners[i].has_value() == own && (!IsStagedLiteral(&plan, {static_cast<std::uint32_t>(i)}) || own), Error::kCoverage);
     }
     VerifyStaged(graph, plan, owners, budget, path, failure);
@@ -1011,7 +1019,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     std::size_t count = 0;
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step(); const auto& op = graph.ops[i];
-      count += (projected.empty() || !projected[i]) && op.life == analysis::ValueLife::kLive && !IsReceiverField(graph, op) && (IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
+      count += (projected.empty() || !projected[i]) && op.life == analysis::ValueLife::kLive && !IsReceiverField(graph, op) && (IsComputedLiteralDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
     }
     std::vector<FieldOwner> fields;
     LiteralPlan plan{graph.revision, graph.cfg_revision};
@@ -1020,7 +1028,7 @@ std::variant<LiteralPlan, LiteralError> BuildLiterals(
     for (std::size_t i = 0; i < graph.ops.size(); ++i) {
       budget.Step();
       const auto& op = graph.ops[i];
-      if ((!projected.empty() && projected[i]) || op.life != analysis::ValueLife::kLive || IsReceiverField(graph, op) || !(IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
+      if ((!projected.empty() && projected[i]) || op.life != analysis::ValueLife::kLive || IsReceiverField(graph, op) || !(IsComputedLiteralDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) continue;
       const analysis::OpId id{static_cast<std::uint32_t>(i)};
       fields[next++] = {Allocation(graph, id, path, false, failure), id};
     }

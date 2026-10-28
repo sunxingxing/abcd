@@ -3,7 +3,7 @@
  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
  "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
- "note": "Long/wide forms: DEBUGGER and WIDE_NEWLEXENVWITHNAME/WIDE_LD/STLEXVAR (--debug-info), JMP_IMM32/JEQZ_IMM32 (a >32 KiB loop body).",
+ "note": "Long/wide forms: DEBUGGER and WIDE_NEWLEXENVWITHNAME/WIDE_LD/STLEXVAR (--debug-info), JMP_IMM32/JEQZ_IMM32 (a >32 KiB loop body). CALLTHIS*WITHNAME (--enable-callable-name, API 24).",
  "fixtures": [
   {
    "source": "tests/fixtures/isa/long_forms/debugger.js",
@@ -56,6 +56,25 @@
     "--output=tests/fixtures/isa/long_forms/long_jumps.abc",
     "--opt-level=0",
     "tests/fixtures/isa/long_forms/long_jumps.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/long_forms/callable_names.js",
+   "path": "tests/fixtures/isa/long_forms/callable_names.abc",
+   "sha256": "8d17029168713de3931418771d287a9ba6d71700778964cc55e95a8ecc3f021e",
+   "source_sha256": "7d321ccbbd67d9b1ae56778e39495f16f3b1f5d33d5ca014cb760392e0ac1eb5",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=callable_names",
+    "--source-file=callable_names.js",
+    "--output=tests/fixtures/isa/long_forms/callable_names.abc",
+    "--enable-callable-name",
+    "--target-api-version=24",
+    "tests/fixtures/isa/long_forms/callable_names.js"
    ],
    "profile": 6
   }

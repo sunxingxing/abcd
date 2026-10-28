@@ -11187,6 +11187,10 @@
       "producer": "tests/isa/phased_static_fields_test.py"
     },
     {
+      "test": "isa_computed_literals_source_test",
+      "producer": "tests/isa/computed_literals_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },

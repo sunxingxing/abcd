@@ -245,7 +245,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
       if (projected_op(i)) if (const auto failure = NameSettingRefusal(graph,
           {static_cast<std::uint32_t>(i)}, true)) return *failure;
       step(); has_definitions |= !projected_op(i) && op.life == analysis::ValueLife::kLive &&
-          (IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
+          (IsComputedLiteralDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation));
       has_cells |= op.life == analysis::ValueLife::kLive && NeedsCellEvaluation(op.operation);
       if (op.life == analysis::ValueLife::kLive && !projected_op(i) && std::holds_alternative<analysis::ValueFunctionCreation>(op.operation)) {
         Require(next_function < functions.size() && functions[next_function].property == analysis::kNoLiteralProperty &&
@@ -524,7 +524,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildEvaluationAttempt(
         Require(op.use_count == shape->Count() && shape->expression == op.result.has_value(),
                 Error::kInvalidGraph);
         auto& placement = plan.operations[index];
-        if (!IsReceiverField(graph, op) && !IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, {static_cast<std::uint32_t>(index)}) && (IsComputedNamedDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
+        if (!IsReceiverField(graph, op) && !IsStagedLiteral(plan.literals ? &*plan.literals : nullptr, {static_cast<std::uint32_t>(index)}) && (IsComputedLiteralDefinition(op.operation) || std::holds_alternative<analysis::ValueCopyProperties>(op.operation) || std::holds_alternative<analysis::ValueOwnWrite>(op.operation) || std::holds_alternative<analysis::ValueIndexedWrite>(op.operation))) {
           Require(plan.literals.has_value(), Error::kUnsupportedOperation);
           placement.kind = EvaluationKind::kInitializer;
           continue;

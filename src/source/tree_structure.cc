@@ -760,8 +760,12 @@ class StructureCheck {
           default: RequireTree(false, Error::kUnsupportedSyntax);
         }
         if (property.computed_key) {
-          RequireTree(!property.key && object->kind == AggregateKind::kObject && ComputedFunctionNames(tree_.identity.contract) &&
-              property.effect == ObjectPropertyEffect::kDefine && property.name_setting == analysis::PropertyNameSetting::kPropertyKey, Error::kUnsupportedSyntax);
+          // `[k]: v`; the name-setting form additionally needs its premise.
+          RequireTree(!property.key && object->kind == AggregateKind::kObject &&
+              property.effect == ObjectPropertyEffect::kDefine &&
+              (property.name_setting == analysis::PropertyNameSetting::kNone ||
+               (property.name_setting == analysis::PropertyNameSetting::kPropertyKey &&
+                ComputedFunctionNames(tree_.identity.contract))), Error::kUnsupportedSyntax);
           return *property.computed_key;
         }
         if (object->kind == AggregateKind::kArray) {

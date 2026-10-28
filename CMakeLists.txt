@@ -482,6 +482,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/long_forms_test.py)
     add_test(NAME isa_phased_static_fields_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/phased_static_fields_test.py)
+    add_test(NAME isa_computed_literals_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/computed_literals_test.py)
     add_test(NAME isa_completion_ports_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_test.py)
     add_test(NAME single_pass_scale_test COMMAND ${Python3_EXECUTABLE}

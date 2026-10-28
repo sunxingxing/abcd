@@ -31,7 +31,8 @@ class ObjectProto(unittest.TestCase):
       self.assertNotEqual(record['source_status'],0,record)
       causes=record['source_failure']['causes']
       if e['origin']=='constructed':self.assertIn({'domain':'abcd::source::LiteralError','value':3},causes)
-      else:self.assertEqual(causes[-1],{'domain':'abcd::source::EvaluationShapeError','value':0})
+      # The computed define now has a literal shape; its literal RHS availability stays unproven.
+      else:self.assertEqual(causes[-1],{'domain':'abcd::source::EvaluationInputCheck','value':4})
       continue
      self.assertEqual(record['source_status'],0,record)
      emitted=out/record['source'];self.assertIn('__proto__:',emitted.read_text());subprocess.run(['node','--check',emitted],check=True,capture_output=True);result=json.loads(subprocess.check_output(['node',ROOT/'tests/integration/isa_object_proto.mjs',source,emitted],text=True));record_node(abc,out,source,__file__,result['cases'],BUILD/'abc_structure')

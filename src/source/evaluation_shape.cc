@@ -81,7 +81,8 @@ std::optional<EvaluationShape> DescribeEvaluation(const analysis::ValueOperation
       EvaluationShape shape{kNamedWrite, false}; shape.assignment_result = Role::kStoredValue; return shape;
     }
     else if constexpr (std::is_same_v<T, analysis::ValueComputedOwnWrite>) {
-      if (op.name_setting != analysis::PropertyNameSetting::kPropertyKey) return {};
+      if (op.name_setting != analysis::PropertyNameSetting::kPropertyKey &&
+          op.kind != analysis::OwnWriteKind::kDefineField) return {};
       return EvaluationShape{kPropertyWrite, false};
     }
     else if constexpr (std::is_same_v<T, analysis::ValueIndexedWrite>)
