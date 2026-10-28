@@ -19,8 +19,14 @@ bool SameSite(const Origin& tree, const analysis::ValueOrigin& input) {
 }  // namespace
 
 void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget, const ForOfEvaluationInput* iteration) {
+    const EvaluationPlan& evaluation, const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget, const OriginalFlow& original, const ForOfEvaluationInput* iteration) {
   VerifyPhasedDefaultInput(graph, tree, budget);
+  if(iteration && iteration->control.single_pass) {
+    auto checked=VerifySinglePassScopes(iteration->body,graph,iteration->input,iteration->regions,
+        iteration->control,iteration->ownership,*iteration->control.single_pass,budget.Remaining());
+    if(const auto* f=std::get_if<SinglePassFailure>(&checked))throw f->kind==SinglePassError::kResourceLimit?TreeStructureError::kResourceLimit:f->kind==SinglePassError::kWorkLimit?TreeStructureError::kWorkLimit:TreeStructureError::kOwnership;
+    budget.Step(std::get<std::uint64_t>(checked));
+  }
   if (iteration && iteration->control.continuations) {
     auto checked = VerifyIteratorContinuations(iteration->body, graph, iteration->input,
         iteration->regions, iteration->ownership, *iteration->control.continuations, budget.Remaining());
@@ -82,6 +88,14 @@ void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
          std::holds_alternative<TryOrigin>(tree.origins[origin.value]) ||
          std::holds_alternative<EdgeOrigin>(tree.origins[origin.value])), Error::kOrigin);
     visited[origin.value] = 1;
+  }
+  if(original.iterations && original.iterations->view.single_pass) {
+    const auto& native=*original.iterations;
+    for(std::size_t n=0;n<native.closes.size();++n){budget.Step();if(!native.closes[n])continue;
+      const auto statement=*native.closes[n];if(!std::holds_alternative<BreakStmt>(tree.statements[statement.value].statement))continue;
+      const auto origin=tree.statements[statement.value].origin;const auto* edge=std::get_if<EdgeOrigin>(&tree.origins[origin.value]);
+      RequireMeaning(n<native.view.closes.size() && native.view.closes[n] && edge && edge->edge==native.view.closes[n]->edge && !visited[origin.value],Error::kOrigin);visited[origin.value]=1;
+    }
   }
   for (std::size_t i = 0; i < flow.tries.size(); ++i) {
     budget.Step();

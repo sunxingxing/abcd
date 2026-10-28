@@ -31,6 +31,7 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
     else if constexpr (requires { error.reason; }) CollectFailureCauses(error.reason, out);
     if constexpr (std::is_same_v<T,FunctionTreeFailure>) if (error.placement) CollectFailureCauses(*error.placement,out);
     if constexpr (requires { error.census; }) if (error.census) CollectFailureCauses(*error.census, out);
+    if constexpr (requires { error.single_pass; }) if(error.single_pass) CollectFailureCauses(*error.single_pass,out);
     if constexpr (requires { error.renewal; })
       if (error.renewal) CollectFailureCauses(*error.renewal, out);
     if constexpr (requires { error.derivation; }) if(error.derivation) CollectFailureCauses(*error.derivation,out);
@@ -88,6 +89,7 @@ template<class T> void CollectFailureCauses(const T& error, FailureCauseChain& o
 // Preserve resource/work/output classes and available original PCs. Remaining
 // unclosed semantic premises map to Unproved, never successful source.
 RouteFailure FamilyRouteFailure(const FunctionTreeFailure& failure);
+RouteFailure FamilyRouteFailure(const FamilyTreeFailure& failure);
 RouteFailure FamilyRouteFailure(const EvaluationFailure& failure);
 RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure);
 RouteFailure FamilyRouteFailure(const FamilyEmitFailure& failure);

@@ -38,6 +38,7 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
   const auto& raw=*f.original;const auto& native=*raw.iterations;
   Need(native.view.close_blocks.size()==raw.blocks.size()&&raw.phases.size()==raw.blocks.size()&&native.operations.size()==raw.operations.size()&&native.values.size()==raw.values.size()&&native.loops.size()==native.statements.size()&&native.view.loops.size()==native.loops.size());
   Need(raw.canonical_values.size()==raw.values.size()&&native.bindings.size()==native.loops.size()&&native.close_members.size()==raw.phases.size()&&native.binding_values.size()==raw.values.size());
+  VerifySinglePassRecovery(raw,native,f,budget);
   VerifyIteratorContinuationRecoveryFacts(raw,native,budget);
   if (native.view.continuations) {
     // Every original completion port is still checked below against actual
@@ -57,7 +58,7 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
   for(std::uint32_t b=0;b<raw.phases.size();++b){budget.Step();const auto n=raw.phases[b].input.value;Need(!raw_blocks[n]);raw_blocks[n]=WorkBlockId{b};}
   const auto* certificate=native.view.completion_ports.get();
   std::pmr::vector<std::optional<StmtId>> enclosing(tree.statements.size(),{},&scratch);
-  if(certificate || native.view.continuations) {
+  if(certificate || native.view.continuations || native.view.single_pass) {
     struct Task {StmtId id;std::optional<StmtId> loop;};
     std::pmr::vector<Task> tasks(&scratch);tasks.push_back({tree.body,{}});
     std::pmr::vector<std::uint8_t> seen(tree.statements.size(),0,&scratch);
@@ -87,7 +88,7 @@ void VerifyForOfRecovery(const FunctionTree& tree,RecoveryFlow& f,TreeCheckBudge
     const auto* syntax=std::get_if<ForOfStmt>(&tree.statements[statement.value].statement);Need(syntax&&syntax->binding==ForOfBinding::kAssignment);
     const auto& binding=native.bindings[l];Need(syntax->target==binding.target&&syntax->iterable==binding.iterable&&syntax->body==binding.body&&tree.statements[statement.value].origin==binding.origin);
     auto& port=*f.iterations[statement.value];
-    if(certificate || native.view.continuations) {
+    if(certificate || native.view.continuations || native.view.single_pass) {
       const auto expected=native.view.loops[l].enclosing;
       Need(!expected || expected->value<native.statements.size());
       const auto parent=expected?std::optional{native.statements[expected->value]}:std::nullopt;

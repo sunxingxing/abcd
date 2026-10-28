@@ -2,14 +2,11 @@
 #define ABCD_SOURCE_ITERATOR_PROTOCOL_SCAN_H_
 
 #include "iterator_keys.h"
+#include "abcd/source/source_ids.h"
 #include "exception_plan.h"
 #include <array>
 
 namespace abcd::source {
-struct IteratorProtocolId {
-  std::uint32_t value = 0;
-  auto operator<=>(const IteratorProtocolId&) const = default;
-};
 enum class IteratorObligation : std::uint8_t {
   kIdentity, kCachedNext, kClosedUse, kActivation, kAdvance, kDoneValueOrder,
   kBinding, kRegionOwnership, kCloseGuard, kOriginalException, kCloseException,

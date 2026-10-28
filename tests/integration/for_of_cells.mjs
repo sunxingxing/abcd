@@ -102,25 +102,30 @@ try {
     assert.notEqual(changed,content,name+' mutation must change text');const badFile=join(out,'bad-local.mjs');writeFileSync(badFile,changed);run(process.execPath,['--check',badFile]);
     const mutant=(await import(pathToFileURL(badFile)))[fn];assert.notDeepEqual(observe(mutant,[1,2],'object',0),observe(expectedModule[fn],[1,2],'object',0));
   }
-  // These stronger forms reach independent downstream gates. Do not count
-  // their refusal or source-only oracle as an engine-output differential.
-  const expected = {
-    stop: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['ForOfIterationError', 3], ['TreeObligation', 16]],
-    finish: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['ForOfIterationError', 3], ['TreeObligation', 16]],
-    throwing: [['FunctionTreeError', 0], ['EvaluationError', 3], ['EvaluationObligation', 0], ['ForOfIterationError', 3], ['TreeObligation', 16]],
-  };
-  for (const [name, causes] of Object.entries(expected)) {
-    const {record} = exportRecord(name); assert.equal(record.source_complete, false);
-    assert.deepEqual(record.source_failure.causes.map(c => [c.domain, c.value]),
-      causes.map(([domain, value]) => ['abcd::source::' + domain, value]));
-    assert.ok(record.source_failure.pc !== undefined);
-    if (name === 'stop' || name === 'finish') {
-      // Multiple-close ownership/control now verifies. An always-abrupt loop
-      // has no bytecode backedge/LoopId, so native emission remains gated.
-      assert.equal(record.source_failure.pc, 45);
+  // These always-terminal bodies now have certified logical iterator scopes.
+  // Keep the raw close-control oracle and add engine/original behavior coverage.
+  let terminalCases=0;
+  for (const name of ['stop','finish','throwing']) {
+    const {record,out}=exportRecord(name);assert.equal(record.source_complete,true,JSON.stringify(record.source_failure));
+    const output=join(out,record.source);run(process.execPath,['--check',output]);
+    const actual=(await import(pathToFileURL(output)))[name];
+    const expected=(await import('data:text/javascript;base64,'+readFileSync(join(fixture,name+'.js')).toString('base64')))[name];
+    if(name==='stop'||name==='finish') {
+      const metadata=JSON.parse(readFileSync(join(out,record.metadata)));
+      const method=metadata.methods.find(m=>m.runtime_name===name);assert.ok(method);
       assert.match(run(join(dirname(structure),'close_completion_probe'),
-          [join(fixture,name+'.abc'),String(record.source_failure.method),'--control']), /protocol-control units=/);
+          [join(fixture,name+'.abc'),String(method.entity),'--control']),/protocol-control units=/);
+    }
+    const observe=(f,values,close,throwAt)=>{
+      const log=[];let calls=0;
+      const input={[Symbol.iterator](){let i=0;log.push('acquire');const it={next(){log.push('next');return i<values.length?{done:false,value:values[i++]}:{done:true};}};
+        if(close!=='missing')Object.defineProperty(it,'return',{get(){log.push('return-get');if(close==='getter-throw')throw new SyntaxError('close');if(close==='null')return null;return function(){log.push(['return',this===it]);if(close==='call-throw')throw new URIError('close');return close==='primitive'?1:{};};}});return it;}};
+      try{log.push(['result',f(input,(key,sum)=>{log.push(['body',key,sum]);if(++calls===throwAt)throw new EvalError('visit');})]);}catch(e){log.push(['throw',e.constructor.name,e.message==='body'||e.message==='visit'||e.message==='close'?e.message:null]);}
+      return log;
+    };
+    for(const values of [[],[1],[1,2,3]])for(const close of ['object','missing','null','getter-throw','call-throw','primitive'])for(const at of [0,1,2]) {
+      assert.deepEqual(observe(actual,values,close,at),observe(expected,values,close,at));++terminalCases;
     }
   }
-  console.log(`${cases+localCases} engine/original for-of cell scenarios; close failures, iterator getters, helper identity/isolation and mutation; stronger forms keep typed refusals`);
+  console.log(`${cases+localCases+terminalCases} engine/original for-of cell scenarios; close failures, iterator getters, helper identity/isolation and mutation; terminal bodies verify logical scope and native close priority`);
 } finally {rmSync(temp, {recursive: true, force: true});}

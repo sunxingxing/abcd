@@ -1,6 +1,7 @@
 #ifndef ABCD_SOURCE_FOR_OF_ITERATION_H_
 #define ABCD_SOURCE_FOR_OF_ITERATION_H_
 #include "for_of_identity.h"
+#include "for_of_scope.h"
 #include "abcd/source/for_of_failure.h"
 namespace abcd::source {
 struct ForOfIterationFailure {
@@ -10,12 +11,14 @@ struct ForOfIterationFailure {
   std::optional<ControlNodeId> node;
   std::optional<ControlArcId> edge;
   std::optional<analysis::ValueId> value;
+  std::optional<ForOfScopeWitness> scope;
 };
 struct ForOfIteration {
   IteratorProtocolId protocol;
   ControlNodeId header, advance, value, decision;
   ControlArcId success, exhausted;
   std::optional<LoopId> loop;
+  std::optional<ForOfScope> scope;
   bool operator==(const ForOfIteration&) const = default;
 };
 // A real scalar definition, not a source variable selection. Body statements

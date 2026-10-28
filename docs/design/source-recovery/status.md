@@ -5,6 +5,87 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## Certified single-pass iterator scopes (2026-10-28)
+
+- **Review fix: monotone partial publication.** The initial B comparison checked
+  only complete sources and missed service's partial-to-refused downgrade. That
+  was a regression; the earlier complete-only acceptance claim is withdrawn. The phased
+  owner now retains the actual earlier typed, independently omittable refusal.
+  A later member-local tree refusal can publish that same omission with a
+  separate `later_failure` cause/location/reference chain. Resource/work failures
+  remain terminal. Immediate and split preparation costs are charged once.
+  Prepared owner IDs remain reserved and independently checked; no failed tree, fabricated body or
+  receipt is published. Service's 40,760-byte partial source is byte-identical
+  to `csr93/def`, omitting only m60551, with the later original2208/working1512
+  failure retained as diagnostic evidence. New comparator checks every record
+  state, published partial text and omitted-member sets; its red check catches
+  the pre-fix downgrade. Final validation receipts are under
+  `build/single-pass/partial-fix/`.
+- Added a logical `ForOfScope` alternative for iterator activations without a
+  reachable repeat. Natural `LoopForest`/`LoopId`, physical CFG/SSA and exception
+  ownership are unchanged. Legacy missing-natural-loop/borrowed-header witnesses
+  select the bounded retry; a bare `kAdvance`/`kEntry` never does. Acquisition,
+  value Commit, exhaustion, body exit cuts, protection and logical iterator
+  parents are independently reconstructed. No new source premise was added.
+- Control owns lexical placement; native `ForOfStmt`/break, capture lifecycle,
+  evaluation, operands/origins, tree flow and OriginalFlow/RecoveryFlow share the
+  same view. Recovery checks actual native flow for unreachable implicit repeat;
+  existing completion ports retain close order, priority and zero extra closes.
+- The new pinned O0 fixture passes 6,246 Node comparisons, and the promoted
+  completion-ports single-iteration case adds 598 comparisons. Mutation and
+  register/copy/block invariance checks pass. Fixed-K scaling at
+  100/200/201/400/800 padding covers the 200/201 boundary with linear retained
+  proof storage and bounded N log N charged work.
+- Service m60551 passes both original452/1307 scopes and reaches a separate
+  member Reference failure at original2208/working1512 (callee read2132):
+  `CallPlanError4 / CallReferenceError1 / TemporaryReason4`. This catch-argument
+  ownership gap is outside this increment. Partial publication is retained using
+  the earlier omission witness, and the later refusal is additional evidence.
+  The original single-pass mechanism is not widened to admit the call.
+- Nested unconditional returns that fail the older close-entry continuation
+  owner remain an exact negative, before placement activation. Unsupported
+  `for await` and unrelated multi-exit user tries keep their typed refusals.
+  Three stale integration expectations are updated to native completion plus
+  differential or exact-refusal oracles; capture/mutation/raw close checks stay.
+- Review-fix required targets and the full Debug build pass. Source-regression
+  passes **65/65** (103.48 s), the related/changed-expectation sweep **42/42**
+  (193.16 s), including class owner/omission mutation checks and the refreshed
+  service partial/CLI oracle. Direct single-pass and completion-port Node tests
+  pass **6,246 / 7,176** comparisons; geometric scaling passes (19.46 s).
+- The new all-status comparison covers **40 inputs / 1,007 records** against
+  read-only `csr93/def`: **619 complete / 1 partial / 387 no-module** before and
+  after, zero status changes/downgrades, zero omitted-member-set changes, zero
+  complete or partial text changes. It checks **3,606,050 complete bytes plus
+  40,760 partial bytes**. The sole diagnostic change is service's additional
+  later failure. CLI peak RSS is **47,054,848 bytes**; input hashes are checked
+  before and after. The earlier complete-only comparison was insufficient and
+  is not used as evidence of monotone publication.
+- ISA ledger remains **222 verified / 21 unverified / 61 unmeasured / 28
+  non-executable** over **1,169 inputs / 55 producers**, with zero needs-decision
+  or unsupported-premise-free classifications. Full Debug CTest completes
+  **949 passed / 34 known failures out of 983** in **3,724.10 s**: zero newly
+  failing or newly passing existing tests, no missing/skipped tests. The raw exit8 is the unchanged34-test baseline
+  failure set, verified independently in `ctest-comparison.json`. These final
+  receipts replace the prior incomplete/overlaid validation.
+- Next call blocker is design-only: raw protocol-consumed copy counts are still
+  treated as executable catch staging. Original dispatch is the same enclosing
+  iterator handler2443 for read2132 and call2208, both inside the user catch.
+  The minimal sync/async for-of + catch logger + later break reproducers fail
+  with the same exact reference chain. Proposed shared effective snapshots and
+  rechecked protocol coverage are in
+  [projected-call-snapshots.md](projected-call-snapshots.md); no admission was
+  implemented and no new premise is proposed.
+- Iterator-only OriginalFlow evidence is now cold, prepaid when present, and
+  value-copy isolated. This fixes the observed nested-800 class stage-budget
+  regression without raising its64MiB limit or deleting a proof. The unchanged
+  class scale and fixture-support tests pass in the final two-worker full suite.
+  Exploratory overlapping-build validation was invalidated, not counted. Final
+  receipts and complete file/line inventory are in
+  `build/single-pass/partial-fix/`.
+
+
+Design: [single-pass-iterators.md](single-pass-iterators.md).
+
 ## Certified iterator exhaustion continuation (2026-10-28)
 
 - Added source-control-owned `IteratorContinuationProof`, activated only after

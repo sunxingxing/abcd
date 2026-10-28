@@ -1,5 +1,6 @@
 #include "../../support/source/invocation_values.h"
 #include "../../../src/source/class_tree_context.h"
+#include "../../../src/source/class_tree.h"
 #include "../../../src/source/prepared_family.h"
 #include "../../../src/source/family_emission.h"
 #include "../../../src/source/phased_method.h"
@@ -595,6 +596,31 @@ void Run(DefaultEncoding encoding = DefaultEncoding::kNone, bool global_typeof =
   Check(value.Callable() == (generator ? CallableKind::kGeneratorMethod :
       exception == ExceptionShape::kAsyncAwait ? CallableKind::kAsyncMethod : CallableKind::kMethod));
   Check(value.Mode() == Strictness::kStrict);
+  {
+    // A later tree failure can retain an earlier omission, but its method,
+    // family and disjoint owner reservation must still belong to this member.
+    auto owned=std::get<ClassTreeContext>(ClassTreeContext::Resolve(
+        file,header,index,lookup,roles,sites,range.first,identity));
+    analysis::ExceptionInputFailure input{analysis::ExceptionInputError::kInternalValue,{0}};
+    input.node=analysis::ExceptionNodeId{0};input.value=analysis::SsaValueId{1};
+    ClassMemberOmission gap{std::move(owned),input,value.Target(),value.Target(),{},{},{}};
+    auto later=std::make_shared<FamilyTreeFailure>(FamilyTreeFailure{{0},FunctionTreeFailure{FunctionTreeError::kExpression}});
+    later->method=value.Target();later->family_root=value.Target();later->first_owner=FunctionOwnerId{31};later->reserved_owners=2;
+    later->omission_refusal=std::make_shared<PhasedOmissionRefusal>(PhasedInputFailure{input});gap.later_body=later;
+    Check(gap.InputGap());
+    later->cause=FunctionTreeFailure{FunctionTreeError::kResourceLimit};Check(!gap.InputGap());
+    later->cause=FunctionTreeFailure{FunctionTreeError::kWorkLimit};Check(!gap.InputGap());
+    later->cause=FamilyTreeError::kContext;Check(!gap.InputGap());
+    later->cause=FunctionTreeFailure{FunctionTreeError::kExpression};
+    ++later->method->value;Check(!gap.InputGap());later->method=value.Target();
+    ++later->family_root->value;Check(!gap.InputGap());later->family_root=value.Target();
+    later->first_owner.reset();Check(!gap.InputGap());later->first_owner=FunctionOwnerId{31};
+    later->reserved_owners=0;Check(!gap.InputGap());later->reserved_owners=std::uint64_t{UINT32_MAX};Check(!gap.InputGap());later->reserved_owners=2;
+    later->omission_refusal.reset();Check(!gap.InputGap());
+    input.kind=analysis::ExceptionInputError::kMismatchedAnalysis;
+    later->omission_refusal=std::make_shared<PhasedOmissionRefusal>(PhasedInputFailure{input});Check(!gap.InputGap());
+  }
+
   if (has_rest) {
     auto prepared = PreparedFamily::PrepareClass(file, header, index, lookup, roles,
         functions, sites, range.first, identity, {Strictness::kStrict, nullptr, FunctionFragment::kClassMember});

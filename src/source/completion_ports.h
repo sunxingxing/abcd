@@ -2,6 +2,7 @@
 #define ABCD_SOURCE_COMPLETION_PORTS_H_
 
 #include "exception_control.h"
+#include "for_of_scope.h"
 #include "abcd/source/for_of_failure.h"
 #include "abcd/source/tree_failure.h"
 
@@ -17,6 +18,8 @@ struct CompletionPortFailure {
   std::variant<std::monostate, CloseCompletionFailure, ExceptionControlError,
       ExceptionControlFailure, ExceptionControlRegionFailure, ForOfIterationError> cause;
   std::optional<TreeLocation> location;
+  std::optional<ForOfScopeWitness> placement;
+  std::optional<SinglePassFailure> single_pass;
 };
 struct ProtectionContextId {
   std::uint32_t value;

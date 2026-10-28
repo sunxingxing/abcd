@@ -27,6 +27,7 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
   const auto& control=source.control;ForOfEmissionView out;
   out.completion_ports=source.ownership.Summary().completion_ports;
   out.continuations=source.control.continuations;
+  out.single_pass=source.control.single_pass;
   if (out.continuations) q.Require(CheckIteratorContinuationInputs(ContinuationInput(g),
       *out.continuations,[&](std::uint64_t n){q.Step(n);}));
   const auto copy=[&](auto& to,const auto& from){q.Array(to,from.size());std::copy(from.begin(),from.end(),to.begin());};
@@ -45,13 +46,22 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
   for(std::uint32_t l=0;l<control.skeleton.loops.size();++l){q.Step();const auto h=control.skeleton.loops[l].header.value;q.Require(h<headers.size() && !headers[h]);headers[h]=LoopId{l};}
   std::pmr::vector<std::optional<WorkBlockId>> commits(g.ops.size(),{},&q.memory);
   for(const auto& e:plan.events.events){q.Step();q.Require(e.operation.value<commits.size() && !commits[e.operation.value]);commits[e.operation.value]=e.commit;}
+  std::pmr::vector<std::uint8_t> breaks(out.single_pass?out.loops.size():0,0,&q.memory);
+  if(out.single_pass)for(const auto& cut:out.single_pass->cuts){q.Step();const auto& single=out.single_pass->scopes[cut.protocol.value];if(single && cut.pending.kind==PendingCompletionKind::kBreak)if(const auto* target=std::get_if<ExceptionNodeId>(&cut.pending.target);target && (*target==single->exit||*target==single->continuation))breaks[cut.protocol.value]=1;}
   for(std::uint32_t i=0;i<out.loops.size();++i) {
     const auto& loop=plan.identity.loops[i];q.witness={Error::kCorrespondence,loop.protocol,loop.acquisition};
     q.Require(loop.protocol.value==i && nodes[g.ops[loop.advance.value].block.value]);
     std::optional<ControlId> header;
     if(loop.header){q.Step();q.Require(loop.header->value<raw.size());header=raw[loop.header->value];}
-    q.Require(header && headers[header->value],Error::kAdvance);
-    const auto id=*headers[header->value];q.Require(!out.wrappers[id.value]);out.wrappers[id.value]=i;
+    const auto* single=out.single_pass && out.single_pass->scopes[i] ? &*out.single_pass->scopes[i] : nullptr;
+    std::optional<LoopId> id;
+    if(single) {q.Require(nodes[g.ops[loop.advance.value].block.value],Error::kAdvance);header=*nodes[g.ops[loop.advance.value].block.value];}
+    else {
+      if(!header || !headers[header->value]) {
+        if(!loop.header)q.witness.scope=ForOfScopeWitness{ForOfScopeWitnessKind::kMissingNaturalLoop,Error::kAdvance,loop.protocol,loop.acquisition,loop.advance,{}};q.Fail(Error::kAdvance);
+      }
+      id=*headers[header->value];q.Require(!out.wrappers[id->value]);out.wrappers[id->value]=i;
+    }
     q.Require(commits[loop.decision.value] && nodes[commits[loop.decision.value]->value],Error::kDone);
     const auto decision=*nodes[commits[loop.decision.value]->value];const auto& node=control.skeleton.nodes[decision.value];
     q.Require(node.arms && !node.decision,Error::kDone);
@@ -65,8 +75,13 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
     q.Require(arm || node.next,Error::kEntry);
     const auto& acquire=g.ops[loop.acquisition.value];q.Require(acquire.use_count==1);
     out.loops[i]={loop.protocol,id,*header,decision,arm?*arm:*node.next,*success,*exhausted,acquire.first_use,loop.key};
+    out.loops[i].scope=single?ForOfScope{*single}:ForOfScope{NaturalLoopScope{*id}};
+    if(single)out.loops[i].exhaustion_only=!breaks[i];
   }
-  if(out.completion_ports || out.continuations) {
+  if(out.single_pass) {
+    q.Require(out.single_pass->parents.size()==out.loops.size());
+    for(auto& loop:out.loops){q.Step();loop.enclosing=out.single_pass->parents[loop.protocol.value];}
+  } else if(out.completion_ports || out.continuations) {
     std::pmr::vector<std::uint8_t> ready(control.skeleton.loops.size(),0,&q.memory);
     std::pmr::vector<std::optional<IteratorProtocolId>> nearest(control.skeleton.loops.size(),{},&q.memory);
     std::pmr::vector<LoopId> path(&q.memory);
@@ -85,7 +100,7 @@ ForOfEmissionView Build(const ValueProgram& g,const ForOfEvaluationInput& source
       }
     }
     for(auto& loop:out.loops) {
-      q.Step();const auto parent=control.skeleton.loops[loop.loop.value].parent;
+      q.Step();const auto parent=control.skeleton.loops[loop.loop->value].parent;
       loop.enclosing=parent?nearest[parent->value]:std::nullopt;
     }
   }
@@ -128,7 +143,7 @@ std::variant<std::uint64_t,ForOfIterationFailure> VerifyForOfEmissionView(
   auto built=BuildForOfEmissionView(g,i,p,b);if(const auto* f=std::get_if<ForOfIterationFailure>(&built))return *f;
   const auto& actual=std::get<ForOfEmissionView>(built);const auto cost=view.loops.size()+view.wrappers.size()+view.closes.size()+view.ports.size()+view.close_blocks.size()+view.forwarding.regions.size()+view.forwarding.blocks.size()+view.forwarding.operations.size()+view.forwarding.exits.size();
   if(cost>b.work-actual.work)return ForOfIterationFailure{Error::kWorkLimit};
-  if(actual.continuations!=view.continuations || actual.completion_ports!=view.completion_ports || !(actual.forwarding==view.forwarding) || actual.loops!=view.loops || actual.wrappers!=view.wrappers || actual.closes!=view.closes || actual.ports!=view.ports || actual.close_blocks!=view.close_blocks)return ForOfIterationFailure{Error::kCorrespondence};
+  if(actual.single_pass!=view.single_pass || actual.continuations!=view.continuations || actual.completion_ports!=view.completion_ports || !(actual.forwarding==view.forwarding) || actual.loops!=view.loops || actual.wrappers!=view.wrappers || actual.closes!=view.closes || actual.ports!=view.ports || actual.close_blocks!=view.close_blocks)return ForOfIterationFailure{Error::kCorrespondence};
   return actual.work+cost;
 }
 }

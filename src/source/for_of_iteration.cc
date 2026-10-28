@@ -122,12 +122,19 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
       for(std::uint32_t e=b.first_arc.value;e<b.first_arc.value+b.arc_count;++e){q.Step();const auto original=topology.mapping.arcs[e].edge;q.Require(original.has_value());
         const auto& edge=g.edges[original->value];if(edge.successor==l.exhausted.successor)exhausted=ControlArcId{e};else if(topology.edges[e].target==*raw[l.success.value])success=ControlArcId{e};}
       q.Require(success && exhausted && success!=exhausted,ForOfIterationError::kDone);
-      const auto loop=loops.owners[a.value];
+      const auto* single=control.single_pass && l.protocol.value<control.single_pass->scopes.size() && control.single_pass->scopes[l.protocol.value] ? &*control.single_pass->scopes[l.protocol.value] : nullptr;
+      const auto loop=single?std::optional<LoopId>{}:loops.owners[a.value];
       const auto header=loop?loops.loops[loop->value].header:a;
       q.witness={ForOfIterationError::kEntry,l.protocol,l.advance,header};
       if(l.header)q.Require(l.header->value<raw.size() && raw[l.header->value]==header,ForOfIterationError::kEntry);
-      else q.Require(!loop,ForOfIterationError::kEntry);
+      else if(loop && !control.single_pass) {
+        q.witness.scope=ForOfScopeWitness{ForOfScopeWitnessKind::kBorrowedHeader,
+            ForOfIterationError::kEntry,l.protocol,l.acquisition,l.advance,loop};
+        q.Fail(ForOfIterationError::kEntry);
+      }
       out.iterations.push_back({l.protocol,header,a,v,d,*success,*exhausted,loop});
+      if(single)out.iterations.back().scope=*single;
+      else if(loop)out.iterations.back().scope=NaturalLoopScope{*loop};
       add({l.protocol.value,header.value},kUnadvanced);
     }
     std::pmr::vector<std::uint32_t> begin(loops.loops.size(),0,&q.memory),end(loops.loops.size(),0,&q.memory);
@@ -146,6 +153,25 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
     for(const auto& region:owner.Summary().regions)for(const auto& range:region.boundary->protected_ranges) {
       q.Step();if(range.role!=ProtectedRangeRole::kLoopBody)continue;
       for(const auto n:range.ordinary){q.Step();if(raw[n.value])body_nodes.insert({region.protocol.value,raw[n.value]->value});}
+    }
+    std::pmr::set<Query> single_nodes(&q.memory);
+    if(control.single_pass) {
+      for(const auto& m:control.single_pass->coverage){q.Step();if(raw[m.node.value])single_nodes.insert({m.protocol.value,raw[m.node.value]->value});}
+      std::pmr::vector<std::pair<std::uint32_t,std::uint32_t>> sources(&q.memory);
+      sources.reserve(control.single_pass->coverage.size());
+      for(const auto& m:control.single_pass->coverage){q.Step();sources.push_back({m.node.value,m.protocol.value});}
+      std::sort(sources.begin(),sources.end(),[&](auto a,auto b){q.Step();return a<b;});
+      for(std::uint32_t n=0;n<topology.mapping.units.size();++n) {
+        q.Step();std::optional<ExceptionNodeId> source;
+        if(const auto* c=std::get_if<ProtocolCloseUnit>(&topology.mapping.units[n]))source=c->entry.source;
+        else if(const auto* t=std::get_if<TryControlUnit>(&topology.mapping.units[n]);t && topology.mapping.regions[t->region.value]) {
+          const auto b=topology.mapping.regions[t->region.value]->body;
+          if(const auto* p=std::get_if<PhaseControlUnit>(&topology.mapping.units[b.value]))source=g.phases[p->block.value].input;
+        }
+        if(!source)continue;
+        auto at=std::lower_bound(sources.begin(),sources.end(),std::pair{source->value,std::uint32_t{0}},[&](auto a,auto b){q.Step();return a<b;});
+        for(;at!=sources.end()&&at->first==source->value;++at){q.Step();q.Require(single_nodes.size()<max_states,ForOfIterationError::kResourceLimit);single_nodes.insert({at->second,n});}
+      }
     }
     while(!queue.empty()){
       q.Step();const auto key=reverse?queue.back():queue.front();if(reverse)queue.pop_back();else queue.pop_front();
@@ -173,7 +199,7 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
       // (and, on a throw, its handler) exactly when its wrapper is reached:
       // those entries carry the wrapper's state, not a fresh root state.
       if(const auto* nested=std::get_if<TryControlUnit>(&topology.mapping.units[n.value]);
-          nested && !(bits&kUnadvanced) && proof.loop && inside(proof.loop,n)) {
+          nested && !(bits&kUnadvanced) && ((proof.loop && inside(proof.loop,n)) || single_nodes.contains(key))) {
         q.Require(nested->region.value<topology.mapping.regions.size() && topology.mapping.regions[nested->region.value],ForOfIterationError::kCorrespondence);
         const auto& planned=*topology.mapping.regions[nested->region.value];
         q.Require(planned.wrapper.value==n.value,ForOfIterationError::kCorrespondence);
@@ -189,6 +215,9 @@ std::variant<ForOfIterationProof,ForOfIterationFailure> Analyze(
           q.Require(!(bits&kUnadvanced),ForOfIterationError::kAdvance);
           const auto* close=std::get_if<ProtocolCloseUnit>(&topology.mapping.units[to.value]);
           if(!body_nodes.contains({key.first,to.value}) && !(close && close->protocol==proof.protocol))continue;
+        }
+        if(proof.scope && std::holds_alternative<SinglePassIteratorScope>(*proof.scope) && !single_nodes.contains({key.first,to.value})) {
+          q.Require(!(bits&kUnadvanced),ForOfIterationError::kAdvance);continue;
         }
         add({key.first,to.value},bits);
       }

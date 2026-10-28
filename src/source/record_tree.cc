@@ -8,6 +8,7 @@
 #include "cell_names.h"
 #include "deferred_failure.h"
 #include "record_tree.h"
+#include "family_route_failure.h"
 #include "sendable_metadata.h"
 #include "abcd/source/module_exports.h"
 
@@ -753,6 +754,23 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
               item.additional_causes=OmissionCauseId{static_cast<std::uint32_t>(omission_causes.size())};
               omission_causes.push_back(std::move(causes));
             }
+          }
+          if(gap.later_body) {
+            // The published gap stays stable. A failed refinement is separate
+            // diagnostic evidence, not a replacement for verified partial text.
+            // Reserve both the projection scratch and retained domain strings
+            // before projection; borrow the failure rather than copying it.
+            retain(2*(kMaxFailureCauses+1)*kMaxFailureDomainBytes);
+            const auto later=FamilyRouteFailure(*gap.later_body);
+            analysis::detail::IdfScratch memory{budget.bytes};std::size_t charged=0;
+            auto causes=std::allocate_shared<FailureCauseChain>(
+                analysis::detail::PrepaidSharedAllocator<FailureCauseChain>{memory,charged});
+            retain(charged);causes->Extend(later.causes);
+            if(omission_causes.size()>=UINT32_MAX)throw fail(Error::kRecordBudget);
+            grow_omissions(omission_causes);item.later_causes=OmissionCauseId{static_cast<std::uint32_t>(omission_causes.size())};
+            omission_causes.push_back(std::move(causes));
+            item.later_location=TreeLocation{.method=later.method,.pc=later.pc,.working_pc=later.working_pc};
+            item.later_reference=later.call_reference;
           }
           omitted_members.push_back(item);
         };

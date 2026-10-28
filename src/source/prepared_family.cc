@@ -1,5 +1,6 @@
 #include "prepared_family.h"
 #include "borrowed_print_trees.h"
+#include "abcd/analysis/detail/prepaid_shared.h"
 
 #include <new>
 #include <stdexcept>
@@ -266,9 +267,38 @@ std::variant<PreparedFamily, FamilyPrepareFailure> PreparedFamily::Finish(
           creator, *destination.captures, creator_storage,
           destination.class_inner, destination.class_family});
     }
-    auto family = Take<ConstructedFamily, FamilyTreeFailure>(std::move(preparation.input_).Build(
+    auto built=std::move(preparation.input_).Build(
         file, header, index, root, budget.Left(), modules, module_owner, &lookup, recovery,
-        external ? &*external : nullptr, destination.globals));
+        external ? &*external : nullptr, destination.globals);
+    if(auto* failure=std::get_if<FamilyTreeFailure>(&built);
+        failure && failure->omission_refusal && failure->method &&
+        recovery==RecoveryMode::kAllowPartial && root.ClassContext() && !root.ClassContext()->Constructor() &&
+        IsOmittablePhasedRefusal(*failure->omission_refusal)) {
+      // The earlier omission is already safe independently of this body. Keep
+      // it as the published alternative; never publish any failed retry tree.
+      budget.Account(failure->allocated_bytes,failure->work);
+      auto earlier=std::visit([](const auto& f){return FamilyFileFailure{PhasedFileFailure{f}};},*failure->omission_refusal);
+      earlier.root=root.Target();earlier.method=failure->method;
+      if(failure->member.value!=0) {
+        Require(failure->member.value<input.members.size(),Error::kPlacement);
+        const auto& occurrence=input.members[failure->member.value];
+        Require(occurrence.incoming && occurrence.incoming->parent.value<input.members.size() &&
+            occurrence.context && occurrence.context->CreationSite(),Error::kPlacement);
+        earlier.parent=input.members[occurrence.incoming->parent.value].function.Method();
+        earlier.creation_pc=occurrence.context->CreationSite()->pc;
+      }
+      analysis::detail::IdfScratch memory{budget.Left().bytes};std::size_t bytes=0;
+      budget.Account(0,1);
+      auto retained=std::allocate_shared<FamilyTreeFailure>(
+          analysis::detail::PrepaidSharedAllocator<FamilyTreeFailure>{memory,bytes},std::move(*failure));
+      budget.Account(bytes,0);
+      retained->preparation_cost={preparation.AllocatedBytes(),preparation.Work()};
+      retained->allocated_bytes=allowance.bytes-budget.Left().bytes;
+      retained->work=allowance.work-budget.Left().work;
+      earlier.later_body=std::move(retained);
+      return FamilyPrepareFailure{std::move(earlier)};
+    }
+    auto family=Take<ConstructedFamily,FamilyTreeFailure>(std::move(built));
     budget.Account(family.allocated_bytes, family.work);
     for (const auto& member : family.members) {
       budget.Account(0, 1);

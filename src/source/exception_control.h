@@ -44,8 +44,16 @@ struct TryControlRegion {
   bool operator==(const TryControlRegion&) const = default;
 };
 struct IteratorContinuationProof;
+struct SinglePassScopes;
+struct SinglePassControl {
+  IteratorProtocolId protocol;
+  ControlId wrapper, body, continuation;
+  bool operator==(const SinglePassControl&) const = default;
+};
 struct ExceptionControl {
   std::shared_ptr<const IteratorContinuationProof> continuations;
+  std::shared_ptr<const SinglePassScopes> single_pass;
+  std::vector<SinglePassControl> iterator_scopes;
   // The skeleton's original-node prefix addresses units, not ValueProgram
   // blocks; loop wrappers/transfers follow that prefix. Its original arcs map
   // through arcs. No ValueProgram is fabricated: phases/dispatch stay intact.
@@ -88,7 +96,8 @@ struct ExceptionControlRegionFailure {
     const analysis::PhasedValueInput& input, const ExceptionPlan& regions,
     analysis::SemanticBudget budget = {},
     const VerifiedProtocolRegionOwnership* protocols = nullptr,
-    std::shared_ptr<const IteratorContinuationProof> continuations = {});
+    std::shared_ptr<const IteratorContinuationProof> continuations = {},
+    std::shared_ptr<const SinglePassScopes> single_pass = {});
 [[nodiscard]] std::variant<std::uint64_t, ExceptionControlError> VerifyExceptionControl(
     const abc::MethodBody& body, const analysis::ValueProgram& graph,
     const analysis::PhasedValueInput& input, const ExceptionPlan& regions,

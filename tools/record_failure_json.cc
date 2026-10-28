@@ -56,6 +56,12 @@ void DescribeRecordFailure(const source::RecordSourceResult& result,
         nlohmann::json item{{"constructor", member.constructor.value}, {"member", member.member.value},
             {"method", member.method.value}, {"pc", member.pc.value}, {"causes", DescribeCauses(chain)}};
         if(member.protocol_location)item["protocol_location"]=source::TreeLocationJson(*member.protocol_location);
+        if(member.later_causes) {
+          auto& later=item["later_failure"];
+          later["causes"]=DescribeCauses(*failure.omission_causes.at(member.later_causes->value));
+          if(member.later_location)later["location"]=source::TreeLocationJson(*member.later_location);
+          if(member.later_reference)later["call_reference"]=DescribeReference(*member.later_reference);
+        }
         if (member.exception_region) item["exception_region"] = source::ExceptionRegionJson(*member.exception_region);
         if (member.internal_value) item["internal_value"] = source::InternalValueJson(*member.internal_value);
         if (member.working_pc) item["working_pc"] = member.working_pc->value;

@@ -62,7 +62,7 @@ async function run(module,name,options) {
   const visit=(...args)=>{
     log.push(['visit',...args.map(encode)]);
     if(options.bodyThrow)throw bodyError;
-    if(name==='suspended'||name==='caughtSuspended'||(name==='breakAndPattern'&&args.length===2))return {then(yes,no){
+    if(name==='suspended'||name==='caughtSuspended'||name==='singleIteration'||(name==='breakAndPattern'&&args.length===2))return {then(yes,no){
       log.push(['suspend']);queueMicrotask(()=>{
         log.push(['resume',Boolean(options.reject)]);if(options.reject)no(bodyError);else yes(!options.exhaust);
       });

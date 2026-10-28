@@ -220,6 +220,7 @@ struct OriginalIterationInput { IteratorProtocolId protocol; analysis::UseId use
 struct OriginalCloseMember { IteratorProtocolId protocol; CloseMemberRole role; };
 struct OriginalIterationBinding { SymbolId target; ExprId iterable; StmtId body; TreeOriginId origin; };
 struct OriginalIterations {
+  std::shared_ptr<const SinglePassScopes> single_pass_facts;
   std::optional<IteratorContinuationFacts> continuation_facts;
   ForOfEmissionView view;
   ForOfEvents events;
@@ -235,6 +236,30 @@ struct OriginalIterations {
   std::vector<OriginalIterationInput> inputs;
   std::vector<OriginalEnumerationExit> exits;
 };
+// Iterator-only retained evidence stays cold: ordinary methods must not pay
+// its growing header. Value copies retain the old optional's mutation isolation;
+// production retention moves the prepaid payload, like the other owned vectors.
+class OriginalIteratorStorage {
+ public:
+  OriginalIteratorStorage() = default;
+  OriginalIteratorStorage(const OriginalIteratorStorage& other)
+      : value_(other.value_ ? std::make_unique<OriginalIterations>(*other.value_) : nullptr) {}
+  OriginalIteratorStorage& operator=(const OriginalIteratorStorage& other) {
+    if (this != &other) { OriginalIteratorStorage copy(other); value_.swap(copy.value_); }
+    return *this;
+  }
+  OriginalIteratorStorage(OriginalIteratorStorage&&) noexcept = default;
+  OriginalIteratorStorage& operator=(OriginalIteratorStorage&&) noexcept = default;
+  explicit operator bool() const { return bool(value_); }
+  bool has_value() const { return bool(value_); }
+  OriginalIterations& operator*() { return *value_; }
+  const OriginalIterations& operator*() const { return *value_; }
+  OriginalIterations* operator->() { return value_.get(); }
+  const OriginalIterations* operator->() const { return value_.get(); }
+  void Emplace(TreeCheckBudget&);
+ private:
+  std::unique_ptr<OriginalIterations> value_;
+};
 struct OriginalMemberUpdate { ExprId expression; MemberUpdate proof; MemberMutationExpr syntax; };
 struct OriginalFlow {
   std::shared_ptr<const PhasedParameterDefaults> phased_defaults;
@@ -243,7 +268,7 @@ struct OriginalFlow {
   std::vector<ObjectRestSurface> object_rests;
   std::vector<OriginalMemberUpdate> member_updates;
   std::vector<OriginalClassInitialization> class_initializations;
-  std::optional<OriginalIterations> iterations;
+  OriginalIteratorStorage iterations;
   std::optional<OriginalParameterDefaults> parameter_defaults;
   std::shared_ptr<const ParameterExpressionSource> parameter_expressions;
   std::vector<OriginalConcurrentNotification> notifications;

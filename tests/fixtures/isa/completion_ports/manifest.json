@@ -47,10 +47,6 @@
   {
    "source": "tests/fixtures/isa/completion_ports/single_iteration.js",
    "path": "tests/fixtures/isa/completion_ports/single_iteration-O0.abc",
-   "refusal": {
-    "domain": "abcd::source::ForOfIterationError",
-    "value": 2
-   },
    "profile": 6,
    "command": [
     "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",

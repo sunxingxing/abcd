@@ -1,5 +1,6 @@
 #include "exception_topology.h"
 #include "iterator_continuation.h"
+#include "for_of_scope.h"
 
 #include <new>
 #include <stdexcept>
@@ -85,7 +86,8 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
     const abc::MethodBody& body, const ValueProgram& graph,
     const PhasedValueInput& input, const ExceptionPlan& regions, SemanticBudget budget,
     const VerifiedProtocolRegionOwnership* protocols,
-    std::shared_ptr<const IteratorContinuationProof> continuations) {
+    std::shared_ptr<const IteratorContinuationProof> continuations,
+    std::shared_ptr<const SinglePassScopes> single_pass) {
   try {
     ControlQuota quota(budget);
     CheckInput(body, graph, input, regions, quota);
@@ -170,6 +172,14 @@ std::variant<ExceptionControl, ExceptionControlError, ExceptionControlFailure, E
         result.arcs.capacity() * sizeof(ControlArc) + result.regions.capacity() * sizeof(std::optional<TryControlRegion>) +
         result.inactive_phases.capacity() * sizeof(WorkBlockId) +
         result.region_roles.capacity()*sizeof(ExceptionRegionRole) + result.protocol_ports.capacity()*sizeof(CloseOutcomeLeaving);
+    if(single_pass) {
+      Require(protocols!=nullptr,Error::kInput);
+      auto checked=VerifySinglePassScopes(body,graph,input,regions,result,*protocols,*single_pass,quota.Remaining());
+      if(const auto* f=std::get_if<SinglePassFailure>(&checked))throw f->kind==SinglePassError::kResourceLimit?Error::kResourceLimit:f->kind==SinglePassError::kWorkLimit?Error::kWorkLimit:Error::kStructure;
+      quota.Work(std::get<std::uint64_t>(checked));
+      PlaceSinglePassScopes(graph,result,*single_pass,quota);
+      result.single_pass=std::move(single_pass);
+    }
     result.work = budget.work - quota.RemainingWork();
     return result;
   } catch (ExceptionControlRegionFailure failure) {
@@ -209,6 +219,20 @@ std::variant<std::uint64_t, ExceptionControlError> VerifyExceptionControl(
     const ExceptionControl& control, SemanticBudget budget,
     const VerifiedProtocolRegionOwnership* protocols) {
   try {
+    if(control.single_pass) {
+      Require(protocols!=nullptr,Error::kInput);
+      auto built=BuildExceptionControl(body,graph,input,regions,budget,protocols,control.continuations,control.single_pass);
+      const auto* expected=std::get_if<ExceptionControl>(&built);
+      if(!expected)return std::visit([](const auto& value){using T=std::decay_t<decltype(value)>;if constexpr(std::is_same_v<T,ExceptionControl>)return Error::kStructure;else if constexpr(std::is_same_v<T,ExceptionControlError>)return value;else return value.kind;},built);
+      ControlQuota q(budget);q.Work(expected->work);q.Admit(expected->allocated_bytes,1);
+      const auto& a=expected->skeleton;const auto& b=control.skeleton;
+      Require(a.entry==b.entry && a.revision==b.revision && a.cfg_revision==b.cfg_revision && a.view==b.view && a.nodes.size()==b.nodes.size() && a.loops.size()==b.loops.size() && a.edges.size()==b.edges.size(),Error::kStructure);
+      for(std::size_t n=0;n<a.nodes.size();++n){q.Work();const auto& x=a.nodes[n];const auto& y=b.nodes[n];Require(x.block==y.block && x.next==y.next && x.synthetic==y.synthetic && x.arms.has_value()==y.arms.has_value() && x.decision.has_value()==y.decision.has_value(),Error::kStructure);if(x.arms)Require(x.arms->taken==y.arms->taken && x.arms->fallthrough==y.arms->fallthrough,Error::kStructure);if(x.decision)Require(x.decision->evaluate==y.decision->evaluate && x.decision->evaluate_on_taken==y.decision->evaluate_on_taken && x.decision->shared_on_taken==y.decision->shared_on_taken && x.decision->join==y.decision->join && x.decision->predicate==y.decision->predicate && x.decision->prefix==y.decision->prefix,Error::kStructure);}
+      for(std::size_t n=0;n<a.loops.size();++n){q.Work();const auto& x=a.loops[n];const auto& y=b.loops[n];Require(x.header==y.header && x.parent==y.parent && x.body==y.body && x.wrapper==y.wrapper && x.exit==y.exit,Error::kStructure);}
+      for(std::size_t n=0;n<a.edges.size();++n){q.Work();const auto& x=a.edges[n];const auto& y=b.edges[n];Require(x.edge==y.edge && x.owner==y.owner && x.placement==y.placement,Error::kStructure);}
+      Compare(expected->iterator_scopes,control.iterator_scopes,q);Compare(expected->units,control.units,q);Compare(expected->arcs,control.arcs,q);Compare(expected->regions,control.regions,q);Compare(expected->region_roles,control.region_roles,q);Compare(expected->protocol_ports,control.protocol_ports,q);Compare(expected->inactive_phases,control.inactive_phases,q);
+      return budget.work-q.RemainingWork();
+    }
     const auto continuations = control.continuations;
     ControlQuota quota(budget);
     CheckInput(body, graph, input, regions, quota);

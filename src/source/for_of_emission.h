@@ -4,13 +4,14 @@
 namespace abcd::source {
 struct ForOfEmissionLoop {
   IteratorProtocolId protocol;
-  LoopId loop;
+  std::optional<LoopId> loop;
   ControlId header, decision, body;
   analysis::EdgeId success, exhausted;
   analysis::UseId iterable;
   analysis::ValueId binding;
   bool exhaustion_only=true;
   std::optional<IteratorProtocolId> enclosing;
+  ForOfScope scope;
   bool operator==(const ForOfEmissionLoop&) const = default;
 };
 // A close remains effectful. These are entry-qualified native completion
@@ -29,6 +30,7 @@ struct ForOfEmissionClose {
 struct ForOfEmissionView {
   std::shared_ptr<const CompletionPorts> completion_ports;
   std::shared_ptr<const IteratorContinuationProof> continuations;
+  std::shared_ptr<const SinglePassScopes> single_pass;
   ProtocolForwarding forwarding;
   std::vector<ForOfEmissionLoop> loops;
   std::vector<std::optional<std::uint32_t>> wrappers;

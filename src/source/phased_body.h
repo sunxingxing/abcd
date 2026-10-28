@@ -56,6 +56,10 @@ struct PhasedControlFailure {
   std::optional<PhasedInputFailure> input_gap;
   std::optional<CompletionPortFailure> completion_ports_failure;
 };
+// A genuine earlier refusal, retained only as an omission alternative. It
+// never supplies a graph, grants a body, or weakens a later proof.
+using PhasedOmissionRefusal = std::variant<PhasedInputFailure, PhasedControlFailure>;
+bool IsOmittablePhasedRefusal(const PhasedOmissionRefusal&);
 // Owns original exception analyses and the checked working body before child
 // evaluation. Family discovery must inspect actual creation operations here,
 // then discharge child/capture obligations before constructing source trees.
@@ -88,6 +92,7 @@ class PhasedBody {
   std::variant<std::uint64_t, ForOfPlacementFailure> RetryIteratorContinuation(
       const abc::MethodBody&, const TreeCensusFailure&, analysis::SemanticBudget);
   const analysis::ValueProgram& Graph() const;
+  std::shared_ptr<const PhasedOmissionRefusal> OmissionRefusal() const;
   const PhasedClassSites& Classes() const;
   const RouteInputIdentity& Identity() const;
   abc::EntityOffset Target() const;

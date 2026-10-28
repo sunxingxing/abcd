@@ -5,6 +5,13 @@
 #include <limits>
 #include <type_traits>
 namespace abcd::source {
+void OriginalIteratorStorage::Emplace(TreeCheckBudget& budget) {
+  RequireTree(!value_, TreeStructureError::kOwnership);
+  budget.Step();
+  budget.Admit(sizeof(OriginalIterations), 1);
+  value_ = std::make_unique<OriginalIterations>();
+}
+
 namespace {
 analysis::ValueKinds Kinds(const OriginalFlow& original,const analysis::ValueOperand& operand) {
   return std::visit([&](const auto& value) {

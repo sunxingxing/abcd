@@ -479,7 +479,13 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       // The reader stamps the requested root before traversing validated
       // creation edges. Keep the entire member absent, never splice an unknown
       // child into a prepared family. Other failures cannot become omissions.
-      if (!preparation) {
+      if(family->later_body) {
+        if(!preparation) {
+          admit(family->later_body->preparation_cost.allocated_bytes,1);
+          step(family->later_body->preparation_cost.work);
+        }
+        admit(family->later_body->allocated_bytes,1);step(family->later_body->work);
+      } else if (!preparation) {
         admit(phased_gap ? input->allocated_bytes : proof->allocated_bytes, 1);
         step(phased_gap ? input->work : proof->work_units);
       }
@@ -488,7 +494,14 @@ std::variant<ClassTree, ClassTreeFailure> BuildClassTree(
       ClassMemberOmission gap{std::move(context), progressed ? decltype(ClassMemberOmission::failure){*control_gap} : phased_gap ? decltype(ClassMemberOmission::failure){input->cause} :
           decltype(ClassMemberOmission::failure){*proof}, *family->root, *family->method, family->parent, family->creation_pc,
           progressed ? control_gap->working_pc : phased_gap ? input->working_site : normal_input->working_pc};
+      gap.later_body=family->later_body;
       if (!gap.InputGap()) throw ClassTreeFailure{Error::kMember};
+      if(gap.later_body) {
+        // Preparation has already assigned disjoint owner IDs to later bodies.
+        // Omission reserves these IDs; it creates no tree or source receipt.
+        if(gap.later_body->first_owner->value!=next_owner)throw ClassTreeFailure{Error::kMember};
+        next_owner+=gap.later_body->reserved_owners;
+      }
       return gap;
     };
     admit(tree.member_sites.size(), sizeof(std::optional<PreparedFamily>)); tree.members.reserve(tree.member_sites.size());

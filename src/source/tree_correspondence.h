@@ -14,6 +14,6 @@ void CheckTreeOperands(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     const TreeFlow& flow, ExpressionConstants constants, TreeCheckBudget& budget, OriginalFlow& original, const ForOfEvaluationInput* iteration = nullptr);
 void CheckTreeCorrespondenceOrigins(const analysis::ValueProgram& graph,
-    const EvaluationPlan& evaluation, const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget, const ForOfEvaluationInput* iteration = nullptr);
+    const EvaluationPlan& evaluation, const FunctionTree& tree, const TreeFlow& flow, TreeCheckBudget& budget, const OriginalFlow& original, const ForOfEvaluationInput* iteration = nullptr);
 }  // namespace abcd::source
 #endif

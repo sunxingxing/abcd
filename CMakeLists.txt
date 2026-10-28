@@ -225,7 +225,7 @@ target_sources(abcd_source PRIVATE src/source/cell_lifetime.cc src/source/phased
 target_sources(abcd_source PRIVATE src/source/cell_initialization.cc)
 target_sources(abcd_source PRIVATE src/source/cell_evaluation.cc)
 target_sources(abcd_source PRIVATE src/source/environment_renewal_binding.cc)
-target_sources(abcd_source PRIVATE src/source/completion_ports.cc src/source/iterator_continuation.cc src/source/iterator_continuation_recovery.cc)
+target_sources(abcd_source PRIVATE src/source/completion_ports.cc src/source/iterator_continuation.cc src/source/iterator_continuation_recovery.cc src/source/for_of_scope.cc src/source/for_of_scope_control.cc src/source/for_of_scope_recovery.cc)
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_names.cc)
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
 target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
@@ -474,6 +474,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/environment_renewal_test.py)
     add_test(NAME isa_completion_ports_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_test.py)
+    add_test(NAME single_pass_scale_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/single_pass_scale_test.py)
+    add_test(NAME isa_single_pass_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/single_pass_test.py)
     add_test(NAME isa_iterator_continuation_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/iterator_continuation_test.py)
     add_test(NAME iterator_continuation_scale_test COMMAND ${Python3_EXECUTABLE}
@@ -814,6 +818,16 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixtures/iterator_protocol/main.abc" 395)
   set_tests_properties(close_completion_nested_gap_test PROPERTIES
     PASS_REGULAR_EXPRESSION "protocol=1 read=169 entry=149 completion=3 payload=V60 obligation0=1 obligation1=1 obligation2=1 obligation3=1 obligation4=0:8")
+  add_executable(single_pass_test tests/unit/source/single_pass_test.cc)
+  target_link_libraries(single_pass_test PRIVATE abcd_source abcd_json)
+  target_include_directories(single_pass_test PRIVATE tests/support)
+  target_compile_definitions(single_pass_test PRIVATE
+    ABCD_SINGLE_PASS_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/single_pass/once-O0.abc")
+  add_test(NAME single_pass_test COMMAND single_pass_test)
+  foreach(variation registers copies split)
+    add_test(NAME single_pass_${variation}_test COMMAND single_pass_test
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/isa/single_pass/once-O0.abc" onceSync 0 ${variation})
+  endforeach()
   add_executable(iterator_continuation_test tests/unit/source/iterator_continuation_test.cc)
   target_link_libraries(iterator_continuation_test PRIVATE abcd_source abcd_json)
   target_include_directories(iterator_continuation_test PRIVATE tests/support)

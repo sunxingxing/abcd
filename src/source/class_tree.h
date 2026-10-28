@@ -69,6 +69,7 @@ struct ClassMemberOmission {
   std::optional<abc::EntityOffset> parent;
   std::optional<abc::CodeOffset> creation_pc;
   std::optional<abc::CodeOffset> working_pc;
+  std::shared_ptr<const FamilyTreeFailure> later_body;
   [[nodiscard]] abc::CodeOffset Pc() const {
     return std::visit([](const auto& proof) -> abc::CodeOffset {
       if constexpr (std::is_same_v<std::decay_t<decltype(proof)>, PhasedControlFailure>) return proof.pc.value_or(proof.input_gap->cause.pc);
@@ -76,6 +77,15 @@ struct ClassMemberOmission {
     }, failure);
   }
   [[nodiscard]] bool InputGap() const {
+    if(later_body) {
+      const auto* tree=std::get_if<FunctionTreeFailure>(&later_body->cause);
+      if(!tree || tree->kind==FunctionTreeError::kResourceLimit || tree->kind==FunctionTreeError::kWorkLimit)return false;
+    }
+    if (later_body && (later_body->method != method || later_body->family_root != root ||
+        !later_body->first_owner || !later_body->reserved_owners ||
+        later_body->reserved_owners > std::uint64_t{UINT32_MAX}+1-later_body->first_owner->value ||
+        !later_body->omission_refusal ||
+        !IsOmittablePhasedRefusal(*later_body->omission_refusal))) return false;
     if (root != context.Target() || parent.has_value() != creation_pc.has_value() ||
         (!parent && method != root)) return false;
     return std::visit([](const auto& proof) {

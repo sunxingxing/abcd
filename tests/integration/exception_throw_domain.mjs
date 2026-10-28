@@ -21,7 +21,7 @@ for(const mode of ['return','error','getter','primitive','null']){
 }console.log(JSON.stringify(all));`);
  const oracle=join(scratch,'original.mjs');writeFileSync(oracle,readFileSync(join(fixtures,'handler.js')));
  const evaluate=p=>run(process.execPath,[runner,pathToFileURL(resolve(p)).href]);
- const expected=evaluate(oracle);let published=0,partial=0,refused=0,mutations=0,loopCases=0;
+ const expected=evaluate(oracle);let published=0,partial=0,refused=0,mutations=0,loopCases=0,handlerCases=0;
  const loopRunner=join(scratch,'loop-runner.mjs');
  writeFileSync(loopRunner,`import assert from 'node:assert/strict';
 const actual=await import(process.argv[2]),original=await import(process.argv[3]);
@@ -44,9 +44,15 @@ if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
    assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::PhasedMethodError',value:5},{domain:'abcd::source::ExceptionPlanError',value:2},{domain:'abcd::analysis::CatchRegionError',value:1}]);
    ++refused;continue;
   }
-  if((name==='close'||name==='member')) {
+  if((name==='close'||name==='member'||name==='loop')) {
    assert.equal(r.source_status,0,JSON.stringify(r));++published;
    const output=join(out,r.source);run(process.execPath,['--check',output]);
+   if(name==='loop') {
+    const metadata=JSON.parse(readFileSync(join(out,r.metadata)));
+    const method=metadata.methods.find(m=>m.runtime_name==='query');assert.ok(method);
+    assert.match(run(join(dirname(engine),'close_completion_probe'),
+      [join(fixtures,'loop.abc'),String(method.entity),'--control']),/protocol-control units=/);
+   }
    const reference=join(scratch,name+'-original.mjs');writeFileSync(reference,readFileSync(join(fixtures,name+'.js')));
    loopCases+=Number(run(process.execPath,[loopRunner,pathToFileURL(resolve(output)).href,pathToFileURL(resolve(reference)).href]));
    continue;
@@ -60,21 +66,8 @@ if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
    const check=run(process.execPath,['--input-type=module','-e',`const m=await import(${JSON.stringify(pathToFileURL(resolve(output)).href)});console.log(new m.Tool().good(), typeof new m.Tool().query);`]);
    assert.equal(check.trim(),'7 undefined');++partial;continue;
   }
-  if(name==='loop') {
-   assert.equal(r.source_status,3,JSON.stringify(r));
-   assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::FunctionTreeError',value:0},{domain:'abcd::source::EvaluationError',value:3},{domain:'abcd::source::EvaluationObligation',value:0},{domain:'abcd::source::ForOfIterationError',value:3},{domain:'abcd::source::TreeObligation',value:16}]);
-   assert.equal(r.source_failure.pc,25);
-   assert.match(run(join(dirname(engine),'close_completion_probe'),
-     [join(fixtures,'loop.abc'),String(r.source_failure.method),'--control']), /protocol-control units=/);
-   ++refused;continue;
-  }
-  if(name==='close'||name==='loop'){
-   assert.equal(r.source_status,3,JSON.stringify(r));
-   assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4}],JSON.stringify(r));
-   assert.equal(r.source_failure.exception_region.region,0);++refused;continue;
-  }
   assert.equal(r.source_status,0,JSON.stringify(r));++published;
-  const output=join(out,r.source);run(process.execPath,['--check',output]);assert.equal(evaluate(output),expected);
+  const output=join(out,r.source);run(process.execPath,['--check',output]);assert.equal(evaluate(output),expected);handlerCases+=5;
   const text=readFileSync(output,'utf8');
   for(const [label,changed] of [
    ['dropped-throw',text.replace(/throw ([$\w]+);/,'return $1;')],
@@ -85,5 +78,5 @@ if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
    run(process.execPath,['--check',bad]);assert.notEqual(evaluate(bad),expected,label);++mutations;
   }
  }
- console.log(JSON.stringify({published,partial,refused,comparisons:published,behaviorCases:(published-2)*5+loopCases,loopCases,mutations}));
+ console.log(JSON.stringify({published,partial,refused,comparisons:published,behaviorCases:handlerCases+loopCases,loopCases,mutations}));
 } finally {rmSync(scratch,{recursive:true,force:true});}

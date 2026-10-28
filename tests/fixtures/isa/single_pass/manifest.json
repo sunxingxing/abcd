@@ -1,0 +1,121 @@
+{
+  "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+  "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+  "note": "O0 only.",
+  "fixtures": [
+    {
+      "source": "tests/fixtures/isa/single_pass/once.js",
+      "path": "tests/fixtures/isa/single_pass/once-O0.abc",
+      "source_sha256": "93cab2415cdbe11f75a8706b5c4a5eb65f257c8d529d2a9c0caf1674e56dc049",
+      "sha256": "7795d2b3939eaef23ccc193200360f4520baa039a830c27ac5de1fe7d3815d3a",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=single_pass",
+        "--source-file=once.js",
+        "--output=tests/fixtures/isa/single_pass/once-O0.abc",
+        "--opt-level=0",
+        "tests/fixtures/isa/single_pass/once.js"
+      ],
+      "profile": 6
+    },
+    {
+      "source": "tests/fixtures/isa/single_pass/variants.js",
+      "path": "tests/fixtures/isa/single_pass/variants-O0.abc",
+      "source_sha256": "1f2c2dc021afd59c0bcde44111400d104466aff8d7c8554735fab704635752fe",
+      "sha256": "428781b5255cae30bf641ac3cf96fc44e2b64481b8cc2d702c1f149aae3d7c11",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=single_pass_variants",
+        "--source-file=variants.js",
+        "--output=tests/fixtures/isa/single_pass/variants-O0.abc",
+        "--opt-level=0",
+        "tests/fixtures/isa/single_pass/variants.js"
+      ],
+      "profile": 6
+    },
+    {
+      "source": "tests/fixtures/isa/single_pass/for_await.js",
+      "path": "tests/fixtures/isa/single_pass/for_await-O0.abc",
+      "source_sha256": "f8fdcf8085858623b2a7017a8546b5dbdf647baaab79eebb1145ff653f3d5bf3",
+      "sha256": "6e9fcd81918402adb7cab52a8be60111d7e83ce63b81961de3fa2451821125a8",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=single_pass_for_await",
+        "--source-file=for_await.js",
+        "--output=tests/fixtures/isa/single_pass/for_await-O0.abc",
+        "--opt-level=0",
+        "tests/fixtures/isa/single_pass/for_await.js"
+      ],
+      "profile": 6,
+      "refusal": {
+        "domain": "abcd::analysis::SemanticError",
+        "value": 1
+      },
+      "refusal_causes": [
+        {
+          "domain": "abcd::source::PhasedMethodError",
+          "value": 0
+        },
+        {
+          "domain": "abcd::analysis::SemanticError",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "source": "tests/fixtures/isa/single_pass/nested_return_refused.js",
+      "path": "tests/fixtures/isa/single_pass/nested_return_refused-O0.abc",
+      "source_sha256": "794d6cf74d88e97a5e2b771815e0f69ec038b3bb99b8d2f2d8067e4e0286617c",
+      "sha256": "71347b0e5c9436ade02d8ac9ec6dbd34dde6abaee6dfa6aa02fc826f8e664378",
+      "command": [
+        "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+        "--module",
+        "--merge-abc",
+        "--extension=js",
+        "--record-name=single_pass_nested_return_refused",
+        "--source-file=nested_return_refused.js",
+        "--output=tests/fixtures/isa/single_pass/nested_return_refused-O0.abc",
+        "--opt-level=0",
+        "tests/fixtures/isa/single_pass/nested_return_refused.js"
+      ],
+      "profile": 6,
+      "refusal": {
+        "domain": "abcd::source::CloseEntryError",
+        "value": 4
+      },
+      "refusal_causes": [
+        {
+          "domain": "abcd::source::PhasedMethodError",
+          "value": 6
+        },
+        {
+          "domain": "abcd::source::ExceptionControlError",
+          "value": 4
+        },
+        {
+          "domain": "abcd::source::CompletionPortError",
+          "value": 7
+        },
+        {
+          "domain": "abcd::source::CloseCompletionError",
+          "value": 4
+        },
+        {
+          "domain": "abcd::source::CloseEntryError",
+          "value": 4
+        }
+      ]
+    }
+  ]
+}

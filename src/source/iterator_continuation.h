@@ -85,6 +85,7 @@ struct IteratorContinuationProof {
   analysis::IrRevision revision;
   analysis::CfgRevision cfg_revision;
   TreeCensusFailure activation;
+  std::shared_ptr<const SinglePassScopes> single_pass;
   std::vector<IteratorContinuation> continuations;
   std::vector<IteratorBodyCut> cuts;
   std::vector<IteratorContinuationCoverage> coverage;

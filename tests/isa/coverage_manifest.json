@@ -11173,6 +11173,10 @@
     {
       "test": "isa_iterator_continuation_source_test",
       "producer": "tests/isa/iterator_continuation_test.py"
+    },
+    {
+      "test": "isa_single_pass_source_test",
+      "producer": "tests/isa/single_pass_test.py"
     }
   ]
 }

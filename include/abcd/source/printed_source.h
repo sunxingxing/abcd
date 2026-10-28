@@ -15,6 +15,7 @@
 #include "abcd/abc/metadata_index.h"
 #include "abcd/analysis/exception_ssa.h"
 #include "abcd/source/cleanup_origin.h"
+#include "abcd/source/call_reference.h"
 #include "abcd/source/exception_region_failure.h"
 #include "abcd/source/parameter_default.h"
 #include "abcd/source/tree_failure.h"
@@ -114,6 +115,9 @@ struct OmittedClassMember {
   std::optional<ExceptionRegionEvidence> exception_region;
   std::optional<OmissionCauseId> additional_causes;
   std::optional<TreeLocation> protocol_location;
+  std::optional<OmissionCauseId> later_causes;
+  std::optional<TreeLocation> later_location;
+  std::optional<CallReferenceEvidence> later_reference;
 };
 struct PrintedSource {
   SourceText text;

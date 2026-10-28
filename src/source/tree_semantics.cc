@@ -4,6 +4,8 @@
 #include <new>
 #include <stdexcept>
 
+#include "abcd/analysis/detail/prepaid_shared.h"
+
 #include "../analysis/value_phi.h"
 #include "class_initialization_ports.h"
 #include "completion_ports.h"
@@ -46,8 +48,20 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     }
     if (evaluation.for_of) {
       RequireTree(flow->for_of.has_value(),TreeStructureError::kOwnership);
-      original->iterations.emplace(); auto& retained=*original->iterations;
+      original->iterations.Emplace(checked); auto& retained=*original->iterations;
       retained.view=std::move(flow->for_of->view);
+      if(retained.view.single_pass) {
+        RequireTree(exceptions && exceptions->for_of,TreeStructureError::kOwnership);
+        const auto& source=*exceptions->for_of;
+        auto expected=RebuildSinglePassScopes(source.body,graph,source.input,source.regions,
+            source.control,source.ownership,retained.view.single_pass->activation,checked.Remaining());
+        if(const auto* f=std::get_if<SinglePassFailure>(&expected))throw f->kind==SinglePassError::kResourceLimit?TreeStructureError::kResourceLimit:f->kind==SinglePassError::kWorkLimit?TreeStructureError::kWorkLimit:TreeStructureError::kOwnership;
+        auto facts=std::get<SinglePassScopes>(std::move(expected));checked.Admit(facts.allocated_bytes,1);checked.Step(facts.work);
+        analysis::detail::IdfScratch memory(checked.Remaining().bytes);std::size_t shared_bytes=0;
+        retained.single_pass_facts=std::allocate_shared<const SinglePassScopes>(
+            analysis::detail::PrepaidSharedAllocator<const SinglePassScopes>{memory,shared_bytes},std::move(facts));
+        checked.Admit(shared_bytes,1);
+      }
       if (retained.view.continuations) {
         checked.Admit(sizeof(IteratorContinuationProof)+retained.view.continuations->allocated_bytes,1);
         RequireTree(exceptions && exceptions->for_of,TreeStructureError::kOwnership);
@@ -127,7 +141,7 @@ std::variant<TreeSemantics, TreeSemanticError> VerifySemantics(
     VerifyPhasedDefaultInput(graph, tree, checked);
     original->phased_defaults = tree.phased_defaults;
     CheckTreeOperands(graph, evaluation, tree, *flow, constants, checked,*original, exceptions && exceptions->for_of ? &*exceptions->for_of : nullptr);
-    CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked, exceptions && exceptions->for_of ? &*exceptions->for_of : nullptr);
+    CheckTreeCorrespondenceOrigins(graph, evaluation, tree, *flow, checked, *original, exceptions && exceptions->for_of ? &*exceptions->for_of : nullptr);
     RetainClassInitializationPorts(graph, tree, *original, checked);
     if(evaluation.object_rest)RetainObjectRests(graph,evaluation,tree,*flow,*original,checked);
     IndexOriginalInputs(*original,checked);

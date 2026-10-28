@@ -118,6 +118,7 @@ template<class T>std::optional<Error> LimitCause(const T& failure) {
   } else {
     if constexpr(requires{failure.kind;})if(const auto limit=LimitCause(failure.kind))return limit;
     if constexpr(requires{failure.cause;})if(const auto limit=LimitCause(failure.cause))return limit;
+    if constexpr(requires{failure.single_pass;})if(failure.single_pass)if(const auto limit=LimitCause(*failure.single_pass))return limit;
   }
   return {};
 }

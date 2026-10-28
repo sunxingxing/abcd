@@ -11,9 +11,18 @@
 #include "abcd/analysis/exception_modules.h"
 #include "function_object.h"
 #include "for_of_emission.h"
+#include "for_of_evaluation.h"
 #include "module_aliases.h"
 
 namespace abcd::source {
+bool IsOmittablePhasedRefusal(const PhasedOmissionRefusal& refusal) {
+  const auto input=[](const PhasedInputFailure& f){return f.cause.kind==analysis::ExceptionInputError::kInternalValue && f.cause.node && f.cause.value;};
+  return std::visit([&](const auto& f){
+    if constexpr(std::is_same_v<std::decay_t<decltype(f)>,PhasedInputFailure>)return input(f);
+    else {const auto* region=std::get_if<ExceptionControlRegionFailure>(&f.cause);
+      return f.kind==PhasedMethodError::kControl && region && region->kind==ExceptionControlError::kMultipleExits && region->exception_region && f.input_gap && input(*f.input_gap);}
+  },refusal);
+}
 struct PhasedBody::Storage {
   RouteInputIdentity identity;
   abc::EntityOffset target;
@@ -34,6 +43,7 @@ struct PhasedBody::Storage {
   ExceptionControl control;
   std::optional<VerifiedProtocolRegionOwnership> protocols;
   std::optional<abc::MethodBody> protocol_body;
+  std::shared_ptr<const PhasedOmissionRefusal> omission_refusal;
   std::size_t bytes;
   std::uint64_t work;
   analysis::PhasedValueInput Input() const {
@@ -135,6 +145,7 @@ PhasedBody::PhasedBody(PhasedBody&&) noexcept = default;
 PhasedBody& PhasedBody::operator=(PhasedBody&&) noexcept = default;
 PhasedBody::~PhasedBody() = default;
 const analysis::ValueProgram& PhasedBody::Graph() const { return storage_->graph; }
+std::shared_ptr<const PhasedOmissionRefusal> PhasedBody::OmissionRefusal() const { return storage_->omission_refusal; }
 const PhasedClassSites& PhasedBody::Classes() const {
   return storage_->classes;
 }
@@ -168,7 +179,7 @@ std::variant<std::uint64_t, ForOfPlacementFailure> PhasedBody::RetryIteratorCont
     auto proof = std::get<IteratorContinuationProof>(std::move(result)); q.Admit(proof.allocated_bytes); q.Step(proof.work);
     auto shared = q.Shared<IteratorContinuationProof>(std::move(proof));
     auto planned = BuildExceptionControl(original, storage_->graph, storage_->Input(), storage_->regions,
-        q.Remaining(), &*storage_->protocols, shared);
+        q.Remaining(), &*storage_->protocols, shared,storage_->control.single_pass);
     if (!std::holds_alternative<ExceptionControl>(planned)) {
       const auto kind = std::visit([](const auto& f) {
         using T = std::decay_t<decltype(f)>;
@@ -598,6 +609,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
           return PhaseError(failure,Error::kControl);
       } else return PhaseError(std::get<IteratorScanFailure>(scanned),Error::kControl);
     }
+    std::shared_ptr<const PhasedOmissionRefusal> omission_refusal;
     auto controlled = BuildExceptionControl(body, imported.graph, input, regions, quota.Remaining(),protocols?&*protocols:nullptr);
     if(const auto* refused=std::get_if<ExceptionControlRegionFailure>(&controlled);
         refused && refused->kind==ExceptionControlError::kMultipleExits && acquisition && binding) {
@@ -688,17 +700,50 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       auto evaluation=BuildForOfEvaluationPlan(imported.graph,source,allowance);
       const auto placement_failure=[&](const ForOfIterationFailure& error) {
         CompletionPortFailure failure{CompletionPortError::kTarget,{},{},error.kind};
+        failure.placement=error.scope;
         if(error.operation)failure.location=OperationLocation(imported.graph,*error.operation,context.Target());
         return stop(std::move(failure));
       };
-      if(const auto* error=std::get_if<ForOfIterationFailure>(&evaluation))return placement_failure(*error);
-      const auto& plan=std::get<ForOfEvaluationPlan>(evaluation);
-      quota.Admit(plan.allocated_bytes);
-      auto view_budget=quota.Remaining();view_budget.work=std::min(view_budget.work,kPlacementWorkPerInput*size*(1+std::bit_width(size)));
-      quota.Step(view_budget.work);
-      auto view=BuildForOfEmissionView(imported.graph,source,plan,view_budget);
-      if(const auto* error=std::get_if<ForOfIterationFailure>(&view))return placement_failure(*error);
-      quota.Admit(std::get<ForOfEmissionView>(view).allocated_bytes);
+      std::optional<ForOfIterationFailure> missing;
+      if(const auto* error=std::get_if<ForOfIterationFailure>(&evaluation))missing=*error;
+      else {
+        const auto& plan=std::get<ForOfEvaluationPlan>(evaluation);quota.Admit(plan.allocated_bytes);
+        auto view_budget=quota.Remaining();view_budget.work=std::min(view_budget.work,kPlacementWorkPerInput*size*(1+std::bit_width(size)));quota.Step(view_budget.work);
+        auto view=BuildForOfEmissionView(imported.graph,source,plan,view_budget);
+        if(const auto* error=std::get_if<ForOfIterationFailure>(&view))missing=*error;
+        else quota.Admit(std::get<ForOfEmissionView>(view).allocated_bytes);
+      }
+      if(missing) {
+        if(!missing->scope)return placement_failure(*missing);
+        if(input_gap) {
+          // Preserve the exact independently omittable legacy member outcome.
+          // A later body proof must not erase already verified partial output.
+          omission_refusal=quota.Shared<PhasedOmissionRefusal>(placement_failure(*missing));
+        }
+        quota.Admit(placement.allocated_bytes);quota.Step(placement.work);
+        auto proved=ProveSinglePassScopes(body,imported.graph,input,regions,placement,*protocols,*missing->scope,quota.Remaining());
+        if(const auto* error=std::get_if<SinglePassFailure>(&proved)) {
+          auto failure=placement_failure(*missing);failure.kind=PhaseError(*error,Error::kControl);failure.completion_ports_failure->single_pass=*error;return failure;
+        }
+        auto proof=std::get<SinglePassScopes>(std::move(proved));quota.Admit(proof.allocated_bytes);quota.Step(proof.work);
+        auto shared=quota.Shared<SinglePassScopes>(std::move(proof));
+        auto planned=BuildExceptionControl(body,imported.graph,input,regions,quota.Remaining(),&*protocols,placement.continuations,shared);
+        if(!std::holds_alternative<ExceptionControl>(planned)) {
+          auto failure=placement_failure(*missing);
+          const auto kind=std::visit([](const auto& value){if constexpr(std::is_same_v<std::decay_t<decltype(value)>,ExceptionControl>)return Error::kControl;else return PhaseError(value,Error::kControl);},planned);
+          if(kind==Error::kResourceLimit||kind==Error::kWorkLimit)failure.kind=kind;
+          failure.completion_ports_failure->single_pass=SinglePassFailure{kind==Error::kResourceLimit?SinglePassError::kResourceLimit:kind==Error::kWorkLimit?SinglePassError::kWorkLimit:SinglePassError::kCorrespondence};return failure;
+        }
+        controlled=std::move(planned);
+        const ForOfEvaluationInput fresh{body,input,regions,std::get<ExceptionControl>(controlled),*protocols,context.Identity().contract};
+        auto next=BuildForOfEvaluationPlan(imported.graph,fresh,quota.Remaining());
+        if(const auto* error=std::get_if<ForOfIterationFailure>(&next))return placement_failure(*error);
+        auto& plan=std::get<ForOfEvaluationPlan>(next);quota.Admit(plan.allocated_bytes);quota.Step(plan.work);
+        auto view=BuildForOfEmissionView(imported.graph,fresh,plan,quota.Remaining());
+        if(const auto* error=std::get_if<ForOfIterationFailure>(&view))return placement_failure(*error);
+        const auto& checked=std::get<ForOfEmissionView>(view);quota.Admit(checked.allocated_bytes);quota.Step(checked.work);
+
+      }
     }
     if (const auto* failure=std::get_if<ExceptionControlRegionFailure>(&controlled)) {
       if (input_gap) { input_gap->allocated_bytes = quota.Bytes(); input_gap->work = quota.Work(); }
@@ -719,6 +764,50 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
     }
     auto control = std::get<ExceptionControl>(std::move(controlled));
     quota.Admit(control.allocated_bytes); quota.Step(control.work);
+    if(protocols && !control.single_pass && !protocols->Summary().completion_ports) {
+      bool absent=false;for(const auto& region:protocols->Summary().regions){quota.Step();absent|=!region.iteration.loop_header;}
+      if(absent) {
+        // Headerless facts select a query, never admission. Replay the actual
+        // old placement first; only its typed missing/borrowed witness retries.
+        const ForOfEvaluationInput source{body,input,regions,control,*protocols,context.Identity().contract};
+        constexpr std::uint64_t kPlacementWorkPerInput=65536;
+        const auto size=std::uint64_t(imported.graph.ops.size())+imported.graph.uses.size()+imported.graph.edges.size()+1;
+        if(size>UINT32_MAX)return Error::kResourceLimit;
+        auto grant=quota.Remaining();grant.work=std::min(grant.work,kPlacementWorkPerInput*size*(1+std::bit_width(size)));quota.Step(grant.work);
+        auto evaluation=BuildForOfEvaluationPlan(imported.graph,source,grant);
+        std::optional<ForOfIterationFailure> missing;
+        if(const auto* error=std::get_if<ForOfIterationFailure>(&evaluation))missing=*error;
+        else {
+          const auto& plan=std::get<ForOfEvaluationPlan>(evaluation);quota.Admit(plan.allocated_bytes);
+          grant=quota.Remaining();grant.work=std::min(grant.work,kPlacementWorkPerInput*size*(1+std::bit_width(size)));quota.Step(grant.work);
+          auto view=BuildForOfEmissionView(imported.graph,source,plan,grant);
+          if(const auto* error=std::get_if<ForOfIterationFailure>(&view))missing=*error;
+        }
+        if(missing && missing->kind==ForOfIterationError::kResourceLimit)return Error::kResourceLimit;
+        if(missing && missing->kind==ForOfIterationError::kWorkLimit)return Error::kWorkLimit;
+        if(missing && missing->scope) {
+          const auto stop=[&](SinglePassFailure error) {
+            auto failure=PhasedControlFailure{Error::kControl,ForOfEvaluationFailure(imported.graph,*missing),context.Target()};
+            failure.completion_ports_failure=CompletionPortFailure{CompletionPortError::kTarget,{},{},missing->kind};
+            failure.completion_ports_failure->placement=missing->scope;failure.completion_ports_failure->single_pass=error;
+            if(missing->operation)failure.completion_ports_failure->location=OperationLocation(imported.graph,*missing->operation,context.Target());
+            if(error.kind==SinglePassError::kResourceLimit)failure.kind=Error::kResourceLimit;
+            if(error.kind==SinglePassError::kWorkLimit)failure.kind=Error::kWorkLimit;
+            return failure;
+          };
+          auto proved=ProveSinglePassScopes(body,imported.graph,input,regions,control,*protocols,*missing->scope,quota.Remaining());
+          if(const auto* error=std::get_if<SinglePassFailure>(&proved))return stop(*error);
+          auto proof=std::get<SinglePassScopes>(std::move(proved));quota.Admit(proof.allocated_bytes);quota.Step(proof.work);
+          auto shared=quota.Shared<SinglePassScopes>(std::move(proof));
+          auto rebuilt=BuildExceptionControl(body,imported.graph,input,regions,quota.Remaining(),&*protocols,control.continuations,shared);
+          if(const auto* next=std::get_if<ExceptionControl>(&rebuilt)){quota.Admit(next->allocated_bytes);quota.Step(next->work);control=std::get<ExceptionControl>(std::move(rebuilt));}
+          else {
+            const auto kind=std::visit([](const auto& value){if constexpr(std::is_same_v<std::decay_t<decltype(value)>,ExceptionControl>)return Error::kControl;else return PhaseError(value,Error::kControl);},rebuilt);
+            return stop(SinglePassFailure{kind==Error::kResourceLimit?SinglePassError::kResourceLimit:kind==Error::kWorkLimit?SinglePassError::kWorkLimit:SinglePassError::kCorrespondence});
+          }
+        }
+      }
+    }
     if(protocols) {
       const auto verified=VerifyExceptionControl(body,imported.graph,input,regions,control,quota.Remaining(),&*protocols);
       if(const auto* failure=std::get_if<ExceptionControlError>(&verified))return PhaseError(*failure,Error::kControl);
@@ -729,6 +818,8 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
       const auto copy=[&](const auto& from,auto& to){using T=typename std::decay_t<decltype(to)>::value_type;quota.Admit(from.size(),sizeof(T));quota.Step(from.size());to.reserve(from.size());quota.Admit(to.capacity()-from.size(),sizeof(T));to.assign(from.begin(),from.end());};
       protocol_body.emplace();copy(body.instructions,protocol_body->instructions);copy(body.tries,protocol_body->tries);copy(body.handlers,protocol_body->handlers);
     }
+    if(!omission_refusal && input_gap)
+      omission_refusal=quota.Shared<PhasedOmissionRefusal>(*input_gap);
     return PhasedBody(
         std::make_unique<Storage>(Storage{context.Identity(),
                                           context.Target(),
@@ -749,6 +840,7 @@ std::variant<PhasedBody, PhasedMethodError, PhasedInputFailure, PhasedFlowFailur
                                           std::move(control),
                                           std::move(protocols),
                                           std::move(protocol_body),
+                                          std::move(omission_refusal),
                                           retained_bytes+quota.Bytes(),
                                           retained_work+quota.Work()}));
   } catch (Error error) { return error;

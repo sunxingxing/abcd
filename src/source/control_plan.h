@@ -14,13 +14,14 @@ struct ControlArms {
   std::optional<ControlId> fallthrough;
 };
 enum class LoopTransferKind : std::uint8_t { kBreak, kContinue };
-struct LoopControl { LoopId loop; };
+struct LoopControl { LoopId loop; bool operator==(const LoopControl&) const = default; };
 using ControlTransferSource = std::variant<analysis::EdgeId, LoopId>;
 struct LoopTransfer {
   LoopId loop;
   LoopTransferKind kind;
   // A real CFG edge, or the normal exit of a nested loop wrapper.
   ControlTransferSource source;
+  bool operator==(const LoopTransfer&) const = default;
 };
 // No operation/definition is emitted at this epsilon port. Its source edge
 // still enters the original inert block; verification proves the bypass has
@@ -30,8 +31,9 @@ struct ControlForward {
   analysis::EdgeId incoming;
   auto operator<=>(const ControlForward&) const = default;
 };
+struct IteratorScopeControl { IteratorProtocolId protocol; auto operator<=>(const IteratorScopeControl&) const = default; };
 struct SwitchPort { std::uint32_t port; auto operator<=>(const SwitchPort&) const = default; };
-using ControlSynthetic = std::variant<std::monostate, LoopControl, LoopTransfer, ControlForward, SwitchPort>;
+using ControlSynthetic = std::variant<std::monostate, LoopControl, LoopTransfer, ControlForward, SwitchPort, IteratorScopeControl>;
 struct SwitchRegions;
 // An original single-entry evaluation path and its ending condition, entered
 // only when the current test misses the shared arm. Original arcs remain in

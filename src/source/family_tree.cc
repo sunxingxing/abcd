@@ -26,6 +26,7 @@ class FamilyTrees {
       RecoveryMode recovery)
       : file_(file), header_(header), index_(index), initial_(budget), left_(budget),
         modules_(modules), module_owner_(owner), lookup_(lookup), recovery_(recovery) {}
+  FamilyCellCost Cost() const { return {initial_.bytes-left_.bytes, initial_.work-left_.work}; }
   FamilyCellCost Prepare(FileFamily& family, const FunctionContext* root,
                          ClassCreator creator,
                          const CaptureStorage* creator_storage = nullptr) {
@@ -1104,12 +1105,28 @@ std::variant<ConstructedFamily, FamilyTreeFailure> FamilyTreeInput::Build(
     const FunctionContext& root, analysis::SemanticBudget budget, const RecordModuleContext* modules,
     ModuleOwnerId owner, const abc::MethodLookup* lookup, RecoveryMode recovery,
     const ExternalFamilyCapture* external, const GlobalScope* globals) && {
-  try { return FamilyTrees(file, header, index, budget, modules, owner, lookup, recovery).Build(family_, &root, {}, external, globals, classes_.get());
+  FamilyTrees builder(file,header,index,budget,modules,owner,lookup,recovery);
+  try { return builder.Build(family_, &root, {}, external, globals, classes_.get());
   } catch (const FamilyTreeFailure& error) {
     auto located = error;
     const auto member = std::get_if<FamilyWriteFailure>(&error.cause)
         ? std::get<FamilyWriteFailure>(error.cause).member : error.member;
     if (!located.method && member.value < family_.members.size()) located.method = family_.members[member.value].function.Method();
+    located.family_root=root.Target();located.first_owner=family_.first_owner;located.reserved_owners=OwnerCount();
+    const auto cost=builder.Cost();located.allocated_bytes=cost.allocated_bytes;located.work=cost.work;
+    if(const auto* tree=std::get_if<FunctionTreeFailure>(&located.cause)) {
+      // Resource/work failures are terminal. Only a local body-tree refusal
+      // can reuse an independently safe earlier omission of that same member.
+      if(tree->kind!=FunctionTreeError::kResourceLimit && tree->kind!=FunctionTreeError::kWorkLimit &&
+          member.value<family_.members.size() && located.method==family_.members[member.value].function.Method())
+        if(const auto* phase=family_.members[member.value].function.Phase())
+          located.omission_refusal=phase->Phases().OmissionRefusal();
+      if(tree->allocated_bytes>budget.bytes-located.allocated_bytes)
+        return FamilyTreeFailure{member,FamilyTreeError::kResourceLimit};
+      if(tree->work>budget.work-located.work)
+        return FamilyTreeFailure{member,FamilyTreeError::kWorkLimit};
+      located.allocated_bytes+=tree->allocated_bytes;located.work+=tree->work;
+    }
     return located;
   } catch (const std::bad_alloc&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit};
   } catch (const std::length_error&) { return FamilyTreeFailure{{0}, FamilyTreeError::kResourceLimit}; }

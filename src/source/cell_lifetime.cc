@@ -132,7 +132,10 @@ class Planner {
         Require(tasks.size() < tasks.capacity(), Error::kResourceLimit);
         tasks.push_back({*node.next, task.scope, task.stop});
       }
-      if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
+      if(const auto* scope=std::get_if<IteratorScopeControl>(&node.synthetic)) {
+        Require(view_ && view_->single_pass && scope->protocol.value<view_->loops.size(),Error::kControl);
+        child(task.scope,CellIteratorScope{scope->protocol},view_->loops[scope->protocol.value].header);
+      } else if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
         child(task.scope, CellLoopScope{loop->loop}, control_.loops[loop->loop.value].body);
       } else if (std::holds_alternative<std::monostate>(node.synthetic)) {
         if (exceptions_) {
@@ -263,7 +266,7 @@ class Planner {
       for (std::size_t i = 0; i < result.scopes.size(); ++i) {
         Step(); const auto& scope = result.scopes[i];
         loop_depth[i] = (scope.parent ? loop_depth[scope.parent->value] : 0) +
-            std::holds_alternative<CellLoopScope>(scope.origin);
+            (std::holds_alternative<CellLoopScope>(scope.origin) || std::holds_alternative<CellIteratorScope>(scope.origin));
       }
     }
     for (std::size_t c = 0; c < cells_.cells.size(); ++c) {

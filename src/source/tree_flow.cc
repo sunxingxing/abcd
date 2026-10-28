@@ -192,7 +192,8 @@ class FlowCheck {
       budget_.Array(flow_.for_of->controls,flow_.controls.size());
       for(std::size_t n=flow_.first_control.value;n<control_.nodes.size();++n) {
         budget_.Step();const auto& node=control_.nodes[n];
-        if(const auto* wrapper=std::get_if<LoopControl>(&node.synthetic)) {
+        if(std::holds_alternative<IteratorScopeControl>(node.synthetic))flow_.for_of->controls[n-flow_.first_control.value]=EnumerationControl::kLoop;
+        else if(const auto* wrapper=std::get_if<LoopControl>(&node.synthetic)) {
           if(iteration_->wrappers[wrapper->loop.value])flow_.for_of->controls[n-flow_.first_control.value]=EnumerationControl::kLoop;
         } else if(const auto* transfer=std::get_if<LoopTransfer>(&node.synthetic)) {
           const auto native=iteration_->wrappers[transfer->loop.value];const auto* edge=std::get_if<analysis::EdgeId>(&transfer->source);
@@ -286,6 +287,16 @@ class FlowCheck {
               IterationPayload(*iteration_->closes[cursor->value]->payload,*value);
               flow_.for_of->closes[cursor->value]=statement;
             }
+            if(close->pending.kind==analysis::PendingCompletionKind::kBreak && iteration_->single_pass && iteration_->single_pass->scopes[close->protocol.value]) {
+              const auto& scope=*iteration_->single_pass->scopes[close->protocol.value];
+              if(const auto* target=std::get_if<analysis::ExceptionNodeId>(&close->pending.target);target && (*target==scope.exit||*target==scope.continuation)) {
+                Require(child<block.child_count,Error::kSequence);const auto statement=sequences_.Child(block.first_child+child++);
+                const auto* jump=std::get_if<BreakStmt>(&tree_.statements[statement.value].statement);
+                const auto* origin=std::get_if<EdgeOrigin>(&tree_.origins[tree_.statements[statement.value].origin.value]);
+                Require(jump && iteration_statements_[close->protocol.value] && jump->target==*iteration_statements_[close->protocol.value] && origin && origin->edge==iteration_->closes[cursor->value]->edge,Error::kPlacement);
+                flow_.for_of->closes[cursor->value]=statement;
+              }
+            }
             cursor=node.next;continue;
           }
           if (const auto* region = std::get_if<TryControlUnit>(&unit)) {
@@ -326,6 +337,15 @@ class FlowCheck {
           cursor=node.next;continue;
         }
         if (!std::holds_alternative<std::monostate>(node.synthetic)) {
+          if(const auto* scope=std::get_if<IteratorScopeControl>(&node.synthetic)) {
+            const auto i=scope->protocol.value;Require(iteration_ && iteration_->single_pass && i<iteration_statements_.size() && iteration_statements_[i],Error::kControl);
+            const auto statement=*iteration_statements_[i];const auto* syntax=std::get_if<ForOfStmt>(&tree_.statements[statement.value].statement);
+            Require(syntax && child<block.child_count && sequences_.Child(block.first_child+child++)==statement && iteration_scopes_[i]==block.scope,Error::kSequence);
+            Require(iteration_->loops[i].exhaustion_only || !edges_->HasCopies(iteration_->loops[i].exhausted),Error::kSequence);
+            edges_->Consume(iteration_->loops[i].exhausted,block,child);
+            const auto offset=cursor->value-flow_.first_control.value;flow_.controls[offset]=tree_.statements[statement.value].origin;flow_.control_statements[offset]=statement;
+            Require(pending<tasks_.size(),Error::kResourceLimit);tasks_[pending++]={iteration_->loops[i].header,syntax->body,0};cursor=node.next;continue;
+          }
           if(iteration_)if(const auto* wrapper=std::get_if<LoopControl>(&node.synthetic);wrapper && iteration_->wrappers[wrapper->loop.value]) {
             const auto i=*iteration_->wrappers[wrapper->loop.value];Require(iteration_statements_[i] && loops_[wrapper->loop.value],Error::kControl);
             const auto statement=*iteration_statements_[i];const auto* syntax=std::get_if<ForOfStmt>(&tree_.statements[statement.value].statement);
@@ -1795,7 +1815,8 @@ class FlowCheck {
       Require(symbol.kind==BindingKind::kCompilerTemporary && symbol.declaration==DeclarationKind::kLet && symbol.scope==tree_.body_scope && symbol.temporary==TemporaryReason::kEnumerationKey && declared_[syntax.target.value] && !assigned_[syntax.target.value],Error::kSnapshot);
       assigned_[syntax.target.value]=1;flow_.snapshots[evaluation_.for_of->identity.loops[i].value.value]=syntax.target;
       iteration_scopes_[i]=block.scope;flow_.for_of->statements[i]=statement;
-      Require(!loops_[view.loop.value],Error::kControl);loops_[view.loop.value]=statement;
+      if(view.loop){Require(!loops_[view.loop->value],Error::kControl);loops_[view.loop->value]=statement;}
+      else Require(iteration_->single_pass && std::holds_alternative<SinglePassIteratorScope>(view.scope),Error::kControl);
       const auto operand=ResolveEvaluationOperand(evaluation_,graph_.uses[view.iterable.value].operand);
       const auto* value=std::get_if<analysis::ValueId>(&operand);
       // The common evaluation plan materializes effectful RHS producers at

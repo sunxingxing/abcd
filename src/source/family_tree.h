@@ -47,6 +47,14 @@ struct FamilyTreeFailure {
   std::optional<DeferredCellEvidence> deferred;
   std::optional<CellParameterDefaultDiagnostic> cell_parameter_default;
   std::optional<AbiLengths> abi_lengths;
+  std::shared_ptr<const PhasedOmissionRefusal> omission_refusal;
+  std::optional<abc::EntityOffset> family_root;
+  std::optional<FunctionOwnerId> first_owner;
+  std::size_t reserved_owners = 0;
+  // Immediate callers own both stages; split callers prepaid this input.
+  FamilyCellCost preparation_cost{};
+  std::size_t allocated_bytes = 0;
+  std::uint64_t work = 0;
 };
 // Owns the final residual graphs and rebound occurrence demands, before any AST
 // exists. Only Prepare can construct it; Build consumes it without reprojection.

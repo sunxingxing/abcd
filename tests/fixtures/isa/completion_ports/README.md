@@ -10,10 +10,14 @@ non-callable methods and primitive results, pending return/throw priority, ordin
 catches, array-pattern closes, iterable selection, returned identity and async
 suspension. This is source/Node differential evidence, not an Ark execution claim.
 
-The other three sources are exact typed refusal tests. Outer labelled continue
-is not admitted by assuming different compiler/runtime behavior; acyclic loops
-need another source placement representation; the user-try/pattern enclosure is
-not admitted by treating interval overlap as compiler ownership.
+`single_iteration.js` now completes through the separate logical single-pass
+scope proof, adding 598 differential executions (7,176 total). The async visit
+records logs before and after suspension.
+
+The other two sources remain exact typed refusal tests. Outer labelled continue
+is not admitted by assuming different compiler/runtime behavior; the
+user-try/pattern enclosure is not admitted by treating interval overlap as
+compiler ownership.
 
 Run `python3 tests/isa/completion_ports_test.py` and
 `python3 tests/isa/completion_ports_scale_test.py`. The C++ unit test additionally

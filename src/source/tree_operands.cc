@@ -1680,6 +1680,12 @@ void CheckTreeOperands(const analysis::ValueProgram& graph,
     const EvaluationPlan& evaluation, const FunctionTree& tree,
     const TreeFlow& flow, ExpressionConstants constants, TreeCheckBudget& budget, OriginalFlow& original, const ForOfEvaluationInput* iteration) {
   VerifyPhasedDefaultInput(graph, tree, budget);
+  if(iteration && iteration->control.single_pass) {
+    auto checked=VerifySinglePassScopes(iteration->body,graph,iteration->input,iteration->regions,
+        iteration->control,iteration->ownership,*iteration->control.single_pass,budget.Remaining());
+    if(const auto* f=std::get_if<SinglePassFailure>(&checked))throw f->kind==SinglePassError::kResourceLimit?TreeStructureError::kResourceLimit:f->kind==SinglePassError::kWorkLimit?TreeStructureError::kWorkLimit:TreeStructureError::kOwnership;
+    budget.Step(std::get<std::uint64_t>(checked));
+  }
   if (iteration && iteration->control.continuations) {
     auto checked = VerifyIteratorContinuations(iteration->body, graph, iteration->input,
         iteration->regions, iteration->ownership, *iteration->control.continuations, budget.Remaining());

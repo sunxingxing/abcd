@@ -108,7 +108,12 @@ IteratorContinuationProof Derive(
       add(node.arms->taken, scope);
       add(node.arms->fallthrough, scope);
     }
-    if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
+    if(const auto* logical=std::get_if<IteratorScopeControl>(&node.synthetic)) {
+      const auto at=std::lower_bound(legacy.iterator_scopes.begin(),legacy.iterator_scopes.end(),logical->protocol,
+          [&](const auto& a,auto b){q.Step();return a.protocol<b;});
+      q.Require(at!=legacy.iterator_scopes.end() && at->protocol==logical->protocol);
+      add(at->body,scope);
+    } else if (const auto* loop = std::get_if<LoopControl>(&node.synthetic)) {
       q.Require(loop->loop.value < legacy.skeleton.loops.size());
       add(legacy.skeleton.loops[loop->loop.value].body, loop->loop);
     } else if (id.value < legacy.units.size()) {
@@ -148,13 +153,14 @@ IteratorContinuationProof Derive(
       b = region.iteration;
   }
   IteratorContinuationProof out{g.revision, g.cfg_revision, activation};
+  out.single_pass=legacy.single_pass;
   q.Reserve(out.continuations, boundaries.size());
   std::pmr::vector<std::uint8_t> selected(boundaries.size(), 0, &q.memory);
   bool activated = false;
   for (std::uint32_t p = 0; p < boundaries.size(); ++p) {
     q.Step();
     if (!boundaries[p] || !boundaries[p]->loop_header)
-      continue;  // single-pass scopes are deferred
+      continue;  // No natural-loop exhaustion corridor in a single-pass scope.
     const auto& b = *boundaries[p];
     q.failure.protocol = IteratorProtocolId{p};
     q.failure.edge = b.exhausted;
@@ -309,7 +315,7 @@ std::variant<std::uint64_t, ForOfPlacementFailure> VerifyIteratorContinuations(
     q.Step();
     q.failure.activation = proof.activation;
     auto old =
-        BuildExceptionControl(body, g, input, regions, q.Remaining(), &owner);
+        BuildExceptionControl(body, g, input, regions, q.Remaining(), &owner,{},proof.single_pass);
     const auto* legacy = std::get_if<ExceptionControl>(&old);
     if (!legacy) {
       const auto error = std::visit(
@@ -336,6 +342,7 @@ std::variant<std::uint64_t, ForOfPlacementFailure> VerifyIteratorContinuations(
            expected.coverage.size() + expected.contexts.size() +
            expected.parents.size() + expected.dispatch.size() +
            expected.copies.size());
+    q.Require(proof.single_pass==expected.single_pass);
     q.Require(proof.revision == expected.revision &&
               proof.cfg_revision == expected.cfg_revision);
     q.Require(proof.continuations == expected.continuations,

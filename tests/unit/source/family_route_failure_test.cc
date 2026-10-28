@@ -1,6 +1,7 @@
 #include "../../../src/source/family_route_failure.h"
 
 #include <cstdlib>
+#include <tuple>
 
 namespace {
 using namespace abcd;
@@ -85,6 +86,18 @@ void Failures() {
     const PhasedControlFailure resource{PhasedMethodError::kControl, error, {91}};
     projected = FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{resource}}});
     Check(projected.failure_class == category && !projected.exception_region);
+  }
+  for (const auto [error, category, limit] : {
+      std::tuple{SinglePassError::kResourceLimit, RouteFailureClass::kMemoryLimit, CompletionPortError::kResourceLimit},
+      std::tuple{SinglePassError::kWorkLimit, RouteFailureClass::kWorkLimit, CompletionPortError::kWorkLimit}}) {
+    auto resource=located;
+    resource.completion_ports_failure=CompletionPortFailure{CompletionPortError::kTarget,{},{},ForOfIterationError::kAdvance};
+    resource.completion_ports_failure->single_pass=SinglePassFailure{error};
+    projected=FamilyRouteFailure(FamilyPrepareFailure{FamilyFileFailure{PhasedFileFailure{resource}}});
+    Check(projected.failure_class==category && projected.exception_region==exits.exception_region);
+    Check(projected.causes.View().back().domain==FailureDomain<SinglePassError>() &&
+        projected.causes.View().back().value==static_cast<unsigned>(error));
+    Check(CompletionPortLimit(*resource.completion_ports_failure)==limit);
   }
   CallPlanFailure call{CallPlanError::kReference};
   call.cause = CallReferenceError::kNotInline;

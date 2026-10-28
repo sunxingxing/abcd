@@ -376,17 +376,28 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyFinishedClassOwners(
       const auto range=*task.owners;const auto count=range.end-range.begin;
       q.Require(count<=SIZE_MAX,Error::kResourceLimit);
       std::vector<const FunctionTree*> stack;q.Reserve(stack,static_cast<std::size_t>(count));
-      std::vector<std::uint8_t> seen;q.Reserve(seen,static_cast<std::size_t>(count));seen.resize(count);
+      enum class OwnerOccupancy : std::uint8_t { kUnused, kTree, kOmission };
+      std::vector<OwnerOccupancy> seen;q.Reserve(seen,static_cast<std::size_t>(count));seen.resize(count);
       const auto add_tree=[&](const FunctionTree& tree){
         q.Step();q.Require(tree.identity==plan.identity && tree.owner.value>=range.begin && tree.owner.value<range.end,Error::kCreation);
-        const auto id=tree.owner.value-range.begin;q.Require(!seen[id] && stack.size()<count,Error::kCreation);
-        seen[id]=1;stack.push_back(&tree);
+        const auto id=tree.owner.value-range.begin;q.Require(seen[id]==OwnerOccupancy::kUnused && stack.size()<count,Error::kCreation);
+        seen[id]=OwnerOccupancy::kTree;stack.push_back(&tree);
       };
       const auto add_class=[&](const ClassTree& tree){
         q.Require(tree.DraftPrepared() && tree.identity==plan.identity,Error::kCreation);
         const auto family=[&](const PreparedFamily& p){for(const auto& member:p.Family().members)add_tree(member.tree);};
         family(*tree.constructor);for(const auto& member:tree.members){q.Step();if(member)family(*member);}
         for(const auto& definition:tree.definitions)for(const auto& member:definition.bodies){q.Step();if(member)family(*member);}
+        const auto omitted=[&](const ClassMemberOmission& gap){
+          q.Step();q.Require(gap.InputGap(),Error::kCreation);
+          if(!gap.later_body)return;
+          const auto& reserved=*gap.later_body;
+          const auto begin=reserved.first_owner->value;
+          q.Require(begin>=range.begin && begin<=range.end && reserved.reserved_owners<=range.end-begin,Error::kCreation);
+          for(std::size_t i=0;i<reserved.reserved_owners;++i){q.Step();auto& slot=seen[begin-range.begin+i];q.Require(slot==OwnerOccupancy::kUnused,Error::kCreation);slot=OwnerOccupancy::kOmission;}
+        };
+        for(const auto& gap:tree.omissions)omitted(gap);
+        for(const auto& site:tree.definitions)for(const auto& gap:site.omissions)if(gap)omitted(*gap);
         if(tree.initializer)add_tree(tree.initializer->tree);
       };
       add_class(*task.tree);
@@ -396,7 +407,7 @@ std::variant<CreatorClassCost, CreatorClassFailure> VerifyFinishedClassOwners(
           q.Require(created->definition && created->definition->creation.creator==tree->method,Error::kCreation);add_class(*created->definition);
         }}
       }
-      for(auto value:seen){q.Step();q.Require(value,Error::kCreation);}
+      for(auto value:seen){q.Step();q.Require(value!=OwnerOccupancy::kUnused,Error::kCreation);}
       next=range.end;
     }
     return q.Cost();
@@ -511,6 +522,9 @@ std::variant<CreatorClassCost, CreatorClassFailure> FinishCreatorClasses(
       for(const auto& site:definition.definitions)
         for (const auto& member : site.bodies)
           if (member) next += member->Family().OwnerCount();
+      for(const auto& gap:definition.omissions)if(gap.later_body)next+=gap.later_body->reserved_owners;
+      for(const auto& site:definition.definitions)for(const auto& gap:site.omissions)
+        if(gap && gap->later_body)next+=gap->later_body->reserved_owners;
       next+=definition.initializer.has_value();
       q.Require(next==task.owners->end,Error::kCreation);
       *task.tree=std::move(definition);

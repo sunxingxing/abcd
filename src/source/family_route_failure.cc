@@ -44,6 +44,7 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     else if constexpr (requires { error.error; }) merge(error.error);
     else if constexpr (requires { error.reason; }) merge(error.reason);
     else static_assert(requires { error.kind; });
+    if constexpr (requires { error.single_pass; }) if (error.single_pass) merge(*error.single_pass);
     if constexpr (requires { error.renewal; }) if (error.renewal) merge(*error.renewal);
     if constexpr (requires { error.completion_ports_failure; }) if (error.completion_ports_failure) merge(*error.completion_ports_failure);
     if constexpr (requires { error.throw_domain; }) if(error.throw_domain) merge(*error.throw_domain);
@@ -127,6 +128,9 @@ template<class T> RouteFailure Project(const T& error, ValueRouteError stage) {
     if constexpr (std::is_same_v<T, CallPlanFailure>) result.call_reference = error.reference;
     if constexpr (std::is_same_v<T, PhasedFlowFailure> || std::is_same_v<T, PhasedControlFailure>) {
       result.method = error.method; result.pc = error.pc; result.working_pc = error.working_pc;
+      if constexpr(std::is_same_v<T,PhasedControlFailure>)
+        if(const auto* region=std::get_if<ExceptionControlRegionFailure>(&error.cause))
+          result.exception_region=region->exception_region;
     }
     if constexpr (std::is_same_v<T, EvaluationFailure>) {
       result.evaluation = error.evaluation;
@@ -176,6 +180,7 @@ template<class T> RouteFailure ProjectWithCauses(const T& error, ValueRouteError
 }  // namespace
 RouteFailure FamilyRouteFailure(const EvaluationFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
 RouteFailure FamilyRouteFailure(const FunctionTreeFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
+RouteFailure FamilyRouteFailure(const FamilyTreeFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
 RouteFailure FamilyRouteFailure(const FamilyPrepareFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kTreeStage); }
 RouteFailure FamilyRouteFailure(const FamilyEmitFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kPrintStage); }
 RouteFailure FamilyRouteFailure(const analysis::FunctionSiteFailure& failure) { return ProjectWithCauses(failure, ValueRouteError::kContextStage); }

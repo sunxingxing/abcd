@@ -320,6 +320,7 @@ class TreeBuilder {
     if(iteration_) {
       Grow(iteration_drafts_,iteration_->loops.size());iteration_drafts_.resize(iteration_->loops.size());
       Grow(iteration_parents_,iteration_->loops.size());iteration_parents_.resize(iteration_->loops.size());
+      if(iteration_->single_pass){Grow(single_pass_statements_,iteration_->loops.size());single_pass_statements_.resize(iteration_->loops.size());}
       Grow(iteration_recorded_,graph_.ops.size());iteration_recorded_.resize(graph_.ops.size());
     }
     if(control_.switches) {
@@ -426,8 +427,8 @@ class TreeBuilder {
     }
     if(iteration_)for(std::uint32_t o=0;o<graph_.ops.size();++o){Step();if(ForOfOperation(evaluation_,{o}) && !iteration_recorded_[o]) {
       const auto l=evaluation_.for_of->operations[o]->protocol.value;
-      Require(loops_[iteration_->loops[l].loop.value].has_value(),Error::kControl);
-      tree_.operations.push_back({{o},*loops_[iteration_->loops[l].loop.value]});iteration_recorded_[o]=1;
+      Require(IterationStatement(l).has_value(),Error::kControl);
+      tree_.operations.push_back({{o},*IterationStatement(l)});iteration_recorded_[o]=1;
     }}
     Flatten();
     const auto labels = AssignTreeLabels(tree_, {bytes_, work_});
@@ -1918,6 +1919,16 @@ class TreeBuilder {
         const auto value=*forest_.for_of_exits[id.value];const auto origin=tree_.expressions[value.value].origin;
         Append(draft,Statement(close->pending.kind==analysis::PendingCompletionKind::kReturn?TreeStatement{ReturnStmt{value}}:TreeStatement{ThrowStmt{value}},origin));
       }
+      if(close->pending.kind==analysis::PendingCompletionKind::kBreak && iteration_->single_pass && iteration_->single_pass->scopes[close->protocol.value]) {
+        const auto& scope=*iteration_->single_pass->scopes[close->protocol.value];
+        if(const auto* target=std::get_if<analysis::ExceptionNodeId>(&close->pending.target);target && (*target==scope.exit||*target==scope.continuation)) {
+          Require(IterationStatement(close->protocol.value).has_value(),Error::kControl);
+          const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
+          Require(tree_.origins.size()<tree_.origins.capacity(),Error::kResourceLimit);
+          tree_.origins.emplace_back(EdgeOrigin{iteration_->closes[id.value]->edge});
+          Append(draft,Statement(BreakStmt{*IterationStatement(close->protocol.value)},origin));
+        }
+      }
       return;
     }
     const auto block = std::get<PhaseControlUnit>(unit).block;
@@ -1996,20 +2007,26 @@ class TreeBuilder {
       Append(draft, Statement(DeclarationStmt{symbol, {}}, origin));
     }
   }
+  std::optional<StmtId>& IterationStatement(std::uint32_t i) {
+    const auto loop=iteration_->loops[i].loop;
+    if(loop)return loops_[loop->value];
+    Require(iteration_->single_pass && i<single_pass_statements_.size(),Error::kControl);
+    return single_pass_statements_[i];
+  }
   void EmitIteration(analysis::OpId op,std::size_t draft) {
     const auto member=*evaluation_.for_of->operations[op.value];
     const auto& view=iteration_->loops[member.protocol.value];
     if(member.role==ForOfRole::kAcquisition) {
       const auto* target=std::get_if<SymbolId>(&forest_.bindings.values[view.binding.value]);
-      Require(target && forest_.operations[op.value] && !loops_[view.loop.value],Error::kBinding);
+      Require(target && forest_.operations[op.value] && !IterationStatement(member.protocol.value),Error::kBinding);
       const TreeOriginId origin{graph_.ops[op.value].origin.value};
       const ScopeId scope{static_cast<std::uint32_t>(tree_.scopes.size())};tree_.scopes.push_back({ScopeKind::kBlock,drafts_[draft].scope});
       const auto body=Block(scope,origin);
       const auto statement=Statement(ForOfStmt{*forest_.operations[op.value],*target,drafts_[body].statement},origin);
-      iteration_drafts_[member.protocol.value]=body;iteration_parents_[member.protocol.value]=draft;loops_[view.loop.value]=statement;
+      iteration_drafts_[member.protocol.value]=body;iteration_parents_[member.protocol.value]=draft;IterationStatement(member.protocol.value)=statement;
     }
-    Require(loops_[view.loop.value] && !iteration_recorded_[op.value],Error::kControl);
-    tree_.operations.push_back({op,*loops_[view.loop.value]});iteration_recorded_[op.value]=1;
+    Require(IterationStatement(member.protocol.value) && !iteration_recorded_[op.value],Error::kControl);
+    tree_.operations.push_back({op,*IterationStatement(member.protocol.value)});iteration_recorded_[op.value]=1;
   }
   void EmitEnumeration(analysis::OpId op, std::size_t draft) {
     const auto member = *evaluation_.for_in->operations[op.value];
@@ -2034,6 +2051,13 @@ class TreeBuilder {
   void EmitLoop(const ControlNode& region, std::size_t draft) {
     const TreeOriginId origin{static_cast<std::uint32_t>(tree_.origins.size())};
     Require(tree_.origins.size() < tree_.origins.capacity(), Error::kResourceLimit);
+    if(const auto* scope=std::get_if<IteratorScopeControl>(&region.synthetic)) {
+      const auto i=scope->protocol.value;
+      Require(iteration_ && iteration_->single_pass && i<iteration_->loops.size() && iteration_drafts_[i] && iteration_parents_[i]==draft && IterationStatement(i),Error::kControl);
+      if(!iteration_->loops[i].exhaustion_only)RequireNoCopies(iteration_->loops[i].exhausted);
+      Append(draft,*IterationStatement(i));EmitEdge(iteration_->loops[i].exhausted,draft);
+      tasks_.push_back({iteration_->loops[i].header,*iteration_drafts_[i]});return;
+    }
     if (const auto* wrapper = std::get_if<LoopControl>(&region.synthetic)) {
       const auto& loop = control_.loops[wrapper->loop.value];
       if(iteration_ && iteration_->wrappers[wrapper->loop.value]) {
@@ -2232,6 +2256,7 @@ class TreeBuilder {
   TreeBuildPurpose purpose_;
   std::optional<ForOfEmissionView> iteration_;
   std::vector<std::optional<std::size_t>> iteration_drafts_,iteration_parents_;
+  std::vector<std::optional<StmtId>> single_pass_statements_;
   std::vector<std::uint8_t> iteration_recorded_;
   std::optional<ForInEmissionView> enumeration_;
   std::vector<std::optional<std::size_t>> enumeration_drafts_, enumeration_parents_;

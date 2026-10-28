@@ -86,6 +86,7 @@ struct FileFamily {
 enum class FamilyFileError : std::uint8_t {
   kMethod, kCreation, kOccurrence, kRecursiveCreation, kResourceLimit, kWorkLimit, kUnsupportedFlow
 };
+struct FamilyTreeFailure;
 struct FamilyFileFailure {
   std::variant<FamilyFileError, FunctionFileFailure, CreationContextFailure,
       CaptureCellFailure, CaptureEvaluationFailure, BodyEmitFailure, PhasedFileFailure, PhasedCreationFailure,
@@ -103,6 +104,7 @@ struct FamilyFileFailure {
   std::variant<std::monostate, analysis::CreationError, analysis::CreationBindingError,
       abc::MethodTargetError, abc::MetadataError, abc::MethodAttributeError,
       ClassContextError, abc::LiteralFailure, abc::ClassBufferError, ClassTreeError> creation_cause;
+  std::shared_ptr<const FamilyTreeFailure> later_body;
 
 };
 // Reads the complete supported creation family, using an explicit DFS stack
