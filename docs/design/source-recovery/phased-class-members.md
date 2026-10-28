@@ -111,3 +111,30 @@ big.abc 的这 4,342 条几乎都是自引用形态（成员或静态字段里�
 类绑定的词法槽和 class-self 证明（`FindClassSelfStores`、`ClassSelfOrder`、
 `ConsumeClassSelfInitialization`），而这些目前只支持 normal creator。下一步把
 class-self 接入 `ClassCreator`，复用同一个拷贝根查询。
+
+## class-self 移植计划（2026-10-29，cc；尚未实现）
+
+自引用类（成员或静态字段中写类名）占 big.abc 被拒记录中的 4,342 条。es2abc 为这类
+类建立类绑定的词法槽（`newlexenv`、`stlexvar`），并用环境清理 handler 包住；
+record 路线依靠 class-self 证明链把它打印成原生的类内名字。以下各步把这条证明链
+接入 `ClassCreator`，逐项替换对 normal 路线的依赖，不新建平行机制：
+
+| normal 依赖 | 用途 | phased 对应 |
+|---|---|---|
+| `values.environments` | `FindClassSelfStores`：类值写入的环境槽 | `ClassCreator::CellEnvironments()`（phased 版本已存在） |
+| `values.cells` | self 槽对应的 cell 身份 | `ClassCreator::Cells()` |
+| `values.initializers.calls` | 每个 self store 对应的初始化调用 | `PhasedClassSites::initializers`（已实现） |
+| `input.Proof().locals.cells` + `prefixes_` | 未暴露的初始化前缀（读取发生在初始化前） | `ExceptionLocals` 中对应的 cell 与写入；需要新的查询 |
+| `module_capture_prefix` | 模块入口捕获的前缀 | phased 入口的 `EntryModules`（已有） |
+| 初始化器 body 的 Closed 读取 | `ClosedClassFields`、`PrivateClassReceiver` | 不变：初始化器本身仍走 normal 读取（`ReadClassInitializerFunction` 已接受 `ClassCreator`） |
+| `ConsumeClassSelfInitialization` / `BindDeferredClassSelf` | class-inner 草稿与 enclosure | 参数由 `FileFunction` 改为 `ClassCreator`；身份比较全部经 `CopyRoot` |
+
+实施顺序：
+1. `FindClassSelfStores` 接受 `ClassCreator`。store 的 class 值按拷贝根比较；
+   self 槽在 cleanup handler 上的写入，按 `AnalyzeExceptionForwarding` 视为 caller
+   出口。
+2. `ClassSelfOrder::Build` 提供 `ClassCreator` 重载，前缀查询改用 `ExceptionLocals`。
+3. `family_file` 的 `SelfOrder` 与 `creator_classes` 的 certified initializer 同时
+   接受 phased creator。
+4. 验收：fixture `static y = A.x`、方法内读 `A`（default、O0），Node 差分；cohort
+   零变化；big.abc 中 `CaptureEvaluationError:1` 的 3,264 条显著下降。
