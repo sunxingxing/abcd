@@ -1,6 +1,7 @@
 #include "abcd/analysis/exception_regions.h"
 
 #include <algorithm>
+#include <bit>
 #include <new>
 #include <stdexcept>
 
@@ -23,9 +24,9 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
   try {
     ExceptionRegions result;
     std::size_t spent = 0;
-    const auto charge = [&] {
-      if (result.work_units == budget.work) throw fail(Error::kResourceLimit);
-      ++result.work_units;
+    const auto charge = [&](std::uint64_t work = 1) {
+      if (work > budget.work - result.work_units) throw fail(Error::kResourceLimit);
+      result.work_units += work;
     };
     const auto reserve = [&]<class T>(std::vector<T>& items, std::size_t size) {
       if (size > (budget.bytes - spent) / sizeof(T)) throw fail(Error::kResourceLimit);
@@ -104,9 +105,23 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
     // handler start, never entering normally reachable code (the join). The
     // extent ends after the last instruction reached, so a handler ending in
     // throw/return stops there and a following sibling handler stays outside.
+    // A try that starts inside the handler's own code is nested in it, so its
+    // catch (reached only by an exceptional arc) belongs to the handler too.
     std::vector<std::uint32_t> mark;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> nested;  // try start, catch start
     std::uint32_t generation = 0;
-    if (inferred) { reserve(mark, flow.nodes.size()); mark.resize(flow.nodes.size()); }
+    if (inferred) {
+      reserve(mark, flow.nodes.size()); mark.resize(flow.nodes.size());
+      reserve(nested, body.tries.size());
+      for (const auto& region : body.tries) {
+        charge();
+        if (region.handler_count != 1 || region.first_handler >= body.handlers.size()) continue;
+        nested.emplace_back(boundary(region.offset.value).value,
+                            boundary(body.handlers[region.first_handler].offset.value).value);
+      }
+      std::sort(nested.begin(), nested.end());
+      charge(nested.size() * std::bit_width(nested.size()));
+    }
     const auto handler_extent = [&](InstructionId begin) -> std::uint32_t {
       ++generation;
       auto end = begin.value;
@@ -114,14 +129,24 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
       const auto start = before_of[begin.value];
       if (!start || normal[start->value]) return end;  // empty catch at the join
       mark[start->value] = generation; pending.push_back(*start);
+      const auto visit = [&](ExceptionNodeId target) {
+        if (target.value >= mark.size() || normal[target.value] || mark[target.value] == generation) return;
+        mark[target.value] = generation; pending.push_back(target);
+      };
       for (std::size_t head = 0; head < pending.size(); ++head) {
         charge(); const auto& node = flow.nodes[pending[head].value];
         end = std::max(end, node.instruction.value + 1);
+        if (node.phase == ExceptionPhase::kBefore) {
+          charge(std::bit_width(nested.size()) + 1);
+          for (auto at = std::lower_bound(nested.begin(), nested.end(), std::pair{node.instruction.value, 0U});
+               at != nested.end() && at->first == node.instruction.value; ++at) {
+            charge();
+            if (const auto entry = before_of[at->second]) visit(*entry);
+          }
+        }
         for (const auto& arc : std::span(node.successors).first(node.successor_count)) {
           charge();
-          if (arc.kind == ExceptionArcKind::kException || arc.target.value >= mark.size() ||
-              normal[arc.target.value] || mark[arc.target.value] == generation) continue;
-          mark[arc.target.value] = generation; pending.push_back(arc.target);
+          if (arc.kind != ExceptionArcKind::kException) visit(arc.target);
         }
       }
       return end;

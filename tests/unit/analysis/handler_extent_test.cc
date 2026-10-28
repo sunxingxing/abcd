@@ -64,5 +64,14 @@ int main() {
   auto tail = test::Body({G, 0, 0, 0, T, R, U, R}); Region(tail, 0, 4, 6, 0);
   const auto ended = Regions(tail);
   test::Check(ended.regions[0].handler.begin.value == 3 && ended.regions[0].handler.end.value == 5);
+  // try { global } catch { try { global } catch { undefined } } ; true ; return
+  //  0 G  4 jmp->15  6 G  10 jmp->15  12 ldundefined  13 jmp->15  15 ldtrue  16 return
+  // The inner try starts in the outer handler, so its catch belongs to it.
+  const std::initializer_list<std::uint8_t> nested{G, 0, 0, 0, J, 11, G, 0, 0, 0, J, 5, U, J, 2, T, R};
+  auto outer_recorded = test::Body(nested); Region(outer_recorded, 0, 4, 6, 9); Region(outer_recorded, 6, 4, 12, 3);
+  auto outer_inferred = test::Body(nested); Region(outer_inferred, 0, 4, 6, 0); Region(outer_inferred, 6, 4, 12, 0);
+  Same(Regions(outer_recorded), Regions(outer_inferred));
+  const auto enclosing = Regions(outer_inferred);
+  test::Check(enclosing.regions[0].handler.begin.value == 2 && enclosing.regions[0].handler.end.value == 6);
   std::cout << "handler extents ok\n";
 }
