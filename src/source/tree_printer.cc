@@ -2045,8 +2045,15 @@ class TreePrinter {
     Push(ExpressionOperand{comparison.right, {ExpressionGrammar::kExpression}});
     Append("case ");
   }
-  void StatementNode(ReturnStmt node, Statement) {
+  void StatementNode(ReturnStmt node, Statement at) {
     if (static_fields_) return;
+    if (!ProgramBody()) if (const auto value = ElidedUndefinedReturn(Tree(), at.id)) {
+      Append("return");
+      Result().expressions[value->value] = {written_, written_};
+      Result().expression_extents[value->value] = GeneratedExtent::kBoundary;
+      Append(";");
+      return;
+    }
     if (!ProgramBody()) Append("return");
     else if (script_body_ && !node.value) Append("void 0");
     Push(std::string_view(";"));
@@ -2380,7 +2387,7 @@ class TreePrinter {
       return;
     }
     if ((!Variables().object_rest_fields.empty()&&Variables().object_rest_fields[child.value]) ||
-        (!Variables().array_patterns.members.empty()&&Variables().array_patterns.members[child.value]) || Initializers().omitted[child.value] || Variables().readable.omit_snapshots[child.value] || Variables().readable.guards[child.value]==ReadableGuard::kRemove) {
+        (!Variables().array_patterns.members.empty()&&Variables().array_patterns.members[child.value]) || Initializers().omitted[child.value] || Variables().readable.omit_snapshots[child.value] || Variables().readable.omit_continues[child.value] || Variables().readable.guards[child.value]==ReadableGuard::kRemove) {
       Push(ElideStatement{child}); return;
     }
     if(at.form==BlockForm::kElseIf){Push(Statement{child,at.depth});return;}

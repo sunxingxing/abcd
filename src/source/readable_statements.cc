@@ -25,6 +25,7 @@ ReadableStatements BuildReadableStatements(const FunctionTree& tree,
   budget.Array(out.guards,count);budget.Array(out.branches,count);
   budget.Array(out.plain_breaks,count);budget.Array(out.omit_labels,count);
   budget.Array(out.omit_snapshots,count);budget.Array(out.switch_values,count);
+  budget.Array(out.omit_continues,count);
   std::vector<std::uint32_t> reads,writes;
   std::vector<std::uint8_t> captured;
   budget.Array(reads,tree.symbols.size());budget.Array(writes,tree.symbols.size());
@@ -76,6 +77,31 @@ ReadableStatements BuildReadableStatements(const FunctionTree& tree,
           original->cells->bindings[ref->cell.value].binding==read->symbol)guarded[result->expression.value]=1;
     }
   }
+  // Tail continues: walk each loop body's tail through blocks and unprojected
+  // if-branches only (never into try/switch/labels of other statements).
+  // Iterative; each statement is visited from at most one loop tail.
+  std::vector<StmtId> tails;budget.Array(tails,count);
+  for(std::size_t i=0;i<count;++i){budget.Step();
+    const auto& node=tree.statements[i].statement;
+    std::optional<StmtId> body;
+    if(const auto* l=std::get_if<LoopStmt>(&node))body=l->body;
+    else if(const auto* f=std::get_if<ForInStmt>(&node))body=f->body;
+    else if(const auto* f=std::get_if<ForOfStmt>(&node))body=f->body;
+    if(!body)continue;
+    const StmtId loop{static_cast<std::uint32_t>(i)};
+    std::size_t size=0;tails[size++]=*body;
+    while(size){budget.Step();const auto at=tails[--size];
+      if(Projected(at,bindings,nullish,loops))continue;
+      const auto& tail=tree.statements[at.value].statement;
+      if(const auto* c=std::get_if<ContinueStmt>(&tail)){if(c->target==loop)out.omit_continues[at.value]=1;}
+      else if(const auto* block=std::get_if<BlockStmt>(&tail)){
+        if(block->child_count)tails[size++]=tree.children[block->first_child+block->child_count-1];
+      } else if(const auto* branch=std::get_if<IfStmt>(&tail)){
+        tails[size++]=branch->consequent;
+        if(branch->alternate){RequireTree(size<tails.size(),TreeStructureError::kOwnership);tails[size++]=*branch->alternate;}
+      }
+    }
+  }
   for(std::size_t i=0;i<count;++i){
     budget.Step();const auto id=StmtId{static_cast<std::uint32_t>(i)};
     const auto* b=std::get_if<BlockStmt>(&tree.statements[i].statement);
@@ -84,7 +110,8 @@ ReadableStatements BuildReadableStatements(const FunctionTree& tree,
       bool clear=true;
       for(std::uint32_t j=0;j<b->child_count;++j){budget.Step();
         const auto child=tree.children[b->first_child+j];
-        clear &= bindings.omitted[child.value] || DiscardedInvocationRead(tree,child).has_value();
+        clear &= bindings.omitted[child.value] || out.omit_continues[child.value] ||
+            DiscardedInvocationRead(tree,child).has_value();
       }
       empty[i]=clear;
     }

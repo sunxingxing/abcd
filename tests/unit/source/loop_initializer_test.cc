@@ -262,6 +262,7 @@ std::uint64_t Native(unsigned form, unsigned count, bool reverse, bool emit) {
     }
   }
   for (unsigned i = 0; i < tree.statements.size(); ++i) if (const auto read = DiscardedInvocationRead(tree, StmtId{i})) elided[read->value] = true;
+  for (unsigned i = 0; i < tree.statements.size(); ++i) if (const auto value = ElidedUndefinedReturn(tree, StmtId{i})) elided[value->value] = true;
   for (unsigned i = 0; i < ranges.expressions.size(); ++i) {
     const auto range = ranges.expressions[i];
     test::Check(range.begin <= range.end && range.end <= source.str().size());

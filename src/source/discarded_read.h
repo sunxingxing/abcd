@@ -21,5 +21,17 @@ inline std::optional<ExprId> DiscardedInvocationRead(const FunctionTree& tree, S
   if (kind != BindingKind::kParameter && kind != BindingKind::kFunctionSelf) return {};
   return statement->expression;
 }
+// `return void 0;` prints as `return;`: both complete with undefined. Not in
+// async generators, where `return expr` performs Await(expr) (one more job)
+// and a bare `return;` does not. The literal keeps its own zero-width source
+// position. Program bodies print their completion differently.
+inline std::optional<ExprId> ElidedUndefinedReturn(const FunctionTree& tree, StmtId id) {
+  if (id.value >= tree.statements.size() || tree.callable == CallableKind::kAsyncGenerator) return {};
+  const auto* returned = std::get_if<ReturnStmt>(&tree.statements[id.value].statement);
+  if (!returned || !returned->value || returned->value->value >= tree.expressions.size()) return {};
+  const auto* literal = std::get_if<TreeLiteral>(&tree.expressions[returned->value->value].expression);
+  if (!literal || !std::holds_alternative<UndefinedLiteral>(*literal)) return {};
+  return *returned->value;
+}
 }
 #endif

@@ -63,7 +63,7 @@ try {
     assert.equal(spawnSync(process.execPath,['--check',file],{encoding:'utf8'}).status,0);
     const actual=callback(text);
     assert.deepEqual(observe(actual),expected,name);
-    const mutation=actual.replace(/return void 0;/g,'void 0;');
+    const mutation=actual.replace(/return( void 0)?;/g,'void 0;');
     assert.notEqual(mutation,actual);assert.notDeepEqual(observe(mutation),expected);
   }
   console.log('o38/13920: '+expected.length+' original/emitted callback scenarios per flag set');

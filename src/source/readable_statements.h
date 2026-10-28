@@ -12,6 +12,9 @@ struct ReadableStatements {
   std::vector<ReadableGuard> guards;
   std::vector<ReadableBranch> branches;
   std::vector<std::uint8_t> plain_breaks, omit_labels, omit_snapshots;
+  // `continue` in tail position of its own loop's body: equivalent to falling
+  // off the end of the body (both run the update/test, then the next iteration).
+  std::vector<std::uint8_t> omit_continues;
   std::vector<std::optional<ExprId>> switch_values;
   bool operator==(const ReadableStatements&) const = default;
 };

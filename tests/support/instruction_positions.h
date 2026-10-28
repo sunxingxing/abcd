@@ -50,10 +50,11 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
   }
   const auto completion = positions.fragment == FunctionFragment::kStaticFields ||
       positions.fragment == FunctionFragment::kImplicitConstructor ? std::nullopt : ImplicitTailCompletion(tree);
-  std::vector<std::optional<StmtId>> discarded(tree.expressions.size());
+  std::vector<std::optional<StmtId>> discarded(tree.expressions.size()), returns(tree.expressions.size());
   for (std::size_t i = 0; i < tree.statements.size(); ++i) {
     const StmtId statement{static_cast<std::uint32_t>(i)};
     if (const auto read = DiscardedInvocationRead(tree, statement)) discarded[read->value] = statement;
+    if (const auto value = ElidedUndefinedReturn(tree, statement)) returns[value->value] = statement;
   }
   check(positions.identity == tree.identity && positions.method == tree.method &&
       positions.value_revision == tree.value_revision && positions.cfg_revision == tree.cfg_revision &&
@@ -112,6 +113,14 @@ inline void CheckInstructionPositions(const source::FunctionTree& tree,
             const auto read = *DiscardedInvocationRead(tree, *omitted_read);
             check(owner.begin <= range.begin && range.begin == range.end && range.end <= owner.end &&
                 range == positions.statements[omitted_read->value] && range == positions.expressions[read.value]);
+            return;
+          }
+          if constexpr (std::is_same_v<T, ExprId>) if (const auto owner_statement = returns[target.value];
+              owner_statement && positions.fragment != FunctionFragment::kModuleBody) {
+            // `return void 0;` prints `return;`: the literal keeps one zero-width
+            // boundary inside its own return statement.
+            const auto statement = positions.statements[owner_statement->value];
+            check(range.begin == range.end && statement.begin <= range.begin && range.end <= statement.end);
             return;
           }
           if (tail) {
