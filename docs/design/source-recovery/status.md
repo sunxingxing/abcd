@@ -5,6 +5,23 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 后代与 phased creator 中的派生类（2026-10-29，cc）
+
+- `descendant_classes` 原先对后代 creator 中的派生类（`extends`）一律拒绝
+  （`kClassHeritage`），phased 模块入口里的类也走这条路径。family tree 本来就对每个
+  成员运行 `ProjectDerivedConstructor`，TreeFlow 与 RecoveryFlow 也照常校验，因此
+  删除这一刀切的拒绝即可。证明责任仍在原有的派生构造证明与校验器里。
+- `class extends Base {}`（参数作 heritage，隐式构造）现在停在隐式构造的 entry ABI
+  （`FunctionAbiError::kEntry`），`descendant_class_refusals` 的预期随之更新。
+- 新发现的独立缺口（未修复）：模块入口有真实 try 时，若模块级类被子函数捕获，会报
+  `FamilyEnclosureError::kMissingContext`；这一点 committed 构建同样存在。
+- 证据：
+  - fixture `descendant_derived`（后代 creator 与 phased 入口两份源码，default 与 O0）
+    Node 差分各 9 个用例（原型链、字段、方法、base 构造抛异常），植入的变异能被检出；
+  - cohort `csr107/def` 零变化；
+  - big.abc 完成 1,522 → **1,527**，零回退、零文本变化，语法错误为 0；
+  - 全量 CTest：992 项，失败的 34 项都在已知清单内。
+
 ## 待用户决定：箭头函数内的 `super()`（2026-10-29，cc 调查）
 
 - `SUPERCALLARROWRANGE`（及其 wide 形式）是 Unmeasured。运行时

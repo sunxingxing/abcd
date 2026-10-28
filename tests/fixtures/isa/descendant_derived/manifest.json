@@ -1,0 +1,79 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Derived classes created by descendant creators and by a phased module entry (default and O0).",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/descendant_derived/derived.js",
+   "path": "tests/fixtures/isa/descendant_derived/derived-default.abc",
+   "sha256": "fa96fe906f34b3ec1ee85bde2a450f4f5ecafdf942b1208a6742456e31813ba2",
+   "source_sha256": "a4c6d69916a314bed23f78fa7fc4be7e29287ca2fde0616a7b5318f856653405",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=descendant_derived",
+    "--source-file=derived.js",
+    "--output=tests/fixtures/isa/descendant_derived/derived-default.abc",
+    "tests/fixtures/isa/descendant_derived/derived.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/descendant_derived/derived.js",
+   "path": "tests/fixtures/isa/descendant_derived/derived-O0.abc",
+   "sha256": "a6ceac97899bdf7162ce17bba265e676ca6438ae90920c0dd3e11c7ff8682e10",
+   "source_sha256": "a4c6d69916a314bed23f78fa7fc4be7e29287ca2fde0616a7b5318f856653405",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=descendant_derived",
+    "--source-file=derived.js",
+    "--output=tests/fixtures/isa/descendant_derived/derived-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/descendant_derived/derived.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/descendant_derived/entry.js",
+   "path": "tests/fixtures/isa/descendant_derived/entry-default.abc",
+   "sha256": "996a07875c08a71ef1a8efbd9cb27708af8cb82cb08e4233a88e2f788d70e10c",
+   "source_sha256": "5a80c58a929acc91d78e1677e8e9ceb4970f04c98e246e09b5d9ff7e170f117b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=descendant_derived",
+    "--source-file=entry.js",
+    "--output=tests/fixtures/isa/descendant_derived/entry-default.abc",
+    "tests/fixtures/isa/descendant_derived/entry.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/descendant_derived/entry.js",
+   "path": "tests/fixtures/isa/descendant_derived/entry-O0.abc",
+   "sha256": "63516bf7d2aefd9d15c7699df2d087c8b3122424372545f1da635acd10244a06",
+   "source_sha256": "5a80c58a929acc91d78e1677e8e9ceb4970f04c98e246e09b5d9ff7e170f117b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=descendant_derived",
+    "--source-file=entry.js",
+    "--output=tests/fixtures/isa/descendant_derived/entry-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/descendant_derived/entry.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

@@ -148,7 +148,6 @@ class Preparation {
       auto plan=Take<CreatorClasses>(DiscoverCreatorClasses(input,left));Account(plan);
       Account(Take<CreatorClassCost>(VerifyCreatorClasses(input,plan,left)));
       for(const auto& task:plan.tasks){Step();operation=task.operation;
-        Require(task.tree->callable!=CallableKind::kDerivedConstructor,FamilyCreationCheck::kClassHeritage);
       }
       if(next>UINT32_MAX)throw FamilyTreeFailure{owner,FamilyTreeError::kResourceLimit};
       Account(Take<CreatorClassCost>(PrepareCreatorClasses(input,plan,globals,{static_cast<std::uint32_t>(next)},recovery,left,ClassRootBinding::kRequirements)));
