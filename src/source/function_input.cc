@@ -222,16 +222,15 @@ std::variant<FunctionInput, FunctionInputFailure> FunctionInput::Build(
     std::vector<InputModuleRead> module_reads;
     if (module_input || inherited) {
       const auto guarded = [&](std::size_t i) {
-        if (i + 1 >= input->instructions.size()) return false;
-        const auto* guard = std::get_if<analysis::HoleGuard>(&input->instructions[i + 1].operation);
-        if (!guard || !std::holds_alternative<analysis::Accumulator>(guard->value) ||
-            !std::holds_alternative<analysis::HoleNameSlot>(guard->name)) return false;
         quota.Step(std::bit_width(input->flow.blocks.size()) + 1);
         const auto found = std::upper_bound(input->flow.blocks.begin(), input->flow.blocks.end(), i,
             [](auto site, const auto& block) { return site < block.first_instruction; });
         if (found == input->flow.blocks.begin()) return false;
         const auto& block = *std::prev(found);
-        return i + 1 < std::size_t(block.first_instruction) + block.instruction_count;
+        const auto& code = input->instructions;
+        return analysis::GuardedAfterCopies(i, std::size_t(block.first_instruction) + block.instruction_count,
+            [&](std::size_t k) { quota.Step(); return analysis::AccumulatorCopy(std::get_if<analysis::ScalarAssignment>(&code[k].operation)); },
+            [&](std::size_t k) { return analysis::AccumulatorGuard(std::get_if<analysis::HoleGuard>(&code[k].operation)); });
       };
       std::size_t count = 0;
       for (std::size_t i = 0; i < input->instructions.size(); ++i) {

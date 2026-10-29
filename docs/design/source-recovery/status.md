@@ -5,6 +5,27 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## guard 前带寄存器拷贝的模块读取：创建时已初始化的前提（2026-10-29，cc）
+
+- 子函数从父函数继承"创建时已初始化"的 local 模块 slot。这类 load 原本以 `kInitialized`
+  直接认证，只排除"紧邻 guard"的情形。但 es2abc 常生成
+  `ldlocalmodulevar; sta vN; throw.undefinedifholewithname`：中间的拷贝让 guard 不再
+  紧邻，load 被当作已初始化，guard 变成孤立 op，在求值阶段以
+  `EvaluationShapeError::kMissingShape` 拒绝（big.abc 3,517 条）。
+- 统一 helper `GuardedAfterCopies`（`hole_guard.h`）跳过纯的 acc→寄存器拷贝，与 normal
+  路线、exception 路线的 module guard 配对规则一致。三处共用：normal 子函数
+  （`function_input`）、phased 子函数（`phased_function_file`）、phased 入口
+  （`ProveEntryModuleLoads`）。把 load 判为有 guard 只会撤销"已初始化"前提，然后由
+  guard 配对证明或拒绝，因此判断偏宽也是安全的。
+- 基线脚本同时统计打印阶段拒绝的 `source_causes`（之前显示为 "none"）。
+- 证据：
+  - fixture `module_guard_copies`（default、O0）Node 差分；committed 构建拒绝其 default 版本；
+  - `isa_recovery` 的 `module-sendable-local-default` 由拒绝变为完整，Node oracle 通过；
+  - cohort `csr109/def` 零变化；全量 CTest 994 项，除上述 fixture 外没有新失败；
+  - big.abc 1,535 → **1,608**（+73），零回退、零文本变化，语法错误为 0。新的主要原因之一
+    是打印阶段的 `TreePrintError::kUnsupportedContext`（2,913 条，箭头函数捕获模块级
+    `this`）。
+
 ## 函数提升后写入模块绑定（2026-10-29，cc）
 
 - 被提升的函数（`export function setX(v) { x = v; }`）在 `let x` 初始化之前就已创建，

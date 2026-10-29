@@ -381,8 +381,9 @@ ProveEntryModuleLoads(const ExceptionFlow& flow, SemanticBudget budget) {
       const auto instruction = flow.nodes[state.instruction.value].instruction.value;
       const auto* load = std::get_if<ModuleLoad>(&flow.instructions[instruction].operation);
       if (!load || !state.slots.Contains(load->slot)) continue;
-      if (instruction + 1 < flow.instructions.size() &&
-          std::holds_alternative<HoleGuard>(flow.instructions[instruction + 1].operation)) continue;
+      if (GuardedAfterCopies(instruction, flow.instructions.size(),
+          [&](std::size_t k) { return AccumulatorCopy(std::get_if<ScalarAssignment>(&flow.instructions[k].operation)); },
+          [&](std::size_t k) { return AccumulatorGuard(std::get_if<HoleGuard>(&flow.instructions[k].operation)); })) continue;
       facts.push_back({InstructionId{instruction}});
     }
     std::sort(facts.begin(), facts.end(), [](auto a, auto b) { return a.instruction < b.instruction; });

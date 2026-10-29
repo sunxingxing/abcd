@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Module reads copied to a register before their Hole guard in functions created after initialization.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/module_guard_copies/copies.js",
+   "path": "tests/fixtures/isa/module_guard_copies/copies-default.abc",
+   "sha256": "e9f2a888c7d6b3bb85e148667ee77298405c6a759a92346186b39842950633ce",
+   "source_sha256": "a3d767a34d5ade1cc505221fd0ed202281f9089b2807126e5c501bc8d69f56b4",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=module_guard_copies",
+    "--source-file=copies.js",
+    "--output=tests/fixtures/isa/module_guard_copies/copies-default.abc",
+    "tests/fixtures/isa/module_guard_copies/copies.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/module_guard_copies/copies.js",
+   "path": "tests/fixtures/isa/module_guard_copies/copies-O0.abc",
+   "sha256": "0d50e9d6da4869680c8bce999c68517aff60ec5a0a39cda266751fcb7465461b",
+   "source_sha256": "a3d767a34d5ade1cc505221fd0ed202281f9089b2807126e5c501bc8d69f56b4",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=module_guard_copies",
+    "--source-file=copies.js",
+    "--output=tests/fixtures/isa/module_guard_copies/copies-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/module_guard_copies/copies.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

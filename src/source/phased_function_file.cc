@@ -261,8 +261,15 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
         const auto* load = std::get_if<analysis::ModuleLoad>(&lifted);
         if (!load || load->space != analysis::ModuleSpace::kLocal || !entry_modules.Contains(load->slot))
           return std::optional<analysis::ModuleSlot>{};
-        if (i + 1 < body.instructions.size() && std::holds_alternative<analysis::HoleGuard>(
-            analysis::LiftHoleInstruction(body.instructions[i + 1].decoded, frame.registers)))
+        if (analysis::GuardedAfterCopies(i, body.instructions.size(),
+            [&](std::size_t k) {
+              const auto copy = analysis::LiftScalarInstruction(body.instructions[k].decoded, frame.registers);
+              return analysis::AccumulatorCopy(std::get_if<analysis::ScalarAssignment>(&copy));
+            },
+            [&](std::size_t k) {
+              const auto guard = analysis::LiftHoleInstruction(body.instructions[k].decoded, frame.registers);
+              return analysis::AccumulatorGuard(std::get_if<analysis::HoleGuard>(&guard));
+            }))
           return std::optional<analysis::ModuleSlot>{};
         return std::optional{load->slot};
       };

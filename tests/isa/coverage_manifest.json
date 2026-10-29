@@ -11199,6 +11199,10 @@
       "producer": "tests/isa/guarded_module_writes_test.py"
     },
     {
+      "test": "isa_module_guard_copies_source_test",
+      "producer": "tests/isa/module_guard_copies_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },

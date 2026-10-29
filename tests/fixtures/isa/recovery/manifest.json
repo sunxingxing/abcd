@@ -547,25 +547,8 @@
     },
     {
       "recovery": {
-        "status": 3,
-        "causes": [
-          {
-            "domain": "abcd::source::EvaluationError",
-            "value": 2
-          },
-          {
-            "domain": "abcd::source::EvaluationObligation",
-            "value": 0
-          },
-          {
-            "domain": "abcd::source::LiteralError",
-            "value": 5
-          },
-          {
-            "domain": "abcd::source::EvaluationInputCheck",
-            "value": 4
-          }
-        ]
+        "status": 0,
+        "causes": []
       },
       "path": "module-sendable-local-default.abc",
       "sha256": "b041d9f987fd10cc8192e75c714730f2f847ab33562ea586669e158c5846fc97",
