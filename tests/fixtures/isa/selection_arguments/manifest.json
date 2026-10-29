@@ -8,8 +8,8 @@
   {
    "source": "tests/fixtures/isa/selection_arguments/arguments.js",
    "path": "tests/fixtures/isa/selection_arguments/arguments-default.abc",
-   "sha256": "b727cc220dcb56ababe08d7cd556ad60751efe34409ccd2fe11e917a2e0db99f",
-   "source_sha256": "b39cd9868cb1803a6a420e4d06140617dea64254e55b41705e0889015235630e",
+   "sha256": "54057426be5fd24f5fb17e754b5579e01da43745783e6ad7ff2347d75e61d43b",
+   "source_sha256": "6c4152390effe85953d4b499384acca4a61c48d2f9e361762dfe23f352b30cea",
    "command": [
     "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
     "--module",
@@ -25,8 +25,8 @@
   {
    "source": "tests/fixtures/isa/selection_arguments/arguments.js",
    "path": "tests/fixtures/isa/selection_arguments/arguments-O0.abc",
-   "sha256": "405d43cd482933d6a8878cd21b6f2b26d4d047380aec96eb94fb538726b46761",
-   "source_sha256": "b39cd9868cb1803a6a420e4d06140617dea64254e55b41705e0889015235630e",
+   "sha256": "1e9d309eb7d631d47f9bc6952a2defab963bfdefb57f7fdacf8cb303e6715ecd",
+   "source_sha256": "6c4152390effe85953d4b499384acca4a61c48d2f9e361762dfe23f352b30cea",
    "command": [
     "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
     "--module",

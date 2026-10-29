@@ -21,11 +21,39 @@ struct ReferenceArguments {
     }
     // Existing eager inline edges run forward in operation order. Propagate
     // the enclosing argument once, without per-selection ancestor walks.
+    Propagate(graph, evaluation, budget);
+    // An object literal argument owns its field definitions, which the
+    // literal plan places as initializers rather than inline consumers.
+    // Mark them, then propagate once more into their field values.
+    if (!evaluation.literals) return;
+    bool marked = false;
+    for (const auto& object : evaluation.literals->objects) {
+      budget.Step();
+      // The allocation may be a snapshot crossing the selection; its actual
+      // value uses decide whether it is an argument of an unmet Reference.
+      const auto& result = graph.ops[object.allocation.value].result;
+      if (!result) continue;
+      bool argument = false;
+      for (auto use = graph.values[result->value].first_use; use && !argument; use = graph.uses[use->value].next) {
+        budget.Step();
+        argument = graph.uses[use->value].life == analysis::ValueLife::kLive && Contains(graph.uses[use->value]);
+      }
+      if (!argument) continue;
+      for (std::uint32_t d = 0; d < object.count; ++d) {
+        budget.Step();
+        const auto definition = evaluation.literals->definitions[object.first + d].value;
+        if (!arguments[definition]) { arguments[definition] = 1; marked = true; }
+      }
+    }
+    if (marked) Propagate(graph, evaluation, budget);
+  }
+  void Propagate(const analysis::ValueProgram& graph, const EvaluationPlan& evaluation,
+      TreeCheckBudget& budget) {
     for (std::size_t i = graph.ops.size(); i-- > 0;) {
       budget.Step();
       const auto placement = BeforeLogicalFusion(graph, evaluation, i);
       if (placement.kind != EvaluationKind::kInline || !placement.consumer) continue;
-      arguments[i] = Contains(graph.uses[placement.consumer->value]);
+      arguments[i] = arguments[i] || Contains(graph.uses[placement.consumer->value]);
     }
   }
   bool Contains(const analysis::OperandUse& use) const {

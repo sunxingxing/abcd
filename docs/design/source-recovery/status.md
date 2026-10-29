@@ -5,6 +5,22 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 对象字面量实参字段中的条件值（2026-10-29，cc；CallPlanError 阻塞）
+
+- `o.play(a, {iterations: v ?? 1, delay: a.delay})`：裸边分支只在合并值属于未满足成员
+  Reference 的实参时才被接受，而 `ReferenceArguments` 只沿内联消费者链传播。对象字面量的字段
+  定义由字面量计划放成 initializer，不是内联消费者，所以字段里的条件值不被视为实参。
+- 修复：第一次传播之后，凡是分配结果的某个实际使用属于这类实参的对象字面量（分配可能是跨越
+  选择区域的快照，所以看值的使用而不是 placement），就把它的字段定义标为实参，再传播一次到
+  字段值。
+- 仍然拒绝：`{left: (v ?? 0) * a}` 这类字段值是算术表达式的情况，停在后面的逻辑覆盖检查。
+- 证据：
+  - `selection_arguments` fixture 增加字面量实参用例（getter 顺序、字段顺序），两种构建 Node
+    差分通过，植入的变异能被检出；
+  - big.abc 8,367 → **8,440**（regression 构建，316 s，峰值 RSS 233 MB），零回退、零文本变化，
+    新增输出全部通过语法检查；620 用例 cohort `csr121/def` 与 `csr120/def` 逐字节一致；全量 ctest
+    1005 项，失败 34 项，全部属于已知失败清单。
+
 ## async 完成协议：经寄存器拷贝的 promise（2026-10-29，cc；AsyncCompletionCheck 阻塞）
 
 - `AsyncCompletionCheck::kPromiseIdentity`（约 640 条）：优化构建在 try 开始处把 promise 拷贝到

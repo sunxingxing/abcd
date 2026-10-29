@@ -29,7 +29,7 @@ class SelectionArguments(unittest.TestCase):
     emitted = out / record['source']
     subprocess.run(['node', '--check', emitted], check=True, capture_output=True)
     observed = json.loads(subprocess.check_output(['node', HARNESS, source, emitted], text=True))
-    self.assertGreaterEqual(observed['cases'], 11)
+    self.assertGreaterEqual(observed['cases'], 13)
     record_node(abc, out, source, __file__, observed['cases'], BUILD / 'abc_structure', dependencies=[HARNESS])
 
 if __name__ == '__main__': unittest.main()
