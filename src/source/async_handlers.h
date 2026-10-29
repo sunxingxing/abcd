@@ -20,8 +20,11 @@ bool HasAsyncCompletionCatch(const abc::MethodBody& body,
 // Retains only user regions/handlers, mapping exact retained boundaries or a
 // removed RESOLVE immediately preceding its retained RETURN. The removed outer
 // handler entry maps to the new code end, never to a user instruction.
+// removed_copies (sorted original PCs) are protocol-only promise copies; a
+// boundary at one moves to the following original instruction.
 std::optional<FunctionEmitError> RebaseAsyncHandlers(
     const abc::MethodBody& original, std::span<const abc::CodeOffset> origins,
-    abc::MethodBody& source, std::size_t bytes, AsyncCompletionEvidence* evidence = nullptr);
+    abc::MethodBody& source, std::size_t bytes, AsyncCompletionEvidence* evidence = nullptr,
+    std::span<const abc::CodeOffset> removed_copies = {});
 }  // namespace abcd::source
 #endif

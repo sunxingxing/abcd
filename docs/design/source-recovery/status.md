@@ -5,6 +5,25 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## async 完成协议：经寄存器拷贝的 promise（2026-10-29，cc；AsyncCompletionCheck 阻塞）
+
+- `AsyncCompletionCheck::kPromiseIdentity`（约 640 条）：优化构建在 try 开始处把 promise 拷贝到
+  另一个寄存器（`mov v1, v0`），外层完成 catch 用这个拷贝 reject（`asyncfunctionreject v1`）。
+  原有检查要求 resolve/reject 的寄存器就是 promise 寄存器。
+- 修复：`PromiseCopy` 证明拷贝在 catch 可能进入的每个点上都持有 promise：它是完成 catch 保护区
+  的第一条指令；区内每次写它都再次从 promise 拷贝，除这些拷贝外区内没有任何指令读它；promise
+  本身在区内不被改写；普通控制流只从区的起点进入。于是这些拷贝属于协议，与 resolve 一起从规范化
+  后的函数体中删除；指向被删拷贝的分支（`RebaseBranches`）和 try/handler 边界
+  （`RebaseAsyncHandlers`）都移到下一条原始指令。
+- 证据：
+  - 新 fixture `promise_copy`（default、O0）Node 差分：resolve、内层 catch、try 之外的 reject、
+    try 边界上的拷贝；植入的变异能被检出；
+  - big.abc 8,216 → **8,367**（regression 构建，309 s，峰值 RSS 237 MB），零回退、零文本变化，
+    新增输出全部通过语法检查；620 用例 cohort `csr120/def` 与 `csr119/def` 逐字节一致；全量 ctest
+    1005 项，失败 34 项，全部属于已知失败清单。
+- 后续：更一般的形式（拷贝链经过多个寄存器、寄存器被复用、resolve 与 return 之间也有拷贝）需要
+  must/may 值分析；这些函数随后停在 await 协议内部插入的 spill 拷贝上，单独处理。
+
 ## phased 路由上的条件值与逻辑值（2026-10-29，cc；CallPlanError 阻塞）
 
 - 剩余的 `CallPlanError::kReference` 中很大一部分在 phased 路由上（async 函数、带 try 的函数）：

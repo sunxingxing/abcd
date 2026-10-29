@@ -50,7 +50,8 @@ bool HasAsyncCompletionCatch(const abc::MethodBody& body,
 
 std::optional<FunctionEmitError> RebaseAsyncHandlers(
     const abc::MethodBody& original, std::span<const abc::CodeOffset> origins,
-    abc::MethodBody& source, std::size_t bytes, AsyncCompletionEvidence* evidence) {
+    abc::MethodBody& source, std::size_t bytes, AsyncCompletionEvidence* evidence,
+    std::span<const abc::CodeOffset> removed_copies) {
   const auto failure = [&](AsyncCompletionCheck check, std::optional<abc::CodeOffset> pc = {},
       std::optional<abc::CodeOffset> working_pc = {}) {
     if(evidence) { *evidence = {}; evidence->check = check;
@@ -65,6 +66,12 @@ std::optional<FunctionEmitError> RebaseAsyncHandlers(
   if (source_end > std::numeric_limits<std::uint32_t>::max())
     return failure(AsyncCompletionCheck::kHandlerRange, origins.back(), source.instructions.back().offset);
   const auto boundary = [&](std::uint64_t pc) -> std::optional<abc::CodeOffset> {
+    for (auto at = std::lower_bound(original.instructions.begin(), original.instructions.end(), pc,
+             [](const auto& site, std::uint64_t value) { return site.offset.value < value; });
+         at != original.instructions.end() && at->offset.value == pc &&
+         std::binary_search(removed_copies.begin(), removed_copies.end(), at->offset) &&
+         at + 1 != original.instructions.end(); ++at)
+      pc = (at + 1)->offset.value;
     if (pc == original.handlers.back().offset.value)
       return abc::CodeOffset{static_cast<std::uint32_t>(source_end)};
     const auto retained = std::lower_bound(origins.begin(), origins.end(), pc,

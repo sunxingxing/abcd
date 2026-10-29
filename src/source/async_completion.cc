@@ -6,6 +6,8 @@
 #include <climits>
 #include <limits>
 #include <new>
+#include <optional>
+#include <span>
 #include <stdexcept>
 
 #include "abcd/abc/control_transfer.h"
@@ -71,12 +73,61 @@ bool TouchesRegister(const abc::BodyInstruction& instruction,
   }
   return false;
 }
+// The optimizer may settle through a register copy of the promise. Accept it
+// only when the copy is the first instruction of the completion catch's
+// protected range, every write to it there copies the promise again, the
+// promise itself is never rewritten there, and ordinary control enters the
+// range only at its start. The copy then holds the promise at every site the
+// catch can be entered from, and at the final resolve.
+bool IsPromiseCopy(const abc::BodyInstruction& site, abc::RegisterId alias,
+                   abc::RegisterId promise, std::uint32_t registers) {
+  const auto lifted = analysis::LiftScalarInstruction(site.decoded, registers);
+  const auto* assignment = std::get_if<analysis::ScalarAssignment>(&lifted);
+  const auto* target = assignment ? std::get_if<abc::RegisterId>(&assignment->destination) : nullptr;
+  const auto* value = assignment ? std::get_if<analysis::ScalarValue>(&assignment->expression) : nullptr;
+  const auto* source = value ? std::get_if<abc::RegisterId>(value) : nullptr;
+  return target && source && *target == alias && *source == promise;
+}
+bool PromiseCopy(std::span<const abc::BodyInstruction> sites, std::size_t begin,
+                 std::size_t end, abc::RegisterId alias, abc::RegisterId promise,
+                 std::uint32_t registers) {
+  const auto copy = [&](const abc::BodyInstruction& site) {
+    return IsPromiseCopy(site, alias, promise, registers);
+  };
+  if (alias == promise || begin >= end || end >= sites.size() || !copy(sites[begin])) return false;
+  for (auto i = begin; i < end; ++i) {
+    // The copy is private to the protocol: nothing else in the range reads it.
+    if (copy(sites[i])) continue;
+    if (TouchesRegister(sites[i], alias, registers)) return false;
+    const auto effect = analysis::LiftRegisterEffect(sites[i].decoded, registers);
+    const auto* registers_effect = std::get_if<analysis::RegisterEffect>(&effect);
+    if (!registers_effect) return false;
+    if (!registers_effect->write) continue;
+    const auto* written = std::get_if<abc::RegisterId>(&*registers_effect->write);
+    if (written && *written == promise) return false;
+  }
+  for (std::size_t i = 0; i < sites.size(); ++i) {
+    if (!sites[i].branch_target || (i >= begin && i < end)) continue;
+    const auto target = sites[i].branch_target->value;
+    if (target > sites[begin].offset.value && target < sites[end].offset.value) return false;
+  }
+  return true;
+}
+// removed_copy marks protocol-only promise copies removed from the body; a
+// branch to one continues at the next original instruction.
+template <class RemovedCopy>
 bool RebaseBranches(const abc::MethodBody& original,
                     std::span<const abc::CodeOffset> origins,
-                    abc::MethodBody& source, AsyncCompletionEvidence& evidence) {
+                    abc::MethodBody& source, AsyncCompletionEvidence& evidence,
+                    const RemovedCopy& removed_copy) {
   for (auto& site : source.instructions) {
     if (!site.branch_target) continue;
-    const auto target = *site.branch_target;
+    auto target = *site.branch_target;
+    for (auto at = std::lower_bound(original.instructions.begin(), original.instructions.end(), target,
+             [](const auto& instruction, auto pc) { return instruction.offset < pc; });
+         at != original.instructions.end() && at->offset == target && removed_copy(*at) &&
+         at + 1 != original.instructions.end(); ++at)
+      target = (at + 1)->offset;
     evidence.check = AsyncCompletionCheck::kBranchRebase;
     evidence.location.working_pc = site.offset;
     const auto ordinal = static_cast<std::size_t>(&site - source.instructions.data());
@@ -277,7 +328,18 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
   if (!IsReturn(sites[reject_at + 1])) return fail(Check::kRejectReturn, reject_at + 1);
   if (!IsRegister(sites[handler - 2], Opcode::kASYNCFUNCTIONRESOLVE_V8, &resolved)) return fail(Check::kResolve, handler - 2);
   if (!IsReturn(sites[handler - 1])) return fail(Check::kResolveReturn, handler - 1);
-  if (resolved != promise || rejected != promise) return fail(Check::kPromiseIdentity, handler);
+  // A proven private copy of the promise is protocol state: its copies are
+  // removed with the settlement instead of reaching the source body.
+  std::optional<abc::RegisterId> alias;
+  const auto settles = [&](abc::RegisterId value) {
+    if (value == promise) return true;
+    if ((alias && *alias != value) || !PromiseCopy(sites, enter + 2, handler, value, promise, frame.registers)) return false;
+    alias = value; return true;
+  };
+  if (!settles(resolved) || !settles(rejected)) return fail(Check::kPromiseIdentity, handler);
+  const auto alias_copy = [&](const abc::BodyInstruction& site) {
+    return alias && IsPromiseCopy(site, *alias, promise, frame.registers);
+  };
   auto retained = handler - 3;
   const auto site_bytes = sizeof(abc::BodyInstruction) + sizeof(abc::CodeOffset);
   if (retained > bytes / site_bytes)
@@ -369,6 +431,7 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       }
       continue;
     }
+    if (alias_copy(site)) { --retained; continue; }
     abc::RegisterId settled;
     if (IsRegister(site, Opcode::kASYNCFUNCTIONRESOLVE_V8, &settled)) {
       if (settled != promise) return fail(Check::kResolveIdentity, i);
@@ -406,10 +469,13 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
     if (source.instructions.capacity() >
         bytes / sizeof(abc::BodyInstruction))
       return FunctionEmitError::kResourceLimit;
+    // Removed protocol copies, sorted because sites are in PC order.
+    std::vector<abc::CodeOffset> removed_copies;
     source.instructions.insert(source.instructions.end(), sites.begin(),
                                sites.begin() + enter);
     next_region = 0;
     for (std::size_t i = enter + 2; i < handler - 2; ++i) {
+      if (alias_copy(sites[i])) { removed_copies.push_back(sites[i].offset); continue; }
       if (sites[i].decoded.opcode == Opcode::kASYNCFUNCTIONRESOLVE_V8) continue;
       source.instructions.push_back(sites[i]);
       if (next_region < regions.size() && sites[i].offset == regions[next_region].await) {
@@ -449,14 +515,14 @@ AsyncCompletion ProveAsyncCompletion(const abc::MethodBody& body,
       next_pc += site.decoded.size;
     }
     AsyncCompletionEvidence rebasing;
-    if (!RebaseBranches(body, origins, source, rebasing)) {
+    if (!RebaseBranches(body, origins, source, rebasing, alias_copy)) {
       auto failure = fail(Check::kBranchRebase); failure.async = rebasing; return failure;
     }
     const auto retained_bytes = source.instructions.capacity() *
         sizeof(abc::BodyInstruction) + origins.capacity() * sizeof(abc::CodeOffset);
     if (retained_bytes > bytes) return FunctionEmitError::kResourceLimit;
     if (const auto error = RebaseAsyncHandlers(body, origins, source,
-                                                 bytes - retained_bytes, &rebasing)) {
+                                                 bytes - retained_bytes, &rebasing, removed_copies)) {
       AsyncCompletionFailure failure{*error};
       if (*error == FunctionEmitError::kKind) failure.async = rebasing;
       return failure;

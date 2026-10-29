@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Async completion catches that settle through a protocol-only register copy of the promise, including a copy at an inner try boundary.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/promise_copy/promises.js",
+   "path": "tests/fixtures/isa/promise_copy/promises-default.abc",
+   "sha256": "11ba7e02c290adde9a02bcb12c623f3e5d6b6d30472fbf213d8cce3a8dd3b30d",
+   "source_sha256": "08e6a904ec8b58ced1d717c890e830665d6b069f34526f956e1ef178da72cb7c",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=promise_copy",
+    "--source-file=promises.js",
+    "--output=tests/fixtures/isa/promise_copy/promises-default.abc",
+    "tests/fixtures/isa/promise_copy/promises.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/promise_copy/promises.js",
+   "path": "tests/fixtures/isa/promise_copy/promises-O0.abc",
+   "sha256": "c67e15e800c3550d2cbc14b95788f6c13134b61a531da0b5e22d8391e3786ebf",
+   "source_sha256": "08e6a904ec8b58ced1d717c890e830665d6b069f34526f956e1ef178da72cb7c",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=promise_copy",
+    "--source-file=promises.js",
+    "--output=tests/fixtures/isa/promise_copy/promises-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/promise_copy/promises.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

@@ -11239,6 +11239,10 @@
       "producer": "tests/isa/phased_selections_test.py"
     },
     {
+      "test": "isa_promise_copy_source_test",
+      "producer": "tests/isa/promise_copy_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },
