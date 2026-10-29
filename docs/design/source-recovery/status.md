@@ -5,6 +5,30 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 默认参数：调用入口的环境存储与提升的字面量（2026-10-29，cc；DefaultBodyError 阻塞）
+
+- `DefaultBodyError::kProof`（1,399 条）分为三个通用缺口：
+  1. 箭头函数捕获 `this`/`new.target`/函数自身时，es2abc 在默认值测试之前把这些调用入口存进
+     新环境。三处默认值证明（字面量 `DefaultValueProof`、cell 默认值 `CellDefaultProof`、
+     cell 参数默认值）只接受形参与 receiver 的存储，callee 与 `new.target` 被拒绝（566 + 495 条）。
+     统一规则：已证明的调用入口都不可变，只拒绝未证明的 VM 槽（`UnknownEntry`）。
+  2. 优化构建会把常量默认值（数值、字符串、布尔、null）提到 undefined 测试之前，缺失分支只剩
+     寄存器移动。`FindDefaultCandidates` 现在接受这种形式：头块中位于比较之前、唯一使用是合并
+     phi 的字面量拷贝或 `ValueString`。证明侧只把这个初始化器的所在块从 arm 放宽为 header（要求
+     merged 且位于比较之前），其余检查不变。环境前缀计数允许前面有被提升的字面量。
+  3. 余下 272 条是调用表达式作为默认值（`p = f()` 等），需要参数表达式树支持调用，留作后续工作。
+- 证据：
+  - 新 fixture `entry_cell_defaults`（default、O0）Node 差分，含 `length`、`new.target`、
+    `this` 捕获与提升的字符串、数值、布尔默认值，植入的变异能被检出；
+  - big.abc 6,863 → **7,291**（regression 构建，147.6 s，峰值 RSS 200 MB），已完成记录零回退。
+    16 条已完成记录的文本有变化，都是原先在函数体里用 if/else 处理的提升默认值，现在恢复成签名
+    默认值（如 `constructor($arg0 = "MyApp", $arg1 = 65280)`），`length` 不变；
+  - 620 用例 cohort `csr115/def` 与 `csr114/def` 逐字节一致；
+  - 全量 ctest 999 项，失败 34 项，全部属于已知失败清单。
+- 下一个最大阻塞是 `CallPlanError::kReference`（1,323 条）：方法引用 `o.m` 与调用之间隔着条件区域
+  （`o.m(a ?? "x")`、`o.m(c ? 1 : 2)`、`o.m(a || b)`）。值树路由把条件值写成 if/else 加 phi 临时
+  变量，而方法引用不能被快照，需要把只含表达式分支的菱形在使用处折叠成条件表达式或逻辑表达式。
+
 ## phased creator 的类成员安装（访问器等）（2026-10-29，cc；用户指定的优先阻塞 3）
 
 - `CaptureEvaluationError::kCreation`（1,298 条）：phased creator（带 try 的函数、ArkTS

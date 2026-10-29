@@ -11219,6 +11219,10 @@
       "producer": "tests/isa/phased_accessors_test.py"
     },
     {
+      "test": "isa_entry_cell_defaults_source_test",
+      "producer": "tests/isa/entry_cell_defaults_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },

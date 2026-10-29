@@ -150,8 +150,7 @@ class Checker {
     const auto* entry = std::get_if<ValueId>(&value);
     Require(entry && entry->value < graph_.values.size(), Error::kParameter);
     const auto* definition = std::get_if<EntryDefinition>(&graph_.values[entry->value].origin);
-    Require(definition && (std::holds_alternative<ParameterEntry>(*definition) ||
-        std::holds_alternative<ReceiverEntry>(*definition)), Error::kParameter);
+    Require(definition && !std::holds_alternative<UnknownEntry>(*definition), Error::kParameter);
   }
   void Candidate(std::size_t i) {
     const auto& c = candidates_.candidates[i];

@@ -93,8 +93,9 @@ class Checker {
             const auto* value = std::get_if<ValueId>(&Operand(op, 0, OperandRole::kStoredValue));
             Require(value && value->value < graph_.values.size(), Error::kEffect);
             const auto* entry = std::get_if<EntryDefinition>(&graph_.values[value->value].origin);
-            Require(entry && (std::holds_alternative<ParameterEntry>(*entry) ||
-                std::holds_alternative<ReceiverEntry>(*entry)), Error::kEffect);
+            // Every proved invocation entry (formal, receiver, callee,
+            // new.target) is immutable; only unproved VM slots are refused.
+            Require(entry && !std::holds_alternative<UnknownEntry>(*entry), Error::kEffect);
             continue;
           }
         }
@@ -223,10 +224,17 @@ class Checker {
       }
       return;
     }
+    // A merged constant may be materialized in the header before the test;
+    // it then has no effect to order and its only use is the merge phi.
+    Require(c.initializer.value < graph_.ops.size());
+    const bool hoisted = graph_.ops[c.initializer.value].block == c.header;
+    Require(!hoisted || (c.merged && !c.number &&
+        graph_.ops[c.initializer.value].order < comparison.order), Error::kLiteral);
+    const auto home = hoisted ? c.header : c.arm;
     if (c.text) {
       // A pool string is a constant, but still has an original result/phi use
       // and an origin owned by the signature. Recheck all three independently.
-      const auto& initializer = Op(c.initializer, c.arm);
+      const auto& initializer = Op(c.initializer, home);
       const auto* string = std::get_if<ValueString>(&initializer.operation);
       Require(c.merged && !c.number && string && string->string == *c.text &&
           initializer.use_count == 0 && initializer.result &&
@@ -242,9 +250,8 @@ class Checker {
       Require(*special == SpecialValue::kUndefined || *special == SpecialValue::kNull ||
           *special == SpecialValue::kTrue || *special == SpecialValue::kFalse, Error::kLiteral);
     {
-      Require(c.initializer.value < graph_.ops.size());
       const auto& initializer = graph_.ops[c.initializer.value];
-      Require(initializer.block == c.arm && initializer.life ==
+      Require(initializer.block == home && initializer.life ==
           (c.merged ? ValueLife::kLive : ValueLife::kRemoved));
       if (!c.merged) {
         Require(!c.number && std::holds_alternative<ValueCopy>(initializer.operation) &&

@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Literal and cell-backed defaults after invocation entries (callee, new.target, this) are stored for arrows; optimized builds hoist the default literal before the undefined test.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/entry_cell_defaults/defaults.js",
+   "path": "tests/fixtures/isa/entry_cell_defaults/defaults-default.abc",
+   "sha256": "171b83ae47bc762990fb4e46489d89bfcb9924cce91619d4b9d03429c32c249d",
+   "source_sha256": "ded10b8552b1a16fbfdd93e348e56f5e8166483738563814eda2f8060b0a5dfe",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=entry_cell_defaults",
+    "--source-file=defaults.js",
+    "--output=tests/fixtures/isa/entry_cell_defaults/defaults-default.abc",
+    "tests/fixtures/isa/entry_cell_defaults/defaults.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/entry_cell_defaults/defaults.js",
+   "path": "tests/fixtures/isa/entry_cell_defaults/defaults-O0.abc",
+   "sha256": "2f9d6ee33d13f060379fb117804ec43d56b17da1d1f6c92355c2a43eae0c4bdb",
+   "source_sha256": "ded10b8552b1a16fbfdd93e348e56f5e8166483738563814eda2f8060b0a5dfe",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=entry_cell_defaults",
+    "--source-file=defaults.js",
+    "--output=tests/fixtures/isa/entry_cell_defaults/defaults-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/entry_cell_defaults/defaults.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

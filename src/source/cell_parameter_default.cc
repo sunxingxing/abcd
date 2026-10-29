@@ -222,7 +222,7 @@ class Analysis {
         const auto value=Operand(id,OperandRole::kStoredValue);const auto* v=std::get_if<ValueId>(&value);
         const auto* entry=v?std::get_if<EntryDefinition>(&g_.values[v->value].origin):nullptr;
         Require(local&&Before(local->allocation,id)&&storage.count&&c_.accesses[storage.first].operation==id&&entry&&
-            (std::holds_alternative<ParameterEntry>(*entry)||std::holds_alternative<ReceiverEntry>(*entry)),Error::kPrefixObservation);
+            !std::holds_alternative<UnknownEntry>(*entry),Error::kPrefixObservation);
         continue;
       }
       Require(Pure(op),Error::kPrefixObservation);

@@ -17,6 +17,8 @@ struct BlockFacts {
   std::uint32_t predecessors = 0;
   std::uint32_t operations = 0;
   std::uint32_t environment_prefix = 0;
+  // Literal copies an optimizing compiler hoists ahead of the environment.
+  std::uint32_t literal_prefix = 0;
   std::optional<OpId> unused_literal;
   bool ambiguous_literal = false;
   std::uint32_t phis = 0;
@@ -109,9 +111,15 @@ class Finder {
       if (op.life != ValueLife::kLive || std::holds_alternative<ValueNop>(op.operation)) continue;
       auto& block = blocks_[op.block.value];
       Require(i <= std::numeric_limits<std::uint32_t>::max(), Error::kResourceLimit);
-      if (op.block.value == 0 && block.environment_prefix == block.operations &&
-          (std::holds_alternative<ValueEnvironmentPush>(op.operation) ||
-           std::holds_alternative<ValueLexicalStore>(op.operation))) ++block.environment_prefix;
+      if (op.block.value == 0 &&
+          block.environment_prefix + block.literal_prefix == block.operations) {
+        if (std::holds_alternative<ValueEnvironmentPush>(op.operation) ||
+            std::holds_alternative<ValueLexicalStore>(op.operation)) ++block.environment_prefix;
+        else if (std::holds_alternative<ValueCopy>(op.operation) && op.use_count == 1 &&
+                 op.first_use.value < graph_.uses.size() &&
+                 !std::holds_alternative<ValueId>(graph_.uses[op.first_use.value].operand))
+          ++block.literal_prefix;
+      }
       ++block.operations; block.last = OpId{static_cast<std::uint32_t>(i)};
       if (std::holds_alternative<ValueLexicalLoad>(op.operation)) {
         if (block.capture_load) block.ambiguous_capture = true;
@@ -182,7 +190,7 @@ class Finder {
     if (header.value == 0 && facts.predecessors != 0) return {};
     constexpr std::uint32_t kCompareAndBranch = 2;
     const auto operations = facts.operations - facts.environment_prefix;
-    if (operations < kCompareAndBranch || operations > kCompareAndBranch + 1 ||
+    if (operations < kCompareAndBranch || operations > kCompareAndBranch + 2 ||
         !facts.last || block.edge_count != 2) return {};
     const auto& branch = graph_.ops[facts.last->value];
     const auto* condition = std::get_if<ValueBranch>(&branch.operation);
@@ -218,7 +226,12 @@ class Finder {
       return true;
     };
     const auto* entry = std::get_if<ValueId>(undefined(left) ? &right : undefined(right) ? &left : nullptr);
-    if (!entry || operations != kCompareAndBranch + (undefined_op ? 1U : 0U)) return {};
+    // A literal initializer hoisted before the test is the one extra header
+    // operation admitted beyond the comparison, branch and undefined copy.
+    const auto exact = [&](bool hoisted) {
+      return operations == kCompareAndBranch + (undefined_op ? 1U : 0U) + (hoisted ? 1U : 0U);
+    };
+    if (!entry || operations < kCompareAndBranch + (undefined_op ? 1U : 0U)) return {};
     Require(entry->value < graph_.values.size());
     const auto* definition = std::get_if<EntryDefinition>(&graph_.values[entry->value].origin);
     const auto* parameter = definition ? std::get_if<ParameterEntry>(definition) : nullptr;
@@ -248,6 +261,7 @@ class Finder {
     if (arm_facts.value_operations > kLiteralAndNegation ||
         arm_facts.operations > arm_facts.value_operations + 1) return {};
     if (blocks_[join.value].phis == 0) {
+      if (!exact(false)) return {};
       if (arm_facts.capture_load) {
         const auto& load = graph_.ops[arm_facts.capture_load->value];
         if (load.result) CaptureBoundary(DefaultCandidate{parameter->index,*entry,{},*load.result,*arm_facts.capture_load,
@@ -282,8 +296,40 @@ class Finder {
         fallback = &use;
       } else return {};
     }
-    if (!incoming || !fallback || !arm_facts.value_op) return {};
+    if (!incoming || !fallback) return {};
     auto literal = fallback->operand;
+    if (!arm_facts.value_op) {
+      // es2abc may materialize a constant default before the undefined test
+      // and leave only a register move on the missing arm. The literal has
+      // no effect, so it is the same default when its single use is the phi.
+      const auto* value = std::get_if<ValueId>(&literal);
+      if (!value || value->value >= graph_.values.size() || arm_facts.operations > 1) return {};
+      const auto* result = std::get_if<OpResult>(&graph_.values[value->value].origin);
+      if (!result || result->op.value >= graph_.ops.size()) return {};
+      const auto& hoisted = graph_.ops[result->op.value];
+      if (hoisted.life != ValueLife::kLive || hoisted.block != header ||
+          hoisted.order >= comparison.order || hoisted.result != *value || !exact(true)) return {};
+      const auto& first_use = graph_.values[value->value].first_use;
+      if (!first_use || first_use->value >= graph_.uses.size() ||
+          graph_.uses[first_use->value].next) return {};
+      if (const auto* string = std::get_if<ValueString>(&hoisted.operation)) {
+        if (hoisted.use_count != 0) return {};
+        return DefaultCandidate{parameter->index, *entry, merged, literal, result->op,
+            producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge,
+            undefined_op, {}, string->string};
+      }
+      if (hoisted.use_count != 1) return {};
+      const auto& input = Use(hoisted, 0).operand;
+      if (!std::holds_alternative<ValueCopy>(hoisted.operation) ||
+          std::holds_alternative<ValueId>(input)) return {};
+      if (const auto* special = std::get_if<SpecialValue>(&input);
+          special && *special != SpecialValue::kUndefined && *special != SpecialValue::kNull &&
+          *special != SpecialValue::kTrue && *special != SpecialValue::kFalse) return {};
+      return DefaultCandidate{parameter->index, *entry, merged, input, result->op,
+          producer->op, *facts.last, header, arm, join, present, missing, arm_block.first_edge,
+          undefined_op, {}};
+    }
+    if (!exact(false)) return {};
     if (arm_facts.capture_load) {
       CaptureBoundary(DefaultCandidate{parameter->index,*entry,merged,literal,*arm_facts.capture_load,
           producer->op,*facts.last,header,arm,join,present,missing,arm_block.first_edge,undefined_op,{}}, arm_facts);
