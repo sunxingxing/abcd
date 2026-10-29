@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Classes captured by their own methods (created inside an environment-cleanup try) with static initializers, accessors and instance fields.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/captured_static_classes/classes.js",
+   "path": "tests/fixtures/isa/captured_static_classes/classes-default.abc",
+   "sha256": "7d73e3650d526fd8e1e87ebdea00b046bb4c53b2b86b3dfc6677173226ecc90c",
+   "source_sha256": "e981a3d00f639653d968d959c5f30c6f204a00bed38a08d01d15b65c9ab76803",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=captured_static_classes",
+    "--source-file=classes.js",
+    "--output=tests/fixtures/isa/captured_static_classes/classes-default.abc",
+    "tests/fixtures/isa/captured_static_classes/classes.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/captured_static_classes/classes.js",
+   "path": "tests/fixtures/isa/captured_static_classes/classes-O0.abc",
+   "sha256": "5743d02d744bdccadbb8000cecb36727c7838aca8945f63a692e9e5227e8863b",
+   "source_sha256": "e981a3d00f639653d968d959c5f30c6f204a00bed38a08d01d15b65c9ab76803",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=captured_static_classes",
+    "--source-file=classes.js",
+    "--output=tests/fixtures/isa/captured_static_classes/classes-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/captured_static_classes/classes.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

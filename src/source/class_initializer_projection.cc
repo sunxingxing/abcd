@@ -268,8 +268,11 @@ std::variant<ClassProjection, ClassInitializerError> ProjectClassMembers(
           const auto& self = *self_stores[owner->value];
           require(self.creation == call.creation && self.initializer == call.call &&
               std::holds_alternative<ValueLexicalStore>(op.operation) && occurrence.role == OperandRole::kStoredValue,Error::kFlow);
+          // The same creation's instance-initializer pass may already have
+          // certified this store as one of its ordered effects.
           require(order.Before(graph, call.creation, op.block, op.order) &&
-              order.Before(graph, *owner, invoke.block, invoke.order) && !effects[owner->value], Error::kFlow);
+              order.Before(graph, *owner, invoke.block, invoke.order) &&
+              (!effects[owner->value] || effects[owner->value] == call.creation), Error::kFlow);
           effects[owner->value] = call.creation;
           continue; // Retained cell write, never projected away.
         }

@@ -90,7 +90,9 @@ ProjectClassDefinitions(const analysis::ValueProgram& graph,
       }
     }
     std::vector<std::optional<OpId>> private_stores;
-    if (self_order && !self_order->Installations(graph).empty()) {
+    // Phased self orders carry the class's own cell stores without
+    // installations; those stores are private to the creation as well.
+    if (self_order && (!self_order->Installations(graph).empty() || !self_order->Stores(graph).empty())) {
       admit(graph.ops.size(), sizeof(std::optional<OpId>));
       private_stores.resize(graph.ops.size());
       admit(private_stores.capacity() - private_stores.size(),

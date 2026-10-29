@@ -5,6 +5,24 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 被自身方法捕获的类：静态初始化器与成员投影（2026-10-29，cc；ClassInitializerError 阻塞）
+
+- 方法里的箭头函数引用类自身时，模块在环境清理 try 中创建类，并先把类写入自身的词法单元
+  （self-store），再安装成员、调用静态初始化器。两处检查拒绝了这种顺序：
+  1. 静态初始化器投影要求 self-store 未被其他投影认领；而同一个类创建的实例初始化器投影已经
+     把它认领为自己的有序效果。同一创建的认领不是冲突，现在接受。
+  2. 成员定义投影只在 self-order 带有 installations 时才把 self-store 视为该创建的私有存储；
+     phased creator 的 self-order 只携带 stores。self-store 对成员安装同样不可观察，所以条件
+     改为"有 installations 或 stores"。
+- 仍然拒绝（语义原因）：`static t = this.s + 1` 这类读取 receiver 的静态初始化器。`this.s` 可能
+  执行用户 getter，而 getter 读取的类单元在输出中要到类表达式之后才赋值。
+- big.abc 中剩余约 495 条同类拒绝来自 ArkTS 编译器的产物，纯 JS 构造的样例还复现不出来，留作
+  后续。
+- 证据：新 fixture `captured_static_classes`（default、O0）Node 差分：静态字段、访问器描述符、
+  实例字段、捕获类的箭头；植入的变异能被检出。两个探针此前都被拒绝；
+  big.abc 8,440 不变（regression 构建），零回退、零文本变化；620 用例 cohort `csr122/def` 与
+  `csr121/def` 逐字节一致；全量 ctest 1006 项，失败 34 项，全部属于已知失败清单。
+
 ## 对象字面量实参字段中的条件值（2026-10-29，cc；CallPlanError 阻塞）
 
 - `o.play(a, {iterations: v ?? 1, delay: a.delay})`：裸边分支只在合并值属于未满足成员

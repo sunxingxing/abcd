@@ -11243,6 +11243,10 @@
       "producer": "tests/isa/promise_copy_test.py"
     },
     {
+      "test": "isa_captured_static_classes_source_test",
+      "producer": "tests/isa/captured_static_classes_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },
