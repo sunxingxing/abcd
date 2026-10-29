@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Conditional and logical values on the phased route: bare arms, arms behind register copies, member-call arguments and plain consumers.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/phased_selections/selections.js",
+   "path": "tests/fixtures/isa/phased_selections/selections-default.abc",
+   "sha256": "fb0ce63b87e9fbf50d91f558c3f13de730823be8d7d2b7c833bb0dc307b79cca",
+   "source_sha256": "117956164305ad2bf917846dda9051937c79c508c3940afb4fbdd90c40d04c8e",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_selections",
+    "--source-file=selections.js",
+    "--output=tests/fixtures/isa/phased_selections/selections-default.abc",
+    "tests/fixtures/isa/phased_selections/selections.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/phased_selections/selections.js",
+   "path": "tests/fixtures/isa/phased_selections/selections-O0.abc",
+   "sha256": "e54e1aef77858c94bd1e32766556aa795e831815a0d1a48cf4f6d53c88e4393c",
+   "source_sha256": "117956164305ad2bf917846dda9051937c79c508c3940afb4fbdd90c40d04c8e",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_selections",
+    "--source-file=selections.js",
+    "--output=tests/fixtures/isa/phased_selections/selections-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_selections/selections.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

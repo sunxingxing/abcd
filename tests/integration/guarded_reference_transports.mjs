@@ -37,18 +37,9 @@ console.log(JSON.stringify({early:m.early,pure:m.pure(),results,trace}));
     const exported=run(structure,[join(fixtures,abc),out,'--value-source',...flags]);assert.equal(exported.status,0,exported.stderr);
     const records=JSON.parse(readFileSync(join(out,'manifest.json'))).records.filter(r=>r.source_status!==2);
     assert.equal(records.length,1);
-    if(abc==='transport-default.abc'){
-      // The default optimizer's zero-size handler extent is now inferred; this
-      // build then stops at the member-call Reference crossing a selection in
-      // the protected region. It is a refusal, never a differential pass.
-      assert.equal(records[0].source_status,3);
-      assert.deepEqual(records[0].source_failure.causes.slice(0,4),[
-        {domain:'abcd::source::FunctionTreeError',value:1},
-        {domain:'abcd::source::ExpressionError',value:4},
-        {domain:'abcd::source::CallPlanError',value:4},
-        {domain:'abcd::source::CallReferenceError',value:1}]);
-      ++refused;continue;
-    }
+    // The default optimizer's zero-size handler extent is inferred and the
+    // member-call Reference crossing the protected selection is fused, so the
+    // optimized build runs the same differential and mutations as O0.
     assert.equal(records[0].source_status,0,JSON.stringify(records[0]));
     const file=join(out,records[0].source),text=readFileSync(file,'utf8');
     assert.equal(run(process.execPath,['--check',file]).status,0);
@@ -71,5 +62,6 @@ console.log(JSON.stringify({early:m.early,pure:m.pure(),results,trace}));
       assert.ok(actual.status!==0||actual.stdout!==expected.stdout,'unobserved mutation '+i);++mutations;
     }
   }
-  console.log(`guarded_reference_transports: ${compared} Node comparisons, ${mutations} observed mutations, ${refused} optimizer-handler refusals`);
+  assert.equal(refused,0);
+  console.log(`guarded_reference_transports: ${compared} Node comparisons, ${mutations} observed mutations`);
 }finally{rmSync(dir,{recursive:true,force:true});}

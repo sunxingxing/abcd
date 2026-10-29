@@ -48,11 +48,26 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
   std::optional<LiteralEventView> literal_events;
   if (!evaluation.literal_arm_inputs.empty())
     literal_events = BuildLiteralEventView(graph, *evaluation.literals, budget);
-  struct Arm { WorkBlockId tail; EdgeId edge; SelectionOperand value; ValueId merged; };
+  // tail is absent for a bare arm: the branch edge enters the join directly.
+  struct Arm { std::optional<WorkBlockId> tail; EdgeId edge; SelectionOperand value; ValueId merged; };
+  // An inert arm forwards an original available binding. Resolve verified
+  // copy aliases once; preserve the first phi/catch materialization and
+  // all authoritative exception edges instead of replaying its producer.
+  const auto inert = [&](std::optional<WorkBlockId> tail, EdgeId edge) -> std::optional<Arm> {
+    if (!inputs[edge.value]) return {};
+    const auto& use = graph.uses[inputs[edge.value]->value];
+    const auto* merged = std::get_if<ValueId>(&use.owner);
+    const auto resolved = ResolveEvaluationOperand(evaluation, use.operand);
+    const auto* retained = std::get_if<ValueId>(&resolved);
+    if (!merged || !retained || !HasRetainedEvaluationValue(graph, evaluation, *retained)) return {};
+    return Arm{tail, edge, SelectionSnapshot{*retained}, *merged};
+  };
   const auto arm = [&](EdgeId entry, std::size_t first_incoming = 1) -> std::optional<Arm> {
     auto at = graph.edges[entry.value].target;
     std::optional<OpId> producer;
-    if (copies[entry.value]) return {};
+    // Optimized code may leave an arm as only the branch edge into the join
+    // (its register move was removed); it can forward an available value only.
+    if (copies[entry.value]) return inert(std::nullopt, entry);
     // Follow original normal edges only for candidate discovery, while
     // retaining every exception edge in the authoritative graph. Single-entry
     // tails stop at the first phi edge, merge, nested branch or catch entry;
@@ -106,25 +121,16 @@ std::vector<SelectionRegion> FindPhasedPhiSelections(const analysis::ValueProgra
         const auto* merged = std::get_if<ValueId>(&use.owner);
         if (!value || !merged) return {};
         if (producer) {
-          const bool literal =
-              !evaluation.literal_arm_inputs.empty() &&
-              evaluation.literal_arm_inputs[producer->value] == input;
-          const auto actual =
-              literal ? ResolveEvaluationOperand(evaluation, use.operand)
-                      : use.operand;
+          // Phased graphs keep register copies; a verified alias of the
+          // producer's result is the same value on this edge.
+          const auto actual = ResolveEvaluationOperand(evaluation, use.operand);
           const auto* final = std::get_if<ValueId>(&actual);
           if (!final || graph.ops[producer->value].result != *final ||
               evaluation.operations[producer->value].consumer != input)
             return {};
           return Arm{at, edge, *final, *merged};
         }
-        // An inert arm forwards an original available binding. Resolve verified
-        // copy aliases once; preserve the first phi/catch materialization and
-        // all authoritative exception edges instead of replaying its producer.
-        const auto resolved = ResolveEvaluationOperand(evaluation, use.operand);
-        const auto* retained = std::get_if<ValueId>(&resolved);
-        if (!retained || !HasRetainedEvaluationValue(graph, evaluation, *retained)) return {};
-        return Arm{at, edge, SelectionSnapshot{*retained}, *merged};
+        return inert(at, edge);
       }
       at = graph.edges[edge.value].target;
     }
@@ -344,9 +350,15 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
     const auto end = graph.blocks[source_block(*last)->value].first_edge;
     const auto shared = first_taken ? node.arms->taken : node.arms->fallthrough;
     const auto fallback = last_taken ? last->arms->fallthrough : last->arms->taken;
-    if (!path(shared, EdgeId{first.value + (first_taken ? 0U : 1U)}, *region.keep,
+    // A bare arm has no control node: its branch edge must enter the join.
+    const auto bound_arm = [&](std::optional<ControlId> start, EdgeId edge,
+                               std::optional<WorkBlockId> terminal, bool child) {
+      if (!terminal) return !start && graph.edges[edge.value].target == region.join;
+      return path(start, edge, *terminal, child);
+    };
+    if (!bound_arm(shared, EdgeId{first.value + (first_taken ? 0U : 1U)}, region.keep,
             std::holds_alternative<SelectionChild>(*region.consequent)) ||
-        !path(fallback, EdgeId{end.value + (last_taken ? 1U : 0U)}, *region.evaluate,
+        !bound_arm(fallback, EdgeId{end.value + (last_taken ? 1U : 0U)}, region.evaluate,
             std::holds_alternative<SelectionChild>(region.right))) continue;
     region.keep_path = shared; region.evaluate_path = fallback;
     if (const auto index = binding_indices[region.branch.value])

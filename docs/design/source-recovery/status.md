@@ -5,6 +5,31 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## phased 路由上的条件值与逻辑值（2026-10-29，cc；CallPlanError 阻塞）
+
+- 剩余的 `CallPlanError::kReference` 中很大一部分在 phased 路由上（async 函数、带 try 的函数）：
+  `o.set("k", t.p ? "a" : "b")`、`o.def("n", f() || x)`、`o.set("k", t ?? "x")`。O0 构建能通过，
+  优化构建不能。phased 选择发现（`phased_selections.cc`）有两个缺口：
+  1. 分支本身就是携带 phi 拷贝、直接进入 join 的裸边时，`arm()` 立即拒绝；
+  2. phased 图保留寄存器拷贝，phi 输入是生产者结果的已验证别名（`lda.str "a"; sta v4`），
+     而比较只对字面量分支解析别名。
+- 统一修复（与普通路由的裸边规则相同）：分支的 tail 改为可选，裸边分支只转发已经可用的值
+  （与原有"惰性分支"共用 `inert`）；路径绑定对裸边要求分支边直接进入 join；所有分支都按已验证
+  的别名解析 phi 输入。
+- 文本变化：phased 路由上原先输出为 if/else 加 phi 变量的条件值，现在折叠成 `?:`、`||`、`??`。
+  big.abc 中 708 条已完成记录的文本因此变化，逐条自动分类：每一处差异都是删除 if/else 赋值，
+  全部通过语法检查；抽查（如 `X = ObservedV2(X) || X`、`getShared() ?? new LocalStorage()`）
+  语义一致。620 用例 cohort 中 7 条文本变化，逐条对照原始源码确认等价。
+- 证据：
+  - 新 fixture `phased_selections`（default、O0）Node 差分：getter 顺序、receiver 绑定、
+    被测值只求值一次、只求值被选中的分支、try 内抛出、await 之后的使用；植入的变异能被检出；
+  - `guarded_reference_transports_source_test` 原先把优化构建固定为调用引用拒绝；现在它发布，并走与
+    O0 相同的 13 种模式 Node 差分与变异检查（比较次数 26 → 52）；
+  - big.abc 8,147 → **8,216**（regression 构建，297 s，峰值 RSS 230 MB），零回退；文本变化 708 条
+    即上述折叠；620 用例 cohort `csr119/def` 与 `csr118/def` 完成数一致、7 条文本变化如上；全量
+    ctest 1004 项，失败 35 项：34 项已知，另一项正是 `guarded_reference_transports_source_test`
+    的旧固定，已改为差分。
+
 ## 优化构建中的单层 for...of（2026-10-29，cc；CatchRegionError 阻塞）
 
 - `CatchRegionError::kNormalEntry`（966 条）：优化构建里连最简单的 `for (const x of xs) f(x)` 也被
