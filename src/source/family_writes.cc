@@ -280,7 +280,8 @@ class WriteCheck {
     // bodies are normalized; working offsets are not original PCs).
     const auto [creator, pc] = InheritedModuleInput::Origin(edge->owner);
     Require(creator == phased->function.Target(), Error::kOwner);
-    return VerifyInheritedModuleReads(phased->owner->EntryModules(), creator, pc, child_entry, premises, left_);
+    return VerifyInheritedModuleReads(phased->owner->InitializedModulesBefore(edge->creation.instruction),
+        creator, pc, child_entry, premises, left_);
   }
   FamilyWriteInput Member(std::size_t i) const {
     if (const auto* file = std::get_if<const FileFamily*>(&inputs_)) {
@@ -338,8 +339,10 @@ class WriteCheck {
     Require(external_ && external_->creator.Phase(), Error::kOwner);
     const auto [method, pc] = InheritedModuleInput::Origin(external_->owner);
     Require(method == external_->creator.Method(), Error::kOwner);
+    const auto site = external_->creator.Site(external_->owner);
+    Require(site.has_value(), Error::kOwner);
     const auto checked =
-        VerifyInheritedModuleReads(external_->creator.Phase()->EntryModules(),
+        VerifyInheritedModuleReads(external_->creator.Phase()->InitializedModulesBefore(*site),
                                    method, pc, entry, reads, left_);
     if (const auto* error = std::get_if<FunctionInputError>(&checked))
       Fail(*error == FunctionInputError::kWorkLimit ? Error::kWorkLimit

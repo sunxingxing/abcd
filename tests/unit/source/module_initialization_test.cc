@@ -132,14 +132,25 @@ void Loop(bool executes) {
   body.Check(input, 1, 0, true);
 }
 void BeforeStore() {
+  // A store in the straight prelude after a creation (only creations, module
+  // stores and moves between) happens before the function can first run.
   Body body;
   body.Create();
   body.Store(0);
   body.Create();
   auto input = body.Input();
-  body.Check(input, 0, 0, false);
+  body.Check(input, 0, 0, true);
   body.Check(input, 1, 0, true);
   test::Check(input.InitializedModulesBefore({UINT32_MAX}).Empty());
+  // Any other instruction ends the prelude: the later store is not counted.
+  Body interrupted;
+  interrupted.Create();
+  interrupted.Read(5);
+  interrupted.Store(0);
+  interrupted.Create();
+  auto ended = interrupted.Input();
+  interrupted.Check(ended, 0, 0, false);
+  interrupted.Check(ended, 1, 0, true);
 }
 void UnreachableStore() {
   Body body;

@@ -62,13 +62,12 @@ class FamilyReader {
     Admit(1, sizeof(FamilyReader));
     Step(); // Preserve the family-stage work gate before reading any child input.
     std::optional<InheritedModuleInput> inherited;
-    if (root_creator.Phase() && !root_creator.Phase()->EntryModules().Empty() &&
-        owner) {
-      const auto site = root_creator.Site(*owner);
-      Require(site.has_value(), Error::kOccurrence);
+    const auto root_site = root_creator.Phase() && owner ? root_creator.Site(*owner) : std::nullopt;
+    if (root_site && !root_creator.Phase()->InitializedModulesBefore(*root_site).Empty()) {
+      const auto site = root_site;
       const auto& instruction = root_creator.Instructions()[site->value];
       inherited.emplace(InheritedModuleInput{
-          root_creator.Phase()->EntryModules(), identity_,
+          root_creator.Phase()->InitializedModulesBefore(*site), identity_,
           index_.methods[root.value].owner_offset, root_creator.Method(),
           instruction.origin.value_or(instruction.pc)});
     }
@@ -296,9 +295,9 @@ class FamilyReader {
       Require(index_.methods[target.value].code.has_value(), Error::kMethod);
       const auto module_input = !parent.Phase()
           ? std::optional<ParentModuleInput>{{parent.Normal().input, site}} : std::nullopt;
-      // A phased creator hands on only its own creation-time slot set.
-      const auto inherited = parent.Phase() && !parent.Phase()->EntryModules().Empty()
-          ? std::optional<InheritedModuleInput>{{parent.Phase()->EntryModules(), identity_,
+      // A phased creator hands on the slots initialized before this creation.
+      const auto inherited = parent.Phase() && !parent.Phase()->InitializedModulesBefore(site).Empty()
+          ? std::optional<InheritedModuleInput>{{parent.Phase()->InitializedModulesBefore(site), identity_,
                 index_.methods[target.value].owner_offset, *parent_, *pc_}} : std::nullopt;
       auto child = ReadMethod(target, &context, InputCaptureMode::kConditional,
           module_input ? &*module_input : nullptr, inherited ? &*inherited : nullptr);

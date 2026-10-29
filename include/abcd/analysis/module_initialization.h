@@ -48,5 +48,11 @@ BuildModuleInitialization(const SemanticMethod&, const ModuleSlotSet& entry,
 // proof; store operands remain independently verified Language.
 [[nodiscard]] std::variant<std::vector<LanguageLoadFact>, ModuleInitializationError>
 ProveEntryModuleLoads(const ExceptionFlow& flow, SemanticBudget budget = {});
+// Module slots initialized on every path (normal and exceptional arcs) before
+// each creation's Before node, starting from the creator's own entry set.
+// Sorted by flow instruction. Candidates only: store operands are verified
+// Language by the owner's module writes. O(N) nodes plus the solver's cost.
+[[nodiscard]] std::variant<ModuleInitialization, ModuleInitializationError>
+ExceptionCreationModuleStates(const ExceptionFlow& flow, const ModuleSlotSet& entry, SemanticBudget budget = {});
 }  // namespace abcd::analysis
 #endif

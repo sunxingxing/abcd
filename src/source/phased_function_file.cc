@@ -1,6 +1,7 @@
 #include "array_pattern_normalize.h"
 #include "phased_function_file.h"
 #include "class_self_order.h"
+#include "abcd/analysis/module_initialization.h"
 #include "concurrent_async.h"
 
 #include <bit>
@@ -55,6 +56,9 @@ struct FilePhasedFunction::Storage {
   std::uint64_t work;
   // Class self-store order certified by the family reader for this creator.
   std::optional<ClassSelfOrder> self_order;
+  // Module slots initialized before each creation (entry set plus this
+  // function's own completed stores), keyed by flow instruction.
+  std::vector<analysis::ModuleStateSnapshot> module_creations;
 };
 FilePhasedFunction::FilePhasedFunction(std::unique_ptr<Storage> storage) : storage_(std::move(storage)) {}
 FilePhasedFunction::FilePhasedFunction(FilePhasedFunction&&) noexcept = default;
@@ -87,6 +91,12 @@ bool FilePhasedFunction::MatchesOwner(const FunctionContext& context) const {
 }
 std::span<const InputModuleRead> FilePhasedFunction::InitializedModuleReads() const { return storage_->module_reads; }
 const ModuleSlotSet& FilePhasedFunction::EntryModules() const { return storage_->entry_modules; }
+const ModuleSlotSet& FilePhasedFunction::InitializedModulesBefore(analysis::InstructionId creation) const {
+  const auto& states = storage_->module_creations;
+  const auto found = std::lower_bound(states.begin(), states.end(), creation,
+      [](const auto& state, auto site) { return state.instruction < site; });
+  return found != states.end() && found->instruction == creation ? found->slots : storage_->entry_modules;
+}
 const ClassSelfOrder* FilePhasedFunction::SelfOrder() const {
   return storage_->self_order ? &*storage_->self_order : nullptr;
 }
@@ -457,10 +467,19 @@ std::variant<FilePhasedFunction, PhasedFileFailure> FilePhasedFunction::Read(
           CaptureOrigin{method.offset, instruction.origin.value_or(instruction.pc), instruction.pc}});
       accesses.push_back({before.instruction, load ? analysis::LocalAccessKind::kLoad : analysis::LocalAccessKind::kStore});
     }
+    // Children inherit the slots initialized before their own creation.
+    auto creations = analysis::ExceptionCreationModuleStates(input.flow, entry_modules, left);
+    if (const auto* error = std::get_if<analysis::ModuleInitializationError>(&creations))
+      throw PhasedFileFailure{*error == analysis::ModuleInitializationError::kWorkLimit ? Error::kWorkLimit :
+          *error == analysis::ModuleInitializationError::kResourceLimit ? Error::kResourceLimit : Error::kMethod};
+    auto& states = std::get<analysis::ModuleInitialization>(creations);
+    admit(states.allocated_bytes, 1); step(states.work);
     Require(!file.CheckUnchanged(), Error::kChanged);
-    return FilePhasedFunction(std::make_unique<Storage>(Storage{std::move(body), std::move(original), std::move(phases), std::move(parameter_defaults),
+    auto storage = std::make_unique<Storage>(Storage{std::move(body), std::move(original), std::move(phases), std::move(parameter_defaults),
         std::move(locals), std::move(guarded), std::move(children), mode, std::move(uses), std::move(accesses), DescribeOwner(context), std::move(entry_modules), std::move(module_reads), method.owner_offset,
-        budget.bytes - left.bytes, budget.work - left.work}));
+        budget.bytes - left.bytes, budget.work - left.work});
+    storage->module_creations = std::move(states.states);
+    return FilePhasedFunction(std::move(storage));
   } catch (GuardedStoreError error) { return PhasedFileFailure{error};
   } catch (TreeStructureError error) {
     return PhasedFileFailure{error == TreeStructureError::kWorkLimit ? Error::kWorkLimit : Error::kResourceLimit};

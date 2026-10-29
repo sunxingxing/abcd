@@ -5,6 +5,34 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 子函数继承的模块初始化状态：提升前奏与 phased creator（2026-10-29，cc）
+
+- 子函数对 local 模块绑定的无 guard 读取，只有在 slot 属于"创建时已初始化"集合时才认证。
+  两个通用缺口，导致 `SemanticProofError::kInternalValue`：
+  1. **提升前奏**：es2abc 把所有函数声明连成一段直线前奏
+     （`definefunc; stmodulevar; definefunc; ...`）。先创建的函数读取后定义的函数时，
+     slot 不在创建时集合里；但在第一条可能执行用户代码的指令之前，这个函数根本不可能
+     被调用。
+  2. **phased creator**：phased 父函数（包括 ArkTS 的 phased 模块入口）只把自身的
+     entry 集合传给子函数，从不计算创建时的状态；例如 TS 的 `var`（前奏里
+     `ldundefined; stmodulevar`）对模块里的类与函数始终不可见。
+- 统一修复：
+  - `ExceptionCreationModuleStates` 在 ExceptionFlow 上用同一个初始化求解器（所有
+    弧，store 在 Commit 生效）计算每个 creation Before 点的状态，起点为 creator 自身的
+    entry 集合。读取 phased 函数时计算一次，`FilePhasedFunction::InitializedModulesBefore`
+    据此回答。family reader 与 `VerifyFamilyWrites` 的 inherited 边改为使用创建时集合。
+  - 两个求解入口都按同一规则扩展前奏：从函数创建往后的连续段里只允许函数创建、
+    module store、纯 scalar 移动与 no-op，且都不会抛向本地 handler；其中的 store 计入
+    该创建的集合。
+  - 修正 phased 入口 `EntryDeclarations` 的支配校验：phased 图改用
+    `VerifyPhasedValueFlow` 的支配树（原来调用了只适用于 normal 图的 `VerifyValueFlow`）。
+- 证据：
+  - 新 fixture `module_creation_states`（phased 与 normal 两份源码，default 与 O0）Node
+    差分，包括在后续赋值之前于模块求值期间调用，植入的变异能被检出；
+  - `module_initialization_test` 的 BeforeStore 按前奏规则更新，并新增前奏被打断的负例；
+  - big.abc 5,405 → **6,457**（+1,052；regression 构建，含 phased 前奏规则），零回退、零文本变化，
+    语法错误为 0；cohort `csr113/def` 零变化；全量 CTest 997 项，失败的 34 项都在已知清单内。
+
 ## 自引用的类：后代与 phased creator（2026-10-29，cc；用户指定的优先阻塞 2）
 
 - es2abc 为自引用的类（成员或静态成员写类名）建立类绑定的词法槽：先 class 创建，

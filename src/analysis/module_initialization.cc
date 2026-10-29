@@ -322,8 +322,42 @@ BuildModuleInitialization(const SemanticMethod& input,
     auto built =
         BuildModuleInitialization(sites, input.flow, entry, quota.left);
     if (auto* result = std::get_if<ModuleInitialization>(&built)) {
-      result->allocated_bytes += quota.initial.bytes - quota.left.bytes;
-      result->work += quota.initial.work - quota.left.work;
+      quota.Step(result->work);
+      // A created function cannot run before the first instruction that can
+      // execute user code. Hoisted declarations are emitted as a straight
+      // prelude (`definefunc; stmodulevar` ...): stores later in that prelude
+      // happen before any call of the earlier function. Extend each function
+      // creation's snapshot with the module stores that follow it in its block
+      // until anything other than a function creation, module store, pure
+      // scalar move or no-op. Each instruction is visited once per creation
+      // prelude; blocks are walked in order, so total work is O(I + B).
+      std::size_t block = 0;
+      for (auto& state : result->states) {
+        quota.Step();
+        const auto at = state.instruction.value;
+        if (at >= input.instructions.size() ||
+            !std::holds_alternative<FunctionCreation>(input.instructions[at].operation)) continue;
+        while (block + 1 < input.flow.blocks.size() && input.flow.blocks[block + 1].first_instruction <= at) {
+          quota.Step(); ++block;
+        }
+        if (block >= input.flow.blocks.size()) continue;
+        const auto& range = input.flow.blocks[block];
+        const std::size_t end = std::size_t(range.first_instruction) + range.instruction_count;
+        for (auto k = std::size_t(at) + 1; k < end && k < input.instructions.size(); ++k) {
+          quota.Step();
+          const auto& operation = input.instructions[k].operation;
+          if (const auto* store = std::get_if<ModuleStore>(&operation)) {
+            quota.Insert(state.slots, store->slot);
+            continue;
+          }
+          const auto* scalar = std::get_if<ScalarAssignment>(&operation);
+          if (std::holds_alternative<FunctionCreation>(operation) || std::holds_alternative<NoOperation>(operation) ||
+              (scalar && scalar->completion == CompletionEffect::kNormal)) continue;
+          break;
+        }
+      }
+      result->allocated_bytes = quota.initial.bytes - quota.left.bytes + result->allocated_bytes;
+      result->work = quota.initial.work - quota.left.work;
     }
     return built;
   } catch (Error error) {
@@ -334,43 +368,104 @@ BuildModuleInitialization(const SemanticMethod& input,
     return Error::kResourceLimit;
   }
 }
+namespace {
+// ExceptionFlow nodes as one-node blocks over all arcs: a store takes effect
+// at its Commit, and a snapshot site observes the state at a Before node.
+template <class Snapshot>
+std::variant<ModuleInitialization, ModuleInitializationError> ExceptionStates(
+    const ExceptionFlow& flow, const ModuleSlotSet& entry, SemanticBudget& budget, Snapshot snapshot) {
+  using Error = ModuleInitializationError;
+  const auto count = flow.nodes.size();
+  if (!count || count >= UINT32_MAX) return Error::kInput;
+  if (count > budget.work) return Error::kWorkLimit;
+  budget.work -= count;
+  const std::size_t width = sizeof(ModuleStateSite) + sizeof(FlowBlock);
+  if (count > budget.bytes / width) return Error::kResourceLimit;
+  budget.bytes -= count * width;
+  std::vector<ModuleStateSite> sites(count);
+  NormalFlow normal;
+  normal.blocks.resize(count);
+  for (std::size_t i = 0; i < count; ++i) {
+    const auto& node = flow.nodes[i];
+    if (node.instruction.value >= flow.instructions.size() || node.successor_count > kMaxNormalSuccessors)
+      return Error::kInput;
+    const auto& instruction = flow.instructions[node.instruction.value];
+    auto& block = normal.blocks[i];
+    block.first_instruction = static_cast<std::uint32_t>(i);
+    block.instruction_count = 1;
+    block.successor_count = node.successor_count;
+    for (std::uint8_t e = 0; e < node.successor_count; ++e) {
+      const auto target = node.successors[e].target.value;
+      if (target >= count) return Error::kInput;
+      block.successors[e] = {BlockId{target}, node.successors[e].kind == ExceptionArcKind::kFallthrough
+          ? FlowEdgeKind::kFallthrough : FlowEdgeKind::kTaken};
+    }
+    sites[i].pc = instruction.pc;
+    if (node.phase == ExceptionPhase::kBefore) sites[i].snapshot = snapshot(instruction.operation);
+    if (node.phase == ExceptionPhase::kCommit)
+      if (const auto* store = std::get_if<ModuleStore>(&instruction.operation)) sites[i].store = store->slot;
+  }
+  return BuildModuleInitialization(sites, normal, entry, budget);
+}
+}  // namespace
+std::variant<ModuleInitialization, ModuleInitializationError>
+ExceptionCreationModuleStates(const ExceptionFlow& flow, const ModuleSlotSet& entry, SemanticBudget budget) {
+  using Error = ModuleInitializationError;
+  try {
+    const auto initial = budget;
+    auto built = ExceptionStates(flow, entry, budget, [](const auto& operation) {
+      return std::holds_alternative<FunctionCreation>(operation) || std::holds_alternative<ClassCreation>(operation) ||
+          std::holds_alternative<BufferedObjectCreation>(operation);
+    });
+    if (const auto* error = std::get_if<Error>(&built)) return *error;
+    auto result = std::get<ModuleInitialization>(std::move(built));
+    // Node ids become flow instruction ids (one Before node per instruction).
+    std::vector<std::optional<ExceptionNodeId>> before(flow.instructions.size());
+    for (std::size_t n = 0; n < flow.nodes.size(); ++n)
+      if (flow.nodes[n].phase == ExceptionPhase::kBefore && flow.nodes[n].instruction.value < before.size())
+        before[flow.nodes[n].instruction.value] = ExceptionNodeId{static_cast<std::uint32_t>(n)};
+    for (auto& state : result.states) {
+      if (state.instruction.value >= flow.nodes.size()) return Error::kInput;
+      state.instruction = flow.nodes[state.instruction.value].instruction;
+      // Hoisting prelude, as for normal methods: a created function cannot run
+      // before the straight run of creations/module stores/moves that follows
+      // it; none of these branch, and none may throw to a local handler.
+      if (!std::holds_alternative<FunctionCreation>(flow.instructions[state.instruction.value].operation)) continue;
+      for (auto k = std::size_t(state.instruction.value) + 1; k < flow.instructions.size(); ++k) {
+        if (!budget.work) return Error::kWorkLimit;
+        --budget.work;
+        const auto& operation = flow.instructions[k].operation;
+        const auto* store = std::get_if<ModuleStore>(&operation);
+        const auto* scalar = std::get_if<ScalarAssignment>(&operation);
+        if (!store && !std::holds_alternative<FunctionCreation>(operation) &&
+            !std::holds_alternative<NoOperation>(operation) &&
+            !(scalar && scalar->completion == CompletionEffect::kNormal)) break;
+        if (!before[k] || (flow.nodes[before[k]->value].exception && flow.nodes[before[k]->value].exception->target)) break;
+        if (store) {
+          auto bytes = budget.bytes;
+          state.slots = state.slots.With(store->slot, bytes);
+          budget.bytes = bytes;
+        }
+      }
+    }
+    std::sort(result.states.begin(), result.states.end(),
+        [](const auto& a, const auto& b) { return a.instruction < b.instruction; });
+    result.allocated_bytes += initial.bytes - budget.bytes;
+    result.work += initial.work - budget.work + result.states.size() * std::bit_width(result.states.size());
+    return result;
+  } catch (Error error) { return error;
+  } catch (const std::bad_alloc&) { return Error::kResourceLimit;
+  } catch (const std::length_error&) { return Error::kResourceLimit; }
+}
 std::variant<std::vector<LanguageLoadFact>, ModuleInitializationError>
 ProveEntryModuleLoads(const ExceptionFlow& flow, SemanticBudget budget) {
   using Error = ModuleInitializationError;
   try {
     const auto count = flow.nodes.size();
-    if (!count || count >= UINT32_MAX) return Error::kInput;
-    if (count > budget.work) return Error::kWorkLimit;
-    budget.work -= count;
-    const std::size_t width = sizeof(ModuleStateSite) + sizeof(FlowBlock);
-    if (count > budget.bytes / width) return Error::kResourceLimit;
-    budget.bytes -= count * width;
-    std::vector<ModuleStateSite> sites(count);
-    NormalFlow normal;
-    normal.blocks.resize(count);
-    for (std::size_t i = 0; i < count; ++i) {
-      const auto& node = flow.nodes[i];
-      if (node.instruction.value >= flow.instructions.size() || node.successor_count > kMaxNormalSuccessors)
-        return Error::kInput;
-      const auto& instruction = flow.instructions[node.instruction.value];
-      auto& block = normal.blocks[i];
-      block.first_instruction = static_cast<std::uint32_t>(i);
-      block.instruction_count = 1;
-      block.successor_count = node.successor_count;
-      for (std::uint8_t e = 0; e < node.successor_count; ++e) {
-        const auto target = node.successors[e].target.value;
-        if (target >= count) return Error::kInput;
-        block.successors[e] = {BlockId{target}, node.successors[e].kind == ExceptionArcKind::kFallthrough
-            ? FlowEdgeKind::kFallthrough : FlowEdgeKind::kTaken};
-      }
-      sites[i].pc = instruction.pc;
-      if (node.phase == ExceptionPhase::kBefore)
-        if (const auto* load = std::get_if<ModuleLoad>(&instruction.operation);
-            load && load->space == ModuleSpace::kLocal && !load->request_namespace) sites[i].snapshot = true;
-      if (node.phase == ExceptionPhase::kCommit)
-        if (const auto* store = std::get_if<ModuleStore>(&instruction.operation)) sites[i].store = store->slot;
-    }
-    auto built = BuildModuleInitialization(sites, normal, {}, budget);
+    auto built = ExceptionStates(flow, {}, budget, [](const auto& operation) {
+      const auto* load = std::get_if<ModuleLoad>(&operation);
+      return load && load->space == ModuleSpace::kLocal && !load->request_namespace;
+    });
     if (const auto* error = std::get_if<Error>(&built)) return *error;
     const auto& initialized = std::get<ModuleInitialization>(built);
     std::vector<LanguageLoadFact> facts;

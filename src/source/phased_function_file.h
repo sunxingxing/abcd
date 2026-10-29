@@ -53,6 +53,9 @@ class FilePhasedFunction {
   bool MatchesModuleCreation(const FunctionInput&, analysis::InstructionId) const;
   std::span<const InputModuleRead> InitializedModuleReads() const;
   const ModuleSlotSet& EntryModules() const;
+  // Slots initialized before the creation at this flow instruction; the entry
+  // set when the instruction is not a recorded creation.
+  const ModuleSlotSet& InitializedModulesBefore(analysis::InstructionId creation) const;
   const ClassSelfOrder* SelfOrder() const;
   void SetSelfOrder(ClassSelfOrder order);
   abc::EntityOffset Record() const;

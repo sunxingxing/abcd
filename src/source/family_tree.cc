@@ -887,7 +887,7 @@ class FamilyTrees {
         first[store->slot.value] = id; declares[id.value] = 1;
       }
     }
-    std::optional<analysis::ValueFlowProof> flow;
+    std::optional<analysis::DominatorTree> dominators;
     for (const auto& write : aliases.writes) {
       Step(1); const auto id = write.operation;
       if (declares[id.value]) continue;
@@ -896,13 +896,15 @@ class FamilyTrees {
       const auto& declaration = graph.ops[first[slot]->value];
       const auto& op = graph.ops[id.value];
       if (declaration.block == op.block) { Require(declaration.order < op.order, FamilyTreeError::kModules); continue; }
-      if (!flow) {
-        auto checked = analysis::VerifyValueFlow(graph, left_);
-        Require(std::holds_alternative<analysis::ValueFlowProof>(checked), FamilyTreeError::kModules);
-        flow.emplace(std::get<analysis::ValueFlowProof>(std::move(checked)));
-        Admit(flow->allocated_bytes, 1);
+      if (!dominators) {
+        // The entry root is a phased graph: availability over Before/Commit.
+        auto checked = analysis::VerifyPhasedValueFlow(graph, left_);
+        Require(std::holds_alternative<analysis::PhasedValueFlowProof>(checked), FamilyTreeError::kModules);
+        auto& proof = std::get<analysis::PhasedValueFlowProof>(checked);
+        Admit(proof.allocated_bytes, 1); Step(proof.work);
+        dominators.emplace(std::move(proof.dominators));
       }
-      Require(flow->dominators.Dominates({declaration.block.value}, {op.block.value}), FamilyTreeError::kModules);
+      Require(dominators->Dominates({declaration.block.value}, {op.block.value}), FamilyTreeError::kModules);
     }
     return declares;
   }

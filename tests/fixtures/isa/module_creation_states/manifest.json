@@ -1,0 +1,79 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Children reading module vars and hoisted functions initialized before their creation (hoisting prelude), under normal and phased entries.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/module_creation_states/phased.js",
+   "path": "tests/fixtures/isa/module_creation_states/phased-default.abc",
+   "sha256": "22f2e10156ea65efadc272595d924003495479a34350e7831461e235f0028cde",
+   "source_sha256": "63b6fc634af8ec007e917058dad1029256abb588b9c43ea33594b68616c02a50",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=module_creation_states",
+    "--source-file=phased.js",
+    "--output=tests/fixtures/isa/module_creation_states/phased-default.abc",
+    "tests/fixtures/isa/module_creation_states/phased.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/module_creation_states/phased.js",
+   "path": "tests/fixtures/isa/module_creation_states/phased-O0.abc",
+   "sha256": "8ca2b227a166d3644facb4a97ae82e846e737ede60d311083c8be2305c531959",
+   "source_sha256": "63b6fc634af8ec007e917058dad1029256abb588b9c43ea33594b68616c02a50",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=module_creation_states",
+    "--source-file=phased.js",
+    "--output=tests/fixtures/isa/module_creation_states/phased-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/module_creation_states/phased.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/module_creation_states/normal.js",
+   "path": "tests/fixtures/isa/module_creation_states/normal-default.abc",
+   "sha256": "1aa96d94ea4210275b35a789e2ac7eaa985aa08392c3bb8c1f554af8e3ad3e71",
+   "source_sha256": "a587fa710d84b6f11b144b4ce92b120a8344fa0356d5745cda07033f46a77173",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=module_creation_states",
+    "--source-file=normal.js",
+    "--output=tests/fixtures/isa/module_creation_states/normal-default.abc",
+    "tests/fixtures/isa/module_creation_states/normal.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/module_creation_states/normal.js",
+   "path": "tests/fixtures/isa/module_creation_states/normal-O0.abc",
+   "sha256": "73d1a614f0e9a69cbfde891acd3f78b027a8e058e2b5aced1d8552909450075b",
+   "source_sha256": "a587fa710d84b6f11b144b4ce92b120a8344fa0356d5745cda07033f46a77173",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=module_creation_states",
+    "--source-file=normal.js",
+    "--output=tests/fixtures/isa/module_creation_states/normal-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/module_creation_states/normal.js"
+   ],
+   "profile": 6
+  }
+ ]
+}
