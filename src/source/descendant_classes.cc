@@ -162,14 +162,10 @@ class Preparation {
         Error(*error);
       }
       Account(std::get<CreatorClassCost>(binding));
-      for(const auto& task:plan.tasks){Step();operation=task.operation;
-        for(const auto& body:task.preparation->bodies)if(const auto* p=std::get_if<FamilyPreparation>(&body)){
-          Require(!p->RootCapture() || p->RootCapture()->deferred.empty(),FamilyCreationCheck::kClassDeferredDeclaration);
-        }
-      }
       // Nonempty demands are admitted only after BindCreatorClasses has bound
-      // every class member against the creator's actual storage (above) and no
-      // body needs a deferred declaration (checked just before). A demand the
+      // every class member against the creator's actual storage (above). A
+      // body's deferred declarations are discharged by the creator's family
+      // tree (MarkDeferredCells), as for ordinary children. A demand the
       // creator cannot satisfy still fails binding as kClassCaptureRequirements.
       for(const auto& task:plan.tasks)for(const auto& body:task.preparation->bodies)
         if(const auto* prepared=std::get_if<FamilyPreparation>(&body))References(result,*prepared);

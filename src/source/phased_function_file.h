@@ -11,6 +11,7 @@
 #include "abcd/source/async_completion.h"
 
 namespace abcd::source {
+class ClassSelfOrder;
 enum class PhasedFileError : std::uint8_t {
   kIdentity, kMethod, kFrame, kChanged, kResourceLimit, kWorkLimit
 };
@@ -52,6 +53,8 @@ class FilePhasedFunction {
   bool MatchesModuleCreation(const FunctionInput&, analysis::InstructionId) const;
   std::span<const InputModuleRead> InitializedModuleReads() const;
   const ModuleSlotSet& EntryModules() const;
+  const ClassSelfOrder* SelfOrder() const;
+  void SetSelfOrder(ClassSelfOrder order);
   abc::EntityOffset Record() const;
   std::size_t AllocatedBytes() const;
   // Decoded instruction-byte charge plus phase/local recorded work. Metadata

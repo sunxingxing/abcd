@@ -5,6 +5,7 @@
 
 #include "class_initializer_file.h"
 #include "class_self_scope.h"
+#include "../analysis/value_edits.h"
 #include "closed_class_fields.h"
 #include "private_class_receiver.h"
 
@@ -23,6 +24,12 @@ std::span<const std::optional<analysis::LocalAccessPlan::UnexposedInitialization
 }
 std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const FileFunction& parent,
     std::span<const ClassInitializerWitness> witnesses, analysis::SemanticBudget budget) {
+  if (parent.values.identity != parent.input.Identity() || parent.values.method != parent.input.Method())
+    return ClassSelfOrderError::kOwner;
+  return Build(ClassCreator{parent}, witnesses, budget, &parent);
+}
+std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const ClassCreator& creator,
+    std::span<const ClassInitializerWitness> witnesses, analysis::SemanticBudget budget, const FileFunction* normal) {
   using namespace analysis;
   using Error = ClassSelfOrderError;
   const auto initial = budget;
@@ -30,11 +37,12 @@ std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const Fi
     const auto require = [](bool condition, Error error) { if (!condition) throw error; };
     const auto step = [&](std::uint64_t count = 1) { require(count <= budget.work,Error::kWorkLimit); budget.work -= count; };
     const auto admit = [&](std::size_t count, std::size_t width) { require(count <= budget.bytes/width,Error::kResourceLimit); budget.bytes -= count*width; };
-    const auto& graph = parent.values.graph;
-    require(parent.values.environments && parent.values.cells &&
-        parent.values.identity == parent.input.Identity() && parent.values.method == parent.input.Method(),Error::kOwner);
-    auto found = FindClassSelfStores(graph,*parent.values.environments,*parent.values.cells,
-        parent.values.initializers.calls,budget);
+    const auto& graph = creator.Graph();
+    require(creator.Environments() && creator.Cells(),Error::kOwner);
+    // Phased graphs keep pure register copies; identities compare copy roots.
+    const auto root = [&](ValueId value) { std::uint64_t hops = 0; const auto found = CopyRoot(graph, value, hops); step(hops); return found; };
+    auto found = FindClassSelfStores(graph,*creator.Environments(),*creator.Cells(),
+        creator.Initializers(),budget);
     if (const auto* error = std::get_if<ClassSelfError>(&found)) {
       if (*error == ClassSelfError::kResourceLimit) return Error::kResourceLimit;
       if (*error == ClassSelfError::kWorkLimit) return Error::kWorkLimit;
@@ -57,20 +65,22 @@ std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const Fi
       const auto& context = witness.function.context;
       require(call.call.value < indexed.size() && indexed[call.call.value] && call.method.value < graph.ops.size(),Error::kInput);
       const auto& store = candidates.stores[*indexed[call.call.value]];
-      require(store.creation == call.creation && graph.ops[call.creation.value].result == call.receiver,Error::kInput);
+      require(store.creation == call.creation && graph.ops[call.creation.value].result == root(call.receiver),Error::kInput);
       const auto& invocation = graph.ops[call.call.value];
       require(invocation.use_count == 2,Error::kInput);
       const auto* callee = std::get_if<ValueId>(&graph.uses[invocation.first_use.value].operand);
-      const auto* definition = callee ? std::get_if<OpResult>(&graph.values[callee->value].origin) : nullptr;
+      const auto callee_root = callee ? std::optional{root(*callee)} : std::nullopt;
+      const auto* definition = callee_root ? std::get_if<OpResult>(&graph.values[callee_root->value].origin) : nullptr;
       require(definition && definition->op == call.method,Error::kInput);
       const auto* site = context.CreationSite();
       const auto& operation = graph.ops[call.method.value];
       const auto* method = std::get_if<ValueFunctionCreation>(&operation.operation);
       require(site && method && operation.origin.value < graph.origins.size() &&
-          context.Identity() == parent.input.Identity() && site->creator == parent.input.Method() &&
-          site->pc == graph.origins[operation.origin.value].pc && context.Target() == body.input.Method() &&
-          body.input.MatchesOwner(context) && body.input.Identity() == parent.input.Identity() &&
-          body.input.Record() == parent.input.Record() &&
+          context.Identity() == creator.Identity() && site->creator == creator.Method() &&
+          site->pc == graph.origins[operation.origin.value].original.value_or(graph.origins[operation.origin.value].pc) &&
+          context.Target() == body.input.Method() &&
+          body.input.MatchesOwner(context) && body.input.Identity() == creator.Identity() &&
+          body.input.Record() == creator.Record() &&
           body.values.identity == body.input.Identity() && body.values.method == body.input.Method(),Error::kOwner);
       require(site->creation.kind == method->kind && site->creation.method == method->method &&
           site->creation.length.value == method->length && site->creation.cache_slot == method->cache_slot &&
@@ -110,6 +120,16 @@ std::variant<ClassSelfOrder, ClassSelfOrderError> ClassSelfOrder::Build(const Fi
       }
       result.stores_.push_back(store); indexed[call.call.value].reset();
     }
+    result.operations_ = graph.ops.data(); result.values_ = graph.values.data();
+    result.operation_count_ = graph.ops.size(); result.value_count_ = graph.values.size();
+    result.revision_ = graph.revision; result.cfg_ = graph.cfg_revision;
+    if (!normal) {
+      // Phased creators have no normal LocalAccessPlan; their cells carry the
+      // store directly and no unexposed-initialization prefix is published.
+      result.bytes_ = sizeof(result)+result.stores_.capacity()*sizeof(ClassSelfStore);
+      result.work_ = initial.work-budget.work; return result;
+    }
+    const auto& parent = *normal;
     const auto& input = parent.input;
     const auto& locals = input.Proof().locals;
     admit(locals.cells.size(),sizeof(decltype(result.prefixes_)::value_type)); step(locals.cells.size());

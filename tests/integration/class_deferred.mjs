@@ -53,24 +53,12 @@ try {
       const records = JSON.parse(readFileSync(join(out, 'manifest.json'))).records.filter(r => r.source_status !== 2);
       assert.equal(records.length, 1);
       const record = records[0];
-      // Timing and nested-class activation are not widened by this increment.
-      if (name === 'static_early' || name === 'loop') {
+      // Timing is not widened by this increment. A class created per loop
+      // iteration now completes: its creator declares the deferred self cell.
+      if (name === 'static_early') {
         assert.equal(record.source_status, 3, JSON.stringify(record));
         assert.equal(record.source, undefined);
-        if (name === 'loop') {
-          // Phased discovery now reaches the real capture requirement. The
-          // loop still refuses; no activation or TDZ requirement is relaxed.
-          assert.deepEqual(record.source_failure.causes, [
-            {domain: 'abcd::source::FamilyFileError', value: 1},
-            {domain: 'abcd::source::FamilyCreationCheck', value: 16},
-          ]);
-          const creation = record.source_failure.family_creation;
-          assert.equal(creation.reason, 16); assert.equal(creation.kind, 2);
-          assert.deepEqual(creation.location, {method: 395, operation: 16, block: 32, pc: 38, working_pc: 38});
-          assert.equal(creation.root, 423); assert.equal(creation.occurrence, 1);
-          assert.deepEqual(creation.descendant_source, {method: 423, operation: 3, block: 0, pc: 6, working_pc: 6});
-        }
-        else { assert.equal(record.source_failure_domain, 'record_program'); assert.equal(record.source_error, 7); }
+        assert.equal(record.source_failure_domain, 'record_program'); assert.equal(record.source_error, 7);
         continue;
       }
       assert.equal(record.source_status, 0, JSON.stringify(record));

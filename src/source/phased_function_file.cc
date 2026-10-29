@@ -1,5 +1,6 @@
 #include "array_pattern_normalize.h"
 #include "phased_function_file.h"
+#include "class_self_order.h"
 #include "concurrent_async.h"
 
 #include <bit>
@@ -52,6 +53,8 @@ struct FilePhasedFunction::Storage {
   abc::EntityOffset record;
   std::size_t bytes;
   std::uint64_t work;
+  // Class self-store order certified by the family reader for this creator.
+  std::optional<ClassSelfOrder> self_order;
 };
 FilePhasedFunction::FilePhasedFunction(std::unique_ptr<Storage> storage) : storage_(std::move(storage)) {}
 FilePhasedFunction::FilePhasedFunction(FilePhasedFunction&&) noexcept = default;
@@ -84,6 +87,10 @@ bool FilePhasedFunction::MatchesOwner(const FunctionContext& context) const {
 }
 std::span<const InputModuleRead> FilePhasedFunction::InitializedModuleReads() const { return storage_->module_reads; }
 const ModuleSlotSet& FilePhasedFunction::EntryModules() const { return storage_->entry_modules; }
+const ClassSelfOrder* FilePhasedFunction::SelfOrder() const {
+  return storage_->self_order ? &*storage_->self_order : nullptr;
+}
+void FilePhasedFunction::SetSelfOrder(ClassSelfOrder order) { storage_->self_order.emplace(std::move(order)); }
 bool FilePhasedFunction::MatchesModuleCreation(const FunctionInput& parent, analysis::InstructionId creation) const {
   const auto& owner = storage_->owner;
   if (Phases().Identity() != parent.Identity() || Record() != parent.Record() || owner.creator != parent.Method() ||

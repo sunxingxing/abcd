@@ -10,7 +10,17 @@ try{
  const family=reason=>[{domain:'abcd::source::FamilyFileError',value:1},{domain:'abcd::source::FamilyCreationCheck',value:reason}];
  // Derived classes are no longer refused wholesale in descendant creators;
  // `class extends Base {}` now stops at its implicit constructor's entry ABI.
- for(const [name,causes,located] of [['deferred',family(16),true],['heritage',[{domain:'abcd::source::FunctionAbiError',value:2}],false],['nested',family(19),true]]){ // member completes (creator_classes_cli_test)
+ // A member reading a later `let` now completes: its creator declares the
+ // deferred cell after the class, keeping the TDZ (checked by running it).
+ for(const label of ['default','source']){
+  const out=join(dir,'deferred-complete-'+label);
+  run(structure,[join(fixtures,'deferred.abc'),out,'--value-source',...(label==='source'?['--language-source']:[])]);
+  const row=JSON.parse(readFileSync(join(out,'manifest.json'))).records.find(r=>r.source_status!==2);
+  assert.equal(row.source_status,0,JSON.stringify(row));
+  const probe=spawnSync(process.execPath,['--input-type=module','-e',`const m=await import(${JSON.stringify(join(out,row.source))});const C=m.factory();console.log(new C().read());`],{encoding:'utf8'});
+  assert.equal(probe.stdout.trim(),'1',probe.stderr);
+ }
+ for(const [name,causes,located] of [['heritage',[{domain:'abcd::source::FunctionAbiError',value:2}],false],['nested',family(19),true]]){ // member completes (creator_classes_cli_test)
   for(const [label,flags] of [['default',[]],['source',['--language-source']]]){
    const abc=join(fixtures,name+'.abc'),out=join(dir,name+'-'+label);
    run(structure,[abc,out,'--value-source',...flags]);
@@ -24,5 +34,5 @@ try{
    assert.ok(instructions.some(i=>i.pc===f.pc && i.class_creation));
   }
  }
- console.log('descendant_class_refusals_cli_test: deferred/heritage/nested refusals, real locations, both JSON paths');
+ console.log('descendant_class_refusals_cli_test: deferred completes; heritage/nested refusals, real locations, both JSON paths');
 }finally{rmSync(dir,{recursive:true,force:true});}

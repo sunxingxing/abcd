@@ -6,6 +6,7 @@
 
 namespace abcd::source {
 struct FileFunction;
+class ClassCreator;
 class FunctionInput;
 struct ClassInitializerFunction;
 struct ClassSelfInitializationInput;
@@ -30,6 +31,10 @@ class ClassSelfOrder {
   ClassSelfOrder& operator=(ClassSelfOrder&&) noexcept = default;
   static std::variant<ClassSelfOrder, ClassSelfOrderError> Build(const FileFunction&,
       std::span<const ClassInitializerWitness>, analysis::SemanticBudget = {});
+  // Same stores and witnesses for any creator. Phased creators (normal ==
+  // nullptr) publish no LocalAccessPlan prefixes.
+  static std::variant<ClassSelfOrder, ClassSelfOrderError> Build(const ClassCreator&,
+      std::span<const ClassInitializerWitness>, analysis::SemanticBudget, const FileFunction* normal);
   static std::variant<ClassSelfOrder, ClassSelfOrderError> BindInitialization(
       const ClassSelfInitializationInput&, const ClassSelfInitialization&,
       const ClassSelfScope&, analysis::SemanticBudget = {});

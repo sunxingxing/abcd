@@ -1,4 +1,5 @@
 #include "class_self.h"
+#include "../analysis/value_edits.h"
 
 #include <algorithm>
 #include <new>
@@ -33,7 +34,9 @@ std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(
     }
     const auto& order = std::get<EffectOrder>(flow);
     admit(order.allocated_bytes,1); step(order.work);
-    const auto verified = VerifyCellPlan(graph,environments,cells,budget);
+    // Phased plans carry exception topology and have their own verifier.
+    const auto verified = graph.phases.empty() ? VerifyCellPlan(graph,environments,cells,budget)
+                                               : VerifyPhasedCellPlan(graph,environments,cells,budget);
     if (const auto* error = std::get_if<CellError>(&verified)) {
       if (*error == CellError::kResourceLimit) return Error::kResourceLimit;
       if (*error == CellError::kWorkLimit) return Error::kWorkLimit;
@@ -79,7 +82,11 @@ std::variant<ClassSelfStores, ClassSelfError> FindClassSelfStores(
       const auto& write = graph.ops[store->value];
       if (write.use_count != 1) continue;
       const auto* value = std::get_if<ValueId>(&graph.uses[write.first_use.value].operand);
-      const auto* source = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
+      // Phased graphs may store a pure register copy of the class value.
+      std::uint64_t hops = 0;
+      const auto stored = value ? std::optional{CopyRoot(graph, *value, hops)} : std::nullopt;
+      step(hops);
+      const auto* source = stored ? std::get_if<OpResult>(&graph.values[stored->value].origin) : nullptr;
       if (!source || !initializers[source->op.value]) continue;
       const auto& creation = graph.ops[source->op.value];
       const auto call = *initializers[source->op.value];

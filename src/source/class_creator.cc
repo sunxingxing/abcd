@@ -60,6 +60,7 @@ std::span<const ClassInstanceInitializer> ClassCreator::Instances() const {
                  : Normal()->values.initializers.instances;
 }
 const ClassSelfOrder* ClassCreator::SelfOrder() const {
+  if (Phase()) return Phase()->SelfOrder();
   return Normal() && Normal()->self_order ? &*Normal()->self_order : nullptr;
 }
 std::shared_ptr<ClassSelfDeferred> ClassCreator::Self() const {

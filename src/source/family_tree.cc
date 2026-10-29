@@ -247,6 +247,18 @@ class FamilyTrees {
       if (!(parent < i)) DeferredFailure(family, parent, DeferredCellError::kBinding, &member.incoming->cells.deferred.front());
       counts[parent] += member.incoming->cells.deferred.size();
     }
+    // Class bodies created by a member capture its cells the same way (e.g.
+    // methods reading the class's own binding, stored after creation); the
+    // creator declares those cells, exactly as the record root does.
+    const auto class_captures = [&](std::size_t i, const auto& visit) {
+      if (class_plans.creators.empty() || !class_plans.creators[i]) return;
+      for (const auto& task : class_plans.creators[i]->tasks)
+        if (task.preparation) for (const auto& body : task.preparation->bodies)
+          if (const auto* prepared = std::get_if<FamilyPreparation>(&body))
+            if (const auto* captures = prepared->RootCapture()) visit(*captures);
+    };
+    for (std::size_t i = 0; i < family.members.size(); ++i)
+      class_captures(i, [&](const CaptureCells& captures) { Step(1); counts[i] += captures.deferred.size(); });
     // Reserve once per parent, then fill: linear in the total demand.
     for (std::size_t i = 0; i < family.members.size(); ++i) {
       Step(1); if (counts[i]) Reserve(deferred[i], counts[i]);
@@ -258,6 +270,10 @@ class FamilyTrees {
         Step(1); deferred[member.incoming->parent.value].push_back(cell);
       }
     }
+    for (std::size_t i = 0; i < family.members.size(); ++i)
+      class_captures(i, [&](const CaptureCells& captures) {
+        for (const auto& cell : captures.deferred) { Step(1); deferred[i].push_back(cell); }
+      });
     std::vector<std::vector<std::uint8_t>> tdz;
     Reserve(tdz, family.members.size()); tdz.resize(family.members.size());
     for (std::size_t i = 0; i < family.members.size(); ++i) {
@@ -402,7 +418,8 @@ class FamilyTrees {
                                           demands, phase->Phases().Classes().initializers,
                                           phase->Locals().writes,
                                           array_source, guarded,
-                                          for_of ? &*for_of : nullptr)
+                                          for_of ? &*for_of : nullptr,
+                                          phase->SelfOrder())
               : BuildEvaluationPlan(
                     graph, left_,
                     i == 0 && !family.root_capture

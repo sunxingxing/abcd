@@ -5,6 +5,34 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 自引用的类：后代与 phased creator（2026-10-29，cc；用户指定的优先阻塞 2）
+
+- es2abc 为自引用的类（成员或静态成员写类名）建立类绑定的词法槽：先 class 创建，
+  再 `stlexvar`，再调用静态初始化器，整段由环境清理 handler 包住。原先只有 record
+  根（normal 模块入口）支持这种形态：
+  - phased creator 因缺少 `ClassSelfOrder` 而拒绝（`ClassInitializerError::kFlow`，2,229 条）；
+  - 后代 creator（普通函数里的类、phased 入口的类）的类体会捕获该槽，一律以
+    `kClassDeferredDeclaration` 拒绝。
+- 统一修复（复用已有证明，不新建机制）：
+  - `ClassSelfOrder::Build` 拆成按 `ClassCreator` 的核心与 normal 专有的
+    LocalAccessPlan 前缀；phased creator 只发布 store 证书。receiver、callee 与
+    store 的值都按 `CopyRoot` 比较。`FindClassSelfStores` 对 phased 图使用
+    `VerifyPhasedCellPlan`。
+  - `family_file` 为 phased creator 构建 self order（`PhasedSelfOrder`），经
+    `ClassCreator::SelfOrder()` 传给投影与 phased 求值计划。
+  - 类体 root capture 中的 deferred 声明，像普通子函数一样交给创建它的 family 成员
+    （`MarkDeferredCells`），由该成员声明（与 record 根的做法相同）。因此删去后代
+    路径的 `kClassDeferredDeclaration` 拒绝。
+- 证据：
+  - 新 fixture `self_classes`（函数与 phased 入口两份源码，default 与 O0）Node 差分，
+    植入的变异能被检出；
+  - `class_deferred` 的 `loop` 与 `creator_classes` 的 `deferred` 由拒绝变为完整，分别
+    经 3 种模式的 oracle 和运行结果验证，测试预期随之更新；
+  - big.abc 4,553 → **5,405**（+852），零回退、零文本变化，语法错误为 0；
+  - cohort `csr112/def` 零变化；全量 CTest 996 项，失败的 34 项都在已知清单内。
+- 剩余：静态初始化器自身读取类（`static y = A.x`）或捕获外层变量时，需要 class-inner
+  初始化器的 phased 路线（`SemanticProofError::kInternalValue`）。
+
 ## 模块顶层的 `this` 与 `new.target`（2026-10-29，cc；用户指定的优先阻塞）
 
 - big.abc 中约 2,948 条在打印阶段失败（`TreePrintError::kUnsupportedContext`）。ArkTS

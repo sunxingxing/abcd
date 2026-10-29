@@ -123,6 +123,7 @@ class FamilyReader {
       if (!member.class_projection && class_sites_ && !prepared_record_root &&
           std::holds_alternative<analysis::ClassCreation>(operation)) {
         if (!parent.Phase()) SelfOrder(member.function.Normal(), cursor.member);
+        else PhasedSelfOrder(*member.function.Phase());
         const ClassCreator creator = parent.Phase()
                                          ? ClassCreator{*parent.Phase()}
                                          : ClassCreator{parent.Normal()};
@@ -604,6 +605,47 @@ class FamilyReader {
     if (const auto* error = std::get_if<ClassSelfOrderError>(&built)) Fail(*error);
     parent.self_order.emplace(std::get<ClassSelfOrder>(std::move(built)));
     Admit(parent.self_order->AllocatedBytes(),1); Step(parent.self_order->Work());
+  }
+  // The same self-store certificate for a phased creator. Each initializer is
+  // read Closed through the creator; a captured (class-inner) initializer has
+  // no phased draft route yet and keeps its typed refusal.
+  void PhasedSelfOrder(FilePhasedFunction& phase) {
+    if (phase.SelfOrder()) return;
+    const ClassCreator creator{phase};
+    if (!creator.Cells() || !creator.Environments() || creator.Initializers().empty()) return;
+    auto found = FindClassSelfStores(creator.Graph(), *creator.Environments(), *creator.Cells(),
+        creator.Initializers(), Remaining());
+    if (const auto* error = std::get_if<ClassSelfError>(&found)) Fail(*error);
+    const auto& candidates = std::get<ClassSelfStores>(found);
+    Admit(candidates.allocated_bytes, 1); Step(candidates.work);
+    if (candidates.stores.empty()) return;
+    const auto calls = creator.Initializers();
+    std::vector<ClassInitializerFunction> bodies;
+    std::vector<ClassInitializerWitness> witnesses;
+    Grow(bodies, candidates.stores.size()); Grow(witnesses, candidates.stores.size());
+    for (const auto& store : candidates.stores) {
+      Step(std::bit_width(calls.size()) + 1);
+      const auto call = std::find_if(calls.begin(), calls.end(), [&](const auto& item) { return item.call == store.initializer; });
+      if (call == calls.end()) {
+        auto failure = FamilyFileFailure{Error::kCreation, method_, parent_, pc_, root_};
+        failure.family_creation = FamilyCreationEvidence{FamilyCreationCheck::kSelfInitializer,
+            OperationLocation(creator.Graph(), store.initializer, creator.Method())};
+        failure.family_creation->root = root_;
+        throw failure;
+      }
+      auto loaded = ReadClassInitializerFunction(file_, header_, index_, lookup_, roles_, sites_, creator, *call,
+          Remaining(), modules_);
+      if (const auto* error = std::get_if<ClassInitializerReadFailure>(&loaded))
+        throw FamilyFileFailure{*error, method_, parent_, pc_, root_};
+      auto body = std::get<ClassInitializerFunction>(std::move(loaded));
+      Admit(body.function.allocated_bytes, 1); Admit(body.context.AllocatedBytes(), 1); Step(body.context.Work());
+      bodies.push_back(std::move(body)); witnesses.push_back({*call, bodies.back()});
+    }
+    auto built = ClassSelfOrder::Build(creator, witnesses, Remaining(), nullptr);
+    if (const auto* error = std::get_if<ClassSelfOrderError>(&built)) Fail(*error);
+    auto order = std::get<ClassSelfOrder>(std::move(built));
+    Admit(order.AllocatedBytes(), 1); Step(order.Work());
+    phase.SetSelfOrder(std::move(order));
   }
   void Add(FamilyFunction function, std::optional<FunctionContext> context,
       std::optional<FamilyCreation> incoming, abc::MethodPosition method) {

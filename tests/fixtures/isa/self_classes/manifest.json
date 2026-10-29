@@ -1,0 +1,79 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Classes whose methods or static members refer to their own binding, in functions and phased module entries (default and O0).",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/self_classes/function.js",
+   "path": "tests/fixtures/isa/self_classes/function-default.abc",
+   "sha256": "f5e97eb541df1b751075b6896ce43abdbf4389be32586e872b47b50cdd1753d7",
+   "source_sha256": "4a61ae8637e7ef657fa3e3b57923ac2aa12e32052b8fcae16c20acfd4ed2b83d",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=self_classes",
+    "--source-file=function.js",
+    "--output=tests/fixtures/isa/self_classes/function-default.abc",
+    "tests/fixtures/isa/self_classes/function.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/self_classes/function.js",
+   "path": "tests/fixtures/isa/self_classes/function-O0.abc",
+   "sha256": "e1a5150945d6e9d959be28596d24a5613439a07165c4877a391890dd1741d81e",
+   "source_sha256": "4a61ae8637e7ef657fa3e3b57923ac2aa12e32052b8fcae16c20acfd4ed2b83d",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=self_classes",
+    "--source-file=function.js",
+    "--output=tests/fixtures/isa/self_classes/function-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/self_classes/function.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/self_classes/entry.js",
+   "path": "tests/fixtures/isa/self_classes/entry-default.abc",
+   "sha256": "deb1d01dd84cd9956be188b7ab7b331b62f10f2bf8ddc9b54278d689d76bfb89",
+   "source_sha256": "802f94a43f5f23ef7b77573660840a3f18972645e7363ba80dc50efc3c59a7a6",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=self_classes",
+    "--source-file=entry.js",
+    "--output=tests/fixtures/isa/self_classes/entry-default.abc",
+    "tests/fixtures/isa/self_classes/entry.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/self_classes/entry.js",
+   "path": "tests/fixtures/isa/self_classes/entry-O0.abc",
+   "sha256": "c901533d8e7745cbe90d392768e144854ed6beec78b4910eac3e7828f2922d7e",
+   "source_sha256": "802f94a43f5f23ef7b77573660840a3f18972645e7363ba80dc50efc3c59a7a6",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=self_classes",
+    "--source-file=entry.js",
+    "--output=tests/fixtures/isa/self_classes/entry-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/self_classes/entry.js"
+   ],
+   "profile": 6
+  }
+ ]
+}
