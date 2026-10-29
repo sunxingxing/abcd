@@ -11223,6 +11223,14 @@
       "producer": "tests/isa/entry_cell_defaults_test.py"
     },
     {
+      "test": "isa_selection_arguments_source_test",
+      "producer": "tests/isa/selection_arguments_test.py"
+    },
+    {
+      "test": "isa_await_continuation_source_test",
+      "producer": "tests/isa/await_continuation_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },

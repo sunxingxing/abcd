@@ -264,7 +264,7 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   for (const auto& joint : joints) {
     budget.Step(); value_uses[joint.value.value]={joint.keep,false}; joint_values[joint.value.value]=1;
   }
-  const auto retained = [&](WorkBlockId block, const ValueOperand& input) {
+  const auto retained = [&](std::optional<WorkBlockId> block, const ValueOperand& input) {
     const auto* value = std::get_if<ValueId>(&input);
     if (!value || !graph.values[value->value].domain.IsLanguage()) return false;
     const auto& origin = graph.values[value->value].origin;
@@ -272,11 +272,13 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
         producer && graph.ops[producer->op.value].block == block) return false;
     return HasRetainedEvaluationValue(graph, evaluation, *value);
   };
-  const auto closed = [&](WorkBlockId block, const ValueOperand& input) {
+  const auto closed = [&](std::optional<WorkBlockId> block, const ValueOperand& input) {
     if (retained(block,input)) {
       // Availability is already proved by the input flow. An empty arm may
       // forward its snapshot, but cannot hide another effect or replay a getter.
-      const auto& range = graph.blocks[block.value];
+      // A bare branch edge has no operation at all.
+      if (!block) return true;
+      const auto& range = graph.blocks[block->value];
       for (std::uint32_t i = 0; i < range.op_count; ++i) {
         budget.Step(); const auto& op = graph.ops[range.first_op.value + i];
         if (op.life == ValueLife::kLive &&
@@ -286,10 +288,10 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
     }
     const auto* value = std::get_if<ValueId>(&input);
     const auto* producer = value ? std::get_if<OpResult>(&graph.values[value->value].origin) : nullptr;
-    if (!producer || graph.ops[producer->op.value].block != block ||
+    if (!block || !producer || graph.ops[producer->op.value].block != *block ||
         evaluation.operations[producer->op.value].kind != EvaluationKind::kPhiInput) return false;
     const auto literal = literal_ends.empty() ? std::nullopt : literal_ends[producer->op.value];
-    const auto& range = graph.blocks[block.value];
+    const auto& range = graph.blocks[block->value];
     bool covered = true;
     for (std::uint32_t i = 0; i < range.op_count; ++i) {
       budget.Step(); const auto id = range.first_op.value + i; const auto& op = graph.ops[id];
@@ -389,9 +391,17 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
   std::vector<std::optional<std::size_t>> predicate_prefixes;
   std::vector<std::size_t> chained_prefixes;
   if(!joints.empty()){budget.Array(chained_prefixes,control.nodes.size());budget.Array(predicate_prefixes,control.nodes.size());}
-  struct Path { WorkBlockId block; WorkBlockId join; std::optional<EdgeId> incoming; std::optional<std::size_t> child; bool suffix = false; EdgeId entry; std::optional<std::size_t> prefixes; };
+  struct Path { std::optional<WorkBlockId> block; WorkBlockId join; std::optional<EdgeId> incoming; std::optional<std::size_t> child; bool suffix = false; EdgeId entry; std::optional<std::size_t> prefixes; };
   const auto path = [&](std::optional<ControlId> at, EdgeId entry) -> std::optional<Path> {
     const auto original_entry = entry;
+    if (!at) {
+      // The branch edge enters the join directly (the arm's register move was
+      // removed). It owns no block, so closed() admits only an already
+      // available phi input; the caller still checks that both arms share the join.
+      const auto target = graph.edges[entry.value].target;
+      if (!phis[target.value] || multiple[target.value]) return {};
+      return Path{std::nullopt, target, entry, {}, false, entry};
+    }
     while (at) {
       budget.Step(); const auto& node = control.nodes[at->value];
       if (!std::holds_alternative<std::monostate>(node.synthetic)) return {};
@@ -557,6 +567,13 @@ std::vector<SelectionRegion> FindConditionalExpressions(const ValueProgram& grap
         !std::holds_alternative<std::monostate>(control.nodes[node.next->value].synthetic))) continue;
     const auto merged = *phis[join.value];
     if (inputs[merged.value] < 2 || !graph.values[merged.value].domain.IsLanguage()) continue;
+    if (!taken->block || !other->block) {
+      // A bare arm has no block for a retained assignment statement. Admit it
+      // only where the selected value completes an unmet member Reference's
+      // argument, whose single use the expression must own.
+      const auto& used = value_uses[merged.value];
+      if (used.multiple || !used.use || !references.Contains(graph.uses[used.use->value])) continue;
+    }
     const auto yes = (node.decision || positive) ? *taken : *other, no = (node.decision || positive) ? *other : *taken;
     const auto operand = [&](const Path& arm) -> std::optional<SelectionOperand> {
       if (arm.child) {
@@ -728,13 +745,13 @@ std::vector<SelectionRegion> FindSelectionExpressions(const ValueProgram& graph,
         boolean.consumer != graph.ops[region.branch.value].first_use) continue;
     const auto* right = std::get_if<ValueId>(&region.right);
     const auto* producer = right ? std::get_if<OpResult>(&graph.values[right->value].origin) : nullptr;
-    if (!producer || graph.ops[producer->op.value].block != region.evaluate ||
+    if (!producer || !region.evaluate || graph.ops[producer->op.value].block != *region.evaluate ||
         evaluation.operations[producer->op.value].kind != EvaluationKind::kPhiInput) continue;
-    const auto& block = graph.blocks[region.evaluate.value];
+    const auto& block = graph.blocks[region.evaluate->value];
     bool closed = true;
     std::size_t prefix_count = 0;
     auto prefix = region.evaluate_path;
-    while (prefix && control.nodes[prefix->value].block != region.evaluate) {
+    while (prefix && control.nodes[prefix->value].block != *region.evaluate) {
       budget.Step(); const auto& node = control.nodes[prefix->value];
       const auto& range = graph.blocks[node.block.value];
       if (!node.next || !std::holds_alternative<std::monostate>(node.synthetic)) { closed = false; break; }

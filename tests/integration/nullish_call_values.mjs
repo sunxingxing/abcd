@@ -67,7 +67,6 @@ console.log(JSON.stringify({count,all}));
       if (!['optionalMethod','optionalProperty','nullishChain','nestedNullish','optionalArgument'].includes(e.name)) continue;
       const output = join(temp, e.abc); run(engine, [join(root,e.abc),output,'--value-source','--language-source']);
       const record = JSON.parse(readFileSync(join(output,'manifest.json'))).records.find(r=>r.source_status!==2);
-      if(e.mode!=='O0') {assert.equal(record.source_status,3);assert.equal(record.source_failure?.call_reference?.kind,1);++refused;continue;}
       assert.equal(record.source_status,0,JSON.stringify(record)); ++published;
       const source = join(output,record.source); run(process.execPath,['--check',source]);
       const original = join(temp,e.name+'.mjs');writeFileSync(original,readFileSync(join(root,e.source)));
@@ -81,6 +80,6 @@ console.log(JSON.stringify({count,all}));
       }
     }
   }
-  assert.equal(published,5);assert.equal(refused,5);assert.equal(mutations,10);
+  assert.equal(published,10);assert.equal(refused,0);assert.equal(mutations,20);
   console.log(JSON.stringify({published,refused,scenarios,mutations}));
 } finally {rmSync(temp,{recursive:true,force:true});}

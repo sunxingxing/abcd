@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Await protocols whose continuation consumes the result register directly, and whose THROW resume-mode constant is read from a register holding the integer 1.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/await_continuation/awaits.js",
+   "path": "tests/fixtures/isa/await_continuation/awaits-default.abc",
+   "sha256": "8f51ebddfcdb0a5c375d2842c0883a07bd964dba278b454476dc24669526b26c",
+   "source_sha256": "b50121064df505c1b0bfc8837470dd9955a5928336b2c47c2de5f8227396f2ae",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=await_continuation",
+    "--source-file=awaits.js",
+    "--output=tests/fixtures/isa/await_continuation/awaits-default.abc",
+    "tests/fixtures/isa/await_continuation/awaits.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/await_continuation/awaits.js",
+   "path": "tests/fixtures/isa/await_continuation/awaits-O0.abc",
+   "sha256": "7443cc3d074a22ef3e818de3a9170cdf1533ec274f9bca47a8235c321beb694d",
+   "source_sha256": "b50121064df505c1b0bfc8837470dd9955a5928336b2c47c2de5f8227396f2ae",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=await_continuation",
+    "--source-file=awaits.js",
+    "--output=tests/fixtures/isa/await_continuation/awaits-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/await_continuation/awaits.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

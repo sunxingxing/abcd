@@ -500,6 +500,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/phased_accessors_test.py)
     add_test(NAME isa_entry_cell_defaults_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/entry_cell_defaults_test.py)
+    add_test(NAME isa_selection_arguments_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/selection_arguments_test.py)
+    add_test(NAME isa_await_continuation_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/await_continuation_test.py)
     add_test(NAME isa_completion_ports_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_test.py)
     add_test(NAME single_pass_scale_test COMMAND ${Python3_EXECUTABLE}
@@ -3250,6 +3254,10 @@ if(BUILD_TESTING)
   add_executable(constant_object_test tests/unit/analysis/constant_object_test.cc)
   target_link_libraries(constant_object_test PRIVATE abcd_analysis)
   add_test(NAME constant_object_test COMMAND constant_object_test)
+  add_executable(await_throw_mode_test tests/unit/analysis/await_throw_mode_test.cc)
+  target_link_libraries(await_throw_mode_test PRIVATE abcd_analysis)
+  target_include_directories(await_throw_mode_test PRIVATE tests/support)
+  add_test(NAME await_throw_mode_test COMMAND await_throw_mode_test)
   add_executable(async_semantics_test tests/unit/analysis/async_semantics_test.cc)
   target_link_libraries(async_semantics_test PRIVATE abcd_analysis)
   target_include_directories(async_semantics_test PRIVATE tests/support)

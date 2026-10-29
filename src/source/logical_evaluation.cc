@@ -76,7 +76,8 @@ bool Available(const ValueProgram& graph, const SelectionRegion& region, const s
   if (header.prefix_end && graph.ops[header.prefix_end->value].order >= graph.ops[region.boolean.value].order) return false;
   const auto join = graph.blocks[region.join.value].first_op.value;
   if (region.last_dependency) return region.last_dependency->value < join;
-  return region.branch.value < join && graph.blocks[region.evaluate.value].first_op.value < join;
+  return region.branch.value < join &&
+      (!region.evaluate || graph.blocks[region.evaluate->value].first_op.value < join);
 }
 struct ObjectRange {
   std::size_t first_object = 0, object_count = 0, first_field = 0, field_count = 0;

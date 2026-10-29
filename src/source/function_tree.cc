@@ -1786,7 +1786,7 @@ class TreeBuilder {
           selection_paths_.push_back({part, prefix.join, false});
         }
         if (selection.keep) selection_paths_.push_back({selection.keep_path, *selection.keep});
-        selection_paths_.push_back({selection.evaluate_path, selection.evaluate});
+        if (selection.evaluate) selection_paths_.push_back({selection.evaluate_path, *selection.evaluate});
       };
       schedule(logical);
       while (!selection_paths_.empty()) {

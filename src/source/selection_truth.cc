@@ -237,7 +237,11 @@ void ProjectSelectionLogicals(const ValueProgram& graph, const ControlPlan& cont
       arrival=arrival&truth.mask.Complement();
       return true;
     };
-    if (region.conditions.empty()) closed = scalar(region.branch, true);
+    // Discovery puts the consequent on the taken edge only for a positive
+    // test; a jeqz-style branch selects it on fallthrough.
+    if (region.conditions.empty())
+      closed = scalar(region.branch, std::get<ValueBranch>(graph.ops[region.branch.value].operation).predicate ==
+          UnaryOperator::kTrueOrNonzeroNumber);
     else for (const auto& test : region.conditions) {
       if (!scalar(test.branch, test.shared_on_taken)) { closed = false; break; }
     }

@@ -1173,7 +1173,10 @@ class FlowCheck {
           }
           for (std::uint8_t i = 0; i < block.edge_count; ++i) {
             budget_.Step(); std::uint32_t empty = 0;
-            edges_->Consume(analysis::EdgeId{block.first_edge.value + i}, BlockStmt{}, empty);
+            const analysis::EdgeId edge{block.first_edge.value + i};
+            // A bare arm leaves a condition block; LogicalEdges selects it.
+            if (edge == current.keep_input || edge == current.evaluate_input) continue;
+            edges_->Consume(edge, BlockStmt{}, empty);
           }
         }
       }
@@ -1328,7 +1331,7 @@ class FlowCheck {
       }
     };
     if (region.keep) path_anchors(region.keep_path, *region.keep);
-    path_anchors(region.evaluate_path, region.evaluate);
+    if (region.evaluate) path_anchors(region.evaluate_path, *region.evaluate);
   }
   void Try(analysis::TryId id, const BlockStmt& parent, std::uint32_t& child,
       std::size_t& pending) {

@@ -9,6 +9,8 @@
 
 #include "abcd/analysis/branch_condition.h"
 #include "abcd/analysis/coroutine.h"
+#include "abcd/analysis/normal_flow.h"
+#include "abcd/analysis/register_effect.h"
 
 namespace abcd::analysis {
 namespace {
@@ -47,8 +49,24 @@ bool ReadsState(const abc::BodyInstruction& site, std::uint64_t frame_size,
   return read && read->kind == kind &&
          std::holds_alternative<Accumulator>(read->state);
 }
-std::optional<AwaitRegion> Match(std::span<const abc::BodyInstruction> sites,
-                                 std::uint64_t frame_size) {
+// The continuation runs after the removed protocol, where the VM accumulator
+// still holds the mode comparison. It may overwrite, never read, that value.
+bool ReadsAccumulator(const abc::BodyInstruction& site, std::uint64_t frame_size) {
+  const auto lifted = LiftRegisterEffect(site.decoded, frame_size);
+  const auto* effect = std::get_if<RegisterEffect>(&lifted);
+  if (!effect) return true;
+  for (std::uint8_t i = 0; i < effect->read_count; ++i)
+    if (std::holds_alternative<Accumulator>(effect->reads[i])) return true;
+  return false;
+}
+struct Matched {
+  AwaitRegion region;
+  // Set when the THROW constant is read from a register. The caller must
+  // prove that register holds exactly that integer on every normal path.
+  std::optional<abc::RegisterId> throw_mode;
+};
+std::optional<Matched> Match(std::span<const abc::BodyInstruction> sites,
+                             std::uint64_t frame_size) {
   if (sites.size() < kStepCount) return std::nullopt;
   const auto awaited = LiftCoroutineInstruction(sites[kAwait].decoded, frame_size);
   const auto suspended = LiftCoroutineInstruction(sites[kSuspend].decoded, frame_size);
@@ -68,7 +86,7 @@ std::optional<AwaitRegion> Match(std::span<const abc::BodyInstruction> sites,
       CopyRegister(sites[kLoadState], frame_size, false) != *state ||
       CopyRegister(sites[kReloadState], frame_size, false) != *state ||
       CopyRegister(sites[kLoadRejected], frame_size, false) != *result ||
-      CopyRegister(sites[kContinue], frame_size, false) != *result ||
+      ReadsAccumulator(sites[kContinue], frame_size) ||
       !ReadsState(sites[kResume], frame_size, CoroutineReadKind::kResumeValue) ||
       !ReadsState(sites[kReadMode], frame_size, CoroutineReadKind::kResumeMode))
     return std::nullopt;
@@ -82,8 +100,9 @@ std::optional<AwaitRegion> Match(std::span<const abc::BodyInstruction> sites,
     return std::nullopt;
   const auto* value = std::get_if<ScalarValue>(&load->expression);
   const auto* integer = value ? std::get_if<IntegerLiteral>(value) : nullptr;
+  const auto* constant = value ? std::get_if<abc::RegisterId>(value) : nullptr;
   const auto* binary = std::get_if<BinaryExpression>(&equal->expression);
-  if (!integer || integer->value != kThrowResumeMode || !binary ||
+  if ((!constant && (!integer || integer->value != kThrowResumeMode)) || !binary ||
       binary->op != BinaryOperator::kEqual ||
       !std::holds_alternative<Accumulator>(binary->right))
     return std::nullopt;
@@ -104,7 +123,93 @@ std::optional<AwaitRegion> Match(std::span<const abc::BodyInstruction> sites,
   region.instructions.emplace();
   for (std::size_t i = 0; i < kStepCount; ++i)
     (*region.instructions)[i] = sites[i].offset;
-  return region;
+  return Matched{region, constant ? std::optional{*constant} : std::nullopt};
+}
+// Optimized code may reuse a register already holding the THROW constant.
+// Forward must-analysis over normal and resume edges (suspension preserves
+// registers): a register is "one" only if every path last wrote it from the
+// integer literal. Handler entries and unknown writers are top-free (zero).
+// Tracks at most 64 candidate registers; each block state only loses bits,
+// so every block is re-queued at most 65 times.
+struct ConstantObligation { std::size_t instruction; abc::RegisterId slot; };
+bool ProveThrowModeRegisters(const abc::MethodBody& body, std::uint64_t frame_size,
+                             std::span<const ConstantObligation> obligations,
+                             std::size_t bytes) {
+  std::vector<abc::RegisterId> candidates;
+  for (const auto& obligation : obligations)
+    if (std::find(candidates.begin(), candidates.end(), obligation.slot) == candidates.end())
+      candidates.push_back(obligation.slot);
+  if (candidates.size() > 63) return false;
+  const auto bit = [&](abc::RegisterId slot) -> std::uint64_t {
+    const auto at = std::find(candidates.begin(), candidates.end(), slot);
+    return at == candidates.end() ? 0 : std::uint64_t{1} << (at - candidates.begin());
+  };
+  constexpr std::uint64_t kAccumulator = std::uint64_t{1} << 63;
+  const auto flow = BuildNormalFlow(body, {bytes});
+  const auto* graph = std::get_if<NormalFlow>(&flow);
+  if (!graph || graph->blocks.size() > bytes / (2 * sizeof(std::uint64_t))) return false;
+  const auto transfer = [&](std::uint64_t state, const abc::BodyInstruction& site) {
+    const auto lifted = LiftScalarInstruction(site.decoded, frame_size);
+    if (const auto* assignment = std::get_if<ScalarAssignment>(&lifted)) {
+      const auto* value = std::get_if<ScalarValue>(&assignment->expression);
+      std::uint64_t one = 0;
+      if (value) {
+        if (const auto* integer = std::get_if<IntegerLiteral>(value))
+          one = integer->value == kThrowResumeMode;
+        else if (std::holds_alternative<Accumulator>(*value))
+          one = (state & kAccumulator) != 0;
+        else if (const auto* slot = std::get_if<abc::RegisterId>(value))
+          one = (state & bit(*slot)) != 0;
+      }
+      const auto target = std::holds_alternative<Accumulator>(assignment->destination)
+          ? kAccumulator : bit(std::get<abc::RegisterId>(assignment->destination));
+      return one ? state | target : state & ~target;
+    }
+    const auto effect = LiftRegisterEffect(site.decoded, frame_size);
+    const auto* write = std::get_if<RegisterEffect>(&effect);
+    if (!write) return std::uint64_t{0};
+    if (!write->write) return state;
+    return state & ~(std::holds_alternative<Accumulator>(*write->write)
+        ? kAccumulator : bit(std::get<abc::RegisterId>(*write->write)));
+  };
+  const auto& blocks = graph->blocks;
+  constexpr std::uint64_t kTop = ~std::uint64_t{0};
+  std::vector<std::uint64_t> entry(blocks.size(), kTop);
+  std::vector<std::uint8_t> queued(blocks.size(), 0);
+  std::vector<std::uint32_t> work;
+  const auto seed = [&](std::size_t block, std::uint64_t state) {
+    const auto merged = entry[block] & state;
+    if (merged == entry[block] && entry[block] != kTop) return;
+    entry[block] = merged;
+    if (!queued[block]) { queued[block] = 1; work.push_back(static_cast<std::uint32_t>(block)); }
+  };
+  seed(0, 0);
+  for (const auto& handler : body.handlers)
+    for (std::size_t b = 0; b < blocks.size(); ++b)
+      if (blocks[b].begin == handler.offset) seed(b, 0);
+  std::uint64_t visits = 0;
+  while (!work.empty()) {
+    const auto b = work.back(); work.pop_back(); queued[b] = 0;
+    if (++visits > 65 * blocks.size() + 1) return false;
+    auto state = entry[b];
+    const auto& block = blocks[b];
+    for (std::uint32_t i = 0; i < block.instruction_count; ++i)
+      state = transfer(state, body.instructions[block.first_instruction + i]);
+    for (std::uint8_t e = 0; e < block.successor_count; ++e)
+      seed(block.successors[e].target.value, state);
+  }
+  for (const auto& obligation : obligations) {
+    const auto at = std::find_if(blocks.begin(), blocks.end(), [&](const FlowBlock& block) {
+      return obligation.instruction >= block.first_instruction &&
+             obligation.instruction < block.first_instruction + block.instruction_count;
+    });
+    if (at == blocks.end() || entry[at - blocks.begin()] == kTop) return false;
+    auto state = entry[at - blocks.begin()];
+    for (auto i = at->first_instruction; i < obligation.instruction; ++i)
+      state = transfer(state, body.instructions[i]);
+    if (!(state & bit(obligation.slot))) return false;
+  }
+  return true;
 }
 // Strict interior excludes the continuation, whose original load is retained.
 const AwaitRegion* Interior(const std::vector<AwaitRegion>& regions,
@@ -135,6 +240,8 @@ AwaitRegions FindAwaitRegions(const abc::MethodBody& body, abc::ProfileId profil
     if (count > bytes / sizeof(AwaitRegion))
       return AwaitRegionFailure{AwaitRegionError::kResourceLimit, {}};
     std::vector<AwaitRegion> regions;
+    std::vector<ConstantObligation> obligations;
+    std::vector<abc::CodeOffset> obligation_awaits;
     regions.reserve(count);
     if (regions.capacity() > bytes / sizeof(AwaitRegion))
       return AwaitRegionFailure{AwaitRegionError::kResourceLimit, {}};
@@ -142,12 +249,19 @@ AwaitRegions FindAwaitRegions(const abc::MethodBody& body, abc::ProfileId profil
       const auto lifted = LiftCoroutineInstruction(sites[i].decoded, frame_size);
       const auto* transfer = std::get_if<CoroutineTransfer>(&lifted);
       if (!transfer || transfer->kind != CoroutineTransferKind::kAwait) continue;
-      const auto region = Match(sites.subspan(i), frame_size);
-      if (!region)
+      const auto matched = Match(sites.subspan(i), frame_size);
+      if (!matched)
         return AwaitRegionFailure{AwaitRegionError::kUnsupportedShape, sites[i].offset};
-      regions.push_back(*region);
+      regions.push_back(matched->region);
+      if (matched->throw_mode) {
+        obligations.push_back({i + kThrowMode, *matched->throw_mode});
+        obligation_awaits.push_back(sites[i].offset);
+      }
       i += kContinue - 1;
     }
+    if (!obligations.empty() &&
+        !ProveThrowModeRegisters(body, frame_size, obligations, bytes))
+      return AwaitRegionFailure{AwaitRegionError::kUnsupportedShape, obligation_awaits.front()};
     for (const auto& site : sites) {
       if (site.branch_target && Interior(regions, site.branch_target->value))
         return AwaitRegionFailure{AwaitRegionError::kInteriorEntry, site.offset};

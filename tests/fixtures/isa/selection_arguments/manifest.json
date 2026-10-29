@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Conditional and logical member-call arguments whose arms are bare branch edges or removed register moves; optimized builds hoist the constants.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/selection_arguments/arguments.js",
+   "path": "tests/fixtures/isa/selection_arguments/arguments-default.abc",
+   "sha256": "b727cc220dcb56ababe08d7cd556ad60751efe34409ccd2fe11e917a2e0db99f",
+   "source_sha256": "b39cd9868cb1803a6a420e4d06140617dea64254e55b41705e0889015235630e",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=selection_arguments",
+    "--source-file=arguments.js",
+    "--output=tests/fixtures/isa/selection_arguments/arguments-default.abc",
+    "tests/fixtures/isa/selection_arguments/arguments.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/selection_arguments/arguments.js",
+   "path": "tests/fixtures/isa/selection_arguments/arguments-O0.abc",
+   "sha256": "405d43cd482933d6a8878cd21b6f2b26d4d047380aec96eb94fb538726b46761",
+   "source_sha256": "b39cd9868cb1803a6a420e4d06140617dea64254e55b41705e0889015235630e",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=selection_arguments",
+    "--source-file=arguments.js",
+    "--output=tests/fixtures/isa/selection_arguments/arguments-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/selection_arguments/arguments.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

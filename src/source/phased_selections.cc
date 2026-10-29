@@ -346,7 +346,7 @@ std::vector<SelectionRegion> FindPhasedSelections(const analysis::ValueProgram& 
     const auto fallback = last_taken ? last->arms->fallthrough : last->arms->taken;
     if (!path(shared, EdgeId{first.value + (first_taken ? 0U : 1U)}, *region.keep,
             std::holds_alternative<SelectionChild>(*region.consequent)) ||
-        !path(fallback, EdgeId{end.value + (last_taken ? 1U : 0U)}, region.evaluate,
+        !path(fallback, EdgeId{end.value + (last_taken ? 1U : 0U)}, *region.evaluate,
             std::holds_alternative<SelectionChild>(region.right))) continue;
     region.keep_path = shared; region.evaluate_path = fallback;
     if (const auto index = binding_indices[region.branch.value])

@@ -51,7 +51,9 @@ struct SelectionRegion {
   SelectionOperand right;
   analysis::WorkBlockId header;
   std::optional<analysis::WorkBlockId> keep;
-  analysis::WorkBlockId evaluate;
+  // Absent when the arm is the bare branch edge into the join: its phi input
+  // is an already available value, so the arm owns no block or operation.
+  std::optional<analysis::WorkBlockId> evaluate;
   analysis::WorkBlockId join;
   std::optional<analysis::EdgeId> keep_input;
   std::optional<analysis::EdgeId> evaluate_input;

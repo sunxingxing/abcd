@@ -5,6 +5,62 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## await 协议：continuation 不重新加载结果，throw-mode 常量来自寄存器（2026-10-29，cc；AwaitRegionError 阻塞）
+
+- `AwaitRegionError::kUnsupportedShape`（约 1,030 条）：`FindAwaitRegions` 要求 resume-mode 分支
+  之后的那条指令是 `lda result`。es2abc 在结果寄存器能被直接消费时会省掉这次重新加载（`x += await a`、
+  `f(await a, 2)`、`(await a) + b`），continuation 就成了下一条普通指令。
+- 修复：continuation 在所有下游消费者中本来就是一条保留的普通指令（`retained`，并且是这个 await
+  的私有入口），结果寄存器已经由 result-store 与 rejected-load 两步确定。因此去掉"continuation 必须
+  是 `lda result`"这一形状要求，其余协议检查不变。
+- continuation 之后 VM 累加器里仍是模式比较的结果，所以 continuation 只允许覆盖累加器，不能读取
+  （`lda result` 这种原有形式满足这一点）。
+- throw-mode 常量：优化构建把常量 `1` 提升进寄存器，协议里用 `lda vX; eq` 比较（凡是函数里出现
+  字面量 1 的都会这样）。`FindAwaitRegions` 现在接受这种形式，前提是能证明 vX 在每条路径上都持有
+  整数 1：在普通边与 resume 边（挂起会保留寄存器）上做前向必然分析，只跟踪候选寄存器（最多 63 个）
+  与累加器；handler 入口和未知写入一律视为不确定。每个块的状态只会丢位，所以至多重新入队 65 次。
+  经过未跟踪寄存器的拷贝链会被保守拒绝。
+- 证据：
+  - 新 fixture `await_continuation`（default、O0）Node 差分，包括被拒绝的 promise 与 throw-mode
+    寄存器形式（`f(1, await a)`、`if (await a)` 等）；植入的变异能被检出；
+  - 新单元测试 `await_throw_mode_test`：字面量形式、被证明的寄存器形式，以及反例（别的常量、
+    未知寄存器、某条路径覆盖了寄存器、读取累加器的 continuation）；
+  - `AwaitRegionError` 从 1,031 降到前 8 名之外。
+- 本条与下一条（成员调用参数）一起验证：big.abc 7,291 → **7,971**（regression 构建，176 s，
+  峰值 RSS 221 MB），已完成记录零回退；文本变化 8 条，正是上述极性错误的改正；620 用例 cohort
+  `csr116/def` 与 `csr115/def` 逐字节一致；全量 ctest 1002 项，失败 34 项，全部属于已知失败清单。
+
+## 成员调用参数中的条件值与逻辑值：裸边与仅含寄存器移动的分支（2026-10-29，cc；CallPlanError 阻塞）
+
+- `CallPlanError::kReference`（1,323 条，其中 1,114 条是 `kCrossRegionValue`）：形如
+  `o.m("k", a ?? "")`、`o.m(c ? 1 : 2)`、`o.m(a || b)` 的调用里，方法引用 `o.m` 与调用之间
+  隔着一个条件区域。方法引用不能被快照（会丢失 `this`），所以必须把这个菱形折叠成实参表达式。
+  现有的选择表达式机制（`FindSelectionExpressions`）已经覆盖这种情况，但要求每个分支都有
+  自己的块。优化构建里不满足这一点：一个分支只是从分支指令直达 join 的裸边，或者只含一条被删除
+  的寄存器移动；phi 输入是形参、更早的值或被提到函数开头的常量。
+- 统一修复：
+  - `SelectionRegion::evaluate` 改为可选（`keep` 本来就是可选）。条件路径遍历把裸边视为一个
+    没有块、也没有操作的分支，`closed()` 只接受已经可用的输入（保留快照，或常量 leaf）。
+  - 裸边分支没有块可以容纳保留的赋值语句，所以只在合并值唯一地作为未满足的成员 Reference 的
+    实参时才接受。`return a ?? "x"` 等其他消费者保持原来的 if/else 形式，文本不变。
+  - tree flow 在决策的条件块上消费出边时，跳过该区域自己选择的 keep/evaluate 边（随后由
+    `LogicalEdges` 选择）。
+  - **修复一个已有的语义错误**：`ProjectSelectionLogicals` 对没有 decision 链的条件区域固定按
+    "consequent 在分支的 taken 边上"计算真值域，而发现阶段只在正向测试（`jnez` 类）时把 consequent
+    放在 taken 边上；`jeqz` 类测试的 consequent 在 fallthrough 边上。于是 `x || ""` 被发布成
+    `x && ""`。现在按分支谓词确定 consequent 所在的边。已提交基线里有 8 条记录发布了这种错误
+    输出（如 lottie `AnimationManager`、`LayerInterface`），这次全部改正，共 53 行 `&&`→`||`。
+  - 消费者只有 function_tree、tree_flow、logical_evaluation 中的几处，现在都对缺失的
+    `evaluate` 加了保护；phased 选择总是有 evaluate。
+- 证据：
+  - 新 fixture `selection_arguments`（default、O0）Node 差分：getter 的求值顺序、`this` 绑定、
+    只求值被选中的分支、实参调用先于 `??`；植入的 5 个变异都能被检出。两种构建都输出
+    `$o.m($a ? 1 : 2)`、`$a || $b`、`$a ?? "high"`；
+  - `joint_selection_source_test` 与 `nullish_call_values_source_test` 原先把优化构建固定为拒绝；
+    现在 6 个优化构建用例改为发布，并走完整的 Node 差分与变异检查（`(x && y) || z` 在优化构建下
+    暴露了上面的极性错误）；仍有 4 个精确的引用拒绝；
+  - big.abc 新增 288 个输出语法检查全部通过；`kCrossRegionValue` 的引用拒绝从 1,114 降到 747。
+
 ## 默认参数：调用入口的环境存储与提升的字面量（2026-10-29，cc；DefaultBodyError 阻塞）
 
 - `DefaultBodyError::kProof`（1,399 条）分为三个通用缺口：
