@@ -50,7 +50,10 @@ std::optional<std::pair<bool,bool>> Predicate(const Dependency& d,UnaryOperator 
   }
 }
 struct Guard {
-  ExceptionNodeId predicate,write,first,bypass;
+  ExceptionNodeId predicate;
+  // The `closed = true` store; absent when the optimizer deleted it as dead.
+  std::optional<ExceptionNodeId> write;
+  ExceptionNodeId first,bypass;
   abc::RegisterId storage;
 };
 struct Continuation {
@@ -491,7 +494,10 @@ class Derivation {
   std::uint32_t Stamp() {q_.Require(generation_!=UINT32_MAX,CloseEntryError::kResourceLimit);return ++generation_;}
   Guard GuardFor(ExceptionNodeId read) {
     if(guards_[read.value])return *guards_[read.value];
-    q_.Require(verify_,CloseEntryError::kGuard,read);
+    if(!verify_) {
+      if(const auto elided=ElidedGuard(read)){guards_[read.value]=*elided;return *elided;}
+      q_.Require(false,CloseEntryError::kGuard,read);
+    }
     // Verifier discovery walks immutable dominance ancestors from the read,
     // rather than trusting the producer's forward mutable guard stacks.
     // Every step consumes the same N log N admission grant; a dense set of
@@ -528,7 +534,36 @@ class Derivation {
       }
       cursor=dom_.nodes[cursor->value].parent;
     }
+    if(const auto elided=ElidedGuard(read)){guards_[read.value]=*elided;return *elided;}
     q_.Require(false,CloseEntryError::kGuard,read);return {};
+  }
+  // es2abc's optimizer deletes `closed = true` when nothing reads the state
+  // after the close. The guard is then the nearest dominating branch on a
+  // register-backed boolean that bypasses the read when true. State() still
+  // proves every reaching value is the protocol's own false initializer.
+  std::optional<Guard> ElidedGuard(ExceptionNodeId read) {
+    // Register allocation may also move the state: the `true` store between
+    // the guard and the read can target another register than the test.
+    std::optional<ExceptionNodeId> write;
+    for(auto ancestor=dom_.nodes[read.value].parent;ancestor;ancestor=dom_.nodes[ancestor->value].parent) {
+      q_.Step();const ExceptionNodeId branch{ancestor->value};const auto& n=Node(branch);
+      if(const auto value=Write(branch);!write && value && n.phase==ExceptionPhase::kCommit && deps_[value->value].boolean==true && LiteralStore(*value))
+        if(std::holds_alternative<abc::RegisterId>(in_.ssa.Values()[value->value].slot)){write=branch;continue;}
+      const auto* b=n.phase==ExceptionPhase::kCommit?std::get_if<BranchOperation>(&Instruction(branch).operation):nullptr;
+      if(!b)continue;
+      const auto input=Read(*before_[n.instruction.value],b->predicate.input);
+      if(!input)return {};
+      const auto& d=deps_[input->value];const auto truth=Predicate(d,b->predicate.op);
+      if(!d.storage || !d.first || !truth || truth->first==truth->second)return {};
+      unsigned controlled=0;std::optional<ExceptionNodeId> bypass;bool taken=false;
+      for(std::uint8_t e=0;e<n.successor_count;++e) {
+        q_.Step();if(Dominates(n.successors[e].target,read))++controlled;
+        else {bypass=n.successors[e].target;taken=n.successors[e].kind==ExceptionArcKind::kTaken;}
+      }
+      if(controlled!=1 || !bypass || truth->second!=taken)return {};
+      return Guard{branch,write,*d.first,*bypass,*d.storage};
+    }
+    return {};
   }
   void StateIndex() {
     state_checked_.resize(scan_.candidates.size());value_stamps_.resize(g_.values.size());
@@ -539,8 +574,9 @@ class Derivation {
       q_.Step();++region_offsets_[r.protocol.value+1];const auto guard=GuardFor(r.read.before);
       q_.Require(!close_guards_[guard.first.value],CloseEntryError::kGuard,guard.first);
       close_guards_[guard.first.value]=&r;
-      for(const auto n:{guard.predicate,guard.write}) {
-        q_.Require(!guard_owner_[n.value] || guard_owner_[n.value]==r.protocol,CloseEntryError::kGuard,n);guard_owner_[n.value]=r.protocol;
+      for(const auto n:{std::optional{guard.predicate},guard.write}) {
+        if(!n)continue;
+        q_.Require(!guard_owner_[n->value] || guard_owner_[n->value]==r.protocol,CloseEntryError::kGuard,*n);guard_owner_[n->value]=r.protocol;
       }
     }
     for(std::size_t p=1;p<region_offsets_.size();++p){q_.Step();region_offsets_[p]+=region_offsets_[p-1];}
@@ -567,16 +603,27 @@ class Derivation {
       for(auto p=pred_offsets_[node.value];p<pred_offsets_[node.value+1];++p){q_.Step();queue.push_back(preds_[p].source);}
     }
   }
+  // A register value defined from a Boolean literal through accumulator
+  // transport only (`ldtrue; sta vN`), as opposed to a register-to-register
+  // copy of an earlier state value, which the state walk follows instead.
+  bool LiteralStore(SsaValueId id) {
+    for(auto at=copy_[id.value];at;at=copy_[at->value]) {
+      q_.Step();if(!std::holds_alternative<Accumulator>(in_.ssa.Values()[at->value].slot))return false;
+    }
+    return true;
+  }
   void State(const IteratorRegionCandidate& region,const Guard& guard,ExceptionNodeId acquisition,ExceptionNodeId advance) {
     if(!state_checked_[region.protocol.value]) {
     std::pmr::vector<SsaValueId> queue(&q_.memory);
     const auto stamp=Stamp();
+    // Guards of one protocol may test different registers (register
+    // allocation moves the state, and an elided store leaves only a copy).
+    // The backward walk below proves each reaching value is protocol state.
     for(auto p=region_offsets_[region.protocol.value];p<region_offsets_[region.protocol.value+1];++p) {
       q_.Step();const auto& r=scan_.regions[region_index_[p]];const auto candidate=GuardFor(r.read.before);
-      q_.Require(candidate.storage==guard.storage,CloseEntryError::kGuard,r.read.before);
       const auto reads=Reads(candidate.first);
       q_.Require(reads.size()==1,CloseEntryError::kGuard,candidate.first);
-      queue.push_back(reads[0].value);queue.push_back(*Write(candidate.write));
+      queue.push_back(reads[0].value);if(candidate.write)queue.push_back(*Write(*candidate.write));
     }
     std::optional<ExceptionNodeId> initialized;
     for(std::size_t i=0;i<queue.size();++i) {
@@ -589,7 +636,9 @@ class Derivation {
       q_.Require(origin && Node({origin->instruction.value}).phase==ExceptionPhase::kCommit,CloseEntryError::kGuard);
       const ExceptionNodeId node{origin->instruction.value};
       const auto* slot=std::get_if<abc::RegisterId>(&value.slot);
-      if(slot && *slot==guard.storage && deps_[id.value].boolean) {
+      // Any boolean literal the state reaches is either the initializer or a
+      // protocol-owned close store, whichever register allocation chose.
+      if(slot && deps_[id.value].boolean && LiteralStore(id)) {
         q_.Require(Dominates(acquisition,node),CloseEntryError::kGuard,node);
         if(!*deps_[id.value].boolean) {
           q_.Require(Dominates(node,advance),CloseEntryError::kGuard,node);
@@ -642,7 +691,11 @@ class Derivation {
     // Reaching the return getter must not bypass the true update through a
     // redefinition of the closed state. Walk original predecessors (including
     // pre-throw snapshots), never infer this from physical instruction order.
-    Between(guard.write,region.read.before,guard.storage,true,false);
+    // After the store the state lives in the stored register, which register
+    // allocation may differ from the tested one (the old one can be reused).
+    if(guard.write)Between(*guard.write,region.read.before,
+        std::get<abc::RegisterId>(in_.ssa.Values()[Write(*guard.write)->value].slot),true,false);
+    else Between(guard.predicate,region.read.before,guard.storage,false,false);
     // The return method must be called on this exact iterator, not on the
     // flag, the next-result object, or a separately created iterator.
     const auto result=g_.ops[region.read.operation.value].result;q_.Require(result.has_value(),CloseEntryError::kAcquisition);
@@ -773,7 +826,7 @@ class Derivation {
     const auto& acquisition=scan_.candidates[region.protocol.value].acquisition;
     const auto acquisition_commit=commit_[Node(acquisition.before).instruction.value];
     q_.Require(acquisition_commit && Dominates(*acquisition_commit,guard.first) &&
-        Dominates(guard.first,guard.predicate) && Dominates(guard.write,read),CloseEntryError::kAcquisition,read);
+        Dominates(guard.first,guard.predicate) && Dominates(guard.write.value_or(guard.predicate),read),CloseEntryError::kAcquisition,read);
     q_.Require(!loop || !Inside(*loop,acquisition.before),CloseEntryError::kAcquisition,acquisition.before);
     const auto advance=*protocol_advance_[region.protocol.value];
     const auto advance_commit=commit_[Node(advance).instruction.value];
@@ -788,7 +841,7 @@ class Derivation {
     q_.Require(bypass_edge<Node(guard.predicate).successor_count,CloseEntryError::kGuard);
     const auto pending=Continue(guard.bypass,loop,exit,{guard.predicate,bypass_edge});
     DerivedClose close{region.protocol,region.read.operation,
-        {advance,exhausted,exit,success,loop?std::optional{original_[loops_.loops[loop->value].header.value]}:std::nullopt},guard.predicate,guard.write};
+        {advance,exhausted,exit,success,loop?std::optional{original_[loops_.loops[loop->value].header.value]}:std::nullopt},guard.predicate,guard.write,guard.storage};
     close.continuation=pending.close;
     if(!value_ambiguous_[region.protocol.value])close.iteration.value=value_read_[region.protocol.value];
     if(pending.pending.kind==PendingCompletionKind::kThrow) {

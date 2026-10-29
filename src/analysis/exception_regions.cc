@@ -80,16 +80,26 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
     // instruction reachable from the method entry without an exceptional arc
     // (the normal join), or the end of the code. Computed only when needed.
     std::vector<std::uint8_t> normal;
+    // Targets of a non-exceptional arc from any instruction. A catch start
+    // that ordinary code also jumps to (es2abc shares the rethrow after an
+    // iterator close inside another handler) is a join too: an empty catch.
+    std::vector<std::uint8_t> joined;
     std::vector<std::optional<ExceptionNodeId>> before_of;
     const bool inferred = std::any_of(body.handlers.begin(), body.handlers.end(),
         [](const auto& handler) { return handler.length == 0; });
     if (inferred) {
       reserve(normal, flow.nodes.size()); normal.resize(flow.nodes.size());
+      reserve(joined, flow.nodes.size()); joined.resize(flow.nodes.size());
       reserve(before_of, count); before_of.resize(count);
       for (std::size_t n = 0; n < flow.nodes.size(); ++n) {
         charge(); const auto& node = flow.nodes[n];
         if (node.instruction.value >= count) return fail(Error::kInvalidFlow);
         if (node.phase == ExceptionPhase::kBefore) before_of[node.instruction.value] = ExceptionNodeId{static_cast<std::uint32_t>(n)};
+        if (node.phase == ExceptionPhase::kCommit)
+          for (const auto& arc : std::span(node.successors).first(node.successor_count)) {
+            charge();
+            if (arc.kind != ExceptionArcKind::kException && arc.target.value < joined.size()) joined[arc.target.value] = 1;
+          }
       }
       pending.clear(); normal[0] = 1; pending.push_back({0});
       for (std::size_t head = 0; head < pending.size(); ++head) {
@@ -127,7 +137,7 @@ std::variant<ExceptionRegions, CatchRegionFailure> BuildExceptionRegions(
       auto end = begin.value;
       pending.clear();
       const auto start = before_of[begin.value];
-      if (!start || normal[start->value]) return end;  // empty catch at the join
+      if (!start || normal[start->value] || joined[start->value]) return end;  // empty catch at the join
       mark[start->value] = generation; pending.push_back(*start);
       const auto visit = [&](ExceptionNodeId target) {
         if (target.value >= mark.size() || normal[target.value] || mark[target.value] == generation) return;

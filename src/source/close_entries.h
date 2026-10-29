@@ -42,7 +42,10 @@ struct DerivedClose {
   IteratorProtocolId protocol;
   analysis::OpId read;
   CloseIterationBoundary iteration;
-  analysis::ExceptionNodeId predicate, state_write;
+  analysis::ExceptionNodeId predicate;
+  // Absent when the optimizer deleted the dead `closed = true` store.
+  std::optional<analysis::ExceptionNodeId> state_write;
+  abc::RegisterId state_slot;
   // A normal outcome resumes another certified close before its terminal.
   // This is an original Before boundary, never a replacement completion.
   std::optional<analysis::ExceptionNodeId> continuation;

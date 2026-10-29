@@ -17,7 +17,10 @@ struct Quota {
   void Retain(std::size_t n){memory.Retain(n);}
   template<class T>void Array(std::vector<T>& v,std::size_t n){if(n>UINT32_MAX || n>memory.Available()/sizeof(T))throw ForOfIterationFailure{Error::kResourceLimit};Step(n);Retain(n*sizeof(T));v.resize(n);Retain((v.capacity()-n)*sizeof(T));}
 };
-void Index(const ValueProgram& g,const ForOfEvaluationInput& source,ForOfEvaluationPlan& p,Quota& q) {
+// absorb_copies: without a port graph, also absorb plain register copies of
+// private close state from the loop body. Optimized code spills that state
+// into handler registers; it is tried only after the stricter plan refuses.
+void Index(const ValueProgram& g,const ForOfEvaluationInput& source,ForOfEvaluationPlan& p,Quota& q,bool absorb_copies) {
   q.Array(p.operations,g.ops.size());q.Array(p.values,g.values.size());q.Array(p.uses,g.uses.size());
   std::pmr::vector<std::uint8_t> ordinary(g.values.size(),0,&q.memory);
   std::pmr::deque<ValueId> pending(&q.memory);
@@ -85,7 +88,8 @@ void Index(const ValueProgram& g,const ForOfEvaluationInput& source,ForOfEvaluat
     if(std::holds_alternative<EntryDefinition>(origin))return;
     if(const auto* def=std::get_if<OpResult>(&origin);def && !p.operations[def->op.value]) {
       const auto& op=g.ops[def->op.value];
-      if(!CanErasePureOp(op) || (!ports && body_nodes[g.phases[op.block.value].input.value]))return;
+      if(!CanErasePureOp(op) || (!ports && !(absorb_copies && std::holds_alternative<ValueCopy>(op.operation)) &&
+          body_nodes[g.phases[op.block.value].input.value]))return;
     }
     // The label of a closed private value is a storage representative, not a
     // claim that two iterators/SSA values are equal. Only the complete port
@@ -99,6 +103,12 @@ void Index(const ValueProgram& g,const ForOfEvaluationInput& source,ForOfEvaluat
     if(g.ops[o].result)claim(*g.ops[o].result,p.operations[o]->protocol);
     if(p.operations[o]->role!=ForOfRole::kAcquisition)inputs({o},p.operations[o]->protocol);
   }}
+  // A protocol handler may discard its pending exception outright (the
+  // optimizer drops the dead catch store); that catch value is still private.
+  for(const auto& r:source.ownership.Scan().regions) {
+    q.Step();q.Require(r.region.value<source.regions.regions.size());
+    if(const auto& b=source.regions.regions[r.region.value].binding)claim(b->value,r.protocol);
+  }
   while(!queue.empty()){q.Step();const auto [v,protocol]=queue.front();queue.pop_front();const auto& origin=g.values[v.value].origin;
     // Close state can join after an abrupt copy without being read again.
     // Such a phi is private only when the shared backwards liveness proved
@@ -108,8 +118,9 @@ void Index(const ValueProgram& g,const ForOfEvaluationInput& source,ForOfEvaluat
       q.Step();const auto& use=g.uses[u->value];
       if(use.life!=ValueLife::kLive)continue;
       if(const auto* phi=std::get_if<ValueId>(&use.owner))claim(*phi,protocol);
-      else if(ports)if(const auto* owner=std::get_if<OpId>(&use.owner);
-          owner && !p.operations[owner->value] && CanErasePureOp(g.ops[owner->value])) {
+      else if(const auto* owner=std::get_if<OpId>(&use.owner);
+          owner && !p.operations[owner->value] && CanErasePureOp(g.ops[owner->value]) &&
+          (ports || (absorb_copies && std::holds_alternative<ValueCopy>(g.ops[owner->value].operation)))) {
         const auto& op=g.ops[owner->value];
         // No observable root can depend on this value: backwards liveness
         // would have reached it. Account for the complete dead pure closure,
@@ -157,7 +168,12 @@ std::variant<ForOfEvaluationPlan,ForOfIterationFailure> BuildForOfEvaluationPlan
     p.iteration=std::get<ForOfIterationProof>(std::move(y));q.Retain(p.iteration.allocated_bytes);q.Step(p.iteration.work);
     auto z=BuildForOfEvents(i.body,g,i.input,i.regions,i.control,i.ownership,i.contract,p.identity,p.iteration,q.Remaining());if(const auto* f=std::get_if<ForOfIterationFailure>(&z))return *f;
     p.events=std::get<ForOfEvents>(std::move(z));q.Retain(p.events.allocated_bytes);q.Step(p.events.work);
-    Index(g,i,p,q);
+    try{Index(g,i,p,q,false);}
+    catch(const ForOfIterationFailure& f) {
+      if(f.kind!=Error::kCorrespondence || p.completion_ports)throw;
+      p.operations.clear();p.values.clear();p.uses.clear();p.outputs.clear();
+      Index(g,i,p,q,true);
+    }
     q.Array(p.bindings,g.values.size());
     for(const auto& definition:p.iteration.definitions) {
       q.Step();q.Require(definition.value.value<p.bindings.size());

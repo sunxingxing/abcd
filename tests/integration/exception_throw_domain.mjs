@@ -42,10 +42,13 @@ if(actual.Tool)assert.equal(new actual.Tool().good(),7);console.log(count);`);
   // Default builds record zero-size handlers (extent inferred from the normal
   // join) and empty protected ranges (inactive). The nested handler build then
   // runs the same oracle as O0; the optimized for-of layouts still enter a
-  // protected range by a normal edge and keep that typed refusal.
+  // protected range by a normal edge, or (an unconditional break) reach the
+  // completion-port activation check, and keep those typed refusals.
   if(mode==='default' && name!=='handler') {
    assert.equal(r.source_status,3,JSON.stringify(r));
-   assert.deepEqual(r.source_failure.causes,[{domain:'abcd::source::PhasedMethodError',value:5},{domain:'abcd::source::ExceptionPlanError',value:2},{domain:'abcd::analysis::CatchRegionError',value:3}]);
+   assert.deepEqual(r.source_failure.causes,name==='loop'
+     ?[{domain:'abcd::source::PhasedMethodError',value:6},{domain:'abcd::source::ExceptionControlError',value:4},{domain:'abcd::source::CompletionPortError',value:4}]
+     :[{domain:'abcd::source::PhasedMethodError',value:5},{domain:'abcd::source::ExceptionPlanError',value:2},{domain:'abcd::analysis::CatchRegionError',value:3}]);
    ++refused;continue;
   }
   if((name==='close'||name==='member'||name==='loop')) {

@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Single-level for...of in optimized builds: elided done-state stores, empty close catches at the shared rethrow, close state moved across registers, and body spill copies.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/optimized_for_of/loops.js",
+   "path": "tests/fixtures/isa/optimized_for_of/loops-default.abc",
+   "sha256": "d66db67927616817625b8cbb9114c8fefb074ae0337c85511185069523ba85af",
+   "source_sha256": "5e8797ec95b70f62fd3e8e4ecc5f8fca2f124d4be1490371f9e9d57365b414ff",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=optimized_for_of",
+    "--source-file=loops.js",
+    "--output=tests/fixtures/isa/optimized_for_of/loops-default.abc",
+    "tests/fixtures/isa/optimized_for_of/loops.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/optimized_for_of/loops.js",
+   "path": "tests/fixtures/isa/optimized_for_of/loops-O0.abc",
+   "sha256": "6b26a07ea743ee80e30d0acc5c19f63ff894a9465b006cf8d29787435ce1daf4",
+   "source_sha256": "5e8797ec95b70f62fd3e8e4ecc5f8fca2f124d4be1490371f9e9d57365b414ff",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=optimized_for_of",
+    "--source-file=loops.js",
+    "--output=tests/fixtures/isa/optimized_for_of/loops-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/optimized_for_of/loops.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

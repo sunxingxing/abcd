@@ -504,6 +504,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/selection_arguments_test.py)
     add_test(NAME isa_await_continuation_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/await_continuation_test.py)
+    add_test(NAME isa_optimized_for_of_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/optimized_for_of_test.py)
     add_test(NAME isa_completion_ports_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_test.py)
     add_test(NAME single_pass_scale_test COMMAND ${Python3_EXECUTABLE}

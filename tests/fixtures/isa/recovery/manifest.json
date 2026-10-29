@@ -79,14 +79,22 @@
         "causes": [
           {
             "domain": "abcd::source::PhasedMethodError",
-            "value": 5
+            "value": 6
           },
           {
-            "domain": "abcd::source::ExceptionPlanError",
-            "value": 2
+            "domain": "abcd::source::ExceptionControlError",
+            "value": 4
           },
           {
-            "domain": "abcd::analysis::CatchRegionError",
+            "domain": "abcd::source::CompletionPortError",
+            "value": 7
+          },
+          {
+            "domain": "abcd::source::CloseCompletionError",
+            "value": 4
+          },
+          {
+            "domain": "abcd::source::CloseEntryError",
             "value": 3
           }
         ]

@@ -5,6 +5,43 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 优化构建中的单层 for...of（2026-10-29，cc；CatchRegionError 阻塞）
+
+- `CatchRegionError::kNormalEntry`（966 条）：优化构建里连最简单的 `for (const x of xs) f(x)` 也被
+  拒绝。es2abc 的优化器会改写 O0 中 iterator close 的几个部分：
+  1. 删掉 close 自身 try 的死 catch 存储（`sta vN`）。handler 的声明长度变为 0，起点同时是
+     close 正常完成后共享的 rethrow（`lda exc; throw`），普通边于是跳进了 handler。
+  2. 删掉死的 `done = true` 存储；或者寄存器分配把它写到另一个寄存器，再经过拷贝让抛出路径的
+     handler 读到。
+  3. 在循环体里加入寄存器 spill 拷贝（`mov v6, v3`），把 close 状态带进 handler 寄存器。
+- 统一修复（全部是对已有证明的推广，没有新增形状特例）：
+  - `ExceptionRegions`：任何普通弧都会到达的 handler 起点也视为 join，即空 catch `[b, b)`，
+    与原有"从入口正常可达"的规则一致（原规则看不到 handler 内部的普通弧）。`original_flow`
+    的复核同步接受空 handler 区间，以及只作为非活跃区域出现的零长度保护区间。
+  - `close_entries`：guard 的 `true` 存储改为可选。找不到时取最近的支配分支：它测试一个寄存器
+    支撑的布尔值，并在该值为真时绕过读取；如果分支与读取之间有字面量 `true` 存储（可以写到别的
+    寄存器），就记为 guard 的 write。状态证明不再要求同一个寄存器，而是沿 SSA 拷贝与 phi 反向
+    追踪：遇到的每个布尔字面量要么是支配首次 advance 的 false 初始化，要么是协议拥有的 close
+    存储（区分"经累加器存入的字面量"与"寄存器之间的拷贝"）。存储之后状态位于被写入的寄存器，
+    所以"存储与读取之间不得改写状态"按该寄存器检查（原寄存器可能已被复用）。`CompletionGate` 与
+    `DerivedClose` 的 write 改为可选，并携带状态寄存器。
+  - `for_of_evaluation`：协议区域的 catch 值即使没有使用，也由该协议认领（否则会成为找不到
+    catch 作用域的 catch 参数）。在没有 completion port 图时，先按原规则建计划；只有原规则以
+    correspondence 拒绝时，才重试并吸收循环体中的纯寄存器拷贝（其结果已被反向活性证明不可观察）。
+    这样已有计划逐字节不变。
+- 仍然拒绝：嵌套 for-of（外层状态被跨块 spill，并有跳到外层 try 末尾的边）、数组解构
+  `for (const [k, v] of m)`（模式内部还有一个迭代协议）、外层 try 包住的 for-of、无条件 `break`
+  （走到 completion port 的激活检查），合计约 300 条。`exception_throw_domain_source_test` 与
+  `isa_recovery_variants_test` 中这些仍被拒绝的优化构建 fixture 改为固定新的失败原因链（原先停在
+  catch 区域阶段，现在走得更远）。
+- 证据：
+  - 新 fixture `optimized_for_of`（default、O0）Node 差分：值、`break`、`return`、continue 形式、
+    抛出时的 iterator close（自定义可迭代对象记录 `next`/`return` 的调用顺序）、不可迭代对象的
+    错误类型；植入的变异能被检出；
+  - big.abc 7,971 → **8,147**（regression 构建，290 s，峰值 RSS 241 MB），零回退、零文本变化；
+  - 620 用例 cohort `csr118/def` 与 `csr117/def` 逐字节一致；全量 ctest 1003 项，失败 34 项，
+    全部属于已知失败清单。
+
 ## await 协议：continuation 不重新加载结果，throw-mode 常量来自寄存器（2026-10-29，cc；AwaitRegionError 阻塞）
 
 - `AwaitRegionError::kUnsupportedShape`（约 1,030 条）：`FindAwaitRegions` 要求 resume-mode 分支

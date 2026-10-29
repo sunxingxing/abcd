@@ -177,7 +177,10 @@ void VerifyInactiveOriginalRegions(const OriginalFlow& original, TreeCheckBudget
   for(std::uint32_t id=0;id<original.exception_regions.size();++id) {
     budget.Step();const auto& region=original.exception_regions[id];
     const auto a=region.body.begin.value,z=region.body.end.value,h=region.handler.begin.value,t=region.handler.end.value;
-    RequireTree(a<z&&z<=h&&h<t&&t<=count,error);
+    // An empty catch at its join is [h, h), and a zero-length protected range
+    // is admitted only as an inactive region (checked below).
+    RequireTree(a<=z&&z<=h&&h<=t&&t<=count,error);
+    RequireTree(a<z||(!entered[id]&&live[t]==live[h]),error);
     if(entered[id]||live[t]!=live[h])continue;
     RequireTree(inactive<original.inactive_regions.size(),error);
     const auto& r=original.inactive_regions[inactive++];

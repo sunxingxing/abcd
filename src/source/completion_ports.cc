@@ -364,8 +364,15 @@ CompletionPorts Build(const abc::MethodBody& body, abc::ProfileId profile,
   Need(out.order.size()==out.entries.size(),Error::kOrder);
   q.Reserve(out.gates,closes.closes.size());
   for(const auto& close:closes.closes) {
-    q.Step();const auto definition=input.ssa.Write(close.state_write);Need(definition.has_value(),Error::kActivation);
-    const auto* slot=std::get_if<abc::RegisterId>(&input.ssa.Values()[definition->value].slot);Need(slot,Error::kActivation);
+    q.Step();
+    if(!close.state_write) {
+      // The dead closed-state store was elided; the guard names the slot.
+      out.gates.push_back({close.protocol,close.read,close.predicate,{},{},close.state_slot});
+      continue;
+    }
+    const auto definition=input.ssa.Write(*close.state_write);Need(definition.has_value(),Error::kActivation);
+    const auto* slot=std::get_if<abc::RegisterId>(&input.ssa.Values()[definition->value].slot);
+    Need(slot && *slot==close.state_slot,Error::kActivation);
     out.gates.push_back({close.protocol,close.read,close.predicate,close.state_write,*definition,*slot});
   }
   Qualify(out,scan.candidates.size(),q);

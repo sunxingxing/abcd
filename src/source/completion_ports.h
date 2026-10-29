@@ -103,8 +103,9 @@ using CompletionPayloadTransfer=std::variant<CompletionPayloadCopy,CompletionPay
 struct CompletionGate {
   IteratorProtocolId protocol;
   analysis::OpId read;
-  analysis::ExceptionNodeId predicate, write;
-  analysis::SsaValueId definition;
+  analysis::ExceptionNodeId predicate;
+  std::optional<analysis::ExceptionNodeId> write;
+  std::optional<analysis::SsaValueId> definition;
   abc::RegisterId slot;
   bool operator==(const CompletionGate&) const = default;
 };

@@ -11231,6 +11231,10 @@
       "producer": "tests/isa/await_continuation_test.py"
     },
     {
+      "test": "isa_optimized_for_of_source_test",
+      "producer": "tests/isa/optimized_for_of_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },
