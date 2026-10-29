@@ -576,7 +576,10 @@ class TreePrinter {
     }
     for (const auto& node : Tree().expressions) {
       Step();
-      if (std::holds_alternative<ThisExpr>(node.expression) ||
+      // Module code is strict and its entry runs with `this` undefined, both
+      // natively and on Ark (SourceTextModule::Evaluate passes undefined), so
+      // top-level `this` is exact there. A script/CommonJS `this` is not.
+      if ((script_body_ && std::holds_alternative<ThisExpr>(node.expression)) ||
           std::holds_alternative<AwaitExpr>(node.expression) ||
           std::holds_alternative<YieldExpr>(node.expression) ||
           std::holds_alternative<ArgumentSnapshotExpr>(node.expression)) throw Error::kUnsupportedContext;
@@ -848,7 +851,13 @@ class TreePrinter {
     Expression(node);
   }
   void Expression(NewTargetExpr) {
-    if (ProgramBody()) throw Error::kUnsupportedContext;
+    // `new.target` is a syntax error at module top level, and Ark evaluates the
+    // module entry with new.target undefined (SourceTextModule::Evaluate), so
+    // its exact value prints as `(void 0)`. Script bodies keep the refusal.
+    if (ProgramBody()) {
+      if (script_body_) throw Error::kUnsupportedContext;
+      Append("(void 0)"); return;
+    }
     Append("new.target");
   }
   void Expression(DynamicImportExpr node) {

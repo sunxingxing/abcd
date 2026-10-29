@@ -490,6 +490,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/guarded_module_writes_test.py)
     add_test(NAME isa_module_guard_copies_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/module_guard_copies_test.py)
+    add_test(NAME isa_module_this_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/module_this_test.py)
     add_test(NAME isa_completion_ports_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_test.py)
     add_test(NAME single_pass_scale_test COMMAND ${Python3_EXECUTABLE}

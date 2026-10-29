@@ -5,6 +5,24 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 模块顶层的 `this` 与 `new.target`（2026-10-29，cc；用户指定的优先阻塞）
+
+- big.abc 中约 2,948 条在打印阶段失败（`TreePrintError::kUnsupportedContext`）。ArkTS
+  页面模块的入口把自身的 `this`（a2）和 `new.target`（a1）存进词法槽，供箭头函数
+  使用；printer 在模块体中对这两者一律拒绝。
+- 运行时依据：ES module 入口由 `SourceTextModule::Evaluate` 以
+  `NewRuntimeCallInfo(func, undefined, undefined, …)` 调用（js_module_source_text.cpp:339），
+  `this` 与 new.target 都是 undefined；模块代码是 strict，标准语义下顶层 `this` 同样是
+  undefined。因此：
+  - 模块体打印 `this`：精确等价；
+  - 模块体中的 new.target 打印为 `(void 0)`：精确值（模块顶层写 `new.target` 是语法
+    错误）。
+  - script/CommonJS 体的 `this` 绑定不同，仍然拒绝。
+- 当前 pinned es2abc 不允许在模块顶层箭头里写 `new.target`，所以 new.target 形式由
+  unit test（`module_family_print_test`）覆盖；`this` 由新 fixture `module_this`
+  （default、O0，含顶层 try）的 Node 差分覆盖，植入的变异能被检出。
+- big.abc：1,608 → **4,553**（+2,945），零回退、零文本变化，语法错误为 0；cohort `csr111/def` 零变化；全量 CTest 995 项，失败的 34 项都在已知清单内。
+
 ## guard 前带寄存器拷贝的模块读取：创建时已初始化的前提（2026-10-29，cc）
 
 - 子函数从父函数继承"创建时已初始化"的 local 模块 slot。这类 load 原本以 `kInitialized`

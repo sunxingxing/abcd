@@ -1,6 +1,6 @@
+#include <iostream>
 #include "../../../src/source/family_print.h"
 #include <cstdlib>
-#include <iostream>
 #include <sstream>
 #include <source_location>
 #include <string_view>
@@ -425,9 +425,21 @@ int main(int argc, char** argv) {
     Check(ordinary.str().find("return") == std::string::npos);
   }
   auto invalid = family;
+  // Module code runs with `this` undefined (natively and on Ark), so a module
+  // body may print it; script bodies still refuse it.
   invalid.members[2].tree.expressions[0].expression = ThisExpr{{10}};
+  std::ostringstream module_this;
+  Check(std::holds_alternative<PrintedFamilyDraft>(PrintModuleFamilyDraft(invalid, module_this)) &&
+        module_this.str().find("this") != std::string::npos);
+  // Ark evaluates the module entry with new.target undefined; `new.target` is
+  // a syntax error at module top level, so the exact value prints as void 0.
+  invalid = family;
+  invalid.members[2].tree.expressions[0].expression = NewTargetExpr{{10}};
+  std::ostringstream module_new_target;
+  Check(std::holds_alternative<PrintedFamilyDraft>(PrintModuleFamilyDraft(invalid, module_new_target)) &&
+        module_new_target.str().find("(void 0)") != std::string::npos &&
+        module_new_target.str().find("new.target") == std::string::npos);
   std::ostringstream denied;
-  Check(std::get<TreePrintFailure>(PrintModuleFamilyDraft(invalid, denied)) == TreePrintError::kUnsupportedContext);
   invalid = family; invalid.members[2].tree.statements[1].statement = ReturnStmt{ExprId{0}};
   Check(std::get<TreePrintFailure>(PrintModuleFamilyDraft(invalid, denied)) == TreePrintError::kUnsupportedContext);
   invalid = family; invalid.members.erase(invalid.members.begin()); invalid.root = {1};

@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Module-level `this` (undefined) captured by arrows, including under a top-level try.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/module_this/this.js",
+   "path": "tests/fixtures/isa/module_this/this-default.abc",
+   "sha256": "e4e865e22bba890e8482f443cf9fa1844b83e095d3246577451edf1f0af9958d",
+   "source_sha256": "4db67003a4f9ac76f42aa074eb717751f46590c1620c8d720b96f38ba943fb4b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=module_this",
+    "--source-file=this.js",
+    "--output=tests/fixtures/isa/module_this/this-default.abc",
+    "tests/fixtures/isa/module_this/this.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/module_this/this.js",
+   "path": "tests/fixtures/isa/module_this/this-O0.abc",
+   "sha256": "9a8ce944ad442b762ea362efcfafe10112d1da562a95bd538910c6a4e93c4ce7",
+   "source_sha256": "4db67003a4f9ac76f42aa074eb717751f46590c1620c8d720b96f38ba943fb4b",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=module_this",
+    "--source-file=this.js",
+    "--output=tests/fixtures/isa/module_this/this-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/module_this/this.js"
+   ],
+   "profile": 6
+  }
+ ]
+}
