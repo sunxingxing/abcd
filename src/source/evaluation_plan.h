@@ -430,7 +430,7 @@ BuildEvaluationPlan(
     std::span<const ClassInitializerCall> initializers = {},
     analysis::ClosureWrites closure_writes = analysis::ClosureWrites::kUnknown, ArraySourceInput arrays = {},
     std::span<const analysis::GuardedRead> guarded = {}, const ForOfEvaluationInput* for_of = nullptr,
-    const ClassSelfOrder* self_order = nullptr);
+    const ClassSelfOrder* self_order = nullptr, std::span<const ClassDefinitionSite> definitions = {});
 [[nodiscard]] std::variant<std::uint64_t, EvaluationFailure> VerifyPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, const EvaluationPlan& plan,
     analysis::SemanticBudget budget = {}, const ForOfEvaluationInput* for_of = nullptr);

@@ -419,7 +419,8 @@ class FamilyTrees {
                                           phase->Locals().writes,
                                           array_source, guarded,
                                           for_of ? &*for_of : nullptr,
-                                          phase->SelfOrder())
+                                          phase->SelfOrder(),
+                                          phase->Phases().Classes().definitions)
               : BuildEvaluationPlan(
                     graph, left_,
                     i == 0 && !family.root_capture

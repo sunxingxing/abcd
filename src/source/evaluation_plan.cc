@@ -875,11 +875,11 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildPhasedEvaluationPlan(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget, IncomingCells incoming,
     std::span<const FunctionBinding> functions, std::span<const ModuleEvaluation> modules, std::span<const CellDemand> demands,
     std::span<const ClassInitializerCall> initializers, analysis::ClosureWrites closure_writes, ArraySourceInput arrays, std::span<const analysis::GuardedRead> guarded, const ForOfEvaluationInput* for_of,
-    const ClassSelfOrder* self_order) {
+    const ClassSelfOrder* self_order, std::span<const ClassDefinitionSite> definitions) {
   auto remaining = budget;
   {
     auto original = BuildEvaluation(graph, remaining, incoming, functions, modules,
-        EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {},
+        EvaluationFlow::kPhased, demands, initializers, closure_writes, definitions, {}, {},
         self_order, {}, arrays, guarded, for_of);
     auto* plan = std::get_if<EvaluationPlan>(&original);
     if (!plan) return original;
@@ -904,7 +904,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildPhasedEvaluationPlan(
     // work and never reuse a failed attempt's unreported work allowance.
   }
   auto expanded = BuildEvaluation(graph, remaining, incoming, functions, modules,
-      EvaluationFlow::kPhased, demands, initializers, closure_writes, {}, {}, {},
+      EvaluationFlow::kPhased, demands, initializers, closure_writes, definitions, {}, {},
       self_order, {}, arrays, guarded, for_of, nullptr, PhasePrefixDomain::kSelection);
   auto* prior = std::get_if<EvaluationPlan>(&expanded);
   if (!prior) return expanded;
@@ -936,7 +936,7 @@ std::variant<EvaluationPlan, EvaluationFailure> BuildPhasedEvaluationPlan(
   bool exact_stage_cost = false;
   auto staged = BuildEvaluation(graph, {remaining.bytes - prior->allocated_bytes, allowance},
       incoming, functions, modules, EvaluationFlow::kPhased, demands, initializers,
-      closure_writes, {}, {}, {}, self_order, {}, arrays, guarded, for_of, nullptr,
+      closure_writes, definitions, {}, {}, self_order, {}, arrays, guarded, for_of, nullptr,
       PhasePrefixDomain::kSelection, ExceptionStageDomain::kUniform, &stage_work, &exact_stage_cost);
   if (auto* plan = std::get_if<EvaluationPlan>(&staged)) {
     plan->work = budget.work - remaining.work + plan->work * 2;

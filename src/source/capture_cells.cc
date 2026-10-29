@@ -370,11 +370,29 @@ ClassRootPoint RootPoint(const corpus::AbcFile& file, const abc::Header& header,
   Require(located.has_value(), Error::kCreation);
   const auto site = *located;
   if (creator.Phase()) {
-    Require(!owner.CreationSite() &&
-                site.value < creator.Graph().input.sites.size() &&
+    Require(site.value < creator.Graph().input.sites.size() &&
                 creator.Graph().input.sites[site.value],
             Error::kCreation);
-    const auto point = creator.Point(*creator.Graph().input.sites[site.value]);
+    const auto id = *creator.Graph().input.sites[site.value];
+    if (const auto* function = owner.CreationSite()) {
+      // A member function created by the phased creator (DEFINEMETHOD): bind
+      // it at its own Before phase, as BindPhasedCreations does.
+      Require(function->creator == creator.Method() && id.value < creator.Graph().ops.size(), Error::kOwner);
+      const auto& graph = creator.Graph();
+      const auto block = graph.ops[id.value].block;
+      Require(block.value < graph.phases.size() &&
+          graph.phases[block.value].phase == analysis::ExceptionPhase::kBefore, Error::kCreation);
+      const auto input = creator.Phase()->Phases().TreeInput(creator.Body()).input;
+      constexpr std::size_t kMethodLookups = 2;
+      quota.Step(std::bit_width(index.regions.size()) + kMethodLookups * std::bit_width(index.methods.size()) + 1);
+      auto resolved = analysis::BindExceptionCreation(file, header, index, lookup, creator.Method(),
+          creator.Body(), input.flow, input.environments, graph.phases[block.value].input);
+      Require(std::holds_alternative<analysis::CreationBinding>(resolved), Error::kCreation);
+      auto binding = std::get<analysis::CreationBinding>(std::move(resolved));
+      Require(binding.target.position == owner.Position() && binding.creation == function->creation, Error::kOwner);
+      return {site, std::move(binding)};
+    }
+    const auto point = creator.Point(id);
     Require(point.has_value(), Error::kCreation);
     return {site, ClassCaptureSite{owner, point->environment, point->pc}};
   }

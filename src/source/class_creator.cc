@@ -45,10 +45,10 @@ std::span<const analysis::ValueClassHeritage> ClassCreator::Classes() const {
                  : std::span<const analysis::ValueClassHeritage>(
                        Normal()->values.classes.classes);
 }
-// Phased member-installation fusion has no exception-port proof. Keep the
-// original operations for the ordinary verifier to admit or refuse separately.
+// Phased installations are admitted only when they throw to the caller or a
+// forwarding cleanup handler (FindClassDefinitions).
 std::span<const ClassDefinitionSite> ClassCreator::Definitions() const {
-  return Phase() ? std::span<const ClassDefinitionSite>{}
+  return Phase() ? std::span<const ClassDefinitionSite>{Phase()->Phases().Classes().definitions}
                  : Normal()->values.definitions.sites;
 }
 std::span<const ClassInitializerCall> ClassCreator::Initializers() const {
@@ -83,8 +83,15 @@ std::optional<analysis::InstructionId> ClassCreator::FindSite(
     const auto it =
         std::lower_bound(sources.begin(), sources.end(), pc,
                          [](const auto& a, auto b) { return a.pc < b; });
-    if (it == sources.end() || it->pc != pc) return {};
-    return it->instruction;
+    if (it != sources.end() && it->pc == pc) return it->instruction;
+    // Other creations (member methods): original coordinates keep the
+    // instruction order, so search them by original PC and require equality.
+    const auto instructions = Instructions();
+    const auto original = [](const auto& instruction) { return instruction.origin.value_or(instruction.pc); };
+    const auto found = std::lower_bound(instructions.begin(), instructions.end(), pc,
+        [&](const auto& a, auto b) { return original(a) < b; });
+    if (found == instructions.end() || original(*found) != pc) return {};
+    return analysis::InstructionId{static_cast<std::uint32_t>(found - instructions.begin())};
   }
   const auto instructions = Instructions();
   const auto it =
@@ -215,6 +222,15 @@ BuildPhasedClassSites(const analysis::ValueProgram& graph,
     if (initializers.work > budget.work) return Error::kWorkLimit;
     budget.bytes -= initializers.allocated_bytes; budget.work -= initializers.work;
     sites.initializers = std::move(initializers.calls);
+    auto definitions = FindClassDefinitions(graph, budget);
+    if (const auto* error = std::get_if<ClassDefinitionError>(&definitions))
+      return *error == ClassDefinitionError::kResourceLimit ? Error::kResourceLimit :
+          *error == ClassDefinitionError::kWorkLimit ? Error::kWorkLimit : Error::kInput;
+    auto& members = std::get<ClassDefinitionSites>(definitions);
+    if (members.allocated_bytes > budget.bytes) return Error::kResourceLimit;
+    if (members.work > budget.work) return Error::kWorkLimit;
+    budget.bytes -= members.allocated_bytes; budget.work -= members.work;
+    sites.definitions = std::move(members.sites);
     sites.allocated_bytes = initial.bytes - budget.bytes;
     sites.work = initial.work - budget.work;
     return sites;

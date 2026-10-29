@@ -229,7 +229,7 @@ target_sources(abcd_source PRIVATE src/source/completion_ports.cc src/source/ite
 target_sources(abcd_source PRIVATE src/source/tree_constants.cc src/source/cell_names.cc)
 target_sources(abcd_source PRIVATE src/source/syntax_resolution.cc)
 target_sources(abcd_source PRIVATE src/source/derived_value_states.cc src/source/implicit_constructor.cc src/source/constructor_forwarding.cc)
-target_sources(abcd_source PRIVATE src/source/effect_order.cc src/source/class_definitions.cc src/source/class_definition_projection.cc src/source/defined_member_context.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_prototype.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/derived_projection.cc src/source/class_tree.cc)
+target_sources(abcd_source PRIVATE src/source/effect_order.cc src/source/caller_exit.cc src/source/class_definitions.cc src/source/class_definition_projection.cc src/source/defined_member_context.cc src/source/class_initializers.cc src/source/class_initializer_projection.cc src/source/class_prototype.cc src/source/class_initializer_file.cc src/source/class_tree_context.cc src/source/constructor_tree_context.cc src/source/derived_projection.cc src/source/class_tree.cc)
 target_sources(abcd_source PRIVATE src/source/creation_tree_context.cc src/source/concurrent_context.cc src/source/sendable_metadata.cc src/source/sendable_class.cc src/source/sendable_types.cc src/source/shared_module.cc src/source/concurrent_completion.cc src/source/concurrent_async.cc src/source/concurrent_directive.cc src/source/concurrent_tree.cc src/source/concurrent_references.cc src/source/concurrent_boundary.cc)
 target_sources(abcd_source PRIVATE src/source/rest_ownership.cc)
 target_sources(abcd_source PRIVATE src/source/function_input.cc)
@@ -496,6 +496,8 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/self_classes_test.py)
     add_test(NAME isa_module_creation_states_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/module_creation_states_test.py)
+    add_test(NAME isa_phased_accessors_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/phased_accessors_test.py)
     add_test(NAME isa_completion_ports_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_test.py)
     add_test(NAME single_pass_scale_test COMMAND ${Python3_EXECUTABLE}

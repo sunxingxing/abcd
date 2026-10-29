@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <functional>
 #include <new>
 #include <stdexcept>
 
@@ -127,7 +128,15 @@ ProjectClassDefinitions(const analysis::ValueProgram& graph,
       auto& corridor = corridors[owner(i)->value];
       require(!corridor.tail, Error::kFlow); corridor.tail = OpId{static_cast<std::uint32_t>(i)};
     }
-    const auto completed = [&](const OperandUse& use, OpId creation, OpId end) {
+    // Pure register copies (kept by phased graphs) are not observations:
+    // their own uses are. They stay evaluation aliases of their sources.
+    const auto pure_copy = [&](OpId id) {
+      const auto& op = graph.ops[id.value];
+      return !graph.phases.empty() && op.life == ValueLife::kLive && op.result &&
+          std::holds_alternative<ValueCopy>(op.operation) && CanErasePureOp(op);
+    };
+    std::function<void(const OperandUse&, OpId, OpId)> completed;
+    completed = [&](const OperandUse& use, OpId creation, OpId end) {
       WorkBlockId block; std::uint32_t position;
       if (const auto* owner = std::get_if<OpId>(&use.owner)) {
         require(owner->value < graph.ops.size(), Error::kFlow);
@@ -135,6 +144,13 @@ ProjectClassDefinitions(const analysis::ValueProgram& graph,
             (!private_stores.empty() &&
              private_stores[owner->value] == creation))
           return;
+        if (pure_copy(*owner)) {
+          for (auto next = graph.values[graph.ops[owner->value].result->value].first_use; next;
+               next = graph.uses[next->value].next) {
+            step(); completed(graph.uses[next->value], creation, end);
+          }
+          return;
+        }
         const auto& observer = graph.ops[owner->value];
         block = observer.block; position = observer.order;
       } else {

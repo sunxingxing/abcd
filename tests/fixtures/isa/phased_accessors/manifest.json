@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Class accessors installed outside the literal buffer by phased creators (module entry and function with try/catch).",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/phased_accessors/accessors.js",
+   "path": "tests/fixtures/isa/phased_accessors/accessors-default.abc",
+   "sha256": "e278ccd4ece3883074ae6a5760fe14889a7a8858a8e8eaf59ecc02515d657d6e",
+   "source_sha256": "e37ba891bc4daa0853f00134b7860715c94de0d7da2a5af023ec378b812f4dfd",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_accessors",
+    "--source-file=accessors.js",
+    "--output=tests/fixtures/isa/phased_accessors/accessors-default.abc",
+    "tests/fixtures/isa/phased_accessors/accessors.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/phased_accessors/accessors.js",
+   "path": "tests/fixtures/isa/phased_accessors/accessors-O0.abc",
+   "sha256": "e2986e73698bbf07288b6903f5ab888b5156c627e9eb457f9d217ae64667f1fe",
+   "source_sha256": "e37ba891bc4daa0853f00134b7860715c94de0d7da2a5af023ec378b812f4dfd",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=phased_accessors",
+    "--source-file=accessors.js",
+    "--output=tests/fixtures/isa/phased_accessors/accessors-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/phased_accessors/accessors.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

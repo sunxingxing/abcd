@@ -1,5 +1,5 @@
 #include "class_initializers.h"
-#include "exception_forwarding.h"
+#include "caller_exit.h"
 #include "../analysis/value_edits.h"
 #include "../analysis/value_flow.h"
 #include <algorithm>
@@ -12,13 +12,6 @@ namespace {
 using namespace analysis;
 using Error = ClassInitializerError;
 void Require(bool condition, Error error = Error::kInput) { if (!condition) throw error; }
-// The local handler an op may throw to (exits are recorded in op order).
-std::optional<ValueHandler> Handler(const ValueProgram& graph, OpId op) {
-  const auto exit = std::lower_bound(graph.exceptional_exits.begin(), graph.exceptional_exits.end(), op,
-      [](const auto& item, OpId wanted) { return item.op < wanted; });
-  if (exit == graph.exceptional_exits.end() || exit->op != op) return std::nullopt;
-  return exit->handler;
-}
 }
 std::variant<ClassInitializerCalls, ClassInitializerError> FindClassInitializerCalls(
     const analysis::ValueProgram& graph, analysis::SemanticBudget budget) {
@@ -74,31 +67,13 @@ std::variant<ClassInitializerCalls, ClassInitializerError> FindClassInitializerC
           use.role == role && use.purpose == purpose);
       return use.operand;
     };
-    // Forwarding summaries and catch values, computed once on first need.
-    std::optional<ExceptionForwarding> forwarding;
-    std::vector<std::optional<ValueId>> catches;
+    CallerExits exits(graph);
     const auto CallerExit = [&](OpId op) {
-      step(std::bit_width(graph.exceptional_exits.size()) + 1);
-      const auto handler = Handler(graph, op);
-      if (!handler) return true;
-      if (!forwarding) {
-        auto built = AnalyzeExceptionForwarding(graph, budget);
-        if (const auto* failure = std::get_if<ForInFailure>(&built))
-          throw failure->kind == ForInError::kResourceLimit ? Error::kResourceLimit :
-              failure->kind == ForInError::kWorkLimit ? Error::kWorkLimit : Error::kFlow;
-        forwarding = std::get<ExceptionForwarding>(std::move(built));
-        admit(forwarding->allocated_bytes, 1); step(forwarding->work);
-        admit(graph.blocks.size(), sizeof(std::optional<ValueId>)); catches.resize(graph.blocks.size());
-        for (std::uint32_t v = 0; v < graph.values.size(); ++v) {
-          step();
-          if (const auto* entry = std::get_if<CatchDefinition>(&graph.values[v].origin);
-              entry && entry->block.value < catches.size()) catches[entry->block.value] = ValueId{v};
-        }
+      try { return exits(op, budget); }
+      catch (const ForInFailure& failure) {
+        throw failure.kind == ForInError::kResourceLimit ? Error::kResourceLimit :
+            failure.kind == ForInError::kWorkLimit ? Error::kWorkLimit : Error::kFlow;
       }
-      const auto entry = handler->entry.value;
-      if (entry >= catches.size() || !catches[entry]) return false;
-      const auto& summary = forwarding->blocks[entry];
-      return summary && !summary->destination && summary->payload == *catches[entry];
     };
     for (std::uint32_t i = 0; i < graph.ops.size(); ++i) {
       step(); const OpId id{i}; const auto& op = graph.ops[i];

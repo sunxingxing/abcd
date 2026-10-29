@@ -5,6 +5,33 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## phased creator 的类成员安装（访问器等）（2026-10-29，cc；用户指定的优先阻塞 3）
+
+- `CaptureEvaluationError::kCreation`（1,298 条）：phased creator（带 try 的函数、ArkTS
+  phased 模块入口）中的类访问器（`get`/`set`、静态访问器）由 `definemethod` +
+  `definegettersetterbyvalue` 在 literal buffer 之外安装。`ClassCreator::Definitions()`
+  对 phased 返回空集（"no exception-port proof"），方法因此被当作普通子函数绑定后拒绝。
+- 统一修复（与静态初始化器采用同一规则）：
+  - 抽出共享的 `CallerExits`：op 只抛给 caller，或抛给原样转发捕获值的 handler
+    （环境清理）。`FindClassInitializerCalls` 与 `FindClassDefinitions` 都使用它。
+  - `FindClassDefinitions` 支持 phased 图：producer 取拷贝根；方法值的"恰好被定义消费
+    一次"按拷贝传递计数；访问器缺失一侧的 `undefined` 允许经纯拷贝物化；定义与方法
+    创建必须满足 caller 出口条件。
+  - `ProjectClassDefinitions` 把纯拷贝视为透明（拷贝不算观察者，它的使用才算）；
+    拷贝本身仍是求值 alias。
+  - `PhasedClassSites::definitions` 经 `ClassCreator::Definitions()` 传给投影、phased
+    求值计划与 `ResolveDefinedMemberContext`（occurrence 按原始 PC 查找）。
+    `ClassCreator::FindSite` 在 phased 下按原始 PC 查找成员创建。`RootPoint` 以
+    `BindExceptionCreation` 绑定 phased 成员方法。
+  - 位于本地 try 内的类仍拒绝。
+- 证据：
+  - 新 fixture `phased_accessors`（default、O0）Node 差分（含描述符检查），植入的
+    变异能被检出；
+  - big.abc（regression 构建）6,457 → **6,863**（`tests/corpus/big-abc-baseline.json`，
+    133.5 s，峰值 RSS 173 MB），已完成记录零回退、零文本变化，语法错误为 0；
+  - 620 用例 cohort `csr114/def` 与 `csr113/def` 逐字节一致；
+  - 全量 ctest 998 项，失败 34 项，全部属于已知失败清单。
+
 ## 子函数继承的模块初始化状态：提升前奏与 phased creator（2026-10-29，cc）
 
 - 子函数对 local 模块绑定的无 guard 读取，只有在 slot 属于"创建时已初始化"集合时才认证。

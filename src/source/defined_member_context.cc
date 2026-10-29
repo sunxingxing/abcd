@@ -29,12 +29,12 @@ ClassTreeContext::ResolveDefinedMember(
     if (kind != abc::ClassMethodKind::kGetter && kind != abc::ClassMethodKind::kSetter && kind != abc::ClassMethodKind::kOrdinary) return fail(Error::kKind);
     if (identity != creator.Identity()) return fail(Error::kProfile);
     const auto& graph = creator.Graph();
-    if (!creator.Normal()) return fail(Error::kSite);
-    const auto& inventory = creator.Normal()->values.definitions;
-    if (inventory.revision != graph.revision) return fail(Error::kSite);
-    const auto found = std::lower_bound(inventory.sites.begin(), inventory.sites.end(), definition,
+    // Normal or phased creator: the creator's own installation inventory.
+    if (creator.Normal() && creator.Normal()->values.definitions.revision != graph.revision) return fail(Error::kSite);
+    const auto inventory = creator.Definitions();
+    const auto found = std::lower_bound(inventory.begin(), inventory.end(), definition,
         [&](const auto& site, auto id) { step(); return site.definition < id; });
-    if (found == inventory.sites.end() || found->definition != definition) return fail(Error::kSite);
+    if (found == inventory.end() || found->definition != definition) return fail(Error::kSite);
     const auto method_id = found->Method(kind);
     if (!method_id || method_id->value >= graph.ops.size() || definition.value >= graph.ops.size()) return fail(Error::kSite);
     const auto& operation = graph.ops[method_id->value];
@@ -54,9 +54,11 @@ ClassTreeContext::ResolveDefinedMember(
         abc::ResolvePoolReference(file, header, index, creator.Method(),
                                   method->method, abc::PoolEntityKind::kMethod);
     if (const auto* error = std::get_if<abc::MetadataError>(&target)) return ClassContextFailure{*error};
+    // The occurrence index names the original PC (phased bodies may be
+    // normalized; working and original coordinates then differ).
     const auto occurrence =
         functions.FindOccurrence(std::get<abc::PoolReference>(target).offset,
-                                 creator.Method(), origin.pc);
+                                 creator.Method(), origin.original.value_or(origin.pc));
     if (!occurrence) return fail(Error::kSite);
     auto resolved = CreationTreeContext::Resolve(file, header, index, lookup, roles, functions,
         *occurrence, identity, budget, CreationContextMode::kMethodBody);

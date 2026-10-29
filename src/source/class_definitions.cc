@@ -1,5 +1,6 @@
 #include "class_definitions.h"
 #include "class_initializers.h"
+#include "caller_exit.h"
 #include <algorithm>
 #include "effect_order.h"
 #include "../analysis/value_edits.h"
@@ -19,7 +20,6 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
     const auto admit = [&](std::size_t count, std::size_t width) {
       require(count <= budget.bytes / width, Error::kResourceLimit); budget.bytes -= count * width;
     };
-    require(graph.phases.empty(), Error::kFlow);
     step(graph.ops.size()); step(graph.values.size()); step(graph.uses.size());
     admit(graph.uses.size(), sizeof(std::uint8_t));
     require(!VerifyValueUses(graph, graph.uses.size()));
@@ -43,11 +43,14 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
       require(use.role == role && use.purpose == purpose);
       return use.operand;
     };
+    // Phased graphs keep pure register copies; producers are copy roots.
     const auto producer = [&](const ValueOperand& operand) -> std::optional<OpId> {
       const auto* value = std::get_if<ValueId>(&operand);
       if (!value) return {};
       require(value->value < graph.values.size());
-      const auto* result = std::get_if<OpResult>(&graph.values[value->value].origin);
+      std::uint64_t hops = 0;
+      const auto root = CopyRoot(graph, *value, hops); step(hops);
+      const auto* result = std::get_if<OpResult>(&graph.values[root.value].origin);
       if (!result) return {};
       require(result->op.value < graph.ops.size() && graph.ops[result->op.value].life == ValueLife::kLive);
       return result->op;
@@ -56,6 +59,14 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
       const auto* own = std::get_if<ValueOwnWrite>(&op.operation);
       return op.life == ValueLife::kLive && (std::holds_alternative<ValueDefineAccessor>(op.operation) ||
           (own && own->kind == OwnWriteKind::kStore));
+    };
+    CallerExits exits(graph);
+    const auto caller_exit = [&](OpId id) {
+      try { return exits(id, budget); }
+      catch (const ForInFailure& failure) {
+        throw failure.kind == ForInError::kResourceLimit ? Error::kResourceLimit :
+            failure.kind == ForInError::kWorkLimit ? Error::kWorkLimit : Error::kFlow;
+      }
     };
     std::size_t count = 0;
     for (const auto& op : graph.ops) { step(); count += definition(op); }
@@ -102,7 +113,12 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
         step(); const auto ordinal = accessor ? 2 + n : 1;
         const auto& value = input(id, ordinal, accessor ? (n ? OperandRole::kSetter : OperandRole::kGetter) : OperandRole::kStoredValue);
         if (accessor) {
-          if (const auto* absent = std::get_if<SpecialValue>(&value); absent && *absent == SpecialValue::kUndefined) continue;
+          // A phased graph materializes the literal through a pure copy.
+          const ValueOperand* literal = &value;
+          if (const auto copy = producer(value); copy && std::holds_alternative<ValueCopy>(graph.ops[copy->value].operation) &&
+              graph.ops[copy->value].use_count == 1 && CanErasePureOp(graph.ops[copy->value]))
+            literal = &input(*copy, 0, OperandRole::kInput);
+          if (const auto* absent = std::get_if<SpecialValue>(literal); absent && *absent == SpecialValue::kUndefined) continue;
         }
         const auto method_id = producer(value);
         if (!method_id) { valid = false; break; }
@@ -112,21 +128,33 @@ std::variant<ClassDefinitionSites, ClassDefinitionError> FindClassDefinitions(
             (accessor && creation->length != n) || method.use_count != 1 ||
             producer(input(*method_id, 0, OperandRole::kHomeObject, ReadPurpose::kProtocol)) != producer(base)) { valid = false; break; }
         require(method.result.has_value());
-        // Simplification has removed register copies. The function object must
-        // be consumed exactly once by this definition, not escape or be reused,
-        // apart from serving as a stored instance initializer's home object.
+        // The function object must be consumed exactly once by this definition,
+        // not escape or be reused, apart from serving as a stored instance
+        // initializer's home object. Pure register copies (kept by phased
+        // graphs) are no use; their own uses count.
         std::size_t defining = 0;
-        for (auto use = graph.values[method.result->value].first_use; use; use = graph.uses[use->value].next) {
+        std::vector<ValueId> aliases{*method.result};
+        admit(1, sizeof(ValueId));
+        for (std::size_t next = 0; next < aliases.size() && defining < 2; ++next)
+        for (auto use = graph.values[aliases[next].value].first_use; use; use = graph.uses[use->value].next) {
           step(); const auto& occurrence = graph.uses[use->value];
           const auto* consumer = std::get_if<OpId>(&occurrence.owner);
           if (use->value == op.first_use.value + ordinal) { ++defining; continue; }
+          if (consumer && !graph.phases.empty() && std::holds_alternative<ValueCopy>(graph.ops[consumer->value].operation) &&
+              CanErasePureOp(graph.ops[consumer->value]) && graph.ops[consumer->value].result) {
+            admit(1, sizeof(ValueId)); aliases.push_back(*graph.ops[consumer->value].result); continue;
+          }
           if (!consumer || occurrence.role != OperandRole::kHomeObject ||
               !std::binary_search(instance_methods.begin(), instance_methods.end(), *consumer)) { defining = 2; break; }
         }
+        // A phased projection moves the creation into class syntax; it may
+        // throw only to the caller or a forwarding cleanup handler.
+        if (!graph.phases.empty() && !caller_exit(*method_id)) { valid = false; break; }
         if (defining != 1) { valid = false; break; }
         methods[n] = method_id;
       }
       if (!valid || (!methods[0] && !methods[1])) continue;
+      if (!graph.phases.empty() && !caller_exit(id)) continue;
       ClassDefinitionSite site{*owner, id, *home, prototype, key, ClassAccessorDefinition{methods[0], methods[1]}};
       // Pinned OH7 RuntimeStOwnByName defines a writable, configurable,
       // non-enumerable own data property on fresh class/prototype objects.
