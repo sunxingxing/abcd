@@ -5,6 +5,26 @@
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
 
+## 函数提升后写入模块绑定（2026-10-29，cc）
+
+- 被提升的函数（`export function setX(v) { x = v; }`）在 `let x` 初始化之前就已创建，
+  所以写入的 slot 不在创建时的已初始化集合里，原先一律以
+  `ModuleAliasError::kInitialization` 拒绝。big.abc 中有 2,489 条记录卡在这里。
+- es2abc 在写入前会先显式检查 TDZ：`ldlocalmodulevar` + `throw.undefinedifholewithname`，
+  然后才 `stmodulevar`。统一规则：若一次写入在所有路径上紧接着的前驱效果
+  （`EffectOrder::before`）是同一 local slot 的 Hole guard，就是对已初始化绑定的普通
+  赋值。slot 一旦初始化就不会再变回 Hole，guard 与 store 之间又没有其他效果，因此
+  原生的 `x = v`（在赋值时检查 TDZ）与之等价。每个方法只建一次效果序。
+- 证据：
+  - fixture `guarded_module_writes`（default、O0）Node 差分：初始化之前调用触发 TDZ，
+    之后的赋值都正确，植入的变异能被检出；
+  - cohort `csr108/def` 零变化；
+  - 同一提交还把 phased 模块入口的 family 构建接入 module scope：`BuildFileFamilyTrees`
+    接受 `GlobalScope`，后代类读取模块变量时需要它。原先 2,917 条
+    `kClassPreparationInput` 就源于缺少它；`descendant_derived` 增加 `captured` 源码覆盖；
+  - big.abc 1,527 → **1,535**，零回退、零文本变化；
+  - 全量 CTest：993 项，失败的 34 项都在已知清单内。
+
 ## 后代与 phased creator 中的派生类（2026-10-29，cc）
 
 - `descendant_classes` 原先对后代 creator 中的派生类（`extends`）一律拒绝

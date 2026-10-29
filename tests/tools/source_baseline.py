@@ -54,7 +54,9 @@ def main():
             for member in record.get('source_omitted_members', []):
                 omissions[cause_key(member.get('causes'))] += 1
         elif status == 3:
-            refusals[cause_key(record.get('source_failure', {}).get('causes'))] += 1
+            # Tree-stage refusals carry source_failure; printing-stage ones
+            # (record_program) report source_causes instead.
+            refusals[cause_key(record.get('source_failure', {}).get('causes') or record.get('source_causes'))] += 1
     syntax_errors = []
     checker = Path(__file__).with_name('check_source_syntax.mjs')
     for first in range(0, len(published), 200):

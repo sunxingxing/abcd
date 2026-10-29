@@ -1,4 +1,5 @@
 #include "module_aliases.h"
+#include "effect_order.h"
 #include "module_binding_name.h"
 
 #include <algorithm>
@@ -202,7 +203,8 @@ class AliasBinder {
       // Reuse the immutable creation-time premise, across arbitrary child CFG
       // and effects. Never infer initialization from a metadata export row.
       Step(ModuleSlotSet::kPathWork);
-      if (!input_.entry && (!input_.entry_modules || !input_.entry_modules->Contains(write->slot))) {
+      if (!input_.entry && (!input_.entry_modules || !input_.entry_modules->Contains(write->slot)) &&
+          !GuardedWrite(analysis::OpId{static_cast<std::uint32_t>(i)}, write->slot)) {
         Require(op.origin.value < graph.origins.size(), Error::kCoverage);
         throw ModuleAliasFailure{Error::kInitialization, graph.origins[op.origin.value].pc};
       }
@@ -241,6 +243,42 @@ class AliasBinder {
       result_.writes.push_back({id, {write->slot,
           {result_.owner, {static_cast<std::uint32_t>(external + write->slot.value)}}, false}});
     }
+  }
+  // A write whose exact preceding effect on every path is a successful Hole
+  // guard of the same local slot assigns an initialized binding: a slot never
+  // reverts to Hole, and no effect lies between the check and the store, so
+  // native `x = v` (TDZ checked at the assignment) is equivalent. One effect
+  // order per method; O(guards + B log B) for blocks B.
+  bool GuardedWrite(analysis::OpId write, analysis::ModuleSlot slot) {
+    const auto& graph = input_.graph;
+    if (!guard_slots_) {
+      auto built = BuildEffectOrder(graph, {bytes_, work_});
+      if (const auto* error = std::get_if<analysis::ValueAvailabilityError>(&built)) {
+        Require(*error != analysis::ValueAvailabilityError::kResourceLimit, Error::kResourceLimit);
+        Require(*error != analysis::ValueAvailabilityError::kWorkLimit, Error::kWorkLimit);
+        return false;
+      }
+      effects_.emplace(std::get<EffectOrder>(std::move(built)));
+      Admit(effects_->allocated_bytes, 1); Step(effects_->work);
+      guard_slots_.emplace();
+      Reserve(*guard_slots_, input_.guards.pairs.size());
+      for (const auto& pair : input_.guards.pairs) {
+        Step();
+        if (!pair.guard || pair.read.value >= graph.ops.size()) continue;
+        const auto* read = std::get_if<analysis::ValueModuleRead>(&graph.ops[pair.read.value].operation);
+        if (read && read->space == analysis::ModuleSpace::kLocal && !read->request_namespace)
+          guard_slots_->push_back({*pair.guard, read->slot});
+      }
+      std::sort(guard_slots_->begin(), guard_slots_->end(), [&](const auto& a, const auto& b) {
+        Step(); return a.first < b.first;
+      });
+    }
+    const auto* previous = std::get_if<analysis::OpId>(&effects_->before[write.value]);
+    if (!previous) return false;
+    Step(std::bit_width(guard_slots_->size()) + 1);
+    const auto found = std::lower_bound(guard_slots_->begin(), guard_slots_->end(), *previous,
+        [](const auto& entry, analysis::OpId id) { return entry.first < id; });
+    return found != guard_slots_->end() && found->first == *previous && found->second == slot;
   }
   void ResolveGuardNames() {
     std::sort(order_.begin(), order_.end(), [&](auto a, auto b) {
@@ -317,6 +355,8 @@ class AliasBinder {
       classes_[order[i]] = group;
     }
   }
+  std::optional<EffectOrder> effects_;
+  std::optional<std::vector<std::pair<analysis::OpId, analysis::ModuleSlot>>> guard_slots_;
   const corpus::AbcFile& file_;
   const abc::Header& header_;
   const abc::MetadataIndex& index_;

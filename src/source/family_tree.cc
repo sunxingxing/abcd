@@ -1190,13 +1190,14 @@ std::variant<ConstructedFamily, FamilyTreeFailure> BuildFileFamilyTrees(
     const corpus::AbcFile& file, const abc::Header& header,
     const abc::MetadataIndex& index, FileFamily family, const FunctionContext& root,
     analysis::SemanticBudget budget, const RecordModuleContext* modules, ModuleOwnerId module_owner,
-    const abc::MethodLookup* lookup, RecoveryMode recovery, const ExternalFamilyCapture* external) {
+    const abc::MethodLookup* lookup, RecoveryMode recovery, const ExternalFamilyCapture* external,
+    const GlobalScope* globals) {
   try {
     FamilyTrees builder(file, header, index, budget, modules, module_owner, lookup, recovery);
     builder.Prepare(family, &root,
                     external ? external->creator : ClassCreator{},
                     external ? external->storage : nullptr);
-    return builder.Build(family, &root, {}, external);
+    return builder.Build(family, &root, {}, external, globals);
   } catch (const FamilyTreeFailure& error) {
     auto located = error;
     const auto member = std::get_if<FamilyWriteFailure>(&error.cause)

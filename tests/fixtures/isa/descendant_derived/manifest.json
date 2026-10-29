@@ -3,7 +3,7 @@
  "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
  "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
  "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
- "note": "Derived classes created by descendant creators and by a phased module entry (default and O0).",
+ "note": "Derived classes created by descendant creators and by a phased module entry (default and O0). Module class captured by a child and module constants read by a descendant class under a phased entry.",
  "fixtures": [
   {
    "source": "tests/fixtures/isa/descendant_derived/derived.js",
@@ -72,6 +72,41 @@
     "--output=tests/fixtures/isa/descendant_derived/entry-O0.abc",
     "--opt-level=0",
     "tests/fixtures/isa/descendant_derived/entry.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/descendant_derived/captured.js",
+   "path": "tests/fixtures/isa/descendant_derived/captured-default.abc",
+   "sha256": "7bec7efa801f26dae474cb4a4ff76516074f2bde937343c6502ea94e6451df7f",
+   "source_sha256": "c51625585f21caac7e55cf18f26350ba179ef96dbb760801bd54bd18a424268e",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=descendant_derived",
+    "--source-file=captured.js",
+    "--output=tests/fixtures/isa/descendant_derived/captured-default.abc",
+    "tests/fixtures/isa/descendant_derived/captured.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/descendant_derived/captured.js",
+   "path": "tests/fixtures/isa/descendant_derived/captured-O0.abc",
+   "sha256": "8c09be708143184a9b0a1afd8cd280e175393f4e8ba70ecd93ad58763afdc523",
+   "source_sha256": "c51625585f21caac7e55cf18f26350ba179ef96dbb760801bd54bd18a424268e",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=descendant_derived",
+    "--source-file=captured.js",
+    "--output=tests/fixtures/isa/descendant_derived/captured-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/descendant_derived/captured.js"
    ],
    "profile": 6
   }

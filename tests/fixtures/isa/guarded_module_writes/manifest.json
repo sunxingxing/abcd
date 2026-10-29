@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "Hoisted functions assigning module bindings right after a Hole guard of the same slot (TDZ before initialization).",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/guarded_module_writes/writes.js",
+   "path": "tests/fixtures/isa/guarded_module_writes/writes-default.abc",
+   "sha256": "4dde9adf105b8e56118d3f5772ba295221946ab53a26a404f8de90f40b5fed01",
+   "source_sha256": "2b7b2c2c82cd33a310d8b17456590fa8e1fbeb498e65eb49ac1a0382d5586e70",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=guarded_module_writes",
+    "--source-file=writes.js",
+    "--output=tests/fixtures/isa/guarded_module_writes/writes-default.abc",
+    "tests/fixtures/isa/guarded_module_writes/writes.js"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/guarded_module_writes/writes.js",
+   "path": "tests/fixtures/isa/guarded_module_writes/writes-O0.abc",
+   "sha256": "2a7f032f23fc8544a1e841faccddbd4f7f24fee5284a1ba78d4e7ead13bc2c15",
+   "source_sha256": "2b7b2c2c82cd33a310d8b17456590fa8e1fbeb498e65eb49ac1a0382d5586e70",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=js",
+    "--record-name=guarded_module_writes",
+    "--source-file=writes.js",
+    "--output=tests/fixtures/isa/guarded_module_writes/writes-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/guarded_module_writes/writes.js"
+   ],
+   "profile": 6
+  }
+ ]
+}

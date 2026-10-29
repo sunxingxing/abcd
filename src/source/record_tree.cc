@@ -687,15 +687,17 @@ static RecordSourceResult BuildRecordTreeAttempt(const corpus::AbcFile& file, co
         return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
     }
     } else {
+      // Same module scope as the record route: descendant classes read the
+      // module enclosure while the family is built.
+      class_scope.module_enclosure = enclosure;
+      class_scope.module_local_names = std::span<const std::u16string>(names).subspan(external);
+      class_scope.module_local_evidence = local_names->evidence;
       auto built = BuildFileFamilyTrees(file, header, index, std::move(*family), *entry_context,
-          {budget.bytes}, &context, owner, &lookup, RecoveryMode::kCompleteOnly);
+          {budget.bytes}, &context, owner, &lookup, RecoveryMode::kCompleteOnly, nullptr, &class_scope);
       if (const auto* error = std::get_if<FamilyTreeFailure>(&built))
         return RouteRefusal{FamilyRouteFailure(FamilyPrepareFailure{*error})};
       module_family.emplace(std::get<ConstructedFamily>(std::move(built)));
       retain(module_family->allocated_bytes);
-      class_scope.module_enclosure = enclosure;
-      class_scope.module_local_names = std::span<const std::u16string>(names).subspan(external);
-      class_scope.module_local_evidence = local_names->evidence;
       // Same inventory obligation as the record route: every local slot is an
       // entry-owned binding with its metadata spelling, declared exactly once.
       {

@@ -11195,6 +11195,10 @@
       "producer": "tests/isa/descendant_derived_test.py"
     },
     {
+      "test": "isa_guarded_module_writes_source_test",
+      "producer": "tests/isa/guarded_module_writes_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },

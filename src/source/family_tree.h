@@ -111,7 +111,7 @@ class FamilyTreeInput {
     analysis::SemanticBudget budget = {}, const RecordModuleContext* modules = nullptr,
     ModuleOwnerId module_owner = {}, const abc::MethodLookup* lookup = nullptr,
     RecoveryMode recovery = RecoveryMode::kCompleteOnly,
-    const ExternalFamilyCapture* external = nullptr);
+    const ExternalFamilyCapture* external = nullptr, const GlobalScope* globals = nullptr);
 // Reuse a record adapter's root tree and checked flow, then construct all actual
 // children with the same defaults/capture/ABI pipeline. No fictional creation
 // context or function parameters are supplied for the module entry. Input and
