@@ -85,9 +85,9 @@ int main() {
   decoded.operand_count=2;decoded.operands[0]={0,abc::OperandKind::kImmediate};decoded.operands[1]={201,abc::OperandKind::kString};
   for(const auto opcode:{abc::Opcode::kLDSUPERBYNAME_IMM8_ID16,abc::Opcode::kLDSUPERBYNAME_IMM16_ID16}) {
     decoded.opcode=opcode;
-    const auto read=std::get<NamedRead>(LiftNamedRead(decoded));Check(read.lookup==PropertyLookup::kSuper&&read.name.value==201);
+    const auto read=std::get<NamedRead>(LiftNamedRead(decoded, 1));Check(read.lookup==PropertyLookup::kSuper&&read.name.value==201);
     auto wrong=decoded;wrong.operands[1].kind=abc::OperandKind::kRegister;
-    Check(std::get<NamedReadError>(LiftNamedRead(wrong))==NamedReadError::kMalformedInstruction);
+    Check(std::get<NamedReadError>(LiftNamedRead(wrong, 1))==NamedReadError::kMalformedInstruction);
   }
   for(const auto n:{1U,200U,201U,400U,800U}) for (const bool split : {false, true}) {
   auto graph=Graph(n);

@@ -24,7 +24,9 @@ Alternatives: arbitrary receiver calls through `.call`/`.apply` or global
 Reflect introduce mutable property/intrinsic dependencies and are rejected.
 General SSA/effect-aware expression scheduling is a later extension of this
 proof, not a reason to speculate across writes or branch entries now. Legacy
-and with-name variants require separate evidence and are not accepted.
+and with-name variants require separate evidence and are not accepted by
+these matchers; register-callee legacy calls use the generic value route
+(`deprecated-operand-sources.md`).
 Narrow `CALLTHISRANGE` is admitted through the typed receiver-call lift. The
 pinned v7 `CALL_PUSH_ARGS_THISRANGE` reads the receiver at `startReg` and
 `count` arguments from the following contiguous registers. The first

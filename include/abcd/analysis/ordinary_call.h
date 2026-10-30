@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "abcd/abc/register_access.h"
+#include "abcd/analysis/scalar.h"
 
 namespace abcd::analysis {
 inline constexpr std::size_t kFixedCallArguments = 3;
@@ -21,6 +22,8 @@ enum class RangeCallSemantics : std::uint8_t { kCommon, kIsaLayout };
 struct OrdinaryCall {
   std::variant<CallRegisters, CallRange> arguments;
   RangeCallSemantics range_semantics = RangeCallSemantics::kCommon;
+  // Current forms read the callee from acc; DEPRECATED_CALL* from a register.
+  ScalarSlot callee = Accumulator{};
   [[nodiscard]] std::uint32_t Count() const;
   [[nodiscard]] std::optional<abc::RegisterId> At(std::uint32_t position) const;
 };
@@ -32,7 +35,9 @@ enum class CallError {
 
 // CALLARG0/1/2/3 and narrow CALLRANGE: acc callee, undefined
 // receiver/new.target, register arguments, result replaces acc on success only.
-// No .call property access or iterator is implied. Wide range retains the
+// No .call property access or iterator is implied. DEPRECATED_CALLARG0..3 and
+// DEPRECATED_CALLRANGE read the callee from their first register and the
+// arguments after it (interpreter-inl.cpp DEPRECATED_CALL_INITIALIZE/PUSH_ARGS). Wide range retains the
 // ISA/C++/AOT layout as a separate semantic predicate because the pinned asm
 // stub reads the wrong start byte. O(1) lift/access, fixed storage; zero count
 // reads no register.

@@ -18,6 +18,49 @@ std::optional<abc::RegisterId> OrdinaryCall::At(std::uint32_t position) const {
   return abc::RegisterId{range.first.value + position};
 }
 
+namespace {
+// Register operands only; the callee register precedes its arguments.
+std::optional<std::variant<OrdinaryCall, CallError>> LiftDeprecatedCall(
+    const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
+  std::uint8_t count = 0;
+  switch (instruction.opcode) {
+    case abc::Opcode::kDEPRECATED_CALLARG0_PREF_V8: break;
+    case abc::Opcode::kDEPRECATED_CALLARG1_PREF_V8_V8: count = 1; break;
+    case abc::Opcode::kDEPRECATED_CALLARGS2_PREF_V8_V8_V8: count = 2; break;
+    case abc::Opcode::kDEPRECATED_CALLARGS3_PREF_V8_V8_V8_V8: count = 3; break;
+    case abc::Opcode::kDEPRECATED_CALLRANGE_PREF_IMM16_V8: {
+      if (instruction.operand_count != 2 ||
+          instruction.operands[0].kind != abc::OperandKind::kImmediate ||
+          instruction.operands[0].raw_bits > UINT16_MAX ||
+          instruction.operands[1].kind != abc::OperandKind::kRegister ||
+          instruction.operands[1].raw_bits > UINT8_MAX) return CallError::kMalformedInstruction;
+      const auto size = instruction.operands[0].raw_bits;
+      const auto callee = instruction.operands[1].raw_bits;
+      if (callee >= frame_size || size > frame_size - callee - 1) return CallError::kRegisterRange;
+      OrdinaryCall call{CallRange{{static_cast<std::uint32_t>(callee + 1)}, static_cast<std::uint16_t>(size)}};
+      call.callee = abc::RegisterId{static_cast<std::uint32_t>(callee)};
+      return call;
+    }
+    default: return {};
+  }
+  if (instruction.operand_count != std::size_t(count) + 1) return CallError::kMalformedInstruction;
+  std::array<abc::RegisterId, kFixedCallArguments + 1> registers{};
+  for (std::size_t i = 0; i <= count; ++i) {
+    const auto& operand = instruction.operands[i];
+    if (operand.kind != abc::OperandKind::kRegister || operand.raw_bits > UINT8_MAX)
+      return CallError::kMalformedInstruction;
+    if (operand.raw_bits >= frame_size) return CallError::kRegisterRange;
+    registers[i] = {static_cast<std::uint32_t>(operand.raw_bits)};
+  }
+  CallRegisters arguments;
+  arguments.count = count;
+  for (std::size_t i = 0; i < count; ++i) arguments.values[i] = registers[i + 1];
+  OrdinaryCall call{arguments};
+  call.callee = registers[0];
+  return call;
+}
+}  // namespace
+
 std::variant<OrdinaryCall, CallError> LiftOrdinaryCall(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
   // OH7 C++ interpreter:1483 and AOT bytecodes.cpp:1126 agree with ISA.
@@ -33,6 +76,7 @@ std::variant<OrdinaryCall, CallError> LiftOrdinaryCall(
     if (count && (first >= frame_size || count > frame_size - first)) return CallError::kRegisterRange;
     return OrdinaryCall{CallRange{{static_cast<std::uint32_t>(first)},static_cast<std::uint16_t>(count)},RangeCallSemantics::kIsaLayout};
   }
+  if (auto deprecated = LiftDeprecatedCall(instruction, frame_size)) return *deprecated;
   constexpr std::size_t kCache = 0;
   constexpr std::size_t kRangeCount = 1;
   constexpr std::size_t kRangeFirst = 2;

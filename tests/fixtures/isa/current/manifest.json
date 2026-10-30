@@ -1986,6 +1986,7 @@
             "type": "abcd::abc::PoolIndex",
             "value": 1
           },
+          "receiver": null,
           "type": "abcd::analysis::NamedRead"
         },
         "semantic_family": "abcd::analysis::NamedRead",
@@ -3125,6 +3126,9 @@
                 "value": 0
               }
             ]
+          },
+          "callee": {
+            "type": "abcd::analysis::Accumulator"
           },
           "form": 1,
           "receiver": {
@@ -5035,6 +5039,9 @@
             },
             "type": "abcd::analysis::CallRange"
           },
+          "callee": {
+            "type": "abcd::analysis::Accumulator"
+          },
           "range_semantics": 1,
           "type": "abcd::analysis::OrdinaryCall"
         },
@@ -5206,6 +5213,9 @@
             },
             "type": "abcd::analysis::CallRange"
           },
+          "callee": {
+            "type": "abcd::analysis::Accumulator"
+          },
           "form": 0,
           "receiver": {
             "type": "abcd::abc::RegisterId",
@@ -5287,6 +5297,9 @@
                 "value": 0
               }
             ]
+          },
+          "callee": {
+            "type": "abcd::analysis::Accumulator"
           },
           "form": 0,
           "receiver": {
@@ -6606,6 +6619,9 @@
               "value": 1
             },
             "type": "abcd::analysis::CallRange"
+          },
+          "callee": {
+            "type": "abcd::analysis::Accumulator"
           },
           "form": 0,
           "receiver": {

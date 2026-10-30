@@ -48,7 +48,8 @@ std::optional<InputOperand> CallOperands::At(std::uint32_t index) const {
       const auto argument = call.ArgumentAt(index - kCalleeOperands);
       if (argument) return operand(OperandRole::kArgument, *argument);
     } else {
-      if (index == 0) return operand(OperandRole::kCallee, Accumulator{});
+      if (index == 0)
+        return operand(OperandRole::kCallee, std::visit([](auto slot) -> ScalarValue { return slot; }, call.callee));
       auto argument_index = index - kCalleeOperands;
       if constexpr (std::is_same_v<T, ReceiverCall>) {
         if (index == kCalleeOperands) return operand(OperandRole::kReceiver, call.receiver);

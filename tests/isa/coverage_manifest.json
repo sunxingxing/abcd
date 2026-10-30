@@ -10954,6 +10954,346 @@
       "classification": "Unmeasured",
       "oracles": {},
       "note": "Only an executed occurrence oracle can promote this fixture."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_inc_pref_v8-dynamic1206.abc",
+      "sha256": "46f9466ab5d47f2b7eace3b6e22f39711823e57b9aed3f9109d63796cb6cccd0",
+      "opcodes": [
+        2556
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_inc_pref_v8-dynamic2400.abc",
+      "sha256": "ff6132071640ca6351d2b7a7a8b87ad4065569b0d1fe42c4bc1881ca1903d100",
+      "opcodes": [
+        2556
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_dec_pref_v8-dynamic1206.abc",
+      "sha256": "83eda9135d91ba0babcd473cf8ca525ea1de94b8993d45505a491bf510ba7ff6",
+      "opcodes": [
+        2812
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_dec_pref_v8-dynamic2400.abc",
+      "sha256": "74b881fe4e401e5f279081960c7014ec73f09d89c539485c25391a1e3cddcf0b",
+      "opcodes": [
+        2812
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_neg_pref_v8-dynamic1206.abc",
+      "sha256": "70d8537a35da79d0c400dbc4dee78d84bec93000df5330fa33c52143f11dd99f",
+      "opcodes": [
+        2044
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_neg_pref_v8-dynamic2400.abc",
+      "sha256": "e2a0dbf957c80ee2c58730e80c230d0a3033704ffcacd17a66cbc19fcb6e38c9",
+      "opcodes": [
+        2044
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_not_pref_v8-dynamic1206.abc",
+      "sha256": "bedb7f6b4b0e36f29f1fa82e4d37750b347313483a4b67b29764bb7aa19c3e63",
+      "opcodes": [
+        2300
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_not_pref_v8-dynamic2400.abc",
+      "sha256": "f5af334a5799d32298a670d9858f0a89797734a803bcbb333d45304f2bbf8555",
+      "opcodes": [
+        2300
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_tonumber_pref_v8-dynamic1206.abc",
+      "sha256": "bed8964dca56f1da9e8b207c4133eb3073bcbadaf1b15509fd1d4dc2c8f21487",
+      "opcodes": [
+        1532
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_tonumber_pref_v8-dynamic2400.abc",
+      "sha256": "f7219f2cf2e753ca485056e02aac9b6f8089e788b27cd0bc6539731a1e4c5d04",
+      "opcodes": [
+        1532
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_tonumeric_pref_v8-dynamic1206.abc",
+      "sha256": "65cd32457c15c9466b8086447582c57667467d617b7f28c3bd7fe582c83d1715",
+      "opcodes": [
+        1788
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_tonumeric_pref_v8-dynamic2400.abc",
+      "sha256": "3f21939d90821dcdd16e38f9046a2086a73f4dd6c4713ef38ec2b87695a12d7b",
+      "opcodes": [
+        1788
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callarg0_pref_v8-dynamic1206.abc",
+      "sha256": "6c2d966e8d7c4f8481d4d37dea3f09275fa54d12243e820e3bae865e03a8085d",
+      "opcodes": [
+        3068
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callarg0_pref_v8-dynamic2400.abc",
+      "sha256": "5c544f010a8eec2f7a5fc6e01eb00cd6863300700d251c7323c21f4d86cab805",
+      "opcodes": [
+        3068
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callarg1_pref_v8_v8-dynamic1206.abc",
+      "sha256": "0d7e3ceab5c9bee97d0b21f606b7e7fd4ce11dde6218e1c2ec2384a9808c54cd",
+      "opcodes": [
+        3324
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callarg1_pref_v8_v8-dynamic2400.abc",
+      "sha256": "e8f7df3a30e4c4efc0056036b84fa8352db17d59c94d4fdbf434ea2e1a7efaaa",
+      "opcodes": [
+        3324
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callargs2_pref_v8_v8_v8-dynamic1206.abc",
+      "sha256": "a14640defe1a9c4962f19518ec482751d8e914b30ff5e4b8baf333eaa9ee102e",
+      "opcodes": [
+        3580
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callargs2_pref_v8_v8_v8-dynamic2400.abc",
+      "sha256": "7b214f97d2bcc1ef6f8705d0ef407c038d04c5040e51a13eecab3575d1a51e7d",
+      "opcodes": [
+        3580
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callargs3_pref_v8_v8_v8_v8-dynamic1206.abc",
+      "sha256": "e97e760112dc2749e0735f270b24932b97d132c78e8adf6cffa69083cae4c8ad",
+      "opcodes": [
+        3836
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callargs3_pref_v8_v8_v8_v8-dynamic2400.abc",
+      "sha256": "946b31d70c7409fd5685bb32a2a2856cbb39fc7ffc436d4117e2408af4dd7b3f",
+      "opcodes": [
+        3836
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callrange_pref_imm16_v8-dynamic1206.abc",
+      "sha256": "98669824cd8f5dfd1fcf9776bdd4a826df77a2d25c4aa8958efb353a3141fa85",
+      "opcodes": [
+        4092
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callrange_pref_imm16_v8-dynamic2400.abc",
+      "sha256": "9754d3ddf59acc7849c4b367b26bdd9f2feb8d7c330ed9ab81a481f21337acc4",
+      "opcodes": [
+        4092
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_ldobjbyname_pref_id32_v8-dynamic1206.abc",
+      "sha256": "e9185da64854f568892eefc63f5871358413cff233c5355e8cb040236ed7094a",
+      "opcodes": [
+        9724
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_ldobjbyname_pref_id32_v8-dynamic2400.abc",
+      "sha256": "55602c90d4e8f48209dcaeb7a9cd59806d32f81d55c4384d40fc127bd29f2c57",
+      "opcodes": [
+        9724
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_delobjprop_pref_v8_v8-dynamic1206.abc",
+      "sha256": "5923f023c3abbe232bf35b0c43e66444cbe617fb9b5593cb34459ee62692584e",
+      "opcodes": [
+        5884
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_delobjprop_pref_v8_v8-dynamic2400.abc",
+      "sha256": "0bbf1226c9ac7c4472f8d654e3c1a6bfeb26e20f6c63735d5a494cdc1e07cb78",
+      "opcodes": [
+        5884
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_dynamicimport_pref_v8-dynamic1206.abc",
+      "sha256": "df4e44c82bc2bb8688957911bf76dceb653c999f8f27b1359a18af1fedea4c2b",
+      "opcodes": [
+        11772
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_dynamicimport_pref_v8-dynamic2400.abc",
+      "sha256": "ddffbf3ff81aec8a89864228be10efe5b8d743946cc7724f7ecae06006c79420",
+      "opcodes": [
+        11772
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_copydataproperties_pref_v8_v8-dynamic1206.abc",
+      "sha256": "508c30fece448893dc60a30d3da121a6b7457939ff2d54c3a4e7ff25971707cf",
+      "opcodes": [
+        6652
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_copydataproperties_pref_v8_v8-dynamic2400.abc",
+      "sha256": "23ec4c583c612fbc7244db460887ebf17f852ef348575f3eebbf9121ec1baf10",
+      "opcodes": [
+        6652
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callthisrange_pref_imm16_v8-dynamic1206.abc",
+      "sha256": "3faed2742fc5963081b7dde3107a401317af3d57dcf4d5a1be0e8242677c9169",
+      "opcodes": [
+        4604
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callthisrange_pref_imm16_v8-dynamic2400.abc",
+      "sha256": "e2c4f8f3669fce6b9e1f297180f8a6aa67f51a9cb3374aebfe5ec7a9dc2c7ed4",
+      "opcodes": [
+        4604
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callspread_pref_v8_v8_v8-dynamic1206.abc",
+      "sha256": "c9b7fb8dbd2dabaf12888de170b647ab0f84c47c44c0dc24d22ea960b4f292aa",
+      "opcodes": [
+        4348
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
+    },
+    {
+      "path": "tests/fixtures/isa/deprecated_source/deprecated_callspread_pref_v8_v8_v8-dynamic2400.abc",
+      "sha256": "26de586dc2a4f749bb1dba7868c43775306d1407210e2d55f923f0ed686331c6",
+      "opcodes": [
+        4348
+      ],
+      "classification": "Unmeasured",
+      "oracles": {},
+      "note": "Classification comes from executed occurrence evidence, never this registration."
     }
   ],
   "note": "NonExecutable is pinned-runtime refusal evidence, never a semantic-support or execution pass.",
@@ -11247,6 +11587,10 @@
       "producer": "tests/isa/captured_static_classes_test.py"
     },
     {
+      "test": "isa_concurrent_result_source_test",
+      "producer": "tests/isa/concurrent_result_test.py"
+    },
+    {
       "test": "isa_completion_ports_source_test",
       "producer": "tests/isa/completion_ports_test.py"
     },
@@ -11257,6 +11601,10 @@
     {
       "test": "isa_single_pass_source_test",
       "producer": "tests/isa/single_pass_test.py"
+    },
+    {
+      "test": "isa_deprecated_source_test",
+      "producer": "tests/isa/deprecated_source_test.py"
     }
   ]
 }

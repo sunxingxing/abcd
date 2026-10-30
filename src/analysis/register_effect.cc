@@ -67,9 +67,10 @@ RegisterEffect EffectOf(const UnaryExpression& value) {
   Read(effect, value);
   return effect;
 }
-RegisterEffect EffectOf(const NamedRead&) {
+RegisterEffect EffectOf(const NamedRead& value) {
   RegisterEffect effect;
-  effect.reads[effect.read_count++] = Accumulator{};
+  if (value.receiver) effect.reads[effect.read_count++] = *value.receiver;
+  else effect.reads[effect.read_count++] = Accumulator{};
   effect.write = Accumulator{};
   return effect;
 }
@@ -121,7 +122,7 @@ RegisterEffect EffectOf(const ArraySpread& value) {
 }
 RegisterEffect EffectOf(const OrdinaryCall& value) {
   RegisterEffect effect;
-  effect.reads[effect.read_count++] = Accumulator{};
+  effect.reads[effect.read_count++] = value.callee;
   effect.write = Accumulator{};
   if (const auto* range = std::get_if<CallRange>(&value.arguments)) {
     effect.range = RegisterRange{range->first, range->count};
@@ -134,7 +135,7 @@ RegisterEffect EffectOf(const OrdinaryCall& value) {
 }
 RegisterEffect EffectOf(const ReceiverCall& value) {
   RegisterEffect effect;
-  effect.reads[effect.read_count++] = Accumulator{};
+  effect.reads[effect.read_count++] = value.callee;
   effect.reads[effect.read_count++] = value.receiver;
   effect.write = Accumulator{};
   if (const auto* range = std::get_if<CallRange>(&value.arguments)) {
@@ -409,7 +410,7 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
     return r;
   }
   if(std::get<ThisPropertyError>(implicit)!=ThisPropertyError::kUnsupportedOpcode)return ScalarError::kMalformedInstruction;
-  if (auto result = Adapt(LiftNamedRead(instruction)); !Unsupported(result))
+  if (auto result = Adapt(LiftNamedRead(instruction, frame_size)); !Unsupported(result))
     return result;
   if (auto result = Adapt(LiftNamedWrite(instruction, frame_size));
       !Unsupported(result))
@@ -484,7 +485,7 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
   if (const auto* op = std::get_if<PropertyDelete>(&deleted)) {
     auto effect = AccumulatorDefinition();
     effect.reads[effect.read_count++] = op->object;
-    effect.reads[effect.read_count++] = Accumulator{};
+    effect.reads[effect.read_count++] = op->key;
     return effect;
   }
   if (std::get<ScalarError>(deleted) != ScalarError::kUnsupportedOpcode)
@@ -547,6 +548,14 @@ EffectResult LiftRegisterEffect(const abc::DecodedInstruction& instruction,
       if (instruction.operand_count != 0) return ScalarError::kMalformedInstruction;
       auto result = AccumulatorDefinition();
       result.reads[result.read_count++] = Accumulator{};
+      return result;
+    }
+    case Opcode::kDEPRECATED_DYNAMICIMPORT_PREF_V8: {
+      if (instruction.operand_count != 1 || instruction.operands[0].kind != abc::OperandKind::kRegister)
+        return ScalarError::kMalformedInstruction;
+      if (instruction.operands[0].raw_bits >= frame_size) return ScalarError::kRegisterRange;
+      auto result = AccumulatorDefinition();
+      result.reads[result.read_count++] = abc::RegisterId{static_cast<std::uint32_t>(instruction.operands[0].raw_bits)};
       return result;
     }
     case Opcode::kLDBIGINT_ID16:

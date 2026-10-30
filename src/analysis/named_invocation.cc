@@ -42,6 +42,35 @@ std::variant<ReceiverCall, CallError> LiftReceiverCall(
     if(base>=frame_size||count>frame_size-base-1)return CallError::kRegisterRange;
     return ReceiverCall{{static_cast<std::uint32_t>(base)},CallRange{{static_cast<std::uint32_t>(base+1)},static_cast<std::uint16_t>(count)}};
   }
+  if (instruction.opcode == abc::Opcode::kDEPRECATED_CALLTHISRANGE_PREF_IMM16_V8) {
+    // interpreter-inl.cpp:1467: func v, this v+1, imm-1 arguments from v+2.
+    if (instruction.operand_count != 2 || instruction.operands[0].kind != abc::OperandKind::kImmediate ||
+        instruction.operands[0].raw_bits > UINT16_MAX || instruction.operands[0].raw_bits == 0 ||
+        instruction.operands[1].kind != abc::OperandKind::kRegister ||
+        instruction.operands[1].raw_bits > UINT8_MAX) return CallError::kMalformedInstruction;
+    const auto count = instruction.operands[0].raw_bits - 1, callee = instruction.operands[1].raw_bits;
+    if (callee + 1 >= frame_size || count > frame_size - callee - 2) return CallError::kRegisterRange;
+    ReceiverCall result{{static_cast<std::uint32_t>(callee + 1)},
+        CallRange{{static_cast<std::uint32_t>(callee + 2)}, static_cast<std::uint16_t>(count)}};
+    result.callee = abc::RegisterId{static_cast<std::uint32_t>(callee)};
+    return result;
+  }
+  if (instruction.opcode == abc::Opcode::kDEPRECATED_CALLSPREAD_PREF_V8_V8_V8) {
+    // interpreter-inl.cpp:1612: CallSpread(func v0, this v1, array v2), as APPLY.
+    std::array<abc::RegisterId, 3> registers{};
+    if (instruction.operand_count != registers.size()) return CallError::kMalformedInstruction;
+    for (std::size_t i = 0; i < registers.size(); ++i) {
+      const auto& operand = instruction.operands[i];
+      if (operand.kind != abc::OperandKind::kRegister || operand.raw_bits > UINT8_MAX)
+        return CallError::kMalformedInstruction;
+      if (operand.raw_bits >= frame_size) return CallError::kRegisterRange;
+      registers[i] = {static_cast<std::uint32_t>(operand.raw_bits)};
+    }
+    CallRegisters array;
+    array.count = 1;
+    array.values[0] = registers[2];
+    return ReceiverCall{registers[1], array, CallArgumentForm::kApplyArray, registers[0]};
+  }
   std::uint8_t count = 0;
   bool named = false;
   CallArgumentForm form = CallArgumentForm::kRegisters;
@@ -139,9 +168,9 @@ std::optional<NamedInvocation> MatchNamedInvocation(
     std::uint64_t frame_size) {
   if (property == 0 || property >= block.size() || property + 1 >= block.size())
     return {};
-  const auto read = LiftNamedRead(block[property].decoded);
+  const auto read = LiftNamedRead(block[property].decoded, frame_size);
   const auto* named = std::get_if<NamedRead>(&read);
-  if (!named) return {};
+  if (!named || named->receiver) return {};
   const auto copied =
       LiftScalarInstruction(block[property - 1].decoded, frame_size);
   const auto* copy = std::get_if<ScalarAssignment>(&copied);
@@ -159,7 +188,8 @@ std::optional<NamedInvocation> MatchNamedInvocation(
   }
   const auto direct = LiftReceiverCall(block[property + 1].decoded, frame_size);
   if (const auto* call = std::get_if<ReceiverCall>(&direct)) {
-    if (call->form != CallArgumentForm::kRegisters || call->receiver != *receiver) return {};
+    if (call->form != CallArgumentForm::kRegisters || !std::holds_alternative<Accumulator>(call->callee) ||
+        call->receiver != *receiver) return {};
     return NamedInvocation{*named, *call, 2};
   }
 
@@ -190,7 +220,8 @@ std::optional<NamedInvocation> MatchNamedInvocation(
   const auto spilled_call =
       LiftReceiverCall(block[property + 3].decoded, frame_size);
   const auto* call = std::get_if<ReceiverCall>(&spilled_call);
-  if (!call || call->form != CallArgumentForm::kRegisters || call->receiver != *receiver) return {};
+  if (!call || call->form != CallArgumentForm::kRegisters || !std::holds_alternative<Accumulator>(call->callee) ||
+      call->receiver != *receiver) return {};
   const auto temporary = std::get<abc::RegisterId>(store->destination);
   if (temporary == call->receiver) return {};
   for (std::uint32_t i = 0; i < call->Count(); ++i)
@@ -232,9 +263,9 @@ std::optional<CopiedArgumentInvocation> MatchCopiedArgumentInvocation(
   constexpr std::size_t kPropertyToCall = 5;
   if (call <= kPropertyToCall || call + 1 >= block.size()) return {};
   const auto property = call - kPropertyToCall;
-  const auto named = LiftNamedRead(block[property].decoded);
+  const auto named = LiftNamedRead(block[property].decoded, frame_size);
   const auto* read = std::get_if<NamedRead>(&named);
-  if (!read) return {};
+  if (!read || read->receiver) return {};
   const auto receiver_copy =
       LiftScalarInstruction(block[property - 1].decoded, frame_size);
   const auto* copied = std::get_if<ScalarAssignment>(&receiver_copy);
@@ -290,7 +321,8 @@ std::optional<CopiedArgumentInvocation> MatchCopiedArgumentInvocation(
     return {};
   const auto invoked = LiftReceiverCall(block[call].decoded, frame_size);
   const auto* call_value = std::get_if<ReceiverCall>(&invoked);
-  if (!call_value || call_value->form != CallArgumentForm::kRegisters || call_value->Count() != 1 ||
+  if (!call_value || call_value->form != CallArgumentForm::kRegisters ||
+      !std::holds_alternative<Accumulator>(call_value->callee) || call_value->Count() != 1 ||
       call_value->receiver != *receiver || *call_value->At(0) != *argument)
     return {};
   const auto captured =
@@ -347,9 +379,9 @@ std::optional<StagedNamedInvocation> MatchStagedShape(
       instructions[spill].decoded.opcode != Opcode::kSTA_V8)
     return {};
   const auto property = spill - 1;
-  const auto named = LiftNamedRead(instructions[property].decoded);
+  const auto named = LiftNamedRead(instructions[property].decoded, frame_size);
   const auto* read = std::get_if<NamedRead>(&named);
-  if (!read) return {};
+  if (!read || read->receiver) return {};
   const auto copied =
       LiftScalarInstruction(instructions[property - 1].decoded, frame_size);
   const auto* copy = std::get_if<ScalarAssignment>(&copied);
@@ -387,7 +419,8 @@ std::optional<StagedNamedInvocation> MatchStagedAt(
   const auto lifted =
       LiftReceiverCall(instructions[call_index].decoded, frame_size);
   const auto* invoke = std::get_if<ReceiverCall>(&lifted);
-  if (!invoke || invoke->form != CallArgumentForm::kRegisters || invoke->Count() == 0) return {};
+  if (!invoke || invoke->form != CallArgumentForm::kRegisters ||
+      !std::holds_alternative<Accumulator>(invoke->callee) || invoke->Count() == 0) return {};
   const auto reload = call_index - 1;
   const auto loaded =
       LiftScalarInstruction(instructions[reload].decoded, frame_size);
@@ -572,7 +605,7 @@ StagedMatchResult MatchStagedNamedInvocations(
       if (!charge()) return StagedMatchError::kWorkLimit;
       const auto called = LiftReceiverCall(instructions[i].decoded, frame_size);
       const auto* invoke = std::get_if<ReceiverCall>(&called);
-      if (invoke && i > 0) {
+      if (invoke && i > 0 && std::holds_alternative<Accumulator>(invoke->callee)) {
         if (!charge(1 + invoke->Count()))
           return StagedMatchError::kWorkLimit;
         const auto loaded =

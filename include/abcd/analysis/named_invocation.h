@@ -12,6 +12,7 @@ struct ReceiverCall {
   abc::RegisterId receiver;
   std::variant<CallRegisters, CallRange> arguments;
   CallArgumentForm form = CallArgumentForm::kRegisters;
+  ScalarSlot callee = Accumulator{};
   [[nodiscard]] std::uint32_t Count() const;
   [[nodiscard]] std::optional<abc::RegisterId> At(
       std::uint32_t position) const;
@@ -20,6 +21,9 @@ struct ReceiverCall {
 // raw this, undefined new.target. Range count excludes the receiver and
 // begins at receiver + 1 (pinned v7 CALL_PUSH_ARGS_THISRANGE).
 // Lifting alone does not permit source .call/.apply synthesis.
+// DEPRECATED_CALLTHISRANGE (count includes the receiver) and
+// DEPRECATED_CALLSPREAD (APPLY semantics) read the callee from a register;
+// fused property-call matchers accept accumulator callees only.
 [[nodiscard]] std::variant<ReceiverCall, CallError> LiftReceiverCall(
     const abc::DecodedInstruction& instruction, std::uint64_t frame_size);
 struct NamedInvocation {

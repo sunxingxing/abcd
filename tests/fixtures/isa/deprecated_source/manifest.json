@@ -1,0 +1,446 @@
+{
+ "fixtures": [
+  {
+   "path": "deprecated_inc_pref_v8-dynamic1206.abc",
+   "sha256": "46f9466ab5d47f2b7eace3b6e22f39711823e57b9aed3f9109d63796cb6cccd0",
+   "source": "deprecated_inc_pref_v8.js",
+   "source_sha256": "4dce0c6e8e32106bf57ea0e6dd3484d9f7caa920831d01e68c3958391633f411",
+   "origin": "constructed",
+   "variant": "DEPRECATED_INC_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    2556
+   ]
+  },
+  {
+   "path": "deprecated_inc_pref_v8-dynamic2400.abc",
+   "sha256": "ff6132071640ca6351d2b7a7a8b87ad4065569b0d1fe42c4bc1881ca1903d100",
+   "source": "deprecated_inc_pref_v8.js",
+   "source_sha256": "4dce0c6e8e32106bf57ea0e6dd3484d9f7caa920831d01e68c3958391633f411",
+   "origin": "constructed",
+   "variant": "DEPRECATED_INC_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    2556
+   ]
+  },
+  {
+   "path": "deprecated_dec_pref_v8-dynamic1206.abc",
+   "sha256": "83eda9135d91ba0babcd473cf8ca525ea1de94b8993d45505a491bf510ba7ff6",
+   "source": "deprecated_dec_pref_v8.js",
+   "source_sha256": "10abfb3588b9119694f6e02e72b27bc5a88fd7e26cc507b5986c1ac2559267d3",
+   "origin": "constructed",
+   "variant": "DEPRECATED_DEC_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    2812
+   ]
+  },
+  {
+   "path": "deprecated_dec_pref_v8-dynamic2400.abc",
+   "sha256": "74b881fe4e401e5f279081960c7014ec73f09d89c539485c25391a1e3cddcf0b",
+   "source": "deprecated_dec_pref_v8.js",
+   "source_sha256": "10abfb3588b9119694f6e02e72b27bc5a88fd7e26cc507b5986c1ac2559267d3",
+   "origin": "constructed",
+   "variant": "DEPRECATED_DEC_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    2812
+   ]
+  },
+  {
+   "path": "deprecated_neg_pref_v8-dynamic1206.abc",
+   "sha256": "70d8537a35da79d0c400dbc4dee78d84bec93000df5330fa33c52143f11dd99f",
+   "source": "deprecated_neg_pref_v8.js",
+   "source_sha256": "ebde2227fd213d9e67b4a17dba82986f70de7e57459cfac63dca3d689e3bb127",
+   "origin": "constructed",
+   "variant": "DEPRECATED_NEG_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    2044
+   ]
+  },
+  {
+   "path": "deprecated_neg_pref_v8-dynamic2400.abc",
+   "sha256": "e2a0dbf957c80ee2c58730e80c230d0a3033704ffcacd17a66cbc19fcb6e38c9",
+   "source": "deprecated_neg_pref_v8.js",
+   "source_sha256": "ebde2227fd213d9e67b4a17dba82986f70de7e57459cfac63dca3d689e3bb127",
+   "origin": "constructed",
+   "variant": "DEPRECATED_NEG_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    2044
+   ]
+  },
+  {
+   "path": "deprecated_not_pref_v8-dynamic1206.abc",
+   "sha256": "bedb7f6b4b0e36f29f1fa82e4d37750b347313483a4b67b29764bb7aa19c3e63",
+   "source": "deprecated_not_pref_v8.js",
+   "source_sha256": "b04e4e7486cb4065388d5241c2beb86fb13644ac61cbab4ca3ebe01a4fb83c94",
+   "origin": "constructed",
+   "variant": "DEPRECATED_NOT_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    2300
+   ]
+  },
+  {
+   "path": "deprecated_not_pref_v8-dynamic2400.abc",
+   "sha256": "f5af334a5799d32298a670d9858f0a89797734a803bcbb333d45304f2bbf8555",
+   "source": "deprecated_not_pref_v8.js",
+   "source_sha256": "b04e4e7486cb4065388d5241c2beb86fb13644ac61cbab4ca3ebe01a4fb83c94",
+   "origin": "constructed",
+   "variant": "DEPRECATED_NOT_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    2300
+   ]
+  },
+  {
+   "path": "deprecated_tonumber_pref_v8-dynamic1206.abc",
+   "sha256": "bed8964dca56f1da9e8b207c4133eb3073bcbadaf1b15509fd1d4dc2c8f21487",
+   "source": "deprecated_tonumber_pref_v8.js",
+   "source_sha256": "71470d672edfe19210037dd88db34cff76c3ba900fbb0f8a1b0008c14433ab5b",
+   "origin": "constructed",
+   "variant": "DEPRECATED_TONUMBER_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    1532
+   ]
+  },
+  {
+   "path": "deprecated_tonumber_pref_v8-dynamic2400.abc",
+   "sha256": "f7219f2cf2e753ca485056e02aac9b6f8089e788b27cd0bc6539731a1e4c5d04",
+   "source": "deprecated_tonumber_pref_v8.js",
+   "source_sha256": "71470d672edfe19210037dd88db34cff76c3ba900fbb0f8a1b0008c14433ab5b",
+   "origin": "constructed",
+   "variant": "DEPRECATED_TONUMBER_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    1532
+   ]
+  },
+  {
+   "path": "deprecated_tonumeric_pref_v8-dynamic1206.abc",
+   "sha256": "65cd32457c15c9466b8086447582c57667467d617b7f28c3bd7fe582c83d1715",
+   "source": "deprecated_tonumeric_pref_v8.js",
+   "source_sha256": "080f6f056c6678d68b1ab1da6b9751d75605f3c30b900a06ef25d25e98a97652",
+   "origin": "constructed",
+   "variant": "DEPRECATED_TONUMERIC_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    1788
+   ]
+  },
+  {
+   "path": "deprecated_tonumeric_pref_v8-dynamic2400.abc",
+   "sha256": "3f21939d90821dcdd16e38f9046a2086a73f4dd6c4713ef38ec2b87695a12d7b",
+   "source": "deprecated_tonumeric_pref_v8.js",
+   "source_sha256": "080f6f056c6678d68b1ab1da6b9751d75605f3c30b900a06ef25d25e98a97652",
+   "origin": "constructed",
+   "variant": "DEPRECATED_TONUMERIC_PREF_V8",
+   "family": "unary",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    1788
+   ]
+  },
+  {
+   "path": "deprecated_callarg0_pref_v8-dynamic1206.abc",
+   "sha256": "6c2d966e8d7c4f8481d4d37dea3f09275fa54d12243e820e3bae865e03a8085d",
+   "source": "deprecated_callarg0_pref_v8.js",
+   "source_sha256": "ee4e0b71a8aa706739772c7dcf45423e4b97672ebaf8592595a583a63e438192",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLARG0_PREF_V8",
+   "family": "call",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    3068
+   ]
+  },
+  {
+   "path": "deprecated_callarg0_pref_v8-dynamic2400.abc",
+   "sha256": "5c544f010a8eec2f7a5fc6e01eb00cd6863300700d251c7323c21f4d86cab805",
+   "source": "deprecated_callarg0_pref_v8.js",
+   "source_sha256": "ee4e0b71a8aa706739772c7dcf45423e4b97672ebaf8592595a583a63e438192",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLARG0_PREF_V8",
+   "family": "call",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    3068
+   ]
+  },
+  {
+   "path": "deprecated_callarg1_pref_v8_v8-dynamic1206.abc",
+   "sha256": "0d7e3ceab5c9bee97d0b21f606b7e7fd4ce11dde6218e1c2ec2384a9808c54cd",
+   "source": "deprecated_callarg1_pref_v8_v8.js",
+   "source_sha256": "0b97979c8f505d72811c7c5ebf08f07e90ae236817e54940ca23075cfac30c47",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLARG1_PREF_V8_V8",
+   "family": "call",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    3324
+   ]
+  },
+  {
+   "path": "deprecated_callarg1_pref_v8_v8-dynamic2400.abc",
+   "sha256": "e8f7df3a30e4c4efc0056036b84fa8352db17d59c94d4fdbf434ea2e1a7efaaa",
+   "source": "deprecated_callarg1_pref_v8_v8.js",
+   "source_sha256": "0b97979c8f505d72811c7c5ebf08f07e90ae236817e54940ca23075cfac30c47",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLARG1_PREF_V8_V8",
+   "family": "call",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    3324
+   ]
+  },
+  {
+   "path": "deprecated_callargs2_pref_v8_v8_v8-dynamic1206.abc",
+   "sha256": "a14640defe1a9c4962f19518ec482751d8e914b30ff5e4b8baf333eaa9ee102e",
+   "source": "deprecated_callargs2_pref_v8_v8_v8.js",
+   "source_sha256": "ee03b7fc65360d6f21f2b9e9ca198e3f09e14f4a22f700497e94bd75afed6df9",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLARGS2_PREF_V8_V8_V8",
+   "family": "call",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    3580
+   ]
+  },
+  {
+   "path": "deprecated_callargs2_pref_v8_v8_v8-dynamic2400.abc",
+   "sha256": "7b214f97d2bcc1ef6f8705d0ef407c038d04c5040e51a13eecab3575d1a51e7d",
+   "source": "deprecated_callargs2_pref_v8_v8_v8.js",
+   "source_sha256": "ee03b7fc65360d6f21f2b9e9ca198e3f09e14f4a22f700497e94bd75afed6df9",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLARGS2_PREF_V8_V8_V8",
+   "family": "call",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    3580
+   ]
+  },
+  {
+   "path": "deprecated_callargs3_pref_v8_v8_v8_v8-dynamic1206.abc",
+   "sha256": "e97e760112dc2749e0735f270b24932b97d132c78e8adf6cffa69083cae4c8ad",
+   "source": "deprecated_callargs3_pref_v8_v8_v8_v8.js",
+   "source_sha256": "e7219c259817ab28574d839ae436ed0c59315a0b8b9e659e15f2f86982c57b48",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLARGS3_PREF_V8_V8_V8_V8",
+   "family": "call",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    3836
+   ]
+  },
+  {
+   "path": "deprecated_callargs3_pref_v8_v8_v8_v8-dynamic2400.abc",
+   "sha256": "946b31d70c7409fd5685bb32a2a2856cbb39fc7ffc436d4117e2408af4dd7b3f",
+   "source": "deprecated_callargs3_pref_v8_v8_v8_v8.js",
+   "source_sha256": "e7219c259817ab28574d839ae436ed0c59315a0b8b9e659e15f2f86982c57b48",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLARGS3_PREF_V8_V8_V8_V8",
+   "family": "call",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    3836
+   ]
+  },
+  {
+   "path": "deprecated_callrange_pref_imm16_v8-dynamic1206.abc",
+   "sha256": "98669824cd8f5dfd1fcf9776bdd4a826df77a2d25c4aa8958efb353a3141fa85",
+   "source": "deprecated_callrange_pref_imm16_v8.js",
+   "source_sha256": "ee03b7fc65360d6f21f2b9e9ca198e3f09e14f4a22f700497e94bd75afed6df9",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLRANGE_PREF_IMM16_V8",
+   "family": "call",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    4092
+   ]
+  },
+  {
+   "path": "deprecated_callrange_pref_imm16_v8-dynamic2400.abc",
+   "sha256": "9754d3ddf59acc7849c4b367b26bdd9f2feb8d7c330ed9ab81a481f21337acc4",
+   "source": "deprecated_callrange_pref_imm16_v8.js",
+   "source_sha256": "ee03b7fc65360d6f21f2b9e9ca198e3f09e14f4a22f700497e94bd75afed6df9",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLRANGE_PREF_IMM16_V8",
+   "family": "call",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    4092
+   ]
+  },
+  {
+   "path": "deprecated_ldobjbyname_pref_id32_v8-dynamic1206.abc",
+   "sha256": "e9185da64854f568892eefc63f5871358413cff233c5355e8cb040236ed7094a",
+   "source": "deprecated_ldobjbyname_pref_id32_v8.js",
+   "source_sha256": "c9728c6c8ba4c32755a4d9020a42f0729906bdb0e78f55318510973124191f3e",
+   "origin": "constructed",
+   "variant": "DEPRECATED_LDOBJBYNAME_PREF_ID32_V8",
+   "family": "named",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    9724
+   ]
+  },
+  {
+   "path": "deprecated_ldobjbyname_pref_id32_v8-dynamic2400.abc",
+   "sha256": "55602c90d4e8f48209dcaeb7a9cd59806d32f81d55c4384d40fc127bd29f2c57",
+   "source": "deprecated_ldobjbyname_pref_id32_v8.js",
+   "source_sha256": "c9728c6c8ba4c32755a4d9020a42f0729906bdb0e78f55318510973124191f3e",
+   "origin": "constructed",
+   "variant": "DEPRECATED_LDOBJBYNAME_PREF_ID32_V8",
+   "family": "named",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    9724
+   ]
+  },
+  {
+   "path": "deprecated_delobjprop_pref_v8_v8-dynamic1206.abc",
+   "sha256": "5923f023c3abbe232bf35b0c43e66444cbe617fb9b5593cb34459ee62692584e",
+   "source": "deprecated_delobjprop_pref_v8_v8.js",
+   "source_sha256": "a20b56a2f6e219f448373c9b54bc1f07c22babf4d9bb90da6d04c04543fd3f7b",
+   "origin": "constructed",
+   "variant": "DEPRECATED_DELOBJPROP_PREF_V8_V8",
+   "family": "delete",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    5884
+   ]
+  },
+  {
+   "path": "deprecated_delobjprop_pref_v8_v8-dynamic2400.abc",
+   "sha256": "0bbf1226c9ac7c4472f8d654e3c1a6bfeb26e20f6c63735d5a494cdc1e07cb78",
+   "source": "deprecated_delobjprop_pref_v8_v8.js",
+   "source_sha256": "a20b56a2f6e219f448373c9b54bc1f07c22babf4d9bb90da6d04c04543fd3f7b",
+   "origin": "constructed",
+   "variant": "DEPRECATED_DELOBJPROP_PREF_V8_V8",
+   "family": "delete",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    5884
+   ]
+  },
+  {
+   "path": "deprecated_dynamicimport_pref_v8-dynamic1206.abc",
+   "sha256": "df4e44c82bc2bb8688957911bf76dceb653c999f8f27b1359a18af1fedea4c2b",
+   "source": "deprecated_dynamicimport_pref_v8.js",
+   "source_sha256": "ba2cceb66ef574e714e65d4368f4bbb4682ab8d6e80110c5a442c8aed4c78e87",
+   "origin": "constructed",
+   "variant": "DEPRECATED_DYNAMICIMPORT_PREF_V8",
+   "family": "import",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    11772
+   ]
+  },
+  {
+   "path": "deprecated_dynamicimport_pref_v8-dynamic2400.abc",
+   "sha256": "ddffbf3ff81aec8a89864228be10efe5b8d743946cc7724f7ecae06006c79420",
+   "source": "deprecated_dynamicimport_pref_v8.js",
+   "source_sha256": "ba2cceb66ef574e714e65d4368f4bbb4682ab8d6e80110c5a442c8aed4c78e87",
+   "origin": "constructed",
+   "variant": "DEPRECATED_DYNAMICIMPORT_PREF_V8",
+   "family": "import",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    11772
+   ]
+  },
+  {
+   "path": "deprecated_copydataproperties_pref_v8_v8-dynamic1206.abc",
+   "sha256": "508c30fece448893dc60a30d3da121a6b7457939ff2d54c3a4e7ff25971707cf",
+   "source": "deprecated_copydataproperties_pref_v8_v8.js",
+   "source_sha256": "3162020d9548ec0885c135aed94164868f78005e348c5fa1bb8c5c57323eba7e",
+   "origin": "constructed",
+   "variant": "DEPRECATED_COPYDATAPROPERTIES_PREF_V8_V8",
+   "family": "spread",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    6652
+   ]
+  },
+  {
+   "path": "deprecated_copydataproperties_pref_v8_v8-dynamic2400.abc",
+   "sha256": "23ec4c583c612fbc7244db460887ebf17f852ef348575f3eebbf9121ec1baf10",
+   "source": "deprecated_copydataproperties_pref_v8_v8.js",
+   "source_sha256": "3162020d9548ec0885c135aed94164868f78005e348c5fa1bb8c5c57323eba7e",
+   "origin": "constructed",
+   "variant": "DEPRECATED_COPYDATAPROPERTIES_PREF_V8_V8",
+   "family": "spread",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    6652
+   ]
+  },
+  {
+   "path": "deprecated_callthisrange_pref_imm16_v8-dynamic1206.abc",
+   "sha256": "3faed2742fc5963081b7dde3107a401317af3d57dcf4d5a1be0e8242677c9169",
+   "source": "deprecated_callthisrange_pref_imm16_v8.js",
+   "source_sha256": "67da5a941ae0fed1d5932f115311b54ad13a431ed2f9ca69f280db8ed3e86f23",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLTHISRANGE_PREF_IMM16_V8",
+   "family": "method",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    4604
+   ]
+  },
+  {
+   "path": "deprecated_callthisrange_pref_imm16_v8-dynamic2400.abc",
+   "sha256": "e2c4f8f3669fce6b9e1f297180f8a6aa67f51a9cb3374aebfe5ec7a9dc2c7ed4",
+   "source": "deprecated_callthisrange_pref_imm16_v8.js",
+   "source_sha256": "67da5a941ae0fed1d5932f115311b54ad13a431ed2f9ca69f280db8ed3e86f23",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLTHISRANGE_PREF_IMM16_V8",
+   "family": "method",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    4604
+   ]
+  },
+  {
+   "path": "deprecated_callspread_pref_v8_v8_v8-dynamic1206.abc",
+   "sha256": "c9b7fb8dbd2dabaf12888de170b647ab0f84c47c44c0dc24d22ea960b4f292aa",
+   "source": "deprecated_callspread_pref_v8_v8_v8.js",
+   "source_sha256": "b04e41ef00252e04c6f7ced004b090d2faa2b2e722db4b5ea2c58430ab120e7b",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLSPREAD_PREF_V8_V8_V8",
+   "family": "spreadcall",
+   "profile": "DYNAMIC1206",
+   "opcodes": [
+    4348
+   ]
+  },
+  {
+   "path": "deprecated_callspread_pref_v8_v8_v8-dynamic2400.abc",
+   "sha256": "26de586dc2a4f749bb1dba7868c43775306d1407210e2d55f923f0ed686331c6",
+   "source": "deprecated_callspread_pref_v8_v8_v8.js",
+   "source_sha256": "b04e41ef00252e04c6f7ced004b090d2faa2b2e722db4b5ea2c58430ab120e7b",
+   "origin": "constructed",
+   "variant": "DEPRECATED_CALLSPREAD_PREF_V8_V8_V8",
+   "family": "spreadcall",
+   "profile": "DYNAMIC2400",
+   "opcodes": [
+    4348
+   ]
+  }
+ ]
+}

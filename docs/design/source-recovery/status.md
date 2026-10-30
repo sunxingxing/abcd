@@ -1,9 +1,39 @@
 # 当前状态
 
-更新时间：2026-10-29。本页只记录当前事实、阻塞项和证据索引。
+更新时间：2026-10-30。本页只记录当前事实、阻塞项和证据索引。
 2026-09-25 至 2026-10-12 的流水记录原样归档于
 [history/status-2026-09-25-to-2026-10-12.md](history/status-2026-09-25-to-2026-10-12.md)；
 更早的证据见 [progress.md](progress.md)。
+
+## 已废弃指令：统一的操作数来源槽（2026-10-30，cc；用户决定"支持 + 手工构造 fixture"）
+
+- 多数 `0xfc` 前缀的 deprecated 指令与当前形式执行同一个运行时操作，区别只是某个操作数从
+  寄存器而不是累加器读取。做法是在已有的类型化操作上记录该操作数的来源槽，不新增 deprecated
+  专用操作或源码形式（设计见 `docs/design/deprecated-operand-sources.md`）：
+  - `OrdinaryCall`/`ReceiverCall` 增加 `callee` 槽：CALLARG0/1、CALLARGS2/3、CALLRANGE、
+    CALLTHISRANGE（计数含 receiver）、CALLSPREAD（与 APPLY 同为 `CallSpread`）；
+  - `NamedRead` 增加 `receiver`：LDOBJBYNAME（ID32 只接受不被 uint16 截断的值）；
+  - `PropertyDelete` 增加 `key`：DELOBJPROP；`DynamicImport` 增加 `specifier`：DYNAMICIMPORT。
+  - register effect、call operands、value operands 都读取记录的槽，value IR 与当前形式一致，
+    源码层不需要改动。
+  - 融合属性调用的指令模式匹配器要求属性值经累加器流入调用，因此只接受累加器 callee/receiver；
+    寄存器来源的调用走通用 SSA 值路由（`a.p(b)`、`a.p(...b)` 由此得到）。
+- 仍然拒绝：
+  - LDOBJBYVALUE：慢路径从累加器读 key（interpreter-inl.cpp:5661）；
+  - SETOBJECTWITHPROTO：保留的累加器不是目标对象，需要先有自己的结果规则；
+  - LDSUPERBYNAME/LDSUPERBYVALUE：等 home object fixture；
+  - GETITERATORNEXT：属于旧的 for-of 协议片段。
+- 证据：
+  - 新测试 `isa_deprecated_source_test`：17 种形式 × DYNAMIC1206/DYNAMIC2400 共 34 个 builder
+    fixture，Node 差分覆盖 unary/call/named/delete/import/spread/method/spreadcall 八类输入
+    （结果、promise 结算、异常、转换/getter/proxy trap/receiver 轨迹），植入的变异（错误
+    receiver、多余实参、`Object.assign` 替代 spread、字符串化 delete key）均被检出；
+  - 新测试 `isa_concurrent_result_source_test`（`"use concurrent"`，CALLRUNTIME_NOTIFYCONCURRENTRESULT）；
+  - `deprecated_variants.json` 中 10 种形式在 4 个有 pinned 语义的 profile 上的 lift/recovery
+    快照由 refused 变为 ok，current 快照只增加累加器 `callee` 角色；
+  - big.abc 8,440 不变（regression 构建，314 s，峰值 RSS 245 MB），零回退、零文本变化；
+    620 用例 cohort `csr124/def` 与 `csr123/def` 逐字节一致；全量 ctest 1008 项，失败 34 项，
+    全部属于已知失败清单。
 
 ## 被自身方法捕获的类：静态初始化器与成员投影（2026-10-29，cc；ClassInitializerError 阻塞）
 

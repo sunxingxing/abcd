@@ -2,8 +2,18 @@
 
 namespace abcd::analysis {
 std::variant<NamedRead, NamedReadError> LiftNamedRead(
-    const abc::DecodedInstruction& instruction) {
+    const abc::DecodedInstruction& instruction, std::uint64_t frame_size) {
   using abc::Opcode;
+  if (instruction.opcode == Opcode::kDEPRECATED_LDOBJBYNAME_PREF_ID32_V8) {
+    if (instruction.operand_count != 2 ||
+        instruction.operands[0].kind != abc::OperandKind::kString ||
+        instruction.operands[0].raw_bits > UINT16_MAX ||
+        instruction.operands[1].kind != abc::OperandKind::kRegister ||
+        instruction.operands[1].raw_bits >= frame_size)
+      return NamedReadError::kMalformedInstruction;
+    return NamedRead{{static_cast<std::uint32_t>(instruction.operands[0].raw_bits)}, PropertyLookup::kObject,
+        abc::RegisterId{static_cast<std::uint32_t>(instruction.operands[1].raw_bits)}};
+  }
   constexpr std::size_t kCacheOperand = 0;
   constexpr std::size_t kNameOperand = 1;
   constexpr std::size_t kOperandCount = 2;

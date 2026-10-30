@@ -237,7 +237,7 @@ std::variant<ValueRule, ScalarError> DescribeRegisterValue(
     return ValueRule{ValueRuleKind::kFixed, ValueKinds::Language()};
   if(std::holds_alternative<PropertyDelete>(LiftPropertyDelete(instruction,frame_size)))
     return ValueRule{ValueRuleKind::kFixed,ValueKinds::Boolean()};
-  if (std::holds_alternative<NamedRead>(LiftNamedRead(instruction)) ||
+  if (std::holds_alternative<NamedRead>(LiftNamedRead(instruction, frame_size)) ||
       std::holds_alternative<IndexedRead>(
           LiftIndexedRead(instruction, frame_size)))
     return ValueRule{ValueRuleKind::kLanguageOperation, {}};

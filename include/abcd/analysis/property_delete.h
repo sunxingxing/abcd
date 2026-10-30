@@ -4,7 +4,8 @@
 namespace abcd::analysis {
 // Pinned RuntimeDelObjProp: ToObject, ToPropertyKey, DeletePropertyOrThrow.
 // No GetValue of the property. Acc becomes boolean only after success.
-struct PropertyDelete { abc::RegisterId object; };
+// DELOBJPROP reads the key from acc; DEPRECATED_DELOBJPROP from a register.
+struct PropertyDelete { abc::RegisterId object; ScalarSlot key = Accumulator{}; };
 [[nodiscard]] std::variant<PropertyDelete, ScalarError> LiftPropertyDelete(
     const abc::DecodedInstruction&, std::uint64_t frame_size);
 }

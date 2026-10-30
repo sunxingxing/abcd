@@ -63,7 +63,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       if (op.action != PatternAction::kClose) plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, PropertyDelete>) {
       Append(plan, OperandRole::kBase, op.object);
-      Append(plan, OperandRole::kKey, Accumulator{});
+      Append(plan, OperandRole::kKey, std::visit([](auto slot) -> ScalarValue { return slot; }, op.key));
       plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, CopyProperties>) {
       Append(plan,OperandRole::kBase,op.object);Append(plan,OperandRole::kStoredValue,op.source);plan.write=Accumulator{};
@@ -72,7 +72,8 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       if(WritesThisProperty(op.kind))Append(plan,OperandRole::kStoredValue,Accumulator{});
       else {if(!NamedThisProperty(op.kind))Append(plan,OperandRole::kKey,Accumulator{});plan.write=Accumulator{};}
     } else if constexpr (std::is_same_v<T, NamedRead>) {
-      Append(plan, OperandRole::kBase, Accumulator{});
+      if (op.receiver) Append(plan, OperandRole::kBase, *op.receiver);
+      else Append(plan, OperandRole::kBase, Accumulator{});
       plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, IterResult>) {
       Append(plan, OperandRole::kInput, op.value);
@@ -91,7 +92,7 @@ std::variant<ValueOperands, OperandError> DescribeValueOperands(
       Append(plan, OperandRole::kKey, op.key);
       Append(plan, OperandRole::kStoredValue, Accumulator{});
     } else if constexpr (std::is_same_v<T, DynamicImport>) {
-      Append(plan, OperandRole::kInput, Accumulator{});
+      Append(plan, OperandRole::kInput, std::visit([](auto slot) -> ScalarValue { return slot; }, op.specifier));
       plan.write = Accumulator{};
     } else if constexpr (std::is_same_v<T, ArraySpread>) {
       Append(plan, OperandRole::kDestination, op.destination);

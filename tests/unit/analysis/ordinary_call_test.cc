@@ -105,10 +105,36 @@ int main() {
     bad = decoded; bad.operands[1].raw_bits = 256;
     Check(std::get<CallError>(LiftOrdinaryCall(bad, UINT64_MAX)) == CallError::kMalformedInstruction);
   }
-  for (const auto& encoding : {std::vector<std::uint8_t>{0x2d, 0, 0},
-                               {0xfc, 11, 0}}) {
-    const auto decoded = Body(encoding).instructions.front().decoded;
+  {
+    const auto decoded = Body(std::array<std::uint8_t, 3>{0x2d, 0, 0}).instructions.front().decoded;
     Check(std::get<CallError>(LiftOrdinaryCall(decoded, 4)) ==
           CallError::kUnsupportedOpcode);
+  }
+  {
+    // DEPRECATED_CALLARG0 v3: register callee, no arguments.
+    const auto decoded = Body(std::array<std::uint8_t, 3>{0xfc, 11, 3}).instructions.front().decoded;
+    const auto call = std::get<OrdinaryCall>(LiftOrdinaryCall(decoded, 4));
+    Check(call.Count() == 0 && std::get<abc::RegisterId>(call.callee).value == 3);
+    Check(std::get<CallError>(LiftOrdinaryCall(decoded, 3)) == CallError::kRegisterRange);
+  }
+  {
+    // DEPRECATED_CALLRANGE 2, v5: callee v5, arguments v6 and v7.
+    abc::DecodedInstruction decoded{};
+    decoded.opcode = abc::Opcode::kDEPRECATED_CALLRANGE_PREF_IMM16_V8;
+    decoded.operand_count = 2;
+    decoded.operands[0].kind = abc::OperandKind::kImmediate;
+    decoded.operands[0].raw_bits = 2;
+    decoded.operands[1].kind = abc::OperandKind::kRegister;
+    decoded.operands[1].raw_bits = 5;
+    const auto call = std::get<OrdinaryCall>(LiftOrdinaryCall(decoded, 8));
+    Check(call.Count() == 2 && call.At(0)->value == 6 && call.At(1)->value == 7 &&
+          std::get<abc::RegisterId>(call.callee).value == 5);
+    Check(std::get<CallError>(LiftOrdinaryCall(decoded, 7)) == CallError::kRegisterRange);
+  }
+  {
+    const auto decoded = Body(std::array<std::uint8_t, 5>{0x60, 0, 0x29, 0, 0x64}).instructions[1].decoded;
+    const auto call = LiftOrdinaryCall(decoded, 1);
+    if (const auto* value = std::get_if<OrdinaryCall>(&call))
+      Check(std::holds_alternative<Accumulator>(value->callee));
   }
 }

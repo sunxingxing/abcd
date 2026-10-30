@@ -114,6 +114,11 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
     if (decoded.operand_count != 0) return Fail(SemanticError::kMalformedInstruction, site.offset);
     return DynamicImport{};
   }
+  if (decoded.opcode == Opcode::kDEPRECATED_DYNAMICIMPORT_PREF_V8) {
+    if (decoded.operand_count != 1 || decoded.operands[0].kind != abc::OperandKind::kRegister ||
+        decoded.operands[0].raw_bits >= frame_size) return Fail(SemanticError::kMalformedInstruction, site.offset);
+    return DynamicImport{abc::RegisterId{static_cast<std::uint32_t>(decoded.operands[0].raw_bits)}};
+  }
   if (decoded.opcode == Opcode::kLDNEWTARGET) {
     if (decoded.operand_count != 0) return Fail(SemanticError::kMalformedInstruction, site.offset);
     return NewTargetLoad{};
@@ -241,7 +246,7 @@ std::variant<SemanticOperation, SemanticFailure> LiftOperation(
   const auto implicit = LiftThisProperty(decoded,frame_size);
   if(const auto* p=std::get_if<ThisProperty>(&implicit))return *p;
   if(std::get<ThisPropertyError>(implicit)!=ThisPropertyError::kUnsupportedOpcode)return Fail(SemanticError::kMalformedInstruction,site.offset);
-  const auto named = LiftNamedRead(decoded);
+  const auto named = LiftNamedRead(decoded, frame_size);
   if (const auto* read = std::get_if<NamedRead>(&named)) return *read;
   if (std::get<NamedReadError>(named) != NamedReadError::kUnsupportedOpcode)
     return Fail(SemanticError::kMalformedInstruction, site.offset);

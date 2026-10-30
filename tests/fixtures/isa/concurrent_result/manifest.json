@@ -1,0 +1,44 @@
+{
+ "compiler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+ "compiler_sha256": "4d921b123d050309231436be967860a2facb79cd2c241b5b37f3b08f74b54bca",
+ "disassembler": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/ark_disasm",
+ "disassembler_sha256": "a82e0c92a6726eb5c515f96c1731984e2a3938a6ce98dc540c7b5e7c08860676",
+ "note": "\"use concurrent\" functions compiled as TypeScript, which emits callruntime.notifyconcurrentresult before every return.",
+ "fixtures": [
+  {
+   "source": "tests/fixtures/isa/concurrent_result/concurrent.ts",
+   "path": "tests/fixtures/isa/concurrent_result/concurrent-default.abc",
+   "sha256": "988315830edf6f21c6ed618ba9cb5eb425a9c2a80c54664e03edd268e2548d5f",
+   "source_sha256": "d59f624666ee82385f744394fe6d782036cdaef6207bba2528149f2280a9f5ca",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=ts",
+    "--record-name=concurrent_result",
+    "--source-file=concurrent.ts",
+    "--output=tests/fixtures/isa/concurrent_result/concurrent-default.abc",
+    "tests/fixtures/isa/concurrent_result/concurrent.ts"
+   ],
+   "profile": 6
+  },
+  {
+   "source": "tests/fixtures/isa/concurrent_result/concurrent.ts",
+   "path": "tests/fixtures/isa/concurrent_result/concurrent-O0.abc",
+   "sha256": "4480e3cadf30b3417dc52db38aed3ceb9bf1b58c7e79c10ade8aeef460efdce5",
+   "source_sha256": "d59f624666ee82385f744394fe6d782036cdaef6207bba2528149f2280a9f5ca",
+   "command": [
+    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/ets/build-tools/ets-loader/bin/ark/build-mac/bin/es2abc",
+    "--module",
+    "--merge-abc",
+    "--extension=ts",
+    "--record-name=concurrent_result",
+    "--source-file=concurrent.ts",
+    "--output=tests/fixtures/isa/concurrent_result/concurrent-O0.abc",
+    "--opt-level=0",
+    "tests/fixtures/isa/concurrent_result/concurrent.ts"
+   ],
+   "profile": 6
+  }
+ ]
+}

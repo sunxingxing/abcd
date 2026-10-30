@@ -142,7 +142,9 @@ struct SymbolConstructorLoad {};
 struct NewTargetLoad {};
 // Retains the specifier and creates one import promise; coercion runs in the
 // pinned runtime job. Source timing requires the independent V10 predicate.
-struct DynamicImport {};
+// DYNAMICIMPORT reads the specifier from acc, DEPRECATED_DYNAMICIMPORT from a
+// register; both call RuntimeDynamicImport (interpreter-inl.cpp:7570,7580).
+struct DynamicImport { ScalarSlot specifier = Accumulator{}; };
 // Reads VM frame.thisObj, not the writable optional ABI register copy. Derived
 // construction can expose Hole here; source use needs callable-owner evidence.
 struct FrameThisLoad {};

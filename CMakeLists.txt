@@ -512,6 +512,10 @@ if(BUILD_TESTING)
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/promise_copy_test.py)
     add_test(NAME isa_captured_static_classes_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/captured_static_classes_test.py)
+    add_test(NAME isa_concurrent_result_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/concurrent_result_test.py)
+    add_test(NAME isa_deprecated_source_test COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/deprecated_source_test.py)
     add_test(NAME isa_completion_ports_source_test COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/isa/completion_ports_test.py)
     add_test(NAME single_pass_scale_test COMMAND ${Python3_EXECUTABLE}
